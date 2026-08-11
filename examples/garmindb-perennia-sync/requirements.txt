@@ -1,0 +1,4 @@
+garmindb
+python-dotenv
+requests
+tzdata

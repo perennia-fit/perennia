@@ -1,0 +1,174 @@
+{
+  "name": "m29-dose-response-table",
+  "domain": "dose-response-table",
+  "cases": [
+    {
+      "name": "two dose levels of one Compound, resolved via active mass — outcome samples attributed to the most recent preceding Dose's level",
+      "doses": [
+        {
+          "id": "dose-1",
+          "compoundName": "Creatine",
+          "amountValue": 1,
+          "amountEntered": "1",
+          "unit": "capsule",
+          "tookAt": "2026-01-10T08:00:00.000Z",
+          "strength": {
+            "amount": 5,
+            "amountEntered": "5",
+            "massUnit": "milligram",
+            "perUnit": "capsule"
+          }
+        },
+        {
+          "id": "dose-2",
+          "compoundName": "Creatine",
+          "amountValue": 2,
+          "amountEntered": "2",
+          "unit": "capsule",
+          "tookAt": "2026-01-17T08:00:00.000Z",
+          "strength": {
+            "amount": 5,
+            "amountEntered": "5",
+            "massUnit": "milligram",
+            "perUnit": "capsule"
+          }
+        },
+        {
+          "id": "dose-3",
+          "compoundName": "Creatine",
+          "amountValue": 1,
+          "amountEntered": "1",
+          "unit": "capsule",
+          "tookAt": "2026-01-24T08:00:00.000Z",
+          "strength": {
+            "amount": 5,
+            "amountEntered": "5",
+            "massUnit": "milligram",
+            "perUnit": "capsule"
+          }
+        }
+      ],
+      "samples": [
+        { "at": "2026-01-05T08:00:00.000Z", "value": 100.0 },
+        { "at": "2026-01-11T08:00:00.000Z", "value": 90.0 },
+        { "at": "2026-01-13T08:00:00.000Z", "value": 92.0 },
+        { "at": "2026-01-18T08:00:00.000Z", "value": 80.0 },
+        { "at": "2026-01-20T08:00:00.000Z", "value": 84.0 },
+        { "at": "2026-01-25T08:00:00.000Z", "value": 88.0 }
+      ],
+      "expected": [
+        {
+          "compoundName": "Creatine",
+          "levelLabel": "5 mg",
+          "levelValue": 5.0,
+          "doseCount": 2,
+          "mean": 90.0,
+          "sampleCount": 3
+        },
+        {
+          "compoundName": "Creatine",
+          "levelLabel": "10 mg",
+          "levelValue": 10.0,
+          "doseCount": 1,
+          "mean": 82.0,
+          "sampleCount": 2
+        }
+      ]
+    },
+    {
+      "name": "no resolvable strength: falls back to the entered amount + unit, never blocking the grouping",
+      "doses": [
+        {
+          "id": "dose-4",
+          "compoundName": "Vitamin D",
+          "amountValue": 1000,
+          "amountEntered": "1000",
+          "unit": "internationalUnit",
+          "tookAt": "2026-02-01T08:00:00.000Z"
+        },
+        {
+          "id": "dose-5",
+          "compoundName": "Vitamin D",
+          "amountValue": 1000,
+          "amountEntered": "1000",
+          "unit": "internationalUnit",
+          "tookAt": "2026-02-02T08:00:00.000Z"
+        }
+      ],
+      "samples": [
+        { "at": "2026-01-31T08:00:00.000Z", "value": 20.0 },
+        { "at": "2026-02-01T09:00:00.000Z", "value": 22.0 },
+        { "at": "2026-02-02T09:00:00.000Z", "value": 24.0 }
+      ],
+      "expected": [
+        {
+          "compoundName": "Vitamin D",
+          "levelLabel": "1000 IU",
+          "levelValue": 1000.0,
+          "doseCount": 2,
+          "mean": 23.0,
+          "sampleCount": 2
+        }
+      ]
+    },
+    {
+      "name": "a sample before every Dose has none to attribute to — excluded, never fabricated",
+      "doses": [
+        {
+          "id": "dose-6",
+          "compoundName": "Melatonin",
+          "amountValue": 3,
+          "amountEntered": "3",
+          "unit": "milligram",
+          "tookAt": "2026-03-10T21:00:00.000Z"
+        }
+      ],
+      "samples": [
+        { "at": "2026-03-01T00:00:00.000Z", "value": 5.0 },
+        { "at": "2026-03-11T00:00:00.000Z", "value": 7.5 }
+      ],
+      "expected": [
+        {
+          "compoundName": "Melatonin",
+          "levelLabel": "3 mg",
+          "levelValue": 3.0,
+          "doseCount": 1,
+          "mean": 7.5,
+          "sampleCount": 1
+        }
+      ]
+    },
+    {
+      "name": "a dose level with no attributed samples still lists the level (dose count visible, mean null — never fabricated)",
+      "doses": [
+        {
+          "id": "dose-7",
+          "compoundName": "Creatine",
+          "amountValue": 5,
+          "amountEntered": "5",
+          "unit": "gram",
+          "tookAt": "2026-04-01T08:00:00.000Z"
+        }
+      ],
+      "samples": [],
+      "expected": [
+        {
+          "compoundName": "Creatine",
+          "levelLabel": "5 g",
+          "levelValue": 5.0,
+          "doseCount": 1,
+          "mean": null,
+          "sampleCount": 0
+        }
+      ]
+    },
+    {
+      "name": "no logged Doses at all -> an empty table, never fabricated",
+      "doses": [],
+      "samples": [
+        { "at": "2026-05-01T00:00:00.000Z", "value": 1.0 }
+      ],
+      "expected": []
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@perennia/golden-vectors",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "vectors"
+  ],
+  "scripts": {
+    "test": "node --test"
+  }
+}

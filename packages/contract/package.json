@@ -1,0 +1,45 @@
+{
+  "name": "@perennia/contract",
+  "version": "0.2.0",
+  "description": "Perennia's generated OpenAPI contract, TypeScript agent client, canonical import schemas, and shared agent validators.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/perennia-fit/perennia.git",
+    "directory": "packages/contract"
+  },
+  "files": [
+    "src",
+    "openapi.json",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./agent-client": "./src/agent-client.ts",
+    "./canonical-import": "./src/canonical-import.ts",
+    "./agent-validation": "./src/agent-validation.ts",
+    "./agent-skill-reference": "./src/agent-skill-reference.ts",
+    "./openapi": "./openapi.json"
+  },
+  "scripts": {
+    "check:drift": "corepack pnpm run generate && git -C ../.. diff --exit-code -- packages/contract/openapi.json packages/contract/src/agent-client.ts apps/mobile/lib/api/perennia_api_client.dart agent-skills/perennia/references/api-operations.md",
+    "generate": "corepack pnpm run generate:openapi && corepack pnpm run generate:dart && corepack pnpm run generate:agent-client && corepack pnpm run generate:agent-skill-reference",
+    "generate:agent-client": "tsx scripts/generate-agent-client.ts",
+    "generate:agent-skill-reference": "tsx scripts/generate-agent-skill-reference.ts",
+    "generate:dart": "tsx scripts/generate-dart-client.ts",
+    "generate:openapi": "tsx scripts/generate-openapi.ts",
+    "test": "node --import tsx --test test/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@perennia/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.0"
+  }
+}

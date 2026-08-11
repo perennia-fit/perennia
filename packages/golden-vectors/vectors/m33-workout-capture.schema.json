@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m33-workout-capture.schema.json",
+  "title": "M33 Workout capture golden vector",
+  "description": "Language-neutral fact-to-plan capture parity cases. Expected content contains only reusable plan fields; fact annotations appear only on input.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m33-workout-capture"},
+    "domain": {"const": "workout-capture"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m33-workout-capture.schema.json"},
+    "cases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "nullableDateTime": {
+      "oneOf": [
+        {"type": "string", "format": "date-time"},
+        {"type": "null"}
+      ]
+    },
+    "loadValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"enum": ["kilogram", "pound"]}
+      }
+    },
+    "repsValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"const": "repetition"}
+      }
+    },
+    "durationValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"const": "second"}
+      }
+    },
+    "distanceValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"enum": ["kilometer", "mile"]}
+      }
+    },
+    "values": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "load": {"$ref": "#/$defs/loadValue"},
+        "reps": {"$ref": "#/$defs/repsValue"},
+        "duration": {"$ref": "#/$defs/durationValue"},
+        "distance": {"$ref": "#/$defs/distanceValue"}
+      }
+    },
+    "inputSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceSetId",
+        "position",
+        "values",
+        "plannedRestAfterSeconds",
+        "comment",
+        "side",
+        "rpe",
+        "isCompleted",
+        "performedAt"
+      ],
+      "properties": {
+        "sourceSetId": {"type": "string", "minLength": 1},
+        "position": {"type": "integer", "minimum": 0},
+        "values": {"$ref": "#/$defs/values"},
+        "plannedRestAfterSeconds": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "comment": {"type": ["string", "null"]},
+        "side": {"type": ["string", "null"]},
+        "rpe": {"type": ["number", "null"]},
+        "isCompleted": {"type": "boolean"},
+        "performedAt": {"$ref": "#/$defs/nullableDateTime"}
+      }
+    },
+    "inputExercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceWorkoutExerciseId",
+        "exerciseId",
+        "exerciseName",
+        "position",
+        "sets"
+      ],
+      "properties": {
+        "sourceWorkoutExerciseId": {"type": "string", "minLength": 1},
+        "exerciseId": {"type": "string", "minLength": 1},
+        "exerciseName": {"type": "string"},
+        "position": {"type": "integer", "minimum": 0},
+        "sets": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/inputSet"}
+        }
+      }
+    },
+    "inputGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceGroupId",
+        "name",
+        "colorHex",
+        "position",
+        "memberSourceWorkoutExerciseIds"
+      ],
+      "properties": {
+        "sourceGroupId": {"type": "string", "minLength": 1},
+        "name": {"type": "string"},
+        "colorHex": {"type": "string"},
+        "position": {"type": "integer", "minimum": 0},
+        "memberSourceWorkoutExerciseIds": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workoutId",
+        "comment",
+        "startedAt",
+        "endedAt",
+        "exercises",
+        "groups"
+      ],
+      "properties": {
+        "workoutId": {"type": "string", "minLength": 1},
+        "comment": {"type": ["string", "null"]},
+        "startedAt": {"$ref": "#/$defs/nullableDateTime"},
+        "endedAt": {"$ref": "#/$defs/nullableDateTime"},
+        "exercises": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/inputExercise"}
+        },
+        "groups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/inputGroup"}
+        }
+      }
+    },
+    "expectedPrescription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "values",
+        "repeat",
+        "restAfterSeconds"
+      ],
+      "properties": {
+        "mode": {"const": "fixed"},
+        "values": {"$ref": "#/$defs/values"},
+        "repeat": {"type": "integer", "minimum": 1},
+        "restAfterSeconds": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "expectedExercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exerciseId", "prescriptions"],
+      "properties": {
+        "exerciseId": {"type": "string", "minLength": 1},
+        "prescriptions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/expectedPrescription"}
+        }
+      }
+    },
+    "expectedGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "colorHex",
+        "rounds",
+        "memberExerciseIndexes"
+      ],
+      "properties": {
+        "name": {"type": "string"},
+        "colorHex": {"type": "string"},
+        "rounds": {
+          "const": 1,
+          "description": "Workout facts carry no rounds; one preserves every captured Set without multiplying work."
+        },
+        "memberExerciseIndexes": {
+          "type": "array",
+          "items": {"type": "integer", "minimum": 0},
+          "uniqueItems": true
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suggestedName", "exercises", "groups"],
+      "properties": {
+        "suggestedName": {"type": "string"},
+        "exercises": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/expectedExercise"}
+        },
+        "groups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/expectedGroup"}
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "input": {"$ref": "#/$defs/input"},
+        "expected": {"$ref": "#/$defs/expected"}
+      }
+    }
+  }
+}

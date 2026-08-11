@@ -1,0 +1,1006 @@
+{
+  "@@locale": "en",
+  "appTitle": "Perennia",
+  "homeTodayDestination": "Today",
+  "homeProgressDestination": "Progress",
+  "homeLibraryDestination": "Library",
+  "homeProgressTitle": "Progress",
+  "homeBodyTitle": "Body",
+  "homeHealthMetricsTitle": "Health metrics",
+  "homeLibraryTitle": "Library",
+  "homeLibraryTrainingSection": "TRAINING",
+  "homeLibrarySupplementsSection": "SUPPLEMENTS",
+  "homeCreateExercise": "Create exercise",
+  "homeCreateExerciseSubtitle": "Add an exercise to your User Library",
+  "exerciseCatalogCreateExercise": "Create exercise",
+  "exerciseCatalogCreateNamedExercise": "Create \"{name}\"",
+  "@exerciseCatalogCreateNamedExercise": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "exerciseCatalogEmptyLibrary": "No exercises in your library yet",
+  "exerciseCatalogNoMatches": "No exercises match your search and filters",
+  "homeAccountAndAppTitle": "Account & app",
+  "homeAccountStatusLoading": "Checking account status",
+  "homeAccountStatusUnavailable": "Account status unavailable",
+  "homeLocalOnlyStatus": "Local only",
+  "homeSignInToSync": "Sign in to sync",
+  "homeManageAccountAndSync": "Manage account and sync",
+  "homeManageRoutines": "Manage routines",
+  "homeLogAction": "Log",
+  "homeLogSheetTitle": "Log for this day",
+  "homeLogWorkout": "Workout",
+  "homeStartWorkoutFailed": "Could not start workout. Try again.",
+  "homeLogFood": "Food",
+  "homeLogSupplement": "Supplement",
+  "homeDomainToggleLabel": "Home domain",
+  "homeTrainingDomain": "Training",
+  "homeNutritionDomain": "Nutrition",
+  "homeUnavailable": "Home unavailable",
+  "homeNutritionUnavailable": "Nutrition Day unavailable",
+  "homeStartNewWorkout": "Start New Workout",
+  "homeLoadRoutine": "Load Routine",
+  "homeAddExercise": "Add exercise",
+  "homeSessionHeader": "Session {time}",
+  "@homeSessionHeader": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSaveCommentTooltip": "Save comment",
+  "homeCopyWorkoutTooltip": "Copy workout",
+  "homeMoveWorkoutTooltip": "Move workout",
+  "homeShareWorkoutTooltip": "Share workout",
+  "homeWorkoutCommentLabel": "Workout comment",
+  "homeWorkoutSummaryCopied": "Workout summary copied",
+  "homePreviousDayTooltip": "Previous day",
+  "homeNextDayTooltip": "Next day",
+  "homeNoExercisesLoggedYet": "No exercises logged yet",
+  "homeNoSetsYet": "No sets yet",
+  "homeUpNextTitle": "Up next",
+  "homeUpNextRoutineSubtitle": "{routineName} · {slotLabel}",
+  "@homeUpNextRoutineSubtitle": {
+    "placeholders": {
+      "routineName": {
+        "type": "String"
+      },
+      "slotLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "homeUpNextStartTooltip": "Start {templateName}",
+  "@homeUpNextStartTooltip": {
+    "placeholders": {
+      "templateName": {
+        "type": "String"
+      }
+    }
+  },
+  "homeUpNextDoneLabel": "{templateName}, done",
+  "@homeUpNextDoneLabel": {
+    "placeholders": {
+      "templateName": {
+        "type": "String"
+      }
+    }
+  },
+  "homeUpNextStartFailed": "Could not start this session. Try again.",
+  "templatePickerTitle": "Load a Template",
+  "templatePickerTodayUpNextHeading": "Today / Up next",
+  "templatePickerRoutinesHeading": "Routines",
+  "templatePickerAllTemplatesHeading": "All Templates",
+  "templatePickerSearchHint": "Search templates",
+  "templatePickerEmptyTitle": "No plans yet",
+  "templatePickerEmptyMessage": "Finish a workout, then save it as a template.",
+  "templatePickerNoSearchResults": "No templates match your search.",
+  "templatePickerCustomizeTooltip": "Customize {templateName}",
+  "@templatePickerCustomizeTooltip": {
+    "placeholders": {
+      "templateName": {
+        "type": "String"
+      }
+    }
+  },
+  "templatePickerPreviewStart": "Start workout",
+  "templatePickerPreviewExercisesHeading": "Exercises",
+  "templatePickerPreviewEmptyExercises": "No exercises in this template yet.",
+  "workoutTitle": "Workout",
+  "workoutUnavailable": "Workout unavailable",
+  "workoutSummaryListTitle": "Workouts",
+  "workoutExercisesTitle": "Exercises",
+  "workoutNotesTitle": "Notes",
+  "workoutNotesButton": "Notes",
+  "workoutOptionsTooltip": "Workout options",
+  "workoutOpenStatus": "Open",
+  "workoutFinishedStatus": "Finished",
+  "workoutStartedAt": "Started {time}",
+  "@workoutStartedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutTimeRange": "{start}-{end}",
+  "@workoutTimeRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutFinish": "Finish Workout",
+  "workoutResume": "Resume Workout",
+  "workoutFinished": "Workout finished",
+  "workoutResumed": "Workout resumed",
+  "workoutShareAction": "Share",
+  "workoutEditStartTime": "Edit start time",
+  "workoutEditFinishTime": "Edit finish time",
+  "workoutStartTimeUpdated": "Start time updated",
+  "workoutFinishTimeUpdated": "Finish time updated",
+  "workoutStartTimeAfterFinish": "Start time must be before finish time",
+  "workoutFinishTimeBeforeStart": "Finish time must be after start time",
+  "workoutDelete": "Delete workout",
+  "workoutDeleteTitle": "Delete workout?",
+  "workoutDeleteMessage": "This removes the workout and its sets from your log. History can still be recovered from the Activity Log.",
+  "workoutCopied": "Workout copied",
+  "workoutMoved": "Workout moved",
+  "workoutRemoveExerciseTooltip": "Remove exercise",
+  "workoutReorderExerciseTooltip": "Reorder exercise",
+  "workoutLinkSupersetTooltip": "Link {firstName} and {secondName} as a superset",
+  "@workoutLinkSupersetTooltip": {
+    "placeholders": {
+      "firstName": {
+        "type": "String"
+      },
+      "secondName": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutUnlinkSupersetTooltip": "Unlink {firstName} and {secondName} from {groupName}",
+  "@workoutUnlinkSupersetTooltip": {
+    "placeholders": {
+      "firstName": {
+        "type": "String"
+      },
+      "secondName": {
+        "type": "String"
+      },
+      "groupName": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutSupersetUpdateFailed": "Could not update superset. Try again.",
+  "workoutExerciseRemoved": "Exercise removed",
+  "workoutSaveNote": "Save note",
+  "workoutDeleteNote": "Delete note",
+  "workoutNoteSaved": "Workout note saved",
+  "workoutNoteDeleted": "Workout note deleted",
+  "workoutNoExercises": "No exercises",
+  "workoutOneExercise": "1 exercise",
+  "workoutExerciseCount": "{count} exercises",
+  "@workoutExerciseCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "workoutNoSets": "No sets",
+  "workoutOneSet": "1 set",
+  "workoutSetCount": "{count} sets",
+  "@workoutSetCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cancelAction": "Cancel",
+  "workoutDurationInProgress": "In progress",
+  "workoutDurationHours": "{hours}h",
+  "@workoutDurationHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "workoutDurationHoursMinutes": "{hours}h {minutes}m",
+  "@workoutDurationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "workoutDurationMinutes": "{minutes}m",
+  "@workoutDurationMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "workoutDurationSeconds": "{seconds}s",
+  "@workoutDurationSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "navSignIn": "Sign in",
+  "navRecentActivity": "Recent activity",
+  "navRoutines": "Routines",
+  "navSettings": "Settings",
+  "navBodyTracker": "Body Tracker",
+  "navMetrics": "Metrics",
+  "navSupplements": "Supplements",
+  "agentKeysSignedOutTitle": "Sign in to manage agent keys",
+  "agentKeysSignIn": "Sign in",
+  "agentKeysNameLabel": "Agent key name",
+  "agentKeysCreate": "Create key",
+  "agentKeysSecretShownOnceSemanticLabel": "Agent API key secret shown once",
+  "agentKeysSecretShownOnceTitle": "Secret shown once",
+  "agentKeysCopySecretTooltip": "Copy secret",
+  "agentKeysCopiedMessage": "Agent key copied",
+  "agentKeysSecretWarning": "Copy it now. It will not be shown again.",
+  "agentKeysDone": "Done",
+  "agentKeysEmpty": "No agent keys",
+  "agentKeysRevokeTooltip": "Revoke key",
+  "agentKeysNeverUsed": "Never",
+  "agentKeysStarts": "Starts {start}",
+  "@agentKeysStarts": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      }
+    }
+  },
+  "agentKeysCreated": "Created {created}",
+  "@agentKeysCreated": {
+    "placeholders": {
+      "created": {
+        "type": "String"
+      }
+    }
+  },
+  "agentKeysLastUsed": "Last used {lastUsed}",
+  "@agentKeysLastUsed": {
+    "placeholders": {
+      "lastUsed": {
+        "type": "String"
+      }
+    }
+  },
+  "bodyTrackerTitle": "Body Tracker",
+  "bodyTrackerUnavailable": "Body Tracker unavailable",
+  "metricsTitle": "Metrics",
+  "metricsUnavailable": "Metrics unavailable",
+  "metricsEmpty": "No monitoring readings yet",
+  "metricsLatestReading": "Last reading {time}",
+  "@metricsLatestReading": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "metricsIntegrationProvenance": "Integration",
+  "metricsManualProvenance": "Manual",
+  "metricsAgentProvenance": "Agent",
+  "metricsSource": "Source {source}",
+  "@metricsSource": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "metricsAddMetric": "Add Metric",
+  "metricsAddMetricTooltip": "Add a Metric",
+  "metricsCreateMetricTitle": "New Metric",
+  "metricsNameLabel": "Name",
+  "metricsNameRequired": "Name is required",
+  "metricsUnitLabel": "Unit",
+  "metricsUnitRequired": "Unit is required",
+  "metricsUnitHint": "e.g. ng/dL, kg, bpm",
+  "metricsCreate": "Create",
+  "metricsMetricCreated": "Metric created",
+  "metricsLogReadingTooltip": "Log a reading",
+  "metricsLogReadingTitle": "Log Reading",
+  "metricsValueLabel": "Value",
+  "metricsMeasuredAtLabel": "Measured at",
+  "metricsCommentLabel": "Comment",
+  "metricsSaveReading": "Save",
+  "metricsReadingSaved": "Reading saved",
+  "metricsInvalidValue": "Enter a valid number",
+  "metricsInvalidDateTime": "Enter a valid date and time (yyyy-MM-dd HH:mm)",
+  "bodyTrackerNoValueYet": "No value yet",
+  "bodyTrackerLatestRecency": "Last measured {recency}",
+  "@bodyTrackerLatestRecency": {
+    "placeholders": {
+      "recency": {
+        "type": "String"
+      }
+    }
+  },
+  "bodyTrackerValueWithUnit": "{value} {unit}",
+  "@bodyTrackerValueWithUnit": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "bodyTrackerValueLabel": "Value",
+  "bodyTrackerMeasuredAtLabel": "Date/time",
+  "bodyTrackerCommentLabel": "Comment",
+  "bodyTrackerSaveEntry": "Save entry",
+  "bodyTrackerUpdateEntry": "Update entry",
+  "bodyTrackerEntrySaved": "Measurement saved",
+  "bodyTrackerEntryUpdated": "Measurement updated",
+  "bodyTrackerEntryDeleted": "Measurement deleted",
+  "bodyTrackerHistoryTitle": "History",
+  "bodyTrackerHistoryTooltip": "Open history",
+  "bodyTrackerHistoryEmpty": "No measurement history yet",
+  "bodyTrackerHistoryFilterLabel": "Measurement",
+  "bodyTrackerHistoryAllMeasurements": "All measurements",
+  "bodyTrackerProgressTitle": "Progress",
+  "bodyTrackerProgressTooltip": "Open progress graph",
+  "bodyTrackerProgressEmpty": "No measurement entries yet",
+  "bodyTrackerProgressGraphSemanticLabel": "Progress graph, {measurement}, {raw} raw points",
+  "@bodyTrackerProgressGraphSemanticLabel": {
+    "placeholders": {
+      "measurement": {"type": "String"},
+      "raw": {"type": "int"}
+    }
+  },
+  "bodyTrackerProgressGraphHint": "Tap to inspect a raw graph value",
+  "bodyTrackerProgressTargetLine": "Target {value} {unit}",
+  "@bodyTrackerProgressTargetLine": {
+    "placeholders": {
+      "value": {"type": "String"},
+      "unit": {"type": "String"}
+    }
+  },
+  "bodyTrackerProgressDownsampled": "Rendering {rendered} of {raw} raw points",
+  "@bodyTrackerProgressDownsampled": {
+    "placeholders": {
+      "rendered": {"type": "int"},
+      "raw": {"type": "int"}
+    }
+  },
+  "bodyTrackerProgressSelected": "{measurement}: {value} {unit} on {date}",
+  "@bodyTrackerProgressSelected": {
+    "placeholders": {
+      "measurement": {"type": "String"},
+      "value": {"type": "String"},
+      "unit": {"type": "String"},
+      "date": {"type": "String"}
+    }
+  },
+  "bodyTrackerManageTooltip": "Manage measurements",
+  "bodyTrackerManageTitle": "Manage measurements",
+  "bodyTrackerAddMeasurement": "Add measurement",
+  "bodyTrackerCreateMeasurementTitle": "New measurement",
+  "bodyTrackerMeasurementNameLabel": "Name",
+  "bodyTrackerMeasurementUnitLabel": "Unit",
+  "bodyTrackerMeasurementGoalLabel": "Goal",
+  "bodyTrackerMeasurementEnabledLabel": "Enabled",
+  "bodyTrackerMeasurementTargetLabel": "Target value",
+  "bodyTrackerMeasurementNameRequired": "Enter a name",
+  "bodyTrackerMeasurementTargetRequired": "Enter a non-negative target",
+  "bodyTrackerMeasurementCreated": "Measurement created",
+  "bodyTrackerMeasurementDeleted": "Measurement archived",
+  "bodyTrackerMeasurementReset": "Measurements reset",
+  "bodyTrackerResetMeasurementsTooltip": "Reset measurements",
+  "bodyTrackerReorderMeasurementTooltip": "Reorder measurement",
+  "bodyTrackerDeleteMeasurementTooltip": "Archive measurement",
+  "bodyTrackerDeleteMeasurementTitle": "Archive measurement?",
+  "bodyTrackerDeleteMeasurementMessage": "This measurement will leave Body Tracker, but its entries stay in history.",
+  "bodyTrackerResetMeasurementsTitle": "Reset measurements?",
+  "bodyTrackerResetMeasurementsMessage": "This restores Body Weight and Body Fat, enables them, and archives custom measurements.",
+  "bodyTrackerCancel": "Cancel",
+  "bodyTrackerCreate": "Create",
+  "bodyTrackerArchive": "Archive",
+  "bodyTrackerReset": "Reset",
+  "bodyTrackerGoalIncrease": "Increase",
+  "bodyTrackerGoalDecrease": "Decrease",
+  "bodyTrackerGoalTarget": "Target",
+  "bodyTrackerDeleteEntryTooltip": "Delete measurement entry",
+  "bodyTrackerDeleteEntryTitle": "Delete measurement entry?",
+  "bodyTrackerDeleteEntryMessage": "This entry will be removed from History.",
+  "bodyTrackerDeleteEntryCancel": "Cancel",
+  "bodyTrackerDeleteEntryConfirm": "Delete",
+  "bodyTrackerInvalidValue": "Enter a non-negative value with up to 5 decimals",
+  "bodyTrackerInvalidDateTime": "Use YYYY-MM-DD HH:mm",
+  "bodyTrackerSuspiciousValueTitle": "Unusual measurement value",
+  "bodyTrackerSuspiciousValueMessage": "{value} {unit} is outside the usual range. Save it anyway?",
+  "@bodyTrackerSuspiciousValueMessage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "bodyTrackerSuspiciousValueCancel": "Review",
+  "bodyTrackerSuspiciousValueConfirm": "Save anyway",
+  "bodyTrackerUnitKilogram": "kg",
+  "bodyTrackerUnitPound": "lb",
+  "bodyTrackerUnitCentimeter": "cm",
+  "bodyTrackerUnitInch": "in",
+  "bodyTrackerUnitPercent": "%",
+  "activityUndoSuccess": "Activity undone",
+  "activityUnavailable": "Recent activity unavailable",
+  "activityEmpty": "No recent activity",
+  "activityChangeCount": "{count, plural, =1{1 change} other{{count} changes}}",
+  "@activityChangeCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "activityFeedSemanticLabel": "{summary}, {actor}, {changes}, {timestamp}",
+  "@activityFeedSemanticLabel": {
+    "placeholders": {
+      "summary": {
+        "type": "String"
+      },
+      "actor": {
+        "type": "String"
+      },
+      "changes": {
+        "type": "String"
+      },
+      "timestamp": {
+        "type": "String"
+      }
+    }
+  },
+  "activityFeedSubtitle": "{actor} - {changes}",
+  "@activityFeedSubtitle": {
+    "placeholders": {
+      "actor": {
+        "type": "String"
+      },
+      "changes": {
+        "type": "String"
+      }
+    }
+  },
+  "activityAgentActor": "Agent",
+  "activityAgentActorWithKey": "Agent key {keyId}",
+  "@activityAgentActorWithKey": {
+    "placeholders": {
+      "keyId": {
+        "type": "String"
+      }
+    }
+  },
+  "activityUndoTooltip": "Undo activity",
+  "activityUndoConflict": "{count, plural, =1{Could not undo 1 changed row: {entityTable} {entityId}} other{Could not undo {count} changed rows: {entityTable} {entityId}}}",
+  "@activityUndoConflict": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "entityTable": {
+        "type": "String"
+      },
+      "entityId": {
+        "type": "String"
+      }
+    }
+  },
+  "activityUndoGenericConflict": "Activity could not be undone",
+  "activityRelativeLessThanOneMinuteAgo": "less than 1 min ago",
+  "activityRelativeMinutesAgo": "{count} min ago",
+  "@activityRelativeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "activityRelativeHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
+  "@activityRelativeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "activityRelativeDaysAgo": "{count, plural, =1{1 day ago} other{{count} days ago}}",
+  "@activityRelativeDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingBackgroundAlertsDenied": "Background timer alerts are off. In-app countdowns still work while Perennia is open.",
+  "trainingFallbackTitle": "Exercise",
+  "trainingUnavailable": "Exercise unavailable",
+  "trainingOpenNavigationTooltip": "Open navigation",
+  "trainingSetSaved": "Set saved",
+  "trainingExercisesTitle": "Exercises",
+  "trainingNoExercisesYet": "No exercises yet",
+  "trainingGroupsTitle": "Groups",
+  "trainingCreateGroupTooltip": "Create group",
+  "trainingNoGroupsYet": "No groups yet",
+  "trainingSetCount": "{count, plural, =1{1 set} other{{count} sets}}",
+  "@trainingSetCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingOpenExerciseOverviewTooltip": "Open exercise overview",
+  "trainingGroupExerciseCount": "{count, plural, =1{1 exercise} other{{count} exercises}}",
+  "@trainingGroupExerciseCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingEditGroupTooltip": "Edit group",
+  "trainingGroupNameLabel": "Group name",
+  "trainingGroupColorLabel": "Color",
+  "trainingExerciseUngroupedIndicator": "Exercise is not in a group",
+  "trainingExerciseGroupIndicator": "Exercise group {groupName}",
+  "@trainingExerciseGroupIndicator": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingGroupColorIndicator": "Group color for {groupName}",
+  "@trainingGroupColorIndicator": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingCancel": "Cancel",
+  "trainingSaveGroup": "Save group",
+  "trainingRestTimer": "Rest timer",
+  "trainingRestCountdown": "Rest {remaining}",
+  "@trainingRestCountdown": {
+    "placeholders": {
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRestComplete": "Rest complete",
+  "trainingRestSecondsLabel": "Rest sec",
+  "trainingStartTimer": "Start",
+  "trainingUpdateTimer": "Update",
+  "trainingCancelTimerTooltip": "Cancel timer",
+  "trainingPersonalRecordTooltip": "Personal record",
+  "trainingEditSetTooltip": "Edit set",
+  "trainingDeleteSetTooltip": "Delete set",
+  "trainingMarkSetCompleteLabel": "Mark set complete",
+  "trainingMarkSetIncompleteLabel": "Mark set incomplete",
+  "trainingReorderSetLabel": "Reorder set",
+  "trainingDecreaseDimensionTooltip": "Decrease {dimension}",
+  "@trainingDecreaseDimensionTooltip": {
+    "placeholders": {
+      "dimension": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingIncreaseDimensionTooltip": "Increase {dimension}",
+  "@trainingIncreaseDimensionTooltip": {
+    "placeholders": {
+      "dimension": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingCommentLabel": "Comment",
+  "trainingSideLeft": "L",
+  "trainingSideLeftTooltip": "Left side",
+  "trainingSideRight": "R",
+  "trainingSideRightTooltip": "Right side",
+  "trainingRpeLabel": "RPE",
+  "trainingSaveSet": "Save set",
+  "trainingSaveChanges": "Save changes",
+  "trainingCompletedSet": "Completed set",
+  "trainingSetComplete": "Complete",
+  "trainingSetInProgress": "In progress",
+  "trainingSetRpe": "RPE {rpe}",
+  "@trainingSetRpe": {
+    "placeholders": {
+      "rpe": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDurationHoursLabel": "Hours",
+  "trainingDurationMinutesLabel": "Minutes",
+  "trainingDurationSecondsLabel": "Seconds",
+  "trainingDimensionLoad": "Load",
+  "trainingDimensionReps": "Reps",
+  "trainingDimensionDuration": "Duration",
+  "trainingDimensionDistance": "Distance",
+  "trainingUnitKilogram": "kg",
+  "trainingUnitPound": "lb",
+  "trainingUnitRepetition": "reps",
+  "trainingUnitHour": "h",
+  "trainingUnitMinute": "min",
+  "trainingUnitSecond": "sec",
+  "trainingUnitKilometer": "km",
+  "trainingUnitMile": "mi",
+  "workoutTemplatesTitle": "Workout Templates",
+  "workoutTemplatesLibrarySubtitle": "Reusable plans for one Workout",
+  "workoutTemplatesNew": "New Workout Template",
+  "workoutTemplatesCreateTitle": "Create Workout Template",
+  "workoutTemplatesCreate": "Create Workout Template",
+  "workoutTemplatesNameLabel": "Workout Template name",
+  "workoutTemplatesNotesLabel": "Standing notes",
+  "workoutTemplatesCancel": "Cancel",
+  "workoutTemplatesActiveHeading": "Active Workout Templates",
+  "workoutTemplatesArchivedHeading": "Archived Workout Templates",
+  "workoutTemplatesShowArchived": "Show archived Workout Templates",
+  "workoutTemplatesHideArchived": "Hide archived Workout Templates",
+  "workoutTemplatesEmptyTitle": "No Workout Templates yet",
+  "workoutTemplatesEmptyMessage": "Create a reusable plan for one Workout.",
+  "workoutTemplatesArchivedEmpty": "No archived Workout Templates.",
+  "workoutTemplatesExerciseCount": "{count, plural, =0{No Template Exercises} =1{1 Template Exercise} other{{count} Template Exercises}}",
+  "@workoutTemplatesExerciseCount": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "workoutTemplatesOpenTooltip": "Open {name}",
+  "@workoutTemplatesOpenTooltip": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "workoutTemplatesArchive": "Archive Workout Template",
+  "workoutTemplatesArchiveTitle": "Archive Workout Template?",
+  "workoutTemplatesArchiveMessage": "This hides the template from active lists and pickers. Logged Workouts remain unchanged.",
+  "workoutTemplatesRestore": "Restore Workout Template",
+  "workoutTemplatesActionFailed": "The Workout Template could not be updated.",
+  "workoutTemplatesStartTooltip": "Start {name}",
+  "@workoutTemplatesStartTooltip": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "workoutTemplatesStartFailed": "The Workout could not be started.",
+  "workoutTemplateEditorTitle": "Edit Workout Template",
+  "workoutTemplateSaveDetails": "Save Workout Template details",
+  "workoutTemplateDetailsSaved": "Workout Template details saved",
+  "workoutTemplateExercisesHeading": "Template Exercises",
+  "workoutTemplateAddExercise": "Add Template Exercise",
+  "workoutTemplateNoExercises": "No Template Exercises. Add one to build the plan.",
+  "workoutTemplateExerciseNotes": "Exercise standing notes",
+  "workoutTemplateEditExerciseNotes": "Edit exercise notes",
+  "workoutTemplateSaveExerciseNotes": "Save exercise notes",
+  "workoutTemplateRemoveExercise": "Remove Template Exercise",
+  "workoutTemplateRemoveExerciseTitle": "Remove Template Exercise?",
+  "workoutTemplateRemoveExerciseMessage": "Its Prescriptions are removed from this plan. Logged Workouts remain unchanged.",
+  "workoutTemplateReorderExercise": "Reorder Template Exercise",
+  "workoutTemplatePrescriptionsHeading": "Prescriptions",
+  "workoutTemplateAddPrescription": "Add Prescription",
+  "workoutTemplateNoPrescriptions": "No Prescriptions",
+  "workoutTemplateEditPrescription": "Edit Prescription",
+  "workoutTemplatePrescriptionMode": "Prescription mode",
+  "workoutTemplatePrescriptionFixed": "Fixed values",
+  "workoutTemplatePrescriptionCopyPrevious": "Copy previous",
+  "workoutTemplatePrescriptionCopyPreviousHelp": "Use the values from the previous session when this template is loaded.",
+  "workoutTemplatePrescriptionRepeat": "Repeat",
+  "workoutTemplatePrescriptionRestAfter": "Rest after",
+  "workoutTemplatePrescriptionSeconds": "sec",
+  "workoutTemplateSavePrescription": "Save Prescription",
+  "workoutTemplateRemovePrescription": "Remove Prescription",
+  "workoutTemplateReorderPrescription": "Reorder Prescription",
+  "workoutTemplatePrescriptionCompletion": "Completion",
+  "workoutTemplatePrescriptionCopyPreviousSummary": "Copy previous values",
+  "workoutTemplatePrescriptionInvalid": "Enter valid non-negative values, a repeat of at least 1, and optional non-negative rest.",
+  "workoutTemplatePrescriptionWarningTitle": "Check Prescription values",
+  "workoutTemplatePrescriptionSaveAnyway": "Save anyway",
+  "workoutTemplateUnavailable": "Workout Template unavailable",
+  "workoutTemplateExercisePickerTitle": "Add Template Exercise",
+  "workoutTemplateGroupsHeading": "Groups",
+  "workoutTemplateAddGroup": "Add Group",
+  "workoutTemplateNoGroups": "No Groups. Add a superset or circuit to this plan.",
+  "workoutTemplateGroupNeedsExercises": "Add at least two ungrouped Template Exercises first.",
+  "workoutTemplateCreateGroup": "Create Group",
+  "workoutTemplateEditGroup": "Edit Group",
+  "workoutTemplateGroupName": "Group name",
+  "workoutTemplateGroupColor": "Group color",
+  "workoutTemplateGroupColorPreview": "Group color preview {color}",
+  "@workoutTemplateGroupColorPreview": {
+    "placeholders": {"color": {"type": "String"}}
+  },
+  "workoutTemplateGroupRounds": "Rounds",
+  "workoutTemplateGroupRoundsHelp": "A round is one pass through every exercise in this Group.",
+  "workoutTemplateGroupMembers": "Template Exercises",
+  "workoutTemplateSelectedGroupMembers": "Selected Template Exercises",
+  "workoutTemplateAvailableGroupMembers": "Available Template Exercises",
+  "workoutTemplateNoSelectedGroupMembers": "Select at least two Template Exercises below.",
+  "workoutTemplateReorderGroupMember": "Reorder {name}",
+  "@workoutTemplateReorderGroupMember": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateGroupMemberActions": "Group member actions for {name}",
+  "@workoutTemplateGroupMemberActions": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateRemoveGroupMember": "Remove from Group",
+  "workoutTemplateGroupInOtherGroup": "In {name}",
+  "@workoutTemplateGroupInOtherGroup": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateGroupNameRequired": "Enter a Group name.",
+  "workoutTemplateGroupColorInvalid": "Enter a color as #RRGGBB.",
+  "workoutTemplateGroupRoundsInvalid": "Rounds must be a whole number of at least 1.",
+  "workoutTemplateGroupMembersInvalid": "Select at least two Template Exercises.",
+  "workoutTemplateSaveGroup": "Save Group",
+  "workoutTemplateGroupActionFailed": "The Group could not be updated.",
+  "workoutTemplateGroupRoundsCount": "{rounds, plural, =1{1 round} other{{rounds} rounds}}",
+  "@workoutTemplateGroupRoundsCount": {
+    "placeholders": {"rounds": {"type": "int"}}
+  },
+  "workoutTemplateGroupMemberCount": "{count, plural, =1{1 Template Exercise} other{{count} Template Exercises}}",
+  "@workoutTemplateGroupMemberCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "workoutTemplateGroupMembership": "{name} · {rounds, plural, =1{1 round} other{{rounds} rounds}}",
+  "@workoutTemplateGroupMembership": {
+    "placeholders": {
+      "name": {"type": "String"},
+      "rounds": {"type": "int"}
+    }
+  },
+  "workoutTemplateGroupColorIndicator": "Group color for {name}",
+  "@workoutTemplateGroupColorIndicator": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateReorderGroup": "Reorder Group {name}",
+  "@workoutTemplateReorderGroup": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateGroupActions": "Group actions for {name}",
+  "@workoutTemplateGroupActions": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateMoveGroupEarlier": "Move earlier",
+  "workoutTemplateMoveGroupLater": "Move later",
+  "workoutTemplateDissolveGroup": "Dissolve Group",
+  "workoutTemplateDissolveGroupTitle": "Dissolve {name}?",
+  "@workoutTemplateDissolveGroupTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateDissolveGroupMessage": "Exercises and Prescriptions stay in this Workout Template.",
+  "workoutTemplateDissolveGroupSuccess": "Group dissolved",
+  "workoutTemplateGroupedExerciseRemoveTitle": "Remove from {name} first",
+  "@workoutTemplateGroupedExerciseRemoveTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateGroupedExerciseRemoveMessage": "Edit or dissolve the Group before removing this Template Exercise.",
+  "routinePlansTitle": "Routines",
+  "routinePlansNew": "New Routine",
+  "routinePlansCreateTitle": "Create Routine",
+  "routinePlansCreate": "Create Routine",
+  "routinePlansNameLabel": "Routine name",
+  "routinePlansNotesLabel": "Notes",
+  "routinePlansNameRequired": "Enter a Routine name.",
+  "routinePlansUnavailable": "Routines unavailable",
+  "routinePlansActionFailed": "The Routine could not be updated.",
+  "routinePlansEmptyTitle": "No Routines yet",
+  "routinePlansEmptyMessage": "Create a Routine to keep an ordered collection of Workout Templates.",
+  "routinePlansActiveHeading": "ACTIVE",
+  "routinePlansShowArchived": "Show archived Routines",
+  "routinePlansHideArchived": "Hide archived Routines",
+  "routinePlansArchivedHeading": "ARCHIVED",
+  "routinePlansArchivedEmpty": "No archived Routines",
+  "routinePlansTemplateCount": "{count, plural, =1{1 Workout Template} other{{count} Workout Templates}}",
+  "@routinePlansTemplateCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "routinePlansArchivedTemplateCount": "{count, plural, =1{1 archived} other{{count} archived}}",
+  "@routinePlansArchivedTemplateCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "routinePlansOpenTooltip": "Open Routine {name}",
+  "@routinePlansOpenTooltip": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansArchivedTileLabel": "Archived Routine {name}",
+  "@routinePlansArchivedTileLabel": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansArchive": "Archive Routine",
+  "routinePlansRestore": "Restore Routine",
+  "routinePlansStartTooltip": "Start {name}",
+  "@routinePlansStartTooltip": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansStartSheetTitle": "Start {name}",
+  "@routinePlansStartSheetTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansStartEmptyMessage": "Add a Workout Template to this Routine first.",
+  "routinePlansStartFailed": "The Workout could not be started.",
+  "routinePlansCancel": "Cancel",
+  "routinePlansArchiveTitle": "Archive {name}?",
+  "@routinePlansArchiveTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansArchiveMessage": "Workout Templates and this Routine's references remain unchanged and restorable.",
+  "routinePlansSaveDetails": "Save Routine",
+  "routinePlansTemplatesHeading": "Workout Templates",
+  "routinePlansAddTemplate": "Add Workout Template",
+  "routinePlansNoTemplates": "No Workout Templates in this Routine yet.",
+  "routinePlansTemplateLabel": "Workout Template",
+  "routinePlansArchivedTemplateLabel": "Archived Workout Template",
+  "routinePlansRestoreTemplate": "Restore Workout Template",
+  "routinePlansReorderTemplate": "Reorder {name}",
+  "@routinePlansReorderTemplate": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansEntryActions": "Routine entry actions for {name}",
+  "@routinePlansEntryActions": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansMoveEarlier": "Move earlier",
+  "routinePlansMoveLater": "Move later",
+  "routinePlansRemoveReference": "Remove from Routine",
+  "routinePlansRemoveReferenceTitle": "Remove {name}?",
+  "@routinePlansRemoveReferenceTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansRemoveReferenceMessage": "This removes only the reference from {name}. The Workout Template remains available everywhere else.",
+  "@routinePlansRemoveReferenceMessage": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansTemplatePickerTitle": "Add Workout Template",
+  "routinePlansNoAvailableTemplates": "Create an active Workout Template in Library before adding one to this Routine.",
+  "routinePlansCadenceHeading": "Cadence",
+  "routinePlansCadenceLabel": "Routine cadence",
+  "routinePlansCadenceNone": "None",
+  "routinePlansCadenceWeekly": "Weekly",
+  "routinePlansCadenceRotating": "Rotating",
+  "routinePlansRotatingWindowLabel": "Number of positions",
+  "routinePlansRotatingWindowHelp": "Each position can contain more than one Workout Template.",
+  "routinePlansRotatingWindowError": "Enter a whole number of 1 or more.",
+  "routinePlansCadenceInvalid": "Choose a valid Cadence.",
+  "routinePlansSaveCadence": "Save Cadence",
+  "routinePlansCadenceWarningTitle": "Save a long rotation?",
+  "routinePlansCadenceWarningMessage": "A rotating Cadence above 31 positions is unusual. You can still save it.",
+  "routinePlansSaveAnyway": "Save anyway",
+  "routinePlansMonday": "Monday",
+  "routinePlansTuesday": "Tuesday",
+  "routinePlansWednesday": "Wednesday",
+  "routinePlansThursday": "Thursday",
+  "routinePlansFriday": "Friday",
+  "routinePlansSaturday": "Saturday",
+  "routinePlansSunday": "Sunday",
+  "routinePlansRotatingSlot": "Position {slot}",
+  "@routinePlansRotatingSlot": {
+    "placeholders": {"slot": {"type": "int"}}
+  },
+  "routinePlansAddTemplateToSlot": "Add Workout Template to {slot}",
+  "@routinePlansAddTemplateToSlot": {
+    "placeholders": {"slot": {"type": "String"}}
+  },
+  "routinePlansDropHere": "Move here",
+  "routinePlansRest": "Rest",
+  "routinePlansRestSlotLabel": "{slot}, Rest",
+  "@routinePlansRestSlotLabel": {
+    "placeholders": {"slot": {"type": "String"}}
+  },
+  "routinePlansMoveToSlot": "Move to another slot",
+  "routinePlansMoveToSlotTitle": "Move {name}",
+  "@routinePlansMoveToSlotTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinePlansCurrentSlot": "Current slot",
+  "workoutCaptureMenuAction": "Save as Workout Template",
+  "workoutCaptureTitle": "Save workout as template",
+  "workoutCaptureLoading": "Preparing capture preview",
+  "workoutCapturePreviewUnavailable": "This workout could not be prepared for capture. Try again.",
+  "workoutCaptureRetry": "Try again",
+  "workoutCaptureClose": "Close capture sheet",
+  "workoutCapturePickerClose": "Close picker",
+  "workoutCaptureCountsSemantics": "Capture preview: {exerciseCount, plural, =0{no exercises} =1{1 exercise} other{{exerciseCount} exercises}}, {setCount, plural, =0{no sets} =1{1 set} other{{setCount} sets}}, and {groupCount, plural, =0{no groups} =1{1 group} other{{groupCount} groups}}.",
+  "@workoutCaptureCountsSemantics": {
+    "placeholders": {
+      "exerciseCount": {"type": "int"},
+      "setCount": {"type": "int"},
+      "groupCount": {"type": "int"}
+    }
+  },
+  "workoutCaptureExerciseCount": "{count, plural, =0{No exercises} =1{1 exercise} other{{count} exercises}}",
+  "@workoutCaptureExerciseCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "workoutCaptureSetCount": "{count, plural, =0{No sets} =1{1 set} other{{count} sets}}",
+  "@workoutCaptureSetCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "workoutCaptureGroupCount": "{count, plural, =0{No groups} =1{1 group} other{{count} groups}}",
+  "@workoutCaptureGroupCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "workoutCaptureNameLabel": "Workout Template name",
+  "workoutCaptureNameRequired": "Enter a Workout Template name.",
+  "workoutCaptureRoutineLabel": "Add to Routine",
+  "workoutCaptureRoutineHelp": "Optional. Collection Routines append the reference; Cadence Routines require a slot.",
+  "workoutCaptureRoutineNone": "None",
+  "workoutCaptureRoutinesLoading": "Loading Routines",
+  "workoutCaptureRoutinePickerTitle": "Choose a Routine",
+  "workoutCaptureRoutineUnavailable": "The selected Routine is no longer available. Choose another Routine or None.",
+  "workoutCaptureCadenceChanged": "This Routine's Cadence changed. Review the placement and choose an available slot.",
+  "workoutCaptureCadenceRoutineOption": "{name} - choose slot",
+  "@workoutCaptureCadenceRoutineOption": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutCaptureCollectionRoutineOption": "{name} - collection",
+  "@workoutCaptureCollectionRoutineOption": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutCaptureSlotLabel": "Cadence slot",
+  "workoutCaptureChooseSlot": "Choose a slot",
+  "workoutCaptureSlotRequired": "Choose a Cadence slot.",
+  "workoutCaptureSlotPickerTitle": "Choose a Cadence slot",
+  "workoutCaptureSlotNumberLabel": "Slot number",
+  "workoutCaptureSlotRange": "Enter a number from 1 to {count} or choose from the list.",
+  "@workoutCaptureSlotRange": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "workoutCaptureSlotOutOfRange": "Enter an available slot number.",
+  "workoutCaptureChooseSlotAction": "Choose slot",
+  "workoutCaptureReferenceNote": "This creates a new Workout Template from the workout facts. The workout and its existing Template Link stay unchanged; Routine placement adds only a reference.",
+  "workoutCaptureErrorsTitle": "Cannot save yet",
+  "workoutCaptureWarningsTitle": "Review before saving",
+  "workoutCaptureAcceptWarnings": "I reviewed these warnings and want to save anyway.",
+  "workoutCaptureSave": "Save Template",
+  "workoutCaptureSaving": "Saving...",
+  "workoutCaptureSaveFailed": "The Workout Template could not be saved. Review your choices and try again.",
+  "workoutCaptureSaved": "Workout Template saved.",
+  "workoutUpdateTemplateMenuAction": "Update template",
+  "templateUpdatePromptTitle": "Update \"{name}\"?",
+  "@templateUpdatePromptTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "templateUpdateDismissAction": "Not now",
+  "templateUpdateConfirmAction": "Update template",
+  "templateUpdateConfirmedMessage": "Template updated.",
+  "templateUpdateNotLinkedMessage": "This workout isn't linked to a Workout Template.",
+  "templateUpdateGroupsChangedNote": "Exercise groups changed",
+  "templateUpdateNoChangesNote": "No changes to update"
+}

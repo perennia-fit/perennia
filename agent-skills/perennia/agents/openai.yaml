@@ -1,0 +1,4 @@
+interface:
+  display_name: "Perennia"
+  short_description: "Query, analyze, and log Perennia data from code execution scripts."
+  default_prompt: "Use the Perennia skill's code-mode helper and REST scripts to call the Perennia agent API for workout, nutrition, and Metric operations."

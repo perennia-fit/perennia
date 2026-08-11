@@ -1,0 +1,398 @@
+{
+  "name": "m33-plan-validation",
+  "domain": "plan-validation",
+  "limits": {
+    "repeatMin": 1,
+    "repeatWarnAbove": 100,
+    "restAfterSecondsMin": 0,
+    "templateGroupRoundsMin": 1,
+    "templateGroupMembersMin": 2,
+    "templateGroupColorHexFormat": "#RRGGBB",
+    "cadenceKinds": ["weekly", "rotating"],
+    "rotatingWindowMin": 1,
+    "rotatingWindowWarnAbove": 31,
+    "weeklySlotMin": 1,
+    "weeklySlotMax": 7,
+    "routineEntrySlotMin": 1
+  },
+  "cases": [
+    {
+      "name": "ordinary-fixed-prescription-is-valid",
+      "validator": "prescription",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "repeat": 3,
+        "restAfterSeconds": 90,
+        "values": {
+          "load": {"entered": "60", "unit": "kilogram"},
+          "reps": {"entered": "10", "unit": "repetition"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "zero-values-remain-valid",
+      "validator": "prescription",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "repeat": 1,
+        "restAfterSeconds": 0,
+        "values": {
+          "load": {"entered": "0", "unit": "kilogram"},
+          "reps": {"entered": "0", "unit": "repetition"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": ["all_zero_multi_dimension_set"], "errorRules": []}
+    },
+    {
+      "name": "copy-previous-ignores-fixed-values",
+      "validator": "prescription",
+      "input": {
+        "mode": "copyPrevious",
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "repeat": 2,
+        "restAfterSeconds": 60,
+        "values": {
+          "load": {"entered": "-5", "unit": "kilogram"},
+          "reps": {"entered": "10001", "unit": "repetition"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "unknown-mode-hard-rejects",
+      "validator": "prescription",
+      "input": {
+        "mode": "inherit",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": 1,
+        "restAfterSeconds": null,
+        "values": {"reps": {"entered": "10", "unit": "repetition"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["prescription_mode_invalid"]}
+    },
+    {
+      "name": "duplicate-dimensions-hard-reject-deterministically",
+      "validator": "prescription",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps", "reps"],
+        "loadMode": "added",
+        "repeat": 1,
+        "restAfterSeconds": null,
+        "values": {"reps": {"entered": "10", "unit": "repetition"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["prescription_dimensions_duplicate"]}
+    },
+    {
+      "name": "zero-repeat-hard-rejects",
+      "validator": "prescription",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": 0,
+        "restAfterSeconds": null,
+        "values": {"reps": {"entered": "10", "unit": "repetition"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["prescription_repeat_min"]}
+    },
+    {
+      "name": "fractional-repeat-hard-rejects",
+      "validator": "prescription",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": 2.5,
+        "restAfterSeconds": null,
+        "values": {"reps": {"entered": "10", "unit": "repetition"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["prescription_repeat_integer"]}
+    },
+    {
+      "name": "repeat-at-warning-boundary-is-valid",
+      "validator": "prescription",
+      "input": {
+        "mode": "copyPrevious",
+        "dimensions": ["duration"],
+        "loadMode": "added",
+        "repeat": 100,
+        "restAfterSeconds": null,
+        "values": {}
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "repeat-above-warning-boundary-soft-warns",
+      "validator": "prescription",
+      "input": {
+        "mode": "copyPrevious",
+        "dimensions": ["duration"],
+        "loadMode": "added",
+        "repeat": 101,
+        "restAfterSeconds": null,
+        "values": {}
+      },
+      "expected": {"accepted": true, "warningRules": ["prescription_repeat_improbable"], "errorRules": []}
+    },
+    {
+      "name": "negative-rest-after-hard-rejects",
+      "validator": "prescription",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": 1,
+        "restAfterSeconds": -1,
+        "values": {"reps": {"entered": "10", "unit": "repetition"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["prescription_rest_after_non_negative"]}
+    },
+    {
+      "name": "fixed-values-reuse-set-hard-rejects",
+      "validator": "prescription",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["distance"],
+        "loadMode": "added",
+        "repeat": 1,
+        "restAfterSeconds": null,
+        "values": {"distance": {"entered": "1.123456", "unit": "kilometer"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["numeric_max_five_decimal_places"]}
+    },
+    {
+      "name": "fixed-values-reuse-set-soft-warnings",
+      "validator": "prescription",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "repeat": 101,
+        "restAfterSeconds": null,
+        "values": {
+          "load": {"entered": "400", "unit": "kilogram"},
+          "reps": {"entered": "10", "unit": "repetition"}
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": ["prescription_repeat_improbable", "added_load_improbable"],
+        "errorRules": []
+      }
+    },
+    {
+      "name": "plan-and-value-errors-both-report",
+      "validator": "prescription",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": 0,
+        "restAfterSeconds": -5,
+        "values": {"reps": {"entered": "1.5", "unit": "repetition"}}
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": ["prescription_repeat_min", "prescription_rest_after_non_negative", "reps_integer"]
+      }
+    },
+    {
+      "name": "ordinary-template-group-is-valid",
+      "validator": "templateGroup",
+      "input": {
+        "name": "  Conditioning circuit  ",
+        "colorHex": " #1a2B3c ",
+        "rounds": 3,
+        "memberIds": ["template-exercise-1", "template-exercise-2"]
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "template-group-one-round-is-valid",
+      "validator": "templateGroup",
+      "input": {
+        "name": "Superset",
+        "colorHex": "#2F6FED",
+        "rounds": 1,
+        "memberIds": ["template-exercise-1", "template-exercise-2"]
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "template-group-zero-rounds-hard-rejects",
+      "validator": "templateGroup",
+      "input": {
+        "name": "Superset",
+        "colorHex": "#2F6FED",
+        "rounds": 0,
+        "memberIds": ["template-exercise-1", "template-exercise-2"]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["template_group_rounds_min"]}
+    },
+    {
+      "name": "template-group-fractional-rounds-hard-rejects",
+      "validator": "templateGroup",
+      "input": {
+        "name": "Circuit",
+        "colorHex": "#2F6FED",
+        "rounds": 1.5,
+        "memberIds": ["template-exercise-1", "template-exercise-2"]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["template_group_rounds_integer"]}
+    },
+    {
+      "name": "template-group-name-is-required",
+      "validator": "templateGroup",
+      "input": {
+        "name": "   ",
+        "colorHex": "#2F6FED",
+        "rounds": 1,
+        "memberIds": ["template-exercise-1", "template-exercise-2"]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["template_group_name_required"]}
+    },
+    {
+      "name": "template-group-color-must-be-rrggbb",
+      "validator": "templateGroup",
+      "input": {
+        "name": "Circuit",
+        "colorHex": "2F6FED",
+        "rounds": 1,
+        "memberIds": ["template-exercise-1", "template-exercise-2"]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["template_group_color_hex"]}
+    },
+    {
+      "name": "template-group-requires-two-members",
+      "validator": "templateGroup",
+      "input": {
+        "name": "Circuit",
+        "colorHex": "#2F6FED",
+        "rounds": 1,
+        "memberIds": ["template-exercise-1"]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["template_group_members_min"]}
+    },
+    {
+      "name": "template-group-members-are-unique-after-trimming",
+      "validator": "templateGroup",
+      "input": {
+        "name": "Circuit",
+        "colorHex": "#2F6FED",
+        "rounds": 1,
+        "memberIds": ["template-exercise-1", " template-exercise-1 "]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["template_group_members_unique"]}
+    },
+    {
+      "name": "template-group-member-ids-are-required",
+      "validator": "templateGroup",
+      "input": {
+        "name": "Circuit",
+        "colorHex": "#2F6FED",
+        "rounds": 1,
+        "memberIds": ["template-exercise-1", "   "]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["template_group_member_id_required"]}
+    },
+    {
+      "name": "routine-without-cadence-or-entries-is-valid",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": null, "cadenceWindow": null, "slots": []},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "routine-without-cadence-requires-null-slots",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": null, "cadenceWindow": null, "slots": [null, 1]},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["routine_entry_slot_requires_cadence"]}
+    },
+    {
+      "name": "routine-without-cadence-forbids-window",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": null, "cadenceWindow": 7, "slots": [null]},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["cadence_window_forbidden"]}
+    },
+    {
+      "name": "weekly-boundaries-and-duplicate-slots-are-valid",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "weekly", "cadenceWindow": null, "slots": [1, 7, 7]},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "weekly-requires-every-entry-slot",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "weekly", "cadenceWindow": null, "slots": [1, null]},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["routine_entry_slot_required"]}
+    },
+    {
+      "name": "weekly-slot-must-fit-calendar",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "weekly", "cadenceWindow": null, "slots": [8]},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["routine_entry_slot_range"]}
+    },
+    {
+      "name": "weekly-forbids-window",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "weekly", "cadenceWindow": 7, "slots": [1]},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["cadence_window_forbidden"]}
+    },
+    {
+      "name": "rotating-window-one-allows-shared-slot",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "rotating", "cadenceWindow": 1, "slots": [1, 1]},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "rotating-window-31-is-valid",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "rotating", "cadenceWindow": 31, "slots": [1, 31]},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "rotating-window-above-31-soft-warns",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "rotating", "cadenceWindow": 32, "slots": [32]},
+      "expected": {"accepted": true, "warningRules": ["cadence_window_improbable"], "errorRules": []}
+    },
+    {
+      "name": "rotating-window-zero-hard-rejects",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "rotating", "cadenceWindow": 0, "slots": [1]},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["cadence_window_min"]}
+    },
+    {
+      "name": "rotating-window-fractional-hard-rejects",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "rotating", "cadenceWindow": 2.5, "slots": [1]},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["cadence_window_integer"]}
+    },
+    {
+      "name": "rotating-window-is-required",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "rotating", "cadenceWindow": null, "slots": [1]},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["cadence_window_required"]}
+    },
+    {
+      "name": "rotating-slot-must-fit-window",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "rotating", "cadenceWindow": 3, "slots": [4]},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["routine_entry_slot_range"]}
+    },
+    {
+      "name": "cadence-kind-must-be-known",
+      "validator": "routineCadence",
+      "input": {"cadenceKind": "monthly", "cadenceWindow": null, "slots": []},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["cadence_kind_invalid"]}
+    }
+  ]
+}

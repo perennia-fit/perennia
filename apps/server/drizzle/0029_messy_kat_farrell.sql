@@ -1,0 +1,4 @@
+CREATE INDEX "exercise_group_members_user_group_id_index" ON "exercise_group_members" USING btree ("user_id",("payload" ->> 'group_id'));--> statement-breakpoint
+CREATE INDEX "exercise_group_members_user_workout_exercise_id_index" ON "exercise_group_members" USING btree ("user_id",("payload" ->> 'workout_exercise_id'));--> statement-breakpoint
+CREATE INDEX "exercise_groups_user_workout_id_index" ON "exercise_groups" USING btree ("user_id",("payload" ->> 'workout_id'));--> statement-breakpoint
+CREATE INDEX "workout_exercises_user_workout_id_index" ON "workout_exercises" USING btree ("user_id",("payload" ->> 'workout_id'));

@@ -1,0 +1,88 @@
+{
+  "name": "m9-measurement-delta",
+  "domain": "measurement-delta",
+  "cases": [
+    {
+      "name": "single-entry-has-no-delta",
+      "input": {"goalType": "decrease", "latest": 82.0},
+      "expected": {"delta": null}
+    },
+    {
+      "name": "increase-positive-is-good",
+      "input": {"goalType": "increase", "latest": 44.25, "previous": 42.0},
+      "expected": {"value": 2.25, "valueEntered": "+2.25", "direction": "good"}
+    },
+    {
+      "name": "increase-negative-is-bad",
+      "input": {"goalType": "increase", "latest": 40.0, "previous": 42.0},
+      "expected": {"value": -2.0, "valueEntered": "-2", "direction": "bad"}
+    },
+    {
+      "name": "decrease-negative-is-good",
+      "input": {"goalType": "decrease", "latest": 80.0, "previous": 82.0},
+      "expected": {"value": -2.0, "valueEntered": "-2", "direction": "good"}
+    },
+    {
+      "name": "decrease-positive-is-bad",
+      "input": {"goalType": "decrease", "latest": 84.0, "previous": 82.0},
+      "expected": {"value": 2.0, "valueEntered": "+2", "direction": "bad"}
+    },
+    {
+      "name": "target-movement-toward-target-is-good",
+      "input": {
+        "goalType": "target",
+        "latest": 90.0,
+        "previous": 100.0,
+        "target": 80.0
+      },
+      "expected": {"value": -10.0, "valueEntered": "-10", "direction": "good"}
+    },
+    {
+      "name": "target-movement-away-from-target-is-bad",
+      "input": {
+        "goalType": "target",
+        "latest": 110.0,
+        "previous": 100.0,
+        "target": 80.0
+      },
+      "expected": {"value": 10.0, "valueEntered": "+10", "direction": "bad"}
+    },
+    {
+      "name": "target-equal-distance-is-neutral",
+      "input": {
+        "goalType": "target",
+        "latest": 70.0,
+        "previous": 90.0,
+        "target": 80.0
+      },
+      "expected": {
+        "value": -20.0,
+        "valueEntered": "-20",
+        "direction": "neutral"
+      }
+    },
+    {
+      "name": "target-without-target-value-is-neutral",
+      "input": {"goalType": "target", "latest": 90.0, "previous": 100.0},
+      "expected": {
+        "value": -10.0,
+        "valueEntered": "-10",
+        "direction": "neutral"
+      }
+    },
+    {
+      "name": "equal-values-are-neutral",
+      "input": {"goalType": "decrease", "latest": 82.0, "previous": 82.0},
+      "expected": {"value": 0.0, "valueEntered": "0", "direction": "neutral"}
+    },
+    {
+      "name": "epsilon-equal-values-are-neutral-zero",
+      "input": {
+        "goalType": "increase",
+        "latest": 82.0000000001,
+        "previous": 82.0
+      },
+      "expected": {"value": 0.0, "valueEntered": "0", "direction": "neutral"}
+    }
+  ]
+}

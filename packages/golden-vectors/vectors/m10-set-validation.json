@@ -1,0 +1,175 @@
+{
+  "name": "m10-set-validation",
+  "domain": "set-validation",
+  "cases": [
+    {
+      "name": "zero-load-rpe-and-side-are-valid",
+      "input": {
+        "exercise": {"dimensions": ["load"], "loadMode": "added"},
+        "values": {"load": {"entered": "0", "unit": "kilogram"}},
+        "rpe": "0",
+        "side": "left"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "all-zero-multi-dimension-set-soft-warns",
+      "input": {
+        "exercise": {"dimensions": ["load", "reps"], "loadMode": "added"},
+        "values": {
+          "load": {"entered": "0", "unit": "kilogram"},
+          "reps": {"entered": "0", "unit": "repetition"}
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": ["all_zero_multi_dimension_set"],
+        "errorRules": []
+      }
+    },
+    {
+      "name": "improbable-dimension-values-soft-warn",
+      "input": {
+        "exercise": {
+          "dimensions": ["load", "reps", "duration", "distance"],
+          "loadMode": "added"
+        },
+        "values": {
+          "load": {"entered": "351", "unit": "kilogram"},
+          "reps": {"entered": "201", "unit": "repetition"},
+          "duration": {"entered": "21600", "unit": "second"},
+          "distance": {"entered": "251", "unit": "kilometer"}
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": [
+          "added_load_improbable",
+          "reps_improbable",
+          "duration_improbable",
+          "distance_improbable"
+        ],
+        "errorRules": []
+      }
+    },
+    {
+      "name": "assisted-load-threshold-soft-warns",
+      "input": {
+        "exercise": {"dimensions": ["load"], "loadMode": "assisted"},
+        "values": {"load": {"entered": "151", "unit": "kilogram"}}
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": ["assisted_load_improbable"],
+        "errorRules": []
+      }
+    },
+    {
+      "name": "implied-speed-above-fifty-kph-soft-warns",
+      "input": {
+        "exercise": {"dimensions": ["duration", "distance"], "loadMode": "added"},
+        "values": {
+          "duration": {"entered": "300", "unit": "second"},
+          "distance": {"entered": "5", "unit": "kilometer"}
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": ["implied_speed_improbable"],
+        "errorRules": []
+      }
+    },
+    {
+      "name": "imperial-units-convert-before-limits",
+      "input": {
+        "exercise": {"dimensions": ["load", "distance"], "loadMode": "added"},
+        "values": {
+          "load": {"entered": "773.0", "unit": "pound"},
+          "distance": {"entered": "155.0", "unit": "mile"}
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": ["added_load_improbable"],
+        "errorRules": []
+      }
+    },
+    {
+      "name": "impossible-values-hard-reject",
+      "input": {
+        "exercise": {
+          "dimensions": ["load", "reps", "duration", "distance"],
+          "loadMode": "added"
+        },
+        "values": {
+          "load": {"entered": "1000.01", "unit": "kilogram"},
+          "reps": {"entered": "2.5", "unit": "repetition"},
+          "duration": {"entered": "86401", "unit": "second"},
+          "distance": {"entered": "1001", "unit": "kilometer"}
+        },
+        "rpe": "9.25",
+        "side": "center"
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": [
+          "load_max_kilograms",
+          "reps_integer",
+          "duration_max_seconds",
+          "distance_max_kilometers",
+          "rpe_half_step",
+          "side_allowed"
+        ]
+      }
+    },
+    {
+      "name": "load-decimal-places-hard-reject",
+      "input": {
+        "exercise": {"dimensions": ["load"], "loadMode": "added"},
+        "values": {"load": {"entered": "1.234", "unit": "kilogram"}}
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": ["load_max_two_decimal_places"]
+      }
+    },
+    {
+      "name": "numeric-decimal-places-hard-reject",
+      "input": {
+        "exercise": {"dimensions": ["distance"], "loadMode": "added"},
+        "values": {"distance": {"entered": "1.123456", "unit": "kilometer"}}
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": ["numeric_max_five_decimal_places"]
+      }
+    },
+    {
+      "name": "malformed-number-hard-rejects",
+      "input": {
+        "exercise": {"dimensions": ["load"], "loadMode": "added"},
+        "values": {"load": {"entered": "12abc", "unit": "kilogram"}}
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": ["numeric_finite"]
+      }
+    },
+    {
+      "name": "wrong-unit-hard-rejects",
+      "input": {
+        "exercise": {"dimensions": ["duration"], "loadMode": "added"},
+        "values": {"duration": {"entered": "60", "unit": "kilogram"}}
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": ["unit_allowed_for_dimension"]
+      }
+    }
+  ]
+}

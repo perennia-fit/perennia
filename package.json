@@ -1,0 +1,17 @@
+{
+  "name": "perennia",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "ci:local": "node tools/ci-local.mjs",
+    "js:typecheck": "corepack pnpm -r --if-present typecheck",
+    "js:test": "corepack pnpm -r --if-present test",
+    "mobile:analyze": "dart run melos run mobile:analyze",
+    "mobile:test": "dart run melos run mobile:test",
+    "seed:exercises": "node tools/generate-wger-platform-exercises.mjs",
+    "seed:exercises:wger": "npm run seed:exercises"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

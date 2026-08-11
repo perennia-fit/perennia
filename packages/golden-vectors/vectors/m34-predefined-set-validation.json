@@ -1,0 +1,146 @@
+{
+  "name": "m34-predefined-set-validation",
+  "domain": "predefined-set-validation",
+  "limits": {
+    "repeatMin": 1,
+    "restAfterSecondsMin": 0
+  },
+  "cases": [
+    {
+      "name": "ordinary-fixed-prescription-is-valid",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "repeat": 3,
+        "restAfterSeconds": 90,
+        "values": {
+          "load": {"entered": "60", "unit": "kilogram"},
+          "reps": {"entered": "10", "unit": "repetition"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "copy-previous-ignores-values",
+      "input": {
+        "mode": "copyPrevious",
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "repeat": 1,
+        "restAfterSeconds": null,
+        "values": {}
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "copy-previous-does-not-validate-supplied-values",
+      "input": {
+        "mode": "copyPrevious",
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "repeat": 2,
+        "restAfterSeconds": 60,
+        "values": {
+          "load": {"entered": "-5", "unit": "kilogram"},
+          "reps": {"entered": "9999999", "unit": "repetition"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "zero-repeat-hard-rejects",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": 0,
+        "restAfterSeconds": null,
+        "values": {"reps": {"entered": "10", "unit": "repetition"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["predefined_set_repeat_min"]}
+    },
+    {
+      "name": "negative-repeat-hard-rejects",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": -2,
+        "restAfterSeconds": null,
+        "values": {"reps": {"entered": "10", "unit": "repetition"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["predefined_set_repeat_min"]}
+    },
+    {
+      "name": "non-integer-repeat-hard-rejects",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": 2.5,
+        "restAfterSeconds": null,
+        "values": {"reps": {"entered": "10", "unit": "repetition"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["predefined_set_repeat_integer"]}
+    },
+    {
+      "name": "negative-rest-after-hard-rejects",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": 1,
+        "restAfterSeconds": -30,
+        "values": {"reps": {"entered": "10", "unit": "repetition"}}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["predefined_set_rest_after_non_negative"]}
+    },
+    {
+      "name": "fixed-mode-reuses-set-value-hard-rejects",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "repeat": 1,
+        "restAfterSeconds": null,
+        "values": {
+          "load": {"entered": "-5", "unit": "kilogram"},
+          "reps": {"entered": "10", "unit": "repetition"}
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["numeric_non_negative"]}
+    },
+    {
+      "name": "fixed-mode-reuses-set-value-soft-warns",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "repeat": 1,
+        "restAfterSeconds": null,
+        "values": {
+          "load": {"entered": "400", "unit": "kilogram"},
+          "reps": {"entered": "10", "unit": "repetition"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": ["added_load_improbable"], "errorRules": []}
+    },
+    {
+      "name": "prescription-and-value-errors-both-report",
+      "input": {
+        "mode": "fixed",
+        "dimensions": ["reps"],
+        "loadMode": "added",
+        "repeat": 0,
+        "restAfterSeconds": -5,
+        "values": {"reps": {"entered": "1.5", "unit": "repetition"}}
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": ["predefined_set_repeat_min", "predefined_set_rest_after_non_negative", "reps_integer"]
+      }
+    }
+  ]
+}

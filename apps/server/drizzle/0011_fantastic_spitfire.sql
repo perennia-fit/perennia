@@ -1,0 +1,2 @@
+ALTER TABLE "metric_readings" ADD COLUMN "external_activity_id" text;--> statement-breakpoint
+CREATE INDEX "metric_readings_external_activity_id_index" ON "metric_readings" USING btree ("external_activity_id");

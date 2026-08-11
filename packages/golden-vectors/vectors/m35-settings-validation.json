@@ -1,0 +1,112 @@
+{
+  "name": "m35-settings-validation",
+  "domain": "settings-validation",
+  "limits": {
+    "weightIncrementMinKilograms": 0,
+    "weightIncrementMaxKilograms": 100,
+    "themePreferences": ["system", "light", "dark"],
+    "unitSystems": ["metric", "imperial"],
+    "weekStartDays": ["monday", "sunday"],
+    "homeScreenDisplays": ["comfortable", "compact"]
+  },
+  "cases": [
+    {
+      "name": "full-valid-account-settings",
+      "input": {
+        "fields": {
+          "themePreference": "dark",
+          "unitSystem": "imperial",
+          "weekStartDay": "sunday",
+          "defaultWeightIncrement": 2.5,
+          "homeScreenDisplay": "compact",
+          "prTrackingEnabled": true,
+          "markSetsCompleteByDefault": false,
+          "autoSelectNextSet": true
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "partial-fields-are-valid",
+      "input": {
+        "fields": {
+          "unitSystem": "metric"
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "unknown-theme-hard-rejects",
+      "input": {
+        "fields": {
+          "themePreference": "midnight"
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["setting_enum_membership"]}
+    },
+    {
+      "name": "unknown-unit-system-hard-rejects",
+      "input": {
+        "fields": {
+          "unitSystem": "furlongs"
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["setting_enum_membership"]}
+    },
+    {
+      "name": "unknown-week-start-hard-rejects",
+      "input": {
+        "fields": {
+          "weekStartDay": "tuesday"
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["setting_enum_membership"]}
+    },
+    {
+      "name": "unknown-home-display-hard-rejects",
+      "input": {
+        "fields": {
+          "homeScreenDisplay": "cozy"
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["setting_enum_membership"]}
+    },
+    {
+      "name": "zero-increment-hard-rejects",
+      "input": {
+        "fields": {
+          "defaultWeightIncrement": 0
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["setting_weight_increment_positive"]}
+    },
+    {
+      "name": "negative-increment-hard-rejects",
+      "input": {
+        "fields": {
+          "defaultWeightIncrement": -2.5
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["setting_weight_increment_positive"]}
+    },
+    {
+      "name": "absurd-increment-hard-rejects",
+      "input": {
+        "fields": {
+          "defaultWeightIncrement": 100.5
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["setting_weight_increment_max"]}
+    },
+    {
+      "name": "multiple-invalid-fields-report-all-errors-in-canonical-order",
+      "input": {
+        "fields": {
+          "themePreference": "midnight",
+          "defaultWeightIncrement": -1
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["setting_enum_membership", "setting_weight_increment_positive"]}
+    }
+  ]
+}

@@ -1,0 +1,692 @@
+{
+  "name": "m34-plan-divergence",
+  "domain": "plan-divergence",
+  "schemaVersion": 1,
+  "schema": "m34-plan-divergence.schema.json",
+  "cases": [
+    {
+      "name": "unchanged-round-trip-mixed-fixed-and-copy-previous-is-zero-divergence",
+      "template": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "repeat": 2,
+                "restAfterSeconds": 90
+              }
+            ]
+          },
+          {
+            "exerciseId": "exercise-row",
+            "exerciseName": "Barbell Row",
+            "prescriptions": [
+              {
+                "mode": "copyPrevious",
+                "values": {},
+                "repeat": 3,
+                "restAfterSeconds": 45
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "workout": {
+        "workoutId": "workout-1",
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "we-bench",
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-1",
+                "position": 0,
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 90
+              },
+              {
+                "sourceSetId": "set-2",
+                "position": 1,
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 90
+              }
+            ]
+          },
+          {
+            "sourceWorkoutExerciseId": "we-row",
+            "exerciseId": "exercise-row",
+            "exerciseName": "Barbell Row",
+            "position": 1,
+            "sets": [
+              {
+                "sourceSetId": "set-3",
+                "position": 2,
+                "values": {
+                  "load": {"entered": "60", "unit": "kilogram"},
+                  "reps": {"entered": "8", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 45
+              },
+              {
+                "sourceSetId": "set-4",
+                "position": 3,
+                "values": {
+                  "load": {"entered": "60", "unit": "kilogram"},
+                  "reps": {"entered": "8", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 45
+              },
+              {
+                "sourceSetId": "set-5",
+                "position": 4,
+                "values": {
+                  "load": {"entered": "60", "unit": "kilogram"},
+                  "reps": {"entered": "8", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 45
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "divergence": {
+          "addedExercises": [],
+          "removedExercises": [],
+          "changedExercises": [],
+          "groupsChanged": false
+        },
+        "updatedContent": {
+          "exercises": [
+            {
+              "exerciseId": "exercise-bench",
+              "prescriptions": [
+                {
+                  "mode": "fixed",
+                  "values": {
+                    "load": {"entered": "100", "unit": "kilogram"},
+                    "reps": {"entered": "5", "unit": "repetition"}
+                  },
+                  "repeat": 2,
+                  "restAfterSeconds": 90
+                }
+              ]
+            },
+            {
+              "exerciseId": "exercise-row",
+              "prescriptions": [
+                {
+                  "mode": "copyPrevious",
+                  "values": {},
+                  "repeat": 3,
+                  "restAfterSeconds": 45
+                }
+              ]
+            }
+          ],
+          "groups": []
+        }
+      }
+    },
+    {
+      "name": "copy-previous-matches-differing-performed-values-per-repeat",
+      "template": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-row",
+            "exerciseName": "Barbell Row",
+            "prescriptions": [
+              {
+                "mode": "copyPrevious",
+                "values": {},
+                "repeat": 2,
+                "restAfterSeconds": 45
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "workout": {
+        "workoutId": "workout-2",
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "we-row",
+            "exerciseId": "exercise-row",
+            "exerciseName": "Barbell Row",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-1",
+                "position": 0,
+                "values": {
+                  "load": {"entered": "50", "unit": "kilogram"},
+                  "reps": {"entered": "8", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 45
+              },
+              {
+                "sourceSetId": "set-2",
+                "position": 1,
+                "values": {
+                  "load": {"entered": "55", "unit": "kilogram"},
+                  "reps": {"entered": "6", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 45
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "divergence": {
+          "addedExercises": [],
+          "removedExercises": [],
+          "changedExercises": [],
+          "groupsChanged": false
+        },
+        "updatedContent": {
+          "exercises": [
+            {
+              "exerciseId": "exercise-row",
+              "prescriptions": [
+                {
+                  "mode": "copyPrevious",
+                  "values": {},
+                  "repeat": 1,
+                  "restAfterSeconds": 45
+                },
+                {
+                  "mode": "copyPrevious",
+                  "values": {},
+                  "repeat": 1,
+                  "restAfterSeconds": 45
+                }
+              ]
+            }
+          ],
+          "groups": []
+        }
+      }
+    },
+    {
+      "name": "extra-performed-exercise-is-added",
+      "template": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "repeat": 1,
+                "restAfterSeconds": 90
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "workout": {
+        "workoutId": "workout-3",
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "we-bench",
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-1",
+                "position": 0,
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 90
+              }
+            ]
+          },
+          {
+            "sourceWorkoutExerciseId": "we-dips",
+            "exerciseId": "exercise-dips",
+            "exerciseName": "Dips",
+            "position": 1,
+            "sets": [
+              {
+                "sourceSetId": "set-2",
+                "position": 1,
+                "values": {
+                  "reps": {"entered": "12", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "divergence": {
+          "addedExercises": [
+            {"exerciseId": "exercise-dips", "exerciseName": "Dips"}
+          ],
+          "removedExercises": [],
+          "changedExercises": [],
+          "groupsChanged": false
+        },
+        "updatedContent": {
+          "exercises": [
+            {
+              "exerciseId": "exercise-bench",
+              "prescriptions": [
+                {
+                  "mode": "fixed",
+                  "values": {
+                    "load": {"entered": "100", "unit": "kilogram"},
+                    "reps": {"entered": "5", "unit": "repetition"}
+                  },
+                  "repeat": 1,
+                  "restAfterSeconds": 90
+                }
+              ]
+            },
+            {
+              "exerciseId": "exercise-dips",
+              "prescriptions": [
+                {
+                  "mode": "fixed",
+                  "values": {
+                    "reps": {"entered": "12", "unit": "repetition"}
+                  },
+                  "repeat": 1,
+                  "restAfterSeconds": null
+                }
+              ]
+            }
+          ],
+          "groups": []
+        }
+      }
+    },
+    {
+      "name": "unperformed-planned-exercise-is-removed",
+      "template": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "repeat": 1,
+                "restAfterSeconds": 90
+              }
+            ]
+          },
+          {
+            "exerciseId": "exercise-incline",
+            "exerciseName": "Incline Press",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {
+                  "load": {"entered": "60", "unit": "kilogram"},
+                  "reps": {"entered": "8", "unit": "repetition"}
+                },
+                "repeat": 1,
+                "restAfterSeconds": 60
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "workout": {
+        "workoutId": "workout-4",
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "we-bench",
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-1",
+                "position": 0,
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 90
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "divergence": {
+          "addedExercises": [],
+          "removedExercises": [
+            {"exerciseId": "exercise-incline", "exerciseName": "Incline Press"}
+          ],
+          "changedExercises": [],
+          "groupsChanged": false
+        },
+        "updatedContent": {
+          "exercises": [
+            {
+              "exerciseId": "exercise-bench",
+              "prescriptions": [
+                {
+                  "mode": "fixed",
+                  "values": {
+                    "load": {"entered": "100", "unit": "kilogram"},
+                    "reps": {"entered": "5", "unit": "repetition"}
+                  },
+                  "repeat": 1,
+                  "restAfterSeconds": 90
+                }
+              ]
+            }
+          ],
+          "groups": []
+        }
+      }
+    },
+    {
+      "name": "heavier-fixed-load-is-changed",
+      "template": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "repeat": 1,
+                "restAfterSeconds": 90
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "workout": {
+        "workoutId": "workout-5",
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "we-bench",
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-1",
+                "position": 0,
+                "values": {
+                  "load": {"entered": "105", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 90
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "divergence": {
+          "addedExercises": [],
+          "removedExercises": [],
+          "changedExercises": [
+            {"exerciseId": "exercise-bench", "exerciseName": "Bench Press"}
+          ],
+          "groupsChanged": false
+        },
+        "updatedContent": {
+          "exercises": [
+            {
+              "exerciseId": "exercise-bench",
+              "prescriptions": [
+                {
+                  "mode": "fixed",
+                  "values": {
+                    "load": {"entered": "105", "unit": "kilogram"},
+                    "reps": {"entered": "5", "unit": "repetition"}
+                  },
+                  "repeat": 1,
+                  "restAfterSeconds": 90
+                }
+              ]
+            }
+          ],
+          "groups": []
+        }
+      }
+    },
+    {
+      "name": "shortened-rest-on-copy-previous-is-changed",
+      "template": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-row",
+            "exerciseName": "Barbell Row",
+            "prescriptions": [
+              {
+                "mode": "copyPrevious",
+                "values": {},
+                "repeat": 1,
+                "restAfterSeconds": 60
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "workout": {
+        "workoutId": "workout-6",
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "we-row",
+            "exerciseId": "exercise-row",
+            "exerciseName": "Barbell Row",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-1",
+                "position": 0,
+                "values": {
+                  "load": {"entered": "60", "unit": "kilogram"},
+                  "reps": {"entered": "8", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 30
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "divergence": {
+          "addedExercises": [],
+          "removedExercises": [],
+          "changedExercises": [
+            {"exerciseId": "exercise-row", "exerciseName": "Barbell Row"}
+          ],
+          "groupsChanged": false
+        },
+        "updatedContent": {
+          "exercises": [
+            {
+              "exerciseId": "exercise-row",
+              "prescriptions": [
+                {
+                  "mode": "fixed",
+                  "values": {
+                    "load": {"entered": "60", "unit": "kilogram"},
+                    "reps": {"entered": "8", "unit": "repetition"}
+                  },
+                  "repeat": 1,
+                  "restAfterSeconds": 30
+                }
+              ]
+            }
+          ],
+          "groups": []
+        }
+      }
+    },
+    {
+      "name": "dissolved-superset-group-changes-without-exercise-diff",
+      "template": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "repeat": 1,
+                "restAfterSeconds": 90
+              }
+            ]
+          },
+          {
+            "exerciseId": "exercise-row",
+            "exerciseName": "Barbell Row",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {
+                  "load": {"entered": "60", "unit": "kilogram"},
+                  "reps": {"entered": "8", "unit": "repetition"}
+                },
+                "repeat": 1,
+                "restAfterSeconds": 45
+              }
+            ]
+          }
+        ],
+        "groups": [
+          {"memberExerciseIds": ["exercise-bench", "exercise-row"]}
+        ]
+      },
+      "workout": {
+        "workoutId": "workout-7",
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "we-bench",
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-1",
+                "position": 0,
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 90
+              }
+            ]
+          },
+          {
+            "sourceWorkoutExerciseId": "we-row",
+            "exerciseId": "exercise-row",
+            "exerciseName": "Barbell Row",
+            "position": 1,
+            "sets": [
+              {
+                "sourceSetId": "set-2",
+                "position": 1,
+                "values": {
+                  "load": {"entered": "60", "unit": "kilogram"},
+                  "reps": {"entered": "8", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 45
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "divergence": {
+          "addedExercises": [],
+          "removedExercises": [],
+          "changedExercises": [],
+          "groupsChanged": true
+        },
+        "updatedContent": {
+          "exercises": [
+            {
+              "exerciseId": "exercise-bench",
+              "prescriptions": [
+                {
+                  "mode": "fixed",
+                  "values": {
+                    "load": {"entered": "100", "unit": "kilogram"},
+                    "reps": {"entered": "5", "unit": "repetition"}
+                  },
+                  "repeat": 1,
+                  "restAfterSeconds": 90
+                }
+              ]
+            },
+            {
+              "exerciseId": "exercise-row",
+              "prescriptions": [
+                {
+                  "mode": "fixed",
+                  "values": {
+                    "load": {"entered": "60", "unit": "kilogram"},
+                    "reps": {"entered": "8", "unit": "repetition"}
+                  },
+                  "repeat": 1,
+                  "restAfterSeconds": 45
+                }
+              ]
+            }
+          ],
+          "groups": []
+        }
+      }
+    }
+  ]
+}

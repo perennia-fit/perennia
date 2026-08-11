@@ -1,0 +1,28 @@
+name: perennia_workspace
+publish_to: none
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+workspace:
+  - apps/mobile
+
+dev_dependencies:
+  melos: ^7.8.2
+
+dependency_overrides:
+  cli_util: ^0.5.1
+
+melos:
+  scripts:
+    mobile:analyze:
+      description: Analyze the Flutter mobile app.
+      run: melos exec --scope="perennia" -- flutter analyze
+
+    mobile:test:
+      description: Run the Flutter mobile test suite.
+      run: melos exec --scope="perennia" -- flutter test
+
+    mobile:design-tokens:
+      description: Regenerate Flutter design tokens from apps/mobile/DESIGN.md.
+      run: melos exec --scope="perennia" -- dart run tool/generate_design_tokens.dart

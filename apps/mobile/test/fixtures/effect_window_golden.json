@@ -1,0 +1,96 @@
+{
+  "name": "m29-effect-window-deltas",
+  "domain": "effect-window-deltas",
+  "cases": [
+    {
+      "name": "closed window: before/during/after all populated",
+      "window": {
+        "duringStart": "2026-01-15T00:00:00.000Z",
+        "duringEnd": "2026-02-14T00:00:00.000Z",
+        "now": "2026-03-16T00:00:00.000Z"
+      },
+      "samples": [
+        { "at": "2026-01-01T08:00:00.000Z", "value": 82.0 },
+        { "at": "2026-01-08T08:00:00.000Z", "value": 81.5 },
+        { "at": "2026-01-20T08:00:00.000Z", "value": 80.2 },
+        { "at": "2026-02-05T08:00:00.000Z", "value": 79.0 },
+        { "at": "2026-02-20T08:00:00.000Z", "value": 79.5 },
+        { "at": "2026-03-01T08:00:00.000Z", "value": 80.0 }
+      ],
+      "expected": {
+        "before": { "mean": 81.75, "sampleCount": 2 },
+        "during": { "mean": 79.6, "sampleCount": 2 },
+        "after": { "mean": 79.75, "sampleCount": 2 },
+        "duringDelta": -2.15,
+        "afterDelta": 0.15,
+        "overallDelta": -2.0
+      }
+    },
+    {
+      "name": "ongoing/open-ended window: no after data yet degrades to null, never fabricated",
+      "window": {
+        "duringStart": "2026-06-01T00:00:00.000Z",
+        "duringEnd": null,
+        "now": "2026-07-03T00:00:00.000Z"
+      },
+      "samples": [
+        { "at": "2026-05-10T00:00:00.000Z", "value": 70.0 },
+        { "at": "2026-05-25T00:00:00.000Z", "value": 70.5 },
+        { "at": "2026-06-10T00:00:00.000Z", "value": 69.0 },
+        { "at": "2026-06-25T00:00:00.000Z", "value": 68.5 },
+        { "at": "2026-07-01T00:00:00.000Z", "value": 68.0 }
+      ],
+      "expected": {
+        "before": { "mean": 70.25, "sampleCount": 2 },
+        "during": { "mean": 68.5, "sampleCount": 3 },
+        "after": { "mean": null, "sampleCount": 0 },
+        "duringDelta": -1.75,
+        "afterDelta": null,
+        "overallDelta": null
+      }
+    },
+    {
+      "name": "sparse data: no reading exists before the course started",
+      "window": {
+        "duringStart": "2026-02-01T00:00:00.000Z",
+        "duringEnd": "2026-02-15T00:00:00.000Z",
+        "now": "2026-03-01T00:00:00.000Z"
+      },
+      "samples": [
+        { "at": "2026-02-05T00:00:00.000Z", "value": 55.0 },
+        { "at": "2026-02-20T00:00:00.000Z", "value": 58.0 }
+      ],
+      "expected": {
+        "before": { "mean": null, "sampleCount": 0 },
+        "during": { "mean": 55.0, "sampleCount": 1 },
+        "after": { "mean": 58.0, "sampleCount": 1 },
+        "duringDelta": null,
+        "afterDelta": 3.0,
+        "overallDelta": null
+      }
+    },
+    {
+      "name": "half-open segment boundaries: a sample on a shared boundary belongs to exactly one segment",
+      "window": {
+        "duringStart": "2026-05-01T00:00:00.000Z",
+        "duringEnd": "2026-05-11T00:00:00.000Z",
+        "now": "2026-06-01T00:00:00.000Z"
+      },
+      "samples": [
+        { "at": "2026-04-20T00:00:00.000Z", "value": 10.0 },
+        { "at": "2026-04-21T00:00:00.000Z", "value": 20.0 },
+        { "at": "2026-05-01T00:00:00.000Z", "value": 30.0 },
+        { "at": "2026-05-11T00:00:00.000Z", "value": 40.0 },
+        { "at": "2026-05-21T00:00:00.000Z", "value": 50.0 }
+      ],
+      "expected": {
+        "before": { "mean": 20.0, "sampleCount": 1 },
+        "during": { "mean": 30.0, "sampleCount": 1 },
+        "after": { "mean": 40.0, "sampleCount": 1 },
+        "duringDelta": 10.0,
+        "afterDelta": 10.0,
+        "overallDelta": 20.0
+      }
+    }
+  ]
+}

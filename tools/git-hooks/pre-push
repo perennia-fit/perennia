@@ -1,0 +1,15 @@
+#!/bin/sh
+# Perennia pre-push gate — run the local CI gate before a push reaches GitHub,
+# so a red branch never ships while Actions credits are scarce.
+#
+#   Bypass once:        git push --no-verify
+#   Disable entirely:   git config --unset core.hooksPath
+#   Re-enable:          git config core.hooksPath tools/git-hooks
+#
+# Only jobs whose paths changed vs `main` run (--changed), so docs-only
+# pushes are instant. DB jobs need Docker running; if Docker is down and a
+# DB job is selected the push is blocked — start Docker or use --no-verify.
+
+echo "▶ pre-push: running local CI gate (pnpm ci:local --changed)…"
+echo "  (bypass with: git push --no-verify)"
+corepack pnpm ci:local --changed

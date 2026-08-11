@@ -1,0 +1,178 @@
+{
+  "name": "m4-analytics-pr-e1rm-volume",
+  "cases": [
+    {
+      "name": "fitnotes-pr-precedence-normalized-load",
+      "exercise": {
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "recordProfile": "repMax"
+      },
+      "sets": [
+        {
+          "id": "s-100kg-5",
+          "performedAt": "2026-01-01T08:00:00.000Z",
+          "position": 0,
+          "values": {
+            "load": {"entered": "100", "unit": "kilogram"},
+            "reps": {"entered": "5", "unit": "repetition"}
+          }
+        },
+        {
+          "id": "s-100kg-6",
+          "performedAt": "2026-01-02T08:00:00.000Z",
+          "position": 0,
+          "values": {
+            "load": {"entered": "100", "unit": "kilogram"},
+            "reps": {"entered": "6", "unit": "repetition"}
+          }
+        },
+        {
+          "id": "s-102-5kg-5",
+          "performedAt": "2026-01-03T08:00:00.000Z",
+          "position": 0,
+          "values": {
+            "load": {"entered": "102.5", "unit": "kilogram"},
+            "reps": {"entered": "5", "unit": "repetition"}
+          }
+        },
+        {
+          "id": "s-102-5kg-5-later",
+          "performedAt": "2026-01-04T08:00:00.000Z",
+          "position": 0,
+          "values": {
+            "load": {"entered": "102.5", "unit": "kilogram"},
+            "reps": {"entered": "5", "unit": "repetition"}
+          }
+        },
+        {
+          "id": "s-225lb-5",
+          "performedAt": "2026-01-05T08:00:00.000Z",
+          "position": 0,
+          "values": {
+            "load": {"entered": "225", "unit": "pound"},
+            "reps": {"entered": "5", "unit": "repetition"}
+          }
+        }
+      ],
+      "expected": {
+        "headlineProfile": "repMax",
+        "repMaxRecords": [
+          {"setId": "s-102-5kg-5", "reps": 5, "value": 102.5, "unit": "kilogram"},
+          {"setId": "s-100kg-6", "reps": 6, "value": 100.0, "unit": "kilogram"}
+        ],
+        "volumeDefined": true,
+        "e1rmDefined": true
+      }
+    },
+    {
+      "name": "brzycki-e1rm-reps-1-through-10",
+      "exercise": {
+        "dimensions": ["load", "reps"],
+        "loadMode": "added",
+        "recordProfile": "repMax"
+      },
+      "sets": [
+        {"id": "brzycki-1", "performedAt": "2026-02-01T08:00:00.000Z", "position": 1, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "1", "unit": "repetition"}}},
+        {"id": "brzycki-2", "performedAt": "2026-02-01T08:00:00.000Z", "position": 2, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "2", "unit": "repetition"}}},
+        {"id": "brzycki-3", "performedAt": "2026-02-01T08:00:00.000Z", "position": 3, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "3", "unit": "repetition"}}},
+        {"id": "brzycki-4", "performedAt": "2026-02-01T08:00:00.000Z", "position": 4, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "4", "unit": "repetition"}}},
+        {"id": "brzycki-5", "performedAt": "2026-02-01T08:00:00.000Z", "position": 5, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "5", "unit": "repetition"}}},
+        {"id": "brzycki-6", "performedAt": "2026-02-01T08:00:00.000Z", "position": 6, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "6", "unit": "repetition"}}},
+        {"id": "brzycki-7", "performedAt": "2026-02-01T08:00:00.000Z", "position": 7, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "7", "unit": "repetition"}}},
+        {"id": "brzycki-8", "performedAt": "2026-02-01T08:00:00.000Z", "position": 8, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "8", "unit": "repetition"}}},
+        {"id": "brzycki-9", "performedAt": "2026-02-01T08:00:00.000Z", "position": 9, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "9", "unit": "repetition"}}},
+        {"id": "brzycki-10", "performedAt": "2026-02-01T08:00:00.000Z", "position": 10, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "10", "unit": "repetition"}}},
+        {"id": "brzycki-11", "performedAt": "2026-02-01T08:00:00.000Z", "position": 11, "values": {"load": {"entered": "100", "unit": "kilogram"}, "reps": {"entered": "11", "unit": "repetition"}}}
+      ],
+      "expected": {
+        "e1rmValues": [
+          100.0,
+          102.8571428571,
+          105.8823529412,
+          109.0909090909,
+          112.5,
+          116.1290322581,
+          120.0,
+          124.1379310345,
+          128.5714285714,
+          133.3333333333
+        ],
+        "volumeDefined": true,
+        "e1rmDefined": true
+      }
+    },
+    {
+      "name": "cardio-distance-duration-records-and-volume",
+      "exercise": {
+        "dimensions": ["distance", "duration"],
+        "loadMode": "added",
+        "recordProfile": "fastestPace"
+      },
+      "sets": [
+        {
+          "id": "trail-5k",
+          "performedAt": "2026-04-01T08:00:00.000Z",
+          "position": 0,
+          "values": {
+            "distance": {"entered": "5", "unit": "kilometer"},
+            "duration": {"entered": "1800", "unit": "second"}
+          }
+        },
+        {
+          "id": "trail-10k",
+          "performedAt": "2026-04-02T08:00:00.000Z",
+          "position": 0,
+          "values": {
+            "distance": {"entered": "10", "unit": "kilometer"},
+            "duration": {"entered": "2700", "unit": "second"}
+          }
+        }
+      ],
+      "expected": {
+        "headlineProfile": "fastestPace",
+        "maxDistanceRecord": {"setId": "trail-10k", "value": 10.0, "unit": "kilometer"},
+        "fastestPaceRecord": {"setId": "trail-10k", "value": 270.0, "unit": "second"},
+        "volumeValues": [5.0, 10.0],
+        "volumeDefined": true,
+        "e1rmDefined": true
+      }
+    },
+    {
+      "name": "assisted-volume-and-e1rm-undefined",
+      "exercise": {
+        "dimensions": ["load", "reps"],
+        "loadMode": "assisted",
+        "recordProfile": "minAssistancePerRepCount"
+      },
+      "sets": [
+        {
+          "id": "assist-20kg-5",
+          "performedAt": "2026-03-01T08:00:00.000Z",
+          "position": 0,
+          "values": {
+            "load": {"entered": "20", "unit": "kilogram"},
+            "reps": {"entered": "5", "unit": "repetition"}
+          }
+        },
+        {
+          "id": "assist-15kg-5",
+          "performedAt": "2026-03-02T08:00:00.000Z",
+          "position": 0,
+          "values": {
+            "load": {"entered": "15", "unit": "kilogram"},
+            "reps": {"entered": "5", "unit": "repetition"}
+          }
+        }
+      ],
+      "expected": {
+        "headlineProfile": "minAssistancePerRepCount",
+        "minAssistanceRecords": [
+          {"setId": "assist-15kg-5", "reps": 5, "value": 15.0, "unit": "kilogram"}
+        ],
+        "volumeDefined": false,
+        "e1rmDefined": false
+      }
+    }
+  ]
+}

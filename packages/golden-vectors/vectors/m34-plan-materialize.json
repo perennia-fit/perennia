@@ -1,0 +1,338 @@
+{
+  "name": "m34-plan-materialize",
+  "domain": "template-materialize",
+  "schemaVersion": 1,
+  "schema": "m34-plan-materialize.schema.json",
+  "cases": [
+    {
+      "name": "fixed-prescription-repeat-unrolls-to-identical-sets",
+      "input": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-bench",
+            "dimensions": ["load", "reps"],
+            "defaultLoadUnit": "kilogram",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "fixedValues": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "lastPerformedValues": null,
+                "repeat": 3,
+                "restAfterSeconds": 120
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-bench",
+            "sets": [
+              {
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 120
+              },
+              {
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 120
+              },
+              {
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 120
+              }
+            ]
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "copy-previous-resolves-to-last-performed-values-whatever-they-are",
+      "input": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-squat",
+            "dimensions": ["load", "reps"],
+            "defaultLoadUnit": "kilogram",
+            "prescriptions": [
+              {
+                "mode": "copyPrevious",
+                "fixedValues": null,
+                "lastPerformedValues": {
+                  "load": {"entered": "142.5", "unit": "kilogram"},
+                  "reps": {"entered": "3", "unit": "repetition"}
+                },
+                "repeat": 2,
+                "restAfterSeconds": 180
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-squat",
+            "sets": [
+              {
+                "values": {
+                  "load": {"entered": "142.5", "unit": "kilogram"},
+                  "reps": {"entered": "3", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 180
+              },
+              {
+                "values": {
+                  "load": {"entered": "142.5", "unit": "kilogram"},
+                  "reps": {"entered": "3", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 180
+              }
+            ]
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "copy-previous-falls-back-to-zero-values-in-exercise-default-units-when-never-performed",
+      "input": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-row",
+            "dimensions": ["load", "reps"],
+            "defaultLoadUnit": "pound",
+            "prescriptions": [
+              {
+                "mode": "copyPrevious",
+                "fixedValues": null,
+                "lastPerformedValues": null,
+                "repeat": 1,
+                "restAfterSeconds": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-row",
+            "sets": [
+              {
+                "values": {
+                  "load": {"entered": "0", "unit": "pound"},
+                  "reps": {"entered": "0", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "copy-previous-zero-value-for-a-completion-only-exercise-never-performed",
+      "input": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-handstand-hold",
+            "dimensions": [],
+            "defaultLoadUnit": "kilogram",
+            "prescriptions": [
+              {
+                "mode": "copyPrevious",
+                "fixedValues": null,
+                "lastPerformedValues": null,
+                "repeat": 1,
+                "restAfterSeconds": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-handstand-hold",
+            "sets": [
+              {
+                "values": {},
+                "plannedRestAfterSeconds": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "multiple-prescriptions-concatenate-in-authored-order",
+      "input": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-deadlift",
+            "dimensions": ["load", "reps"],
+            "defaultLoadUnit": "kilogram",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "fixedValues": {
+                  "load": {"entered": "60", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "lastPerformedValues": null,
+                "repeat": 1,
+                "restAfterSeconds": 90
+              },
+              {
+                "mode": "copyPrevious",
+                "fixedValues": null,
+                "lastPerformedValues": {
+                  "load": {"entered": "180", "unit": "kilogram"},
+                  "reps": {"entered": "1", "unit": "repetition"}
+                },
+                "repeat": 1,
+                "restAfterSeconds": 240
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-deadlift",
+            "sets": [
+              {
+                "values": {
+                  "load": {"entered": "60", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 90
+              },
+              {
+                "values": {
+                  "load": {"entered": "180", "unit": "kilogram"},
+                  "reps": {"entered": "1", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 240
+              }
+            ]
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "template-group-maps-to-materialized-exercise-indexes",
+      "input": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-pull-up",
+            "dimensions": ["reps"],
+            "defaultLoadUnit": "kilogram",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "fixedValues": {
+                  "reps": {"entered": "8", "unit": "repetition"}
+                },
+                "lastPerformedValues": null,
+                "repeat": 3,
+                "restAfterSeconds": 60
+              }
+            ]
+          },
+          {
+            "exerciseId": "exercise-push-up",
+            "dimensions": ["reps"],
+            "defaultLoadUnit": "kilogram",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "fixedValues": {
+                  "reps": {"entered": "15", "unit": "repetition"}
+                },
+                "lastPerformedValues": null,
+                "repeat": 3,
+                "restAfterSeconds": 60
+              }
+            ]
+          }
+        ],
+        "groups": [
+          {
+            "name": "Push superset",
+            "colorHex": "#2F6FED",
+            "memberExerciseIndexes": [0, 1]
+          }
+        ]
+      },
+      "expected": {
+        "exercises": [
+          {
+            "exerciseId": "exercise-pull-up",
+            "sets": [
+              {
+                "values": {"reps": {"entered": "8", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 60
+              },
+              {
+                "values": {"reps": {"entered": "8", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 60
+              },
+              {
+                "values": {"reps": {"entered": "8", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 60
+              }
+            ]
+          },
+          {
+            "exerciseId": "exercise-push-up",
+            "sets": [
+              {
+                "values": {"reps": {"entered": "15", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 60
+              },
+              {
+                "values": {"reps": {"entered": "15", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 60
+              },
+              {
+                "values": {"reps": {"entered": "15", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 60
+              }
+            ]
+          }
+        ],
+        "groups": [
+          {
+            "name": "Push superset",
+            "colorHex": "#2F6FED",
+            "memberExerciseIndexes": [0, 1]
+          }
+        ]
+      }
+    }
+  ]
+}

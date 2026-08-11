@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m34-routine-up-next.schema.json",
+  "title": "M34 Routine up-next derivation golden vector",
+  "description": "Language-neutral parity cases for the derived rotation position: weekly Cadences are calendar-bound to the selected Training Day's weekday; rotating Cadences derive their position from the latest Template Link's slot, with the next non-empty slot up next. No stored cursor participates in any case.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m34-routine-up-next"},
+    "domain": {"const": "routine-up-next"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m34-routine-up-next.schema.json"},
+    "cases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "cadence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"enum": ["weekly", "rotating"]},
+        "window": {"type": "integer", "minimum": 1}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["routineEntryId", "workoutTemplateId", "templateName", "slot"],
+      "properties": {
+        "routineEntryId": {"type": "string"},
+        "workoutTemplateId": {"type": "string"},
+        "templateName": {"type": "string"},
+        "slot": {"type": "integer", "minimum": 1}
+      }
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workoutTemplateId", "slot", "sequence"],
+      "properties": {
+        "workoutTemplateId": {"type": "string"},
+        "slot": {"type": "integer", "minimum": 1},
+        "sequence": {"type": "integer"},
+        "workoutLocalDate": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}
+      }
+    },
+    "card": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["routineEntryId", "workoutTemplateId", "templateName", "slot", "isDone"],
+      "properties": {
+        "routineEntryId": {"type": "string"},
+        "workoutTemplateId": {"type": "string"},
+        "templateName": {"type": "string"},
+        "slot": {"type": "integer", "minimum": 1},
+        "isDone": {"type": "boolean"}
+      }
+    },
+    "suggestion": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["slot", "cards"],
+      "properties": {
+        "slot": {"type": "integer", "minimum": 1},
+        "cards": {"type": "array", "items": {"$ref": "#/$defs/card"}}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": {"type": "string"},
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cadence", "entries", "links", "selectedDate"],
+          "properties": {
+            "cadence": {"$ref": "#/$defs/cadence"},
+            "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+            "links": {"type": "array", "items": {"$ref": "#/$defs/link"}},
+            "selectedDate": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}
+          }
+        },
+        "expected": {"$ref": "#/$defs/suggestion"}
+      }
+    }
+  }
+}

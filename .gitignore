@@ -1,0 +1,66 @@
+# ── Scratch & local notes ──
+/.scratch/
+
+# ── Agent / editor tooling ──
+/.claude/
+/.codex/
+/.stitch/
+
+# ── Environment & secrets ──
+.env
+.env.*
+!.env.example
+.envrc
+client_secret_*.json
+
+# ── Node / TypeScript ──
+node_modules/
+.astro/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Python sidecars
+.venv/
+__pycache__/
+*.pyc
+sidecars/garmin/*.config.json
+sidecars/garmin/*.local.json
+sidecars/garmin/*.state.json
+.garmin-sidecar-state.json
+
+# ── Flutter / Dart ──
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# Flutter platform build outputs
+**/build/
+**/ios/Pods/
+**/ios/.symlinks/
+**/android/.gradle/
+**/android/captures/
+**/android/local.properties
+**/android/key.properties
+*.keystore
+*.jks
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+
+# ── OS / IDE ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

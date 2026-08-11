@@ -1,0 +1,121 @@
+{
+  "name": "m12-reading-normalization",
+  "domain": "reading-normalization",
+  "cases": [
+    {
+      "name": "scalar-pound-instant-normalizes-to-metric-unit",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "kilogram"},
+        "value": {"shape": "scalar", "entered": "185", "unit": "pound"},
+        "timeAnchor": {"atTime": "2026-06-25T07:30:00-05:00"}
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "kilogram",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"kilogram\",\"value\":83.91458845,\"entered\":\"185\",\"enteredUnit\":\"pound\"}",
+        "scalarValue": 83.91458845,
+        "atTime": "2026-06-25T12:30:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "structured-fields-sort-and-local-time-resolves-with-offset",
+      "input": {
+        "metric": {"valueShape": "structured", "unit": "millimeterMercury"},
+        "value": {
+          "shape": "structured",
+          "fields": {
+            "systolic": {"entered": "121", "unit": "millimeterMercury"},
+            "diastolic": {"entered": "79", "unit": "millimeterMercury"}
+          }
+        },
+        "timeAnchor": {
+          "localDateTime": "2026-06-25T07:30:00",
+          "timezoneOffsetMinutes": 600
+        }
+      },
+      "expected": {
+        "valueShape": "structured",
+        "unit": "millimeterMercury",
+        "valueJson": "{\"shape\":\"structured\",\"fields\":{\"diastolic\":{\"unit\":\"millimeterMercury\",\"value\":79,\"entered\":\"79\",\"enteredUnit\":\"millimeterMercury\"},\"systolic\":{\"unit\":\"millimeterMercury\",\"value\":121,\"entered\":\"121\",\"enteredUnit\":\"millimeterMercury\"}}}",
+        "scalarValue": null,
+        "atTime": "2026-06-24T21:30:00.000Z",
+        "windowStartedAt": null,
+        "windowEndedAt": null,
+        "warnings": []
+      }
+    },
+    {
+      "name": "series-window-sorts-samples-by-offset",
+      "input": {
+        "metric": {"valueShape": "series", "unit": "beatsPerMinute"},
+        "value": {
+          "shape": "series",
+          "samples": [
+            {"offsetSeconds": 60, "entered": "63", "unit": "beatsPerMinute"},
+            {"offsetSeconds": 0, "entered": "61", "unit": "beatsPerMinute"}
+          ]
+        },
+        "timeAnchor": {
+          "windowStartedAt": "2026-06-25T12:00:00.000Z",
+          "windowEndedAt": "2026-06-25T12:02:00.000Z"
+        }
+      },
+      "expected": {
+        "valueShape": "series",
+        "unit": "beatsPerMinute",
+        "valueJson": "{\"shape\":\"series\",\"unit\":\"beatsPerMinute\",\"samples\":[{\"offsetSeconds\":0,\"value\":61,\"entered\":\"61\",\"enteredUnit\":\"beatsPerMinute\"},{\"offsetSeconds\":60,\"value\":63,\"entered\":\"63\",\"enteredUnit\":\"beatsPerMinute\"}]}",
+        "scalarValue": null,
+        "atTime": null,
+        "windowStartedAt": "2026-06-25T12:00:00.000Z",
+        "windowEndedAt": "2026-06-25T12:02:00.000Z",
+        "warnings": []
+      }
+    },
+    {
+      "name": "ambiguous-instant-and-window-prefers-window",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "percent"},
+        "value": {"shape": "scalar", "entered": "14.2", "unit": "percent"},
+        "timeAnchor": {
+          "atTime": "2026-06-25T12:30:00.000Z",
+          "windowStartedAt": "2026-06-25T00:00:00.000Z",
+          "windowEndedAt": "2026-06-26T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "percent",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"percent\",\"value\":14.2,\"entered\":\"14.2\",\"enteredUnit\":\"percent\"}",
+        "scalarValue": 14.2,
+        "atTime": null,
+        "windowStartedAt": "2026-06-25T00:00:00.000Z",
+        "windowEndedAt": "2026-06-26T00:00:00.000Z",
+        "warnings": ["time_anchor_window_preferred"]
+      }
+    },
+    {
+      "name": "skewed-window-bounds-are-reordered",
+      "input": {
+        "metric": {"valueShape": "scalar", "unit": "percent"},
+        "value": {"shape": "scalar", "entered": "99", "unit": "percent"},
+        "timeAnchor": {
+          "windowStartedAt": "2026-06-25T12:10:00.000Z",
+          "windowEndedAt": "2026-06-25T12:00:00.000Z"
+        }
+      },
+      "expected": {
+        "valueShape": "scalar",
+        "unit": "percent",
+        "valueJson": "{\"shape\":\"scalar\",\"unit\":\"percent\",\"value\":99,\"entered\":\"99\",\"enteredUnit\":\"percent\"}",
+        "scalarValue": 99,
+        "atTime": null,
+        "windowStartedAt": "2026-06-25T12:00:00.000Z",
+        "windowEndedAt": "2026-06-25T12:10:00.000Z",
+        "warnings": ["window_bounds_reordered"]
+      }
+    }
+  ]
+}

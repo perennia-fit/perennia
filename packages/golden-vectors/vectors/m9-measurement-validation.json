@@ -1,0 +1,81 @@
+{
+  "name": "m9-measurement-validation",
+  "domain": "measurement-validation",
+  "cases": [
+    {
+      "name": "zero-kilogram-is-valid-without-warning",
+      "input": {"entered": "0", "unit": "kilogram"},
+      "expected": {"value": 0.0, "valueEntered": "0", "warnings": []}
+    },
+    {
+      "name": "kilogram-high-boundary-does-not-warn",
+      "input": {"entered": "500", "unit": "kilogram"},
+      "expected": {"value": 500.0, "valueEntered": "500", "warnings": []}
+    },
+    {
+      "name": "kilogram-above-high-boundary-soft-warns",
+      "input": {"entered": "5000", "unit": "kilogram"},
+      "expected": {
+        "value": 5000.0,
+        "valueEntered": "5000",
+        "warnings": [
+          {
+            "code": "suspiciouslyHigh",
+            "unit": "kilogram",
+            "threshold": 500.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "percent-boundary-does-not-warn",
+      "input": {"entered": "100", "unit": "percent"},
+      "expected": {"value": 100.0, "valueEntered": "100", "warnings": []}
+    },
+    {
+      "name": "percent-above-boundary-soft-warns",
+      "input": {"entered": "101", "unit": "percent"},
+      "expected": {
+        "value": 101.0,
+        "valueEntered": "101",
+        "warnings": [
+          {
+            "code": "suspiciouslyHigh",
+            "unit": "percent",
+            "threshold": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative-value-hard-rejects",
+      "input": {"entered": "-0.1", "unit": "kilogram"},
+      "expected": {"error": "MeasurementValueException"}
+    },
+    {
+      "name": "non-finite-value-hard-rejects",
+      "input": {"entered": "NaN", "unit": "kilogram"},
+      "expected": {"error": "MeasurementValueException"}
+    },
+    {
+      "name": "too-many-decimals-hard-rejects",
+      "input": {"entered": "1.123456", "unit": "kilogram"},
+      "expected": {"error": "MeasurementValueException"}
+    },
+    {
+      "name": "target-goal-without-target-hard-rejects",
+      "input": {"goalType": "target", "targetValue": null},
+      "expected": {"error": "MeasurementValueException"}
+    },
+    {
+      "name": "target-goal-negative-target-hard-rejects",
+      "input": {"goalType": "target", "targetValue": -1.0},
+      "expected": {"error": "MeasurementValueException"}
+    },
+    {
+      "name": "target-goal-valid-target-accepts",
+      "input": {"goalType": "target", "targetValue": 80.0},
+      "expected": {"targetValue": 80.0}
+    }
+  ]
+}

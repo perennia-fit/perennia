@@ -1,0 +1,68 @@
+{
+  "name": "m33-nutrition-goal-validation",
+  "domain": "nutrition-goal-validation",
+  "limits": {
+    "energyMaxKilocalories": 10000,
+    "macroMaxGrams": 2000
+  },
+  "cases": [
+    {
+      "name": "goalable-targets-are-valid",
+      "input": {
+        "targets": [
+          {"nutrient": "energy", "value": 2200},
+          {"nutrient": "protein", "value": 160},
+          {"nutrient": "carbohydrate", "value": 220},
+          {"nutrient": "fat", "value": 70}
+        ]
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "zero-target-is-valid",
+      "input": {
+        "targets": [
+          {"nutrient": "fat", "value": 0}
+        ]
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "negative-target-hard-rejects",
+      "input": {
+        "targets": [
+          {"nutrient": "protein", "value": -1}
+        ]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["nutrient_non_negative"]}
+    },
+    {
+      "name": "absurd-energy-target-hard-rejects",
+      "input": {
+        "targets": [
+          {"nutrient": "energy", "value": 10001}
+        ]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["nutrient_energy_max_kilocalories"]}
+    },
+    {
+      "name": "absurd-macro-target-hard-rejects",
+      "input": {
+        "targets": [
+          {"nutrient": "carbohydrate", "value": 2001}
+        ]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["nutrient_macro_max_grams"]}
+    },
+    {
+      "name": "multiple-targets-report-all-errors-in-order",
+      "input": {
+        "targets": [
+          {"nutrient": "energy", "value": -5},
+          {"nutrient": "fat", "value": 2001}
+        ]
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["nutrient_non_negative", "nutrient_macro_max_grams"]}
+    }
+  ]
+}

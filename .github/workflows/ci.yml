@@ -1,0 +1,373 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      contract: ${{ steps.filter.outputs.contract }}
+      golden_vectors: ${{ steps.filter.outputs.golden_vectors }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+      js: ${{ steps.filter.outputs.js }}
+      dependency_hygiene: ${{ steps.filter.outputs.dependency_hygiene }}
+      workflow_lint: ${{ steps.filter.outputs.workflow_lint }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Filter paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            mobile:
+              - 'apps/mobile/**'
+              - 'pubspec.yaml'
+              - 'pubspec.lock'
+              - '.github/workflows/ci.yml'
+            contract:
+              - 'apps/server/**'
+              - 'apps/mobile/assets/seeds/platform_exercises.json'
+              - 'apps/mobile/assets/seeds/usda_foods.json'
+              - 'apps/mobile/lib/api/**'
+              - 'apps/mobile/pubspec.yaml'
+              - 'packages/contract/**'
+              - 'tools/generate-server-platform-exercise-seed.mjs'
+              - 'tools/generate-server-usda-food-seed.mjs'
+              - '.node-version'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig.base.json'
+              - '.github/workflows/ci.yml'
+            golden_vectors:
+              - 'apps/server/src/analytics/**'
+              - 'apps/server/src/metric-reading-normalization.ts'
+              - 'apps/server/test/analytics.golden.test.mjs'
+              - 'apps/server/test/metric-reading-normalization.golden.test.mjs'
+              - 'apps/server/test/nutrition-analytics.golden.test.mjs'
+              - 'apps/server/package.json'
+              - '.node-version'
+              - 'apps/mobile/lib/domain/analytics/**'
+              - 'apps/mobile/lib/domain/metrics/**'
+              - 'apps/mobile/lib/domain/nutrition/**'
+              - 'apps/mobile/lib/domain/training/training_dimensions.dart'
+              - 'apps/mobile/test/domain/exercise_analytics_test.dart'
+              - 'apps/mobile/test/domain/metric_reading_normalization_test.dart'
+              - 'apps/mobile/test/domain/nutrition_aggregation_golden_test.dart'
+              - 'apps/mobile/pubspec.yaml'
+              - 'pubspec.yaml'
+              - 'pubspec.lock'
+              - 'packages/golden-vectors/**'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig.base.json'
+              - '.github/workflows/ci.yml'
+            js:
+              - 'apps/server/**'
+              - 'tools/generate-wger-platform-exercises.mjs'
+              - 'tools/platform-exercise-cleanup.mjs'
+              - 'packages/contract/**'
+              - 'packages/golden-vectors/**'
+              - 'sidecars/**'
+              - '.node-version'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig.base.json'
+              - '.github/workflows/ci.yml'
+            dependency_hygiene:
+              - '.github/dependabot.yml'
+              - 'tools/check-dependency-hygiene.mjs'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'apps/server/package.json'
+              - 'packages/contract/package.json'
+              - 'packages/golden-vectors/package.json'
+              - 'pubspec.yaml'
+              - 'pubspec.lock'
+              - 'apps/mobile/pubspec.yaml'
+              - '.github/workflows/ci.yml'
+            workflow_lint:
+              - '.github/workflows/**'
+
+  dependency_hygiene:
+    name: Dependency hygiene
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.dependency_hygiene == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: Check dependency update coverage
+        run: node tools/check-dependency-hygiene.mjs
+
+  workflow_lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.workflow_lint == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Lint GitHub Actions workflows
+        uses: rhysd/actionlint@v1.7.12
+
+  mobile:
+    name: Flutter analyze and test
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Bootstrap Dart workspace
+        run: |
+          flutter pub get
+          dart run melos bootstrap
+
+      - name: Regenerate Drift code
+        working-directory: apps/mobile
+        run: dart run build_runner build
+
+      - name: Fail on stale Drift code
+        run: git diff --exit-code -- apps/mobile/lib/data/local/app_database.g.dart
+
+      - name: Regenerate design tokens
+        working-directory: apps/mobile
+        run: dart run tool/generate_design_tokens.dart
+
+      - name: Fail on stale design tokens
+        run: git diff --exit-code -- apps/mobile/lib/theme/design_tokens.g.dart
+
+      - name: Analyze
+        working-directory: apps/mobile
+        run: flutter analyze
+
+      - name: Performance budgets
+        working-directory: apps/mobile
+        run: flutter test test/performance/performance_budgets_test.dart
+
+      - name: Test
+        working-directory: apps/mobile
+        run: flutter test
+
+  contract-drift:
+    name: Contract drift
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.contract == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check server Platform Exercise seed is in sync
+        run: node tools/generate-server-platform-exercise-seed.mjs --check
+
+      - name: Check server USDA Food seed is in sync
+        run: node tools/generate-server-usda-food-seed.mjs --check
+
+      - name: Regenerate and diff contract artifacts
+        run: pnpm --filter @perennia/contract check:drift
+
+  golden_vectors:
+    name: Golden-vector parity
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.golden_vectors == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Dart dependencies
+        run: flutter pub get
+
+      - name: TypeScript golden vectors
+        run: pnpm --filter @perennia/server test:golden-vectors
+
+      - name: Dart golden vectors
+        working-directory: apps/mobile
+        run: flutter test test/domain/exercise_analytics_test.dart test/domain/metric_reading_normalization_test.dart test/domain/nutrition_aggregation_golden_test.dart
+
+  js:
+    name: JS workspace checks
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.js == 'true'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: perennia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d perennia_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm js:typecheck
+
+      - name: Test
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/perennia_test
+        run: pnpm js:test
+
+  sync-convergence:
+    name: Sync convergence simulation
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.js == 'true'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: perennia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d perennia_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Seeded replica convergence
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/perennia_test
+        run: pnpm --filter @perennia/server test:sync-convergence
+
+  ci-gate:
+    name: CI passed
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - contract-drift
+      - golden_vectors
+      - mobile
+      - workflow_lint
+      - dependency_hygiene
+      - js
+      - sync-convergence
+    if: always()
+    steps:
+      - name: Verify required jobs
+        run: |
+          echo "changes: ${{ needs.changes.result }}"
+          echo "contract-drift: ${{ needs.contract-drift.result }}"
+          echo "golden-vectors: ${{ needs.golden_vectors.result }}"
+          echo "mobile:  ${{ needs.mobile.result }}"
+          echo "workflow-lint: ${{ needs.workflow_lint.result }}"
+          echo "dependency-hygiene: ${{ needs.dependency_hygiene.result }}"
+          echo "js:      ${{ needs.js.result }}"
+          echo "sync-convergence: ${{ needs.sync-convergence.result }}"
+
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            exit 1
+          fi
+
+          for result in "${{ needs.contract-drift.result }}" "${{ needs.golden_vectors.result }}" "${{ needs.mobile.result }}" "${{ needs.workflow_lint.result }}" "${{ needs.dependency_hygiene.result }}" "${{ needs.js.result }}" "${{ needs.sync-convergence.result }}"; do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              exit 1
+            fi
+          done

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m34-plan-materialize.schema.json",
+  "title": "M34 Template materialize golden vector",
+  "description": "Language-neutral Prescription resolution and expansion parity cases: fixed values repeat verbatim, copy-previous resolves from the Exercise's last performed values (or a zero-value Set when never performed), repeat unrolls to N Sets, and Template Groups map to Exercise Group member indexes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m34-plan-materialize"},
+    "domain": {"const": "template-materialize"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m34-plan-materialize.schema.json"},
+    "cases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "loadValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"enum": ["kilogram", "pound"]}
+      }
+    },
+    "repsValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"const": "repetition"}
+      }
+    },
+    "durationValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"const": "second"}
+      }
+    },
+    "distanceValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"enum": ["kilometer", "mile"]}
+      }
+    },
+    "values": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "load": {"$ref": "#/$defs/loadValue"},
+        "reps": {"$ref": "#/$defs/repsValue"},
+        "duration": {"$ref": "#/$defs/durationValue"},
+        "distance": {"$ref": "#/$defs/distanceValue"}
+      }
+    },
+    "inputPrescription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "fixedValues",
+        "lastPerformedValues",
+        "repeat",
+        "restAfterSeconds"
+      ],
+      "properties": {
+        "mode": {"enum": ["fixed", "copyPrevious"]},
+        "fixedValues": {
+          "oneOf": [{"$ref": "#/$defs/values"}, {"type": "null"}]
+        },
+        "lastPerformedValues": {
+          "oneOf": [{"$ref": "#/$defs/values"}, {"type": "null"}]
+        },
+        "repeat": {"type": "integer", "minimum": 1},
+        "restAfterSeconds": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "inputExercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exerciseId",
+        "dimensions",
+        "defaultLoadUnit",
+        "prescriptions"
+      ],
+      "properties": {
+        "exerciseId": {"type": "string", "minLength": 1},
+        "dimensions": {
+          "type": "array",
+          "items": {"enum": ["load", "reps", "duration", "distance"]},
+          "uniqueItems": true
+        },
+        "defaultLoadUnit": {"enum": ["kilogram", "pound"]},
+        "prescriptions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/inputPrescription"}
+        }
+      }
+    },
+    "inputGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "colorHex", "memberExerciseIndexes"],
+      "properties": {
+        "name": {"type": "string"},
+        "colorHex": {"type": "string"},
+        "memberExerciseIndexes": {
+          "type": "array",
+          "items": {"type": "integer", "minimum": 0},
+          "uniqueItems": true
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exercises", "groups"],
+      "properties": {
+        "exercises": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/inputExercise"}
+        },
+        "groups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/inputGroup"}
+        }
+      }
+    },
+    "expectedSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["values", "plannedRestAfterSeconds"],
+      "properties": {
+        "values": {"$ref": "#/$defs/values"},
+        "plannedRestAfterSeconds": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "expectedExercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exerciseId", "sets"],
+      "properties": {
+        "exerciseId": {"type": "string", "minLength": 1},
+        "sets": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/expectedSet"}
+        }
+      }
+    },
+    "expectedGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "colorHex", "memberExerciseIndexes"],
+      "properties": {
+        "name": {"type": "string"},
+        "colorHex": {"type": "string"},
+        "memberExerciseIndexes": {
+          "type": "array",
+          "items": {"type": "integer", "minimum": 0},
+          "uniqueItems": true
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exercises", "groups"],
+      "properties": {
+        "exercises": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/expectedExercise"}
+        },
+        "groups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/expectedGroup"}
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "input": {"$ref": "#/$defs/input"},
+        "expected": {"$ref": "#/$defs/expected"}
+      }
+    }
+  }
+}

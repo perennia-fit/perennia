@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m34-plan-divergence.schema.json",
+  "title": "M34 Template divergence + Update golden vector",
+  "description": "Language-neutral parity cases for comparing a Workout Template's stored content against one performed Workout, and for the Update verb's reconciled content. A copyPrevious Prescription slot matches any performed values; only its Set count and planned rest participate in divergence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m34-plan-divergence"},
+    "domain": {"const": "plan-divergence"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m34-plan-divergence.schema.json"},
+    "cases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "loadValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"enum": ["kilogram", "pound"]}
+      }
+    },
+    "repsValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"const": "repetition"}
+      }
+    },
+    "durationValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"const": "second"}
+      }
+    },
+    "distanceValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string"},
+        "unit": {"enum": ["kilometer", "mile"]}
+      }
+    },
+    "values": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "load": {"$ref": "#/$defs/loadValue"},
+        "reps": {"$ref": "#/$defs/repsValue"},
+        "duration": {"$ref": "#/$defs/durationValue"},
+        "distance": {"$ref": "#/$defs/distanceValue"}
+      }
+    },
+    "templatePrescription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "values", "repeat", "restAfterSeconds"],
+      "properties": {
+        "mode": {"enum": ["fixed", "copyPrevious"]},
+        "values": {"$ref": "#/$defs/values"},
+        "repeat": {"type": "integer", "minimum": 1},
+        "restAfterSeconds": {"type": ["integer", "null"]}
+      }
+    },
+    "templateExercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exerciseId", "exerciseName", "prescriptions"],
+      "properties": {
+        "exerciseId": {"type": "string"},
+        "exerciseName": {"type": "string"},
+        "prescriptions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/templatePrescription"}
+        }
+      }
+    },
+    "templateGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memberExerciseIds"],
+      "properties": {
+        "memberExerciseIds": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exercises", "groups"],
+      "properties": {
+        "exercises": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/templateExercise"}
+        },
+        "groups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/templateGroup"}
+        }
+      }
+    },
+    "inputSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceSetId", "position", "values", "plannedRestAfterSeconds"],
+      "properties": {
+        "sourceSetId": {"type": "string"},
+        "position": {"type": "integer"},
+        "values": {"$ref": "#/$defs/values"},
+        "plannedRestAfterSeconds": {"type": ["integer", "null"]}
+      }
+    },
+    "workoutExercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceWorkoutExerciseId", "exerciseId", "exerciseName", "position", "sets"],
+      "properties": {
+        "sourceWorkoutExerciseId": {"type": "string"},
+        "exerciseId": {"type": "string"},
+        "exerciseName": {"type": "string"},
+        "position": {"type": "integer"},
+        "sets": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/inputSet"}
+        }
+      }
+    },
+    "workoutGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceGroupId", "name", "colorHex", "position", "memberSourceWorkoutExerciseIds"],
+      "properties": {
+        "sourceGroupId": {"type": "string"},
+        "name": {"type": "string"},
+        "colorHex": {"type": "string"},
+        "position": {"type": "integer"},
+        "memberSourceWorkoutExerciseIds": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "workout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workoutId", "exercises", "groups"],
+      "properties": {
+        "workoutId": {"type": "string"},
+        "exercises": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/workoutExercise"}
+        },
+        "groups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/workoutGroup"}
+        }
+      }
+    },
+    "exerciseRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exerciseId", "exerciseName"],
+      "properties": {
+        "exerciseId": {"type": "string"},
+        "exerciseName": {"type": "string"}
+      }
+    },
+    "divergence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["addedExercises", "removedExercises", "changedExercises", "groupsChanged"],
+      "properties": {
+        "addedExercises": {"type": "array", "items": {"$ref": "#/$defs/exerciseRef"}},
+        "removedExercises": {"type": "array", "items": {"$ref": "#/$defs/exerciseRef"}},
+        "changedExercises": {"type": "array", "items": {"$ref": "#/$defs/exerciseRef"}},
+        "groupsChanged": {"type": "boolean"}
+      }
+    },
+    "updatePrescription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "values", "repeat", "restAfterSeconds"],
+      "properties": {
+        "mode": {"enum": ["fixed", "copyPrevious"]},
+        "values": {"$ref": "#/$defs/values"},
+        "repeat": {"type": "integer", "minimum": 1},
+        "restAfterSeconds": {"type": ["integer", "null"]}
+      }
+    },
+    "updateExercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exerciseId", "prescriptions"],
+      "properties": {
+        "exerciseId": {"type": "string"},
+        "prescriptions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/updatePrescription"}
+        }
+      }
+    },
+    "updatedContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exercises", "groups"],
+      "properties": {
+        "exercises": {"type": "array", "items": {"$ref": "#/$defs/updateExercise"}},
+        "groups": {"type": "array"}
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["divergence", "updatedContent"],
+      "properties": {
+        "divergence": {"$ref": "#/$defs/divergence"},
+        "updatedContent": {"$ref": "#/$defs/updatedContent"}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "template", "workout", "expected"],
+      "properties": {
+        "name": {"type": "string"},
+        "template": {"$ref": "#/$defs/template"},
+        "workout": {"$ref": "#/$defs/workout"},
+        "expected": {"$ref": "#/$defs/expected"}
+      }
+    }
+  }
+}

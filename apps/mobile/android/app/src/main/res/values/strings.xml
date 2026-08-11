@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_notification_channel_name">Workout timers</string>
+    <string name="timer_notification_channel_description">Live countdowns for active workout timers.</string>
+    <string name="timer_completion_channel_name">Timer alerts</string>
+    <string name="timer_completion_channel_description">Alerts when a workout timer finishes.</string>
+    <string name="timer_prepare_channel_name">Timer prepare cues</string>
+    <string name="timer_prepare_channel_description">A short heads-up in the last few seconds before a workout timer finishes.</string>
+    <string name="timer_notification_permission_rationale">OpenWorkoutLogger can notify you when a workout timer finishes. If notifications are denied, in-app countdowns still work while the app is open.</string>
+</resources>

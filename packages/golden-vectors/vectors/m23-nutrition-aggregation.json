@@ -1,0 +1,199 @@
+{
+  "name": "m23-nutrition-aggregation",
+  "domain": "nutrition-analytics",
+  "description": "Derived nutrition totals/trends/goal-progress must be identical between the agent server analytics and the device UI aggregation. Each case lists self-describing Food Entries grouped by Nutrition Day; expected.dayTotals/periodTotals/goalProgress are the canonical numbers both languages must reproduce. A reference Food's per-100 nutrient vector is scaled by resolvedBaseQuantity/100; a Quick Entry's vector is the whole entry. An unknown component propagates an incompleteness flag and is never coerced to 0 (NUTRITION.md §4).",
+  "cases": [
+    {
+      "name": "reference-food-scaling-and-quick-entry-sum",
+      "days": [
+        {
+          "localDate": "2026-06-24",
+          "entries": [
+            {
+              "kind": "food",
+              "resolvedBaseQuantity": 236,
+              "nutrients": {
+                "energy": {"status": "complete", "value": 89},
+                "protein": {"status": "complete", "value": 1.1},
+                "carbohydrate": {"status": "complete", "value": 23},
+                "fat": {"status": "complete", "value": 0.3}
+              }
+            },
+            {
+              "kind": "quickEntry",
+              "nutrients": {
+                "energy": {"status": "complete", "value": 160},
+                "protein": {"status": "complete", "value": 30},
+                "carbohydrate": {"status": "complete", "value": 5},
+                "fat": {"status": "complete", "value": 2.5}
+              }
+            }
+          ]
+        }
+      ],
+      "goals": {
+        "energy": 2000,
+        "protein": 150
+      },
+      "expected": {
+        "dayTotals": {
+          "2026-06-24": {
+            "energy": {"value": 370.04, "complete": true},
+            "protein": {"value": 32.596, "complete": true},
+            "carbohydrate": {"value": 59.28, "complete": true},
+            "fat": {"value": 3.208, "complete": true}
+          }
+        },
+        "periodTotals": {
+          "energy": {"value": 370.04, "complete": true},
+          "protein": {"value": 32.596, "complete": true},
+          "carbohydrate": {"value": 59.28, "complete": true},
+          "fat": {"value": 3.208, "complete": true}
+        },
+        "goalProgress": {
+          "energy": {"status": "below", "ratio": 0.18502, "remaining": 1629.96},
+          "protein": {"status": "below", "ratio": 0.21730666666666667, "remaining": 117.404}
+        }
+      }
+    },
+    {
+      "name": "unknown-nutrient-propagates-incompleteness",
+      "days": [
+        {
+          "localDate": "2026-06-24",
+          "entries": [
+            {
+              "kind": "quickEntry",
+              "nutrients": {
+                "energy": {"status": "complete", "value": 200}
+              }
+            },
+            {
+              "kind": "quickEntry",
+              "nutrients": {
+                "energy": {"status": "complete", "value": 150},
+                "fiber": {"status": "complete", "value": 4}
+              }
+            }
+          ]
+        }
+      ],
+      "goals": {
+        "protein": 150
+      },
+      "expected": {
+        "dayTotals": {
+          "2026-06-24": {
+            "energy": {"value": 350, "complete": true},
+            "fiber": {"complete": false},
+            "protein": {"complete": false}
+          }
+        },
+        "periodTotals": {
+          "energy": {"value": 350, "complete": true},
+          "fiber": {"complete": false},
+          "protein": {"complete": false}
+        },
+        "goalProgress": {
+          "protein": {"status": "unknown", "ratio": null, "remaining": null}
+        }
+      }
+    },
+    {
+      "name": "multi-day-period-sum-and-goal-over",
+      "days": [
+        {
+          "localDate": "2026-06-24",
+          "entries": [
+            {
+              "kind": "quickEntry",
+              "nutrients": {
+                "energy": {"status": "complete", "value": 1200},
+                "protein": {"status": "complete", "value": 90},
+                "carbohydrate": {"status": "complete", "value": 120},
+                "fat": {"status": "complete", "value": 40}
+              }
+            }
+          ]
+        },
+        {
+          "localDate": "2026-06-25",
+          "entries": [
+            {
+              "kind": "quickEntry",
+              "nutrients": {
+                "energy": {"status": "complete", "value": 900},
+                "protein": {"status": "complete", "value": 70},
+                "carbohydrate": {"status": "complete", "value": 80},
+                "fat": {"status": "complete", "value": 30}
+              }
+            }
+          ]
+        }
+      ],
+      "goals": {
+        "energy": 2000,
+        "protein": 150
+      },
+      "expected": {
+        "dayTotals": {
+          "2026-06-24": {
+            "energy": {"value": 1200, "complete": true},
+            "protein": {"value": 90, "complete": true}
+          },
+          "2026-06-25": {
+            "energy": {"value": 900, "complete": true},
+            "protein": {"value": 70, "complete": true}
+          }
+        },
+        "periodTotals": {
+          "energy": {"value": 2100, "complete": true},
+          "protein": {"value": 160, "complete": true},
+          "carbohydrate": {"value": 200, "complete": true},
+          "fat": {"value": 70, "complete": true}
+        },
+        "goalProgress": {
+          "energy": {"status": "over", "ratio": 1.05, "remaining": -100},
+          "protein": {"status": "over", "ratio": 1.0666666666666667, "remaining": -10}
+        }
+      }
+    },
+    {
+      "name": "genuine-zero-is-complete-met-goal",
+      "days": [
+        {
+          "localDate": "2026-06-24",
+          "entries": [
+            {
+              "kind": "quickEntry",
+              "nutrients": {
+                "energy": {"status": "complete", "value": 2000},
+                "protein": {"status": "complete", "value": 0}
+              }
+            }
+          ]
+        }
+      ],
+      "goals": {
+        "energy": 2000,
+        "protein": 0
+      },
+      "expected": {
+        "dayTotals": {
+          "2026-06-24": {
+            "energy": {"value": 2000, "complete": true},
+            "protein": {"value": 0, "complete": true}
+          }
+        },
+        "periodTotals": {
+          "energy": {"value": 2000, "complete": true},
+          "protein": {"value": 0, "complete": true}
+        },
+        "goalProgress": {
+          "energy": {"status": "met", "ratio": 1, "remaining": 0},
+          "protein": {"status": "met", "ratio": null, "remaining": 0}
+        }
+      }
+    }
+  ]
+}

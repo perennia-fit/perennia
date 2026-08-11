@@ -1,0 +1,62 @@
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Australia/Brisbane"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/apps/server"
+      - "/apps/web"
+      - "/analysis/exercises/reviewer"
+      - "/packages/contract"
+      - "/packages/golden-vectors"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:30"
+      timezone: "Australia/Brisbane"
+    open-pull-requests-limit: 5
+    groups:
+      js-workspace:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pub"
+    directories:
+      - "/"
+      - "/apps/mobile"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+      timezone: "Australia/Brisbane"
+    open-pull-requests-limit: 5
+    groups:
+      dart-workspace:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "bundler"
+    directory: "/apps/mobile"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:30"
+      timezone: "Australia/Brisbane"
+    open-pull-requests-limit: 5
+    groups:
+      fastlane:
+        patterns:
+          - "*"

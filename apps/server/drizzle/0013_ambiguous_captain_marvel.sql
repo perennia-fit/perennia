@@ -1,0 +1,1 @@
+ALTER TABLE "external_activities" ADD COLUMN "mapped_exercise_id" text;

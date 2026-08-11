@@ -1,0 +1,88 @@
+{
+  "name": "m26-dose-validation",
+  "domain": "dose-validation",
+  "limits": {
+    "amountMin": 0,
+    "units": {
+      "milligram": {"warnAbove": 5000, "maxPerDose": 100000},
+      "microgram": {"warnAbove": 5000000, "maxPerDose": 100000000},
+      "gram": {"warnAbove": 100, "maxPerDose": 1000},
+      "internationalUnit": {"warnAbove": 100000, "maxPerDose": 10000000},
+      "milliliter": {"warnAbove": 100, "maxPerDose": 1000},
+      "tablet": {"warnAbove": 20, "maxPerDose": 100},
+      "capsule": {"warnAbove": 20, "maxPerDose": 100},
+      "drop": {"warnAbove": 100, "maxPerDose": 1000},
+      "spray": {"warnAbove": 20, "maxPerDose": 100},
+      "puff": {"warnAbove": 20, "maxPerDose": 100},
+      "patch": {"warnAbove": 10, "maxPerDose": 100},
+      "unit": {"warnAbove": 1000, "maxPerDose": 100000}
+    }
+  },
+  "cases": [
+    {
+      "name": "ordinary-dose-is-valid",
+      "input": {"amount": "5", "unit": "gram", "route": "oral"},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "zero-amount-is-valid",
+      "input": {"amount": "0", "unit": "milligram", "route": "oral"},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "boundary-at-warn-threshold-is-valid",
+      "input": {"amount": "100", "unit": "gram", "route": "oral"},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "negative-amount-hard-rejects",
+      "input": {"amount": "-1", "unit": "milligram", "route": "oral"},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["dose_amount_non_negative"]}
+    },
+    {
+      "name": "non-finite-amount-hard-rejects",
+      "input": {"amount": "not-a-number", "unit": "milligram", "route": "oral"},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["numeric_finite"]}
+    },
+    {
+      "name": "absurd-per-dose-amount-hard-rejects",
+      "input": {"amount": "2000", "unit": "gram", "route": "oral"},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["dose_amount_max_per_dose"]}
+    },
+    {
+      "name": "boundary-at-max-per-dose-is-valid-but-warns",
+      "input": {"amount": "1000", "unit": "gram", "route": "oral"},
+      "expected": {"accepted": true, "warningRules": ["dose_amount_out_of_range_for_unit"], "errorRules": []}
+    },
+    {
+      "name": "malformed-unit-hard-rejects",
+      "input": {"amount": "1", "unit": "scoops", "route": "oral"},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["dose_unit_allowed"]}
+    },
+    {
+      "name": "malformed-route-hard-rejects",
+      "input": {"amount": "1", "unit": "milligram", "route": "smoked"},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["dose_route_allowed"]}
+    },
+    {
+      "name": "malformed-unit-and-route-both-hard-reject",
+      "input": {"amount": "1", "unit": "scoops", "route": "smoked"},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["dose_unit_allowed", "dose_route_allowed"]}
+    },
+    {
+      "name": "out-of-range-amount-soft-warns",
+      "input": {"amount": "60", "unit": "tablet", "route": "oral"},
+      "expected": {"accepted": true, "warningRules": ["dose_amount_out_of_range_for_unit"], "errorRules": []}
+    },
+    {
+      "name": "out-of-range-amount-for-milligram-soft-warns",
+      "input": {"amount": "9000", "unit": "milligram", "route": "sublingual"},
+      "expected": {"accepted": true, "warningRules": ["dose_amount_out_of_range_for_unit"], "errorRules": []}
+    },
+    {
+      "name": "malformed-unit-suppresses-the-range-warning",
+      "input": {"amount": "999999999", "unit": "scoops", "route": "oral"},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["dose_unit_allowed"]}
+    }
+  ]
+}

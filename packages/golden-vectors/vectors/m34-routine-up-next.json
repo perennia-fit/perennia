@@ -1,0 +1,229 @@
+{
+  "name": "m34-routine-up-next",
+  "domain": "routine-up-next",
+  "schemaVersion": 1,
+  "schema": "m34-routine-up-next.schema.json",
+  "cases": [
+    {
+      "name": "weekly-rest-day-has-no-entries-in-slot",
+      "input": {
+        "cadence": {"kind": "weekly"},
+        "entries": [
+          {"routineEntryId": "entry-tue", "workoutTemplateId": "template-run", "templateName": "Tempo Run", "slot": 2}
+        ],
+        "links": [],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": null
+    },
+    {
+      "name": "weekly-single-entry-not-done-suggests-a-card",
+      "input": {
+        "cadence": {"kind": "weekly"},
+        "entries": [
+          {"routineEntryId": "entry-mon", "workoutTemplateId": "template-push", "templateName": "Push A", "slot": 1}
+        ],
+        "links": [],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 1,
+        "cards": [
+          {"routineEntryId": "entry-mon", "workoutTemplateId": "template-push", "templateName": "Push A", "slot": 1, "isDone": false}
+        ]
+      }
+    },
+    {
+      "name": "weekly-single-entry-done-today-is-ticked",
+      "input": {
+        "cadence": {"kind": "weekly"},
+        "entries": [
+          {"routineEntryId": "entry-mon", "workoutTemplateId": "template-push", "templateName": "Push A", "slot": 1}
+        ],
+        "links": [
+          {"workoutTemplateId": "template-push", "slot": 1, "sequence": 0, "workoutLocalDate": "2026-07-06"}
+        ],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 1,
+        "cards": [
+          {"routineEntryId": "entry-mon", "workoutTemplateId": "template-push", "templateName": "Push A", "slot": 1, "isDone": true}
+        ]
+      }
+    },
+    {
+      "name": "weekly-multi-session-day-half-done-suggests-remaining-first",
+      "input": {
+        "cadence": {"kind": "weekly"},
+        "entries": [
+          {"routineEntryId": "entry-swim", "workoutTemplateId": "template-swim", "templateName": "Swim Drills", "slot": 1},
+          {"routineEntryId": "entry-lift", "workoutTemplateId": "template-lift", "templateName": "Full Body", "slot": 1}
+        ],
+        "links": [
+          {"workoutTemplateId": "template-swim", "slot": 1, "sequence": 0, "workoutLocalDate": "2026-07-06"}
+        ],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 1,
+        "cards": [
+          {"routineEntryId": "entry-lift", "workoutTemplateId": "template-lift", "templateName": "Full Body", "slot": 1, "isDone": false},
+          {"routineEntryId": "entry-swim", "workoutTemplateId": "template-swim", "templateName": "Swim Drills", "slot": 1, "isDone": true}
+        ]
+      }
+    },
+    {
+      "name": "weekly-a-link-from-a-different-date-never-ticks-today",
+      "input": {
+        "cadence": {"kind": "weekly"},
+        "entries": [
+          {"routineEntryId": "entry-mon", "workoutTemplateId": "template-push", "templateName": "Push A", "slot": 1}
+        ],
+        "links": [
+          {"workoutTemplateId": "template-push", "slot": 1, "sequence": 0, "workoutLocalDate": "2026-06-29"}
+        ],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 1,
+        "cards": [
+          {"routineEntryId": "entry-mon", "workoutTemplateId": "template-push", "templateName": "Push A", "slot": 1, "isDone": false}
+        ]
+      }
+    },
+    {
+      "name": "rotating-never-started-suggests-the-first-non-empty-slot",
+      "input": {
+        "cadence": {"kind": "rotating", "window": 4},
+        "entries": [
+          {"routineEntryId": "entry-c", "workoutTemplateId": "template-c", "templateName": "Day C", "slot": 3}
+        ],
+        "links": [],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 3,
+        "cards": [
+          {"routineEntryId": "entry-c", "workoutTemplateId": "template-c", "templateName": "Day C", "slot": 3, "isDone": false}
+        ]
+      }
+    },
+    {
+      "name": "rotating-fully-done-slot-advances-to-the-next-non-empty-slot",
+      "input": {
+        "cadence": {"kind": "rotating", "window": 3},
+        "entries": [
+          {"routineEntryId": "entry-1", "workoutTemplateId": "template-1", "templateName": "Day 1", "slot": 1},
+          {"routineEntryId": "entry-2", "workoutTemplateId": "template-2", "templateName": "Day 2", "slot": 2}
+        ],
+        "links": [
+          {"workoutTemplateId": "template-1", "slot": 1, "sequence": 0, "workoutLocalDate": "2026-07-04"}
+        ],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 2,
+        "cards": [
+          {"routineEntryId": "entry-2", "workoutTemplateId": "template-2", "templateName": "Day 2", "slot": 2, "isDone": false}
+        ]
+      }
+    },
+    {
+      "name": "rotating-half-done-slot-suggests-remaining-session-first",
+      "input": {
+        "cadence": {"kind": "rotating", "window": 3},
+        "entries": [
+          {"routineEntryId": "entry-am", "workoutTemplateId": "template-am", "templateName": "AM Lift", "slot": 2},
+          {"routineEntryId": "entry-pm", "workoutTemplateId": "template-pm", "templateName": "PM Conditioning", "slot": 2}
+        ],
+        "links": [
+          {"workoutTemplateId": "template-am", "slot": 2, "sequence": 0, "workoutLocalDate": "2026-07-06"}
+        ],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 2,
+        "cards": [
+          {"routineEntryId": "entry-pm", "workoutTemplateId": "template-pm", "templateName": "PM Conditioning", "slot": 2, "isDone": false},
+          {"routineEntryId": "entry-am", "workoutTemplateId": "template-am", "templateName": "AM Lift", "slot": 2, "isDone": true}
+        ]
+      }
+    },
+    {
+      "name": "rotating-multi-template-slot-advances-only-once-every-session-is-done",
+      "input": {
+        "cadence": {"kind": "rotating", "window": 3},
+        "entries": [
+          {"routineEntryId": "entry-am", "workoutTemplateId": "template-am", "templateName": "AM Lift", "slot": 2},
+          {"routineEntryId": "entry-pm", "workoutTemplateId": "template-pm", "templateName": "PM Conditioning", "slot": 2},
+          {"routineEntryId": "entry-3", "workoutTemplateId": "template-3", "templateName": "Day 3", "slot": 3}
+        ],
+        "links": [
+          {"workoutTemplateId": "template-am", "slot": 2, "sequence": 0, "workoutLocalDate": "2026-07-06"},
+          {"workoutTemplateId": "template-pm", "slot": 2, "sequence": 1, "workoutLocalDate": "2026-07-06"}
+        ],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 3,
+        "cards": [
+          {"routineEntryId": "entry-3", "workoutTemplateId": "template-3", "templateName": "Day 3", "slot": 3, "isDone": false}
+        ]
+      }
+    },
+    {
+      "name": "rotating-skips-empty-slots-rest-days-when-advancing",
+      "input": {
+        "cadence": {"kind": "rotating", "window": 3},
+        "entries": [
+          {"routineEntryId": "entry-1", "workoutTemplateId": "template-1", "templateName": "Day 1", "slot": 1},
+          {"routineEntryId": "entry-3", "workoutTemplateId": "template-3", "templateName": "Day 3", "slot": 3}
+        ],
+        "links": [
+          {"workoutTemplateId": "template-1", "slot": 1, "sequence": 0, "workoutLocalDate": "2026-07-06"}
+        ],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 3,
+        "cards": [
+          {"routineEntryId": "entry-3", "workoutTemplateId": "template-3", "templateName": "Day 3", "slot": 3, "isDone": false}
+        ]
+      }
+    },
+    {
+      "name": "rotating-out-of-order-pick-re-anchors-to-fact-not-the-skipped-sequence",
+      "input": {
+        "cadence": {"kind": "rotating", "window": 4},
+        "entries": [
+          {"routineEntryId": "entry-1", "workoutTemplateId": "template-1", "templateName": "Day 1", "slot": 1},
+          {"routineEntryId": "entry-2", "workoutTemplateId": "template-2", "templateName": "Day 2", "slot": 2},
+          {"routineEntryId": "entry-3", "workoutTemplateId": "template-3", "templateName": "Day 3", "slot": 3},
+          {"routineEntryId": "entry-4", "workoutTemplateId": "template-4", "templateName": "Day 4", "slot": 4}
+        ],
+        "links": [
+          {"workoutTemplateId": "template-1", "slot": 1, "sequence": 0, "workoutLocalDate": "2026-07-01"},
+          {"workoutTemplateId": "template-4", "slot": 4, "sequence": 1, "workoutLocalDate": "2026-07-06"}
+        ],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": {
+        "slot": 1,
+        "cards": [
+          {"routineEntryId": "entry-1", "workoutTemplateId": "template-1", "templateName": "Day 1", "slot": 1, "isDone": false}
+        ]
+      }
+    },
+    {
+      "name": "rotating-with-zero-active-entries-suggests-nothing",
+      "input": {
+        "cadence": {"kind": "rotating", "window": 2},
+        "entries": [],
+        "links": [],
+        "selectedDate": "2026-07-06"
+      },
+      "expected": null
+    }
+  ]
+}

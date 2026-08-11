@@ -1,0 +1,474 @@
+{
+  "name": "m33-workout-capture",
+  "domain": "workout-capture",
+  "schemaVersion": 1,
+  "schema": "m33-workout-capture.schema.json",
+  "cases": [
+    {
+      "name": "adjacent-equal-sets-collapse-after-fact-annotations-are-stripped",
+      "input": {
+        "workoutId": "workout-1",
+        "comment": "Hard session; never reusable",
+        "startedAt": "2026-07-11T08:00:00Z",
+        "endedAt": "2026-07-11T09:00:00Z",
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "workout-exercise-bench",
+            "exerciseId": "exercise-bench",
+            "exerciseName": "Bench Press",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-1",
+                "position": 0,
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "plannedRestAfterSeconds": 120,
+                "comment": "Smooth",
+                "side": "left",
+                "rpe": 7.5,
+                "isCompleted": false,
+                "performedAt": "2026-07-11T08:10:00Z"
+              },
+              {
+                "sourceSetId": "set-2",
+                "position": 1,
+                "values": {
+                  "reps": {"entered": "5", "unit": "repetition"},
+                  "load": {"entered": "100", "unit": "kilogram"}
+                },
+                "plannedRestAfterSeconds": 120,
+                "comment": "Grinder",
+                "side": "right",
+                "rpe": 10,
+                "isCompleted": true,
+                "performedAt": "2026-07-11T08:15:00Z"
+              }
+            ]
+          },
+          {
+            "sourceWorkoutExerciseId": "workout-exercise-plank",
+            "exerciseId": "exercise-plank",
+            "exerciseName": "Plank",
+            "position": 1,
+            "sets": [
+              {
+                "sourceSetId": "set-3",
+                "position": 2,
+                "values": {
+                  "duration": {"entered": "60", "unit": "second"}
+                },
+                "plannedRestAfterSeconds": null,
+                "comment": null,
+                "side": null,
+                "rpe": null,
+                "isCompleted": true,
+                "performedAt": "2026-07-11T08:30:00Z"
+              }
+            ]
+          }
+        ],
+        "groups": [
+          {
+            "sourceGroupId": "group-1",
+            "name": "Upper circuit",
+            "colorHex": "#2F6FED",
+            "position": 0,
+            "memberSourceWorkoutExerciseIds": [
+              "workout-exercise-plank",
+              "workout-exercise-bench"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "suggestedName": "Bench Press + Plank",
+        "exercises": [
+          {
+            "exerciseId": "exercise-bench",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {
+                  "load": {"entered": "100", "unit": "kilogram"},
+                  "reps": {"entered": "5", "unit": "repetition"}
+                },
+                "repeat": 2,
+                "restAfterSeconds": 120
+              }
+            ]
+          },
+          {
+            "exerciseId": "exercise-plank",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {
+                  "duration": {"entered": "60", "unit": "second"}
+                },
+                "repeat": 1,
+                "restAfterSeconds": null
+              }
+            ]
+          }
+        ],
+        "groups": [
+          {
+            "name": "Upper circuit",
+            "colorHex": "#2F6FED",
+            "rounds": 1,
+            "memberExerciseIndexes": [1, 0]
+          }
+        ]
+      }
+    },
+    {
+      "name": "entered-text-is-exact-for-repeat-collapse",
+      "input": {
+        "workoutId": "workout-entered",
+        "comment": null,
+        "startedAt": null,
+        "endedAt": null,
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "workout-exercise-squat",
+            "exerciseId": "exercise-squat",
+            "exerciseName": "Back Squat",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-entered-1",
+                "position": 0,
+                "values": {"load": {"entered": "100", "unit": "kilogram"}},
+                "plannedRestAfterSeconds": 90,
+                "comment": null,
+                "side": null,
+                "rpe": null,
+                "isCompleted": false,
+                "performedAt": null
+              },
+              {
+                "sourceSetId": "set-entered-2",
+                "position": 1,
+                "values": {"load": {"entered": "100.0", "unit": "kilogram"}},
+                "plannedRestAfterSeconds": 90,
+                "comment": null,
+                "side": null,
+                "rpe": null,
+                "isCompleted": false,
+                "performedAt": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "suggestedName": "Back Squat",
+        "exercises": [
+          {
+            "exerciseId": "exercise-squat",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {"load": {"entered": "100", "unit": "kilogram"}},
+                "repeat": 1,
+                "restAfterSeconds": 90
+              },
+              {
+                "mode": "fixed",
+                "values": {"load": {"entered": "100.0", "unit": "kilogram"}},
+                "repeat": 1,
+                "restAfterSeconds": 90
+              }
+            ]
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "equivalent-converted-units-remain-distinct",
+      "input": {
+        "workoutId": "workout-units",
+        "comment": null,
+        "startedAt": null,
+        "endedAt": null,
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "workout-exercise-deadlift",
+            "exerciseId": "exercise-deadlift",
+            "exerciseName": "Deadlift",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-units-1",
+                "position": 0,
+                "values": {"load": {"entered": "100", "unit": "kilogram"}},
+                "plannedRestAfterSeconds": null,
+                "comment": null,
+                "side": null,
+                "rpe": null,
+                "isCompleted": false,
+                "performedAt": null
+              },
+              {
+                "sourceSetId": "set-units-2",
+                "position": 1,
+                "values": {"load": {"entered": "220.462", "unit": "pound"}},
+                "plannedRestAfterSeconds": null,
+                "comment": null,
+                "side": null,
+                "rpe": null,
+                "isCompleted": false,
+                "performedAt": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "suggestedName": "Deadlift",
+        "exercises": [
+          {
+            "exerciseId": "exercise-deadlift",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {"load": {"entered": "100", "unit": "kilogram"}},
+                "repeat": 1,
+                "restAfterSeconds": null
+              },
+              {
+                "mode": "fixed",
+                "values": {"load": {"entered": "220.462", "unit": "pound"}},
+                "repeat": 1,
+                "restAfterSeconds": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "rest-and-adjacency-are-part-of-collapse-semantics",
+      "input": {
+        "workoutId": "workout-rest",
+        "comment": null,
+        "startedAt": null,
+        "endedAt": null,
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "workout-exercise-row",
+            "exerciseId": "exercise-row",
+            "exerciseName": "Cable Row",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-rest-1",
+                "position": 0,
+                "values": {"reps": {"entered": "10", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 60,
+                "comment": null,
+                "side": null,
+                "rpe": null,
+                "isCompleted": false,
+                "performedAt": null
+              },
+              {
+                "sourceSetId": "set-rest-2",
+                "position": 1,
+                "values": {"reps": {"entered": "10", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 90,
+                "comment": null,
+                "side": null,
+                "rpe": null,
+                "isCompleted": false,
+                "performedAt": null
+              },
+              {
+                "sourceSetId": "set-rest-3",
+                "position": 2,
+                "values": {"reps": {"entered": "8", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 60,
+                "comment": null,
+                "side": null,
+                "rpe": null,
+                "isCompleted": false,
+                "performedAt": null
+              },
+              {
+                "sourceSetId": "set-rest-4",
+                "position": 3,
+                "values": {"reps": {"entered": "10", "unit": "repetition"}},
+                "plannedRestAfterSeconds": 60,
+                "comment": null,
+                "side": null,
+                "rpe": null,
+                "isCompleted": false,
+                "performedAt": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "suggestedName": "Cable Row",
+        "exercises": [
+          {
+            "exerciseId": "exercise-row",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {"reps": {"entered": "10", "unit": "repetition"}},
+                "repeat": 1,
+                "restAfterSeconds": 60
+              },
+              {
+                "mode": "fixed",
+                "values": {"reps": {"entered": "10", "unit": "repetition"}},
+                "repeat": 1,
+                "restAfterSeconds": 90
+              },
+              {
+                "mode": "fixed",
+                "values": {"reps": {"entered": "8", "unit": "repetition"}},
+                "repeat": 1,
+                "restAfterSeconds": 60
+              },
+              {
+                "mode": "fixed",
+                "values": {"reps": {"entered": "10", "unit": "repetition"}},
+                "repeat": 1,
+                "restAfterSeconds": 60
+              }
+            ]
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "completion-only-sets-collapse",
+      "input": {
+        "workoutId": "workout-completion",
+        "comment": null,
+        "startedAt": null,
+        "endedAt": null,
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "workout-exercise-mobility",
+            "exerciseId": "exercise-mobility",
+            "exerciseName": "Mobility Flow",
+            "position": 0,
+            "sets": [
+              {
+                "sourceSetId": "set-completion-1",
+                "position": 0,
+                "values": {},
+                "plannedRestAfterSeconds": null,
+                "comment": "First pass",
+                "side": null,
+                "rpe": null,
+                "isCompleted": false,
+                "performedAt": null
+              },
+              {
+                "sourceSetId": "set-completion-2",
+                "position": 1,
+                "values": {},
+                "plannedRestAfterSeconds": null,
+                "comment": "Second pass",
+                "side": null,
+                "rpe": null,
+                "isCompleted": true,
+                "performedAt": "2026-07-11T08:40:00Z"
+              }
+            ]
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "suggestedName": "Mobility Flow",
+        "exercises": [
+          {
+            "exerciseId": "exercise-mobility",
+            "prescriptions": [
+              {
+                "mode": "fixed",
+                "values": {},
+                "repeat": 2,
+                "restAfterSeconds": null
+              }
+            ]
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "zero-set-exercises-survive-and-prefill-by-position",
+      "input": {
+        "workoutId": "workout-empty-exercises",
+        "comment": null,
+        "startedAt": null,
+        "endedAt": null,
+        "exercises": [
+          {
+            "sourceWorkoutExerciseId": "workout-exercise-b",
+            "exerciseId": "exercise-row",
+            "exerciseName": "Row",
+            "position": 1,
+            "sets": []
+          },
+          {
+            "sourceWorkoutExerciseId": "workout-exercise-a",
+            "exerciseId": "exercise-squat",
+            "exerciseName": "Squat",
+            "position": 0,
+            "sets": []
+          },
+          {
+            "sourceWorkoutExerciseId": "workout-exercise-c",
+            "exerciseId": "exercise-carry",
+            "exerciseName": "Carry",
+            "position": 2,
+            "sets": []
+          }
+        ],
+        "groups": []
+      },
+      "expected": {
+        "suggestedName": "Squat + Row",
+        "exercises": [
+          {"exerciseId": "exercise-row", "prescriptions": []},
+          {"exerciseId": "exercise-squat", "prescriptions": []},
+          {"exerciseId": "exercise-carry", "prescriptions": []}
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "empty-workout-captures-empty-content-and-name",
+      "input": {
+        "workoutId": "workout-empty",
+        "comment": "Nothing logged",
+        "startedAt": "2026-07-11T08:00:00Z",
+        "endedAt": null,
+        "exercises": [],
+        "groups": []
+      },
+      "expected": {
+        "suggestedName": "",
+        "exercises": [],
+        "groups": []
+      }
+    }
+  ]
+}

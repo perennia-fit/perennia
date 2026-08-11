@@ -1,0 +1,109 @@
+{
+  "name": "m18-nutrient-validation",
+  "domain": "nutrient-validation",
+  "limits": {
+    "energyMaxKilocalories": 10000,
+    "macroMaxGrams": 2000,
+    "portionWarnBaseQuantity": 2000,
+    "atwaterMismatchTolerance": 0.25
+  },
+  "cases": [
+    {
+      "name": "balanced-complete-core-nutrients-are-valid",
+      "input": {
+        "nutrients": {
+          "energy": {"status": "complete", "value": 240, "entered": "240", "unit": "kilocalorie"},
+          "protein": {"status": "complete", "value": 32, "entered": "32", "unit": "gram"},
+          "carbohydrate": {"status": "complete", "value": 12, "entered": "12", "unit": "gram"},
+          "fat": {"status": "complete", "value": 4, "entered": "4", "unit": "gram"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "negative-nutrient-hard-rejects",
+      "input": {
+        "nutrients": {
+          "energy": {"status": "unknown", "unit": "kilocalorie"},
+          "protein": {"status": "complete", "value": -1, "entered": "-1", "unit": "gram"},
+          "carbohydrate": {"status": "unknown", "unit": "gram"},
+          "fat": {"status": "unknown", "unit": "gram"}
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["nutrient_non_negative"]}
+    },
+    {
+      "name": "absurd-energy-hard-rejects",
+      "input": {
+        "nutrients": {
+          "energy": {"status": "complete", "value": 10001, "entered": "10001", "unit": "kilocalorie"},
+          "protein": {"status": "unknown", "unit": "gram"},
+          "carbohydrate": {"status": "unknown", "unit": "gram"},
+          "fat": {"status": "unknown", "unit": "gram"}
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["nutrient_energy_max_kilocalories"]}
+    },
+    {
+      "name": "absurd-macro-hard-rejects",
+      "input": {
+        "nutrients": {
+          "energy": {"status": "unknown", "unit": "kilocalorie"},
+          "protein": {"status": "complete", "value": 2001, "entered": "2001", "unit": "gram"},
+          "carbohydrate": {"status": "unknown", "unit": "gram"},
+          "fat": {"status": "unknown", "unit": "gram"}
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["nutrient_macro_max_grams"]}
+    },
+    {
+      "name": "huge-portion-soft-warns",
+      "input": {
+        "nutrients": {
+          "energy": {"status": "complete", "value": 240, "entered": "240", "unit": "kilocalorie"},
+          "protein": {"status": "complete", "value": 32, "entered": "32", "unit": "gram"},
+          "carbohydrate": {"status": "complete", "value": 12, "entered": "12", "unit": "gram"},
+          "fat": {"status": "complete", "value": 4, "entered": "4", "unit": "gram"}
+        },
+        "portion": {"value": 2500, "entered": "2500", "unit": "gram", "resolvedBaseQuantity": 2500}
+      },
+      "expected": {"accepted": true, "warningRules": ["portion_size_improbable"], "errorRules": []}
+    },
+    {
+      "name": "energy-far-from-atwater-soft-warns",
+      "input": {
+        "nutrients": {
+          "energy": {"status": "complete", "value": 1000, "entered": "1000", "unit": "kilocalorie"},
+          "protein": {"status": "complete", "value": 10, "entered": "10", "unit": "gram"},
+          "carbohydrate": {"status": "complete", "value": 10, "entered": "10", "unit": "gram"},
+          "fat": {"status": "complete", "value": 10, "entered": "10", "unit": "gram"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": ["energy_atwater_mismatch"], "errorRules": []}
+    },
+    {
+      "name": "unknown-macro-skips-atwater-check",
+      "input": {
+        "nutrients": {
+          "energy": {"status": "complete", "value": 1000, "entered": "1000", "unit": "kilocalorie"},
+          "protein": {"status": "complete", "value": 10, "entered": "10", "unit": "gram"},
+          "carbohydrate": {"status": "unknown", "unit": "gram"},
+          "fat": {"status": "complete", "value": 10, "entered": "10", "unit": "gram"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "unknown-nutrient-value-is-never-warned",
+      "input": {
+        "nutrients": {
+          "energy": {"status": "unknown", "unit": "kilocalorie"},
+          "protein": {"status": "complete", "value": 10, "entered": "10", "unit": "gram"},
+          "carbohydrate": {"status": "complete", "value": 10, "entered": "10", "unit": "gram"},
+          "fat": {"status": "complete", "value": 10, "entered": "10", "unit": "gram"}
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    }
+  ]
+}

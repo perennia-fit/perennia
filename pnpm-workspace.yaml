@@ -1,0 +1,4 @@
+packages:
+  - apps/server
+  - packages/contract
+  - packages/golden-vectors
