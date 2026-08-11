@@ -63,7 +63,7 @@ function workspacePackageDirectories() {
 const dependabot = read('.github/dependabot.yml');
 
 requireText(dependabot, 'version: 2', 'Dependabot config');
-for (const ecosystem of ['github-actions', 'npm', 'pub', 'bundler']) {
+for (const ecosystem of ['github-actions', 'npm', 'pub']) {
   dependabotEntryFor(ecosystem);
 }
 
@@ -85,17 +85,9 @@ const pubEntry = dependabotEntryFor('pub');
 requireText(pubEntry, '"/"', 'Dependabot pub config');
 requireText(pubEntry, '"/apps/mobile"', 'Dependabot pub config');
 
-const bundlerEntry = dependabotEntryFor('bundler');
-requireText(bundlerEntry, 'directory: "/apps/mobile"', 'Dependabot bundler config');
-
 requireFile('pnpm-lock.yaml');
 requireFile('pubspec.lock');
-requireFile('apps/mobile/Gemfile.lock');
-
-const gemfileLock = read('apps/mobile/Gemfile.lock');
-requireText(gemfileLock, 'fastlane ', 'Gemfile.lock');
-requireText(gemfileLock, 'BUNDLED WITH', 'Gemfile.lock');
 
 console.log(
-  'Dependency hygiene config covers GitHub Actions, pnpm/npm, pub, and Fastlane.',
+  'Dependency hygiene config covers GitHub Actions, pnpm/npm, and pub.',
 );

@@ -85,10 +85,17 @@ test("reviewed cleanup normalizes exercise and decision ids once", () => {
   assert.equal(result.redirects.get("1"), "2");
 });
 
+// The manifest is the provenance record for the bundled Platform Library: it
+// names every exercise excluded or merged during catalogue review. Keeping it in
+// the repository is what makes the shipped seed auditable — this test fails if
+// the seed and the recorded decisions ever disagree.
 test("bundled Platform Library reflects every recorded cleanup outcome", () => {
   const manifest = JSON.parse(
     readFileSync(
-      new URL("../../../analysis/exercises/review_decisions.json", import.meta.url),
+      new URL(
+        "../../../tools/data/platform-exercise-review-decisions.json",
+        import.meta.url,
+      ),
       "utf8",
     ),
   );
