@@ -4,8 +4,9 @@
 mobility, HIIT, and calisthenics — and built from day one so your AI assistant can log
 and read workouts on your behalf.
 
-> **Status: early development.** The design is settled (see roadmap below); the apps are
-> being built. This README describes where the project is going, not a shipped product.
+> **Status: pre-1.0 and unreleased.** The app, server, and agent surface are built and
+> tested, but nothing has shipped to an app store and the API is not yet stable. Expect
+> breaking changes.
 
 ---
 
@@ -58,23 +59,22 @@ The device is a fully functional offline replica. When you sign in, the server b
 the system of record and AI agents and (later) fitness-platform integrations write
 through it; devices stay in sync.
 
-## Roadmap
+## What is built
 
-Development follows a three-rung ladder — **build offline-first, launch AI-native**:
-
-1. **Alpha** — the complete offline logger (logging, routines, interval timer, analytics,
-   backups). No account required.
-2. **Beta** — accounts, cross-device sync, automatic backup, body tracker.
-3. **1.0** — the public agent API and MCP server: *your AI assistant can log your workouts.*
-
-Fitness-platform integrations (trackers), advanced visualizations, goals, and a FitNotes
-importer are planned for after 1.0.
+- **Training**: workouts, sets across any combination of dimensions, exercise groups and
+  rounds, an interval timer, records and analytics computed from raw sets.
+- **Plan layer**: workout templates, routines with optional cadences, capture from a
+  finished workout, an up-next suggestion.
+- **Nutrition**: foods, meals, nutrient targets, and file import from several trackers.
+- **Protocols**: a neutral logbook for supplements and their observed effect on metrics.
+- **Sync**: offline-first replica, delta sync, last-writer-wins with a recoverable
+  activity log.
+- **Agent surface**: the OpenAPI REST API, an in-process MCP server, and agent keys.
 
 ## Self-hosting
 
-Self-hosting will be a supported, developer-grade option (a Docker image + Postgres) for
-contributors and privacy-minded users — the hosted service is the primary way to use the
-app, but you are never locked to it: the mobile app can point at any server.
+Self-hosting is a developer-grade option: a Docker image plus Postgres. The mobile app
+can point at any server — a build carries no default server, so you enter your own.
 
 Server auth uses Better Auth in-process. Set `PUBLIC_SERVER_URL` or
 `BETTER_AUTH_URL` to the public server origin and register these OAuth redirect
@@ -97,8 +97,22 @@ discussions are welcome as the foundations land.
 
 ## License
 
-Perennia application source code is licensed under the GNU Affero General
-Public License v3.0. See [LICENSE](LICENSE).
+Copyright (C) 2026 Leonardo Pinheiro.
+
+The licence depends on where a file lives:
+
+| Path | Licence |
+|---|---|
+| `apps/mobile`, `apps/server`, `sidecars/` | [AGPL-3.0](LICENSE) |
+| `packages/contract` | [Apache-2.0](packages/contract/LICENSE) |
+| `packages/golden-vectors` | [Apache-2.0](packages/golden-vectors/LICENSE) |
+| `examples/` | [Apache-2.0](examples/LICENSE) |
+| `agent-skills/perennia` | [Apache-2.0](agent-skills/perennia/LICENSE) |
+
+The product is copyleft; the interface artifacts a third-party agent or client has
+to consume — the contract, the golden vectors, the examples, and the generated
+command map — are permissive on purpose, so building against Perennia never
+obliges you to open your own client.
 
 The bundled Platform Exercise Library data asset is licensed separately under
 CC-BY-SA 4.0. See
