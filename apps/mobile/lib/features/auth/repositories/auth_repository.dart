@@ -12,9 +12,17 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../../../api/perennia_api_client.dart';
 
+/// The server a fresh install points at before the user chooses one.
+///
+/// Deliberately EMPTY by default. This app is offline-first and account-free,
+/// so an install that has never been signed in has no server — and shipping a
+/// hosted URL compiled into the binary would mean a self-hosted or local-only
+/// build silently contacts infrastructure its user never chose. A distributor
+/// that operates a service injects its own with
+/// `--dart-define=PERENNIA_DEFAULT_SERVER_URL=https://…`; everyone else gets an
+/// empty server field to fill in with their own deployment.
 const defaultAuthServerUrl = String.fromEnvironment(
   'PERENNIA_DEFAULT_SERVER_URL',
-  defaultValue: 'https://open-workout-logger-server.onrender.com',
 );
 const _googleClientId = String.fromEnvironment('GOOGLE_OAUTH_CLIENT_ID');
 const _googleServerClientId = String.fromEnvironment(

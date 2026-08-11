@@ -530,6 +530,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SignInScreen), findsOneWidget);
+    // Prefilled from the build's configured default, which is empty unless a
+    // distributor injected one — a stock build must not suggest a server the
+    // user never chose.
     expect(
       tester
           .widget<TextField>(find.byKey(SignInScreen.serverUrlFieldKey))
@@ -540,7 +543,7 @@ void main() {
   });
 
   testWidgets('Account and app reports the signed-in account', (tester) async {
-    final serverUrl = Uri.parse(defaultAuthServerUrl);
+    final serverUrl = Uri.parse('https://perennia.example.com');
     final session = AuthSession(
       provider: AuthSessionProvider.email,
       serverUrl: serverUrl,
@@ -576,7 +579,7 @@ void main() {
 
   testWidgets('Account and app waits for the live auth state', (tester) async {
     final authRepository = _DeferredAuthRepository();
-    final serverUrl = Uri.parse(defaultAuthServerUrl);
+    final serverUrl = Uri.parse('https://perennia.example.com');
 
     await tester.pumpWidget(
       PerenniaRoot(

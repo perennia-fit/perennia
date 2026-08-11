@@ -32,7 +32,16 @@ const MOBILE = `${ROOT}/apps/mobile`;
 const PG_CONTAINER = 'prn-ci-local-postgres';
 const PG_IMAGE = 'postgres:16-alpine';
 const PG_PORT = 55432; // host port; avoids clashing with any local 5432
-const DATABASE_URL = `postgres://postgres:postgres@localhost:${PG_PORT}/perennia_test`;
+const PG_BOOTSTRAP_DB = 'perennia_test';
+
+// Every DB job gets its OWN database, recreated immediately before it runs.
+// ci.yml declares a `services: postgres` block per job, so on hosted CI each job
+// starts against a virgin database; sharing one locally let rows from an earlier
+// job satisfy — or contradict — a later job's assertions, which is exactly the
+// kind of divergence this script exists to rule out.
+const dbNameFor = (job) => `${PG_BOOTSTRAP_DB}_${job}`;
+const dbUrlFor = (job) =>
+  `postgres://postgres:postgres@localhost:${PG_PORT}/${dbNameFor(job)}`;
 
 // ---- shell helpers ---------------------------------------------------------
 
@@ -157,9 +166,9 @@ const JOBS = {
     paths: JS_PATHS,
     pnpm: true,
     db: true,
-    run: () =>
+    run: (databaseUrl) =>
       run('corepack pnpm js:typecheck') &&
-      run('corepack pnpm js:test', { env: { DATABASE_URL } }),
+      run('corepack pnpm js:test', { env: { DATABASE_URL: databaseUrl } }),
   },
 
   sync: {
@@ -167,8 +176,10 @@ const JOBS = {
     paths: JS_PATHS,
     pnpm: true,
     db: true,
-    run: () =>
-      run('corepack pnpm --filter @perennia/server test:sync-convergence', { env: { DATABASE_URL } }),
+    run: (databaseUrl) =>
+      run('corepack pnpm --filter @perennia/server test:sync-convergence', {
+        env: { DATABASE_URL: databaseUrl },
+      }),
   },
 
   workflow_lint: {
@@ -225,7 +236,7 @@ function startPostgres() {
   const up = run(
     `docker run -d --rm --name ${PG_CONTAINER} ` +
     `-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres ` +
-    `-e POSTGRES_DB=perennia_test -p ${PG_PORT}:5432 ${PG_IMAGE}`,
+    `-e POSTGRES_DB=${PG_BOOTSTRAP_DB} -p ${PG_PORT}:5432 ${PG_IMAGE}`,
   );
   if (!up) throw new Error('Failed to start Postgres container (is Docker running? is the port free?)');
 
@@ -242,7 +253,7 @@ function startPostgres() {
   for (let i = 0; i < 90; i++) {
     // A real query (not just pg_isready) confirms the server is truly serving.
     const ok = capture(
-      `docker exec ${PG_CONTAINER} psql -U postgres -d perennia_test -tAc "select 1"`,
+      `docker exec ${PG_CONTAINER} psql -U postgres -d ${PG_BOOTSTRAP_DB} -tAc "select 1"`,
     ).ok;
     if (ok) {
       consecutive += 1;
@@ -257,6 +268,27 @@ function startPostgres() {
     sleep(500);
   }
   throw new Error('Postgres did not become ready in time');
+}
+
+// Hand a job the equivalent of a freshly provisioned service container: an empty
+// database of its own. Recreating (rather than truncating) keeps this honest as
+// the schema grows — there is no table list to keep in step — and the suites
+// already migrate from empty, because that is what hosted CI hands them.
+function resetDatabase(job) {
+  const db = dbNameFor(job);
+  // FORCE (Postgres 13+) evicts connections a crashed earlier run left behind,
+  // which would otherwise wedge the drop.
+  capture(
+    `docker exec ${PG_CONTAINER} psql -U postgres -d ${PG_BOOTSTRAP_DB} ` +
+    `-c "DROP DATABASE IF EXISTS ${db} WITH (FORCE)"`,
+  );
+  const created = capture(
+    `docker exec ${PG_CONTAINER} psql -U postgres -d ${PG_BOOTSTRAP_DB} ` +
+    `-c "CREATE DATABASE ${db}"`,
+  );
+  if (!created.ok) {
+    throw new Error(`Failed to create a clean database for the ${job} job`);
+  }
 }
 
 function stopPostgres() {
@@ -456,7 +488,8 @@ try {
     console.log(`\n${'═'.repeat(70)}\n▶ ${name} — ${job.title}\n${'═'.repeat(70)}`);
     let outcome;
     try {
-      outcome = job.run();
+      if (job.db) resetDatabase(name);
+      outcome = job.run(job.db ? dbUrlFor(name) : undefined);
     } catch (err) {
       console.error(`  ✖ ${err.message}`);
       outcome = false;
