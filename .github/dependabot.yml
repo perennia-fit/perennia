@@ -18,8 +18,6 @@ updates:
     directories:
       - "/"
       - "/apps/server"
-      - "/apps/web"
-      - "/analysis/exercises/reviewer"
       - "/packages/contract"
       - "/packages/golden-vectors"
     schedule:
@@ -29,9 +27,17 @@ updates:
       timezone: "Australia/Brisbane"
     open-pull-requests-limit: 5
     groups:
+      # Routine updates travel together and are usually mergeable on a green
+      # gate. Majors are excluded deliberately: grouped with a dozen patches, a
+      # single breaking release fails the whole batch and blocks all of it —
+      # which is exactly what a TypeScript major did here. Majors arrive as
+      # their own pull requests, where they can be read and migrated.
       js-workspace:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "pub"
     directories:

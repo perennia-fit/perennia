@@ -100,6 +100,22 @@ Enable the pre-push hook so a red gate cannot leave your machine:
 git config core.hooksPath tools/git-hooks
 ```
 
+## Held dependencies
+
+A few dependencies are pinned to an exact version rather than a range. A pin here
+is deliberate and load-bearing — **a caret range cannot express "hold this back"**,
+because `^1.4.0` still admits `1.5.2`, and pnpm keeps whatever the lockfile
+already resolved. If you widen one of these back to a range, the update returns on
+the next install.
+
+| Package | Pinned at | Why |
+|---|---|---|
+| `@hono/zod-openapi` | `1.4.0` | `1.5.2` collapses type inference through the schema types it re-exports: every `.refine()` callback and MCP tool handler parameter becomes an implicit `any` (214 errors). Unpinning needs a migration, not a version bump. |
+| `pg-boss` | `12.25.1` | It owns the job-queue tables and migrates them on start, so a bump changes a deployed database rather than just code. `deploy-config.test.mjs` asserts the exact version, which is the guard that makes an accidental bump fail loudly. Upgrade it deliberately, with the migration considered, and update that assertion in the same change. |
+
+Dependabot proposes majors as their own pull requests rather than inside the
+grouped routine updates, so a breaking release cannot block a dozen harmless ones.
+
 ## Working on the API
 
 The server is the source of truth for the contract; the clients are generated.
