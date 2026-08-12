@@ -15,24 +15,24 @@
     "test:golden-vectors": "node --import tsx --test test/analytics.golden.test.mjs test/metric-reading-normalization.golden.test.mjs test/agent-validation.golden.test.mjs test/nutrition-analytics.golden.test.mjs"
   },
   "dependencies": {
-    "@better-auth/api-key": "1.6.23",
-    "@hono/mcp": "^0.3.0",
-    "@hono/node-server": "^2.0.8",
-    "@hono/zod-openapi": "^1.4.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@sentry/node": "^10.64.0",
-    "better-auth": "1.6.23",
+    "@better-auth/api-key": "1.6.26",
+    "@hono/mcp": "^0.3.1",
+    "@hono/node-server": "^2.1.0",
+    "@hono/zod-openapi": "^1.5.2",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@sentry/node": "^10.69.0",
+    "better-auth": "1.6.26",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.28",
-    "nodemailer": "9.0.3",
-    "pg-boss": "12.25.1",
+    "hono": "^4.13.1",
+    "nodemailer": "9.0.5",
+    "pg-boss": "12.27.0",
     "pino": "^10.3.1",
     "postgres": "^3.4.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.2.0",
     "drizzle-kit": "^0.31.10",
-    "tsx": "^4.23.0"
+    "tsx": "^4.23.11"
   }
 }
