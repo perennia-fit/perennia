@@ -1,0 +1,61 @@
+name: Bug report
+description: Something behaves differently from how it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not include real training, nutrition, or health data. Describe
+        the shape of the data — "a set with reps but no load" — not its contents.
+
+        For a security problem, use the Security tab instead of this form.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+      placeholder: |
+        1. Opened an exercise with no history
+        2. Tapped Save with an empty load field
+        3. Expected the set to save as completion-only; got a validation error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - Mobile app
+        - Server
+        - Agent API or MCP
+        - Contract or generated clients
+        - Build, tooling, or CI
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The commit SHA you are on, or the app version.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >
+        Platform and OS version. For the app, whether it was signed in and
+        against what kind of server — no account, self-hosted, or hosted.
+      placeholder: Android 15, no account (offline only)
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or stack trace
+      description: Redact anything identifying. This is rendered as code.
+      render: text

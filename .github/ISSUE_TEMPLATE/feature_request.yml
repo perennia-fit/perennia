@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest something the project should be able to do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful requests describe a situation, not a solution. What were
+        you trying to do, and where did the app get in your way?
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: >
+        The situation, in enough detail that someone can picture it. Mid-workout?
+        Reviewing a month later? Driving it from an agent?
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today
+      description: How you work around it now, if you do.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: Optional. A shape for the solution, if you have one.
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      description: >
+        A few properties are load-bearing (see ARCHITECTURE.md). Requests that
+        need one of them broken are usually declined, so it is worth checking.
+      options:
+        - label: This does not require storing a derived value, or blocking a local write on the network
+        - label: This does not require deleting history, or a destructive import
+        - label: This does not require analytics or tracking in the app

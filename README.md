@@ -73,27 +73,33 @@ through it; devices stay in sync.
 
 ## Self-hosting
 
-Self-hosting is a developer-grade option: a Docker image plus Postgres. The mobile app
-can point at any server — a build carries no default server, so you enter your own.
+A Docker image plus Postgres. The app can point at any server — a build carries no
+default server, so you enter your own — and a self-hosted deployment gets the same
+agent API and MCP surface as any other.
 
-Server auth uses Better Auth in-process. Set `PUBLIC_SERVER_URL` or
-`BETTER_AUTH_URL` to the public server origin and register these OAuth redirect
-URIs with the providers:
+See **[docs/self-hosting.md](docs/self-hosting.md)** for the runbook: configuration,
+sign-in providers, migrations, and connecting the app.
 
-- Google: `${PUBLIC_SERVER_URL}/api/auth/callback/google`
-- Apple: `${PUBLIC_SERVER_URL}/api/auth/callback/apple`
+## Documentation
 
-Configure Google with `GOOGLE_OAUTH_CLIENT_ID` and
-`GOOGLE_OAUTH_CLIENT_SECRET`; `GOOGLE_OAUTH_HOSTED_DOMAIN` is optional for a
-Google Workspace hosted-domain restriction. Configure Apple with
-`APPLE_OAUTH_CLIENT_ID` and `APPLE_OAUTH_CLIENT_SECRET`; optionally set
-`APPLE_OAUTH_APP_BUNDLE_IDENTIFIER` and comma-separated `APPLE_OAUTH_AUDIENCE`
-when your Apple setup needs explicit bundle or service audiences.
+| Document | What it covers |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, and the constraints that shape them |
+| [CONTEXT.md](CONTEXT.md) | The vocabulary — the same words in code, API, and UI |
+| [DESIGN.md](DESIGN.md) | The visual design system |
+| [docs/development.md](docs/development.md) | Build and run from source; the CI gate |
+| [docs/self-hosting.md](docs/self-hosting.md) | Running your own server |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | The CLA, the gate, and what a good pull request looks like |
 
 ## Contributing
 
-The project is in early development and not yet ready for broad contribution. Issues and
-discussions are welcome as the foundations land.
+Early days: the foundations are in place, but there is no stable API yet and
+conventions are still settling. Issues and discussions are welcome, and small,
+focused pull requests are easier to accept than large ones while things move.
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) — particularly the section on why
+the CLA's grant is broader than the project's own licence. It is worth reading
+before you sign rather than after.
 
 ## License
 

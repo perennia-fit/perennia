@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/perennia-fit/perennia/security/advisories/new
+    about: Report privately through a security advisory. Never in a public issue.
+  - name: Self-hosting help
+    url: https://github.com/perennia-fit/perennia/blob/main/docs/self-hosting.md
+    about: Deployment, configuration, and connecting the app to your server.
