@@ -1,7 +1,13 @@
 # AGENTS.md — Perennia
 
-Entry point for AI coding agents working in this repository. Read this file first,
-then follow the pointers below before writing any code or docs.
+Entry point for AI coding agents working in this repository, and a fast
+orientation for humans. Read this first, then the pointers below, before writing
+any code or docs.
+
+If you change one thing based on this file, make it this: **the invariants below
+are properties of the shipped code, not aspirations.** Violating one produces a
+bug that looks like a working feature, which is the expensive kind — and the kind
+review is worst at catching.
 
 ## What this project is
 
@@ -21,12 +27,13 @@ and log, never a feature-parity contract or a visual asset source.
    (https://stitch.withgoogle.com/docs/design-md/overview/). **The source of truth
    for all UI styling.** Read it before building or modifying any screen; its YAML
    front matter holds the normative tokens, its prose explains how to apply them.
-3. [CONTRIBUTING.md](CONTRIBUTING.md) — how to get a change merged: the CLA gate,
+3. [ARCHITECTURE.md](ARCHITECTURE.md) — how the pieces fit: the app's layering,
+   the contract spine and what is generated from what, the sync model, and the
+   shared validation module. Deliberately coarse; it describes what stays true.
+4. [CONTRIBUTING.md](CONTRIBUTING.md) — how to get a change merged: the CLA gate,
    running the CI gate locally, and what a reviewable pull request looks like.
-
-The invariants below are the load-bearing rules. They are properties of the
-shipped code, not aspirations — treat a violation as a bug even when the feature
-works.
+5. [docs/development.md](docs/development.md) — building and running the app and
+   server from source, and the gate.
 
 ## Current state
 
