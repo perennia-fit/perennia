@@ -9885,11 +9885,20 @@ class MeasurementRepository {
 
   static const defaultBodyWeightName = 'Body Weight';
   static const defaultBodyFatName = 'Body Fat';
+  static const defaultMeasurementNames = <String>{
+    defaultBodyWeightName,
+    defaultBodyFatName,
+  };
 
   final TrainingRepositories _repositories;
 
   AppDatabase get _database => _repositories.database;
 
+  /// Seeds Body Weight and Body Fat when no active measurement has their
+  /// name. The ids are random, unlike the fixed ids of the other seeded
+  /// entities, so two installs' defaults are different rows; backup restore
+  /// merges them by name and unit instead (see
+  /// `PortableArchiveRepository._adoptLocalDefaultMeasurementIds` for why).
   Future<void> ensureDefaultMeasurements({
     required MeasurementUnit bodyWeightUnit,
     String actor = 'app',

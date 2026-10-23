@@ -6,10 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../theme/theme.dart';
 import '../repositories/settings_repository.dart';
 import '../services/auto_backup_service.dart';
+import 'backup_restore_section.dart';
 import 'settings_shared.dart';
 
 /// Settings → Backup & restore: scheduled encrypted backups to a
-/// user-granted folder.
+/// user-granted folder, and merge-only restore from a backup file.
 class BackupSettingsScreen extends ConsumerWidget {
   const BackupSettingsScreen({super.key});
 
@@ -36,6 +37,8 @@ class BackupSettingsScreen extends ConsumerWidget {
           applySchedule: (nextSettings) =>
               ref.read(autoBackupServiceProvider).applySchedule(nextSettings),
         ),
+        const SizedBox(height: AppDimens.base),
+        const BackupRestoreSection(),
       ],
     );
   }

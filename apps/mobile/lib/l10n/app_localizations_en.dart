@@ -1929,4 +1929,142 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get templateUpdateNoChangesNote => 'No changes to update';
+
+  @override
+  String get activityBackupRestoreActor => 'Backup restore';
+
+  @override
+  String get backupRestoreSectionTitle => 'Restore';
+
+  @override
+  String get backupRestoreDescription =>
+      'Bring in workouts, food, and body readings from a Perennia backup file. Restoring only adds and updates; nothing on this device is erased.';
+
+  @override
+  String get backupRestoreButton => 'Restore from backup';
+
+  @override
+  String get backupRestoreReadingProgress => 'Reading backup…';
+
+  @override
+  String get backupRestoreRestoringProgress => 'Restoring…';
+
+  @override
+  String get backupRestorePassphraseTitle => 'Encrypted backup';
+
+  @override
+  String get backupRestorePassphraseMessage =>
+      'Enter the passphrase this backup was made with.';
+
+  @override
+  String get backupRestorePassphraseLabel => 'Backup passphrase';
+
+  @override
+  String get backupRestorePassphraseRejected =>
+      'That passphrase didn\'t unlock this backup.';
+
+  @override
+  String get backupRestoreUnlockAction => 'Unlock';
+
+  @override
+  String get backupRestoreCancelAction => 'Cancel';
+
+  @override
+  String get backupRestoreConfirmTitle => 'Restore this backup?';
+
+  @override
+  String backupRestoreCreatedAt(String date) {
+    return 'Made $date';
+  }
+
+  @override
+  String backupRestoreWorkoutCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count workouts',
+      one: '1 workout',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupRestoreSetCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sets',
+      one: '1 set',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupRestoreFoodEntryCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count food entries',
+      one: '1 food entry',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupRestoreMetricReadingCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count metric readings',
+      one: '1 metric reading',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get backupRestoreMergeExplanation =>
+      'Restoring adds anything this device is missing. Nothing here is erased: when the backup and this device both have the same item, the more recently edited one is kept. You can undo the restore from Recent activity.';
+
+  @override
+  String get backupRestoreConfirmAction => 'Restore';
+
+  @override
+  String get backupRestoreDoneTitle => 'Backup restored';
+
+  @override
+  String backupRestoreChangedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count items added or updated.',
+      one: '1 item added or updated.',
+      zero: 'Nothing new: this device already had everything in the backup.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String backupRestoreUnchangedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count items were already up to date.',
+      one: '1 item was already up to date.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get backupRestoreDoneAction => 'Done';
+
+  @override
+  String get backupRestoreFailedTitle => 'Couldn\'t restore this backup';
+
+  @override
+  String get backupRestoreUnreadableMessage =>
+      'This file isn\'t a Perennia backup, or it\'s damaged. Nothing on this device was changed.';
+
+  @override
+  String get backupRestoreNewerVersionMessage =>
+      'This backup was made by a newer version of Perennia. Update the app, then try again. Nothing on this device was changed.';
 }

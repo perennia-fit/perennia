@@ -165,6 +165,9 @@ class _ActivityFeedTile extends StatelessWidget {
 
 String _activityActorLabel(AppLocalizations l10n, String actor) {
   const agentPrefix = 'agent:';
+  if (actor == PortableArchiveRepository.importActor) {
+    return l10n.activityBackupRestoreActor;
+  }
   if (actor == 'agent') {
     return l10n.activityAgentActor;
   }
