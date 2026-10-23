@@ -229,7 +229,7 @@ class RoutinePlanRepository {
       ).throwIfRejected();
 
       final beforeCadence = _cadenceFromRow(beforeRoutine);
-      if (_cadencesEqual(beforeCadence, cadence)) {
+      if (cadencesEqual(beforeCadence, cadence)) {
         final result = _validateRoutineCadence(
           cadence,
           slots: entries.map((entry) => entry.slot),
@@ -240,7 +240,7 @@ class RoutinePlanRepository {
 
       final defaultSlots = <String, int?>{
         for (final entry in entries)
-          entry.id: _defaultRoutineEntrySlot(entry.position, cadence),
+          entry.id: defaultRoutineEntrySlot(entry.position, cadence),
       };
       final result = _validateRoutineCadence(
         cadence,
@@ -485,7 +485,7 @@ class RoutinePlanRepository {
     final position = activeEntries.length;
     final resolvedSlot = switch (slotResolution) {
       _RoutineEntrySlotResolution.defaultFromOrder =>
-        requestedSlot ?? _defaultRoutineEntrySlot(position, cadence),
+        requestedSlot ?? defaultRoutineEntrySlot(position, cadence),
       _RoutineEntrySlotResolution.exact => requestedSlot,
     };
     _validateRoutineCadence(
@@ -877,35 +877,6 @@ Cadence? _cadenceFromRow(PlanRoutineRow row) {
 }
 
 enum _RoutineEntrySlotResolution { defaultFromOrder, exact }
-
-bool _cadencesEqual(Cadence? left, Cadence? right) {
-  return left?.kind == right?.kind && left?.window == right?.window;
-}
-
-int? _defaultRoutineEntrySlot(int position, Cadence? cadence) {
-  if (cadence == null) {
-    return null;
-  }
-  final slotCount = cadence.slotCount;
-  if (slotCount < 1) {
-    throw StateError('Cadence must have at least one slot.');
-  }
-  return (position % slotCount) + 1;
-}
-
-int? _reconciledRoutineEntrySlot(
-  int? slot, {
-  required int position,
-  required Cadence? cadence,
-}) {
-  if (cadence == null) {
-    return null;
-  }
-  if (slot != null && slot >= 1 && slot <= cadence.slotCount) {
-    return slot;
-  }
-  return _defaultRoutineEntrySlot(position, cadence);
-}
 
 String _normalizeRoutinePlanName(String name) {
   final normalized = name.trim();

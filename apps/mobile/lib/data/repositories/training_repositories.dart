@@ -12594,8 +12594,8 @@ class ActivityLogRepository {
         final slot = scope.cadenceChangedRoutineIds.contains(routineId) &&
                 !(scope.entryIdsByRoutine[routineId]?.contains(before.id) ??
                     false)
-            ? _defaultRoutineEntrySlot(position, cadence)
-            : _reconciledRoutineEntrySlot(
+            ? defaultRoutineEntrySlot(position, cadence)
+            : reconciledRoutineEntrySlot(
                 before.slot,
                 position: position,
                 cadence: cadence,

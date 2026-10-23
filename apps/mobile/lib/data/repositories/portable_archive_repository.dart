@@ -341,10 +341,10 @@ class PortableArchiveRepository {
         );
       }
       final authoredCadence = authoredCadences[before.routineId];
-      final cadenceMeaningChanged = !_cadencesEqual(authoredCadence, cadence);
+      final cadenceMeaningChanged = !cadencesEqual(authoredCadence, cadence);
       final slot = cadenceMeaningChanged
-          ? _defaultRoutineEntrySlot(before.position, cadence)
-          : _reconciledRoutineEntrySlot(
+          ? defaultRoutineEntrySlot(before.position, cadence)
+          : reconciledRoutineEntrySlot(
               before.slot,
               position: before.position,
               cadence: cadence,
