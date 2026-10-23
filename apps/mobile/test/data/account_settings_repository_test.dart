@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
@@ -117,6 +117,31 @@ void main() {
       await repositories.accountSettings.save(AccountSettings.defaults);
       await repositories.accountSettings.save(AccountSettings.defaults);
 
+      final logRows = await (database.select(database.activityLog)
+            ..where(
+              (row) =>
+                  row.entityTable.equals(AppDatabase.userSettingsTable),
+            ))
+          .get();
+      expect(logRows, hasLength(1));
+    });
+
+    test(
+        'an unchanged save leaves the row untouched even across a second '
+        'boundary', () async {
+      await repositories.accountSettings.save(AccountSettings.defaults);
+      // Stand in for the second save landing a second (or more) later: an
+      // unchanged save must not restamp `updatedAt`, or it logs and syncs as
+      // an edit.
+      final stamped = DateTime.utc(2026, 1, 1, 12);
+      await database
+          .update(database.userSettings)
+          .write(UserSettingsCompanion(updatedAt: Value<DateTime>(stamped)));
+
+      await repositories.accountSettings.save(AccountSettings.defaults);
+
+      final row = await database.select(database.userSettings).getSingle();
+      expect(row.updatedAt.toUtc(), stamped);
       final logRows = await (database.select(database.activityLog)
             ..where(
               (row) =>

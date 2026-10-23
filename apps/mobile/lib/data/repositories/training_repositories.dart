@@ -4784,14 +4784,17 @@ class AccountSettingsRepository {
         return;
       }
 
+      // Compared before writing: the write stamps a fresh `updatedAt`, so an
+      // after-the-write image comparison sees a change whenever two identical
+      // saves straddle a second, and the bumped timestamp would sync as an edit.
+      if (_accountSettingsFromRow(existing) == settings) {
+        return;
+      }
       final before = _userSettingsImage(existing);
       await (_database.update(_database.userSettings)
             ..where((row) => row.id.equals(existing.id)))
           .write(_companionFromSettings(settings, context.timestamp));
       final after = await _requireRow(existing.id);
-      if (_activityImagesEqual(before, _userSettingsImage(after))) {
-        return;
-      }
       await _repositories.activityLog._append(
         context,
         entityTable: AppDatabase.userSettingsTable,
