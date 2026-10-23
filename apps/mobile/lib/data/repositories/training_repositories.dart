@@ -183,6 +183,20 @@ class TrainingRepositories {
   late final PortableArchiveRepository portableArchives;
 
   static const starterWeightRepsExerciseName = 'Barbell Squat';
+
+  static const _starterWeightRepsValues = <SetDimensionValue>[
+    SetDimensionValue(
+      dimension: DimensionId.load,
+      entered: '100',
+      unit: TrainingUnit.kilogram,
+    ),
+    SetDimensionValue(
+      dimension: DimensionId.reps,
+      entered: '5',
+      unit: TrainingUnit.repetition,
+    ),
+  ];
+
   static const starterTimedExerciseName = 'Plank';
 
   Future<List<ExerciseRecord>> ensureStarterExercises({
@@ -222,18 +236,7 @@ class TrainingRepositories {
           exerciseId: exercise.id,
           position: existingSets.length,
           values: LoggedSet.fromValues(
-            const <SetDimensionValue>[
-              SetDimensionValue(
-                dimension: DimensionId.load,
-                entered: '100',
-                unit: TrainingUnit.kilogram,
-              ),
-              SetDimensionValue(
-                dimension: DimensionId.reps,
-                entered: '5',
-                unit: TrainingUnit.repetition,
-              ),
-            ],
+            _starterWeightRepsValues,
           ),
         ),
         context,
@@ -499,18 +502,7 @@ class TrainingRepositories {
       orElse: () => exercises.firstWhere(
         (exercise) => exercise.type.accepts(
           LoggedSet.fromValues(
-            const <SetDimensionValue>[
-              SetDimensionValue(
-                dimension: DimensionId.load,
-                entered: '100',
-                unit: TrainingUnit.kilogram,
-              ),
-              SetDimensionValue(
-                dimension: DimensionId.reps,
-                entered: '5',
-                unit: TrainingUnit.repetition,
-              ),
-            ],
+            _starterWeightRepsValues,
           ),
         ),
       ),
@@ -749,17 +741,24 @@ class CatalogRepository {
     PlatformExerciseSeed seed,
     _WriteContext context,
   ) async {
+    final platformRows = await (_database.select(_database.exercises)
+          ..where(
+            (row) =>
+                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name),
+          ))
+        .get();
+    final platformRowsById = <String, ExerciseRow>{
+      for (final row in platformRows) row.id: row,
+    };
     for (final exercise in seed.exercises) {
       if (exercise.equipment.isEmpty) {
         continue;
       }
 
-      final before = await (_database.select(_database.exercises)
-            ..where((row) => row.id.equals(exercise.id)))
-          .getSingleOrNull();
-      if (before == null ||
-          before.libraryOrigin != ExerciseLibraryOrigin.platform.name ||
-          _decodeEquipment(before.equipmentIds).isNotEmpty) {
+      // Removed on use so a repeated seed id sees no row, as a re-read of the
+      // just-written row would have skipped it.
+      final before = platformRowsById.remove(exercise.id);
+      if (before == null || _decodeEquipment(before.equipmentIds).isNotEmpty) {
         continue;
       }
 
@@ -785,12 +784,16 @@ class CatalogRepository {
   Future<void> _sanitizeLegacyWgerAttributionNotes(
     _WriteContext context,
   ) async {
-    final rows = await _database.select(_database.exercises).get();
+    // Only platform rows whose note still carries the legacy prefix can
+    // change; everything else would be read and decoded on every launch.
+    final rows = await (_database.select(_database.exercises)
+          ..where(
+            (row) =>
+                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name) &
+                row.notes.like('$_legacyWgerAttributionPrefix%'),
+          ))
+        .get();
     for (final before in rows) {
-      if (before.libraryOrigin != ExerciseLibraryOrigin.platform.name) {
-        continue;
-      }
-
       final migration = _legacyEquipmentMigrationFromNote(before.notes);
       final cleanedNote = migration != null
           ? migration.notes
@@ -1151,7 +1154,7 @@ class CatalogRepository {
 
     return _database.transaction(() async {
       final id = _activityRequiredString(image, 'id');
-      final localBeforeImage = await _catalogSyncImageFor(
+      final localBeforeImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -1175,7 +1178,7 @@ class CatalogRepository {
               );
       }
 
-      final localAfterImage = await _catalogSyncImageFor(
+      final localAfterImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -1198,29 +1201,6 @@ class CatalogRepository {
     });
   }
 
-  Future<Map<String, Object?>?> _catalogSyncImageFor({
-    required String entityTable,
-    required String entityId,
-  }) async {
-    switch (entityTable) {
-      case AppDatabase.exerciseCategoriesTable:
-        final row = await (_database.select(_database.exerciseCategories)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _exerciseCategoryImage(row);
-      case AppDatabase.exercisesTable:
-        final row = await (_database.select(_database.exercises)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _exerciseImage(row);
-      default:
-        throw ArgumentError.value(
-          entityTable,
-          'entityTable',
-          'Unsupported catalog sync entity.',
-        );
-    }
-  }
 
   Future<String> _createCategory(
     ExerciseCategoryDraft draft,
@@ -1233,7 +1213,7 @@ class CatalogRepository {
           ExerciseCategoriesCompanion.insert(
             id: id,
             name: _normalizeCategoryNameForStorage(draft.name),
-            sortOrder: _nextSortOrder(activeRows),
+            sortOrder: _nextPosition(activeRows, (row) => row.sortOrder),
             colorHex: _normalizeColorHex(
               draft.colorHex ?? _nextCategoryColor(activeRows.length),
             ),
@@ -1270,12 +1250,15 @@ class CatalogRepository {
   }
 
   Future<int> _activeCategoryMemberCount(String categoryId) async {
-    final rows = await (_database.select(_database.exercises)
-          ..where(
-            (row) => row.deletedAt.isNull() & row.categoryId.equals(categoryId),
-          ))
-        .get();
-    return rows.length;
+    final count = countAll();
+    final query = _database.selectOnly(_database.exercises)
+      ..addColumns([count])
+      ..where(
+        _database.exercises.deletedAt.isNull() &
+            _database.exercises.categoryId.equals(categoryId),
+      );
+    final row = await query.getSingle();
+    return row.read(count) ?? 0;
   }
 }
 
@@ -1966,7 +1949,7 @@ class WorkoutSessionRepository {
       actor: actor,
       batchId: batchId,
     );
-    final normalizedComment = _normalizeWorkoutComment(comment);
+    final normalizedComment = _normalizeOptionalText(comment);
 
     return _database.transaction(() async {
       final before = await _requireRow(id);
@@ -2339,7 +2322,7 @@ class WorkoutSessionRepository {
             timezone: draft.timezone,
             localDate: Value<String>(localDate.storageValue),
             endedAt: Value<DateTime?>(draft.endedAt?.toUtc()),
-            comment: Value<String?>(_normalizeWorkoutComment(draft.comment)),
+            comment: Value<String?>(_normalizeOptionalText(draft.comment)),
             updatedAt: context.timestamp,
           ),
         );
@@ -2811,7 +2794,7 @@ class NutritionRepository {
 
     return _database.transaction(() async {
       final id = _activityRequiredString(image, 'id');
-      final localBeforeImage = await _nutritionSyncImageFor(
+      final localBeforeImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -2854,7 +2837,7 @@ class NutritionRepository {
               );
       }
 
-      final localAfterImage = await _nutritionSyncImageFor(
+      final localAfterImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -2890,44 +2873,6 @@ class NutritionRepository {
     return _database.transaction(() => _createMeal(draft, context));
   }
 
-  Future<Map<String, Object?>?> _nutritionSyncImageFor({
-    required String entityTable,
-    required String entityId,
-  }) async {
-    switch (entityTable) {
-      case AppDatabase.mealsTable:
-        final row = await (_database.select(_database.meals)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _mealImage(row);
-      case AppDatabase.foodEntriesTable:
-        final row = await (_database.select(_database.foodEntries)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _foodEntryImage(row);
-      case AppDatabase.nutritionGoalsTable:
-        final row = await (_database.select(_database.nutritionGoals)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _nutritionGoalImage(row);
-      case AppDatabase.foodsTable:
-        final row = await (_database.select(_database.foods)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _foodImage(row);
-      case AppDatabase.mealTypesTable:
-        final row = await (_database.select(_database.mealTypes)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _mealTypeImage(row);
-      default:
-        throw ArgumentError.value(
-          entityTable,
-          'entityTable',
-          'Unsupported nutrition sync entity.',
-        );
-    }
-  }
 
   Future<void> ensureDefaultMealTypes({
     String actor = 'app',
@@ -5300,7 +5245,7 @@ class ProtocolsRepository {
 
     return _database.transaction(() async {
       final id = _activityRequiredString(image, 'id');
-      final localBeforeImage = await _protocolsSyncImageFor(
+      final localBeforeImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -5354,7 +5299,7 @@ class ProtocolsRepository {
               );
       }
 
-      final localAfterImage = await _protocolsSyncImageFor(
+      final localAfterImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -5377,49 +5322,6 @@ class ProtocolsRepository {
     });
   }
 
-  Future<Map<String, Object?>?> _protocolsSyncImageFor({
-    required String entityTable,
-    required String entityId,
-  }) async {
-    switch (entityTable) {
-      case AppDatabase.compoundsTable:
-        final row = await (_database.select(_database.compounds)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _compoundImage(row);
-      case AppDatabase.dosesTable:
-        final row = await (_database.select(_database.doses)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _doseImage(row);
-      case AppDatabase.protocolsTable:
-        final row = await (_database.select(_database.protocols)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _protocolImage(row);
-      case AppDatabase.protocolCompoundsTable:
-        final row = await (_database.select(_database.protocolCompounds)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _protocolCompoundImage(row);
-      case AppDatabase.schedulesTable:
-        final row = await (_database.select(_database.schedules)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _scheduleImage(row);
-      case AppDatabase.protocolTargetOutcomesTable:
-        final row = await (_database.select(_database.protocolTargetOutcomes)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _protocolTargetOutcomeImage(row);
-      default:
-        throw ArgumentError.value(
-          entityTable,
-          'entityTable',
-          'Unsupported protocols sync entity.',
-        );
-    }
-  }
 
   Future<String> _createCompound(
     CompoundDraft draft,
@@ -5862,7 +5764,7 @@ class ProtocolsRepository {
   /// history view. A Compound with no Doses never appears; an archived
   /// Compound is excluded (mirrors [watchCompounds]).
   Future<List<CompoundRecord>> recentCompounds({int limit = 5}) async {
-    final rows = await _recentCompoundRows(limit: limit);
+    final rows = await _recentCompoundQuery(limit: limit).get();
     return rows.map(_compoundFromRow).toList(growable: false);
   }
 
@@ -5888,11 +5790,7 @@ class ProtocolsRepository {
   Stream<List<String>> watchRecentCompoundIds({int limit = 5}) {
     return _recentCompoundIdQuery(limit: limit)
         .watch()
-        .distinct(_sameStringList);
-  }
-
-  Future<List<CompoundRow>> _recentCompoundRows({required int limit}) {
-    return _recentCompoundQuery(limit: limit).get();
+        .distinct(_sameRowList);
   }
 
   Selectable<String> _recentCompoundIdQuery({required int limit}) {
@@ -7377,27 +7275,13 @@ class ProtocolsRepository {
     );
   }
 
-  bool _sameStringSet(Set<String> left, Set<String> right) {
-    return left.length == right.length && left.containsAll(right);
-  }
 
-  bool _sameStringList(List<String> left, List<String> right) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (left[index] != right[index]) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   bool _sameCompoundOptionRecords(
     List<CompoundOptionRecord> left,
     List<CompoundOptionRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameCompoundOptionRecord);
+    return _sameListBy(left, right, _sameCompoundOptionRecord);
   }
 
   bool _sameCompoundOptionRecord(
@@ -7411,7 +7295,7 @@ class ProtocolsRepository {
     List<CompoundScheduleOptionRecord> left,
     List<CompoundScheduleOptionRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameCompoundScheduleOptionRecord);
+    return _sameListBy(left, right, _sameCompoundScheduleOptionRecord);
   }
 
   bool _sameCompoundScheduleOptionRecord(
@@ -7428,7 +7312,7 @@ class ProtocolsRepository {
     List<ProtocolOptionRecord> left,
     List<ProtocolOptionRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolOptionRecord);
+    return _sameListBy(left, right, _sameProtocolOptionRecord);
   }
 
   bool _sameProtocolOptionRecord(
@@ -7442,7 +7326,7 @@ class ProtocolsRepository {
     List<ProtocolSummaryRecord> left,
     List<ProtocolSummaryRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolSummaryRecord);
+    return _sameListBy(left, right, _sameProtocolSummaryRecord);
   }
 
   bool _sameProtocolSummaryRecord(
@@ -7453,14 +7337,14 @@ class ProtocolsRepository {
         left.name == right.name &&
         left.startDate == right.startDate &&
         left.endDate == right.endDate &&
-        _sameStringList(left.compoundIds, right.compoundIds);
+        _sameRowList(left.compoundIds, right.compoundIds);
   }
 
   bool _sameProtocolEffectOptionRecords(
     List<ProtocolEffectOptionRecord> left,
     List<ProtocolEffectOptionRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolEffectOptionRecord);
+    return _sameListBy(left, right, _sameProtocolEffectOptionRecord);
   }
 
   bool _sameProtocolEffectOptionRecord(
@@ -7499,7 +7383,7 @@ class ProtocolsRepository {
     List<ProtocolMemberRecord> left,
     List<ProtocolMemberRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolMemberRecord);
+    return _sameListBy(left, right, _sameProtocolMemberRecord);
   }
 
   bool _sameProtocolMemberRecord(
@@ -7534,7 +7418,7 @@ class ProtocolsRepository {
     List<ProtocolTargetOutcomeRecord> left,
     List<ProtocolTargetOutcomeRecord> right,
   ) {
-    return _sameProtocolList(left, right, _sameProtocolTargetOutcomeRecord);
+    return _sameListBy(left, right, _sameProtocolTargetOutcomeRecord);
   }
 
   bool _sameProtocolTargetOutcomeRecord(
@@ -7547,21 +7431,6 @@ class ProtocolsRepository {
         left.position == right.position;
   }
 
-  bool _sameProtocolList<T>(
-    List<T> left,
-    List<T> right,
-    bool Function(T left, T right) equals,
-  ) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!equals(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   Future<ProtocolRow> _requireProtocolRow(String id) async {
     final row = await (_database.select(_database.protocols)
@@ -7948,11 +7817,11 @@ class WorkoutExerciseRepository {
         context,
       );
 
-      final sets = await _repositories.sets
-          ._activeLoggedSetQuery(workoutId: before.workoutId)
+      final sets = await (_repositories.sets
+            ._activeLoggedSetQuery(workoutId: before.workoutId)
+          ..where((row) => row.exerciseId.equals(before.exerciseId)))
           .get();
-      for (final set
-          in sets.where((row) => row.exerciseId == before.exerciseId)) {
+      for (final set in sets) {
         await _repositories.workoutSessions._softDeleteLoggedSet(set, context);
       }
     });
@@ -8088,7 +7957,7 @@ class WorkoutExerciseRepository {
             id: id,
             workoutId: draft.workoutId,
             exerciseId: draft.exerciseId,
-            position: _nextWorkoutExercisePosition(activeRows),
+            position: _nextPosition(activeRows, (row) => row.position),
             updatedAt: context.timestamp,
           ),
         );
@@ -8817,7 +8686,7 @@ class ExerciseGroupRepository {
             workoutId: draft.workoutId,
             name: _normalizeGroupNameForStorage(draft.name),
             colorHex: _normalizeColorHex(draft.colorHex),
-            position: _nextExerciseGroupPosition(activeGroups),
+            position: _nextPosition(activeGroups, (row) => row.position),
             updatedAt: context.timestamp,
           ),
         );
@@ -9519,7 +9388,7 @@ class LoggedSetRepository {
 
     return _database.transaction(() async {
       final before = await _requireRow(id);
-      final normalizedComment = _normalizeSetComment(comment);
+      final normalizedComment = _normalizeOptionalText(comment);
       final normalizedSide = side?.name;
       final validation = await _validateValuesForExercise(
         exerciseId: before.exerciseId,
@@ -9528,11 +9397,10 @@ class LoggedSetRepository {
         side: normalizedSide,
       );
       validation.throwIfRejected();
-      final normalizedRpe = _normalizeRpe(rpe);
 
       if (before.comment == normalizedComment &&
           before.side == normalizedSide &&
-          before.rpe == normalizedRpe) {
+          before.rpe == rpe) {
         return;
       }
 
@@ -9542,7 +9410,7 @@ class LoggedSetRepository {
         LoggedSetsCompanion(
           comment: Value<String?>(normalizedComment),
           side: Value<String?>(normalizedSide),
-          rpe: Value<double?>(normalizedRpe),
+          rpe: Value<double?>(rpe),
           updatedAt: Value<DateTime>(context.timestamp),
         ),
       );
@@ -9618,20 +9486,6 @@ class LoggedSetRepository {
         afterImage: _loggedSetImage(after),
       );
     });
-  }
-
-  Future<void> markComplete(
-    String id, {
-    required bool isCompleted,
-    String actor = 'app',
-    String? batchId,
-  }) {
-    return setCompleted(
-      id,
-      isCompleted: isCompleted,
-      actor: actor,
-      batchId: batchId,
-    );
   }
 
   Future<void> reorderForWorkoutExercise({
@@ -9798,18 +9652,6 @@ class LoggedSetRepository {
     );
   }
 
-  Future<LoggedSetRecord?> findLatestPriorForExerciseBefore({
-    required String exerciseId,
-    required DateTime beforeStartedAt,
-    required List<DimensionId> dimensions,
-  }) {
-    return _findLatestPriorForExercise(
-      exerciseId: exerciseId,
-      beforeStartedAt: beforeStartedAt,
-      dimensions: dimensions,
-    );
-  }
-
   Future<LoggedSetRecord?> _findLatestPriorForExercise({
     required String exerciseId,
     required DateTime beforeStartedAt,
@@ -9958,9 +9800,9 @@ class LoggedSetRepository {
             columns: columns,
             plannedRestAfter: draft.plannedRestAfter,
             performedAt: draft.performedAt ?? context.timestamp,
-            comment: _normalizeSetComment(draft.comment),
+            comment: _normalizeOptionalText(draft.comment),
             side: draft.side,
-            rpe: _normalizeRpe(draft.rpe),
+            rpe: draft.rpe,
             updatedAt: context.timestamp,
           ),
         );
@@ -10108,11 +9950,6 @@ class MeasurementRepository {
     return rows.map(_measurementRecordFromMetricRow).toList(growable: false);
   }
 
-  Future<List<MeasurementRecord>> listCuratedActive() async {
-    final rows = await _curatedMeasurementQuery().get();
-    return rows.map(_measurementRecordFromMetricRow).toList(growable: false);
-  }
-
   Stream<List<MeasurementRecord>> watchCuratedActive() async* {
     List<MeasurementRecord>? lastEmitted;
 
@@ -10196,29 +10033,32 @@ class MeasurementRepository {
         row.id: _measurementRecordFromMetricRow(row),
     };
 
-    final rowsByMeasurementId = <String, List<MetricReadingRow>>{};
+    final entriesByMeasurementId = <String, List<MeasurementEntryRecord>>{};
     for (final row in rows) {
-      rowsByMeasurementId.putIfAbsent(row.metricId, () => []).add(row);
+      if (measurementsById.containsKey(row.metricId)) {
+        entriesByMeasurementId
+            .putIfAbsent(row.metricId, () => [])
+            .add(_measurementEntryRecordFromMetricReadingRow(row));
+      }
     }
+    // Each measurement's entries appear in `rows` order, so a per-measurement
+    // cursor finds a row's own entry and its predecessor without a search.
+    final nextIndexByMeasurementId = <String, int>{};
     final history = <MeasurementHistoryEntry>[];
     for (final row in rows) {
       final measurement = measurementsById[row.metricId];
       if (measurement == null) {
         continue;
       }
-      final measurementRows = rowsByMeasurementId[row.metricId]!;
-      final index = measurementRows.indexWhere((entry) => entry.id == row.id);
-      final previousEntry = index == -1 || index + 1 >= measurementRows.length
-          ? null
-          : _measurementEntryRecordFromMetricReadingRow(
-              measurementRows[index + 1],
-            );
+      final entries = entriesByMeasurementId[row.metricId]!;
+      final index = nextIndexByMeasurementId[row.metricId] ?? 0;
+      nextIndexByMeasurementId[row.metricId] = index + 1;
 
       history.add(
         MeasurementHistoryEntry(
           measurement: measurement,
-          entry: _measurementEntryRecordFromMetricReadingRow(row),
-          previousEntry: previousEntry,
+          entry: entries[index],
+          previousEntry: index + 1 < entries.length ? entries[index + 1] : null,
         ),
       );
     }
@@ -10266,7 +10106,7 @@ class MeasurementRepository {
     void watchEntriesFor(List<MetricRow> measurements) {
       final measurementIds =
           measurements.map((row) => row.id).toList(growable: false);
-      if (_sameMeasurementIdList(watchedMeasurementIds, measurementIds)) {
+      if (_sameRowList(watchedMeasurementIds, measurementIds)) {
         emitIfReady();
         return;
       }
@@ -10401,7 +10241,7 @@ class MeasurementRepository {
     void watchEntriesFor(List<MetricRow> measurements) {
       final measurementIds =
           measurements.map((row) => row.id).toList(growable: false);
-      if (_sameMeasurementIdList(watchedMeasurementIds, measurementIds)) {
+      if (_sameRowList(watchedMeasurementIds, measurementIds)) {
         emitIfReady();
         return;
       }
@@ -10509,45 +10349,21 @@ class MeasurementRepository {
     List<MeasurementHistoryEntry>? left,
     List<MeasurementHistoryEntry> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMeasurementHistoryEntry(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMeasurementHistoryEntry);
   }
 
   bool _sameMeasurementRecords(
     List<MeasurementRecord>? left,
     List<MeasurementRecord> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMeasurementRecord(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMeasurementRecord);
   }
 
   bool _sameMeasurementTrackSummaries(
     List<MeasurementTrackSummary>? left,
     List<MeasurementTrackSummary> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMeasurementTrackSummary(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMeasurementTrackSummary);
   }
 
   bool _sameMeasurementTrackSummary(
@@ -10615,17 +10431,6 @@ class MeasurementRepository {
     return _sameMeasurementEntryRecord(left, right);
   }
 
-  bool _sameMeasurementIdList(List<String> left, List<String> right) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (left[index] != right[index]) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   bool _sameMeasurementEntryRecord(
     MeasurementEntryRecord left,
@@ -10654,7 +10459,8 @@ class MeasurementRepository {
       final activeRows = await _manageableMeasurementQuery().get();
       return _createMeasurementMetric(
         draft.copyWith(
-          sortOrder: draft.sortOrder ?? _nextMeasurementSortOrder(activeRows),
+          sortOrder: draft.sortOrder ??
+              _nextPosition(activeRows, (row) => row.sortOrder),
         ),
         context,
       );
@@ -10800,7 +10606,7 @@ class MeasurementRepository {
     MeasurementEntryDraft draft, {
     String actor = 'app',
   }) async {
-    final comment = _normalizeMeasurementComment(draft.comment);
+    final comment = _normalizeOptionalText(draft.comment);
 
     final measurement = await _requireActiveMeasurement(draft.measurementId);
     final validation = _validateMeasurementEntryValue(
@@ -10824,7 +10630,7 @@ class MeasurementRepository {
     MeasurementEntryDraft draft, {
     String actor = 'app',
   }) async {
-    final comment = _normalizeMeasurementComment(draft.comment);
+    final comment = _normalizeOptionalText(draft.comment);
     final measurement = await _requireActiveMeasurement(draft.measurementId);
     final validation = _validateMeasurementEntryValue(
       draft,
@@ -10847,27 +10653,7 @@ class MeasurementRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
-
-    return _database.transaction(() async {
-      final before = await _requireActiveEntryRow(id);
-      await (_database.update(_database.metricReadings)
-            ..where((row) => row.id.equals(id)))
-          .write(
-        MetricReadingsCompanion(
-          updatedAt: Value<DateTime>(context.timestamp),
-          deletedAt: Value<DateTime?>(context.timestamp),
-        ),
-      );
-      final after = await _requireEntryRow(id);
-      await _repositories.activityLog._append(
-        context,
-        entityTable: AppDatabase.metricReadingsTable,
-        entityId: id,
-        beforeImage: _metricReadingImage(before),
-        afterImage: _metricReadingImage(after),
-      );
-    });
+    return _repositories.metrics.softDeleteReading(id, actor: actor);
   }
 
   Future<MeasurementValueValidation> validateEntry(
@@ -11002,25 +10788,7 @@ class MeasurementRepository {
     return row;
   }
 
-  Future<MetricReadingRow> _requireEntryRow(String id) async {
-    final row = await (_database.select(_database.metricReadings)
-          ..where((row) => row.id.equals(id)))
-        .getSingleOrNull();
-    if (row == null) {
-      throw StateError('Measurement entry not found: $id.');
-    }
-    return row;
-  }
 
-  Future<MetricReadingRow> _requireActiveEntryRow(String id) async {
-    final row = await (_database.select(_database.metricReadings)
-          ..where((row) => row.id.equals(id) & row.deletedAt.isNull()))
-        .getSingleOrNull();
-    if (row == null) {
-      throw StateError('Measurement entry not found: $id.');
-    }
-    return row;
-  }
 
   SimpleSelectStatement<$MetricsTable, MetricRow>
       _manageableMeasurementQuery() {
@@ -11110,15 +10878,6 @@ class MeasurementRepository {
     );
   }
 
-  int _nextMeasurementSortOrder(List<MetricRow> rows) {
-    var next = 0;
-    for (final row in rows) {
-      if (row.sortOrder >= next) {
-        next = row.sortOrder + 1;
-      }
-    }
-    return next;
-  }
 
   MeasurementRecord _measurementRecordFromMetricRow(MetricRow row) {
     return MeasurementRecord(
@@ -11198,11 +10957,6 @@ class MetricRepository {
 
   AppDatabase get _database => _repositories.database;
 
-  @Deprecated('Demo monitoring seed data is no longer ingested.')
-  Future<void> ensureDefaultMonitoringReadings({
-    String actor = 'integration-seed',
-  }) async {}
-
   Future<List<MetricRecord>> listActive() async {
     final rows = await _activeMetricQuery().get();
     return rows.map(_metricRecordFromRow).toList(growable: false);
@@ -11249,7 +11003,8 @@ class MetricRepository {
       final activeRows = await _activeMetricQuery().get();
       return _createMetric(
         draft.copyWith(
-          sortOrder: draft.sortOrder ?? _nextMetricSortOrder(activeRows),
+          sortOrder: draft.sortOrder ??
+              _nextPosition(activeRows, (row) => row.sortOrder),
         ),
         context,
       );
@@ -11519,30 +11274,11 @@ class MetricRepository {
     DateTime? from,
     DateTime? to,
   }) {
-    final query = _database.select(_database.metricReadings)
-      ..where(
-        (row) => row.deletedAt.isNull() & row.metricId.equals(metricId),
-      );
-    if (from != null) {
-      query.where(
-        (row) =>
-            row.atTime.isBiggerOrEqualValue(from) |
-            row.windowEndedAt.isBiggerOrEqualValue(from),
-      );
-    }
-    if (to != null) {
-      query.where(
-        (row) =>
-            row.atTime.isSmallerThanValue(to) |
-            row.windowStartedAt.isSmallerThanValue(to),
-      );
-    }
-    return query
-      ..orderBy([
-        (row) => OrderingTerm.asc(row.atTime),
-        (row) => OrderingTerm.asc(row.windowEndedAt),
-        (row) => OrderingTerm.asc(row.id),
-      ]);
+    return _enabledMetricSeriesReadingRows(
+      <String>[metricId],
+      from: from,
+      to: to,
+    );
   }
 
   SimpleSelectStatement<$MetricReadingsTable, MetricReadingRow>
@@ -11675,7 +11411,7 @@ class MetricRepository {
 
     void watchReadingsFor(List<MetricRow> metricRows) {
       final metricIds = metricRows.map((row) => row.id).toList(growable: false);
-      if (_sameStringList(watchedMetricIds, metricIds)) {
+      if (_sameRowList(watchedMetricIds, metricIds)) {
         emitIfReady();
         return;
       }
@@ -11742,22 +11478,15 @@ class MetricRepository {
     DateTime? to,
   }) async {
     final metricRows = await _monitoringMetricQuery().get();
-    final series = <MetricSeriesData>[];
-    for (final metricRow in metricRows) {
-      final readings = await _metricSeriesReadingRows(
-        metricRow.id,
-        from: from,
-        to: to,
-      ).get();
-      series.add(
-        MetricSeriesData(
-          metric: _metricRecordFromRow(metricRow),
-          readings:
-              readings.map(_metricReadingRecordFromRow).toList(growable: false),
-        ),
-      );
+    if (metricRows.isEmpty) {
+      return const <MetricSeriesData>[];
     }
-    return List<MetricSeriesData>.unmodifiable(series);
+    final readingRows = await _enabledMetricSeriesReadingRows(
+      metricRows.map((row) => row.id).toList(growable: false),
+      from: from,
+      to: to,
+    ).get();
+    return _metricSeriesDataListFromRows(metricRows, readingRows);
   }
 
   /// Reactive [listEnabledMetricSeries] — re-emits when a metric or Reading
@@ -11794,7 +11523,7 @@ class MetricRepository {
 
     void watchReadingsFor(List<MetricRow> metricRows) {
       final metricIds = metricRows.map((row) => row.id).toList(growable: false);
-      if (_sameStringList(watchedMetricIds, metricIds)) {
+      if (_sameRowList(watchedMetricIds, metricIds)) {
         emitIfReady();
         return;
       }
@@ -11865,7 +11594,7 @@ class MetricRepository {
 
     return _database.transaction(() async {
       final id = _activityRequiredString(image, 'id');
-      final localBeforeImage = await _metricSyncImageFor(
+      final localBeforeImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -11887,7 +11616,7 @@ class MetricRepository {
               );
       }
 
-      final localAfterImage = await _metricSyncImageFor(
+      final localAfterImage = await _repositories.activityLog._currentImageFor(
         entityTable: entityTable,
         entityId: id,
       );
@@ -12004,8 +11733,11 @@ class MetricRepository {
 
     return _database.transaction(() async {
       final ids = <String>[];
+      // A batch spans few metrics and never writes them, so look each up once.
+      final metricsById = <String, MetricRow>{};
       for (final draft in drafts) {
-        final metric = await _requireActiveMetric(draft.metricId);
+        final metric = metricsById[draft.metricId] ??=
+            await _requireActiveMetric(draft.metricId);
         final normalized = _normalizeIntegrationReadingDraft(
           draft,
           metric: metric,
@@ -12281,25 +12013,6 @@ class MetricRepository {
       ..limit(1);
   }
 
-  Future<Map<String, Object?>?> _metricSyncImageFor({
-    required String entityTable,
-    required String entityId,
-  }) async {
-    switch (entityTable) {
-      case AppDatabase.metricsTable:
-        final row = await (_database.select(_database.metrics)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _metricImage(row);
-      case AppDatabase.metricReadingsTable:
-        final row = await (_database.select(_database.metricReadings)
-              ..where((row) => row.id.equals(entityId)))
-            .getSingleOrNull();
-        return row == null ? null : _metricReadingImage(row);
-      default:
-        return null;
-    }
-  }
 
   SimpleSelectStatement<$MetricReadingsTable, MetricReadingRow>
       _latestMetricReadingRows(
@@ -12381,15 +12094,7 @@ class MetricRepository {
     List<MetricOptionRecord>? left,
     List<MetricOptionRecord> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMetricOptionRecord(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMetricOptionRecord);
   }
 
   bool _sameMetricOptionRecord(
@@ -12403,15 +12108,7 @@ class MetricRepository {
     List<MetricSummary>? left,
     List<MetricSummary> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMetricSummary(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMetricSummary);
   }
 
   bool _sameMetricSummary(MetricSummary left, MetricSummary right) {
@@ -12430,15 +12127,7 @@ class MetricRepository {
     List<MonitoringMetricSummary>? left,
     List<MonitoringMetricSummary> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMonitoringMetricSummary(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMonitoringMetricSummary);
   }
 
   bool _sameMonitoringMetricSummary(
@@ -12499,15 +12188,7 @@ class MetricRepository {
     List<MetricReadingRecord> left,
     List<MetricReadingRecord> right,
   ) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMetricReadingRecord(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMetricReadingRecord);
   }
 
   bool _sameMetricReadingRecord(
@@ -12557,28 +12238,9 @@ class MetricRepository {
     List<MetricSeriesData>? left,
     List<MetricSeriesData> right,
   ) {
-    if (left == null || left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (!_sameMetricSeriesData(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
+    return _sameListBy(left, right, _sameMetricSeriesData);
   }
 
-  bool _sameStringList(List<String> left, List<String> right) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index += 1) {
-      if (left[index] != right[index]) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   MetricDraft _normalizeMetricDraft(MetricDraft draft) {
     final name = draft.name.trim();
@@ -12746,15 +12408,6 @@ class MetricRepository {
     );
   }
 
-  int _nextMetricSortOrder(List<MetricRow> rows) {
-    var next = 0;
-    for (final row in rows) {
-      if (row.sortOrder >= next) {
-        next = row.sortOrder + 1;
-      }
-    }
-    return next;
-  }
 }
 
 class ActivityLogRepository {
@@ -12775,12 +12428,6 @@ class ActivityLogRepository {
       newestFirst: true,
     ).get();
     return rows.map(_activityLogEntryFromRow).toList(growable: false);
-  }
-
-  Stream<List<ActivityLogEntry>> watchEntries() {
-    return _activityLogQuery().watch().map(
-          (rows) => rows.map(_activityLogEntryFromRow).toList(growable: false),
-        );
   }
 
   Stream<List<ActivityLogEntry>> watchEntriesSince(DateTime cutoff) {
@@ -15166,6 +14813,26 @@ List<NutritionDayRecord> _nutritionDaysInRangeFromRows(
   );
 }
 
+bool _sameListBy<T>(
+  List<T>? left,
+  List<T> right,
+  bool Function(T left, T right) equals,
+) {
+  if (left == null || left.length != right.length) {
+    return false;
+  }
+  for (var index = 0; index < left.length; index += 1) {
+    if (!equals(left[index], right[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _sameStringSet(Set<String> left, Set<String> right) {
+  return left.length == right.length && left.containsAll(right);
+}
+
 bool _sameRowList<T>(List<T>? left, List<T> right) {
   if (left == null || left.length != right.length) {
     return false;
@@ -16909,10 +16576,6 @@ List<ExerciseCatalogSectionRecord> _catalogSectionsFrom(
         .add(exercise);
   }
 
-  for (final exerciseList in exercisesByCategoryId.values) {
-    exerciseList.sort(_compareExerciseRecords);
-  }
-
   final sections = <ExerciseCatalogSectionRecord>[];
   final favoriteExercises = selectedExercises
       .where((exercise) => exercise.isFavorite)
@@ -17142,31 +16805,15 @@ class _NormalizedRecipeDraft {
   final RecipeNutrition nutrition;
 }
 
-int _nextSortOrder(List<ExerciseCategoryRow> activeRows) {
-  var next = 0;
-  for (final row in activeRows) {
-    if (row.sortOrder >= next) {
-      next = row.sortOrder + 1;
-    }
-  }
-  return next;
-}
 
-int _nextWorkoutExercisePosition(List<WorkoutExerciseRow> activeRows) {
-  var next = 0;
-  for (final row in activeRows) {
-    if (row.position >= next) {
-      next = row.position + 1;
-    }
-  }
-  return next;
-}
 
-int _nextExerciseGroupPosition(List<ExerciseGroupRow> activeRows) {
+
+int _nextPosition<T>(Iterable<T> rows, int Function(T row) positionOf) {
   var next = 0;
-  for (final row in activeRows) {
-    if (row.position >= next) {
-      next = row.position + 1;
+  for (final row in rows) {
+    final position = positionOf(row);
+    if (position >= next) {
+      next = position + 1;
     }
   }
   return next;
@@ -17436,34 +17083,9 @@ _DimensionColumns _dimensionColumns(SetDimensionValue? value) {
   );
 }
 
-String? _normalizeWorkoutComment(String? comment) {
-  final trimmed = comment?.trim();
-  return trimmed == null || trimmed.isEmpty ? null : trimmed;
-}
 
-String? _normalizeSetComment(String? comment) {
-  final trimmed = comment?.trim();
-  return trimmed == null || trimmed.isEmpty ? null : trimmed;
-}
 
-String? _normalizeMeasurementComment(String? comment) {
-  final trimmed = comment?.trim();
-  return trimmed == null || trimmed.isEmpty ? null : trimmed;
-}
 
-double? _normalizeRpe(double? rpe) {
-  if (rpe == null) {
-    return null;
-  }
-  if (rpe < 0 || rpe > 10 || (rpe * 2).roundToDouble() != rpe * 2) {
-    throw ArgumentError.value(
-      rpe,
-      'rpe',
-      'RPE must be between 0 and 10 in half-step increments.',
-    );
-  }
-  return rpe;
-}
 
 double _normalizeAlertVolume(double volume) {
   if (volume.isNaN) {
@@ -17563,7 +17185,7 @@ String _workoutShareSummary({
   if (duration != null) {
     buffer.writeln('Duration: $duration');
   }
-  final comment = _normalizeWorkoutComment(workout.comment);
+  final comment = _normalizeOptionalText(workout.comment);
   if (comment != null) {
     buffer.writeln('Comment: $comment');
   }
@@ -17607,7 +17229,7 @@ String _workoutShareSummary({
         if (set.rpe != null) 'RPE ${_formatDecimal(set.rpe!)}',
       ];
       buffer.writeln('- ${parts.join(' | ')}');
-      final setComment = _normalizeSetComment(set.comment);
+      final setComment = _normalizeOptionalText(set.comment);
       if (setComment != null) {
         buffer.writeln('  Note: $setComment');
       }
