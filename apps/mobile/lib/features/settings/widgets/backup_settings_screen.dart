@@ -3,14 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../repositories/settings_repository.dart';
 import '../services/auto_backup_service.dart';
+import 'backup_now_section.dart';
 import 'backup_restore_section.dart';
 import 'settings_shared.dart';
 
-/// Settings → Backup & restore: scheduled encrypted backups to a
-/// user-granted folder, and merge-only restore from a backup file.
+/// Settings → Backup & restore: Back up now through the platform save
+/// dialog, scheduled backups to a user-granted folder where the platform
+/// supports them, and merge-only restore from a backup file.
 class BackupSettingsScreen extends ConsumerWidget {
   const BackupSettingsScreen({super.key});
 
@@ -18,25 +21,31 @@ class BackupSettingsScreen extends ConsumerWidget {
   static const autoBackupFolderButtonKey = Key('settings.autoBackup.folder');
   static const autoBackupGrantPromptKey =
       Key('settings.autoBackup.grantPrompt');
-  static const autoBackupPassphraseFieldKey =
-      Key('settings.autoBackup.passphrase');
+  static const backupPassphraseFieldKey = BackupNowSection.passphraseFieldKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings =
         ref.watch(settingsControllerProvider).value ?? AppSettings.defaults;
     final controller = ref.read(settingsControllerProvider.notifier);
+    final autoBackupAvailable =
+        ref.watch(autoBackupAvailableProvider).value ?? false;
 
     return SettingsSubScreen(
-      title: 'Backup & restore',
+      title: context.l10n.backupSettingsTitle,
       children: [
-        _AutoBackupSettings(
-          settings: settings,
-          controller: controller,
-          chooseFolder: () => ref.read(autoBackupServiceProvider).chooseFolder(),
-          applySchedule: (nextSettings) =>
-              ref.read(autoBackupServiceProvider).applySchedule(nextSettings),
-        ),
+        const BackupNowSection(),
+        if (autoBackupAvailable) ...[
+          const SizedBox(height: AppDimens.base),
+          _AutoBackupSettings(
+            settings: settings,
+            controller: controller,
+            chooseFolder: () =>
+                ref.read(autoBackupServiceProvider).chooseFolder(),
+            applySchedule: (nextSettings) =>
+                ref.read(autoBackupServiceProvider).applySchedule(nextSettings),
+          ),
+        ],
         const SizedBox(height: AppDimens.base),
         const BackupRestoreSection(),
       ],
@@ -68,7 +77,7 @@ class _AutoBackupSettings extends StatelessWidget {
           SwitchListTile(
             key: BackupSettingsScreen.autoBackupSwitchKey,
             contentPadding: EdgeInsets.zero,
-            title: const Text('Auto-backup'),
+            title: Text(context.l10n.autoBackupSwitchTitle),
             subtitle: Text(settings.autoBackupLastStatus.label),
             value: settings.autoBackupEnabled,
             onChanged: (enabled) {
@@ -92,16 +101,13 @@ class _AutoBackupSettings extends StatelessWidget {
               unawaited(_chooseBackupFolder());
             },
             icon: const Icon(Icons.folder_open_outlined),
-            label:
-                Text(settings.autoBackupFolderLabel ?? 'Choose backup folder'),
+            label: Text(
+              settings.autoBackupFolderLabel ??
+                  context.l10n.autoBackupChooseFolderButton,
+            ),
             style: OutlinedButton.styleFrom(
               foregroundColor: context.colors.textPrimary,
             ),
-          ),
-          const SizedBox(height: AppDimens.dense),
-          _AutoBackupPassphraseField(
-            value: settings.autoBackupEncryptionPassphrase,
-            onChanged: controller.setAutoBackupEncryptionPassphrase,
           ),
         ],
       ),
@@ -136,7 +142,7 @@ class _AutoBackupGrantPrompt extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Semantics(
       container: true,
-      label: 'Auto-backup folder warning',
+      label: context.l10n.autoBackupFolderWarningLabel,
       child: DecoratedBox(
         key: BackupSettingsScreen.autoBackupGrantPromptKey,
         decoration: BoxDecoration(
@@ -156,7 +162,7 @@ class _AutoBackupGrantPrompt extends StatelessWidget {
               const SizedBox(width: AppDimens.dense),
               Expanded(
                 child: Text(
-                  'Choose a backup folder again to resume auto-backup.',
+                  context.l10n.autoBackupGrantPrompt,
                   style: context.textStyles.body.copyWith(
                     color: colorScheme.onErrorContainer,
                   ),
@@ -166,61 +172,6 @@ class _AutoBackupGrantPrompt extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _AutoBackupPassphraseField extends StatefulWidget {
-  const _AutoBackupPassphraseField({
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String? value;
-  final Future<void> Function(String? value) onChanged;
-
-  @override
-  State<_AutoBackupPassphraseField> createState() =>
-      _AutoBackupPassphraseFieldState();
-}
-
-class _AutoBackupPassphraseFieldState
-    extends State<_AutoBackupPassphraseField> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.value ?? '');
-  }
-
-  @override
-  void didUpdateWidget(covariant _AutoBackupPassphraseField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final nextText = widget.value ?? '';
-    if (_controller.text != nextText) {
-      _controller.text = nextText;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      key: BackupSettingsScreen.autoBackupPassphraseFieldKey,
-      controller: _controller,
-      obscureText: true,
-      decoration: const InputDecoration(
-        labelText: 'Backup passphrase',
-      ),
-      onChanged: (value) {
-        unawaited(widget.onChanged(value));
-      },
     );
   }
 }
