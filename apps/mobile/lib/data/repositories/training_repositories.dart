@@ -14,6 +14,7 @@ import '../../domain/body_tracker/measurement_validation.dart';
 import '../../domain/effect/effect.dart';
 import '../../domain/metrics/reading_normalization.dart';
 import '../../domain/nutrition/nutrition.dart';
+import '../../domain/nutrition/nutrition_day_assembly.dart';
 import '../../domain/nutrition/nutrition_import.dart';
 import '../../domain/protocols/dose_validation.dart';
 import '../../domain/protocols/protocols.dart';
@@ -14528,46 +14529,11 @@ NutritionDayRecord _nutritionDayFromRows(
   List<FoodEntryRow> entryRows,
   List<MealTypeRow> mealTypeRows,
 ) {
-  final entriesByMealId = <String, List<FoodEntryRecord>>{};
-  for (final row in entryRows) {
-    entriesByMealId
-        .putIfAbsent(row.mealId, () => <FoodEntryRecord>[])
-        .add(_foodEntryFromRow(row));
-  }
-  final mealTypeSortOrders = <String, int>{
-    for (final row in mealTypeRows) row.name: row.sortOrder,
-  };
-  final sortedMeals = List<MealRow>.of(mealRows)
-    ..sort((left, right) {
-      final leftSortOrder = mealTypeSortOrders[left.mealType] ?? 1 << 30;
-      final rightSortOrder = mealTypeSortOrders[right.mealType] ?? 1 << 30;
-      final orderComparison = leftSortOrder.compareTo(rightSortOrder);
-      if (orderComparison != 0) {
-        return orderComparison;
-      }
-      final startedComparison = left.startedAt.compareTo(right.startedAt);
-      if (startedComparison != 0) {
-        return startedComparison;
-      }
-      final typeComparison = left.mealType.compareTo(right.mealType);
-      if (typeComparison != 0) {
-        return typeComparison;
-      }
-      return left.id.compareTo(right.id);
-    });
-
-  return NutritionDayRecord(
+  return assembleNutritionDay(
     localDate: localDate,
-    meals: List<NutritionDayMealRecord>.unmodifiable(
-      sortedMeals.map(
-        (row) => NutritionDayMealRecord(
-          meal: _mealFromRow(row),
-          entries: List<FoodEntryRecord>.unmodifiable(
-            entriesByMealId[row.id] ?? const <FoodEntryRecord>[],
-          ),
-        ),
-      ),
-    ),
+    meals: mealRows.map(_mealFromRow).toList(growable: false),
+    entries: entryRows.map(_foodEntryFromRow).toList(growable: false),
+    mealTypes: mealTypeRows.map(_mealTypeFromRow).toList(growable: false),
   );
 }
 
@@ -14577,20 +14543,11 @@ List<NutritionDayRecord> _nutritionDaysInRangeFromRows(
   List<FoodEntryRow> entryRows,
   List<MealTypeRow> mealTypeRows,
 ) {
-  final mealsByDate = <String, List<MealRow>>{};
-  for (final row in mealRows) {
-    mealsByDate.putIfAbsent(row.localDate, () => <MealRow>[]).add(row);
-  }
-
-  return List<NutritionDayRecord>.unmodifiable(
-    range.days.map(
-      (date) => _nutritionDayFromRows(
-        date,
-        mealsByDate[date.storageValue] ?? const <MealRow>[],
-        entryRows,
-        mealTypeRows,
-      ),
-    ),
+  return assembleNutritionDaysInRange(
+    range: range,
+    meals: mealRows.map(_mealFromRow).toList(growable: false),
+    entries: entryRows.map(_foodEntryFromRow).toList(growable: false),
+    mealTypes: mealTypeRows.map(_mealTypeFromRow).toList(growable: false),
   );
 }
 
