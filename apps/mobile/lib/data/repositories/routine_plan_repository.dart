@@ -213,7 +213,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -286,7 +286,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -327,7 +327,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -353,12 +353,12 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
     return _database.transaction(() async {
-      final id = _repositories.createId(context.timestamp);
+      final id = _repositories._ids.create(context.timestamp);
       await _database.into(_database.planRoutines).insert(
             PlanRoutinesCompanion.insert(
               id: id,
@@ -386,7 +386,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -450,7 +450,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -475,7 +475,7 @@ class RoutinePlanRepository {
     required String workoutTemplateId,
     required int? requestedSlot,
     required _RoutineEntrySlotResolution slotResolution,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final routine = await _requireActiveRoutineRow(routineId);
     await _requireActiveWorkoutTemplateRow(workoutTemplateId);
@@ -495,7 +495,7 @@ class RoutinePlanRepository {
         resolvedSlot,
       ],
     ).throwIfRejected();
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.routineEntries).insert(
           RoutineEntriesCompanion.insert(
             id: id,
@@ -522,7 +522,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -570,7 +570,7 @@ class RoutinePlanRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -597,7 +597,7 @@ class RoutinePlanRepository {
     required String actor,
     required String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -768,7 +768,7 @@ class RoutinePlanRepository {
   Future<void> _setEntryPosition(
     RoutineEntryRow before,
     int position,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.routineEntries)
           ..where((row) => row.id.equals(before.id)))
@@ -791,7 +791,7 @@ class RoutinePlanRepository {
   Future<void> _setEntrySlot(
     RoutineEntryRow before,
     int? slot,
-    _WriteContext context, {
+    WriteContext context, {
     bool forceWrite = false,
   }) async {
     if (!forceWrite && before.slot == slot) {
@@ -819,7 +819,7 @@ class RoutinePlanRepository {
     RoutineEntryRow before, {
     required int position,
     required int slot,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     if (before.position == position && before.slot == slot) {
       return;

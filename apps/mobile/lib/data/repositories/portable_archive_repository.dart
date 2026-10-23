@@ -122,7 +122,7 @@ class PortableArchiveRepository {
     final changedRowsByTable = <String, int>{};
     final skippedRowsByTable = <String, int>{};
     final changedExerciseIds = <String>{};
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
     final entities = _entities;
     final routineEntryEntity = entities.singleWhere(
       (entity) => entity.tableName == AppDatabase.routineEntriesTable,
@@ -245,7 +245,7 @@ class PortableArchiveRepository {
   }
 
   Future<void> _normalizeStoredRoutineEntryPositions(
-    _WriteContext context,
+    WriteContext context,
     Map<String, int> changedRowsByTable,
     Map<String, _PendingPortableActivity> pendingActivities,
     _PortableArchiveEntity routineEntryEntity,
@@ -288,7 +288,7 @@ class PortableArchiveRepository {
   }
 
   Future<void> _reconcileStoredRoutineEntrySlots(
-    _WriteContext context,
+    WriteContext context,
     Map<String, int> changedRowsByTable,
     Map<String, _PendingPortableActivity> pendingActivities,
     _PortableArchiveEntity routineEntryEntity, {
@@ -393,7 +393,7 @@ class PortableArchiveRepository {
   }
 
   Future<void> _appendPendingPortableActivities(
-    _WriteContext context,
+    WriteContext context,
     Map<String, _PendingPortableActivity> pendingActivities,
   ) async {
     for (final pending in pendingActivities.values) {

@@ -80,7 +80,7 @@ final class TemplateMaterializeRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -101,7 +101,7 @@ final class TemplateMaterializeRepository {
 
   Future<TemplateMaterializeResult> _materialize(
     TemplateMaterializeRequest request,
-    _WriteContext context, {
+    WriteContext context, {
     DateTime? now,
     String? timezone,
   }) async {
@@ -226,7 +226,7 @@ final class TemplateMaterializeRepository {
       );
     }
 
-    final linkId = _repositories.createId(context.timestamp);
+    final linkId = _repositories._ids.create(context.timestamp);
     await _database.into(_database.templateLinks).insert(
           TemplateLinksCompanion.insert(
             id: linkId,

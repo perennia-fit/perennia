@@ -28,7 +28,7 @@ extension PlanSyncActivityLogRepository on ActivityLogRepository {
       return false;
     }
 
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );

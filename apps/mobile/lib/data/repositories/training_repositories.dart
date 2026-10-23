@@ -33,6 +33,8 @@ import '../../domain/training/training_dimensions.dart';
 import '../../domain/training/training_records.dart';
 import '../../domain/training/workout_capture.dart';
 import '../../domain/training/workout_share_summary.dart';
+import '../infra/id_factory.dart';
+import '../infra/write_context.dart';
 import '../local/app_database.dart';
 import '../local/uuid_v7.dart';
 import '../seeds/otc_compound_seed.dart';
@@ -166,6 +168,11 @@ class TrainingRepositories {
   final AppDatabase database;
   final UuidV7Generator uuidGenerator;
 
+  // The shared write plumbing. Every repository reaches it through this
+  // facade for now; constructor injection replaces that in a later phase.
+  late final IdFactory _ids = IdFactory(uuidGenerator);
+  late final WriteContextFactory _writeContexts = WriteContextFactory(_ids);
+
   late final ActivityLogRepository activityLog;
   late final CatalogRepository catalog;
   late final ExerciseRepository exercises;
@@ -263,7 +270,7 @@ class TrainingRepositories {
     final exercise = _defaultWeightRepsExercise(starterExercises);
     final localNow = (now ?? DateTime.now()).toLocal();
     final localDate = TrainingDayDate.fromDateTime(localNow);
-    final context = _createWriteContext(actor: actor);
+    final context = _writeContexts.create(actor: actor);
 
     return database.transaction(() async {
       final workout = await _findWorkoutForLocalDate(localDate);
@@ -311,7 +318,7 @@ class TrainingRepositories {
   /// return.
   Future<void> eraseAllData() async {
     final seedOwnedIds = await _seedOwnedIdsForErase();
-    final context = _createWriteContext(actor: 'settings');
+    final context = _writeContexts.create(actor: 'settings');
     await database.transaction(() async {
       for (final table in eraseTableNames) {
         await _eraseTable(
@@ -346,7 +353,7 @@ class TrainingRepositories {
 
   Future<void> _eraseTable(
     String entityTable,
-    _WriteContext context, {
+    WriteContext context, {
     required Set<String> keepIds,
   }) async {
     final table = database.allTables.singleWhere(
@@ -393,7 +400,7 @@ class TrainingRepositories {
     LoggedSetDraft set, {
     String actor = 'app',
   }) {
-    final context = _createWriteContext(actor: actor);
+    final context = _writeContexts.create(actor: actor);
 
     return database.transaction(() async {
       final workoutId = await workoutSessions._create(workout, context);
@@ -423,7 +430,7 @@ class TrainingRepositories {
       );
     }
 
-    final context = _createWriteContext(actor: actor);
+    final context = _writeContexts.create(actor: actor);
 
     return database.transaction(() async {
       final workoutId = await workoutSessions._create(workout, context);
@@ -466,18 +473,7 @@ class TrainingRepositories {
     });
   }
 
-  _WriteContext _createWriteContext({required String actor, String? batchId}) {
-    final timestamp = DateTime.now().toUtc();
-    return _WriteContext(
-      actor: actor,
-      batchId: batchId ?? uuidGenerator.generate(timestamp: timestamp),
-      timestamp: timestamp,
-    );
-  }
-
-  String createId(DateTime timestamp) {
-    return uuidGenerator.generate(timestamp: timestamp);
-  }
+  String createId(DateTime timestamp) => _ids.create(timestamp);
 
   ExerciseRecord _defaultWeightRepsExercise(List<ExerciseRecord> exercises) {
     return exercises.firstWhere(
@@ -541,7 +537,7 @@ class CatalogRepository {
       return;
     }
 
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     await _database.transaction(() async {
       final existingCategoryIds =
@@ -630,7 +626,7 @@ class CatalogRepository {
 
   Future<void> _applyPlatformExerciseRedirects(
     PlatformExerciseSeed seed,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     if (seed.redirects.isEmpty) {
       return;
@@ -722,7 +718,7 @@ class CatalogRepository {
 
   Future<void> _backfillExistingPlatformSeedEquipment(
     PlatformExerciseSeed seed,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final platformRows = await (_database.select(_database.exercises)
           ..where(
@@ -765,7 +761,7 @@ class CatalogRepository {
   }
 
   Future<void> _sanitizeLegacyWgerAttributionNotes(
-    _WriteContext context,
+    WriteContext context,
   ) async {
     // Only platform rows whose note still carries the legacy prefix can
     // change; everything else would be read and decoded on every launch.
@@ -835,7 +831,7 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -849,7 +845,7 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -882,7 +878,7 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -913,7 +909,7 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -977,7 +973,7 @@ class CatalogRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1130,7 +1126,7 @@ class CatalogRepository {
         'Unsupported catalog sync entity.',
       );
     }
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1186,11 +1182,11 @@ class CatalogRepository {
 
   Future<String> _createCategory(
     ExerciseCategoryDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveCategoryName(draft.name);
     final activeRows = await _activeCategoryQuery().get();
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.exerciseCategories).insert(
           ExerciseCategoriesCompanion.insert(
             id: id,
@@ -1256,7 +1252,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) async {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1270,7 +1266,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1287,7 +1283,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1330,7 +1326,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1363,7 +1359,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1395,7 +1391,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1432,7 +1428,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1467,7 +1463,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1499,7 +1495,7 @@ class ExerciseRepository {
           );
       await _ensureUniqueActiveUserName(customization.name);
 
-      final copyId = _repositories.createId(context.timestamp);
+      final copyId = _repositories._ids.create(context.timestamp);
       await _database.into(_database.exercises).insert(
             ExercisesCompanion.insert(
               id: copyId,
@@ -1543,7 +1539,7 @@ class ExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1645,10 +1641,10 @@ class ExerciseRepository {
 
   Future<ExerciseRow> _create(
     ExerciseDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveUserName(draft.name);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.exercises).insert(
           ExercisesCompanion.insert(
             id: id,
@@ -1752,7 +1748,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1766,7 +1762,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1811,7 +1807,7 @@ class WorkoutSessionRepository {
     String actor = 'app.autoFinish',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1880,7 +1876,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1927,7 +1923,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1964,7 +1960,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2002,7 +1998,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2023,7 +2019,7 @@ class WorkoutSessionRepository {
       final sourceDuration = source.endedAt?.difference(source.startedAt);
       final copyEndedAt =
           sourceDuration == null ? null : copyStartedAt.add(sourceDuration);
-      final copyId = _repositories.createId(context.timestamp);
+      final copyId = _repositories._ids.create(context.timestamp);
 
       await _database.into(_database.workoutSessions).insert(
             WorkoutSessionsCompanion.insert(
@@ -2046,7 +2042,8 @@ class WorkoutSessionRepository {
       );
 
       for (final sourceWorkoutExercise in sourceWorkoutExercises) {
-        final copyWorkoutExerciseId = _repositories.createId(context.timestamp);
+        final copyWorkoutExerciseId =
+            _repositories._ids.create(context.timestamp);
         await _database.into(_database.workoutExercises).insert(
               WorkoutExercisesCompanion.insert(
                 id: copyWorkoutExerciseId,
@@ -2068,7 +2065,7 @@ class WorkoutSessionRepository {
       }
 
       for (final sourceSet in sourceSets) {
-        final copySetId = _repositories.createId(context.timestamp);
+        final copySetId = _repositories._ids.create(context.timestamp);
         await _database.into(_database.loggedSets).insert(
               _loggedSetInsertCompanion(
                 id: copySetId,
@@ -2142,7 +2139,7 @@ class WorkoutSessionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2292,9 +2289,9 @@ class WorkoutSessionRepository {
 
   Future<String> _create(
     WorkoutSessionDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     final localDate =
         draft.localDate ?? TrainingDayDate.fromDateTime(draft.startedAt);
     await _database.into(_database.workoutSessions).insert(
@@ -2323,7 +2320,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteWorkoutChildren(
     String workoutId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final restTimers = await (_database.select(_database.restTimers)
           ..where(
@@ -2388,7 +2385,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteExerciseGroupMember(
     ExerciseGroupMemberRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.exerciseGroupMembers)
           ..where((row) => row.id.equals(before.id)))
@@ -2412,7 +2409,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteExerciseGroup(
     ExerciseGroupRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.exerciseGroups)
           ..where((row) => row.id.equals(before.id)))
@@ -2434,7 +2431,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteWorkoutExercise(
     WorkoutExerciseRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.workoutExercises)
           ..where((row) => row.id.equals(before.id)))
@@ -2456,7 +2453,7 @@ class WorkoutSessionRepository {
 
   Future<void> _softDeleteLoggedSet(
     LoggedSetRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.loggedSets)
           ..where((row) => row.id.equals(before.id)))
@@ -2769,7 +2766,7 @@ class NutritionRepository {
         'Unsupported nutrition sync entity.',
       );
     }
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2847,7 +2844,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2858,7 +2855,7 @@ class NutritionRepository {
   Future<void> ensureDefaultMealTypes({
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       for (final seed in _defaultMealTypes) {
@@ -2891,7 +2888,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2905,7 +2902,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2932,7 +2929,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -2964,7 +2961,7 @@ class NutritionRepository {
     String? batchId,
   }) async {
     await ensureDefaultMealTypes(actor: actor);
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3046,7 +3043,7 @@ class NutritionRepository {
   }) {
     validateNutritionGoalTargets(<NutritionGoalTarget>[target])
         .throwIfRejected();
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3054,7 +3051,7 @@ class NutritionRepository {
     return _database.transaction(() async {
       final existing = await _activeNutritionGoalRowFor(target.nutrient);
       if (existing == null) {
-        final id = _repositories.createId(context.timestamp);
+        final id = _repositories._ids.create(context.timestamp);
         await _database.into(_database.nutritionGoals).insert(
               _nutritionGoalCompanionFromTarget(target, context.timestamp)
                   .copyWith(id: Value<String>(id)),
@@ -3094,7 +3091,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3186,7 +3183,7 @@ class NutritionRepository {
     required QuickFoodEntryDraft entry,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
     final validation = validateFoodEntryNutrition(nutrients: entry.nutrients);
     validation.throwIfRejected();
 
@@ -3211,7 +3208,7 @@ class NutritionRepository {
     required QuickFoodEntryDraft entry,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
     final validation = validateFoodEntryNutrition(nutrients: entry.nutrients);
     validation.throwIfRejected();
 
@@ -3235,7 +3232,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3248,7 +3245,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3269,7 +3266,7 @@ class NutritionRepository {
       throw StateError('USDA Food not found: $usdaFoodId.');
     }
 
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3291,7 +3288,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3320,7 +3317,7 @@ class NutritionRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -3351,7 +3348,7 @@ class NutritionRepository {
     required FoodEntryDraft entry,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final created = await _createFoodEntry(
@@ -3371,7 +3368,7 @@ class NutritionRepository {
     required FoodEntrySnapshotDraft entry,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final created = await _createFoodEntrySnapshot(
@@ -3424,7 +3421,7 @@ class NutritionRepository {
     final importSource = resolution.importSource;
     final importProvider = resolution.preservedProvider;
 
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final landedMealIds = <String>[];
@@ -3550,7 +3547,7 @@ class NutritionRepository {
 
   Future<String> _findOrCreateImportMeal(
     NutritionImportMeal importMeal,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final mealTypeForStorage =
         _normalizeMealTypeForStorage(importMeal.mealType);
@@ -3578,7 +3575,7 @@ class NutritionRepository {
     required String importSource,
     required String? importProvider,
     required List<NutritionReviewFlag> reviewFlags,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final normalizedServing = _normalizeServing(
       label: importEntry.servingLabel,
@@ -3640,7 +3637,7 @@ class NutritionRepository {
     required Portion portion,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireFoodEntryRow(id);
@@ -3713,7 +3710,7 @@ class NutritionRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final beforeMeal = await _requireMealRow(id);
@@ -3753,7 +3750,7 @@ class NutritionRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireFoodEntryRow(id);
@@ -4113,7 +4110,7 @@ class NutritionRepository {
     return query;
   }
 
-  Future<String> _createMeal(MealDraft draft, _WriteContext context) async {
+  Future<String> _createMeal(MealDraft draft, WriteContext context) async {
     final startedAt = draft.startedAt;
     final endedAt = draft.endedAt;
     if (endedAt != null && !endedAt.isAfter(startedAt)) {
@@ -4124,7 +4121,7 @@ class NutritionRepository {
       );
     }
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     final localDate =
         draft.localDate ?? NutritionDayDate.fromDateTime(startedAt);
     final timezone = _normalizeOptionalText(draft.timezone) ??
@@ -4156,10 +4153,10 @@ class NutritionRepository {
 
   Future<String> _createMealType(
     MealTypeDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveMealTypeName(draft.name);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.mealTypes).insert(
           _mealTypeCompanionFromDraft(
             draft,
@@ -4197,10 +4194,10 @@ class NutritionRepository {
 
   Future<String> _createUserFood(
     UserFoodDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveUserFoodName(draft.name);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.foods).insert(
           _userFoodCompanionFromDraft(
             draft,
@@ -4222,11 +4219,11 @@ class NutritionRepository {
 
   Future<String> _createRecipe(
     RecipeDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await _ensureUniqueActiveUserFoodName(draft.name);
     final normalized = await _normalizeRecipeDraft(draft);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.foods).insert(
           _recipeFoodCompanionFromDraft(
             name: draft.name,
@@ -4265,14 +4262,14 @@ class NutritionRepository {
   Future<String> _createQuickEntry({
     required String mealId,
     required QuickFoodEntryDraft draft,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final meal = await _requireMealRow(mealId);
     if (meal.deletedAt != null) {
       throw StateError('Cannot add a Food Entry to an archived Meal: $mealId.');
     }
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     final activeEntries = await _activeFoodEntryQuery(
       mealIds: <String>{mealId},
     ).get();
@@ -4310,7 +4307,7 @@ class NutritionRepository {
 
   Future<_CreatedFoodEntry> _createFoodEntry({
     required FoodEntryDraft draft,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final food = await _requireFoodRow(draft.foodId);
     if (food.deletedAt != null) {
@@ -4338,7 +4335,7 @@ class NutritionRepository {
 
   Future<_CreatedFoodEntry> _createFoodEntrySnapshot({
     required FoodEntrySnapshotDraft draft,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final meal = await _requireMealRow(draft.mealId);
     if (meal.deletedAt != null) {
@@ -4372,7 +4369,7 @@ class NutritionRepository {
     );
     validation.throwIfRejected();
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     final activeEntries = await _activeFoodEntryQuery(
       mealIds: <String>{draft.mealId},
     ).get();
@@ -4421,7 +4418,7 @@ class NutritionRepository {
 
   Future<void> _deleteFoodEntryRow(
     FoodEntryRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.foodEntries)
           ..where((row) => row.id.equals(before.id)))
@@ -4766,7 +4763,7 @@ class AccountSettingsRepository {
     String? batchId,
   }) async {
     validateAccountSettings(settings).throwIfRejected();
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -4774,7 +4771,7 @@ class AccountSettingsRepository {
     return _database.transaction(() async {
       final existing = await _activeRow();
       if (existing == null) {
-        final id = _repositories.createId(context.timestamp);
+        final id = _repositories._ids.create(context.timestamp);
         await _database.into(_database.userSettings).insert(
               _companionFromSettings(settings, context.timestamp)
                   .copyWith(id: Value<String>(id)),
@@ -4818,7 +4815,7 @@ class AccountSettingsRepository {
     Map<String, Object?>? activityAfterImage,
     DateTime? activityOccurredAt,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -4952,7 +4949,7 @@ class ProtocolsRepository {
       return;
     }
 
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     await _database.transaction(() async {
       // Idempotency is by the seed's STABLE id: a Compound already present
@@ -4996,7 +4993,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5018,7 +5015,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5048,7 +5045,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5074,7 +5071,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5095,7 +5092,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5114,7 +5111,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5133,7 +5130,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5155,7 +5152,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5169,7 +5166,7 @@ class ProtocolsRepository {
   Future<void> _setDoseDeletedAt(
     String doseId,
     DateTime deletedAt,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireDoseRow(doseId);
     await (_database.update(_database.doses)
@@ -5223,7 +5220,7 @@ class ProtocolsRepository {
         'Unsupported protocols sync entity.',
       );
     }
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -5309,7 +5306,7 @@ class ProtocolsRepository {
 
   Future<String> _createCompound(
     CompoundDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final name = draft.name.trim();
     if (name.isEmpty) {
@@ -5318,7 +5315,7 @@ class ProtocolsRepository {
     // The structured strength serializes to its canonical curated label; storage
     // never carries a free-text strength.
     final strength = draft.strength?.storageValue;
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
 
     await _database.into(_database.compounds).insert(
           CompoundsCompanion.insert(
@@ -5346,7 +5343,7 @@ class ProtocolsRepository {
   Future<void> _editCompound(
     String compoundId,
     CompoundDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireCompoundRow(compoundId);
     final name = draft.name.trim();
@@ -5380,7 +5377,7 @@ class ProtocolsRepository {
   Future<void> _setCompoundDeletedAt(
     String compoundId,
     DateTime deletedAt,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireCompoundRow(compoundId);
     await (_database.update(_database.compounds)
@@ -5404,7 +5401,7 @@ class ProtocolsRepository {
 
   Future<void> _deleteCompound(
     String compoundId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireCompoundRow(compoundId);
     await (_database.delete(_database.compounds)
@@ -5422,7 +5419,7 @@ class ProtocolsRepository {
 
   Future<({String doseId, List<String> warnings})> _logDose(
     DoseSnapshotDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final compoundName = draft.compoundName.trim();
     if (compoundName.isEmpty) {
@@ -5465,7 +5462,7 @@ class ProtocolsRepository {
         draft.localDate ?? ProtocolDayDate.fromDateTime(draft.tookAt);
     final protocolTag = _validateDoseProtocolTag(draft);
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.doses).insert(
           DosesCompanion.insert(
             id: id,
@@ -5502,7 +5499,7 @@ class ProtocolsRepository {
   Future<void> _editDose(
     String doseId,
     DoseSnapshotDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireDoseRow(doseId);
     final compoundName = draft.compoundName.trim();
@@ -5602,7 +5599,7 @@ class ProtocolsRepository {
   Future<void> _tagDoseToProtocol(
     String doseId,
     String? protocolId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireDoseRow(doseId);
 
@@ -5713,7 +5710,7 @@ class ProtocolsRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -6037,7 +6034,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -6058,7 +6055,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -6077,7 +6074,7 @@ class ProtocolsRepository {
     String actor = 'manual',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -6458,7 +6455,7 @@ class ProtocolsRepository {
 
   Future<String> _createProtocol(
     ProtocolDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final name = validateProtocolName(draft.name);
     validateProtocolWindow(draft.startDate, draft.endDate);
@@ -6469,7 +6466,7 @@ class ProtocolsRepository {
     );
     await _requireActiveMetricRows(_metricIdsOf(targetOutcomes));
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.protocols).insert(
           ProtocolsCompanion.insert(
             id: id,
@@ -6511,7 +6508,7 @@ class ProtocolsRepository {
   Future<void> _editProtocol(
     String protocolId,
     ProtocolDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireProtocolRow(protocolId);
     if (before.deletedAt != null) {
@@ -6564,7 +6561,7 @@ class ProtocolsRepository {
   Future<void> _setProtocolDeletedAt(
     String protocolId,
     DateTime deletedAt,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final before = await _requireProtocolRow(protocolId);
     await (_database.update(_database.protocols)
@@ -6590,9 +6587,9 @@ class ProtocolsRepository {
     required String protocolId,
     required String compoundId,
     required int position,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
-    final memberId = _repositories.createId(context.timestamp);
+    final memberId = _repositories._ids.create(context.timestamp);
     await _database.into(_database.protocolCompounds).insert(
           ProtocolCompoundsCompanion.insert(
             id: memberId,
@@ -6623,7 +6620,7 @@ class ProtocolsRepository {
     String protocolId,
     List<String> compoundIds,
     Map<String, ScheduleDraft?> schedulesByCompoundId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final activeRows = await _activeProtocolCompoundQuery(
       protocolId: protocolId,
@@ -6706,7 +6703,7 @@ class ProtocolsRepository {
   Future<void> _reconcileSchedule(
     String protocolCompoundId,
     ScheduleDraft? desired,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final existing = await _activeScheduleQuery(
       protocolCompoundId: protocolCompoundId,
@@ -6754,7 +6751,7 @@ class ProtocolsRepository {
     validation.throwIfRejected();
 
     if (existing == null) {
-      final scheduleId = _repositories.createId(context.timestamp);
+      final scheduleId = _repositories._ids.create(context.timestamp);
       await _database.into(_database.schedules).insert(
             SchedulesCompanion.insert(
               id: scheduleId,
@@ -6819,7 +6816,7 @@ class ProtocolsRepository {
   Future<void> _replaceProtocolTargetOutcomes(
     String protocolId,
     List<ProtocolTargetOutcomeDraft> outcomes,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final activeRows = await _activeProtocolTargetOutcomeQuery(
       protocolId: protocolId,
@@ -6857,11 +6854,10 @@ class ProtocolsRepository {
 
     for (var index = 0; index < outcomes.length; index += 1) {
       final outcome = outcomes[index];
-      final key =
-          protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId);
+      final key = protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId);
       final existing = activeByKey[key];
       if (existing == null) {
-        final outcomeId = _repositories.createId(context.timestamp);
+        final outcomeId = _repositories._ids.create(context.timestamp);
         await _database.into(_database.protocolTargetOutcomes).insert(
               ProtocolTargetOutcomesCompanion.insert(
                 id: outcomeId,
@@ -7665,7 +7661,7 @@ class WorkoutExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -7709,7 +7705,7 @@ class WorkoutExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -7742,7 +7738,7 @@ class WorkoutExerciseRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -7843,7 +7839,7 @@ class WorkoutExerciseRepository {
 
   Future<String> _create(
     WorkoutExerciseDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final existing = await (_database.select(_database.workoutExercises)
           ..where(
@@ -7860,7 +7856,7 @@ class WorkoutExerciseRepository {
 
     final activeRows =
         await _activeWorkoutExerciseQuery(workoutId: draft.workoutId).get();
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.workoutExercises).insert(
           WorkoutExercisesCompanion.insert(
             id: id,
@@ -7885,7 +7881,7 @@ class WorkoutExerciseRepository {
 
   Future<void> _softDeleteAffectedExerciseGroupMemberships(
     WorkoutExerciseRow workoutExercise,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final memberships = await (_database.select(_database.exerciseGroupMembers)
           ..where(
@@ -7941,7 +7937,7 @@ class WorkoutExerciseRepository {
 
   Future<void> _writeExerciseGroupMemberPositions(
     List<ExerciseGroupMemberRow> members,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     for (var index = 0; index < members.length; index += 1) {
       final member = members[index];
@@ -7992,7 +7988,7 @@ class ExerciseGroupRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8008,7 +8004,7 @@ class ExerciseGroupRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8037,7 +8033,7 @@ class ExerciseGroupRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8113,7 +8109,7 @@ class ExerciseGroupRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8408,7 +8404,7 @@ class ExerciseGroupRepository {
     required String name,
     required String colorHex,
     required List<String> workoutExerciseIds,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final before = await _requireRow(id);
     if (before.deletedAt != null) {
@@ -8472,7 +8468,7 @@ class ExerciseGroupRepository {
 
   Future<void> _softDeleteGroup(
     String groupId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final group = await _requireRow(groupId);
     final members =
@@ -8490,7 +8486,7 @@ class ExerciseGroupRepository {
   Future<void> _reconcileAfterWorkoutExerciseReorder({
     required String workoutId,
     required List<String> orderedWorkoutExerciseIds,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final groups = await listActiveForWorkout(workoutId);
     for (final group in groups) {
@@ -8579,7 +8575,7 @@ class ExerciseGroupRepository {
 
   Future<String> _create(
     ExerciseGroupDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final workoutExerciseRows = await _requireActiveWorkoutExerciseRows(
       workoutId: draft.workoutId,
@@ -8587,7 +8583,7 @@ class ExerciseGroupRepository {
     );
     final activeGroups =
         await _activeExerciseGroupQuery(workoutId: draft.workoutId).get();
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
 
     await _database.into(_database.exerciseGroups).insert(
           ExerciseGroupsCompanion.insert(
@@ -8609,7 +8605,7 @@ class ExerciseGroupRepository {
     );
 
     for (var index = 0; index < workoutExerciseRows.length; index += 1) {
-      final memberId = _repositories.createId(context.timestamp);
+      final memberId = _repositories._ids.create(context.timestamp);
       await _database.into(_database.exerciseGroupMembers).insert(
             ExerciseGroupMembersCompanion.insert(
               id: memberId,
@@ -8709,7 +8705,7 @@ class ExerciseGroupRepository {
   Future<void> _replaceMembers(
     String groupId,
     List<String> workoutExerciseIds,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final activeRows =
         await _activeExerciseGroupMemberQuery(groupId: groupId).get();
@@ -8743,7 +8739,7 @@ class ExerciseGroupRepository {
       final workoutExerciseId = workoutExerciseIds[index];
       final existing = activeByWorkoutExerciseId[workoutExerciseId];
       if (existing == null) {
-        final memberId = _repositories.createId(context.timestamp);
+        final memberId = _repositories._ids.create(context.timestamp);
         await _database.into(_database.exerciseGroupMembers).insert(
               ExerciseGroupMembersCompanion.insert(
                 id: memberId,
@@ -8832,7 +8828,7 @@ class RestTimerRepository {
       );
     }
 
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8842,7 +8838,7 @@ class RestTimerRepository {
     return _database.transaction(() async {
       await _cancelCurrentForWorkout(draft.workoutId, context);
 
-      final id = _repositories.createId(context.timestamp);
+      final id = _repositories._ids.create(context.timestamp);
       await _database.into(_database.restTimers).insert(
             RestTimersCompanion.insert(
               id: id,
@@ -8896,7 +8892,7 @@ class RestTimerRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8913,7 +8909,7 @@ class RestTimerRepository {
     String? batchId,
     DateTime? now,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8955,7 +8951,7 @@ class RestTimerRepository {
     String? batchId,
     DateTime? now,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -8992,7 +8988,7 @@ class RestTimerRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9060,7 +9056,7 @@ class RestTimerRepository {
 
   Future<void> _cancelCurrentForWorkout(
     String? workoutId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     if (workoutId == null) {
       return;
@@ -9074,7 +9070,7 @@ class RestTimerRepository {
 
   Future<void> _writeCanceled(
     RestTimerRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     if (before.deletedAt != null ||
         before.status == RestTimerStatus.canceled.name) {
@@ -9123,7 +9119,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9145,7 +9141,7 @@ class LoggedSetRepository {
     Map<String, Object?>? activityAfterImage,
     DateTime? activityOccurredAt,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9247,7 +9243,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9290,7 +9286,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9339,7 +9335,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9371,7 +9367,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9404,7 +9400,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9444,7 +9440,7 @@ class LoggedSetRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -9685,7 +9681,7 @@ class LoggedSetRepository {
     return query;
   }
 
-  Future<String> _create(LoggedSetDraft draft, _WriteContext context) async {
+  Future<String> _create(LoggedSetDraft draft, WriteContext context) async {
     final workoutId = draft.workoutId;
     if (workoutId == null) {
       throw ArgumentError.value(
@@ -9697,7 +9693,7 @@ class LoggedSetRepository {
     final validation = await _validateDraft(draft);
     validation.throwIfRejected();
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     final columns = _setColumns(draft.values);
     await _database.into(_database.loggedSets).insert(
           _loggedSetInsertCompanion(
@@ -9763,7 +9759,7 @@ class LoggedSetRepository {
   Future<void> _writePositions(
     List<LoggedSetRow> rows,
     List<int> positions,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     for (var index = 0; index < rows.length; index += 1) {
       final row = rows[index];
@@ -9816,7 +9812,7 @@ class MeasurementRepository {
     required MeasurementUnit bodyWeightUnit,
     String actor = 'app',
   }) async {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     await _database.transaction(() async {
       final existing = await _manageableMeasurementQuery().get();
@@ -10361,7 +10357,7 @@ class MeasurementRepository {
     MeasurementDraft draft, {
     String actor = 'app',
   }) async {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final activeRows = await _manageableMeasurementQuery().get();
@@ -10380,7 +10376,7 @@ class MeasurementRepository {
     bool enabled, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireActiveMeasurement(id);
@@ -10412,7 +10408,7 @@ class MeasurementRepository {
     List<String> orderedIds, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final activeRows = await _manageableMeasurementQuery().get();
@@ -10457,7 +10453,7 @@ class MeasurementRepository {
     required MeasurementUnit bodyWeightUnit,
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final activeRows = await _manageableMeasurementQuery().get();
@@ -10502,7 +10498,7 @@ class MeasurementRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireActiveMeasurement(id);
@@ -10573,10 +10569,10 @@ class MeasurementRepository {
 
   Future<String> _createMeasurementMetric(
     MeasurementDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final normalized = _normalizeMeasurementDraft(draft);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.metrics).insert(
           MetricsCompanion.insert(
             id: id,
@@ -10606,7 +10602,7 @@ class MeasurementRepository {
   Future<void> _upsertDefaultMeasurement({
     required MetricRow? existing,
     required MeasurementDraft draft,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     if (existing == null) {
       await _createMeasurementMetric(draft, context);
@@ -10656,7 +10652,7 @@ class MeasurementRepository {
 
   Future<void> _softDeleteMeasurementRow(
     MetricRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.metrics)
           ..where((row) => row.id.equals(before.id)))
@@ -10902,7 +10898,7 @@ class MetricRepository {
     MetricDraft draft, {
     String actor = 'app',
   }) async {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final activeRows = await _activeMetricQuery().get();
@@ -11492,7 +11488,7 @@ class MetricRepository {
         'Unsupported metric sync entity.',
       );
     }
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -11548,12 +11544,12 @@ class MetricRepository {
     ManualMetricReadingDraft draft, {
     String actor = 'app',
   }) async {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final metric = await _requireActiveMetric(draft.metricId);
       final normalized = _normalizeManualReadingDraft(draft, metric: metric);
-      final id = _repositories.createId(context.timestamp);
+      final id = _repositories._ids.create(context.timestamp);
       await _database.into(_database.metricReadings).insert(
             MetricReadingsCompanion.insert(
               id: id,
@@ -11590,7 +11586,7 @@ class MetricRepository {
     MetricReadingUpdateDraft draft, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireActiveReadingRow(id);
@@ -11634,7 +11630,7 @@ class MetricRepository {
     if (drafts.isEmpty) {
       return Future<List<String>>.value(const <String>[]);
     }
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final ids = <String>[];
@@ -11676,7 +11672,7 @@ class MetricRepository {
           continue;
         }
 
-        final id = _repositories.createId(context.timestamp);
+        final id = _repositories._ids.create(context.timestamp);
         await _database.into(_database.metricReadings).insert(
               MetricReadingsCompanion.insert(
                 id: id,
@@ -11714,7 +11710,7 @@ class MetricRepository {
     String id, {
     String actor = 'app',
   }) {
-    final context = _repositories._createWriteContext(actor: actor);
+    final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
       final before = await _requireActiveReadingRow(id);
@@ -11739,10 +11735,10 @@ class MetricRepository {
 
   Future<String> _createMetric(
     MetricDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final normalized = _normalizeMetricDraft(draft);
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.metrics).insert(
           MetricsCompanion.insert(
             id: id,
@@ -12397,7 +12393,7 @@ class ActivityLogRepository {
         );
       }
 
-      final context = _repositories._createWriteContext(actor: actor);
+      final context = _repositories._writeContexts.create(actor: actor);
       final appliedEntries = <ActivityLogEntry>[];
       final routineUndoScope = _routineUndoScope(entries);
       for (final entry in entries.reversed) {
@@ -12570,7 +12566,7 @@ class ActivityLogRepository {
 
   Future<void> _normalizeRoutineEntriesAfterUndo(
     _RoutineUndoScope scope,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     for (final routineId in scope.routineIds.toList()..sort()) {
       final routine = await (_database.select(_database.planRoutines)
@@ -12664,7 +12660,7 @@ class ActivityLogRepository {
   }
 
   Future<void> _append(
-    _WriteContext context, {
+    WriteContext context, {
     required String entityTable,
     required String entityId,
     required Map<String, Object?>? beforeImage,
@@ -12673,7 +12669,7 @@ class ActivityLogRepository {
     DateTime? occurredAt,
     DateTime? syncAcknowledgedAt,
   }) {
-    final activityLogId = id ?? _repositories.createId(context.timestamp);
+    final activityLogId = id ?? _repositories._ids.create(context.timestamp);
     final activityOccurredAt = occurredAt ?? context.timestamp;
     return _database.into(_database.activityLog).insert(
           ActivityLogCompanion.insert(
@@ -13933,18 +13929,6 @@ class CategoryHasActiveExercisesException implements Exception {
   String toString() {
     return 'Category $categoryId has $activeExerciseCount active exercises.';
   }
-}
-
-class _WriteContext {
-  const _WriteContext({
-    required this.actor,
-    required this.batchId,
-    required this.timestamp,
-  });
-
-  final String actor;
-  final String batchId;
-  final DateTime timestamp;
 }
 
 class _DefaultMealTypeSeed {

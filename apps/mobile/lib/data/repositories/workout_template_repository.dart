@@ -254,7 +254,7 @@ final class PrescriptionRecord {
 
 /// Local-only repository for the first-class Workout Template plan tree.
 ///
-/// Every public mutation creates one [_WriteContext] and runs exactly one Drift
+/// Every public mutation creates one [WriteContext] and runs exactly one Drift
 /// transaction. All rows changed by that user action share the context's
 /// Activity Log batch.
 class WorkoutTemplateRepository {
@@ -311,7 +311,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -325,7 +325,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -407,7 +407,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -465,7 +465,7 @@ class WorkoutTemplateRepository {
         return archivedExisting.id;
       }
 
-      final id = _repositories.createId(context.timestamp);
+      final id = _repositories._ids.create(context.timestamp);
       await _database.into(_database.templateExercises).insert(
             TemplateExercisesCompanion.insert(
               id: id,
@@ -494,7 +494,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -531,7 +531,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -569,7 +569,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -615,7 +615,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -627,7 +627,7 @@ class WorkoutTemplateRepository {
         orderedTemplateExerciseIds: draft.orderedTemplateExerciseIds,
       );
       final activeGroups = await _activeTemplateGroupRows(templateId).get();
-      final id = _repositories.createId(context.timestamp);
+      final id = _repositories._ids.create(context.timestamp);
       await _database.into(_database.templateGroups).insert(
             TemplateGroupsCompanion.insert(
               id: id,
@@ -666,7 +666,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -719,7 +719,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -749,7 +749,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -804,7 +804,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -815,7 +815,7 @@ class WorkoutTemplateRepository {
       final exercise = await _requireExerciseRow(templateExercise.exerciseId);
       _validatePrescriptionDraft(exercise, draft).throwIfRejected();
       final rows = await _activePrescriptionRows(templateExerciseId).get();
-      final id = _repositories.createId(context.timestamp);
+      final id = _repositories._ids.create(context.timestamp);
       await _database.into(_database.prescriptions).insert(
             _prescriptionInsertCompanion(
               id: id,
@@ -843,7 +843,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -876,7 +876,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -914,7 +914,7 @@ class WorkoutTemplateRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1062,7 +1062,7 @@ class WorkoutTemplateRepository {
 
   Future<String> _create(
     WorkoutTemplateDraft draft,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final result = await _createWithContent(
       draft,
@@ -1084,13 +1084,13 @@ class WorkoutTemplateRepository {
   Future<_WorkoutTemplateContentWriteResult> _createWithContent(
     WorkoutTemplateDraft draft,
     WorkoutTemplateContentDraft content,
-    _WriteContext context, {
+    WriteContext context, {
     _WorkoutTemplateContentExercisePolicy exercisePolicy =
         _WorkoutTemplateContentExercisePolicy.activeEditor,
   }) async {
     await _validateContentDraft(content, exercisePolicy);
 
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.workoutTemplates).insert(
           WorkoutTemplatesCompanion.insert(
             id: id,
@@ -1122,12 +1122,12 @@ class WorkoutTemplateRepository {
   /// Every currently-active Template Exercise, Prescription, and Template
   /// Group is archived (never hard-deleted) before the new content is
   /// inserted, in the same transaction and Activity Log batch as the caller's
-  /// [_WriteContext] — all-or-nothing, per the same canonical path
+  /// [WriteContext] — all-or-nothing, per the same canonical path
   /// [_createWithContent] uses for a brand-new Template.
   Future<void> _replaceContent(
     String templateId,
     WorkoutTemplateContentDraft content,
-    _WriteContext context, {
+    WriteContext context, {
     _WorkoutTemplateContentExercisePolicy exercisePolicy =
         _WorkoutTemplateContentExercisePolicy.historicalFact,
   }) async {
@@ -1232,14 +1232,14 @@ class WorkoutTemplateRepository {
   Future<void> _insertContentTree(
     String templateId,
     WorkoutTemplateContentDraft content,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final templateExerciseIds = <String>[];
     for (var exercisePosition = 0;
         exercisePosition < content.exercises.length;
         exercisePosition += 1) {
       final exercise = content.exercises[exercisePosition];
-      final templateExerciseId = _repositories.createId(context.timestamp);
+      final templateExerciseId = _repositories._ids.create(context.timestamp);
       await _database.into(_database.templateExercises).insert(
             TemplateExercisesCompanion.insert(
               id: templateExerciseId,
@@ -1264,7 +1264,7 @@ class WorkoutTemplateRepository {
       for (var prescriptionPosition = 0;
           prescriptionPosition < exercise.prescriptions.length;
           prescriptionPosition += 1) {
-        final prescriptionId = _repositories.createId(context.timestamp);
+        final prescriptionId = _repositories._ids.create(context.timestamp);
         await _database.into(_database.prescriptions).insert(
               _prescriptionInsertCompanion(
                 id: prescriptionId,
@@ -1289,7 +1289,7 @@ class WorkoutTemplateRepository {
         groupPosition < content.groups.length;
         groupPosition += 1) {
       final group = content.groups[groupPosition];
-      final templateGroupId = _repositories.createId(context.timestamp);
+      final templateGroupId = _repositories._ids.create(context.timestamp);
       await _database.into(_database.templateGroups).insert(
             TemplateGroupsCompanion.insert(
               id: templateGroupId,
@@ -1329,7 +1329,7 @@ class WorkoutTemplateRepository {
   /// deletes, ever.
   Future<void> _archiveContentTree(
     String templateId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final groups = await _activeTemplateGroupRows(templateId).get();
     for (final group in groups) {
@@ -1402,7 +1402,7 @@ class WorkoutTemplateRepository {
     required String actor,
     required String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -1665,7 +1665,7 @@ class WorkoutTemplateRepository {
   Future<void> _replaceTemplateGroupMembers({
     required String groupId,
     required List<String> orderedTemplateExerciseIds,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
     final allRows = await (_database.select(_database.templateGroupMembers)
           ..where((row) => row.groupId.equals(groupId))
@@ -1735,9 +1735,9 @@ class WorkoutTemplateRepository {
     required String groupId,
     required String templateExerciseId,
     required int position,
-    required _WriteContext context,
+    required WriteContext context,
   }) async {
-    final id = _repositories.createId(context.timestamp);
+    final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.templateGroupMembers).insert(
           TemplateGroupMembersCompanion.insert(
             id: id,
@@ -1759,7 +1759,7 @@ class WorkoutTemplateRepository {
 
   Future<void> _archiveTemplateGroupMember(
     TemplateGroupMemberRow before,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.templateGroupMembers)
           ..where((row) => row.id.equals(before.id)))
@@ -1782,7 +1782,7 @@ class WorkoutTemplateRepository {
   Future<void> _setTemplateGroupPosition(
     TemplateGroupRow before,
     int position,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.templateGroups)
           ..where((row) => row.id.equals(before.id)))
@@ -1805,7 +1805,7 @@ class WorkoutTemplateRepository {
   Future<void> _setTemplateGroupMemberPosition(
     TemplateGroupMemberRow before,
     int position,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     await (_database.update(_database.templateGroupMembers)
           ..where((row) => row.id.equals(before.id)))
@@ -1827,7 +1827,7 @@ class WorkoutTemplateRepository {
 
   Future<void> _normalizeTemplateGroupPositions(
     String templateId,
-    _WriteContext context,
+    WriteContext context,
   ) async {
     final rows = await _activeTemplateGroupRows(templateId).get();
     for (var position = 0; position < rows.length; position += 1) {
