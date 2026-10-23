@@ -19,6 +19,7 @@ import '../../domain/protocols/dose_validation.dart';
 import '../../domain/protocols/protocols.dart';
 import '../../domain/settings/account_settings.dart';
 import '../../domain/settings/settings_validation.dart';
+import '../../domain/training/exercise_catalog_merge.dart';
 import '../../domain/training/plan_validation.dart' as plan_validation;
 import '../../domain/training/routine_cadence.dart';
 import '../../domain/training/routine_up_next.dart';
@@ -814,7 +815,7 @@ class CatalogRepository {
     final categories = await _activeCategoryQuery().get();
     final exercises = await _activeExerciseQuery().get();
 
-    return _catalogSectionsFrom(
+    return exerciseCatalogSections(
       categories.map(_exerciseCategoryFromRow).toList(growable: false),
       exercises.map(_exerciseFromRow).toList(growable: false),
     );
@@ -1023,7 +1024,7 @@ class CatalogRepository {
         return;
       }
 
-      controller.add(_catalogSectionsFrom(categories, exercises));
+      controller.add(exerciseCatalogSections(categories, exercises));
     }
 
     controller.onListen = () {
@@ -1707,9 +1708,9 @@ class ExerciseRepository {
                 ),
           ))
         .get();
-    final normalizedName = _normalizeExerciseName(row.name);
+    final normalizedName = normalizeExerciseName(row.name);
     return platformRows.any(
-      (platform) => _normalizeExerciseName(platform.name) == normalizedName,
+      (platform) => normalizeExerciseName(platform.name) == normalizedName,
     );
   }
 
@@ -1717,7 +1718,7 @@ class ExerciseRepository {
     String name, {
     String? exceptId,
   }) async {
-    final normalizedName = _normalizeExerciseName(name);
+    final normalizedName = normalizeExerciseName(name);
     final rows = await (_database.select(_database.exercises)
           ..where(
             (row) =>
@@ -1729,7 +1730,7 @@ class ExerciseRepository {
     final duplicate = rows.any(
       (row) =>
           row.id != exceptId &&
-          _normalizeExerciseName(row.name) == normalizedName,
+          normalizeExerciseName(row.name) == normalizedName,
     );
     if (duplicate) {
       throw DuplicateExerciseNameException(name);
@@ -16338,128 +16339,6 @@ DateTime? _activityNullableDateTime(Map<String, Object?> image, String key) {
   throw StateError(
     'Activity image field $key must be a date-time string or null.',
   );
-}
-
-List<ExerciseCatalogSectionRecord> _catalogSectionsFrom(
-  List<ExerciseCategoryRecord> categories,
-  List<ExerciseRecord> exercises,
-) {
-  final categoryById = <String, ExerciseCategoryRecord>{
-    for (final category in categories) category.id: category,
-  };
-  final shadowAwareExercises = _markShadowingUserExercises(exercises);
-  final selectedExercises = _mergedExercises(shadowAwareExercises);
-  final exercisesByCategoryId = <String?, List<ExerciseRecord>>{};
-  for (final exercise in selectedExercises) {
-    exercisesByCategoryId
-        .putIfAbsent(exercise.categoryId, () => <ExerciseRecord>[])
-        .add(exercise);
-  }
-
-  final sections = <ExerciseCatalogSectionRecord>[];
-  final favoriteExercises = selectedExercises
-      .where((exercise) => exercise.isFavorite)
-      .toList(growable: false);
-  if (favoriteExercises.isNotEmpty) {
-    sections.add(
-      ExerciseCatalogSectionRecord.virtualFavorites(
-        exercises: List<ExerciseRecord>.unmodifiable(favoriteExercises),
-      ),
-    );
-  }
-
-  for (final category in categories) {
-    final exerciseList = exercisesByCategoryId.remove(category.id);
-    if (exerciseList == null || exerciseList.isEmpty) {
-      continue;
-    }
-
-    sections.add(
-      ExerciseCatalogSectionRecord(
-        category: category,
-        exercises: List<ExerciseRecord>.unmodifiable(exerciseList),
-      ),
-    );
-  }
-
-  final remainingCategoryIds = exercisesByCategoryId.keys.toList()
-    ..sort((left, right) {
-      if (left == null && right == null) {
-        return 0;
-      }
-      if (left == null) {
-        return 1;
-      }
-      if (right == null) {
-        return -1;
-      }
-      return left.compareTo(right);
-    });
-  for (final categoryId in remainingCategoryIds) {
-    final exerciseList = exercisesByCategoryId[categoryId]!;
-    sections.add(
-      ExerciseCatalogSectionRecord(
-        category: categoryId == null ? null : categoryById[categoryId],
-        exercises: List<ExerciseRecord>.unmodifiable(exerciseList),
-      ),
-    );
-  }
-
-  return List<ExerciseCatalogSectionRecord>.unmodifiable(sections);
-}
-
-List<ExerciseRecord> _mergedExercises(List<ExerciseRecord> exercises) {
-  final userNames = exercises
-      .where((exercise) => exercise.origin == ExerciseLibraryOrigin.user)
-      .map((exercise) => _normalizeExerciseName(exercise.name))
-      .toSet();
-  final selected = exercises
-      .where(
-        (exercise) =>
-            exercise.origin == ExerciseLibraryOrigin.user ||
-            !userNames.contains(_normalizeExerciseName(exercise.name)),
-      )
-      .toList(growable: false);
-
-  selected.sort(_compareExerciseRecords);
-  return selected;
-}
-
-List<ExerciseRecord> _markShadowingUserExercises(
-  List<ExerciseRecord> exercises,
-) {
-  final platformNames = exercises
-      .where((exercise) => exercise.origin == ExerciseLibraryOrigin.platform)
-      .map((exercise) => _normalizeExerciseName(exercise.name))
-      .toSet();
-
-  return exercises.map((exercise) {
-    final shadowsPlatform = exercise.origin == ExerciseLibraryOrigin.user &&
-        platformNames.contains(_normalizeExerciseName(exercise.name));
-    return exercise.copyWith(shadowsPlatformExercise: shadowsPlatform);
-  }).toList(growable: false);
-}
-
-int _compareExerciseRecords(ExerciseRecord left, ExerciseRecord right) {
-  final leftName = _normalizeExerciseName(left.name);
-  final rightName = _normalizeExerciseName(right.name);
-  final nameComparison = leftName.compareTo(rightName);
-  if (nameComparison != 0) {
-    return nameComparison;
-  }
-
-  return _originRank(left.origin).compareTo(_originRank(right.origin));
-}
-
-int _originRank(ExerciseLibraryOrigin origin) {
-  return switch (origin) {
-    ExerciseLibraryOrigin.user => 0,
-    ExerciseLibraryOrigin.platform => 1,
-  };
-}
-
-String _normalizeExerciseName(String name) {
-  return name.trim().toLowerCase();
 }
 
 String _normalizeExerciseNameForStorage(String name) {
