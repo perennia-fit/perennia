@@ -273,9 +273,96 @@ void main() {
     });
 
     test(
+        'performance volume converts load to kilograms and excludes '
+        'assisted-load exercises, like the exercise volume series', () async {
+      final exercises = await repositories.ensureStarterExercises();
+      final barbellId = exercises.first.id;
+      final assistedId = await repositories.exercises.create(
+        ExerciseDraft(
+          name: 'Assisted Pull-up',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+          defaultLoadUnit: TrainingUnit.kilogram,
+          loadMode: ExerciseLoadMode.assisted,
+        ),
+      );
+
+      LoggedSet loadReps(String load, TrainingUnit unit, String reps) {
+        return LoggedSet.fromValues(<SetDimensionValue>[
+          SetDimensionValue(
+            dimension: DimensionId.load,
+            entered: load,
+            unit: unit,
+          ),
+          SetDimensionValue(
+            dimension: DimensionId.reps,
+            entered: reps,
+            unit: TrainingUnit.repetition,
+          ),
+        ]);
+      }
+
+      // 100 lb x 5 (226.796185 kg) and 50 kg x 2, plus assisted 30 kg x 8,
+      // which is assistance, not lifted load.
+      final mixed = await repositories.logWorkoutWithSet(
+        WorkoutSessionDraft(
+          startedAt: DateTime.utc(2026, 1, 20, 9),
+          timezone: 'UTC',
+        ),
+        LoggedSetDraft(
+          exerciseId: barbellId,
+          position: 0,
+          isCompleted: true,
+          values: loadReps('100', TrainingUnit.pound, '5'),
+        ),
+      );
+      await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: mixed.workoutSessionId,
+          exerciseId: barbellId,
+          position: 1,
+          isCompleted: true,
+          values: loadReps('50', TrainingUnit.kilogram, '2'),
+        ),
+      );
+      await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: mixed.workoutSessionId,
+          exerciseId: assistedId,
+          position: 2,
+          isCompleted: true,
+          values: loadReps('30', TrainingUnit.kilogram, '8'),
+        ),
+      );
+
+      // A session of only assisted sets has no volume: excluded, not zero.
+      await repositories.logWorkoutWithSet(
+        WorkoutSessionDraft(
+          startedAt: DateTime.utc(2026, 1, 22, 9),
+          timezone: 'UTC',
+        ),
+        LoggedSetDraft(
+          exerciseId: assistedId,
+          position: 0,
+          isCompleted: true,
+          values: loadReps('20', TrainingUnit.kilogram, '10'),
+        ),
+      );
+
+      final samples = await repositories.effect.performanceVolumeSamples(
+        from: DateTime.utc(2026, 1, 15),
+        to: DateTime.utc(2026, 2, 14),
+      );
+
+      expect(samples, hasLength(1));
+      expect(samples.single.at.toUtc(), DateTime.utc(2026, 1, 20, 9));
+      expect(samples.single.value, closeTo(100 * 0.45359237 * 5 + 100, 1e-9));
+    });
+
+    test(
         'computeOutcome never writes anything back — no new Metric Reading, '
-        'Dose, or Workout row is created by reading the Effect view',
-        () async {
+        'Dose, or Workout row is created by reading the Effect view', () async {
       final metricId = await repositories.metrics.createMetric(
         const MetricDraft(
           name: 'Body Weight',

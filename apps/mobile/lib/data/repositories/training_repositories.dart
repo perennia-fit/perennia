@@ -9,6 +9,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../domain/analytics/exercise_analytics.dart';
 import '../../domain/body_tracker/measurement_validation.dart';
 import '../../domain/effect/effect.dart';
 import '../../domain/metrics/reading_normalization.dart';
@@ -1202,7 +1203,6 @@ class CatalogRepository {
       );
     });
   }
-
 
   Future<String> _createCategory(
     ExerciseCategoryDraft draft,
@@ -2874,7 +2874,6 @@ class NutritionRepository {
 
     return _database.transaction(() => _createMeal(draft, context));
   }
-
 
   Future<void> ensureDefaultMealTypes({
     String actor = 'app',
@@ -5328,7 +5327,6 @@ class ProtocolsRepository {
     });
   }
 
-
   Future<String> _createCompound(
     CompoundDraft draft,
     _WriteContext context,
@@ -5794,9 +5792,7 @@ class ProtocolsRepository {
   /// come from both `doses` and `compounds` so archives are reflected, but
   /// unrelated Compound detail edits are filtered out by id-list equality.
   Stream<List<String>> watchRecentCompoundIds({int limit = 5}) {
-    return _recentCompoundIdQuery(limit: limit)
-        .watch()
-        .distinct(_sameRowList);
+    return _recentCompoundIdQuery(limit: limit).watch().distinct(_sameRowList);
   }
 
   Selectable<String> _recentCompoundIdQuery({required int limit}) {
@@ -7281,8 +7277,6 @@ class ProtocolsRepository {
     );
   }
 
-
-
   bool _sameCompoundOptionRecords(
     List<CompoundOptionRecord> left,
     List<CompoundOptionRecord> right,
@@ -7436,7 +7430,6 @@ class ProtocolsRepository {
         left.metricId == right.metricId &&
         left.position == right.position;
   }
-
 
   Future<ProtocolRow> _requireProtocolRow(String id) async {
     final row = await (_database.select(_database.protocols)
@@ -7654,9 +7647,10 @@ class EffectRepository {
   /// A read-only performance proxy (PROTOCOLS.md §4: "performance comes from
   /// Workout analytics") for the `Effect` view: one [EffectSample] per
   /// Workout session in `[from, to)` whose `at` is the session's start and
-  /// whose value is the session's total logged volume (Σ load × reps over
-  /// its completed, load-and-reps-bearing `LoggedSet`s). A session with no
-  /// such set is EXCLUDED (not fabricated as a zero) — e.g. an
+  /// whose value is the session's total logged volume in kilograms
+  /// ([sessionLoadVolumeKilograms] over its completed sets, so kg and lb add
+  /// up and assisted-load exercises are excluded). A session with no such
+  /// set is EXCLUDED (not fabricated as a zero) — e.g. an
   /// endurance/duration-only session contributes no volume sample.
   Future<List<EffectSample>> performanceVolumeSamples({
     required DateTime from,
@@ -7686,19 +7680,32 @@ class EffectRepository {
           ))
         .get();
 
-    final volumeBySessionId = <String, double>{};
+    // Archived exercises still count: archive keeps history.
+    final exerciseIds = setRows.map((row) => row.exerciseId).toSet();
+    final loadModeByExerciseId = <String, ExerciseLoadMode>{
+      for (final exercise in await (_database.select(_database.exercises)
+            ..where((row) => row.id.isIn(exerciseIds)))
+          .get())
+        exercise.id: ExerciseLoadMode.values.byName(exercise.loadMode),
+    };
+    final setsBySessionId = <String, List<SessionVolumeSet>>{};
     for (final row in setRows) {
-      final volume = row.loadValue! * row.repsValue!;
-      volumeBySessionId.update(
-        row.workoutId,
-        (existing) => existing + volume,
-        ifAbsent: () => volume,
-      );
+      setsBySessionId
+          .putIfAbsent(row.workoutId, () => <SessionVolumeSet>[])
+          .add(
+            SessionVolumeSet(
+              loadMode: loadModeByExerciseId[row.exerciseId] ??
+                  ExerciseLoadMode.added,
+              values: _loggedSetValuesFromRow(row),
+            ),
+          );
     }
 
     final samples = <EffectSample>[];
     for (final session in sessionRows) {
-      final volume = volumeBySessionId[session.id];
+      final sessionSets = setsBySessionId[session.id];
+      final volume =
+          sessionSets == null ? null : sessionLoadVolumeKilograms(sessionSets);
       if (volume == null) {
         continue;
       }
@@ -7824,8 +7831,8 @@ class WorkoutExerciseRepository {
       );
 
       final sets = await (_repositories.sets
-            ._activeLoggedSetQuery(workoutId: before.workoutId)
-          ..where((row) => row.exerciseId.equals(before.exerciseId)))
+              ._activeLoggedSetQuery(workoutId: before.workoutId)
+            ..where((row) => row.exerciseId.equals(before.exerciseId)))
           .get();
       for (final set in sets) {
         await _repositories.workoutSessions._softDeleteLoggedSet(set, context);
@@ -10437,7 +10444,6 @@ class MeasurementRepository {
     return _sameMeasurementEntryRecord(left, right);
   }
 
-
   bool _sameMeasurementEntryRecord(
     MeasurementEntryRecord left,
     MeasurementEntryRecord right,
@@ -10794,8 +10800,6 @@ class MeasurementRepository {
     return row;
   }
 
-
-
   SimpleSelectStatement<$MetricsTable, MetricRow>
       _manageableMeasurementQuery() {
     return _database.select(_database.metrics)
@@ -10883,7 +10887,6 @@ class MeasurementRepository {
       sortOrder: draft.sortOrder,
     );
   }
-
 
   MeasurementRecord _measurementRecordFromMetricRow(MetricRow row) {
     return MeasurementRecord(
@@ -12019,7 +12022,6 @@ class MetricRepository {
       ..limit(1);
   }
 
-
   SimpleSelectStatement<$MetricReadingsTable, MetricReadingRow>
       _latestMetricReadingRows(
     String metricId, {
@@ -12247,7 +12249,6 @@ class MetricRepository {
     return _sameListBy(left, right, _sameMetricSeriesData);
   }
 
-
   MetricDraft _normalizeMetricDraft(MetricDraft draft) {
     final name = draft.name.trim();
     if (name.isEmpty) {
@@ -12403,7 +12404,6 @@ class MetricRepository {
   DateTime? _parseOptionalUtc(Object? value) {
     return value == null ? null : DateTime.parse(value as String).toUtc();
   }
-
 }
 
 class ActivityLogRepository {
@@ -16801,9 +16801,6 @@ class _NormalizedRecipeDraft {
   final RecipeNutrition nutrition;
 }
 
-
-
-
 int _nextPosition<T>(Iterable<T> rows, int Function(T row) positionOf) {
   var next = 0;
   for (final row in rows) {
@@ -17078,10 +17075,6 @@ _DimensionColumns _dimensionColumns(SetDimensionValue? value) {
     entered: value?.entered,
   );
 }
-
-
-
-
 
 double _normalizeAlertVolume(double volume) {
   if (volume.isNaN) {
