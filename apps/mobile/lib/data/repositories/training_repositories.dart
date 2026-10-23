@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 
 import '../../domain/body_tracker/measurement_validation.dart';
 import '../../domain/effect/effect.dart';
+import '../../domain/metrics/reading_normalization.dart';
 import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/nutrition_import.dart';
 import '../../domain/protocols/dose_validation.dart';
@@ -12366,51 +12367,41 @@ class MetricRepository {
       throw StateError(shapeErrorMessage);
     }
 
-    final normalizedValueEntered = valueEntered.trim();
-    final scalarValue = double.tryParse(normalizedValueEntered);
-    if (scalarValue == null || !scalarValue.isFinite) {
-      throw ArgumentError.value(
-        valueEntered,
-        'valueEntered',
-        'Scalar Reading value must be finite.',
-      );
-    }
-
-    final normalizedAtTime = atTime?.toUtc();
-    final normalizedWindowStartedAt = windowStartedAt?.toUtc();
-    final normalizedWindowEndedAt = windowEndedAt?.toUtc();
-    final hasInstant = normalizedAtTime != null;
-    final hasWindow =
-        normalizedWindowStartedAt != null || normalizedWindowEndedAt != null;
-    if (hasInstant == hasWindow) {
-      throw ArgumentError(
-        'A Reading must have either atTime or a complete window, not both.',
-      );
-    }
-    if (hasWindow) {
-      if (normalizedWindowStartedAt == null ||
-          normalizedWindowEndedAt == null) {
-        throw ArgumentError('Window Readings require start and end times.');
-      }
-      if (!normalizedWindowEndedAt.isAfter(normalizedWindowStartedAt)) {
-        throw ArgumentError('Window end must be after window start.');
-      }
-    }
-
-    final valueJson = jsonEncode(<String, Object?>{
-      'shape': MetricValueShape.scalar.name,
-      'value': scalarValue,
-      'entered': normalizedValueEntered,
+    // The shared module is golden-vectored against the server, so a Reading
+    // stored here is byte-identical to one an agent writes. Its warnings
+    // (window preferred over an instant, reordered bounds) have no UI channel
+    // on this path; the normalized anchor already reflects them.
+    final normalized = normalizeMetricReading(<String, Object?>{
+      'metric': <String, Object?>{
+        'valueShape': metric.valueShape,
+        'unit': metric.unit,
+      },
+      'value': <String, Object?>{
+        'shape': metric.valueShape,
+        'entered': valueEntered,
+      },
+      'timeAnchor': <String, Object?>{
+        if (atTime != null) 'atTime': atTime.toUtc().toIso8601String(),
+        if (windowStartedAt != null)
+          'windowStartedAt': windowStartedAt.toUtc().toIso8601String(),
+        if (windowEndedAt != null)
+          'windowEndedAt': windowEndedAt.toUtc().toIso8601String(),
+      },
     });
+
     return _NormalizedMetricReadingValues(
-      valueJson: valueJson,
-      scalarValue: scalarValue,
-      scalarEntered: normalizedValueEntered,
-      atTime: normalizedAtTime,
-      windowStartedAt: normalizedWindowStartedAt,
-      windowEndedAt: normalizedWindowEndedAt,
+      valueJson: normalized['valueJson']! as String,
+      scalarValue: (normalized['scalarValue']! as num).toDouble(),
+      scalarEntered: valueEntered.trim(),
+      atTime: _parseOptionalUtc(normalized['atTime']),
+      windowStartedAt: _parseOptionalUtc(normalized['windowStartedAt']),
+      windowEndedAt: _parseOptionalUtc(normalized['windowEndedAt']),
       comment: _normalizeOptionalText(comment),
     );
+  }
+
+  DateTime? _parseOptionalUtc(Object? value) {
+    return value == null ? null : DateTime.parse(value as String).toUtc();
   }
 
 }
