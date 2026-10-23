@@ -4784,14 +4784,17 @@ class AccountSettingsRepository {
         return;
       }
 
+      // Compare before writing: the write always stamps `updatedAt`, so an
+      // unchanged save would otherwise log (and sync) a spurious change.
+      if (_accountSettingsFromRow(existing) == settings) {
+        return;
+      }
+
       final before = _userSettingsImage(existing);
       await (_database.update(_database.userSettings)
             ..where((row) => row.id.equals(existing.id)))
           .write(_companionFromSettings(settings, context.timestamp));
       final after = await _requireRow(existing.id);
-      if (_activityImagesEqual(before, _userSettingsImage(after))) {
-        return;
-      }
       await _repositories.activityLog._append(
         context,
         entityTable: AppDatabase.userSettingsTable,
