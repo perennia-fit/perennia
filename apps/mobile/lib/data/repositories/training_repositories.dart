@@ -185,6 +185,45 @@ class TrainingRepositories {
   late final CsvExportRepository csvExports;
   late final PortableArchiveRepository portableArchives;
 
+  /// Every table "Erase all data" clears, children before parents. A test
+  /// pins this list plus the kept tables (Settings, integration consents, the
+  /// Activity Log, caches, sync bookkeeping) to the whole schema, so a new
+  /// table cannot be silently left out of the erase.
+  static const eraseTableNames = <String>[
+    AppDatabase.loggedSetsTable,
+    AppDatabase.restTimersTable,
+    AppDatabase.intervalTimersTable,
+    AppDatabase.exerciseGroupMembersTable,
+    AppDatabase.exerciseGroupsTable,
+    AppDatabase.workoutExercisesTable,
+    AppDatabase.templateLinksTable,
+    AppDatabase.workoutSessionsTable,
+    AppDatabase.routineEntriesTable,
+    AppDatabase.planRoutinesTable,
+    AppDatabase.templateGroupMembersTable,
+    AppDatabase.templateGroupsTable,
+    AppDatabase.prescriptionsTable,
+    AppDatabase.templateExercisesTable,
+    AppDatabase.workoutTemplatesTable,
+    AppDatabase.exercisesTable,
+    AppDatabase.exerciseCategoriesTable,
+    AppDatabase.foodEntriesTable,
+    AppDatabase.mealsTable,
+    AppDatabase.foodsTable,
+    AppDatabase.mealTypesTable,
+    AppDatabase.nutritionGoalsTable,
+    AppDatabase.measurementEntriesTable,
+    AppDatabase.measurementsTable,
+    AppDatabase.metricReadingsTable,
+    AppDatabase.metricsTable,
+    AppDatabase.dosesTable,
+    AppDatabase.schedulesTable,
+    AppDatabase.protocolTargetOutcomesTable,
+    AppDatabase.protocolCompoundsTable,
+    AppDatabase.protocolsTable,
+    AppDatabase.compoundsTable,
+  ];
+
   static const starterWeightRepsExerciseName = 'Barbell Squat';
 
   static const _starterWeightRepsValues = <SetDimensionValue>[
@@ -253,159 +292,94 @@ class TrainingRepositories {
     });
   }
 
-  Future<void> eraseAllData() {
+  /// Erases every authored domain (the [eraseTableNames] tables) on this
+  /// device and, through Synced Mode, everywhere else.
+  ///
+  /// Each erased row is soft-deleted and gets an Activity Log tombstone in one
+  /// batch. Sync push reads only the Activity Log, so a row without one would
+  /// stay on the server and on other devices; the batch also keeps the erase
+  /// recoverable with an undo. Settings and integration consents are not
+  /// authored log data and stay. So do rows the bundled seeds own (the
+  /// Platform Library, the OTC Compounds, the default Meal Types): every seed
+  /// skips ids it has already written, so an erased seed row would never
+  /// return.
+  Future<void> eraseAllData() async {
+    final seedOwnedIds = await _seedOwnedIdsForErase();
     final context = _createWriteContext(actor: 'settings');
-    return database.transaction(() async {
-      await _appendLoggedSetEraseTombstones(context);
-      await _softDeleteDomainRowsForErase(context.timestamp);
+    await database.transaction(() async {
+      for (final table in eraseTableNames) {
+        await _eraseTable(
+          table,
+          context,
+          keepIds: seedOwnedIds[table] ?? const <String>{},
+        );
+      }
     });
   }
 
-  Future<void> _appendLoggedSetEraseTombstones(_WriteContext context) async {
-    final rows = await (database.select(database.loggedSets)
-          ..where((row) => row.deletedAt.isNull()))
+  Future<Map<String, Set<String>>> _seedOwnedIdsForErase() async {
+    final platformSeed = await catalog._platformSeedSource.load();
+    final platformExercises = await (database.select(database.exercises)
+          ..where(
+            (row) =>
+                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name),
+          ))
         .get();
-    for (final before in rows) {
-      await (database.update(database.loggedSets)
-            ..where((row) => row.id.equals(before.id)))
-          .write(
-        LoggedSetsCompanion(
-          updatedAt: Value<DateTime>(context.timestamp),
-          deletedAt: Value<DateTime?>(context.timestamp),
-        ),
-      );
-      final after = await sets._requireRow(before.id);
-      await activityLog._append(
-        context,
-        entityTable: AppDatabase.loggedSetsTable,
-        entityId: before.id,
-        beforeImage: _loggedSetImage(before),
-        afterImage: _loggedSetImage(after),
-      );
-    }
+    return <String, Set<String>>{
+      AppDatabase.exercisesTable:
+          platformExercises.map((row) => row.id).toSet(),
+      AppDatabase.exerciseCategoriesTable:
+          platformSeed.categories.map((category) => category.id).toSet(),
+      AppDatabase.mealTypesTable: NutritionRepository._defaultMealTypes
+          .map((mealType) => mealType.id)
+          .toSet(),
+      AppDatabase.compoundsTable:
+          protocols._otcSeedSource.load().map((seed) => seed.id).toSet(),
+    };
   }
 
-  Future<void> _softDeleteDomainRowsForErase(DateTime timestamp) async {
-    await (database.update(database.intervalTimers)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      IntervalTimersCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
+  Future<void> _eraseTable(
+    String entityTable,
+    _WriteContext context, {
+    required Set<String> keepIds,
+  }) async {
+    final table = database.allTables.singleWhere(
+      (candidate) => candidate.actualTableName == entityTable,
     );
-    await (database.update(database.restTimers)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      RestTimersCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.loggedSets)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      LoggedSetsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.foodEntries)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      FoodEntriesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.foods)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      FoodsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.mealTypes)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MealTypesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.meals)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MealsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.metricReadings)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MetricReadingsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.metrics)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MetricsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exerciseGroupMembers)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExerciseGroupMembersCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exerciseGroups)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExerciseGroupsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.workoutExercises)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      WorkoutExercisesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.workoutSessions)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      WorkoutSessionsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exercises)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExercisesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exerciseCategories)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExerciseCategoriesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
+    final liveRows = await database.customSelect(
+      'SELECT id FROM $entityTable WHERE deleted_at IS NULL',
+      readsFrom: <TableInfo<Table, Object?>>{table},
+    ).get();
+    for (final liveRow in liveRows) {
+      final id = liveRow.read<String>('id');
+      if (keepIds.contains(id)) {
+        continue;
+      }
+      final before = await activityLog._currentImageFor(
+        entityTable: entityTable,
+        entityId: id,
+      );
+      await database.customUpdate(
+        'UPDATE $entityTable SET updated_at = ?, deleted_at = ? WHERE id = ?',
+        variables: <Variable<Object>>[
+          Variable<DateTime>(context.timestamp),
+          Variable<DateTime>(context.timestamp),
+          Variable<String>(id),
+        ],
+        updates: <TableInfo<Table, Object?>>{table},
+        updateKind: UpdateKind.update,
+      );
+      await activityLog._append(
+        context,
+        entityTable: entityTable,
+        entityId: id,
+        beforeImage: before,
+        afterImage: await activityLog._currentImageFor(
+          entityTable: entityTable,
+          entityId: id,
+        ),
+      );
+    }
   }
 
   Future<LogWorkoutResult> logWorkoutWithSet(
