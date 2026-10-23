@@ -254,7 +254,7 @@ final class TemplateMaterializeRepository {
               groupIds: exerciseGroupRows.map((group) => group.id).toSet(),
             )
             .get();
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.templateLinksTable,
       entityId: linkId,

@@ -258,7 +258,7 @@ class RoutinePlanRepository {
         ),
       );
       final afterRoutine = await _requireRoutineRow(routineId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.planRoutinesTable,
         entityId: routineId,
@@ -368,7 +368,7 @@ class RoutinePlanRepository {
             ),
           );
       final after = await _requireRoutineRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.planRoutinesTable,
         entityId: id,
@@ -407,7 +407,7 @@ class RoutinePlanRepository {
         ),
       );
       final after = await _requireRoutineRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.planRoutinesTable,
         entityId: id,
@@ -507,7 +507,7 @@ class RoutinePlanRepository {
           ),
         );
     final after = await _requireEntryRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.routineEntriesTable,
       entityId: id,
@@ -544,7 +544,7 @@ class RoutinePlanRepository {
         ),
       );
       final archived = await _requireEntryRow(entryId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.routineEntriesTable,
         entityId: entryId,
@@ -615,7 +615,7 @@ class RoutinePlanRepository {
         ),
       );
       final after = await _requireRoutineRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.planRoutinesTable,
         entityId: id,
@@ -779,7 +779,7 @@ class RoutinePlanRepository {
       ),
     );
     final after = await _requireEntryRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.routineEntriesTable,
       entityId: before.id,
@@ -806,7 +806,7 @@ class RoutinePlanRepository {
       ),
     );
     final after = await _requireEntryRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.routineEntriesTable,
       entityId: before.id,
@@ -834,7 +834,7 @@ class RoutinePlanRepository {
       ),
     );
     final after = await _requireEntryRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.routineEntriesTable,
       entityId: before.id,

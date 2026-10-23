@@ -398,7 +398,7 @@ class PortableArchiveRepository {
   ) async {
     for (final pending in pendingActivities.values) {
       final current = await pending.entity.findById(pending.entityId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: pending.entity.tableName,
         entityId: pending.entityId,

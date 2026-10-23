@@ -350,7 +350,7 @@ class WorkoutTemplateRepository {
         ),
       );
       final after = await _requireTemplateRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutTemplatesTable,
         entityId: id,
@@ -455,7 +455,7 @@ class WorkoutTemplateRepository {
           ),
         );
         final after = await _requireTemplateExerciseRow(archivedExisting.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.templateExercisesTable,
           entityId: archivedExisting.id,
@@ -477,7 +477,7 @@ class WorkoutTemplateRepository {
             ),
           );
       final after = await _requireTemplateExerciseRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.templateExercisesTable,
         entityId: id,
@@ -516,7 +516,7 @@ class WorkoutTemplateRepository {
         ),
       );
       final after = await _requireTemplateExerciseRow(templateExerciseId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.templateExercisesTable,
         entityId: templateExerciseId,
@@ -553,7 +553,7 @@ class WorkoutTemplateRepository {
         ),
       );
       final after = await _requireTemplateExerciseRow(templateExerciseId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.templateExercisesTable,
         entityId: templateExerciseId,
@@ -598,7 +598,7 @@ class WorkoutTemplateRepository {
           ),
         );
         final after = await _requireTemplateExerciseRow(before.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.templateExercisesTable,
           entityId: before.id,
@@ -640,7 +640,7 @@ class WorkoutTemplateRepository {
             ),
           );
       final after = await _requireTemplateGroupRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.templateGroupsTable,
         entityId: id,
@@ -696,7 +696,7 @@ class WorkoutTemplateRepository {
           ),
         );
         final after = await _requireTemplateGroupRow(groupId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.templateGroupsTable,
           entityId: groupId,
@@ -774,7 +774,7 @@ class WorkoutTemplateRepository {
         ),
       );
       final after = await _requireTemplateGroupRow(groupId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.templateGroupsTable,
         entityId: groupId,
@@ -826,7 +826,7 @@ class WorkoutTemplateRepository {
             ),
           );
       final after = await _requirePrescriptionRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.prescriptionsTable,
         entityId: id,
@@ -861,7 +861,7 @@ class WorkoutTemplateRepository {
         _prescriptionValueCompanion(draft, updatedAt: context.timestamp),
       );
       final after = await _requirePrescriptionRow(prescriptionId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.prescriptionsTable,
         entityId: prescriptionId,
@@ -898,7 +898,7 @@ class WorkoutTemplateRepository {
         ),
       );
       final after = await _requirePrescriptionRow(prescriptionId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.prescriptionsTable,
         entityId: prescriptionId,
@@ -945,7 +945,7 @@ class WorkoutTemplateRepository {
           ),
         );
         final after = await _requirePrescriptionRow(before.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.prescriptionsTable,
           entityId: before.id,
@@ -1100,7 +1100,7 @@ class WorkoutTemplateRepository {
           ),
         );
     final after = await _requireTemplateRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.workoutTemplatesTable,
       entityId: id,
@@ -1145,7 +1145,7 @@ class WorkoutTemplateRepository {
       ),
     );
     final after = await _requireTemplateRow(templateId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.workoutTemplatesTable,
       entityId: templateId,
@@ -1252,7 +1252,7 @@ class WorkoutTemplateRepository {
           );
       final templateExercise =
           await _requireTemplateExerciseRow(templateExerciseId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.templateExercisesTable,
         entityId: templateExerciseId,
@@ -1275,7 +1275,7 @@ class WorkoutTemplateRepository {
               ),
             );
         final prescription = await _requirePrescriptionRow(prescriptionId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.prescriptionsTable,
           entityId: prescriptionId,
@@ -1302,7 +1302,7 @@ class WorkoutTemplateRepository {
             ),
           );
       final templateGroup = await _requireTemplateGroupRow(templateGroupId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.templateGroupsTable,
         entityId: templateGroupId,
@@ -1347,7 +1347,7 @@ class WorkoutTemplateRepository {
         ),
       );
       final after = await _requireTemplateGroupRow(group.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.templateGroupsTable,
         entityId: group.id,
@@ -1369,7 +1369,7 @@ class WorkoutTemplateRepository {
           ),
         );
         final after = await _requirePrescriptionRow(prescription.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.prescriptionsTable,
           entityId: prescription.id,
@@ -1386,7 +1386,7 @@ class WorkoutTemplateRepository {
         ),
       );
       final after = await _requireTemplateExerciseRow(exercise.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.templateExercisesTable,
         entityId: exercise.id,
@@ -1420,7 +1420,7 @@ class WorkoutTemplateRepository {
         ),
       );
       final after = await _requireTemplateRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutTemplatesTable,
         entityId: id,
@@ -1713,7 +1713,7 @@ class WorkoutTemplateRepository {
           ),
         );
         final after = await _requireTemplateGroupMemberRow(archived.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.templateGroupMembersTable,
           entityId: archived.id,
@@ -1748,7 +1748,7 @@ class WorkoutTemplateRepository {
           ),
         );
     final after = await _requireTemplateGroupMemberRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.templateGroupMembersTable,
       entityId: id,
@@ -1770,7 +1770,7 @@ class WorkoutTemplateRepository {
       ),
     );
     final after = await _requireTemplateGroupMemberRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.templateGroupMembersTable,
       entityId: before.id,
@@ -1793,7 +1793,7 @@ class WorkoutTemplateRepository {
       ),
     );
     final after = await _requireTemplateGroupRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.templateGroupsTable,
       entityId: before.id,
@@ -1816,7 +1816,7 @@ class WorkoutTemplateRepository {
       ),
     );
     final after = await _requireTemplateGroupMemberRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.templateGroupMembersTable,
       entityId: before.id,

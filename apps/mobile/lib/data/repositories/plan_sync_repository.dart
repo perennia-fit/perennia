@@ -50,7 +50,7 @@ extension PlanSyncActivityLogRepository on ActivityLogRepository {
         _activityImagesEqual(before, after)) {
       return false;
     }
-    await _append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: entityTable,
       entityId: id,

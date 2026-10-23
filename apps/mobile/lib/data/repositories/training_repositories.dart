@@ -33,6 +33,7 @@ import '../../domain/training/training_dimensions.dart';
 import '../../domain/training/training_records.dart';
 import '../../domain/training/workout_capture.dart';
 import '../../domain/training/workout_share_summary.dart';
+import '../infra/activity_log_writer.dart';
 import '../infra/id_factory.dart';
 import '../infra/write_context.dart';
 import '../local/app_database.dart';
@@ -172,6 +173,8 @@ class TrainingRepositories {
   // facade for now; constructor injection replaces that in a later phase.
   late final IdFactory _ids = IdFactory(uuidGenerator);
   late final WriteContextFactory _writeContexts = WriteContextFactory(_ids);
+  late final ActivityLogWriter _activityLogWriter =
+      ActivityLogWriter(database, _ids);
 
   late final ActivityLogRepository activityLog;
   late final CatalogRepository catalog;
@@ -382,7 +385,7 @@ class TrainingRepositories {
         updates: <TableInfo<Table, Object?>>{table},
         updateKind: UpdateKind.update,
       );
-      await activityLog._append(
+      await _activityLogWriter.append(
         context,
         entityTable: entityTable,
         entityId: id,
@@ -564,7 +567,7 @@ class CatalogRepository {
               ),
             );
         final after = await _requireCategoryRow(category.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exerciseCategoriesTable,
           entityId: category.id,
@@ -608,7 +611,7 @@ class CatalogRepository {
               ),
             );
         final after = await _requireExerciseRow(exercise.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exercisesTable,
           entityId: exercise.id,
@@ -667,7 +670,7 @@ class CatalogRepository {
           ),
         );
         final after = await _requireExerciseRow(redirect.fromExerciseId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exercisesTable,
           entityId: redirect.fromExerciseId,
@@ -706,7 +709,7 @@ class CatalogRepository {
             ),
           );
       final alias = await _requireExerciseRow(redirect.fromExerciseId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: redirect.fromExerciseId,
@@ -750,7 +753,7 @@ class CatalogRepository {
         ),
       );
       final after = await _requireExerciseRow(exercise.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: exercise.id,
@@ -799,7 +802,7 @@ class CatalogRepository {
         ),
       );
       final after = await _requireExerciseRow(before.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: before.id,
@@ -862,7 +865,7 @@ class CatalogRepository {
         ),
       );
       final after = await _requireCategoryRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseCategoriesTable,
         entityId: id,
@@ -894,7 +897,7 @@ class CatalogRepository {
         ),
       );
       final after = await _requireCategoryRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseCategoriesTable,
         entityId: id,
@@ -945,7 +948,7 @@ class CatalogRepository {
           ),
         );
         final after = await _requireCategoryRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exerciseCategoriesTable,
           entityId: id,
@@ -996,7 +999,7 @@ class CatalogRepository {
         ),
       );
       final after = await _requireCategoryRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseCategoriesTable,
         entityId: id,
@@ -1167,7 +1170,7 @@ class CatalogRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: entityTable,
         entityId: id,
@@ -1200,7 +1203,7 @@ class CatalogRepository {
         );
 
     final after = await _requireCategoryRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exerciseCategoriesTable,
       entityId: id,
@@ -1310,7 +1313,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1344,7 +1347,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1376,7 +1379,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1412,7 +1415,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1447,7 +1450,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1522,7 +1525,7 @@ class ExerciseRepository {
           );
 
       final after = await _requireRow(copyId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: copyId,
@@ -1565,7 +1568,7 @@ class ExerciseRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: id,
@@ -1664,7 +1667,7 @@ class ExerciseRepository {
         );
 
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exercisesTable,
       entityId: id,
@@ -1790,7 +1793,7 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -1850,7 +1853,7 @@ class WorkoutSessionRepository {
           ),
         );
         final after = await _requireRow(before.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.workoutSessionsTable,
           entityId: before.id,
@@ -1907,7 +1910,7 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -1944,7 +1947,7 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -1980,7 +1983,7 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -2033,7 +2036,7 @@ class WorkoutSessionRepository {
             ),
           );
       final copiedWorkout = await _requireRow(copyId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: copyId,
@@ -2055,7 +2058,7 @@ class WorkoutSessionRepository {
             );
         final after = await _repositories.workoutExercises
             ._requireRow(copyWorkoutExerciseId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.workoutExercisesTable,
           entityId: copyWorkoutExerciseId,
@@ -2087,7 +2090,7 @@ class WorkoutSessionRepository {
               ),
             );
         final after = await _repositories.sets._requireRow(copySetId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.loggedSetsTable,
           entityId: copySetId,
@@ -2160,7 +2163,7 @@ class WorkoutSessionRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.workoutSessionsTable,
         entityId: id,
@@ -2307,7 +2310,7 @@ class WorkoutSessionRepository {
         );
 
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.workoutSessionsTable,
       entityId: id,
@@ -2352,7 +2355,7 @@ class WorkoutSessionRepository {
       final after = await (_database.select(_database.intervalTimers)
             ..where((row) => row.id.equals(before.id)))
           .getSingle();
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.intervalTimersTable,
         entityId: before.id,
@@ -2398,7 +2401,7 @@ class WorkoutSessionRepository {
     final after = await _repositories.exerciseGroups._requireMemberRow(
       before.id,
     );
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exerciseGroupMembersTable,
       entityId: before.id,
@@ -2420,7 +2423,7 @@ class WorkoutSessionRepository {
       ),
     );
     final after = await _repositories.exerciseGroups._requireRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exerciseGroupsTable,
       entityId: before.id,
@@ -2442,7 +2445,7 @@ class WorkoutSessionRepository {
       ),
     );
     final after = await _repositories.workoutExercises._requireRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.workoutExercisesTable,
       entityId: before.id,
@@ -2464,7 +2467,7 @@ class WorkoutSessionRepository {
       ),
     );
     final after = await _repositories.sets._requireRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.loggedSetsTable,
       entityId: before.id,
@@ -2826,7 +2829,7 @@ class NutritionRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: entityTable,
         entityId: id,
@@ -2872,7 +2875,7 @@ class NutritionRepository {
               ),
             );
         final after = await _requireMealTypeRow(seed.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.mealTypesTable,
           entityId: seed.id,
@@ -2914,7 +2917,7 @@ class NutritionRepository {
             ..where((row) => row.id.equals(id)))
           .write(_mealTypeCompanionFromDraft(draft, context.timestamp));
       final after = await _requireMealTypeRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.mealTypesTable,
         entityId: id,
@@ -2945,7 +2948,7 @@ class NutritionRepository {
         ),
       );
       final after = await _requireMealTypeRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.mealTypesTable,
         entityId: id,
@@ -2998,7 +3001,7 @@ class NutritionRepository {
           ),
         );
         final after = await _requireMealTypeRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.mealTypesTable,
           entityId: id,
@@ -3057,7 +3060,7 @@ class NutritionRepository {
                   .copyWith(id: Value<String>(id)),
             );
         final after = await _requireNutritionGoalRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.nutritionGoalsTable,
           entityId: id,
@@ -3072,7 +3075,7 @@ class NutritionRepository {
             ..where((row) => row.id.equals(existing.id)))
           .write(_nutritionGoalCompanionFromTarget(target, context.timestamp));
       final after = await _requireNutritionGoalRow(existing.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.nutritionGoalsTable,
         entityId: existing.id,
@@ -3111,7 +3114,7 @@ class NutritionRepository {
         ),
       );
       final after = await _requireNutritionGoalRow(existing.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.nutritionGoalsTable,
         entityId: existing.id,
@@ -3302,7 +3305,7 @@ class NutritionRepository {
             ..where((row) => row.id.equals(id)))
           .write(_userFoodCompanionFromDraft(draft, context.timestamp));
       final after = await _requireFoodRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.foodsTable,
         entityId: id,
@@ -3334,7 +3337,7 @@ class NutritionRepository {
         ),
       );
       final after = await _requireFoodRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.foodsTable,
         entityId: id,
@@ -3615,7 +3618,7 @@ class NutritionRepository {
       ),
     );
     final after = await _requireFoodEntryRow(existing.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodEntriesTable,
       entityId: existing.id,
@@ -3689,7 +3692,7 @@ class NutritionRepository {
         ),
       );
       final after = await _requireFoodEntryRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.foodEntriesTable,
         entityId: id,
@@ -3734,7 +3737,7 @@ class NutritionRepository {
         ),
       );
       final afterMeal = await _requireMealRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.mealsTable,
         entityId: id,
@@ -4140,7 +4143,7 @@ class NutritionRepository {
         );
 
     final after = await _requireMealRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.mealsTable,
       entityId: id,
@@ -4165,7 +4168,7 @@ class NutritionRepository {
         );
 
     final after = await _requireMealTypeRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.mealTypesTable,
       entityId: id,
@@ -4206,7 +4209,7 @@ class NutritionRepository {
         );
 
     final after = await _requireFoodRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodsTable,
       entityId: id,
@@ -4233,7 +4236,7 @@ class NutritionRepository {
         );
 
     final after = await _requireFoodRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodsTable,
       entityId: id,
@@ -4294,7 +4297,7 @@ class NutritionRepository {
         );
 
     final after = await _requireFoodEntryRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodEntriesTable,
       entityId: id,
@@ -4402,7 +4405,7 @@ class NutritionRepository {
         );
 
     final after = await _requireFoodEntryRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodEntriesTable,
       entityId: id,
@@ -4429,7 +4432,7 @@ class NutritionRepository {
       ),
     );
     final after = await _requireFoodEntryRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.foodEntriesTable,
       entityId: before.id,
@@ -4777,7 +4780,7 @@ class AccountSettingsRepository {
                   .copyWith(id: Value<String>(id)),
             );
         final after = await _requireRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.userSettingsTable,
           entityId: id,
@@ -4795,7 +4798,7 @@ class AccountSettingsRepository {
       if (_activityImagesEqual(before, _userSettingsImage(after))) {
         return;
       }
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.userSettingsTable,
         entityId: existing.id,
@@ -4839,7 +4842,7 @@ class AccountSettingsRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.userSettingsTable,
         entityId: id,
@@ -4975,7 +4978,7 @@ class ProtocolsRepository {
               ),
             );
         final after = await _requireCompoundRow(seed.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.compoundsTable,
           entityId: seed.id,
@@ -5179,7 +5182,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireDoseRow(doseId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.dosesTable,
       entityId: doseId,
@@ -5291,7 +5294,7 @@ class ProtocolsRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: entityTable,
         entityId: id,
@@ -5329,7 +5332,7 @@ class ProtocolsRepository {
         );
 
     final after = await _requireCompoundRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.compoundsTable,
       entityId: id,
@@ -5365,7 +5368,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireCompoundRow(compoundId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.compoundsTable,
       entityId: compoundId,
@@ -5390,7 +5393,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireCompoundRow(compoundId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.compoundsTable,
       entityId: compoundId,
@@ -5408,7 +5411,7 @@ class ProtocolsRepository {
           ..where((row) => row.id.equals(compoundId)))
         .go();
 
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.compoundsTable,
       entityId: compoundId,
@@ -5485,7 +5488,7 @@ class ProtocolsRepository {
         );
 
     final after = await _requireDoseRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.dosesTable,
       entityId: id,
@@ -5559,7 +5562,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireDoseRow(doseId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.dosesTable,
       entityId: doseId,
@@ -5629,7 +5632,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireDoseRow(doseId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.dosesTable,
       entityId: doseId,
@@ -5729,7 +5732,7 @@ class ProtocolsRepository {
         ),
       );
       final after = await _requireCompoundRow(compoundId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.compoundsTable,
         entityId: compoundId,
@@ -6477,7 +6480,7 @@ class ProtocolsRepository {
           ),
         );
     final after = await _requireProtocolRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.protocolsTable,
       entityId: id,
@@ -6539,7 +6542,7 @@ class ProtocolsRepository {
         ),
       );
       final after = await _requireProtocolRow(protocolId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.protocolsTable,
         entityId: protocolId,
@@ -6574,7 +6577,7 @@ class ProtocolsRepository {
     );
 
     final after = await _requireProtocolRow(protocolId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.protocolsTable,
       entityId: protocolId,
@@ -6600,7 +6603,7 @@ class ProtocolsRepository {
           ),
         );
     final member = await _requireProtocolCompoundRow(memberId);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.protocolCompoundsTable,
       entityId: memberId,
@@ -6641,7 +6644,7 @@ class ProtocolsRepository {
           ),
         );
         final after = await _requireProtocolCompoundRow(row.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolCompoundsTable,
           entityId: row.id,
@@ -6679,7 +6682,7 @@ class ProtocolsRepository {
           ),
         );
         final after = await _requireProtocolCompoundRow(existing.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolCompoundsTable,
           entityId: existing.id,
@@ -6722,7 +6725,7 @@ class ProtocolsRepository {
         ),
       );
       final after = await _requireScheduleRow(existing.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.schedulesTable,
         entityId: existing.id,
@@ -6765,7 +6768,7 @@ class ProtocolsRepository {
             ),
           );
       final after = await _requireScheduleRow(scheduleId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.schedulesTable,
         entityId: scheduleId,
@@ -6797,7 +6800,7 @@ class ProtocolsRepository {
       ),
     );
     final after = await _requireScheduleRow(existing.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.schedulesTable,
       entityId: existing.id,
@@ -6842,7 +6845,7 @@ class ProtocolsRepository {
           ),
         );
         final after = await _requireProtocolTargetOutcomeRow(row.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolTargetOutcomesTable,
           entityId: row.id,
@@ -6869,7 +6872,7 @@ class ProtocolsRepository {
               ),
             );
         final after = await _requireProtocolTargetOutcomeRow(outcomeId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolTargetOutcomesTable,
           entityId: outcomeId,
@@ -6889,7 +6892,7 @@ class ProtocolsRepository {
           ),
         );
         final after = await _requireProtocolTargetOutcomeRow(existing.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolTargetOutcomesTable,
           entityId: existing.id,
@@ -7775,7 +7778,7 @@ class WorkoutExerciseRepository {
           ),
         );
         final after = await _requireRow(row.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.workoutExercisesTable,
           entityId: row.id,
@@ -7868,7 +7871,7 @@ class WorkoutExerciseRepository {
         );
 
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.workoutExercisesTable,
       entityId: id,
@@ -7955,7 +7958,7 @@ class WorkoutExerciseRepository {
       );
       final after =
           await _repositories.exerciseGroups._requireMemberRow(member.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseGroupMembersTable,
         entityId: member.id,
@@ -8431,7 +8434,7 @@ class ExerciseGroupRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseGroupsTable,
         entityId: id,
@@ -8596,7 +8599,7 @@ class ExerciseGroupRepository {
           ),
         );
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exerciseGroupsTable,
       entityId: id,
@@ -8616,7 +8619,7 @@ class ExerciseGroupRepository {
             ),
           );
       final member = await _requireMemberRow(memberId);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseGroupMembersTable,
         entityId: memberId,
@@ -8725,7 +8728,7 @@ class ExerciseGroupRepository {
           ),
         );
         final after = await _requireMemberRow(row.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exerciseGroupMembersTable,
           entityId: row.id,
@@ -8750,7 +8753,7 @@ class ExerciseGroupRepository {
               ),
             );
         final after = await _requireMemberRow(memberId);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.exerciseGroupMembersTable,
           entityId: memberId,
@@ -8773,7 +8776,7 @@ class ExerciseGroupRepository {
         ),
       );
       final after = await _requireMemberRow(existing.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exerciseGroupMembersTable,
         entityId: existing.id,
@@ -8854,7 +8857,7 @@ class RestTimerRepository {
           );
 
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.restTimersTable,
         entityId: id,
@@ -8931,7 +8934,7 @@ class RestTimerRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.restTimersTable,
         entityId: id,
@@ -8972,7 +8975,7 @@ class RestTimerRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.restTimersTable,
         entityId: id,
@@ -9009,7 +9012,7 @@ class RestTimerRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.restTimersTable,
         entityId: id,
@@ -9087,7 +9090,7 @@ class RestTimerRepository {
       ),
     );
     final after = await _requireRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.restTimersTable,
       entityId: before.id,
@@ -9174,7 +9177,7 @@ class LoggedSetRepository {
           ? null
           : _loggedSetActivityImageFromSyncImage(activityAfterImage);
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9268,7 +9271,7 @@ class LoggedSetRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9320,7 +9323,7 @@ class LoggedSetRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9351,7 +9354,7 @@ class LoggedSetRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9383,7 +9386,7 @@ class LoggedSetRepository {
         ),
       );
       final after = await _requireRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: id,
@@ -9713,7 +9716,7 @@ class LoggedSetRepository {
         );
 
     final after = await _requireRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.loggedSetsTable,
       entityId: id,
@@ -9777,7 +9780,7 @@ class LoggedSetRepository {
         ),
       );
       final after = await _requireRow(row.id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.loggedSetsTable,
         entityId: row.id,
@@ -10394,7 +10397,7 @@ class MeasurementRepository {
         ),
       );
       final after = await _requireMeasurementRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricsTable,
         entityId: id,
@@ -10438,7 +10441,7 @@ class MeasurementRepository {
           ),
         );
         final after = await _requireMeasurementRow(before.id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.metricsTable,
           entityId: before.id,
@@ -10589,7 +10592,7 @@ class MeasurementRepository {
           ),
         );
     final after = await _requireMeasurementRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.metricsTable,
       entityId: id,
@@ -10641,7 +10644,7 @@ class MeasurementRepository {
       ),
     );
     final after = await _requireMeasurementRow(existing.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.metricsTable,
       entityId: existing.id,
@@ -10663,7 +10666,7 @@ class MeasurementRepository {
       ),
     );
     final after = await _requireMeasurementRow(before.id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.metricsTable,
       entityId: before.id,
@@ -11527,7 +11530,7 @@ class MetricRepository {
         return;
       }
 
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: entityTable,
         entityId: id,
@@ -11570,7 +11573,7 @@ class MetricRepository {
             ),
           );
       final after = await _requireReadingRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricReadingsTable,
         entityId: id,
@@ -11613,7 +11616,7 @@ class MetricRepository {
         updatedAt: context.timestamp,
       );
       final after = await _requireReadingRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricReadingsTable,
         entityId: id,
@@ -11662,7 +11665,7 @@ class MetricRepository {
             updatedAt: context.timestamp,
           );
           final after = await _requireReadingRow(existing.id);
-          await _repositories.activityLog._append(
+          await _repositories._activityLogWriter.append(
             context,
             entityTable: AppDatabase.metricReadingsTable,
             entityId: existing.id,
@@ -11693,7 +11696,7 @@ class MetricRepository {
               ),
             );
         final after = await _requireReadingRow(id);
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.metricReadingsTable,
           entityId: id,
@@ -11723,7 +11726,7 @@ class MetricRepository {
         ),
       );
       final after = await _requireReadingRow(id);
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricReadingsTable,
         entityId: id,
@@ -11755,7 +11758,7 @@ class MetricRepository {
           ),
         );
     final after = await _requireMetricRow(id);
-    await _repositories.activityLog._append(
+    await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.metricsTable,
       entityId: id,
@@ -12411,7 +12414,7 @@ class ActivityLogRepository {
           entityTable: entry.entityTable,
           entityId: entry.entityId,
         );
-        await _append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: entry.entityTable,
           entityId: entry.entityId,
@@ -12614,7 +12617,7 @@ class ActivityLogRepository {
         final after = await (_database.select(_database.routineEntries)
               ..where((row) => row.id.equals(before.id)))
             .getSingle();
-        await _append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.routineEntriesTable,
           entityId: before.id,
@@ -12657,39 +12660,6 @@ class ActivityLogRepository {
           newestFirst ? OrderingTerm.desc(row.id) : OrderingTerm.asc(row.id),
     ]);
     return query;
-  }
-
-  Future<void> _append(
-    WriteContext context, {
-    required String entityTable,
-    required String entityId,
-    required Map<String, Object?>? beforeImage,
-    required Map<String, Object?>? afterImage,
-    String? id,
-    DateTime? occurredAt,
-    DateTime? syncAcknowledgedAt,
-  }) {
-    final activityLogId = id ?? _repositories._ids.create(context.timestamp);
-    final activityOccurredAt = occurredAt ?? context.timestamp;
-    return _database.into(_database.activityLog).insert(
-          ActivityLogCompanion.insert(
-            id: activityLogId,
-            actor: context.actor,
-            batchId: context.batchId,
-            entityTable: entityTable,
-            entityId: entityId,
-            beforeImage: Value<String?>(
-              beforeImage == null ? null : jsonEncode(beforeImage),
-            ),
-            afterImage: Value<String?>(
-              afterImage == null ? null : jsonEncode(afterImage),
-            ),
-            occurredAt: activityOccurredAt,
-            syncAcknowledgedAt: Value<DateTime?>(syncAcknowledgedAt),
-            updatedAt: context.timestamp,
-          ),
-          mode: InsertMode.insertOrIgnore,
-        );
   }
 
   Future<Map<String, Object?>?> _currentImageFor({
