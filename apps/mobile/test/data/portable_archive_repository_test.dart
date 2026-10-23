@@ -315,6 +315,212 @@ void main() {
       );
     });
 
+    test(
+        'merges an archive from another install into the default measurements '
+        'this device already seeded', () async {
+      final sourceDatabase = AppDatabase.inMemory();
+      addTearDown(sourceDatabase.close);
+      final source = TrainingRepositories(sourceDatabase);
+      await source.measurements.ensureDefaultMeasurements(
+        bodyWeightUnit: MeasurementUnit.kilogram,
+      );
+      final sourceDefaults = await _defaultMeasurementsByName(source);
+      for (final (index, value) in <String>['84.0', '83.5'].indexed) {
+        await source.measurements.createEntry(
+          MeasurementEntryDraft(
+            measurementId: sourceDefaults['Body Weight']!.id,
+            valueEntered: value,
+            measuredAt: DateTime.utc(2026, 5, 1 + index, 7),
+          ),
+        );
+      }
+      await source.measurements.createEntry(
+        MeasurementEntryDraft(
+          measurementId: sourceDefaults['Body Fat']!.id,
+          valueEntered: '18.5',
+          measuredAt: DateTime.utc(2026, 5, 1, 7),
+        ),
+      );
+      final archive = await source.portableArchives.exportPortableArchive();
+
+      // The target opened Body Tracker before restoring, so it seeded its own
+      // defaults under different random ids and logged a reading of its own.
+      await repositories.measurements.ensureDefaultMeasurements(
+        bodyWeightUnit: MeasurementUnit.kilogram,
+      );
+      final localDefaults = await _defaultMeasurementsByName(repositories);
+      expect(
+        localDefaults['Body Weight']!.id,
+        isNot(sourceDefaults['Body Weight']!.id),
+      );
+      await repositories.measurements.createEntry(
+        MeasurementEntryDraft(
+          measurementId: localDefaults['Body Weight']!.id,
+          valueEntered: '82.0',
+          measuredAt: DateTime.utc(2026, 6, 1, 7),
+        ),
+      );
+
+      await repositories.portableArchives.importPortableArchive(archive);
+
+      final active = await repositories.measurements.listActive();
+      expect(
+        active.map((measurement) => measurement.name),
+        <String>['Body Weight', 'Body Fat'],
+      );
+      expect(active.map((measurement) => measurement.id), <String>[
+        localDefaults['Body Weight']!.id,
+        localDefaults['Body Fat']!.id,
+      ]);
+      final bodyWeightHistory = await repositories.measurements
+          .listHistoryEntries(measurementId: localDefaults['Body Weight']!.id);
+      expect(
+        bodyWeightHistory.map((entry) => entry.entry.valueEntered),
+        unorderedEquals(<String>['82.0', '84.0', '83.5']),
+      );
+      final bodyFatHistory = await repositories.measurements
+          .listHistoryEntries(measurementId: localDefaults['Body Fat']!.id);
+      expect(
+        bodyFatHistory.map((entry) => entry.entry.valueEntered),
+        <String>['18.5'],
+      );
+
+      // No row, reading, or Activity Log entry is left under the archive's
+      // ids, so neither Recent activity nor undo can bring them back.
+      final sourceIds = sourceDefaults.values.map((m) => m.id).toSet();
+      final metricIds = (await database.select(database.metrics).get())
+          .map((row) => row.id)
+          .toSet();
+      expect(metricIds.intersection(sourceIds), isEmpty);
+      final readingMetricIds =
+          (await database.select(database.metricReadings).get())
+              .map((row) => row.metricId)
+              .toSet();
+      expect(readingMetricIds.intersection(sourceIds), isEmpty);
+      final activity = await database.select(database.activityLog).get();
+      for (final row in activity) {
+        for (final sourceId in sourceIds) {
+          expect(row.entityId, isNot(sourceId));
+          expect(row.beforeImage ?? '', isNot(contains(sourceId)));
+          expect(row.afterImage ?? '', isNot(contains(sourceId)));
+        }
+      }
+
+      // Restoring the same archive again changes nothing.
+      final again =
+          await repositories.portableArchives.importPortableArchive(archive);
+      expect(again.changedRowsByTable[AppDatabase.metricsTable], isNull);
+      expect(again.changedRowsByTable[AppDatabase.metricReadingsTable], isNull);
+      expect(
+        (await repositories.measurements.listActive()).map((m) => m.name),
+        <String>['Body Weight', 'Body Fat'],
+      );
+    });
+
+    test(
+        'keeps an archive default measurement separate when its unit differs '
+        'or it was archived on the source', () async {
+      final sourceDatabase = AppDatabase.inMemory();
+      addTearDown(sourceDatabase.close);
+      final source = TrainingRepositories(sourceDatabase);
+      await source.measurements.ensureDefaultMeasurements(
+        bodyWeightUnit: MeasurementUnit.pound,
+      );
+      final sourceDefaults = await _defaultMeasurementsByName(source);
+      await source.measurements.createEntry(
+        MeasurementEntryDraft(
+          measurementId: sourceDefaults['Body Weight']!.id,
+          valueEntered: '185',
+          measuredAt: DateTime.utc(2026, 5, 1, 7),
+        ),
+      );
+      await source.measurements
+          .softDeleteMeasurement(sourceDefaults['Body Fat']!.id);
+      final archive = await source.portableArchives.exportPortableArchive();
+
+      await repositories.measurements.ensureDefaultMeasurements(
+        bodyWeightUnit: MeasurementUnit.kilogram,
+      );
+      final localDefaults = await _defaultMeasurementsByName(repositories);
+
+      await repositories.portableArchives.importPortableArchive(archive);
+
+      // A pound reading must not be relabelled as kilograms, so the pound
+      // Body Weight stays its own measurement with its own history.
+      final bodyWeights = (await repositories.measurements.listActive())
+          .where((measurement) => measurement.name == 'Body Weight')
+          .toList();
+      expect(
+        bodyWeights.map((measurement) => measurement.unit),
+        unorderedEquals(<MeasurementUnit>[
+          MeasurementUnit.kilogram,
+          MeasurementUnit.pound,
+        ]),
+      );
+      final poundHistory = await repositories.measurements
+          .listHistoryEntries(measurementId: sourceDefaults['Body Weight']!.id);
+      expect(poundHistory.map((entry) => entry.entry.valueEntered), ['185']);
+
+      // The source's archived Body Fat stays archived under its own id and
+      // leaves this device's live Body Fat alone.
+      final bodyFats = (await repositories.measurements.listActive())
+          .where((measurement) => measurement.name == 'Body Fat');
+      expect(
+        bodyFats.map((measurement) => measurement.id),
+        <String>[localDefaults['Body Fat']!.id],
+      );
+    });
+
+    test('reports a missing or wrong passphrase as a passphrase failure',
+        () async {
+      await _seedWorkoutData(repositories);
+      final plaintext =
+          await repositories.portableArchives.exportPortableArchive();
+      final encrypted =
+          await repositories.portableArchives.exportPortableArchive(
+        encryption:
+            const PortableArchiveEncryptionOptions(passphrase: 'right pass'),
+      );
+      final archives = repositories.portableArchives;
+
+      expect(archives.isEncryptedPortableArchive(plaintext), isFalse);
+      expect(archives.isEncryptedPortableArchive(encrypted), isTrue);
+      expect(
+        archives.isEncryptedPortableArchive(utf8.encode('not a zip')),
+        isFalse,
+      );
+      await expectLater(
+        archives.decryptPortableArchive(encrypted),
+        throwsA(
+          isA<PortableArchivePassphraseException>().having(
+            (error) => error.passphraseProvided,
+            'passphraseProvided',
+            isFalse,
+          ),
+        ),
+      );
+      await expectLater(
+        archives.decryptPortableArchive(encrypted, passphrase: 'wrong pass'),
+        throwsA(
+          isA<PortableArchivePassphraseException>().having(
+            (error) => error.passphraseProvided,
+            'passphraseProvided',
+            isTrue,
+          ),
+        ),
+      );
+
+      final decrypted = await archives.decryptPortableArchive(
+        encrypted,
+        passphrase: 'right pass',
+      );
+      expect(archives.isEncryptedPortableArchive(decrypted), isFalse);
+      expect(
+        _archiveRowsByTable(decrypted),
+        _archiveRowsByTable(plaintext),
+      );
+    });
+
     test('merges every plan-tree entity without destroying existing local rows',
         () async {
       final localExerciseId = await repositories.exercises.create(
@@ -2942,4 +3148,13 @@ List<int> _tamperEncryptedPayload(List<int> bytes) {
       ),
     );
   return ZipEncoder().encode(archive);
+}
+
+Future<Map<String, MeasurementRecord>> _defaultMeasurementsByName(
+  TrainingRepositories repositories,
+) async {
+  return <String, MeasurementRecord>{
+    for (final measurement in await repositories.measurements.listActive())
+      measurement.name: measurement,
+  };
 }

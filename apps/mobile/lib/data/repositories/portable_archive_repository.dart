@@ -106,6 +106,25 @@ class PortableArchiveRepository {
     return destination.writeAsBytes(bytes, flush: true);
   }
 
+  /// Whether [bytes] is an encrypted archive, so a restore flow knows to ask
+  /// for the passphrase first. False for anything that is not one, including
+  /// files that are not archives at all; [inspectPortableArchive] is what
+  /// rejects those.
+  bool isEncryptedPortableArchive(List<int> bytes) {
+    return _decodeZip(bytes).findFile(encryptedManifestFileName) != null;
+  }
+
+  /// The plaintext archive inside [bytes], or [bytes] itself when it is not
+  /// encrypted. Key derivation is slow by design, so a restore flow decrypts
+  /// once and passes the result to [inspectPortableArchive] and
+  /// [importPortableArchive] instead of deriving the key for each call.
+  Future<List<int>> decryptPortableArchive(
+    List<int> bytes, {
+    String? passphrase,
+  }) {
+    return _decryptArchiveIfNeeded(bytes, passphrase: passphrase);
+  }
+
   Future<PortableArchiveManifest> inspectPortableArchive(
     List<int> bytes, {
     String? passphrase,
@@ -135,13 +154,16 @@ class PortableArchiveRepository {
     final sourceWonRoutineEntryIds = <String>{};
 
     await _database.transaction(() async {
+      final rowsByTable = await _adoptLocalDefaultMeasurementIds(
+        snapshot.rowsByTable,
+      );
       final localCadencesByRoutineId = <String, Cadence?>{
         for (final routine
             in await _database.select(_database.planRoutines).get())
           routine.id: _cadenceFromRow(routine),
       };
       for (final entity in entities) {
-        final rows = snapshot.rowsByTable[entity.tableName]!;
+        final rows = rowsByTable[entity.tableName]!;
         for (final row in _rowsInMergeOrder(entity, rows)) {
           final existing = await entity.findById(entity.idOf(row));
           if (existing != null &&
@@ -217,6 +239,150 @@ class PortableArchiveRepository {
         return lifecycle != 0 ? lifecycle : left.id.compareTo(right.id);
       });
     return ordered;
+  }
+
+  /// Re-points the archive's default measurements (Body Weight, Body Fat) at
+  /// this device's own, so restoring onto a phone that already opened Body
+  /// Tracker leaves one Body Weight holding both histories instead of two.
+  ///
+  /// Every install seeds these two through
+  /// [MeasurementRepository.ensureDefaultMeasurements] with a fresh random
+  /// id, and archive merge matches rows by id, so without this step the
+  /// archive's copy lands next to the local one. The other default-seeded
+  /// entities (platform exercises and categories, meal types, OTC Compounds)
+  /// already use fixed seed ids and merge by id correctly.
+  ///
+  /// Why a name merge at import rather than deterministic seed ids plus a
+  /// migration:
+  /// - Every archive written to date carries random ids. Fixed ids for future
+  ///   seeds could not make those archives merge, so a name merge is needed
+  ///   regardless, and once it exists fixed ids add nothing to restore.
+  /// - Name plus unit is already how the server identifies these two:
+  ///   canonical import attaches an incoming body-weight reading to the
+  ///   user's active body-composition metric with the same name and unit
+  ///   (`findExistingBodyCompositionMetric` in the server's
+  ///   canonical-import-endpoint.ts). One identity rule for both paths.
+  /// - Rewriting the primary key of an existing row is not something LWW
+  ///   sync can express: the server would keep the old row and every reading
+  ///   already pushed under it.
+  ///
+  /// The matching rule: an archive row merges only when it is an active
+  /// curated measurement named exactly like a default, and this device has
+  /// an active curated measurement with the same name and unit (the first by
+  /// sort order, then id, as the server picks). Units must agree because a
+  /// reading's value is stored in its measurement's unit; folding a pound
+  /// Body Weight into a kilogram one would relabel every value. Archived
+  /// archive rows are left alone, so a Body Weight archived on the source
+  /// device cannot archive this device's live one.
+  ///
+  /// The rewrite happens before the normal LWW pass. The measurement row
+  /// takes the local id, so a newer edit in the archive (a goal, say) still
+  /// wins by LWW; readings and Protocol target outcomes follow it; and the
+  /// archive's Activity Log rows for all three are re-pointed, so an undo
+  /// from Recent activity acts on the merged measurement rather than
+  /// resurrecting the archive's id.
+  Future<Map<String, List<Object>>> _adoptLocalDefaultMeasurementIds(
+    Map<String, List<Object>> rowsByTable,
+  ) async {
+    final localRows = await (_database.select(_database.metrics)
+          ..where(
+            (row) =>
+                row.deletedAt.isNull() &
+                row.valueShape.equals(MetricValueShape.scalar.name) &
+                row.metricGroup.equals(MetricGroup.bodyComposition.name) &
+                row.goalType.isNotNull() &
+                row.name.isIn(MeasurementRepository.defaultMeasurementNames),
+          )
+          ..orderBy([
+            (row) => OrderingTerm.asc(row.sortOrder),
+            (row) => OrderingTerm.asc(row.id),
+          ]))
+        .get();
+    final localIdByNameAndUnit = <(String, String), String>{};
+    for (final row in localRows) {
+      localIdByNameAndUnit.putIfAbsent((row.name, row.unit), () => row.id);
+    }
+
+    final localIdByArchiveId = <String, String>{};
+    for (final value in rowsByTable[AppDatabase.metricsTable]!) {
+      final row = value as MetricRow;
+      final isActiveDefault = row.deletedAt == null &&
+          row.valueShape == MetricValueShape.scalar.name &&
+          row.metricGroup == MetricGroup.bodyComposition.name &&
+          row.goalType != null &&
+          MeasurementRepository.defaultMeasurementNames.contains(row.name);
+      if (!isActiveDefault) {
+        continue;
+      }
+      final localId = localIdByNameAndUnit[(row.name, row.unit)];
+      if (localId != null && localId != row.id) {
+        localIdByArchiveId[row.id] = localId;
+      }
+    }
+    if (localIdByArchiveId.isEmpty) {
+      return rowsByTable;
+    }
+
+    String adopt(String id) => localIdByArchiveId[id] ?? id;
+    String? adoptImage(String? encoded, String idKey) {
+      if (encoded == null) {
+        return null;
+      }
+      final image = _decodeJsonObject(encoded);
+      final id = image[idKey];
+      if (id is! String || !localIdByArchiveId.containsKey(id)) {
+        return encoded;
+      }
+      return jsonEncode(<String, Object?>{...image, idKey: adopt(id)});
+    }
+
+    const metricIdKeyByTable = <String, String>{
+      AppDatabase.metricsTable: 'id',
+      AppDatabase.metricReadingsTable: 'metric_id',
+      AppDatabase.protocolTargetOutcomesTable: 'metric_id',
+    };
+
+    return <String, List<Object>>{
+      ...rowsByTable,
+      AppDatabase.metricsTable: List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.metricsTable]!.cast<MetricRow>().map(
+              (row) => row.copyWith(id: adopt(row.id)),
+            ),
+      ),
+      AppDatabase.metricReadingsTable: List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.metricReadingsTable]!
+            .cast<MetricReadingRow>()
+            .map((row) => row.copyWith(metricId: adopt(row.metricId))),
+      ),
+      AppDatabase.protocolTargetOutcomesTable: List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.protocolTargetOutcomesTable]!
+            .cast<ProtocolTargetOutcomeRow>()
+            .map(
+              (row) => row.metricId == null
+                  ? row
+                  : row.copyWith(
+                      metricId: Value<String?>(adopt(row.metricId!)),
+                    ),
+            ),
+      ),
+      AppDatabase.activityLogTable: List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.activityLogTable]!
+            .cast<ActivityLogRow>()
+            .map((row) {
+          final idKey = metricIdKeyByTable[row.entityTable];
+          if (idKey == null) {
+            return row;
+          }
+          return row.copyWith(
+            entityId: row.entityTable == AppDatabase.metricsTable
+                ? adopt(row.entityId)
+                : row.entityId,
+            beforeImage: Value<String?>(adoptImage(row.beforeImage, idKey)),
+            afterImage: Value<String?>(adoptImage(row.afterImage, idKey)),
+          );
+        }),
+      ),
+    };
   }
 
   Future<void> _validateStoredTemplateGroupGraph() async {
@@ -1380,13 +1546,18 @@ class PortableArchiveRepository {
   }
 
   void _validateManifest(PortableArchiveManifest manifest) {
+    if (manifest.formatVersion > archiveFormatVersion) {
+      throw PortableArchiveNewerVersionException(
+        'Archive format ${manifest.formatVersion} is newer than this app.',
+      );
+    }
     if (manifest.formatVersion != archiveFormatVersion) {
       throw PortableArchiveException(
         'Archive format ${manifest.formatVersion} is not supported.',
       );
     }
     if (manifest.schemaVersion > _database.schemaVersion) {
-      throw PortableArchiveException(
+      throw PortableArchiveNewerVersionException(
         'Archive schema ${manifest.schemaVersion} is newer than this app.',
       );
     }
@@ -1468,8 +1639,9 @@ class PortableArchiveRepository {
       );
     }
     if (passphrase == null || passphrase.isEmpty) {
-      throw const PortableArchiveException(
+      throw const PortableArchivePassphraseException(
         'This archive is encrypted and needs a passphrase.',
+        passphraseProvided: false,
       );
     }
 
@@ -1492,8 +1664,9 @@ class PortableArchiveRepository {
         secretKey: secretKey,
       );
     } catch (error) {
-      throw PortableArchiveException(
+      throw PortableArchivePassphraseException(
         'Could not decrypt archive. Check the passphrase and archive integrity.',
+        passphraseProvided: true,
         cause: error,
       );
     }
@@ -1721,6 +1894,26 @@ class PortableArchiveException implements Exception {
     final causedBy = cause == null ? '' : ' ($cause)';
     return 'PortableArchiveException: $message$causedBy';
   }
+}
+
+/// An encrypted archive was opened without a passphrase
+/// ([passphraseProvided] is false) or with one that did not decrypt it.
+/// AES-GCM cannot tell a wrong passphrase from a damaged payload, so the
+/// second case covers both; a restore flow asks for the passphrase again.
+class PortableArchivePassphraseException extends PortableArchiveException {
+  const PortableArchivePassphraseException(
+    super.message, {
+    required this.passphraseProvided,
+    super.cause,
+  });
+
+  final bool passphraseProvided;
+}
+
+/// The archive was written by a newer app than this one, so updating the app
+/// (not retrying) is the fix.
+class PortableArchiveNewerVersionException extends PortableArchiveException {
+  const PortableArchiveNewerVersionException(super.message, {super.cause});
 }
 
 class _PortableArchiveSnapshot {
