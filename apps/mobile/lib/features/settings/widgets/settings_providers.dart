@@ -6,6 +6,7 @@ import '../../sync/services/sync_coordinator.dart';
 import '../../sync/services/sync_providers.dart';
 
 typedef GarminFitFilePicker = Future<List<XFile>> Function();
+typedef BackupArchiveFilePicker = Future<XFile?> Function();
 typedef SettingsSyncNow = Future<SyncCycleResult> Function({
   required AuthSession session,
   required String deviceId,
@@ -18,6 +19,33 @@ final garminFitFilePickerProvider = Provider<GarminFitFilePicker>((ref) {
         XTypeGroup(
           label: 'FIT',
           extensions: ['fit'],
+        ),
+      ],
+    );
+  };
+});
+
+/// Picks one backup .zip for restore. The type group carries extensions,
+/// MIME types and a UTI because each platform filters on a different one
+/// (Android: MIME, iOS: UTI). Android document providers do not agree on a
+/// zip's MIME type (cloud drives often report `application/octet-stream`),
+/// so the filter errs wide; restore itself rejects a file that is not a
+/// backup.
+final backupArchiveFilePickerProvider = Provider<BackupArchiveFilePicker>((
+  ref,
+) {
+  return () {
+    return openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'Perennia backup',
+          extensions: ['zip'],
+          mimeTypes: [
+            'application/zip',
+            'application/x-zip-compressed',
+            'application/octet-stream',
+          ],
+          uniformTypeIdentifiers: ['public.zip-archive'],
         ),
       ],
     );

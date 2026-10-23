@@ -108,6 +108,9 @@ final syncRepositoryProvider = Provider<SyncRepository>((ref) {
   return SyncRepository(
     database: database,
     statusRepository: ref.watch(syncStatusRepositoryProvider),
+    // Share the app's instance: a second TrainingRepositories over the same
+    // database would carry its own http.Client and in-memory state.
+    trainingRepositories: ref.watch(trainingRepositoriesProvider),
   );
 });
 
@@ -275,6 +278,9 @@ class SyncRepository implements SyncCycleRepository {
   final SyncApiClientFactory _apiClientFactory;
 
   SyncStatusRepository get statusRepository => _statusRepository;
+
+  @visibleForTesting
+  TrainingRepositories get trainingRepositories => _repositories;
 
   Stream<int> watchPendingChangeCount() {
     final query = _database.selectOnly(_database.activityLog)

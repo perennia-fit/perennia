@@ -3265,6 +3265,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No changes to update'**
   String get templateUpdateNoChangesNote;
+
+  /// No description provided for @activityBackupRestoreActor.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup restore'**
+  String get activityBackupRestoreActor;
+
+  /// No description provided for @backupRestoreSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get backupRestoreSectionTitle;
+
+  /// No description provided for @backupRestoreDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Bring in workouts, food, and body readings from a Perennia backup file. Restoring only adds and updates; nothing on this device is erased.'**
+  String get backupRestoreDescription;
+
+  /// No description provided for @backupRestoreButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore from backup'**
+  String get backupRestoreButton;
+
+  /// No description provided for @backupRestoreReadingProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading backup…'**
+  String get backupRestoreReadingProgress;
+
+  /// No description provided for @backupRestoreRestoringProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Restoring…'**
+  String get backupRestoreRestoringProgress;
+
+  /// No description provided for @backupRestorePassphraseTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypted backup'**
+  String get backupRestorePassphraseTitle;
+
+  /// No description provided for @backupRestorePassphraseMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the passphrase this backup was made with.'**
+  String get backupRestorePassphraseMessage;
+
+  /// No description provided for @backupRestorePassphraseLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup passphrase'**
+  String get backupRestorePassphraseLabel;
+
+  /// No description provided for @backupRestorePassphraseRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'That passphrase didn\'t unlock this backup.'**
+  String get backupRestorePassphraseRejected;
+
+  /// No description provided for @backupRestoreUnlockAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get backupRestoreUnlockAction;
+
+  /// No description provided for @backupRestoreCancelAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get backupRestoreCancelAction;
+
+  /// No description provided for @backupRestoreConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore this backup?'**
+  String get backupRestoreConfirmTitle;
+
+  /// No description provided for @backupRestoreCreatedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Made {date}'**
+  String backupRestoreCreatedAt(String date);
+
+  /// No description provided for @backupRestoreWorkoutCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 workout} other{{count} workouts}}'**
+  String backupRestoreWorkoutCount(int count);
+
+  /// No description provided for @backupRestoreSetCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 set} other{{count} sets}}'**
+  String backupRestoreSetCount(int count);
+
+  /// No description provided for @backupRestoreFoodEntryCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 food entry} other{{count} food entries}}'**
+  String backupRestoreFoodEntryCount(int count);
+
+  /// No description provided for @backupRestoreMetricReadingCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 metric reading} other{{count} metric readings}}'**
+  String backupRestoreMetricReadingCount(int count);
+
+  /// No description provided for @backupRestoreMergeExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'Restoring adds anything this device is missing. Nothing here is erased: when the backup and this device both have the same item, the more recently edited one is kept. You can undo the restore from Recent activity.'**
+  String get backupRestoreMergeExplanation;
+
+  /// No description provided for @backupRestoreConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get backupRestoreConfirmAction;
+
+  /// No description provided for @backupRestoreDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup restored'**
+  String get backupRestoreDoneTitle;
+
+  /// No description provided for @backupRestoreChangedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Nothing new: this device already had everything in the backup.} =1{1 item added or updated.} other{{count} items added or updated.}}'**
+  String backupRestoreChangedCount(int count);
+
+  /// No description provided for @backupRestoreUnchangedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 item was already up to date.} other{{count} items were already up to date.}}'**
+  String backupRestoreUnchangedCount(int count);
+
+  /// No description provided for @backupRestoreDoneAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get backupRestoreDoneAction;
+
+  /// No description provided for @backupRestoreFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t restore this backup'**
+  String get backupRestoreFailedTitle;
+
+  /// No description provided for @backupRestoreUnreadableMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This file isn\'t a Perennia backup, or it\'s damaged. Nothing on this device was changed.'**
+  String get backupRestoreUnreadableMessage;
+
+  /// No description provided for @backupRestoreNewerVersionMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This backup was made by a newer version of Perennia. Update the app, then try again. Nothing on this device was changed.'**
+  String get backupRestoreNewerVersionMessage;
 }
 
 class _AppLocalizationsDelegate

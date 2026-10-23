@@ -104,7 +104,10 @@ void main() {
         find.byKey(SettingsScreen.confirmEraseAllDataButtonKey),
         findsOneWidget,
       );
-      expect(find.textContaining('Backup restore is separate'), findsOneWidget);
+      expect(
+        find.textContaining('Settings and the built-in exercise library stay'),
+        findsOneWidget,
+      );
 
       await tester.tap(
         find.byKey(SettingsScreen.confirmEraseAllDataButtonKey),
@@ -112,7 +115,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(eraseCount, 1);
-      expect(find.text('Local data erased'), findsOneWidget);
+      expect(find.text('All data erased'), findsOneWidget);
     });
 
     testWidgets('shows nutrition data credits and the honest offline boundary',

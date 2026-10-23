@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/metrics/reading_normalization.dart';
 import 'package:perennia/domain/training/training_day.dart';
 
 void main() {
@@ -192,6 +193,89 @@ void main() {
       expect(reopenedReading.source, 'manual');
       expect(reopenedReading.externalId, 'manual-reading-1');
       expect(reopenedReading.comment, 'felt steady');
+    });
+
+    test('normalizes Readings through the shared golden-vectored module',
+        () async {
+      final metricId = await repositories.metrics.createMetric(
+        const MetricDraft(
+          name: 'Body Fat',
+          unit: 'percent',
+          valueShape: MetricValueShape.scalar,
+          group: MetricGroup.bodyComposition,
+          goalType: MetricGoalType.decrease,
+          enabled: true,
+          pinned: false,
+          sortOrder: 0,
+        ),
+      );
+      // Mirrors the golden vectors' skewed-window and ambiguous-anchor cases:
+      // the shared module reorders the first and prefers the window in the
+      // second, where the repository used to reject both.
+      final cases = <({
+        String entered,
+        DateTime? atTime,
+        DateTime windowStartedAt,
+        DateTime windowEndedAt,
+      })>[
+        (
+          entered: ' 99 ',
+          atTime: null,
+          windowStartedAt: DateTime.utc(2026, 6, 25, 12, 10),
+          windowEndedAt: DateTime.utc(2026, 6, 25, 12),
+        ),
+        (
+          entered: '14.2',
+          atTime: DateTime.utc(2026, 6, 25, 12, 30),
+          windowStartedAt: DateTime.utc(2026, 6, 25),
+          windowEndedAt: DateTime.utc(2026, 6, 26),
+        ),
+      ];
+
+      for (final readingCase in cases) {
+        final expected = normalizeMetricReading(<String, Object?>{
+          'metric': <String, Object?>{
+            'valueShape': 'scalar',
+            'unit': 'percent',
+          },
+          'value': <String, Object?>{
+            'shape': 'scalar',
+            'entered': readingCase.entered,
+          },
+          'timeAnchor': <String, Object?>{
+            if (readingCase.atTime != null)
+              'atTime': readingCase.atTime!.toIso8601String(),
+            'windowStartedAt': readingCase.windowStartedAt.toIso8601String(),
+            'windowEndedAt': readingCase.windowEndedAt.toIso8601String(),
+          },
+        });
+
+        final readingId = await repositories.metrics.createManualReading(
+          ManualMetricReadingDraft.scalar(
+            metricId: metricId,
+            valueEntered: readingCase.entered,
+            atTime: readingCase.atTime,
+            windowStartedAt: readingCase.windowStartedAt,
+            windowEndedAt: readingCase.windowEndedAt,
+            source: 'manual',
+          ),
+        );
+
+        final reading = (await repositories.metrics.listReadings(metricId))
+            .singleWhere((record) => record.id == readingId);
+        expect(reading.valueJson, expected['valueJson']);
+        expect(reading.scalarValue, expected['scalarValue']);
+        expect(reading.scalarEntered, readingCase.entered.trim());
+        expect(reading.atTime, isNull);
+        expect(
+          reading.windowStartedAt?.toIso8601String(),
+          expected['windowStartedAt'],
+        );
+        expect(
+          reading.windowEndedAt?.toIso8601String(),
+          expected['windowEndedAt'],
+        );
+      }
     });
 
     test('exposes the full Reading provenance enum for future sources', () {

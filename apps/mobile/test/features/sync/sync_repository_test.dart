@@ -16,6 +16,9 @@ import 'package:perennia/features/sync/models/sync_status.dart';
 import 'package:perennia/features/sync/repositories/sync_repository.dart';
 
 void main() {
+  // Erase loads the bundled Platform Library seed from assets.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   final warnAboutMultipleDatabases =
       driftRuntimeOptions.dontWarnAboutMultipleDatabases;
   late AppDatabase database;
@@ -1126,7 +1129,8 @@ void main() {
     expect(pulledSet.syncDeviceId, 'device-b');
   });
 
-  test('settings erase produces a logged set tombstone that pushes', () async {
+  test('settings erase pushes a tombstone for every erased synced row',
+      () async {
     final updatedAt = DateTime.utc(2026, 6, 22, 8);
     const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c001';
     await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
@@ -1140,32 +1144,40 @@ void main() {
     );
     await TrainingRepositories(database).eraseAllData();
     final erasedSet = await _loggedSet(database, setId);
-    final requests = <http.Request>[];
+    final pushedIdsByEntity = <String, Set<String>>{};
     final repository = SyncRepository(
       database: database,
       apiClientFactory: (baseUrl) => PerenniaApiClient(
         baseUrl: baseUrl,
         httpClient: MockClient((request) async {
-          requests.add(request);
           final body = jsonDecode(request.body) as Map<String, Object?>;
-          final changes = body['changes']! as List<Object?>;
-          final change = changes.single! as Map<String, Object?>;
-          final deletedAt = change['deletedAt']! as String;
-          expect(change['id'], setId);
-          expect(deletedAt, isNotEmpty);
-          expect((change['payload']! as Map<String, Object?>)['deleted_at'],
-              deletedAt);
+          final changes =
+              (body['changes']! as List<Object?>).cast<Map<String, Object?>>();
+          for (final change in changes) {
+            final deletedAt = change['deletedAt'] as String?;
+            expect(deletedAt, isNotNull, reason: '${body['entity']}');
+            expect(
+              (change['payload']! as Map<String, Object?>)['deleted_at'],
+              deletedAt,
+            );
+            pushedIdsByEntity
+                .putIfAbsent(body['entity']! as String, () => <String>{})
+                .add(change['id']! as String);
+          }
           return http.Response(
             jsonEncode(<String, Object?>{
               'protocolVersion': 1,
-              'accepted': <String>[setId],
+              'accepted': <String>[
+                for (final change in changes) change['id']! as String,
+              ],
               'serverClock': '2026-06-22T08:00:01.000Z',
               'applied': <Object?>[
-                <String, Object?>{
-                  'id': setId,
-                  'updatedAt': change['updatedAt'],
-                  'deviceId': 'device-a',
-                },
+                for (final change in changes)
+                  <String, Object?>{
+                    'id': change['id'],
+                    'updatedAt': change['updatedAt'],
+                    'deviceId': 'device-a',
+                  },
               ],
             }),
             200,
@@ -1175,19 +1187,21 @@ void main() {
       ),
     );
 
-    final result = await repository.pushPendingLoggedSets(
+    await repository.pushPendingLoggedSets(
       session: _session(),
       deviceId: 'device-a',
     );
     final pendingRows = await (database.select(database.activityLog)
-          ..where((row) => row.entityId.equals(setId))
           ..where((row) => row.syncAcknowledgedAt.isNull()))
         .get();
 
     expect(erasedSet.deletedAt, isNotNull);
     expect(erasedSet.syncPreviouslySynced, isTrue);
-    expect(result.pushedCount, 1);
-    expect(requests, hasLength(1));
+    expect(pushedIdsByEntity, <String, Set<String>>{
+      AppDatabase.exercisesTable: <String>{'exercise-1'},
+      AppDatabase.workoutSessionsTable: <String>{'workout-1'},
+      AppDatabase.loggedSetsTable: <String>{setId},
+    });
     expect(pendingRows, isEmpty);
   });
 
