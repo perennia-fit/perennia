@@ -17,6 +17,7 @@ import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/nutrition_day_assembly.dart';
 import '../../domain/nutrition/nutrition_import.dart';
 import '../../domain/protocols/dose_validation.dart';
+import '../../domain/protocols/protocol_validation.dart';
 import '../../domain/protocols/protocols.dart';
 import '../../domain/settings/account_settings.dart';
 import '../../domain/settings/settings_validation.dart';
@@ -6459,11 +6460,11 @@ class ProtocolsRepository {
     ProtocolDraft draft,
     _WriteContext context,
   ) async {
-    final name = _validateProtocolName(draft.name);
-    _validateProtocolWindow(draft.startDate, draft.endDate);
-    final compoundIds = _validateProtocolMembership(draft.compoundIds);
+    final name = validateProtocolName(draft.name);
+    validateProtocolWindow(draft.startDate, draft.endDate);
+    final compoundIds = validateProtocolMembership(draft.compoundIds);
     final compoundRows = await _requireActiveCompoundRows(compoundIds);
-    final targetOutcomes = _validateProtocolTargetOutcomes(
+    final targetOutcomes = validateProtocolTargetOutcomes(
       draft.targetOutcomes,
     );
     await _requireActiveMetricRows(_metricIdsOf(targetOutcomes));
@@ -6516,11 +6517,11 @@ class ProtocolsRepository {
     if (before.deletedAt != null) {
       throw StateError('Protocol is archived: $protocolId.');
     }
-    final name = _validateProtocolName(draft.name);
-    _validateProtocolWindow(draft.startDate, draft.endDate);
-    final compoundIds = _validateProtocolMembership(draft.compoundIds);
+    final name = validateProtocolName(draft.name);
+    validateProtocolWindow(draft.startDate, draft.endDate);
+    final compoundIds = validateProtocolMembership(draft.compoundIds);
     final compoundRows = await _requireActiveCompoundRows(compoundIds);
-    final targetOutcomes = _validateProtocolTargetOutcomes(
+    final targetOutcomes = validateProtocolTargetOutcomes(
       draft.targetOutcomes,
     );
     await _requireActiveMetricRows(_metricIdsOf(targetOutcomes));
@@ -6808,17 +6809,10 @@ class ProtocolsRepository {
     );
   }
 
-  /// The identity key for ONE target outcome (kind + Metric id):
-  /// what [_replaceProtocolTargetOutcomes] diffs existing rows against, and
-  /// what [_validateProtocolTargetOutcomes] uses to reject a duplicate.
-  String _protocolTargetOutcomeKey(String kindName, String? metricId) {
-    return '$kindName|${metricId ?? ''}';
-  }
-
   /// Reconciles a `Protocol`'s declared target outcomes to exactly [outcomes]
   /// (mirrors [_replaceProtocolMembers]): outcomes no longer present
   /// are tombstoned, new ones inserted, and kept ones repositioned in place.
-  /// [outcomes] must already be validated ([_validateProtocolTargetOutcomes])
+  /// [outcomes] must already be validated ([validateProtocolTargetOutcomes])
   /// and its Metric ids confirmed active ([_requireActiveMetricRows]). Purely
   /// plan-layer: never reads or writes a logged `Dose`, and computes NO
   /// `Effect` (that analysis is a later M29 slice).
@@ -6832,15 +6826,15 @@ class ProtocolsRepository {
     ).get();
     final activeByKey = <String, ProtocolTargetOutcomeRow>{
       for (final row in activeRows)
-        _protocolTargetOutcomeKey(row.kind, row.metricId): row,
+        protocolTargetOutcomeKey(row.kind, row.metricId): row,
     };
     final desiredKeys = <String>{
       for (final outcome in outcomes)
-        _protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId),
+        protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId),
     };
 
     for (final row in activeRows) {
-      final key = _protocolTargetOutcomeKey(row.kind, row.metricId);
+      final key = protocolTargetOutcomeKey(row.kind, row.metricId);
       if (!desiredKeys.contains(key)) {
         await (_database.update(_database.protocolTargetOutcomes)
               ..where((table) => table.id.equals(row.id)))
@@ -6864,7 +6858,7 @@ class ProtocolsRepository {
     for (var index = 0; index < outcomes.length; index += 1) {
       final outcome = outcomes[index];
       final key =
-          _protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId);
+          protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId);
       final existing = activeByKey[key];
       if (existing == null) {
         final outcomeId = _repositories.createId(context.timestamp);
@@ -6910,50 +6904,6 @@ class ProtocolsRepository {
     }
   }
 
-  /// Hard-rejects an empty/blank name (structural validation — not the shared
-  /// Dose two-tier validator, which guards logging amounts, PROTOCOLS.md §6).
-  String _validateProtocolName(String name) {
-    final trimmed = name.trim();
-    if (trimmed.isEmpty) {
-      throw ArgumentError.value(name, 'name', 'Protocol name is empty.');
-    }
-    return trimmed;
-  }
-
-  /// Hard-rejects an end date before the start date. A null [endDate] means
-  /// an open-ended (ongoing) course — always valid.
-  void _validateProtocolWindow(DateTime startDate, DateTime? endDate) {
-    if (endDate != null && endDate.isBefore(startDate)) {
-      throw ArgumentError.value(
-        endDate,
-        'endDate',
-        'Protocol end date must not be before its start date.',
-      );
-    }
-  }
-
-  /// Hard-rejects an empty or duplicated membership list. A Protocol
-  /// associates ONE OR MORE Compounds (PROTOCOLS.md §1.4); a repeated
-  /// Compound id is never a meaningful stack member.
-  List<String> _validateProtocolMembership(List<String> compoundIds) {
-    if (compoundIds.isEmpty) {
-      throw ArgumentError.value(
-        compoundIds,
-        'compoundIds',
-        'A Protocol requires at least one Compound.',
-      );
-    }
-    final uniqueIds = compoundIds.toSet();
-    if (uniqueIds.length != compoundIds.length) {
-      throw ArgumentError.value(
-        compoundIds,
-        'compoundIds',
-        'A Protocol cannot list the same Compound twice.',
-      );
-    }
-    return compoundIds;
-  }
-
   /// Resolves + hard-rejects any [compoundIds] that doesn't reference an
   /// active (non-archived) catalogue `Compound`, in the given order.
   Future<List<CompoundRow>> _requireActiveCompoundRows(
@@ -6975,39 +6925,6 @@ class ProtocolsRepository {
       );
     }
     return <CompoundRow>[for (final id in compoundIds) rowsById[id]!];
-  }
-
-  /// Hard-rejects a malformed or duplicated target-outcome list: a
-  /// `metric` outcome requires a non-blank [ProtocolTargetOutcomeDraft.metricId],
-  /// and no two outcomes may declare the SAME thing twice (the same Metric
-  /// twice, or `performance` twice). An EMPTY list is always valid — a
-  /// Protocol MAY declare target outcomes, never must (PROTOCOLS.md §1.4).
-  List<ProtocolTargetOutcomeDraft> _validateProtocolTargetOutcomes(
-    List<ProtocolTargetOutcomeDraft> outcomes,
-  ) {
-    final seenKeys = <String>{};
-    for (final outcome in outcomes) {
-      if (outcome.kind == ProtocolOutcomeKind.metric) {
-        final metricId = outcome.metricId?.trim() ?? '';
-        if (metricId.isEmpty) {
-          throw ArgumentError.value(
-            outcome.metricId,
-            'metricId',
-            'A metric target outcome requires a Metric id.',
-          );
-        }
-      }
-      final key =
-          _protocolTargetOutcomeKey(outcome.kind.name, outcome.metricId);
-      if (!seenKeys.add(key)) {
-        throw ArgumentError.value(
-          outcomes,
-          'targetOutcomes',
-          'A Protocol cannot declare the same target outcome twice.',
-        );
-      }
-    }
-    return outcomes;
   }
 
   /// The distinct [ProtocolOutcomeKind.metric] ids declared across [outcomes],
