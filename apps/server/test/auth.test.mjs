@@ -22,8 +22,8 @@ test("oauth provider credentials are sourced from environment configuration", ()
     GOOGLE_OAUTH_HOSTED_DOMAIN: "example.com",
     APPLE_OAUTH_CLIENT_ID: "apple-client",
     APPLE_OAUTH_CLIENT_SECRET: "apple-secret",
-    APPLE_OAUTH_APP_BUNDLE_IDENTIFIER: "com.openworkoutlogger.app",
-    APPLE_OAUTH_AUDIENCE: "web.openworkoutlogger.app,com.openworkoutlogger.app"
+    APPLE_OAUTH_APP_BUNDLE_IDENTIFIER: "fit.perennia.app",
+    APPLE_OAUTH_AUDIENCE: "web.perennia.fit,fit.perennia.app"
   });
 
   assert.equal(providers.google?.clientId, "google-client");
@@ -33,11 +33,11 @@ test("oauth provider credentials are sourced from environment configuration", ()
   assert.equal(providers.apple?.clientSecret, "apple-secret");
   assert.equal(
     providers.apple?.appBundleIdentifier,
-    "com.openworkoutlogger.app"
+    "fit.perennia.app"
   );
   assert.deepEqual(providers.apple?.audience, [
-    "web.openworkoutlogger.app",
-    "com.openworkoutlogger.app"
+    "web.perennia.fit",
+    "fit.perennia.app"
   ]);
 });
 

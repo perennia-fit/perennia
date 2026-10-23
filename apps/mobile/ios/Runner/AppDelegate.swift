@@ -6,7 +6,7 @@ import UserNotifications
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate,
   UNUserNotificationCenterDelegate
 {
-  private let timerBackgroundChannelName = "open_workout_logger/timer_background"
+  private let timerBackgroundChannelName = "perennia/timer_background"
   private var timerBackgroundChannel: FlutterMethodChannel?
 
   // a cold-start tap arrives before Flutter registers its callback.

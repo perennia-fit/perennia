@@ -63,7 +63,7 @@ class AutoBackupService {
         _clock = clock ?? (() => DateTime.now().toUtc());
 
   static const keepFileCount = 5;
-  static const filePrefix = 'open-workout-logger-auto-backup-';
+  static const filePrefix = 'perennia-auto-backup-';
   static const fileExtension = '.zip';
 
   final SettingsRepository _settingsRepository;
@@ -311,7 +311,7 @@ class MethodChannelAutoBackupFolderAccess implements AutoBackupFolderAccess {
   }) : _channel = channel;
 
   static const _defaultChannel = MethodChannel(
-    'open_workout_logger/auto_backup_folder',
+    'perennia/auto_backup_folder',
   );
 
   final MethodChannel _channel;
@@ -413,7 +413,7 @@ class MethodChannelAutoBackupScheduler implements AutoBackupScheduler {
   }) : _channel = channel;
 
   static const _defaultChannel = MethodChannel(
-    'open_workout_logger/auto_backup_scheduler',
+    'perennia/auto_backup_scheduler',
   );
 
   final MethodChannel _channel;

@@ -52,7 +52,7 @@ void main() {
       expect(result.status, AutoBackupStatus.succeeded);
       expect(result.mode, AutoBackupRunMode.localOnly);
       expect(result.fileName,
-          'open-workout-logger-auto-backup-20260622T080000Z.zip');
+          'perennia-auto-backup-20260622T080000Z.zip');
       expect(manifest.appVersion, PortableArchiveRepository.appVersion);
       expect(savedSettings.autoBackupLastStatus, AutoBackupStatus.succeeded);
       expect(savedSettings.autoBackupLastSuccessfulRunAt, now);
@@ -87,7 +87,7 @@ void main() {
       for (var index = 1; index <= 6; index += 1) {
         final modifiedAt = DateTime.utc(2026, 6, index);
         folderAccess.putFile(
-          'open-workout-logger-auto-backup-2026060${index}T080000Z.zip',
+          'perennia-auto-backup-2026060${index}T080000Z.zip',
           modifiedAt: modifiedAt,
         );
       }
@@ -104,8 +104,8 @@ void main() {
       expect(
         result.prunedFileNames,
         <String>[
-          'open-workout-logger-auto-backup-20260602T080000Z.zip',
-          'open-workout-logger-auto-backup-20260601T080000Z.zip',
+          'perennia-auto-backup-20260602T080000Z.zip',
+          'perennia-auto-backup-20260601T080000Z.zip',
         ],
       );
       expect(
@@ -114,11 +114,11 @@ void main() {
                 (fileName) => fileName.startsWith(AutoBackupService.filePrefix))
             .toList(),
         <String>[
-          'open-workout-logger-auto-backup-20260603T080000Z.zip',
-          'open-workout-logger-auto-backup-20260604T080000Z.zip',
-          'open-workout-logger-auto-backup-20260605T080000Z.zip',
-          'open-workout-logger-auto-backup-20260606T080000Z.zip',
-          'open-workout-logger-auto-backup-20260607T080000Z.zip',
+          'perennia-auto-backup-20260603T080000Z.zip',
+          'perennia-auto-backup-20260604T080000Z.zip',
+          'perennia-auto-backup-20260605T080000Z.zip',
+          'perennia-auto-backup-20260606T080000Z.zip',
+          'perennia-auto-backup-20260607T080000Z.zip',
         ],
       );
       expect(fileNames, contains('notes.txt'));

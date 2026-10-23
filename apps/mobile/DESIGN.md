@@ -1,6 +1,6 @@
 ---
 version: alpha
-name: OpenWorkoutLogger
+name: Perennia
 colors:
   primary: "#1FB6CC"
   on-primary: "#06262B"
@@ -103,12 +103,12 @@ components:
     size: "{spacing.touch-target}"
 ---
 
-# Design System: OpenWorkoutLogger
+# Design System: Perennia
 
 This file follows the Stitch design-md shape. The YAML front matter is normative;
 the prose explains intent.
 
-OpenWorkoutLogger is a dense, utilitarian logbook for the gym floor. Dark theme is
+Perennia is a dense, utilitarian logbook for the gym floor. Dark theme is
 the design anchor, light theme is a first-class mirror, and the app should spend
 space on readable numerals and large touch targets rather than decoration.
 

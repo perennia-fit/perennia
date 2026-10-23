@@ -1,4 +1,4 @@
-# OpenWorkoutLogger Timer Sound Assets License
+# Perennia Timer Sound Assets License
 
 SPDX-License-Identifier: CC0-1.0
 
