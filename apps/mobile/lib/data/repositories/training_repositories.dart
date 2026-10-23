@@ -16,6 +16,7 @@ import '../../domain/nutrition/nutrition_import.dart';
 import '../../domain/protocols/dose_validation.dart';
 import '../../domain/protocols/protocols.dart';
 import '../../domain/settings/account_settings.dart';
+import '../../domain/settings/settings_validation.dart';
 import '../../domain/training/plan_validation.dart' as plan_validation;
 import '../../domain/training/routine_cadence.dart';
 import '../../domain/training/routine_up_next.dart';
@@ -4776,11 +4777,15 @@ class AccountSettingsRepository {
   /// Upserts the singleton to [settings]. Creates the row (minting a stable
   /// UUIDv7 id) on first write, otherwise LWW-updates the existing row. The
   /// change is recorded as one Activity Log entry so Synced Mode replicates it.
+  ///
+  /// Throws [SettingsValidationException] for a value the shared validator
+  /// hard-rejects, before anything is written.
   Future<void> save(
     AccountSettings settings, {
     String actor = 'app',
     String? batchId,
-  }) {
+  }) async {
+    validateAccountSettings(settings).throwIfRejected();
     final context = _repositories._createWriteContext(
       actor: actor,
       batchId: batchId,
