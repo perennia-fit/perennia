@@ -9880,6 +9880,36 @@ class LoggedSetRepository {
   }
 }
 
+/// Whether [row] is a live default measurement (Body Weight or Body Fat) of
+/// the kind restore and sync merge across installs by name and unit: active,
+/// scalar, body composition, curated (it has a goal), and named exactly like
+/// a default.
+bool _isActiveDefaultMeasurementRow(MetricRow row) {
+  return row.deletedAt == null &&
+      row.valueShape == MetricValueShape.scalar.name &&
+      row.metricGroup == MetricGroup.bodyComposition.name &&
+      row.goalType != null &&
+      MeasurementRepository.defaultMeasurementNames.contains(row.name);
+}
+
+/// Returns the JSON Activity Log image [encoded] with the id under [idKey]
+/// mapped through [ids], or [encoded] itself when it names none of them.
+String? _repointActivityImage(
+  String? encoded,
+  String idKey,
+  Map<String, String> ids,
+) {
+  if (encoded == null) {
+    return null;
+  }
+  final image = _decodeJsonObject(encoded);
+  final id = image[idKey];
+  if (id is! String || !ids.containsKey(id)) {
+    return encoded;
+  }
+  return jsonEncode(<String, Object?>{...image, idKey: ids[id]});
+}
+
 class MeasurementRepository {
   const MeasurementRepository._(this._repositories);
 
@@ -9894,11 +9924,22 @@ class MeasurementRepository {
 
   AppDatabase get _database => _repositories.database;
 
-  /// Seeds Body Weight and Body Fat when no active measurement has their
-  /// name. The ids are random, unlike the fixed ids of the other seeded
-  /// entities, so two installs' defaults are different rows; backup restore
-  /// merges them by name and unit instead (see
-  /// `PortableArchiveRepository._adoptLocalDefaultMeasurementIds` for why).
+  /// Seeds Body Weight and Body Fat into Body Tracker when it has no
+  /// measurement of that name. The ids are random, unlike the fixed ids of
+  /// the other seeded entities, so two installs' defaults are different
+  /// rows; backup restore and sync merge them by name and unit instead (see
+  /// `PortableArchiveRepository._adoptLocalDefaultMeasurementIds` and
+  /// [adoptSyncedDefaultMeasurement]).
+  ///
+  /// Body Tracker shows pinned measurements, so "has one" means an active,
+  /// pinned measurement of that name. An active but unpinned one with the
+  /// same name and unit is the server's copy from a canonical import (it
+  /// arrives through sync unpinned and disabled, as the server's catalog
+  /// defaults say), and is pinned and enabled here in place of seeding a
+  /// second row, so its imported readings show in Body Tracker. Nothing in
+  /// the app unpins a measurement, so this never overrides a user's choice.
+  /// One in a different unit is left alone and the default is seeded next to
+  /// it: a reading's value is stored in its measurement's unit.
   Future<void> ensureDefaultMeasurements({
     required MeasurementUnit bodyWeightUnit,
     String actor = 'app',
@@ -9907,31 +9948,229 @@ class MeasurementRepository {
 
     await _database.transaction(() async {
       final existing = await _manageableMeasurementQuery().get();
-      final activeNames = existing.map((row) => row.name).toSet();
+      final defaults = <MeasurementDraft>[
+        MeasurementDraft(
+          name: defaultBodyWeightName,
+          unit: bodyWeightUnit,
+          goalType: MeasurementGoalType.decrease,
+          enabled: true,
+          sortOrder: 0,
+        ),
+        const MeasurementDraft(
+          name: defaultBodyFatName,
+          unit: MeasurementUnit.percent,
+          goalType: MeasurementGoalType.decrease,
+          enabled: true,
+          sortOrder: 1,
+        ),
+      ];
 
-      if (!activeNames.contains(defaultBodyWeightName)) {
-        await _createMeasurementMetric(
-          MeasurementDraft(
-            name: defaultBodyWeightName,
-            unit: bodyWeightUnit,
-            goalType: MeasurementGoalType.decrease,
-            enabled: true,
-            sortOrder: 0,
+      for (final draft in defaults) {
+        if (existing.any((row) => row.name == draft.name && row.pinned)) {
+          continue;
+        }
+        final synced = existing
+            .where(
+              (row) => row.name == draft.name && row.unit == draft.unit.name,
+            )
+            .firstOrNull;
+        if (synced == null) {
+          await _createMeasurementMetric(draft, context);
+          continue;
+        }
+        await (_database.update(_database.metrics)
+              ..where((row) => row.id.equals(synced.id)))
+            .write(
+          MetricsCompanion(
+            enabled: const Value<bool>(true),
+            pinned: const Value<bool>(true),
+            sortOrder: Value<int>(draft.sortOrder!),
+            updatedAt: Value<DateTime>(context.timestamp),
           ),
+        );
+        await _repositories.activityLog._append(
           context,
+          entityTable: AppDatabase.metricsTable,
+          entityId: synced.id,
+          beforeImage: _metricImage(synced),
+          afterImage: _metricImage(await _requireMeasurementRow(synced.id)),
         );
       }
-      if (!activeNames.contains(defaultBodyFatName)) {
-        await _createMeasurementMetric(
-          const MeasurementDraft(
-            name: defaultBodyFatName,
-            unit: MeasurementUnit.percent,
-            goalType: MeasurementGoalType.decrease,
-            enabled: true,
-            sortOrder: 1,
-          ),
-          context,
+    });
+  }
+
+  /// Folds this device's own default measurement into the server's copy of
+  /// it, just pulled by sync as [syncedMetricId], so the device ends with one
+  /// Body Weight (or Body Fat) holding both histories instead of two.
+  ///
+  /// How the duplicate arises: metrics and their readings sync one way,
+  /// server to device. Neither is a push entity, so the Body Weight that
+  /// [ensureDefaultMeasurements] seeds, and every reading logged against it,
+  /// never leave the device. When the server's canonical import (Garmin and
+  /// other trackers) brings in a body-weight reading, it looks for the
+  /// user's Body Weight by name and unit (`findExistingBodyCompositionMetric`
+  /// in canonical-import-endpoint.ts), finds none because no device ever
+  /// sent one, and creates its own under a stable per-user id. Every device
+  /// then pulls that row next to the one it seeded.
+  ///
+  /// Why the dedupe sits here, on pull, and not in the server's push
+  /// handler: there is nothing to dedupe on push, because the device's copy
+  /// is never pushed. The pull is the one place both copies meet.
+  ///
+  /// Why the device gives up its id rather than the server's: the server's
+  /// id is the one every device, agent, and later import refers to, so it
+  /// has to survive. The device's id never left the device, so rewriting
+  /// it is invisible to LWW: no server row or other replica holds it. (The
+  /// restore merge keeps the local id for the opposite reason: both of its
+  /// copies are device ids, and the local one may already be on the server.)
+  ///
+  /// The identity rule matches the restore merge and the server's canonical
+  /// import: an active curated measurement named exactly like a default,
+  /// same name, same unit. Units must agree because a reading's value is
+  /// stored in its measurement's unit; a pound Body Weight never folds into
+  /// a kilogram one, and both stay. Only device-only rows
+  /// (`syncPreviouslySynced` false) fold in; two rows that both came from
+  /// the server are the server's to reconcile.
+  ///
+  /// What the merged row keeps: the server's id, and the device copy's
+  /// Body Tracker settings (pinned, enabled, order, goal), with a fresh
+  /// `updatedAt` so replaying the same server version cannot undo the merge.
+  /// The server's copy carries the import's catalog defaults (unpinned,
+  /// disabled); nothing a user did on any device ever reached it, so the
+  /// device's settings are the only user-authored ones there are. Taking
+  /// the server's by LWW would drop Body Weight out of Body Tracker. The
+  /// server's version is the recoverable loser: it is the before image of
+  /// the merge's Activity Log row, as sync's LWW losers always are, and no
+  /// dialog asks about it.
+  ///
+  /// What follows the id: readings move over in place (they are device-only
+  /// too) and their Activity Log images are re-pointed, so an undo from
+  /// Recent activity acts on the merged measurement. Protocol target
+  /// outcomes do sync, so each one that pointed at the device copy is
+  /// re-pointed as a new, pushable change, and other devices stop
+  /// referencing an id only this device had. The device copy itself is
+  /// archived, not deleted: history survives, and any older Activity Log
+  /// image that still names it keeps a row to point at.
+  Future<void> adoptSyncedDefaultMeasurement(
+    String syncedMetricId, {
+    String actor = 'sync',
+    String? batchId,
+  }) {
+    final context = _repositories._createWriteContext(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final synced = await (_database.select(_database.metrics)
+            ..where((row) => row.id.equals(syncedMetricId)))
+          .getSingleOrNull();
+      if (synced == null || !_isActiveDefaultMeasurementRow(synced)) {
+        return;
+      }
+      final deviceCopies = await (_manageableMeasurementQuery()
+            ..where(
+              (row) =>
+                  row.name.equals(synced.name) &
+                  row.unit.equals(synced.unit) &
+                  row.id.equals(synced.id).not() &
+                  row.syncPreviouslySynced.equals(false),
+            ))
+          .get();
+      if (deviceCopies.isEmpty) {
+        return;
+      }
+
+      final settings = deviceCopies.first;
+      await (_database.update(_database.metrics)
+            ..where((row) => row.id.equals(synced.id)))
+          .write(
+        MetricsCompanion(
+          goalType: Value<String?>(settings.goalType),
+          goalTargetValue: Value<double?>(settings.goalTargetValue),
+          enabled: Value<bool>(settings.enabled),
+          pinned: Value<bool>(settings.pinned),
+          sortOrder: Value<int>(settings.sortOrder),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      await _repositories.activityLog._append(
+        context,
+        entityTable: AppDatabase.metricsTable,
+        entityId: synced.id,
+        beforeImage: _metricImage(synced),
+        afterImage: _metricImage(await _requireMeasurementRow(synced.id)),
+      );
+
+      final syncedIdByDeviceId = <String, String>{
+        for (final copy in deviceCopies) copy.id: synced.id,
+      };
+      final deviceIds = syncedIdByDeviceId.keys.toList(growable: false);
+      await (_database.update(_database.metricReadings)
+            ..where((row) => row.metricId.isIn(deviceIds)))
+          .write(MetricReadingsCompanion(metricId: Value<String>(synced.id)));
+      final readingActivity = await (_database.select(_database.activityLog)
+            ..where(
+              (row) =>
+                  row.entityTable.equals(AppDatabase.metricReadingsTable) &
+                  Expression.or(<Expression<bool>>[
+                    for (final id in deviceIds) ...<Expression<bool>>[
+                      row.beforeImage.like('%$id%'),
+                      row.afterImage.like('%$id%'),
+                    ],
+                  ]),
+            ))
+          .get();
+      for (final row in readingActivity) {
+        final beforeImage = _repointActivityImage(
+          row.beforeImage,
+          'metric_id',
+          syncedIdByDeviceId,
         );
+        final afterImage = _repointActivityImage(
+          row.afterImage,
+          'metric_id',
+          syncedIdByDeviceId,
+        );
+        if (beforeImage == row.beforeImage && afterImage == row.afterImage) {
+          continue;
+        }
+        await (_database.update(_database.activityLog)
+              ..where((activity) => activity.id.equals(row.id)))
+            .write(
+          ActivityLogCompanion(
+            beforeImage: Value<String?>(beforeImage),
+            afterImage: Value<String?>(afterImage),
+          ),
+        );
+      }
+
+      final outcomes = await (_database.select(_database.protocolTargetOutcomes)
+            ..where((row) => row.metricId.isIn(deviceIds)))
+          .get();
+      for (final before in outcomes) {
+        await (_database.update(_database.protocolTargetOutcomes)
+              ..where((row) => row.id.equals(before.id)))
+            .write(
+          ProtocolTargetOutcomesCompanion(
+            metricId: Value<String?>(synced.id),
+            updatedAt: Value<DateTime>(context.timestamp),
+          ),
+        );
+        final after = await (_database.select(_database.protocolTargetOutcomes)
+              ..where((row) => row.id.equals(before.id)))
+            .getSingle();
+        await _repositories.activityLog._append(
+          context,
+          entityTable: AppDatabase.protocolTargetOutcomesTable,
+          entityId: before.id,
+          beforeImage: _protocolTargetOutcomeImage(before),
+          afterImage: _protocolTargetOutcomeImage(after),
+        );
+      }
+
+      for (final copy in deviceCopies) {
+        await _softDeleteMeasurementRow(copy, context);
       }
     });
   }
