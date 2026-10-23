@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../domain/settings/settings_validation.dart';
 import '../../../theme/theme.dart';
 import '../repositories/settings_repository.dart';
 import 'settings_shared.dart';
@@ -126,7 +127,13 @@ class _DefaultWeightIncrementFieldState
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         onChanged: (value) {
           final parsed = double.tryParse(value);
-          if (parsed == null || parsed <= 0) {
+          if (parsed == null ||
+              !validateSettingsFields(<SettingsFieldValue>[
+                SettingsFieldValue.number(
+                  field: 'defaultWeightIncrement',
+                  value: parsed,
+                ),
+              ]).accepted) {
             return;
           }
           unawaited(widget.onChanged(parsed));

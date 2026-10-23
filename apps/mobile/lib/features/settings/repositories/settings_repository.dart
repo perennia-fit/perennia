@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/settings/account_settings.dart';
+import '../../../domain/settings/settings_validation.dart';
 import '../../../domain/training/training_day.dart';
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
@@ -110,6 +111,8 @@ class SplitSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> save(AppSettings settings) async {
+    // Validate first so a rejected account half never reaches the JSON mirror.
+    validateAccountSettings(settings.toAccountSettings()).throwIfRejected();
     // Device half + full backup mirror to JSON; account half to the synced row.
     await _deviceStore.save(settings);
     await _accountSettings.save(settings.toAccountSettings());
@@ -284,7 +287,7 @@ class AppSettings {
         WeekStartDay.monday,
       ),
       defaultWeightIncrement:
-          _positiveDouble(json['defaultWeightIncrement'], 2.5),
+          _weightIncrement(json['defaultWeightIncrement'], 2.5),
       homeScreenDisplay: _enumValue(
         HomeScreenDisplay.values,
         json['homeScreenDisplay'],
@@ -655,6 +658,16 @@ double _positiveDouble(Object? rawValue, double fallback) {
     return fallback;
   }
   return parsed;
+}
+
+/// Files written before Settings validation could hold any positive increment;
+/// one the shared validator rejects falls back rather than failing load.
+double _weightIncrement(Object? rawValue, double fallback) {
+  final parsed = _positiveDouble(rawValue, fallback);
+  final accepted = validateSettingsFields(<SettingsFieldValue>[
+    SettingsFieldValue.number(field: 'defaultWeightIncrement', value: parsed),
+  ]).accepted;
+  return accepted ? parsed : fallback;
 }
 
 String? _optionalString(Object? rawValue) {

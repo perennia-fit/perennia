@@ -9,13 +9,16 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../domain/analytics/exercise_analytics.dart';
 import '../../domain/body_tracker/measurement_validation.dart';
 import '../../domain/effect/effect.dart';
+import '../../domain/metrics/reading_normalization.dart';
 import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/nutrition_import.dart';
 import '../../domain/protocols/dose_validation.dart';
 import '../../domain/protocols/protocols.dart';
 import '../../domain/settings/account_settings.dart';
+import '../../domain/settings/settings_validation.dart';
 import '../../domain/training/plan_validation.dart' as plan_validation;
 import '../../domain/training/routine_cadence.dart';
 import '../../domain/training/routine_up_next.dart';
@@ -182,6 +185,45 @@ class TrainingRepositories {
   late final CsvExportRepository csvExports;
   late final PortableArchiveRepository portableArchives;
 
+  /// Every table "Erase all data" clears, children before parents. A test
+  /// pins this list plus the kept tables (Settings, integration consents, the
+  /// Activity Log, caches, sync bookkeeping) to the whole schema, so a new
+  /// table cannot be silently left out of the erase.
+  static const eraseTableNames = <String>[
+    AppDatabase.loggedSetsTable,
+    AppDatabase.restTimersTable,
+    AppDatabase.intervalTimersTable,
+    AppDatabase.exerciseGroupMembersTable,
+    AppDatabase.exerciseGroupsTable,
+    AppDatabase.workoutExercisesTable,
+    AppDatabase.templateLinksTable,
+    AppDatabase.workoutSessionsTable,
+    AppDatabase.routineEntriesTable,
+    AppDatabase.planRoutinesTable,
+    AppDatabase.templateGroupMembersTable,
+    AppDatabase.templateGroupsTable,
+    AppDatabase.prescriptionsTable,
+    AppDatabase.templateExercisesTable,
+    AppDatabase.workoutTemplatesTable,
+    AppDatabase.exercisesTable,
+    AppDatabase.exerciseCategoriesTable,
+    AppDatabase.foodEntriesTable,
+    AppDatabase.mealsTable,
+    AppDatabase.foodsTable,
+    AppDatabase.mealTypesTable,
+    AppDatabase.nutritionGoalsTable,
+    AppDatabase.measurementEntriesTable,
+    AppDatabase.measurementsTable,
+    AppDatabase.metricReadingsTable,
+    AppDatabase.metricsTable,
+    AppDatabase.dosesTable,
+    AppDatabase.schedulesTable,
+    AppDatabase.protocolTargetOutcomesTable,
+    AppDatabase.protocolCompoundsTable,
+    AppDatabase.protocolsTable,
+    AppDatabase.compoundsTable,
+  ];
+
   static const starterWeightRepsExerciseName = 'Barbell Squat';
 
   static const _starterWeightRepsValues = <SetDimensionValue>[
@@ -250,159 +292,94 @@ class TrainingRepositories {
     });
   }
 
-  Future<void> eraseAllData() {
+  /// Erases every authored domain (the [eraseTableNames] tables) on this
+  /// device and, through Synced Mode, everywhere else.
+  ///
+  /// Each erased row is soft-deleted and gets an Activity Log tombstone in one
+  /// batch. Sync push reads only the Activity Log, so a row without one would
+  /// stay on the server and on other devices; the batch also keeps the erase
+  /// recoverable with an undo. Settings and integration consents are not
+  /// authored log data and stay. So do rows the bundled seeds own (the
+  /// Platform Library, the OTC Compounds, the default Meal Types): every seed
+  /// skips ids it has already written, so an erased seed row would never
+  /// return.
+  Future<void> eraseAllData() async {
+    final seedOwnedIds = await _seedOwnedIdsForErase();
     final context = _createWriteContext(actor: 'settings');
-    return database.transaction(() async {
-      await _appendLoggedSetEraseTombstones(context);
-      await _softDeleteDomainRowsForErase(context.timestamp);
+    await database.transaction(() async {
+      for (final table in eraseTableNames) {
+        await _eraseTable(
+          table,
+          context,
+          keepIds: seedOwnedIds[table] ?? const <String>{},
+        );
+      }
     });
   }
 
-  Future<void> _appendLoggedSetEraseTombstones(_WriteContext context) async {
-    final rows = await (database.select(database.loggedSets)
-          ..where((row) => row.deletedAt.isNull()))
+  Future<Map<String, Set<String>>> _seedOwnedIdsForErase() async {
+    final platformSeed = await catalog._platformSeedSource.load();
+    final platformExercises = await (database.select(database.exercises)
+          ..where(
+            (row) =>
+                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name),
+          ))
         .get();
-    for (final before in rows) {
-      await (database.update(database.loggedSets)
-            ..where((row) => row.id.equals(before.id)))
-          .write(
-        LoggedSetsCompanion(
-          updatedAt: Value<DateTime>(context.timestamp),
-          deletedAt: Value<DateTime?>(context.timestamp),
-        ),
-      );
-      final after = await sets._requireRow(before.id);
-      await activityLog._append(
-        context,
-        entityTable: AppDatabase.loggedSetsTable,
-        entityId: before.id,
-        beforeImage: _loggedSetImage(before),
-        afterImage: _loggedSetImage(after),
-      );
-    }
+    return <String, Set<String>>{
+      AppDatabase.exercisesTable:
+          platformExercises.map((row) => row.id).toSet(),
+      AppDatabase.exerciseCategoriesTable:
+          platformSeed.categories.map((category) => category.id).toSet(),
+      AppDatabase.mealTypesTable: NutritionRepository._defaultMealTypes
+          .map((mealType) => mealType.id)
+          .toSet(),
+      AppDatabase.compoundsTable:
+          protocols._otcSeedSource.load().map((seed) => seed.id).toSet(),
+    };
   }
 
-  Future<void> _softDeleteDomainRowsForErase(DateTime timestamp) async {
-    await (database.update(database.intervalTimers)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      IntervalTimersCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
+  Future<void> _eraseTable(
+    String entityTable,
+    _WriteContext context, {
+    required Set<String> keepIds,
+  }) async {
+    final table = database.allTables.singleWhere(
+      (candidate) => candidate.actualTableName == entityTable,
     );
-    await (database.update(database.restTimers)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      RestTimersCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.loggedSets)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      LoggedSetsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.foodEntries)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      FoodEntriesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.foods)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      FoodsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.mealTypes)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MealTypesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.meals)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MealsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.metricReadings)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MetricReadingsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.metrics)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      MetricsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exerciseGroupMembers)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExerciseGroupMembersCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exerciseGroups)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExerciseGroupsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.workoutExercises)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      WorkoutExercisesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.workoutSessions)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      WorkoutSessionsCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exercises)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExercisesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
-    await (database.update(database.exerciseCategories)
-          ..where((row) => row.deletedAt.isNull()))
-        .write(
-      ExerciseCategoriesCompanion(
-        updatedAt: Value<DateTime>(timestamp),
-        deletedAt: Value<DateTime?>(timestamp),
-      ),
-    );
+    final liveRows = await database.customSelect(
+      'SELECT id FROM $entityTable WHERE deleted_at IS NULL',
+      readsFrom: <TableInfo<Table, Object?>>{table},
+    ).get();
+    for (final liveRow in liveRows) {
+      final id = liveRow.read<String>('id');
+      if (keepIds.contains(id)) {
+        continue;
+      }
+      final before = await activityLog._currentImageFor(
+        entityTable: entityTable,
+        entityId: id,
+      );
+      await database.customUpdate(
+        'UPDATE $entityTable SET updated_at = ?, deleted_at = ? WHERE id = ?',
+        variables: <Variable<Object>>[
+          Variable<DateTime>(context.timestamp),
+          Variable<DateTime>(context.timestamp),
+          Variable<String>(id),
+        ],
+        updates: <TableInfo<Table, Object?>>{table},
+        updateKind: UpdateKind.update,
+      );
+      await activityLog._append(
+        context,
+        entityTable: entityTable,
+        entityId: id,
+        beforeImage: before,
+        afterImage: await activityLog._currentImageFor(
+          entityTable: entityTable,
+          entityId: id,
+        ),
+      );
+    }
   }
 
   Future<LogWorkoutResult> logWorkoutWithSet(
@@ -1200,7 +1177,6 @@ class CatalogRepository {
       );
     });
   }
-
 
   Future<String> _createCategory(
     ExerciseCategoryDraft draft,
@@ -2872,7 +2848,6 @@ class NutritionRepository {
 
     return _database.transaction(() => _createMeal(draft, context));
   }
-
 
   Future<void> ensureDefaultMealTypes({
     String actor = 'app',
@@ -4776,11 +4751,15 @@ class AccountSettingsRepository {
   /// Upserts the singleton to [settings]. Creates the row (minting a stable
   /// UUIDv7 id) on first write, otherwise LWW-updates the existing row. The
   /// change is recorded as one Activity Log entry so Synced Mode replicates it.
+  ///
+  /// Throws [SettingsValidationException] for a value the shared validator
+  /// hard-rejects, before anything is written.
   Future<void> save(
     AccountSettings settings, {
     String actor = 'app',
     String? batchId,
-  }) {
+  }) async {
+    validateAccountSettings(settings).throwIfRejected();
     final context = _repositories._createWriteContext(
       actor: actor,
       batchId: batchId,
@@ -5322,7 +5301,6 @@ class ProtocolsRepository {
     });
   }
 
-
   Future<String> _createCompound(
     CompoundDraft draft,
     _WriteContext context,
@@ -5788,9 +5766,7 @@ class ProtocolsRepository {
   /// come from both `doses` and `compounds` so archives are reflected, but
   /// unrelated Compound detail edits are filtered out by id-list equality.
   Stream<List<String>> watchRecentCompoundIds({int limit = 5}) {
-    return _recentCompoundIdQuery(limit: limit)
-        .watch()
-        .distinct(_sameRowList);
+    return _recentCompoundIdQuery(limit: limit).watch().distinct(_sameRowList);
   }
 
   Selectable<String> _recentCompoundIdQuery({required int limit}) {
@@ -7275,8 +7251,6 @@ class ProtocolsRepository {
     );
   }
 
-
-
   bool _sameCompoundOptionRecords(
     List<CompoundOptionRecord> left,
     List<CompoundOptionRecord> right,
@@ -7430,7 +7404,6 @@ class ProtocolsRepository {
         left.metricId == right.metricId &&
         left.position == right.position;
   }
-
 
   Future<ProtocolRow> _requireProtocolRow(String id) async {
     final row = await (_database.select(_database.protocols)
@@ -7648,9 +7621,10 @@ class EffectRepository {
   /// A read-only performance proxy (PROTOCOLS.md §4: "performance comes from
   /// Workout analytics") for the `Effect` view: one [EffectSample] per
   /// Workout session in `[from, to)` whose `at` is the session's start and
-  /// whose value is the session's total logged volume (Σ load × reps over
-  /// its completed, load-and-reps-bearing `LoggedSet`s). A session with no
-  /// such set is EXCLUDED (not fabricated as a zero) — e.g. an
+  /// whose value is the session's total logged volume in kilograms
+  /// ([sessionLoadVolumeKilograms] over its completed sets, so kg and lb add
+  /// up and assisted-load exercises are excluded). A session with no such
+  /// set is EXCLUDED (not fabricated as a zero) — e.g. an
   /// endurance/duration-only session contributes no volume sample.
   Future<List<EffectSample>> performanceVolumeSamples({
     required DateTime from,
@@ -7680,19 +7654,32 @@ class EffectRepository {
           ))
         .get();
 
-    final volumeBySessionId = <String, double>{};
+    // Archived exercises still count: archive keeps history.
+    final exerciseIds = setRows.map((row) => row.exerciseId).toSet();
+    final loadModeByExerciseId = <String, ExerciseLoadMode>{
+      for (final exercise in await (_database.select(_database.exercises)
+            ..where((row) => row.id.isIn(exerciseIds)))
+          .get())
+        exercise.id: ExerciseLoadMode.values.byName(exercise.loadMode),
+    };
+    final setsBySessionId = <String, List<SessionVolumeSet>>{};
     for (final row in setRows) {
-      final volume = row.loadValue! * row.repsValue!;
-      volumeBySessionId.update(
-        row.workoutId,
-        (existing) => existing + volume,
-        ifAbsent: () => volume,
-      );
+      setsBySessionId
+          .putIfAbsent(row.workoutId, () => <SessionVolumeSet>[])
+          .add(
+            SessionVolumeSet(
+              loadMode: loadModeByExerciseId[row.exerciseId] ??
+                  ExerciseLoadMode.added,
+              values: _loggedSetValuesFromRow(row),
+            ),
+          );
     }
 
     final samples = <EffectSample>[];
     for (final session in sessionRows) {
-      final volume = volumeBySessionId[session.id];
+      final sessionSets = setsBySessionId[session.id];
+      final volume =
+          sessionSets == null ? null : sessionLoadVolumeKilograms(sessionSets);
       if (volume == null) {
         continue;
       }
@@ -7818,8 +7805,8 @@ class WorkoutExerciseRepository {
       );
 
       final sets = await (_repositories.sets
-            ._activeLoggedSetQuery(workoutId: before.workoutId)
-          ..where((row) => row.exerciseId.equals(before.exerciseId)))
+              ._activeLoggedSetQuery(workoutId: before.workoutId)
+            ..where((row) => row.exerciseId.equals(before.exerciseId)))
           .get();
       for (final set in sets) {
         await _repositories.workoutSessions._softDeleteLoggedSet(set, context);
@@ -10431,7 +10418,6 @@ class MeasurementRepository {
     return _sameMeasurementEntryRecord(left, right);
   }
 
-
   bool _sameMeasurementEntryRecord(
     MeasurementEntryRecord left,
     MeasurementEntryRecord right,
@@ -10788,8 +10774,6 @@ class MeasurementRepository {
     return row;
   }
 
-
-
   SimpleSelectStatement<$MetricsTable, MetricRow>
       _manageableMeasurementQuery() {
     return _database.select(_database.metrics)
@@ -10877,7 +10861,6 @@ class MeasurementRepository {
       sortOrder: draft.sortOrder,
     );
   }
-
 
   MeasurementRecord _measurementRecordFromMetricRow(MetricRow row) {
     return MeasurementRecord(
@@ -12013,7 +11996,6 @@ class MetricRepository {
       ..limit(1);
   }
 
-
   SimpleSelectStatement<$MetricReadingsTable, MetricReadingRow>
       _latestMetricReadingRows(
     String metricId, {
@@ -12241,7 +12223,6 @@ class MetricRepository {
     return _sameListBy(left, right, _sameMetricSeriesData);
   }
 
-
   MetricDraft _normalizeMetricDraft(MetricDraft draft) {
     final name = draft.name.trim();
     if (name.isEmpty) {
@@ -12361,53 +12342,42 @@ class MetricRepository {
       throw StateError(shapeErrorMessage);
     }
 
-    final normalizedValueEntered = valueEntered.trim();
-    final scalarValue = double.tryParse(normalizedValueEntered);
-    if (scalarValue == null || !scalarValue.isFinite) {
-      throw ArgumentError.value(
-        valueEntered,
-        'valueEntered',
-        'Scalar Reading value must be finite.',
-      );
-    }
-
-    final normalizedAtTime = atTime?.toUtc();
-    final normalizedWindowStartedAt = windowStartedAt?.toUtc();
-    final normalizedWindowEndedAt = windowEndedAt?.toUtc();
-    final hasInstant = normalizedAtTime != null;
-    final hasWindow =
-        normalizedWindowStartedAt != null || normalizedWindowEndedAt != null;
-    if (hasInstant == hasWindow) {
-      throw ArgumentError(
-        'A Reading must have either atTime or a complete window, not both.',
-      );
-    }
-    if (hasWindow) {
-      if (normalizedWindowStartedAt == null ||
-          normalizedWindowEndedAt == null) {
-        throw ArgumentError('Window Readings require start and end times.');
-      }
-      if (!normalizedWindowEndedAt.isAfter(normalizedWindowStartedAt)) {
-        throw ArgumentError('Window end must be after window start.');
-      }
-    }
-
-    final valueJson = jsonEncode(<String, Object?>{
-      'shape': MetricValueShape.scalar.name,
-      'value': scalarValue,
-      'entered': normalizedValueEntered,
+    // The shared module is golden-vectored against the server, so a Reading
+    // stored here is byte-identical to one an agent writes. Its warnings
+    // (window preferred over an instant, reordered bounds) have no UI channel
+    // on this path; the normalized anchor already reflects them.
+    final normalized = normalizeMetricReading(<String, Object?>{
+      'metric': <String, Object?>{
+        'valueShape': metric.valueShape,
+        'unit': metric.unit,
+      },
+      'value': <String, Object?>{
+        'shape': metric.valueShape,
+        'entered': valueEntered,
+      },
+      'timeAnchor': <String, Object?>{
+        if (atTime != null) 'atTime': atTime.toUtc().toIso8601String(),
+        if (windowStartedAt != null)
+          'windowStartedAt': windowStartedAt.toUtc().toIso8601String(),
+        if (windowEndedAt != null)
+          'windowEndedAt': windowEndedAt.toUtc().toIso8601String(),
+      },
     });
+
     return _NormalizedMetricReadingValues(
-      valueJson: valueJson,
-      scalarValue: scalarValue,
-      scalarEntered: normalizedValueEntered,
-      atTime: normalizedAtTime,
-      windowStartedAt: normalizedWindowStartedAt,
-      windowEndedAt: normalizedWindowEndedAt,
+      valueJson: normalized['valueJson']! as String,
+      scalarValue: (normalized['scalarValue']! as num).toDouble(),
+      scalarEntered: valueEntered.trim(),
+      atTime: _parseOptionalUtc(normalized['atTime']),
+      windowStartedAt: _parseOptionalUtc(normalized['windowStartedAt']),
+      windowEndedAt: _parseOptionalUtc(normalized['windowEndedAt']),
       comment: _normalizeOptionalText(comment),
     );
   }
 
+  DateTime? _parseOptionalUtc(Object? value) {
+    return value == null ? null : DateTime.parse(value as String).toUtc();
+  }
 }
 
 class ActivityLogRepository {
@@ -16805,9 +16775,6 @@ class _NormalizedRecipeDraft {
   final RecipeNutrition nutrition;
 }
 
-
-
-
 int _nextPosition<T>(Iterable<T> rows, int Function(T row) positionOf) {
   var next = 0;
   for (final row in rows) {
@@ -17082,10 +17049,6 @@ _DimensionColumns _dimensionColumns(SetDimensionValue? value) {
     entered: value?.entered,
   );
 }
-
-
-
-
 
 double _normalizeAlertVolume(double volume) {
   if (volume.isNaN) {

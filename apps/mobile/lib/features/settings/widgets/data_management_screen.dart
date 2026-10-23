@@ -40,8 +40,10 @@ class DataManagementScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Erase local workouts, exercises, routines, timers, and '
-                  'analytics source data from this device.',
+                  'Erase your workouts, routines and templates, custom '
+                  'exercises, food log, nutrition goals, supplements, body '
+                  'and health readings, and timers. With sync on, your other '
+                  'devices erase them too.',
                   style: context.textStyles.body,
                 ),
                 const SizedBox(height: AppDimens.dense),
@@ -103,8 +105,11 @@ class DataManagementScreen extends ConsumerWidget {
         return AlertDialog(
           title: const Text('Erase all data?'),
           content: const Text(
-            'This clears local workouts, exercises, routines, timers, and '
-            'analytics source data on this device. Backup restore is separate.',
+            'This erases your workouts, routines and templates, custom '
+            'exercises, food log, nutrition goals, supplements, body and '
+            'health readings, and timers. With sync on, your other devices '
+            'erase them too. Settings and the built-in exercise library stay. '
+            'You can undo it from Recent activity.',
           ),
           actions: [
             TextButton(
@@ -131,7 +136,7 @@ class DataManagementScreen extends ConsumerWidget {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Local data erased')),
+      const SnackBar(content: Text('All data erased')),
     );
   }
 }
