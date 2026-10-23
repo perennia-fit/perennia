@@ -99,7 +99,7 @@ class MethodChannelTimerBackgroundScheduler
   }) : _channel = channel;
 
   static const _defaultChannel = MethodChannel(
-    'open_workout_logger/timer_background',
+    'perennia/timer_background',
   );
 
   final MethodChannel _channel;

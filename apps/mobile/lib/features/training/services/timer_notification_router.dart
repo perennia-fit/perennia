@@ -43,7 +43,7 @@ class TimerNotificationRouter {
     required Future<WorkoutExerciseRecord?> Function(String id)
         resolveWorkoutExercise,
     MethodChannel channel = const MethodChannel(
-      'open_workout_logger/timer_background',
+      'perennia/timer_background',
     ),
     WidgetBuilder Function(String workoutExerciseId)? pageBuilder,
   })  : _navigatorKey = navigatorKey,

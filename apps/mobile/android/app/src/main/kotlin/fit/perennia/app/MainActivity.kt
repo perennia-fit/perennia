@@ -1,4 +1,4 @@
-package io.github.lspinheiro.open_workout_logger
+package fit.perennia.app
 
 import android.Manifest
 import android.content.Intent
@@ -170,7 +170,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val TIMER_BACKGROUND_CHANNEL =
-            "open_workout_logger/timer_background"
+            "perennia/timer_background"
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4207
         private const val STATUS_GRANTED = "granted"
         private const val STATUS_DENIED = "denied"

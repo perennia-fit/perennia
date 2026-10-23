@@ -22,7 +22,7 @@ val hasReleaseSigning =
         file(androidUploadKeystorePath).exists()
 
 android {
-    namespace = "io.github.lspinheiro.open_workout_logger"
+    namespace = "fit.perennia.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -32,9 +32,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "io.github.lspinheiro.open_workout_logger"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // Permanent from the first store upload: Play keys the listing, every
+        // install's data, and the signing chain to this ID. It must stay equal
+        // to the iOS PRODUCT_BUNDLE_IDENTIFIER, and a build that changes it is a
+        // different app that cannot reach existing users' data.
+        applicationId = "fit.perennia.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

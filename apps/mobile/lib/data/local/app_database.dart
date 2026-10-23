@@ -1107,8 +1107,9 @@ class AppDatabase extends _$AppDatabase {
     return AppDatabase(
       LazyDatabase(() async {
         final directory = await getApplicationDocumentsDirectory();
-        final file =
-            File(path.join(directory.path, 'open_workout_logger.sqlite'));
+        // Renaming this file after release silently hands every existing install
+        // an empty database; a rename needs a move-on-open migration.
+        final file = File(path.join(directory.path, 'perennia.sqlite'));
         return NativeDatabase(file);
       }),
     );

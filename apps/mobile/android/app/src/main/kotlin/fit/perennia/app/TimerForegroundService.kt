@@ -1,4 +1,4 @@
-package io.github.lspinheiro.open_workout_logger
+package fit.perennia.app
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -283,9 +283,9 @@ class TimerForegroundService : Service() {
         private const val ONE_SECOND_MILLIS = 1000L
         private const val PREPARE_WINDOW_MILLIS = 3000L
         private const val ACTION_CANCEL =
-            "io.github.lspinheiro.open_workout_logger.CANCEL_TIMER"
+            "fit.perennia.app.CANCEL_TIMER"
         const val ACTION_OPEN_TIMER =
-            "io.github.lspinheiro.open_workout_logger.OPEN_TIMER"
+            "fit.perennia.app.OPEN_TIMER"
         const val EXTRA_TIMER_ID = "timerId"
         private const val EXTRA_DEADLINE_AT_MILLIS = "deadlineAtMillis"
         private const val EXTRA_TITLE = "title"

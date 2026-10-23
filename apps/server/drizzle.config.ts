@@ -5,7 +5,7 @@ export default defineConfig({
   schema: "./src/db/schema.ts",
   out: "./drizzle",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://localhost/open_workout_logger"
+    url: process.env.DATABASE_URL ?? "postgres://localhost/perennia"
   },
   strict: true,
   verbose: true
