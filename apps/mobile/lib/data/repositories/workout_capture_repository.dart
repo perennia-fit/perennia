@@ -60,7 +60,7 @@ final class WorkoutCaptureRepository {
       }
       final authoritativeWarningTokens =
           validation.warningAcknowledgementTokenSet;
-      if (!_sameCaptureWarningTokens(
+      if (!_sameStringSet(
         authoritativeWarningTokens,
         request.acknowledgedWarningTokens,
       )) {
@@ -484,6 +484,3 @@ WorkoutCaptureValidationResult _mergeCaptureValidationResults(
   return WorkoutCaptureValidationResult(errors: errors, warnings: warnings);
 }
 
-bool _sameCaptureWarningTokens(Set<String> left, Set<String> right) {
-  return left.length == right.length && left.containsAll(right);
-}

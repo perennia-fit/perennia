@@ -441,7 +441,7 @@ class WorkoutTemplateRepository {
       }
 
       final normalizedNote = _normalizeOptionalText(draft.note);
-      final position = _nextTemplateExercisePosition(activeRows);
+      final position = _nextPosition(activeRows, (row) => row.position);
       final archivedExisting = existing;
       if (archivedExisting != null) {
         await (_database.update(_database.templateExercises)
@@ -635,7 +635,7 @@ class WorkoutTemplateRepository {
               name: draft.name.trim(),
               colorHex: _normalizeColorHex(draft.colorHex),
               rounds: Value<int>(draft.rounds),
-              position: _nextTemplateGroupPosition(activeGroups),
+              position: _nextPosition(activeGroups, (row) => row.position),
               updatedAt: context.timestamp,
             ),
           );
@@ -820,7 +820,7 @@ class WorkoutTemplateRepository {
             _prescriptionInsertCompanion(
               id: id,
               templateExerciseId: templateExerciseId,
-              position: _nextPrescriptionPosition(rows),
+              position: _nextPosition(rows, (row) => row.position),
               draft: draft,
               updatedAt: context.timestamp,
             ),
@@ -1884,35 +1884,8 @@ enum _WorkoutTemplateContentExercisePolicy {
   historicalFact,
 }
 
-int _nextTemplateExercisePosition(List<TemplateExerciseRow> rows) {
-  var next = 0;
-  for (final row in rows) {
-    if (row.position >= next) {
-      next = row.position + 1;
-    }
-  }
-  return next;
-}
 
-int _nextTemplateGroupPosition(List<TemplateGroupRow> rows) {
-  var next = 0;
-  for (final row in rows) {
-    if (row.position >= next) {
-      next = row.position + 1;
-    }
-  }
-  return next;
-}
 
-int _nextPrescriptionPosition(List<PrescriptionRow> rows) {
-  var next = 0;
-  for (final row in rows) {
-    if (row.position >= next) {
-      next = row.position + 1;
-    }
-  }
-  return next;
-}
 
 void _requireExactReorderIds({
   required List<String> orderedIds,
