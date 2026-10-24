@@ -1707,18 +1707,25 @@ class SyncRepository implements SyncCycleRepository {
       return false;
     }
 
+    final batchId = change.batchId ?? syncBatchId;
     await _repositories.metrics.applySyncImage(
       entityTable: AppDatabase.metricsTable,
       image: _syncImageFromPull(change),
       deviceId: change.deviceId,
       actor: _actorForPulledChange(change),
-      batchId: change.batchId ?? syncBatchId,
+      batchId: batchId,
       activityLogId: change.activityLogId,
       activityBeforeImage: change.beforeImage,
       activityAfterImage: change.afterImage,
       activityOccurredAt: change.occurredAt == null
           ? null
           : DateTime.parse(change.occurredAt!).toUtc(),
+    );
+    // The server's copy of a default measurement (from a canonical import)
+    // absorbs the one this device seeded; see the method for why on pull.
+    await _repositories.measurements.adoptSyncedDefaultMeasurement(
+      change.id,
+      batchId: batchId,
     );
     return true;
   }
