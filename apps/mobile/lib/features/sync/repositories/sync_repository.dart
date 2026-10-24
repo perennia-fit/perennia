@@ -1263,6 +1263,10 @@ class SyncRepository implements SyncCycleRepository {
         liveProtocolTargetOutcomeSnapshotIds,
         DateTime.parse(snapshotServerClock).toUtc(),
       );
+      await _dropDeferredChangesAbsentFromSnapshot(
+        AppDatabase.protocolTargetOutcomesTable,
+        liveProtocolTargetOutcomeSnapshotIds,
+      );
       await _markPreviouslySyncedScheduleRowsAbsentFromSnapshotDeleted(
         liveScheduleSnapshotIds,
         DateTime.parse(snapshotServerClock).toUtc(),
@@ -1533,6 +1537,10 @@ class SyncRepository implements SyncCycleRepository {
 
         throw FormatException('Unsupported sync entity: ${change.entity}.');
       }
+      appliedCount += await _applyDeferredChangesNowApplicable(
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
       if (persistCursor) {
         await _savePullCursor(cursorToSave);
       }
@@ -1916,6 +1924,35 @@ class SyncRepository implements SyncCycleRepository {
     return true;
   }
 
+  /// Applies a pulled Protocol target outcome, or holds it in
+  /// `deferred_sync_changes` while the Metric it targets is not on this device.
+  ///
+  /// Metrics are pull-only, but outcomes are pushed, so an outcome that targets
+  /// a Metric the user created on another device references a row this device
+  /// may never have been sent. `metric_id` is a Drift FK, and inserting such a
+  /// row fails the whole pull transaction on every retry: one device-local
+  /// Metric would stop this device's sync for good.
+  ///
+  /// Holding the change until the Metric arrives is the only option that keeps
+  /// all three of convergence, recoverability, and a batch that never fails:
+  /// - Storing the row with `metric_id` cleared makes a 'metric' outcome with no
+  ///   Metric, which the Protocol editor would then save and push, overwriting
+  ///   the real target on every device. And when the Metric did arrive, nothing
+  ///   would re-pull the outcome to restore its reference.
+  /// - Skipping it and only logging it never converges either: the cursor has
+  ///   moved past the outcome, so the Metric arriving later finds nothing to
+  ///   re-apply.
+  ///
+  /// A held change is kept verbatim (activity envelope included) and is the
+  /// last-writer-wins version for its row: an older pulled version never
+  /// replaces it, and a newer one that can be applied supersedes it.
+  /// [_applyDeferredChangesNowApplicable] runs it through this method again at
+  /// the end of every pull batch once its Metric exists, so it meets the same
+  /// LWW check against the local row and writes its Activity Log entry then,
+  /// as if it had just arrived. Until then the Protocol shows without that
+  /// outcome. The original stays recoverable from the pushing device's Activity
+  /// Log on the server. A full re-sync drops held changes the server no longer
+  /// has live.
   Future<bool> _applyPulledProtocolTargetOutcomeChange(
     SyncPulledChange change, {
     required String deviceId,
@@ -1935,6 +1972,29 @@ class SyncRepository implements SyncCycleRepository {
         )) {
       return false;
     }
+    final deferred = await _deferredChangeFor(change.entity, change.id);
+    if (deferred != null &&
+        !_lwwWins(
+          incomingUpdatedAt,
+          change.deviceId,
+          deferred.updatedAt.toUtc(),
+          deferred.deviceId,
+        )) {
+      return false;
+    }
+
+    final metricId = change.payload['metric_id'];
+    if (metricId is String && !await _metricExists(metricId)) {
+      await _deferPulledChange(
+        change,
+        missingEntityTable: AppDatabase.metricsTable,
+        missingEntityId: metricId,
+      );
+      return false;
+    }
+    if (deferred != null) {
+      await _dropDeferredChange(change.entity, change.id);
+    }
 
     await _repositories.protocols.applySyncImage(
       entityTable: AppDatabase.protocolTargetOutcomesTable,
@@ -1950,6 +2010,116 @@ class SyncRepository implements SyncCycleRepository {
           : DateTime.parse(change.occurredAt!).toUtc(),
     );
     return true;
+  }
+
+  Future<bool> _metricExists(String metricId) async {
+    final row = await (_database.selectOnly(_database.metrics)
+          ..addColumns(<Expression<Object>>[_database.metrics.id])
+          ..where(_database.metrics.id.equals(metricId)))
+        .getSingleOrNull();
+    return row != null;
+  }
+
+  Future<DeferredSyncChangeRow?> _deferredChangeFor(
+    String entityTable,
+    String entityId,
+  ) {
+    return (_database.select(_database.deferredSyncChanges)
+          ..where(
+            (row) =>
+                row.entityTable.equals(entityTable) &
+                row.entityId.equals(entityId),
+          ))
+        .getSingleOrNull();
+  }
+
+  Future<void> _deferPulledChange(
+    SyncPulledChange change, {
+    required String missingEntityTable,
+    required String missingEntityId,
+  }) {
+    return _database.into(_database.deferredSyncChanges).insertOnConflictUpdate(
+          DeferredSyncChangesCompanion.insert(
+            entityTable: change.entity,
+            entityId: change.id,
+            missingEntityTable: missingEntityTable,
+            missingEntityId: missingEntityId,
+            changeJson: jsonEncode(_pulledChangeJson(change)),
+            updatedAt: DateTime.parse(change.updatedAt).toUtc(),
+            deviceId: change.deviceId,
+            deferredAt: DateTime.now().toUtc(),
+          ),
+        );
+  }
+
+  Future<void> _dropDeferredChange(String entityTable, String entityId) {
+    return (_database.delete(_database.deferredSyncChanges)
+          ..where(
+            (row) =>
+                row.entityTable.equals(entityTable) &
+                row.entityId.equals(entityId),
+          ))
+        .go();
+  }
+
+  /// Applies every held change whose missing row now exists on this device,
+  /// however that row arrived (this batch, an earlier one, or a restore).
+  /// Returns how many were applied.
+  Future<int> _applyDeferredChangesNowApplicable({
+    required String deviceId,
+    required String syncBatchId,
+  }) async {
+    final ready = await (_database.select(_database.deferredSyncChanges)
+          ..where(
+            (row) =>
+                row.missingEntityTable.equals(AppDatabase.metricsTable) &
+                existsQuery(
+                  _database.selectOnly(_database.metrics)
+                    ..addColumns(<Expression<Object>>[_database.metrics.id])
+                    ..where(
+                      _database.metrics.id.equalsExp(row.missingEntityId),
+                    ),
+                ),
+          ))
+        .get();
+    var appliedCount = 0;
+    for (final row in ready) {
+      await _dropDeferredChange(row.entityTable, row.entityId);
+      final change = SyncPulledChange.fromJson(
+        jsonDecode(row.changeJson) as Map<String, Object?>,
+      );
+      final applied = switch (row.entityTable) {
+        AppDatabase.protocolTargetOutcomesTable =>
+          await _applyPulledProtocolTargetOutcomeChange(
+            change,
+            deviceId: deviceId,
+            syncBatchId: syncBatchId,
+          ),
+        _ => throw StateError(
+            'Unsupported deferred sync entity: ${row.entityTable}.',
+          ),
+      };
+      if (applied) {
+        appliedCount += 1;
+      }
+    }
+    return appliedCount;
+  }
+
+  /// Drops held changes for rows absent from a full re-sync snapshot: the
+  /// server no longer has them live, so they must never be applied later.
+  Future<void> _dropDeferredChangesAbsentFromSnapshot(
+    String entityTable,
+    Set<String> liveSnapshotIds,
+  ) async {
+    final held = await (_database.select(_database.deferredSyncChanges)
+          ..where((row) => row.entityTable.equals(entityTable)))
+        .get();
+    for (final row in held) {
+      if (!liveSnapshotIds.contains(row.entityId)) {
+        await _dropDeferredChange(row.entityTable, row.entityId);
+      }
+    }
   }
 
   Future<bool> _applyPulledScheduleChange(
@@ -4256,6 +4426,26 @@ SyncPushChange _changeFromActivityLogRow(ActivityLogRow row) {
     occurredAt: row.occurredAt.toUtc().toIso8601String(),
     deletedAt: deletedAt as String?,
   );
+}
+
+/// The inverse of [SyncPulledChange.fromJson], for holding a change in
+/// `deferred_sync_changes`. Always writes the whole activity envelope, which
+/// `fromJson` accepts only all-or-nothing.
+Map<String, Object?> _pulledChangeJson(SyncPulledChange change) {
+  return <String, Object?>{
+    'entity': change.entity,
+    'id': change.id,
+    'deviceId': change.deviceId,
+    'payload': change.payload,
+    'updatedAt': change.updatedAt,
+    'deletedAt': change.deletedAt,
+    'activityLogId': change.activityLogId,
+    'actor': change.actor,
+    'batchId': change.batchId,
+    'beforeImage': change.beforeImage,
+    'afterImage': change.afterImage,
+    'occurredAt': change.occurredAt,
+  };
 }
 
 Map<String, Object?> _syncImageFromPull(SyncPulledChange change) {

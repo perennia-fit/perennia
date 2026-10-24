@@ -10464,6 +10464,459 @@ class SyncStatesCompanion extends UpdateCompanion<SyncStateRow> {
   }
 }
 
+class $DeferredSyncChangesTable extends DeferredSyncChanges
+    with TableInfo<$DeferredSyncChangesTable, DeferredSyncChangeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeferredSyncChangesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _entityTableMeta =
+      const VerificationMeta('entityTable');
+  @override
+  late final GeneratedColumn<String> entityTable = GeneratedColumn<String>(
+      'entity_table', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _entityIdMeta =
+      const VerificationMeta('entityId');
+  @override
+  late final GeneratedColumn<String> entityId = GeneratedColumn<String>(
+      'entity_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _missingEntityTableMeta =
+      const VerificationMeta('missingEntityTable');
+  @override
+  late final GeneratedColumn<String> missingEntityTable =
+      GeneratedColumn<String>('missing_entity_table', aliasedName, false,
+          type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _missingEntityIdMeta =
+      const VerificationMeta('missingEntityId');
+  @override
+  late final GeneratedColumn<String> missingEntityId = GeneratedColumn<String>(
+      'missing_entity_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _changeJsonMeta =
+      const VerificationMeta('changeJson');
+  @override
+  late final GeneratedColumn<String> changeJson = GeneratedColumn<String>(
+      'change_json', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _deviceIdMeta =
+      const VerificationMeta('deviceId');
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+      'device_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _deferredAtMeta =
+      const VerificationMeta('deferredAt');
+  @override
+  late final GeneratedColumn<DateTime> deferredAt = GeneratedColumn<DateTime>(
+      'deferred_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [
+        entityTable,
+        entityId,
+        missingEntityTable,
+        missingEntityId,
+        changeJson,
+        updatedAt,
+        deviceId,
+        deferredAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deferred_sync_changes';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<DeferredSyncChangeRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('entity_table')) {
+      context.handle(
+          _entityTableMeta,
+          entityTable.isAcceptableOrUnknown(
+              data['entity_table']!, _entityTableMeta));
+    } else if (isInserting) {
+      context.missing(_entityTableMeta);
+    }
+    if (data.containsKey('entity_id')) {
+      context.handle(_entityIdMeta,
+          entityId.isAcceptableOrUnknown(data['entity_id']!, _entityIdMeta));
+    } else if (isInserting) {
+      context.missing(_entityIdMeta);
+    }
+    if (data.containsKey('missing_entity_table')) {
+      context.handle(
+          _missingEntityTableMeta,
+          missingEntityTable.isAcceptableOrUnknown(
+              data['missing_entity_table']!, _missingEntityTableMeta));
+    } else if (isInserting) {
+      context.missing(_missingEntityTableMeta);
+    }
+    if (data.containsKey('missing_entity_id')) {
+      context.handle(
+          _missingEntityIdMeta,
+          missingEntityId.isAcceptableOrUnknown(
+              data['missing_entity_id']!, _missingEntityIdMeta));
+    } else if (isInserting) {
+      context.missing(_missingEntityIdMeta);
+    }
+    if (data.containsKey('change_json')) {
+      context.handle(
+          _changeJsonMeta,
+          changeJson.isAcceptableOrUnknown(
+              data['change_json']!, _changeJsonMeta));
+    } else if (isInserting) {
+      context.missing(_changeJsonMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(_deviceIdMeta,
+          deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta));
+    } else if (isInserting) {
+      context.missing(_deviceIdMeta);
+    }
+    if (data.containsKey('deferred_at')) {
+      context.handle(
+          _deferredAtMeta,
+          deferredAt.isAcceptableOrUnknown(
+              data['deferred_at']!, _deferredAtMeta));
+    } else if (isInserting) {
+      context.missing(_deferredAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {entityTable, entityId};
+  @override
+  DeferredSyncChangeRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeferredSyncChangeRow(
+      entityTable: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}entity_table'])!,
+      entityId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}entity_id'])!,
+      missingEntityTable: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}missing_entity_table'])!,
+      missingEntityId: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}missing_entity_id'])!,
+      changeJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}change_json'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      deviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}device_id'])!,
+      deferredAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deferred_at'])!,
+    );
+  }
+
+  @override
+  $DeferredSyncChangesTable createAlias(String alias) {
+    return $DeferredSyncChangesTable(attachedDatabase, alias);
+  }
+}
+
+class DeferredSyncChangeRow extends DataClass
+    implements Insertable<DeferredSyncChangeRow> {
+  final String entityTable;
+  final String entityId;
+  final String missingEntityTable;
+  final String missingEntityId;
+  final String changeJson;
+  final DateTime updatedAt;
+  final String deviceId;
+  final DateTime deferredAt;
+  const DeferredSyncChangeRow(
+      {required this.entityTable,
+      required this.entityId,
+      required this.missingEntityTable,
+      required this.missingEntityId,
+      required this.changeJson,
+      required this.updatedAt,
+      required this.deviceId,
+      required this.deferredAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['entity_table'] = Variable<String>(entityTable);
+    map['entity_id'] = Variable<String>(entityId);
+    map['missing_entity_table'] = Variable<String>(missingEntityTable);
+    map['missing_entity_id'] = Variable<String>(missingEntityId);
+    map['change_json'] = Variable<String>(changeJson);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['device_id'] = Variable<String>(deviceId);
+    map['deferred_at'] = Variable<DateTime>(deferredAt);
+    return map;
+  }
+
+  DeferredSyncChangesCompanion toCompanion(bool nullToAbsent) {
+    return DeferredSyncChangesCompanion(
+      entityTable: Value(entityTable),
+      entityId: Value(entityId),
+      missingEntityTable: Value(missingEntityTable),
+      missingEntityId: Value(missingEntityId),
+      changeJson: Value(changeJson),
+      updatedAt: Value(updatedAt),
+      deviceId: Value(deviceId),
+      deferredAt: Value(deferredAt),
+    );
+  }
+
+  factory DeferredSyncChangeRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeferredSyncChangeRow(
+      entityTable: serializer.fromJson<String>(json['entityTable']),
+      entityId: serializer.fromJson<String>(json['entityId']),
+      missingEntityTable:
+          serializer.fromJson<String>(json['missingEntityTable']),
+      missingEntityId: serializer.fromJson<String>(json['missingEntityId']),
+      changeJson: serializer.fromJson<String>(json['changeJson']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deviceId: serializer.fromJson<String>(json['deviceId']),
+      deferredAt: serializer.fromJson<DateTime>(json['deferredAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'entityTable': serializer.toJson<String>(entityTable),
+      'entityId': serializer.toJson<String>(entityId),
+      'missingEntityTable': serializer.toJson<String>(missingEntityTable),
+      'missingEntityId': serializer.toJson<String>(missingEntityId),
+      'changeJson': serializer.toJson<String>(changeJson),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deviceId': serializer.toJson<String>(deviceId),
+      'deferredAt': serializer.toJson<DateTime>(deferredAt),
+    };
+  }
+
+  DeferredSyncChangeRow copyWith(
+          {String? entityTable,
+          String? entityId,
+          String? missingEntityTable,
+          String? missingEntityId,
+          String? changeJson,
+          DateTime? updatedAt,
+          String? deviceId,
+          DateTime? deferredAt}) =>
+      DeferredSyncChangeRow(
+        entityTable: entityTable ?? this.entityTable,
+        entityId: entityId ?? this.entityId,
+        missingEntityTable: missingEntityTable ?? this.missingEntityTable,
+        missingEntityId: missingEntityId ?? this.missingEntityId,
+        changeJson: changeJson ?? this.changeJson,
+        updatedAt: updatedAt ?? this.updatedAt,
+        deviceId: deviceId ?? this.deviceId,
+        deferredAt: deferredAt ?? this.deferredAt,
+      );
+  DeferredSyncChangeRow copyWithCompanion(DeferredSyncChangesCompanion data) {
+    return DeferredSyncChangeRow(
+      entityTable:
+          data.entityTable.present ? data.entityTable.value : this.entityTable,
+      entityId: data.entityId.present ? data.entityId.value : this.entityId,
+      missingEntityTable: data.missingEntityTable.present
+          ? data.missingEntityTable.value
+          : this.missingEntityTable,
+      missingEntityId: data.missingEntityId.present
+          ? data.missingEntityId.value
+          : this.missingEntityId,
+      changeJson:
+          data.changeJson.present ? data.changeJson.value : this.changeJson,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      deferredAt:
+          data.deferredAt.present ? data.deferredAt.value : this.deferredAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeferredSyncChangeRow(')
+          ..write('entityTable: $entityTable, ')
+          ..write('entityId: $entityId, ')
+          ..write('missingEntityTable: $missingEntityTable, ')
+          ..write('missingEntityId: $missingEntityId, ')
+          ..write('changeJson: $changeJson, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('deferredAt: $deferredAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(entityTable, entityId, missingEntityTable,
+      missingEntityId, changeJson, updatedAt, deviceId, deferredAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeferredSyncChangeRow &&
+          other.entityTable == this.entityTable &&
+          other.entityId == this.entityId &&
+          other.missingEntityTable == this.missingEntityTable &&
+          other.missingEntityId == this.missingEntityId &&
+          other.changeJson == this.changeJson &&
+          other.updatedAt == this.updatedAt &&
+          other.deviceId == this.deviceId &&
+          other.deferredAt == this.deferredAt);
+}
+
+class DeferredSyncChangesCompanion
+    extends UpdateCompanion<DeferredSyncChangeRow> {
+  final Value<String> entityTable;
+  final Value<String> entityId;
+  final Value<String> missingEntityTable;
+  final Value<String> missingEntityId;
+  final Value<String> changeJson;
+  final Value<DateTime> updatedAt;
+  final Value<String> deviceId;
+  final Value<DateTime> deferredAt;
+  final Value<int> rowid;
+  const DeferredSyncChangesCompanion({
+    this.entityTable = const Value.absent(),
+    this.entityId = const Value.absent(),
+    this.missingEntityTable = const Value.absent(),
+    this.missingEntityId = const Value.absent(),
+    this.changeJson = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.deferredAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DeferredSyncChangesCompanion.insert({
+    required String entityTable,
+    required String entityId,
+    required String missingEntityTable,
+    required String missingEntityId,
+    required String changeJson,
+    required DateTime updatedAt,
+    required String deviceId,
+    required DateTime deferredAt,
+    this.rowid = const Value.absent(),
+  })  : entityTable = Value(entityTable),
+        entityId = Value(entityId),
+        missingEntityTable = Value(missingEntityTable),
+        missingEntityId = Value(missingEntityId),
+        changeJson = Value(changeJson),
+        updatedAt = Value(updatedAt),
+        deviceId = Value(deviceId),
+        deferredAt = Value(deferredAt);
+  static Insertable<DeferredSyncChangeRow> custom({
+    Expression<String>? entityTable,
+    Expression<String>? entityId,
+    Expression<String>? missingEntityTable,
+    Expression<String>? missingEntityId,
+    Expression<String>? changeJson,
+    Expression<DateTime>? updatedAt,
+    Expression<String>? deviceId,
+    Expression<DateTime>? deferredAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (entityTable != null) 'entity_table': entityTable,
+      if (entityId != null) 'entity_id': entityId,
+      if (missingEntityTable != null)
+        'missing_entity_table': missingEntityTable,
+      if (missingEntityId != null) 'missing_entity_id': missingEntityId,
+      if (changeJson != null) 'change_json': changeJson,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deviceId != null) 'device_id': deviceId,
+      if (deferredAt != null) 'deferred_at': deferredAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DeferredSyncChangesCompanion copyWith(
+      {Value<String>? entityTable,
+      Value<String>? entityId,
+      Value<String>? missingEntityTable,
+      Value<String>? missingEntityId,
+      Value<String>? changeJson,
+      Value<DateTime>? updatedAt,
+      Value<String>? deviceId,
+      Value<DateTime>? deferredAt,
+      Value<int>? rowid}) {
+    return DeferredSyncChangesCompanion(
+      entityTable: entityTable ?? this.entityTable,
+      entityId: entityId ?? this.entityId,
+      missingEntityTable: missingEntityTable ?? this.missingEntityTable,
+      missingEntityId: missingEntityId ?? this.missingEntityId,
+      changeJson: changeJson ?? this.changeJson,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deviceId: deviceId ?? this.deviceId,
+      deferredAt: deferredAt ?? this.deferredAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (entityTable.present) {
+      map['entity_table'] = Variable<String>(entityTable.value);
+    }
+    if (entityId.present) {
+      map['entity_id'] = Variable<String>(entityId.value);
+    }
+    if (missingEntityTable.present) {
+      map['missing_entity_table'] = Variable<String>(missingEntityTable.value);
+    }
+    if (missingEntityId.present) {
+      map['missing_entity_id'] = Variable<String>(missingEntityId.value);
+    }
+    if (changeJson.present) {
+      map['change_json'] = Variable<String>(changeJson.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (deferredAt.present) {
+      map['deferred_at'] = Variable<DateTime>(deferredAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeferredSyncChangesCompanion(')
+          ..write('entityTable: $entityTable, ')
+          ..write('entityId: $entityId, ')
+          ..write('missingEntityTable: $missingEntityTable, ')
+          ..write('missingEntityId: $missingEntityId, ')
+          ..write('changeJson: $changeJson, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('deferredAt: $deferredAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $MeasurementsTable extends Measurements
     with TableInfo<$MeasurementsTable, MeasurementRow> {
   @override
@@ -22388,6 +22841,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $IntervalTimersTable intervalTimers = $IntervalTimersTable(this);
   late final $ActivityLogTable activityLog = $ActivityLogTable(this);
   late final $SyncStatesTable syncStates = $SyncStatesTable(this);
+  late final $DeferredSyncChangesTable deferredSyncChanges =
+      $DeferredSyncChangesTable(this);
   late final $MeasurementsTable measurements = $MeasurementsTable(this);
   late final $MeasurementEntriesTable measurementEntries =
       $MeasurementEntriesTable(this);
@@ -22465,6 +22920,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final Index activityLogPendingSyncIndex = Index(
       'activity_log_pending_sync_index',
       'CREATE INDEX activity_log_pending_sync_index ON activity_log (entity_table) WHERE deleted_at IS NULL AND sync_acknowledged_at IS NULL AND after_image IS NOT NULL');
+  late final Index deferredSyncChangesMissingEntityIndex = Index(
+      'deferred_sync_changes_missing_entity_index',
+      'CREATE INDEX deferred_sync_changes_missing_entity_index ON deferred_sync_changes (missing_entity_table, missing_entity_id)');
   late final Index measurementsSortOrderIndex = Index(
       'measurements_sort_order_index',
       'CREATE INDEX measurements_sort_order_index ON measurements (sort_order)');
@@ -22575,6 +23033,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         intervalTimers,
         activityLog,
         syncStates,
+        deferredSyncChanges,
         measurements,
         measurementEntries,
         metrics,
@@ -22613,6 +23072,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         intervalTimersWorkoutIdIndex,
         activityLogBatchIdIndex,
         activityLogPendingSyncIndex,
+        deferredSyncChangesMissingEntityIndex,
         measurementsSortOrderIndex,
         measurementEntriesMeasurementIdIndex,
         measurementEntriesMeasuredAtIndex,
@@ -29627,6 +30087,233 @@ typedef $$SyncStatesTableProcessedTableManager = ProcessedTableManager<
       BaseReferences<_$AppDatabase, $SyncStatesTable, SyncStateRow>
     ),
     SyncStateRow,
+    PrefetchHooks Function()>;
+typedef $$DeferredSyncChangesTableCreateCompanionBuilder
+    = DeferredSyncChangesCompanion Function({
+  required String entityTable,
+  required String entityId,
+  required String missingEntityTable,
+  required String missingEntityId,
+  required String changeJson,
+  required DateTime updatedAt,
+  required String deviceId,
+  required DateTime deferredAt,
+  Value<int> rowid,
+});
+typedef $$DeferredSyncChangesTableUpdateCompanionBuilder
+    = DeferredSyncChangesCompanion Function({
+  Value<String> entityTable,
+  Value<String> entityId,
+  Value<String> missingEntityTable,
+  Value<String> missingEntityId,
+  Value<String> changeJson,
+  Value<DateTime> updatedAt,
+  Value<String> deviceId,
+  Value<DateTime> deferredAt,
+  Value<int> rowid,
+});
+
+class $$DeferredSyncChangesTableFilterComposer
+    extends Composer<_$AppDatabase, $DeferredSyncChangesTable> {
+  $$DeferredSyncChangesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get entityTable => $composableBuilder(
+      column: $table.entityTable, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get entityId => $composableBuilder(
+      column: $table.entityId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get missingEntityTable => $composableBuilder(
+      column: $table.missingEntityTable,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get missingEntityId => $composableBuilder(
+      column: $table.missingEntityId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get changeJson => $composableBuilder(
+      column: $table.changeJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deferredAt => $composableBuilder(
+      column: $table.deferredAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$DeferredSyncChangesTableOrderingComposer
+    extends Composer<_$AppDatabase, $DeferredSyncChangesTable> {
+  $$DeferredSyncChangesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get entityTable => $composableBuilder(
+      column: $table.entityTable, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get entityId => $composableBuilder(
+      column: $table.entityId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get missingEntityTable => $composableBuilder(
+      column: $table.missingEntityTable,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get missingEntityId => $composableBuilder(
+      column: $table.missingEntityId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get changeJson => $composableBuilder(
+      column: $table.changeJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get deferredAt => $composableBuilder(
+      column: $table.deferredAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$DeferredSyncChangesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DeferredSyncChangesTable> {
+  $$DeferredSyncChangesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get entityTable => $composableBuilder(
+      column: $table.entityTable, builder: (column) => column);
+
+  GeneratedColumn<String> get entityId =>
+      $composableBuilder(column: $table.entityId, builder: (column) => column);
+
+  GeneratedColumn<String> get missingEntityTable => $composableBuilder(
+      column: $table.missingEntityTable, builder: (column) => column);
+
+  GeneratedColumn<String> get missingEntityId => $composableBuilder(
+      column: $table.missingEntityId, builder: (column) => column);
+
+  GeneratedColumn<String> get changeJson => $composableBuilder(
+      column: $table.changeJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deferredAt => $composableBuilder(
+      column: $table.deferredAt, builder: (column) => column);
+}
+
+class $$DeferredSyncChangesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $DeferredSyncChangesTable,
+    DeferredSyncChangeRow,
+    $$DeferredSyncChangesTableFilterComposer,
+    $$DeferredSyncChangesTableOrderingComposer,
+    $$DeferredSyncChangesTableAnnotationComposer,
+    $$DeferredSyncChangesTableCreateCompanionBuilder,
+    $$DeferredSyncChangesTableUpdateCompanionBuilder,
+    (
+      DeferredSyncChangeRow,
+      BaseReferences<_$AppDatabase, $DeferredSyncChangesTable,
+          DeferredSyncChangeRow>
+    ),
+    DeferredSyncChangeRow,
+    PrefetchHooks Function()> {
+  $$DeferredSyncChangesTableTableManager(
+      _$AppDatabase db, $DeferredSyncChangesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeferredSyncChangesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeferredSyncChangesTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeferredSyncChangesTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> entityTable = const Value.absent(),
+            Value<String> entityId = const Value.absent(),
+            Value<String> missingEntityTable = const Value.absent(),
+            Value<String> missingEntityId = const Value.absent(),
+            Value<String> changeJson = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<String> deviceId = const Value.absent(),
+            Value<DateTime> deferredAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              DeferredSyncChangesCompanion(
+            entityTable: entityTable,
+            entityId: entityId,
+            missingEntityTable: missingEntityTable,
+            missingEntityId: missingEntityId,
+            changeJson: changeJson,
+            updatedAt: updatedAt,
+            deviceId: deviceId,
+            deferredAt: deferredAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String entityTable,
+            required String entityId,
+            required String missingEntityTable,
+            required String missingEntityId,
+            required String changeJson,
+            required DateTime updatedAt,
+            required String deviceId,
+            required DateTime deferredAt,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              DeferredSyncChangesCompanion.insert(
+            entityTable: entityTable,
+            entityId: entityId,
+            missingEntityTable: missingEntityTable,
+            missingEntityId: missingEntityId,
+            changeJson: changeJson,
+            updatedAt: updatedAt,
+            deviceId: deviceId,
+            deferredAt: deferredAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$DeferredSyncChangesTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $DeferredSyncChangesTable,
+    DeferredSyncChangeRow,
+    $$DeferredSyncChangesTableFilterComposer,
+    $$DeferredSyncChangesTableOrderingComposer,
+    $$DeferredSyncChangesTableAnnotationComposer,
+    $$DeferredSyncChangesTableCreateCompanionBuilder,
+    $$DeferredSyncChangesTableUpdateCompanionBuilder,
+    (
+      DeferredSyncChangeRow,
+      BaseReferences<_$AppDatabase, $DeferredSyncChangesTable,
+          DeferredSyncChangeRow>
+    ),
+    DeferredSyncChangeRow,
     PrefetchHooks Function()>;
 typedef $$MeasurementsTableCreateCompanionBuilder = MeasurementsCompanion
     Function({
@@ -38197,6 +38884,8 @@ class $AppDatabaseManager {
       $$ActivityLogTableTableManager(_db, _db.activityLog);
   $$SyncStatesTableTableManager get syncStates =>
       $$SyncStatesTableTableManager(_db, _db.syncStates);
+  $$DeferredSyncChangesTableTableManager get deferredSyncChanges =>
+      $$DeferredSyncChangesTableTableManager(_db, _db.deferredSyncChanges);
   $$MeasurementsTableTableManager get measurements =>
       $$MeasurementsTableTableManager(_db, _db.measurements);
   $$MeasurementEntriesTableTableManager get measurementEntries =>

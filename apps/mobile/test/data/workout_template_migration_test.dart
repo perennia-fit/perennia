@@ -34,7 +34,7 @@ void main() {
     addTearDown(database.close);
     await database.customSelect('SELECT 1').get();
 
-    expect(database.schemaVersion, 57);
+    expect(database.schemaVersion, 58);
     final existingExercise =
         await database.select(database.exercises).getSingle();
     final existingWorkout =
