@@ -4790,14 +4790,17 @@ class AccountSettingsRepository {
         return;
       }
 
+      // Compare before writing: the write always stamps `updatedAt`, so an
+      // unchanged save would otherwise log (and sync) a spurious change.
+      if (_accountSettingsFromRow(existing) == settings) {
+        return;
+      }
+
       final before = _userSettingsImage(existing);
       await (_database.update(_database.userSettings)
             ..where((row) => row.id.equals(existing.id)))
           .write(_companionFromSettings(settings, context.timestamp));
       final after = await _requireRow(existing.id);
-      if (_activityImagesEqual(before, _userSettingsImage(after))) {
-        return;
-      }
       await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.userSettingsTable,
@@ -9909,7 +9912,7 @@ class MeasurementRepository {
             updatedAt: Value<DateTime>(context.timestamp),
           ),
         );
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.metricsTable,
           entityId: synced.id,
@@ -9977,7 +9980,7 @@ class MeasurementRepository {
     String actor = 'sync',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -10015,7 +10018,7 @@ class MeasurementRepository {
           updatedAt: Value<DateTime>(context.timestamp),
         ),
       );
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricsTable,
         entityId: synced.id,
@@ -10081,7 +10084,7 @@ class MeasurementRepository {
         final after = await (_database.select(_database.protocolTargetOutcomes)
               ..where((row) => row.id.equals(before.id)))
             .getSingle();
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolTargetOutcomesTable,
           entityId: before.id,
