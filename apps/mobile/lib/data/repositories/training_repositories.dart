@@ -9909,7 +9909,7 @@ class MeasurementRepository {
             updatedAt: Value<DateTime>(context.timestamp),
           ),
         );
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.metricsTable,
           entityId: synced.id,
@@ -9977,7 +9977,7 @@ class MeasurementRepository {
     String actor = 'sync',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );
@@ -10015,7 +10015,7 @@ class MeasurementRepository {
           updatedAt: Value<DateTime>(context.timestamp),
         ),
       );
-      await _repositories.activityLog._append(
+      await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.metricsTable,
         entityId: synced.id,
@@ -10081,7 +10081,7 @@ class MeasurementRepository {
         final after = await (_database.select(_database.protocolTargetOutcomes)
               ..where((row) => row.id.equals(before.id)))
             .getSingle();
-        await _repositories.activityLog._append(
+        await _repositories._activityLogWriter.append(
           context,
           entityTable: AppDatabase.protocolTargetOutcomesTable,
           entityId: before.id,
