@@ -397,6 +397,103 @@ test(
   }
 );
 
+test(
+  "fresh and resynced replicas converge when parents are edited after their children were received",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+    assert.notEqual(server.database, null);
+
+    try {
+      const writer = new ForeignKeyCheckedReplica({
+        name: "Writer",
+        deviceId: "device-a",
+        server
+      });
+      const metricId = randomUUID();
+      const rows = foreignKeyGraphRows({
+        metricId,
+        updatedAt: "2026-07-02T08:00:00.000Z"
+      });
+      for (const row of rows) {
+        writer.writeRow({
+          row,
+          updatedAt: row.payload.updated_at,
+          revision: "created"
+        });
+      }
+      await writer.pushPending();
+
+      // Metrics and their Readings are pull-only: an integration import
+      // writes them on the server.
+      const readingIds = [randomUUID(), randomUUID(), randomUUID()];
+      await insertServerMetric(server, { metricId, readingIds });
+
+      // Every parent is edited after its children were received, so a
+      // receive-ordered pull puts each child on an earlier page than the
+      // parent its Drift FK needs. The Metric is renamed by a later import.
+      for (const row of rows) {
+        if (deviceForeignKeys.some((reference) => reference.parent === row.entity)) {
+          writer.writeRow({
+            row,
+            updatedAt: "2026-07-02T09:00:00.000Z",
+            revision: "edited-after-children"
+          });
+        }
+      }
+      await writer.pushPending();
+      await server.database.db
+        .update(schema.metrics)
+        .set({
+          name: "Body Weight (renamed)",
+          updatedAt: new Date("2026-07-02T09:00:00.000Z"),
+          receivedAt: new Date(Date.now() + 1000)
+        })
+        .where(inArray(schema.metrics.id, [metricId]));
+
+      const fresh = new ForeignKeyCheckedReplica({
+        name: "Fresh Replica",
+        deviceId: "device-b",
+        server
+      });
+      await fresh.pullUntilSettled({ limit: 2 });
+      const resynced = new ForeignKeyCheckedReplica({
+        name: "Resynced Replica",
+        deviceId: "device-c",
+        server
+      });
+      await resynced.pullSnapshot({ limit: 2 });
+      await writer.pullUntilSettled({ limit: 2 });
+
+      const finalState = writer.stateSignature();
+      assert.deepEqual(
+        [fresh.stateSignature(), resynced.stateSignature()],
+        [finalState, finalState]
+      );
+      for (const row of rows) {
+        const observed = fresh.row(row.entity, row.id);
+        assert.notEqual(observed, undefined, row.entity);
+        assert.equal(
+          observed.payload.revision,
+          deviceForeignKeys.some((reference) => reference.parent === row.entity)
+            ? "edited-after-children"
+            : "created",
+          row.entity
+        );
+      }
+      assert.equal(
+        fresh.row("metrics", metricId)?.payload.name,
+        "Body Weight (renamed)"
+      );
+      for (const readingId of readingIds) {
+        assert.notEqual(fresh.row("metric_readings", readingId), undefined);
+      }
+    } finally {
+      await server.close();
+    }
+  }
+);
+
 async function createConvergenceServer() {
   if (databaseUrl) {
     const serverApp = await createMigratedServerApp({
@@ -714,12 +811,12 @@ class SimulatedReplica extends SyncReplicaHarness {
 }
 
 class PlanTreeReplica extends SyncReplicaHarness {
-  constructor({ name, deviceId, server }) {
+  constructor({ name, deviceId, server, entityOrder = planEntityOrder }) {
     super({
       name,
       deviceId,
       server,
-      entityOrder: planEntityOrder,
+      entityOrder,
       keyFor: planRowKey
     });
   }
@@ -769,6 +866,68 @@ class PlanTreeReplica extends SyncReplicaHarness {
           )
         )
     );
+  }
+}
+
+/**
+ * A replica that applies each pull page the way the device does: in one
+ * transaction with every Drift FK enforced. A page whose row references a
+ * parent neither stored nor in the same page would roll back and leave the
+ * cursor where it was, so the simulation fails it as a stall.
+ */
+class ForeignKeyCheckedReplica extends PlanTreeReplica {
+  constructor({ name, deviceId, server }) {
+    super({ name, deviceId, server, entityOrder: foreignKeyEntityOrder });
+  }
+
+  async pullUntilSettled({ limit = 100 } = {}) {
+    this.cursor = await this.pullPages({ cursor: this.cursor, limit, mode: "delta" });
+  }
+
+  async pullSnapshot({ limit = 100 } = {}) {
+    this.cursor = await this.pullPages({ cursor: null, limit, mode: "snapshot" });
+  }
+
+  async pullPages({ cursor, limit, mode }) {
+    while (true) {
+      const response = await syncRequest(this.server, "/sync/pull", {
+        protocolVersion,
+        cursor,
+        limit,
+        mode
+      });
+      assert.equal(response.fullResyncRequired, false);
+      if (response.changes.length === 0) {
+        return response.nextCursor;
+      }
+
+      const staged = new Set(this.rows.keys());
+      for (const change of response.changes) {
+        staged.add(this.keyFor(change.entity, change.id));
+      }
+      for (const change of response.changes) {
+        for (const reference of deviceForeignKeys) {
+          const parentId = change.payload[reference.key];
+          if (reference.child !== change.entity || typeof parentId !== "string") {
+            continue;
+          }
+          assert.ok(
+            staged.has(this.keyFor(reference.parent, parentId)),
+            `${this.name} stalled: a ${change.entity} page arrived without its ${reference.parent}`
+          );
+        }
+      }
+
+      const ordered = [...response.changes].sort(
+        (left, right) =>
+          this.entityOrder.indexOf(left.entity) -
+          this.entityOrder.indexOf(right.entity)
+      );
+      for (const change of ordered) {
+        this.applyPulledChange(change);
+      }
+      cursor = response.nextCursor;
+    }
   }
 }
 
@@ -973,6 +1132,182 @@ const planEntityOrder = [
   "routine_entries",
   "template_links"
 ];
+
+// The device's Drift FKs between synced tables (`.references(` in
+// apps/mobile/lib/data/local/app_database.dart).
+const deviceForeignKeys = [
+  ["exercises", "category_id", "exercise_categories"],
+  ["workout_exercises", "workout_id", "workout_sessions"],
+  ["workout_exercises", "exercise_id", "exercises"],
+  ["exercise_groups", "workout_id", "workout_sessions"],
+  ["exercise_group_members", "group_id", "exercise_groups"],
+  ["exercise_group_members", "workout_exercise_id", "workout_exercises"],
+  ["logged_sets", "workout_id", "workout_sessions"],
+  ["logged_sets", "exercise_id", "exercises"],
+  ["food_entries", "meal_id", "meals"],
+  ["metric_readings", "metric_id", "metrics"],
+  ["protocol_compounds", "protocol_id", "protocols"],
+  ["protocol_compounds", "compound_id", "compounds"],
+  ["schedules", "protocol_compound_id", "protocol_compounds"],
+  ["protocol_target_outcomes", "protocol_id", "protocols"],
+  ["protocol_target_outcomes", "metric_id", "metrics"],
+  ["template_exercises", "workout_template_id", "workout_templates"],
+  ["template_exercises", "exercise_id", "exercises"],
+  ["prescriptions", "template_exercise_id", "template_exercises"],
+  ["template_groups", "workout_template_id", "workout_templates"],
+  ["template_group_members", "group_id", "template_groups"],
+  ["template_group_members", "template_exercise_id", "template_exercises"],
+  ["routine_entries", "routine_id", "routines"],
+  ["routine_entries", "workout_template_id", "workout_templates"],
+  ["template_links", "workout_id", "workout_sessions"],
+  ["template_links", "workout_template_id", "workout_templates"],
+  ["template_links", "routine_id", "routines"]
+].map(([child, key, parent]) => ({ child, key, parent }));
+
+// Parents before children, as the device's `_syncApplyOrder` sorts a page.
+const foreignKeyEntityOrder = [
+  "exercise_categories",
+  "exercises",
+  "workout_sessions",
+  "workout_exercises",
+  "exercise_groups",
+  "exercise_group_members",
+  "meals",
+  "food_entries",
+  "metrics",
+  "metric_readings",
+  "compounds",
+  "protocols",
+  "protocol_compounds",
+  "protocol_target_outcomes",
+  "schedules",
+  ...planEntityOrder.filter((entityName) => entityName !== "template_links"),
+  "logged_sets",
+  "template_links"
+];
+
+/** One row of every pushable entity a Drift FK touches, wired together. */
+function foreignKeyGraphRows({ metricId, updatedAt }) {
+  const id = () => randomUUID();
+  const ids = {
+    category: id(),
+    exercise: id(),
+    workout: id(),
+    workoutExercise: id(),
+    group: id(),
+    member: id(),
+    meal: id(),
+    compound: id(),
+    protocol: id(),
+    protocolCompound: id(),
+    schedule: id(),
+    outcome: id()
+  };
+  const row = (entityName, rowId, fields) => ({
+    entity: entityName,
+    id: rowId,
+    payload: planImage(rowId, updatedAt, fields)
+  });
+  return [
+    row("exercise_categories", ids.category, { name: "Legs" }),
+    row("exercises", ids.exercise, {
+      name: "Back Squat",
+      category_id: ids.category
+    }),
+    row("workout_sessions", ids.workout, {
+      started_at: "2026-07-02T07:00:00.000Z",
+      local_date: "2026-07-02"
+    }),
+    row("workout_exercises", ids.workoutExercise, {
+      workout_id: ids.workout,
+      exercise_id: ids.exercise,
+      position: 0
+    }),
+    row("exercise_groups", ids.group, {
+      workout_id: ids.workout,
+      name: "Main circuit",
+      position: 0
+    }),
+    row("exercise_group_members", ids.member, {
+      group_id: ids.group,
+      workout_exercise_id: ids.workoutExercise,
+      position: 0
+    }),
+    ...[0, 1, 2].map((position) =>
+      row("logged_sets", id(), {
+        workout_id: ids.workout,
+        exercise_id: ids.exercise,
+        position
+      })
+    ),
+    row("meals", ids.meal, { name: "Breakfast" }),
+    ...[0, 1].map((position) =>
+      row("food_entries", id(), { meal_id: ids.meal, position })
+    ),
+    row("compounds", ids.compound, { name: "Creatine" }),
+    row("protocols", ids.protocol, { name: "Loading phase" }),
+    row("protocol_compounds", ids.protocolCompound, {
+      protocol_id: ids.protocol,
+      compound_id: ids.compound
+    }),
+    row("schedules", ids.schedule, {
+      protocol_compound_id: ids.protocolCompound
+    }),
+    row("protocol_target_outcomes", ids.outcome, {
+      protocol_id: ids.protocol,
+      metric_id: metricId
+    }),
+    ...planTreeRows(
+      { ...createPlanTreeIds(), workout: ids.workout, exercise: ids.exercise },
+      updatedAt,
+      "foreign-key"
+    )
+  ];
+}
+
+async function insertServerMetric(server, { metricId, readingIds }) {
+  const [{ userId }] = await server.database.db
+    .select({ userId: schema.session.userId })
+    .from(schema.session)
+    .where(inArray(schema.session.token, [server.sessionToken]));
+  await server.database.db.insert(schema.metrics).values({
+    id: metricId,
+    userId,
+    deviceId: "integration:garmin",
+    name: "Body Weight",
+    unit: "kilogram",
+    valueShape: "scalar",
+    metricGroup: "body",
+    enabled: true,
+    pinned: false,
+    sortOrder: 0,
+    updatedAt: new Date("2026-07-02T08:00:00.000Z"),
+    deletedAt: null,
+    receivedAt: new Date()
+  });
+  for (const [index, readingId] of readingIds.entries()) {
+    const atTime = new Date(Date.UTC(2026, 6, 2, 6, index));
+    await server.database.db.insert(schema.metricReadings).values({
+      id: readingId,
+      userId,
+      deviceId: "integration:garmin",
+      metricId,
+      valueJson: { value: 80 + index, unit: "kilogram" },
+      scalarValue: 80 + index,
+      scalarEntered: String(80 + index),
+      atTime,
+      windowStartedAt: null,
+      windowEndedAt: null,
+      provenance: "imported",
+      source: "garmin",
+      updatedAt: atTime,
+      deletedAt: null,
+      // Server writers stamp receivedAt from the JS clock (millisecond
+      // precision, like the cursor); a Postgres default would not be.
+      receivedAt: new Date()
+    });
+  }
+}
 
 function createPlanTreeIds() {
   return {
