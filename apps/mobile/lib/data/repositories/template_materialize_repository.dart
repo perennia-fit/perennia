@@ -132,6 +132,7 @@ final class TemplateMaterializeRepository {
         startedAt: localNow,
         timezone: timezone ?? localNow.timeZoneName,
         localDate: localDate,
+        focusId: template.focusId,
       ),
       context,
     );

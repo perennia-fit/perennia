@@ -1,0 +1,11 @@
+{
+  "description": "Hand decisions that replace the rule-based Focus assignment in tools/platform-exercise-focus.mjs for one Platform exercise. Keys are exercise ids; values are the complete list of Focus keys (weights, endurance, functional, calisthenics, mobility).",
+  "exercises": {
+    "01910000-0000-7000-8000-000000000106": ["endurance", "functional"],
+    "01910000-0000-7000-8000-000000000109": ["endurance", "functional"],
+    "01910000-0000-7000-8000-000000200530": ["endurance", "functional"],
+    "01910000-0000-7000-8000-803526232048": ["weights"],
+    "01910000-0000-7000-8000-800470260213": ["weights"],
+    "01910000-0000-7000-8000-801867844641": ["weights"]
+  }
+}

@@ -7,6 +7,9 @@ import '../../auth/repositories/auth_repository.dart';
 import '../../auth/widgets/sign_in_screen.dart';
 import '../../body_tracker/widgets/body_tracker_screen.dart';
 import '../../catalog/widgets/exercise_editor_screen.dart';
+import '../../focus/controllers/focus_providers.dart';
+import '../../focus/widgets/focus_manager_screen.dart';
+import '../../focus/widgets/focus_visuals.dart';
 import '../../metrics/widgets/metrics_screen.dart';
 import '../../protocols/controllers/protocols_day_controller.dart';
 import '../../protocols/widgets/compound_list_screen.dart';
@@ -22,11 +25,13 @@ import '../../settings/widgets/settings_screen.dart';
 import '../../nutrition/controllers/nutrition_day_controller.dart';
 import '../../nutrition/widgets/nutrition_day_view.dart';
 import '../../../domain/protocols/protocols.dart';
+import '../../../domain/training/training_records.dart';
 import '../../../domain/training/training_day.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
+import 'start_workout_sheet.dart';
 import 'workout_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -46,6 +51,7 @@ class HomeScreen extends ConsumerWidget {
   static const manageRoutinesButtonKey = Key('home.manageRoutines');
   static const routinePlansButtonKey = Key('home.routinePlans');
   static const workoutTemplatesButtonKey = Key('home.workoutTemplates');
+  static const focusesButtonKey = Key('home.focuses');
   static const createExerciseButtonKey = Key('home.createExercise');
   static const domainToggleKey = Key('home.domainToggle');
   static const trainingDomainButtonKey = Key('home.domain.training');
@@ -106,10 +112,14 @@ class HomeScreen extends ConsumerWidget {
     final settings =
         ref.watch(settingsControllerProvider).value ?? AppSettings.defaults;
 
-    Future<void> startWorkout(BuildContext navigationContext) async {
+    Future<void> startWorkout(
+      BuildContext navigationContext, {
+      String? focusId,
+    }) async {
       try {
-        final workoutId =
-            await ref.read(homeControllerProvider.notifier).startNewWorkout();
+        final workoutId = await ref
+            .read(homeControllerProvider.notifier)
+            .startNewWorkout(focusId: focusId);
         if (!navigationContext.mounted) {
           return;
         }
@@ -158,20 +168,21 @@ class HomeScreen extends ConsumerWidget {
       );
     }
 
-    Future<void> loadRoutine(BuildContext navigationContext) async {
-      final picked = await showTemplatePickerSheet(navigationContext);
-      if (picked == null || !navigationContext.mounted) {
-        return;
-      }
+    Future<void> startFromTemplate(
+      BuildContext navigationContext, {
+      required String workoutTemplateId,
+      String? routineId,
+      int? slot,
+    }) async {
       final messenger = ScaffoldMessenger.of(navigationContext);
       final navigator = Navigator.of(navigationContext);
       final failureMessage = navigationContext.l10n.homeUpNextStartFailed;
       try {
         final workoutId =
             await ref.read(templateMaterializeControllerProvider).start(
-                  workoutTemplateId: picked.workoutTemplateId,
-                  routineId: picked.routineId,
-                  slot: picked.slot,
+                  workoutTemplateId: workoutTemplateId,
+                  routineId: routineId,
+                  slot: slot,
                 );
         if (!navigationContext.mounted) {
           return;
@@ -188,6 +199,55 @@ class HomeScreen extends ConsumerWidget {
       }
     }
 
+    Future<void> loadRoutine(BuildContext navigationContext) async {
+      final picked = await showTemplatePickerSheet(navigationContext);
+      if (picked == null || !navigationContext.mounted) {
+        return;
+      }
+      await startFromTemplate(
+        navigationContext,
+        workoutTemplateId: picked.workoutTemplateId,
+        routineId: picked.routineId,
+        slot: picked.slot,
+      );
+    }
+
+    Future<void> openStartSheet(BuildContext navigationContext) async {
+      final choice = await showStartWorkoutSheet(navigationContext);
+      if (choice == null || !navigationContext.mounted) {
+        return;
+      }
+      switch (choice) {
+        case StartFromTemplate(
+            :final workoutTemplateId,
+            :final routineId,
+            :final slot,
+          ):
+          await startFromTemplate(
+            navigationContext,
+            workoutTemplateId: workoutTemplateId,
+            routineId: routineId,
+            slot: slot,
+          );
+        case BrowsePlans():
+          await loadRoutine(navigationContext);
+        case SetUpRoutine():
+          await Navigator.of(navigationContext).pushNamed(
+            RoutinePlanListScreen.routeName,
+          );
+        case StartWithFocus(:final focusId):
+          await startWorkout(navigationContext, focusId: focusId);
+        case StartEmpty():
+          await startWorkout(navigationContext);
+        case EditFocuses():
+          await Navigator.of(navigationContext).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const FocusManagerScreen(),
+            ),
+          );
+      }
+    }
+
     final todayBody = state.when<Widget>(
       data: (homeState) => _HomeContent(
         summary: homeState.summary,
@@ -199,7 +259,7 @@ class HomeScreen extends ConsumerWidget {
         onNextDay: () {
           ref.read(homeControllerProvider.notifier).showNextDay();
         },
-        onStartWorkout: startWorkout,
+        onStartWorkout: openStartSheet,
         onLoadRoutine: loadRoutine,
       ),
       loading: () => const SizedBox.expand(),
@@ -257,7 +317,7 @@ class HomeScreen extends ConsumerWidget {
               key: HomeScreen.logButtonKey,
               onPressed: () => _showLogSheet(
                 context,
-                onStartWorkout: startWorkout,
+                onStartWorkout: openStartSheet,
                 onOpenFood: openFood,
                 onOpenSupplements: openSupplements,
               ),
@@ -360,50 +420,31 @@ class _HomeContent extends StatelessWidget {
       ),
       SizedBox(height: sectionGap),
       const UpNextStrip(),
-      if (summary.workouts.isEmpty)
-        Wrap(
-          spacing: AppDimens.dense,
-          runSpacing: AppDimens.dense,
-          children: [
-            FilledButton.icon(
-              key: HomeScreen.startWorkoutButtonKey,
-              onPressed: () => unawaited(onStartWorkout(context)),
-              icon: const Icon(Icons.add),
-              label: Text(l10n.homeStartNewWorkout),
+      // One entry to starting a workout: Start opens the sheet that already
+      // holds the routine path, so it is the filled action whatever the day
+      // holds; Load Routine stays as the direct shortcut.
+      Wrap(
+        spacing: AppDimens.dense,
+        runSpacing: AppDimens.dense,
+        children: [
+          FilledButton.icon(
+            key: HomeScreen.startWorkoutButtonKey,
+            onPressed: () => unawaited(onStartWorkout(context)),
+            icon: const Icon(Icons.add),
+            label: Text(l10n.homeStartNewWorkout),
+          ),
+          OutlinedButton.icon(
+            key: HomeScreen.loadRoutineButtonKey,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: context.colors.textPrimary,
             ),
-            OutlinedButton.icon(
-              key: HomeScreen.loadRoutineButtonKey,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: context.colors.textPrimary,
-              ),
-              onPressed: () => unawaited(onLoadRoutine(context)),
-              icon: const Icon(Icons.playlist_add_check),
-              label: Text(l10n.homeLoadRoutine),
-            ),
-          ],
-        )
-      else ...[
-        Wrap(
-          spacing: AppDimens.dense,
-          runSpacing: AppDimens.dense,
-          children: [
-            OutlinedButton.icon(
-              key: HomeScreen.startWorkoutButtonKey,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: context.colors.textPrimary,
-              ),
-              onPressed: () => unawaited(onStartWorkout(context)),
-              icon: const Icon(Icons.add),
-              label: Text(l10n.homeStartNewWorkout),
-            ),
-            FilledButton.icon(
-              key: HomeScreen.loadRoutineButtonKey,
-              onPressed: () => unawaited(onLoadRoutine(context)),
-              icon: const Icon(Icons.playlist_add_check),
-              label: Text(l10n.homeLoadRoutine),
-            ),
-          ],
-        ),
+            onPressed: () => unawaited(onLoadRoutine(context)),
+            icon: const Icon(Icons.playlist_add_check),
+            label: Text(l10n.homeLoadRoutine),
+          ),
+        ],
+      ),
+      if (summary.workouts.isNotEmpty) ...[
         const SizedBox(height: AppDimens.base),
         Text(l10n.workoutSummaryListTitle, style: context.textStyles.h2),
         const SizedBox(height: AppDimens.dense),
@@ -637,6 +678,20 @@ class _LibraryHomeContent extends StatelessWidget {
                   onTap: () {
                     Navigator.of(context).pushNamed(
                       WorkoutTemplateListScreen.routeName,
+                    );
+                  },
+                ),
+                const Divider(),
+                SettingsNavTile(
+                  key: HomeScreen.focusesButtonKey,
+                  icon: Icons.flag_outlined,
+                  title: l10n.focusManagerTitle,
+                  subtitle: l10n.focusManagerLibrarySubtitle,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const FocusManagerScreen(),
+                      ),
                     );
                   },
                 ),
@@ -901,7 +956,7 @@ class _NutritionHomeBody extends ConsumerWidget {
   }
 }
 
-class _WorkoutSummaryTile extends StatelessWidget {
+class _WorkoutSummaryTile extends ConsumerWidget {
   const _WorkoutSummaryTile({
     required this.workout,
     required this.exercises,
@@ -911,8 +966,12 @@ class _WorkoutSummaryTile extends StatelessWidget {
   final List<HomeWorkoutExerciseSummary> exercises;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final exerciseNames = exercises.map((exercise) => exercise.name).toList();
+    final focusId = workout.focusId;
+    final focus = focusId == null
+        ? null
+        : ref.watch(focusesByIdProvider).value?[focusId];
     return Material(
       key: HomeScreen.sessionBlockKey(workout.id),
       color: context.colors.surface,
@@ -950,7 +1009,7 @@ class _WorkoutSummaryTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _formatSessionHeader(context, workout),
+                        _formatSessionHeader(context, workout, focus),
                         key: HomeScreen.sessionHeaderKey(workout.id),
                         style: context.textStyles.h2,
                       ),
@@ -992,12 +1051,18 @@ class _WorkoutSummaryTile extends StatelessWidget {
 String _formatSessionHeader(
   BuildContext context,
   HomeWorkoutSummary workout,
+  FocusRecord? focus,
 ) {
   final startedAt = workout.startedAt.toLocal();
   final time = MaterialLocalizations.of(context).formatTimeOfDay(
     TimeOfDay.fromDateTime(startedAt),
   );
-  return context.l10n.homeSessionHeader(time);
+  return focus == null
+      ? context.l10n.homeSessionHeader(time)
+      : context.l10n.homeSessionHeaderWithFocus(
+          focusDisplayName(context, focus),
+          time,
+        );
 }
 
 class _TrainingDayHeader extends StatelessWidget {

@@ -9,6 +9,7 @@ import 'features/auth/repositories/auth_repository.dart';
 import 'features/auth/widgets/sign_in_screen.dart';
 import 'features/body_tracker/widgets/body_tracker_screen.dart';
 import 'features/catalog/repositories/exercise_catalog_repository.dart';
+import 'features/focus/repositories/focus_feature_repository.dart';
 import 'features/home/repositories/home_repository.dart';
 import 'features/home/services/workout_auto_finish_service.dart';
 import 'features/home/widgets/home_screen.dart';
@@ -45,6 +46,7 @@ class PerenniaRoot extends StatelessWidget {
     this.homeRepository,
     this.upNextFeatureRepository,
     this.templatePickerRepository,
+    this.focusFeatureRepository,
     this.routinePlanRepository,
     this.workoutTemplateRepository,
     this.settingsRepository,
@@ -56,6 +58,7 @@ class PerenniaRoot extends StatelessWidget {
   final HomeRepository? homeRepository;
   final UpNextFeatureRepository? upNextFeatureRepository;
   final TemplatePickerFeatureRepository? templatePickerRepository;
+  final FocusFeatureRepository? focusFeatureRepository;
   final RoutinePlanFeatureRepository? routinePlanRepository;
   final WorkoutTemplateFeatureRepository? workoutTemplateRepository;
   final SettingsRepository? settingsRepository;
@@ -98,6 +101,15 @@ class PerenniaRoot extends StatelessWidget {
           // it.
           templatePickerFeatureRepositoryProvider.overrideWith(
             (ref) => const StubTemplatePickerFeatureRepository(),
+          ),
+        if (focusFeatureRepository != null)
+          focusFeatureRepositoryProvider.overrideWith(
+            (ref) => focusFeatureRepository!,
+          )
+        else if (homeRepository != null)
+          // Same rationale again: the start sheet reads the Focuses.
+          focusFeatureRepositoryProvider.overrideWith(
+            (ref) => const StubFocusFeatureRepository(),
           ),
         if (routinePlanRepository != null)
           routinePlanFeatureRepositoryProvider.overrideWith(

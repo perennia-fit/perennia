@@ -15,7 +15,9 @@ abstract interface class HomeRepository {
 
   Stream<HomeWorkoutSummary?> watchWorkout(String workoutId);
 
-  Future<String> startNewWorkout(TrainingDayDate localDate);
+  /// Starts an empty Workout on [localDate], performed under [focusId] when
+  /// the user chose a Focus to start from.
+  Future<String> startNewWorkout(TrainingDayDate localDate, {String? focusId});
 
   Future<String> addExerciseToWorkout({
     required String workoutId,
@@ -103,7 +105,10 @@ class StubHomeRepository implements HomeRepository {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'stub-workout';
   }
 
@@ -213,13 +218,17 @@ class RepositoryHomeRepository implements HomeRepository {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) {
     final now = _now().toLocal();
     return _repositories.workoutSessions.create(
       WorkoutSessionDraft(
         startedAt: localDate.atLocalTimeOf(now),
         timezone: now.timeZoneName,
         localDate: localDate,
+        focusId: focusId,
       ),
     );
   }
@@ -758,6 +767,7 @@ class HomeWorkoutSummary {
     this.localDate,
     this.endedAt,
     this.comment,
+    this.focusId,
     Iterable<HomeWorkoutExerciseSummary> workoutExercises =
         const <HomeWorkoutExerciseSummary>[],
     Iterable<HomeExerciseGroupSummary> exerciseGroups =
@@ -774,6 +784,7 @@ class HomeWorkoutSummary {
   final TrainingDayDate? localDate;
   final DateTime? endedAt;
   final String? comment;
+  final String? focusId;
   final List<HomeWorkoutExerciseSummary> workoutExercises;
   final List<HomeExerciseGroupSummary> exerciseGroups;
 
@@ -797,6 +808,7 @@ class HomeWorkoutSummary {
             localDate == other.localDate &&
             endedAt == other.endedAt &&
             comment == other.comment &&
+            focusId == other.focusId &&
             _listEquals(other.workoutExercises, workoutExercises) &&
             _listEquals(other.exerciseGroups, exerciseGroups);
   }
@@ -808,6 +820,7 @@ class HomeWorkoutSummary {
         localDate,
         endedAt,
         comment,
+        focusId,
         Object.hashAll(workoutExercises),
         Object.hashAll(exerciseGroups),
       );
@@ -1012,6 +1025,7 @@ HomeSummary _homeSummaryFrom({
             localDate: workout.localDate,
             endedAt: workout.endedAt,
             comment: workout.comment,
+            focusId: workout.focusId,
             workoutExercises: List<HomeWorkoutExerciseSummary>.unmodifiable(
               workoutExercisesByWorkoutId[workout.id] ??
                   const <HomeWorkoutExerciseSummary>[],

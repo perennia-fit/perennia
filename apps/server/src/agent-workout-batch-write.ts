@@ -54,6 +54,10 @@ export const AgentWorkoutBatchWriteWorkoutSchema = z
     comment: z.string().nullable().default(null).openapi({
       description: "Optional Workout comment."
     }),
+    focusId: z.string().min(1).nullable().optional().openapi({
+      description:
+        "Focus the Workout is performed under (see GET /agent/focuses); must be an active starter or user Focus. Null clears it. Omit to keep the Workout's current Focus."
+    }),
     deletedAt: ISO8601StringSchema.nullable().default(null).openapi({
       description:
         "Nullable Workout archive tombstone. Archiving preserves historical Sets and tombstones active Workout structure."
@@ -298,6 +302,29 @@ export async function prepareAgentWorkoutBatchWrite({
   const warnings: AgentWorkoutBatchWriteIssue[] = [];
   const preparedSets: AgentWorkoutBatchPreparedSet[] = [];
 
+  const focusId = request.workout.focusId;
+  if (typeof focusId === "string") {
+    const focus = await catalogStore.getFocusById({ userId, focusId });
+    const firstSet = request.sets[0];
+    if (focus === null && firstSet !== undefined) {
+      // The issue shape is per-Set; a Workout-level rule is reported against
+      // the first item with a `workout.*` field path so it stays unambiguous.
+      errors.push(
+        AgentWorkoutBatchWriteIssueSchema.parse({
+          field: "workout.focusId",
+          dimension: null,
+          rule: "focus_not_found",
+          message:
+            "focusId must reference an active Focus visible to the authenticated account (see GET /agent/focuses).",
+          limit: null,
+          itemIndex: 0,
+          setId: firstSet.id,
+          exerciseName: firstSet.exerciseName
+        })
+      );
+    }
+  }
+
   for (const [itemIndex, item] of request.sets.entries()) {
     const resolution = await catalogStore.resolveExerciseName({
       userId,
@@ -411,19 +438,6 @@ export function createDrizzleAgentWorkoutBatchWriteStore(
 
         const resolvedWorkout = workout ?? workoutFromPreparedSets(sets);
         const workoutUpdatedAt = serverClock.toISOString();
-        const workoutPayload = {
-          id: resolvedWorkout.id,
-          started_at: resolvedWorkout.startedAt,
-          timezone: resolvedWorkout.timezone,
-          local_date: localDateInTimezone(
-            resolvedWorkout.startedAt,
-            resolvedWorkout.timezone
-          ),
-          ended_at: resolvedWorkout.endedAt,
-          comment: resolvedWorkout.comment,
-          updated_at: workoutUpdatedAt,
-          deleted_at: resolvedWorkout.deletedAt
-        };
         const existingWorkoutRows = await transaction
           .select({
             userId: schema.workoutSessions.userId,
@@ -435,6 +449,25 @@ export function createDrizzleAgentWorkoutBatchWriteStore(
         const existingWorkout = existingWorkoutRows[0];
         const workoutBeforeImage =
           existingWorkout?.userId === userId ? existingWorkout.payload : null;
+        const workoutPayload = {
+          id: resolvedWorkout.id,
+          started_at: resolvedWorkout.startedAt,
+          timezone: resolvedWorkout.timezone,
+          local_date: localDateInTimezone(
+            resolvedWorkout.startedAt,
+            resolvedWorkout.timezone
+          ),
+          ended_at: resolvedWorkout.endedAt,
+          comment: resolvedWorkout.comment,
+          // This payload replaces the stored one whole, so a write that does
+          // not mention Focus carries the device-set `focus_id` through.
+          focus_id:
+            resolvedWorkout.focusId === undefined
+              ? storedFocusId(workoutBeforeImage)
+              : resolvedWorkout.focusId,
+          updated_at: workoutUpdatedAt,
+          deleted_at: resolvedWorkout.deletedAt
+        };
         const workoutResult = await pushWorkoutSessionsInTransaction(
           transaction,
           {
@@ -588,6 +621,11 @@ function workoutFromPreparedSets(
     comment: payload.workout_comment ?? null,
     deletedAt: payload.workout_deleted_at ?? null
   });
+}
+
+function storedFocusId(payload: Record<string, unknown> | null): string | null {
+  const focusId = payload?.focus_id;
+  return typeof focusId === "string" && focusId.length > 0 ? focusId : null;
 }
 
 function localDateInTimezone(startedAt: string, timezone: string) {

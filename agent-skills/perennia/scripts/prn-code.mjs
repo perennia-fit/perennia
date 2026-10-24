@@ -502,12 +502,22 @@ export class PortableOwlAgentClient {
       query: pick(input, [
         "search",
         "category",
+        "focus",
         "favorite",
         "activeOnly",
         "limit",
         "cursor",
         "fields"
       ]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentFocuses(options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/focuses",
+      expectedStatus: 200,
       signal: options.signal
     });
   }

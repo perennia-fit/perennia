@@ -3523,6 +3523,312 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Choose a backup folder again to resume auto-backup.'**
   String get autoBackupGrantPrompt;
+
+  /// No description provided for @startWorkoutSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a workout'**
+  String get startWorkoutSheetTitle;
+
+  /// No description provided for @startWorkoutFromPlan.
+  ///
+  /// In en, this message translates to:
+  /// **'From a routine or template'**
+  String get startWorkoutFromPlan;
+
+  /// No description provided for @startWorkoutSetUpRoutine.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up a routine'**
+  String get startWorkoutSetUpRoutine;
+
+  /// No description provided for @startWorkoutFocusSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus'**
+  String get startWorkoutFocusSection;
+
+  /// No description provided for @startWorkoutEditFocusesTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit focuses'**
+  String get startWorkoutEditFocusesTooltip;
+
+  /// No description provided for @startWorkoutEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Empty workout'**
+  String get startWorkoutEmpty;
+
+  /// No description provided for @startWorkoutEmptySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Start without a focus'**
+  String get startWorkoutEmptySubtitle;
+
+  /// No description provided for @startWorkoutFocusTileLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a workout: {focus}'**
+  String startWorkoutFocusTileLabel(String focus);
+
+  /// No description provided for @workoutNoFocus.
+  ///
+  /// In en, this message translates to:
+  /// **'No focus'**
+  String get workoutNoFocus;
+
+  /// No description provided for @workoutChangeFocusTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Change focus'**
+  String get workoutChangeFocusTooltip;
+
+  /// No description provided for @workoutFocusSemanticLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus: {focus}. Change focus'**
+  String workoutFocusSemanticLabel(String focus);
+
+  /// No description provided for @workoutChooseFocus.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a focus'**
+  String get workoutChooseFocus;
+
+  /// No description provided for @workoutFocusChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus set to {focus}'**
+  String workoutFocusChanged(String focus);
+
+  /// No description provided for @workoutFocusCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus removed'**
+  String get workoutFocusCleared;
+
+  /// No description provided for @focusPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus'**
+  String get focusPickerTitle;
+
+  /// No description provided for @focusPickerNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No focus'**
+  String get focusPickerNone;
+
+  /// No description provided for @focusPickerEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit focuses'**
+  String get focusPickerEdit;
+
+  /// No description provided for @focusArchivedName.
+  ///
+  /// In en, this message translates to:
+  /// **'{focus} (archived)'**
+  String focusArchivedName(String focus);
+
+  /// No description provided for @focusLibraryYourExercises.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent under {focus}'**
+  String focusLibraryYourExercises(String focus);
+
+  /// No description provided for @focusLibraryCatalog.
+  ///
+  /// In en, this message translates to:
+  /// **'More {focus} exercises'**
+  String focusLibraryCatalog(String focus);
+
+  /// No description provided for @focusLibraryBrowseAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse all {focus} exercises'**
+  String focusLibraryBrowseAll(String focus);
+
+  /// No description provided for @focusLibrarySearchAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Search all exercises'**
+  String get focusLibrarySearchAll;
+
+  /// No description provided for @focusLibraryAddExerciseTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Add {exercise}'**
+  String focusLibraryAddExerciseTooltip(String exercise);
+
+  /// No description provided for @focusUseToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get focusUseToday;
+
+  /// No description provided for @focusUseYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get focusUseYesterday;
+
+  /// No description provided for @focusUseDaysAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{days} days ago'**
+  String focusUseDaysAgo(int days);
+
+  /// No description provided for @focusUseWorkoutCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 workout} other{{count} workouts}}'**
+  String focusUseWorkoutCount(int count);
+
+  /// No description provided for @focusUseSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{when} · {count}'**
+  String focusUseSubtitle(String when, String count);
+
+  /// No description provided for @exerciseCatalogFocusAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get exerciseCatalogFocusAll;
+
+  /// No description provided for @exerciseCatalogFocusFilterLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus'**
+  String get exerciseCatalogFocusFilterLabel;
+
+  /// No description provided for @exerciseCatalogInFocus.
+  ///
+  /// In en, this message translates to:
+  /// **'In {focus}'**
+  String exerciseCatalogInFocus(String focus);
+
+  /// No description provided for @exerciseCatalogOtherExercises.
+  ///
+  /// In en, this message translates to:
+  /// **'Other exercises'**
+  String get exerciseCatalogOtherExercises;
+
+  /// No description provided for @focusManagerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Focuses'**
+  String get focusManagerTitle;
+
+  /// No description provided for @focusManagerLibrarySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What you train, for starting a workout'**
+  String get focusManagerLibrarySubtitle;
+
+  /// No description provided for @focusManagerAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add focus'**
+  String get focusManagerAdd;
+
+  /// No description provided for @focusManagerNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get focusManagerNameLabel;
+
+  /// No description provided for @focusManagerRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get focusManagerRename;
+
+  /// No description provided for @focusManagerArchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get focusManagerArchive;
+
+  /// No description provided for @focusManagerSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get focusManagerSave;
+
+  /// No description provided for @focusManagerReorderHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Press and hold to reorder.'**
+  String get focusManagerReorderHint;
+
+  /// No description provided for @focusManagerArchiveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive {focus}?'**
+  String focusManagerArchiveTitle(String focus);
+
+  /// No description provided for @focusManagerArchiveBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Workouts already logged under it keep it. It stops being offered when you start a workout.'**
+  String get focusManagerArchiveBody;
+
+  /// No description provided for @focusManagerDuplicateName.
+  ///
+  /// In en, this message translates to:
+  /// **'A focus with that name already exists.'**
+  String get focusManagerDuplicateName;
+
+  /// No description provided for @focusManagerEmptyName.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name.'**
+  String get focusManagerEmptyName;
+
+  /// No description provided for @focusManagerEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No focuses. Add one to start workouts from it.'**
+  String get focusManagerEmpty;
+
+  /// No description provided for @exerciseEditorFocusesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Focuses'**
+  String get exerciseEditorFocusesLabel;
+
+  /// No description provided for @exerciseEditorFocusesHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Offered first when you start a workout under one of these.'**
+  String get exerciseEditorFocusesHelp;
+
+  /// No description provided for @workoutTemplateFocusLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus'**
+  String get workoutTemplateFocusLabel;
+
+  /// No description provided for @homeSessionHeaderWithFocus.
+  ///
+  /// In en, this message translates to:
+  /// **'{focus} · {time}'**
+  String homeSessionHeaderWithFocus(String focus, String time);
+
+  /// No description provided for @focusLibraryHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Add your first exercise'**
+  String get focusLibraryHeading;
+
+  /// No description provided for @focusLibraryStaples.
+  ///
+  /// In en, this message translates to:
+  /// **'{focus} staples'**
+  String focusLibraryStaples(String focus);
 }
 
 class _AppLocalizationsDelegate

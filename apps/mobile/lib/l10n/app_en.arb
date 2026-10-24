@@ -1052,5 +1052,167 @@
   "autoBackupSwitchTitle": "Auto-backup",
   "autoBackupChooseFolderButton": "Choose backup folder",
   "autoBackupFolderWarningLabel": "Auto-backup folder warning",
-  "autoBackupGrantPrompt": "Choose a backup folder again to resume auto-backup."
+  "autoBackupGrantPrompt": "Choose a backup folder again to resume auto-backup.",
+  "startWorkoutSheetTitle": "Start a workout",
+  "startWorkoutFromPlan": "From a routine or template",
+  "startWorkoutSetUpRoutine": "Set up a routine",
+  "startWorkoutFocusSection": "Focus",
+  "startWorkoutEditFocusesTooltip": "Edit focuses",
+  "startWorkoutEmpty": "Empty workout",
+  "startWorkoutEmptySubtitle": "Start without a focus",
+  "startWorkoutFocusTileLabel": "Start a workout: {focus}",
+  "@startWorkoutFocusTileLabel": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutNoFocus": "No focus",
+  "workoutChangeFocusTooltip": "Change focus",
+  "workoutFocusSemanticLabel": "Focus: {focus}. Change focus",
+  "@workoutFocusSemanticLabel": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutChooseFocus": "Choose a focus",
+  "workoutFocusChanged": "Focus set to {focus}",
+  "@workoutFocusChanged": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "workoutFocusCleared": "Focus removed",
+  "focusPickerTitle": "Focus",
+  "focusPickerNone": "No focus",
+  "focusPickerEdit": "Edit focuses",
+  "focusArchivedName": "{focus} (archived)",
+  "@focusArchivedName": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibraryYourExercises": "Recent under {focus}",
+  "@focusLibraryYourExercises": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibraryCatalog": "More {focus} exercises",
+  "@focusLibraryCatalog": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibraryBrowseAll": "Browse all {focus} exercises",
+  "@focusLibraryBrowseAll": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibrarySearchAll": "Search all exercises",
+  "focusLibraryAddExerciseTooltip": "Add {exercise}",
+  "@focusLibraryAddExerciseTooltip": {
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      }
+    }
+  },
+  "focusUseToday": "Today",
+  "focusUseYesterday": "Yesterday",
+  "focusUseDaysAgo": "{days} days ago",
+  "@focusUseDaysAgo": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "focusUseWorkoutCount": "{count, plural, =1{1 workout} other{{count} workouts}}",
+  "@focusUseWorkoutCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "focusUseSubtitle": "{when} · {count}",
+  "@focusUseSubtitle": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "exerciseCatalogFocusAll": "All",
+  "exerciseCatalogFocusFilterLabel": "Focus",
+  "exerciseCatalogInFocus": "In {focus}",
+  "@exerciseCatalogInFocus": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "exerciseCatalogOtherExercises": "Other exercises",
+  "focusManagerTitle": "Focuses",
+  "focusManagerLibrarySubtitle": "What you train, for starting a workout",
+  "focusManagerAdd": "Add focus",
+  "focusManagerNameLabel": "Name",
+  "focusManagerRename": "Rename",
+  "focusManagerArchive": "Archive",
+  "focusManagerSave": "Save",
+  "focusManagerReorderHint": "Press and hold to reorder.",
+  "focusManagerArchiveTitle": "Archive {focus}?",
+  "@focusManagerArchiveTitle": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  },
+  "focusManagerArchiveBody": "Workouts already logged under it keep it. It stops being offered when you start a workout.",
+  "focusManagerDuplicateName": "A focus with that name already exists.",
+  "focusManagerEmptyName": "Enter a name.",
+  "focusManagerEmpty": "No focuses. Add one to start workouts from it.",
+  "exerciseEditorFocusesLabel": "Focuses",
+  "exerciseEditorFocusesHelp": "Offered first when you start a workout under one of these.",
+  "workoutTemplateFocusLabel": "Focus",
+  "homeSessionHeaderWithFocus": "{focus} · {time}",
+  "@homeSessionHeaderWithFocus": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "focusLibraryHeading": "Add your first exercise",
+  "focusLibraryStaples": "{focus} staples",
+  "@focusLibraryStaples": {
+    "placeholders": {
+      "focus": {
+        "type": "String"
+      }
+    }
+  }
 }

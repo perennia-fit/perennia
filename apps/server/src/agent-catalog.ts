@@ -16,6 +16,7 @@ import * as schema from "./db/schema.js";
 import {
   PLATFORM_EXERCISE_SEED_CATEGORIES,
   PLATFORM_EXERCISE_SEED_EXERCISES,
+  PLATFORM_EXERCISE_SEED_FOCUSES,
   PLATFORM_EXERCISE_SEED_REDIRECTS,
 } from "./data/platform-exercise-seed.generated.js";
 
@@ -31,6 +32,7 @@ const AGENT_EXERCISE_LIST_FIELDS = [
   "category",
   "dimensions",
   "equipment",
+  "focusIds",
   "loadMode",
   "recordProfile",
   "favorite",
@@ -45,6 +47,7 @@ const AGENT_EXERCISE_DEFAULT_LIST_FIELDS = [
   "category",
   "dimensions",
   "equipment",
+  "focusIds",
   "loadMode",
   "recordProfile",
   "favorite",
@@ -88,6 +91,34 @@ export const AgentExerciseCategorySchema = z
   })
   .openapi("AgentExerciseCategory");
 
+export const AgentFocusSchema = z
+  .object({
+    id: z.string().min(1).openapi({
+      description:
+        "Stable Focus id. Starter Focus ids are fixed and identical on every device.",
+    }),
+    name: z.string().min(1).openapi({
+      description: "User-visible Focus name, after any rename by the user.",
+    }),
+    sortOrder: z.number().int().openapi({
+      description: "User-defined display order; lower sorts first.",
+    }),
+    starter: z.boolean().openapi({
+      description:
+        "True for one of Perennia's starter Focuses (possibly renamed or reordered by the user); false for a Focus the user created.",
+    }),
+  })
+  .openapi("AgentFocus");
+
+export const AgentFocusListResponseSchema = z
+  .object({
+    focuses: z.array(AgentFocusSchema).openapi({
+      description:
+        "The caller's active Focuses in display order: the starter set merged with the user's own rows. Archived Focuses are omitted.",
+    }),
+  })
+  .openapi("AgentFocusListResponse");
+
 export const AgentExerciseSchema = z
   .object({
     id: z.string().min(1).openapi({
@@ -109,6 +140,12 @@ export const AgentExerciseSchema = z
     equipment: z.array(z.string().min(1)).openapi({
       description:
         "Structured Equipment ids associated with the exercise. Empty when none is known.",
+    }),
+    // Defaulted so an Exercise projection built before Focus existed (or by
+    // a store that does not know it) still parses as "belongs to none".
+    focusIds: z.array(z.string().min(1)).default([]).openapi({
+      description:
+        "Ids of the Focuses this Exercise belongs to (see GET /agent/focuses). Empty when it belongs to none. Ids may name an archived Focus; history is never rewritten.",
     }),
     loadMode: AgentExerciseLoadModeSchema.openapi({
       description: "Per-exercise load semantics.",
@@ -141,6 +178,7 @@ export const AgentExerciseListItemSchema = z
     category: AgentExerciseCategorySchema.optional(),
     dimensions: z.array(AgentExerciseDimensionIdSchema).max(4).optional(),
     equipment: z.array(z.string().min(1)).optional(),
+    focusIds: z.array(z.string().min(1)).optional(),
     loadMode: AgentExerciseLoadModeSchema.optional(),
     recordProfile: AgentExerciseRecordProfileSchema.optional(),
     favorite: z.boolean().optional(),
@@ -239,6 +277,19 @@ export const AgentExerciseListQuerySchema = z.object({
       },
       description:
         "Optional Category id or name filter. Category colors are presentation-only and not part of this response.",
+    }),
+  focus: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .openapi({
+      param: {
+        name: "focus",
+        in: "query",
+      },
+      description:
+        "Optional Focus id or name filter (see GET /agent/focuses). Keeps exercises that belong to that Focus.",
     }),
   favorite: z
     .enum(["true", "false"])
@@ -429,6 +480,48 @@ export const agentExerciseResolveRoute = createRoute({
   },
 });
 
+export const agentFocusListRoute = createRoute({
+  method: "get",
+  path: "/agent/focuses",
+  operationId: "listAgentFocuses",
+  tags: ["Agent Catalog"],
+  summary: "List the caller's Focuses.",
+  description:
+    "A Focus is the training discipline a Workout is performed under (Weights, Endurance, Functional, Calisthenics, Mobility, plus any the user created). Returns the starter set merged with the user's synced Focus rows: a user row sharing a starter id carries the user's rename/reorder, and archived Focuses are omitted. Use these ids for `focusId` on Workout and Workout Template writes, `focusIds` on Exercise writes, and the `focus` filter on GET /agent/exercises.",
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: "The caller's active Focuses in display order.",
+      content: {
+        "application/json": {
+          schema: AgentFocusListResponseSchema,
+        },
+      },
+    },
+    401: {
+      description: "The request is missing a valid agent API key.",
+      content: {
+        "application/json": {
+          schema: AgentUnauthorizedResponseSchema,
+        },
+      },
+    },
+    429: RateLimitExceededOpenApiResponse,
+    503: {
+      description:
+        "Agent catalog storage or API key storage is not configured. Instances without a wired AgentCatalogStore return agent_catalog_unavailable.",
+      content: {
+        "application/json": {
+          schema: z.union([
+            AgentCatalogUnavailableResponseSchema,
+            AgentApiKeyUnavailableResponseSchema,
+          ]),
+        },
+      },
+    },
+  },
+});
+
 export type AgentExerciseListField = z.infer<
   typeof AgentExerciseListFieldSchema
 >;
@@ -440,6 +533,7 @@ export type AgentExerciseListInput = {
   userId: string;
   search?: string;
   category?: string;
+  focus?: string;
   favorite?: boolean;
   activeOnly: boolean;
   limit: number;
@@ -473,6 +567,14 @@ export type AgentCategoryGetInput = {
   userId: string;
   categoryId: string;
 };
+export type AgentFocus = z.infer<typeof AgentFocusSchema>;
+export type AgentFocusListInput = {
+  userId: string;
+};
+export type AgentFocusGetInput = {
+  userId: string;
+  focusId: string;
+};
 export type AgentCatalogStore = {
   getExerciseById(input: AgentExerciseGetInput): Promise<AgentExercise | null>;
   getExercisesByIds(input: AgentExercisesGetInput): Promise<AgentExercise[]>;
@@ -488,6 +590,20 @@ export type AgentCatalogStore = {
   getCategoryById(
     input: AgentCategoryGetInput,
   ): Promise<AgentCatalogCategory | null>;
+  // The caller's active Focuses (starter set merged with their synced rows).
+  listFocuses(input: AgentFocusListInput): Promise<AgentFocus[]>;
+  // An active Focus by id — the reference check behind `focus_not_found`.
+  // A starter id resolves without any synced row; a starter or user Focus
+  // the caller archived does not.
+  getFocusById(input: AgentFocusGetInput): Promise<AgentFocus | null>;
+  // The Focus membership stored on the caller's own User Library Exercise
+  // row, or null when the caller has no such row. Read straight from the row
+  // (not through the projected AgentExercise) so a write that omits focusIds
+  // can carry the stored value through without depending on the rest of the
+  // row being projectable.
+  getStoredExerciseFocusIds(
+    input: AgentExerciseGetInput,
+  ): Promise<string[] | null>;
 };
 
 export function parseAgentExerciseListQuery(
@@ -496,6 +612,7 @@ export function parseAgentExerciseListQuery(
   return {
     search: query.search,
     category: query.category,
+    focus: query.focus,
     favorite:
       query.favorite === undefined ? undefined : query.favorite === "true",
     activeOnly: query.activeOnly === "true",
@@ -509,10 +626,74 @@ export type AgentCatalogCategoryFixture = AgentCatalogCategory & {
   ownerUserId: string;
 };
 
+// A user's synced Focus row as the catalog sees it: either a Focus they
+// created or their rename/reorder/archive of a starter Focus (same id).
+export type AgentCatalogFocusRow = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  deleted: boolean;
+};
+
+export type AgentCatalogFocusFixture = AgentCatalogFocusRow & {
+  ownerUserId: string;
+};
+
+const STARTER_FOCUS_IDS = new Set(
+  PLATFORM_EXERCISE_SEED_FOCUSES.map((focus) => focus.id),
+);
+
+export function isStarterFocusId(focusId: string): boolean {
+  return STARTER_FOCUS_IDS.has(focusId);
+}
+
+// Merges the starter Focuses with a user's own rows exactly as the app's
+// seeded table behaves: a user row with a starter id is that starter after the
+// user's edits (so it overrides name and order, and a tombstone archives it),
+// any other row is a user-created Focus. Archived Focuses are dropped.
+export function mergeAgentFocuses(
+  userRows: readonly AgentCatalogFocusRow[],
+): AgentFocus[] {
+  const merged = new Map<string, AgentFocus & { deleted: boolean }>();
+  for (const starter of PLATFORM_EXERCISE_SEED_FOCUSES) {
+    merged.set(starter.id, {
+      id: starter.id,
+      name: starter.name,
+      sortOrder: starter.sortOrder,
+      starter: true,
+      deleted: false,
+    });
+  }
+  for (const row of userRows) {
+    const starter = merged.get(row.id);
+    merged.set(row.id, {
+      id: row.id,
+      name: row.name.trim().length > 0 ? row.name : (starter?.name ?? row.id),
+      sortOrder: row.sortOrder,
+      starter: isStarterFocusId(row.id),
+      deleted: row.deleted,
+    });
+  }
+
+  return [...merged.values()]
+    .filter((focus) => !focus.deleted)
+    .sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder ||
+        left.name.localeCompare(right.name) ||
+        left.id.localeCompare(right.id),
+    )
+    .map(({ deleted: _deleted, ...focus }) => AgentFocusSchema.parse(focus));
+}
+
 export function createInMemoryAgentCatalogStore(
   exercises: readonly AgentCatalogExercise[],
   categories: readonly AgentCatalogCategoryFixture[] = [],
+  focuses: readonly AgentCatalogFocusFixture[] = [],
 ): AgentCatalogStore {
+  const focusesForUser = (userId: string) =>
+    mergeAgentFocuses(focuses.filter((focus) => focus.ownerUserId === userId));
+
   return {
     async getExerciseById(input) {
       const resolvedExerciseId = resolvePlatformExerciseId(input.exerciseId);
@@ -536,6 +717,11 @@ export function createInMemoryAgentCatalogStore(
         .filter((exercise) => (input.activeOnly ? exercise.active : true))
         .filter((exercise) => matchesSearch(exercise, input.search))
         .filter((exercise) => matchesCategory(exercise, input.category))
+        .filter((exercise) =>
+          matchesFocus(exercise, input.focus, () =>
+            focusesForUser(input.userId),
+          ),
+        )
         .filter((exercise) =>
           input.favorite === undefined
             ? true
@@ -619,6 +805,25 @@ export function createInMemoryAgentCatalogStore(
       return embedded === undefined
         ? null
         : { id: embedded.category.id, name: embedded.category.name };
+    },
+    async listFocuses(input) {
+      return focusesForUser(input.userId);
+    },
+    async getFocusById(input) {
+      return (
+        focusesForUser(input.userId).find(
+          (focus) => focus.id === input.focusId,
+        ) ?? null
+      );
+    },
+    async getStoredExerciseFocusIds(input) {
+      const owned = exercises.find(
+        (exercise) =>
+          exercise.id === input.exerciseId &&
+          exercise.library === "user" &&
+          exercise.ownerUserId === input.userId,
+      );
+      return owned === undefined ? null : [...(owned.focusIds ?? [])];
     },
   };
 }
@@ -716,6 +921,29 @@ function matchesCategory(
   );
 }
 
+// A focus filter names a Focus by id or by (case-insensitive) name. The id
+// form matches without consulting the Focus list, so an exercise filed under a
+// since-archived Focus is still reachable by that Focus's id.
+function matchesFocus(
+  exercise: AgentCatalogExercise,
+  focus: string | undefined,
+  listFocuses: () => readonly AgentFocus[],
+) {
+  if (focus === undefined) {
+    return true;
+  }
+
+  const focusKey = normalizeName(focus);
+  const exerciseFocusIds = (exercise.focusIds ?? []).map(normalizeName);
+  if (exerciseFocusIds.includes(focusKey)) {
+    return true;
+  }
+  const namedIds = listFocuses()
+    .filter((candidate) => normalizeName(candidate.name) === focusKey)
+    .map((candidate) => normalizeName(candidate.id));
+  return namedIds.some((id) => exerciseFocusIds.includes(id));
+}
+
 function isCandidate(exercise: AgentCatalogExercise, queryKey: string) {
   const exerciseKey = normalizeName(exercise.name);
   if (exerciseKey.includes(queryKey) || queryKey.includes(exerciseKey)) {
@@ -772,6 +1000,8 @@ function stripOwner(exercise: AgentCatalogExercise): AgentExercise {
     category: exercise.category,
     dimensions: exercise.dimensions as readonly DimensionId[],
     equipment: exercise.equipment,
+    // In-memory fixtures predating Focus may omit it; an absent list is none.
+    focusIds: exercise.focusIds ?? [],
     loadMode: exercise.loadMode as ExerciseLoadMode,
     recordProfile: exercise.recordProfile as RecordProfile,
     favorite: exercise.favorite,
@@ -882,6 +1112,7 @@ export function buildPlatformCatalogExercises(): readonly AgentCatalogExercise[]
       },
       dimensions,
       equipment: exercise.equipmentIds,
+      focusIds: exercise.focusIds,
       loadMode: "added" as ExerciseLoadMode,
       recordProfile: defaultRecordProfileForDimensions(dimensions),
       favorite: false,
@@ -943,6 +1174,9 @@ export function toAgentCatalogExerciseFromPayload({
     category: { id: categoryId, name: categoryName },
     dimensions,
     equipment: parseJsonStringArray(payload.equipment_ids),
+    // `focus_ids` rides the payload JSON-encoded exactly like
+    // `equipment_ids`; rows written before Focus existed simply lack it.
+    focusIds: parseJsonStringArray(payload.focus_ids),
     loadMode,
     recordProfile,
     favorite: payload.is_favorite === true,
@@ -988,6 +1222,20 @@ export function createDrizzleAgentCatalogStore(
             : "",
       }),
     );
+  }
+
+  async function loadUserFocusRows(
+    userId: string,
+  ): Promise<AgentCatalogFocusFixture[]> {
+    const rows = await db
+      .select({
+        id: schema.focuses.id,
+        payload: schema.focuses.payload,
+        deletedAt: schema.focuses.deletedAt,
+      })
+      .from(schema.focuses)
+      .where(eq(schema.focuses.userId, userId));
+    return rows.map((row) => toAgentCatalogFocusRow(userId, row));
   }
 
   async function loadCatalogForUser(
@@ -1037,9 +1285,13 @@ export function createDrizzleAgentCatalogStore(
       return store.getExercisesByIds(input);
     },
     async listExercises(input) {
-      const store = createInMemoryAgentCatalogStore(
-        await loadCatalogForUser(input.userId),
-      );
+      const [catalog, focusRows] = await Promise.all([
+        loadCatalogForUser(input.userId),
+        input.focus === undefined
+          ? Promise.resolve([])
+          : loadUserFocusRows(input.userId),
+      ]);
+      const store = createInMemoryAgentCatalogStore(catalog, [], focusRows);
       return store.listExercises(input);
     },
     async resolveExerciseName(input) {
@@ -1079,5 +1331,52 @@ export function createDrizzleAgentCatalogStore(
         name: typeof payload.name === "string" ? payload.name : "",
       };
     },
+    async listFocuses(input) {
+      return mergeAgentFocuses(await loadUserFocusRows(input.userId));
+    },
+    async getFocusById(input) {
+      const focuses = mergeAgentFocuses(await loadUserFocusRows(input.userId));
+      return focuses.find((focus) => focus.id === input.focusId) ?? null;
+    },
+    async getStoredExerciseFocusIds(input) {
+      const rows = await db
+        .select({ payload: schema.exercises.payload })
+        .from(schema.exercises)
+        .where(
+          and(
+            eq(schema.exercises.id, input.exerciseId),
+            eq(schema.exercises.userId, input.userId),
+          ),
+        )
+        .limit(1);
+      const row = rows[0];
+      return row === undefined
+        ? null
+        : parseJsonStringArray(row.payload?.focus_ids);
+    },
+  };
+}
+
+// Maps a synced Focus row (opaque payload written by the app) to the
+// catalog's row shape. The row's own deleted_at column is the tombstone.
+export function toAgentCatalogFocusRow(
+  ownerUserId: string,
+  row: {
+    id: string;
+    payload: Record<string, unknown> | null;
+    deletedAt: Date | null;
+  },
+): AgentCatalogFocusFixture {
+  const payload = row.payload ?? {};
+  const sortOrder = payload.sort_order;
+  return {
+    ownerUserId,
+    id: row.id,
+    name: typeof payload.name === "string" ? payload.name : "",
+    sortOrder:
+      typeof sortOrder === "number" && Number.isInteger(sortOrder)
+        ? sortOrder
+        : 0,
+    deleted: row.deletedAt !== null,
   };
 }

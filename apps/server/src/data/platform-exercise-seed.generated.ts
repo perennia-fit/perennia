@@ -14,12 +14,19 @@ export type PlatformSeedCategory = {
   name: string;
 };
 
+export type PlatformSeedFocus = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
 export type PlatformSeedExercise = {
   id: string;
   name: string;
   dimensionIds: DimensionId[];
   categoryId: string | null;
   equipmentIds: string[];
+  focusIds: string[];
 };
 
 export type PlatformSeedExerciseRedirect = {
@@ -83,6 +90,35 @@ export const PLATFORM_EXERCISE_SEED_CATEGORIES: readonly PlatformSeedCategory[] 
   }
 ];
 
+export const PLATFORM_EXERCISE_SEED_FOCUSES: readonly PlatformSeedFocus[] =
+[
+  {
+    "id": "01910000-0000-7000-8000-000000000401",
+    "name": "Weights",
+    "sortOrder": 0
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000000402",
+    "name": "Endurance",
+    "sortOrder": 1
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000000403",
+    "name": "Functional",
+    "sortOrder": 2
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000000404",
+    "name": "Calisthenics",
+    "sortOrder": 3
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000000405",
+    "name": "Mobility",
+    "sortOrder": 4
+  }
+];
+
 export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
 [
   {
@@ -94,6 +130,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -107,6 +147,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -120,6 +163,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -131,6 +177,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -142,6 +191,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -154,6 +206,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -165,6 +221,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -178,6 +237,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -191,6 +253,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -203,6 +268,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -215,6 +283,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -226,6 +297,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -239,6 +313,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -252,6 +329,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -263,6 +343,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "wall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -273,7 +356,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801104866502",
@@ -286,6 +372,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -295,7 +384,11 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200135",
@@ -305,7 +398,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200137",
@@ -315,7 +411,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802217328205",
@@ -327,6 +426,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -337,7 +439,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201660",
@@ -347,7 +452,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200323",
@@ -357,7 +465,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200924",
@@ -367,7 +478,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201691",
@@ -377,7 +491,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201689",
@@ -387,7 +504,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201690",
@@ -397,7 +517,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800459493488",
@@ -410,6 +533,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -422,6 +548,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -435,6 +564,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -447,6 +579,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -459,6 +594,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -472,6 +610,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -484,6 +625,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -494,7 +638,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800238949120",
@@ -505,6 +652,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -514,7 +664,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200129",
@@ -524,7 +677,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201554",
@@ -535,6 +691,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -544,7 +703,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201897",
@@ -556,6 +718,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -567,6 +732,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -579,6 +747,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -590,6 +761,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -602,6 +776,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -614,6 +791,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -627,6 +807,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -639,6 +822,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bodyweight",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -648,7 +834,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201777",
@@ -659,6 +848,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -670,6 +862,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -681,6 +876,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -692,6 +890,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -703,6 +904,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -715,6 +919,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -727,6 +934,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -737,7 +947,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802668403571",
@@ -750,6 +963,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -762,6 +978,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -774,6 +993,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -786,6 +1008,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -798,6 +1023,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -810,6 +1038,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -822,6 +1053,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -834,6 +1068,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -846,6 +1083,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -859,6 +1099,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -872,6 +1115,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "swissBall",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -883,6 +1129,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -895,6 +1144,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -908,6 +1160,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -920,6 +1175,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -931,6 +1189,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -942,6 +1203,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -951,7 +1215,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802054880692",
@@ -963,6 +1230,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -976,6 +1246,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -989,6 +1262,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1002,6 +1278,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1014,6 +1293,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1026,6 +1308,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1036,7 +1321,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200238",
@@ -1048,6 +1336,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1060,6 +1351,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1070,7 +1364,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801964722079",
@@ -1082,6 +1379,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1093,6 +1393,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1103,7 +1406,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800649842449",
@@ -1116,6 +1422,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1129,6 +1438,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1139,7 +1451,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201444",
@@ -1151,6 +1466,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1163,6 +1481,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1176,6 +1497,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1189,6 +1513,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1201,6 +1528,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1212,6 +1542,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1223,6 +1556,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1232,7 +1568,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201716",
@@ -1244,6 +1583,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1256,6 +1598,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1267,6 +1612,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1279,6 +1627,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bodyweight",
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1290,6 +1641,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1301,6 +1655,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1312,6 +1669,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1323,6 +1683,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1334,6 +1697,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1345,6 +1711,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1356,6 +1725,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1368,6 +1740,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1380,6 +1755,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1393,6 +1771,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1403,7 +1784,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201773",
@@ -1413,7 +1797,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800926575231",
@@ -1424,6 +1811,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1436,6 +1826,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1448,6 +1841,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1460,6 +1856,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1470,7 +1869,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201271",
@@ -1480,7 +1882,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201270",
@@ -1490,7 +1895,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201296",
@@ -1500,7 +1908,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200926",
@@ -1510,7 +1921,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201883",
@@ -1522,6 +1936,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1533,6 +1950,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "gymMat"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1545,6 +1965,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -1557,6 +1981,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -1569,6 +1997,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1580,6 +2011,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1591,6 +2025,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1602,6 +2040,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1613,6 +2054,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1624,6 +2068,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1637,6 +2085,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1650,6 +2101,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1663,6 +2117,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1674,6 +2131,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1685,6 +2145,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1698,6 +2161,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1709,6 +2175,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1722,6 +2191,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1733,6 +2205,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1745,6 +2221,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1757,6 +2236,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1769,6 +2251,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1781,6 +2266,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1793,6 +2281,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1806,6 +2297,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1816,7 +2310,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801593167530",
@@ -1828,6 +2325,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1839,6 +2339,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1851,6 +2354,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1863,6 +2369,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1872,7 +2381,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803856128360",
@@ -1883,6 +2395,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1893,7 +2408,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200683",
@@ -1905,6 +2423,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -1916,6 +2438,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1927,6 +2452,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1938,6 +2466,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1949,6 +2480,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1960,6 +2494,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -1969,7 +2506,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200498",
@@ -1982,6 +2522,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -1993,6 +2536,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2006,6 +2552,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2015,7 +2564,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801478997646",
@@ -2024,7 +2576,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201832",
@@ -2033,7 +2588,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802711975564",
@@ -2044,6 +2602,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2056,6 +2617,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2066,7 +2630,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803018634815",
@@ -2079,6 +2646,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2092,6 +2662,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2101,7 +2674,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803193500540",
@@ -2113,6 +2689,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2125,6 +2704,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2137,6 +2719,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2150,6 +2735,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2161,6 +2749,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2172,6 +2763,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2184,6 +2778,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2198,6 +2795,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "bench",
       "barbell",
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2211,6 +2811,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "smithMachine",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2221,7 +2824,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800601545697",
@@ -2233,6 +2839,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2244,6 +2853,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -2255,6 +2867,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2266,6 +2881,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2277,6 +2895,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2288,6 +2909,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2299,6 +2923,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2312,6 +2939,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2323,6 +2953,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000007",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2333,7 +2966,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802426121162",
@@ -2344,6 +2980,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -2356,6 +2995,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2366,7 +3008,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800934481004",
@@ -2378,6 +3023,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2390,6 +3038,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2401,6 +3052,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2410,7 +3064,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201737",
@@ -2419,7 +3076,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803349716193",
@@ -2430,6 +3090,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2441,6 +3104,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2451,7 +3117,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803130400090",
@@ -2463,6 +3132,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2475,6 +3147,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "pullUpBar",
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2486,6 +3161,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -2497,6 +3175,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -2508,6 +3189,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2519,6 +3203,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2531,6 +3218,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2542,6 +3232,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2553,6 +3246,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2564,6 +3260,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2575,6 +3274,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2587,6 +3289,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2600,6 +3305,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2612,6 +3320,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2625,6 +3336,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2637,6 +3351,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2649,6 +3366,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2661,6 +3381,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2673,6 +3396,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2685,6 +3411,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2698,6 +3427,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2710,6 +3442,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2722,6 +3457,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2734,6 +3472,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2746,6 +3487,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2758,6 +3502,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2770,6 +3517,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2781,6 +3531,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -2794,6 +3547,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2806,6 +3562,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2816,7 +3575,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200083",
@@ -2828,6 +3590,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2840,6 +3605,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2852,6 +3620,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2862,7 +3633,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-804124885565",
@@ -2873,6 +3647,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2884,6 +3661,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2895,6 +3675,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2904,7 +3687,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201908",
@@ -2915,6 +3701,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -2927,6 +3716,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2939,6 +3731,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2951,6 +3746,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2963,6 +3761,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2977,6 +3778,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "cable",
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -2990,6 +3794,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3002,6 +3809,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3013,6 +3823,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3024,6 +3837,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3035,6 +3851,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3046,6 +3865,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3056,7 +3878,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201450",
@@ -3067,6 +3892,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3078,6 +3906,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3088,7 +3919,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801239171365",
@@ -3099,6 +3933,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3111,6 +3948,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3123,6 +3963,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3136,6 +3979,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3148,6 +3994,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3160,6 +4009,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3172,6 +4024,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3184,6 +4039,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3197,6 +4055,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3210,6 +4071,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3222,6 +4086,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -3233,6 +4101,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3245,6 +4116,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3258,6 +4132,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "swissBall",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3270,6 +4147,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3282,6 +4162,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3294,6 +4177,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3305,6 +4191,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3316,6 +4205,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3325,7 +4217,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201027",
@@ -3336,6 +4231,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3345,7 +4243,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201732",
@@ -3356,6 +4257,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3367,6 +4271,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3378,6 +4285,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3389,6 +4299,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3400,6 +4313,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "wall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3411,6 +4327,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3422,6 +4341,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3433,6 +4355,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3446,6 +4371,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3459,6 +4387,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3469,7 +4400,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201018",
@@ -3480,6 +4414,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3492,6 +4429,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3504,6 +4444,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3514,7 +4457,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201492",
@@ -3524,7 +4470,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803381350752",
@@ -3535,6 +4484,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3546,6 +4498,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3557,6 +4512,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3567,7 +4525,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200301",
@@ -3577,7 +4538,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200828",
@@ -3589,6 +4553,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3602,6 +4569,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3615,6 +4585,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3626,6 +4599,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3635,7 +4611,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800079399828",
@@ -3646,6 +4625,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3658,6 +4640,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3670,6 +4655,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3682,6 +4670,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3694,6 +4685,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3705,6 +4699,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3716,6 +4713,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3728,6 +4728,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3739,6 +4742,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -3749,7 +4755,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801998060628",
@@ -3761,6 +4770,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3774,6 +4786,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3786,6 +4801,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3796,7 +4814,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200354",
@@ -3806,7 +4827,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200355",
@@ -3816,7 +4840,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201434",
@@ -3828,6 +4855,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3838,7 +4868,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801460906669",
@@ -3849,6 +4882,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "wall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3859,7 +4895,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201013",
@@ -3870,6 +4909,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -3882,6 +4924,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3894,6 +4939,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3906,6 +4954,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3918,6 +4969,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3928,7 +4982,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801297469389",
@@ -3940,6 +4997,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3950,7 +5010,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200395",
@@ -3960,7 +5023,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201348",
@@ -3970,7 +5036,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200923",
@@ -3982,6 +5051,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -3993,6 +5065,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -4004,6 +5079,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4015,6 +5093,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4024,7 +5105,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201304",
@@ -4036,6 +5120,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4048,6 +5135,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4059,6 +5149,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4070,6 +5163,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -4081,6 +5177,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4091,7 +5190,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201186",
@@ -4101,7 +5203,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201701",
@@ -4113,6 +5218,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4124,6 +5232,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4136,6 +5247,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4148,6 +5262,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4160,6 +5277,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4173,6 +5293,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4183,7 +5306,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801806174286",
@@ -4194,6 +5320,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4205,6 +5334,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4214,7 +5346,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000104",
@@ -4226,6 +5361,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bodyweight",
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4237,6 +5375,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4248,6 +5389,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4259,6 +5403,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4269,7 +5416,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201273",
@@ -4281,6 +5431,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4291,7 +5444,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200957",
@@ -4302,6 +5458,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4313,6 +5472,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -4324,6 +5486,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -4334,7 +5499,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802507625775",
@@ -4347,6 +5515,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "rack"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4359,6 +5530,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4370,6 +5544,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4380,7 +5557,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-804224938321",
@@ -4392,6 +5572,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4403,6 +5586,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4414,6 +5600,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4425,6 +5614,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4437,6 +5629,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4448,6 +5643,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -4457,7 +5655,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801664445050",
@@ -4468,6 +5669,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4479,6 +5683,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4491,6 +5698,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4505,6 +5715,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "barbell",
       "dumbbell",
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4515,7 +5728,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200674",
@@ -4526,6 +5742,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4536,7 +5755,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200513",
@@ -4546,7 +5768,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801239526266",
@@ -4558,6 +5783,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "sandbag"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -4569,6 +5798,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4580,6 +5812,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4591,6 +5826,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4603,6 +5841,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bodyweight",
       "wall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4614,6 +5855,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4626,6 +5870,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4637,6 +5884,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4647,7 +5897,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803496163133",
@@ -4659,6 +5912,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4671,6 +5927,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4682,6 +5941,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4694,6 +5956,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4705,6 +5970,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -4715,7 +5983,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802671751632",
@@ -4727,6 +5998,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4739,6 +6013,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4751,6 +6028,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4762,6 +6042,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4774,6 +6057,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "pullUpBar",
       "rack"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4784,7 +6070,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803862963675",
@@ -4793,7 +6082,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201730",
@@ -4803,7 +6095,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201727",
@@ -4813,7 +6108,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201861",
@@ -4822,7 +6120,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801020974543",
@@ -4835,6 +6136,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -4847,6 +6152,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4859,6 +6167,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4871,6 +6182,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4882,6 +6196,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4895,6 +6212,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4906,6 +6226,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4917,6 +6240,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "gymMat"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4928,6 +6254,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -4939,6 +6268,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4950,6 +6282,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -4962,6 +6297,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "sled"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4974,6 +6312,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4986,6 +6327,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4998,6 +6342,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5010,6 +6357,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5022,6 +6372,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5034,6 +6387,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -5046,6 +6403,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5059,6 +6419,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5069,7 +6432,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200629",
@@ -5079,7 +6445,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201726",
@@ -5089,7 +6458,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200636",
@@ -5101,6 +6473,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "gymMat",
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5114,6 +6489,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5125,6 +6503,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -5136,6 +6517,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -5148,6 +6532,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5158,7 +6545,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801166907459",
@@ -5170,6 +6560,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5181,6 +6574,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5192,6 +6588,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -5203,6 +6602,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5214,6 +6616,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5225,6 +6630,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5235,7 +6643,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201636",
@@ -5247,6 +6658,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5259,6 +6673,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5269,7 +6686,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801990369080",
@@ -5281,6 +6701,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5292,6 +6715,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5304,6 +6730,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5316,6 +6745,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5327,6 +6759,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5338,6 +6773,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5348,7 +6786,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201244",
@@ -5359,6 +6800,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
       "gymMat"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -5369,7 +6813,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800604013831",
@@ -5380,6 +6827,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5391,6 +6841,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5403,6 +6856,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5415,6 +6871,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5426,6 +6885,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -5437,6 +6899,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -5448,6 +6913,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5460,6 +6928,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5472,6 +6943,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5484,6 +6958,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5497,6 +6974,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5508,6 +6988,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5520,6 +7003,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5532,6 +7018,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5543,6 +7032,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5555,6 +7047,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5568,6 +7063,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "step",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5579,6 +7077,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5589,7 +7090,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801686924894",
@@ -5599,7 +7103,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803750503605",
@@ -5608,7 +7115,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801091366296",
@@ -5620,6 +7130,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5630,7 +7143,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201842",
@@ -5641,6 +7157,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5652,6 +7171,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5663,6 +7185,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5675,6 +7200,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5688,6 +7216,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -5700,6 +7232,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5712,6 +7247,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5725,6 +7263,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5737,6 +7278,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5749,6 +7293,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5761,6 +7308,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5773,6 +7323,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5785,6 +7338,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5797,6 +7353,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5809,6 +7368,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5821,6 +7383,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5833,6 +7398,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5845,6 +7413,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5858,6 +7429,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "machine",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5869,6 +7443,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -5880,6 +7457,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5891,6 +7471,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5902,6 +7485,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5913,6 +7499,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5924,6 +7513,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5935,6 +7527,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5946,6 +7541,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5957,6 +7555,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5969,6 +7570,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -5980,6 +7585,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bosu"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -5991,6 +7599,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bosu"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6002,6 +7613,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6014,6 +7629,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6024,7 +7642,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801396134006",
@@ -6037,6 +7658,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6048,6 +7672,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6059,6 +7686,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6071,6 +7701,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6082,6 +7715,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6092,7 +7728,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803416199274",
@@ -6104,6 +7743,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6116,6 +7758,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6128,6 +7773,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6138,7 +7786,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201466",
@@ -6148,7 +7799,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201365",
@@ -6158,7 +7812,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201854",
@@ -6169,6 +7826,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6180,6 +7840,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6192,6 +7855,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6204,6 +7870,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -6216,6 +7886,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6226,7 +7899,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201400",
@@ -6237,6 +7913,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6248,6 +7927,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6259,6 +7941,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6272,6 +7957,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "plate",
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6284,6 +7972,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6295,6 +7986,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6306,6 +8000,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6317,6 +8014,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6328,6 +8028,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6340,6 +8043,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6352,6 +8058,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -6364,6 +8074,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6376,6 +8089,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6389,6 +8105,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6400,6 +8119,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6412,6 +8134,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6423,6 +8148,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6435,6 +8163,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6447,6 +8178,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6459,6 +8193,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6471,6 +8208,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6481,7 +8221,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201234",
@@ -6493,6 +8236,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6505,6 +8251,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6519,6 +8268,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "dumbbell",
       "wall",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6532,6 +8284,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6544,6 +8299,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6556,6 +8314,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6568,6 +8329,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6580,6 +8344,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -6592,6 +8360,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -6603,6 +8375,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6614,6 +8389,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6626,6 +8404,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6638,6 +8419,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6649,6 +8433,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6660,6 +8447,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6671,6 +8461,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6682,6 +8475,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6693,6 +8489,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6704,6 +8503,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6715,6 +8517,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6726,6 +8531,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6737,6 +8545,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6748,6 +8559,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6760,6 +8574,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bodyweight",
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6771,6 +8588,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6783,6 +8603,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6795,6 +8618,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6805,7 +8631,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201528",
@@ -6815,7 +8644,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201723",
@@ -6825,7 +8657,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800208935487",
@@ -6837,6 +8672,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6848,6 +8686,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6860,6 +8701,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6871,6 +8715,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6883,6 +8730,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6894,6 +8744,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6906,6 +8759,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6918,6 +8774,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6928,7 +8787,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201398",
@@ -6939,6 +8801,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6950,6 +8815,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -6961,6 +8829,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6973,6 +8844,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -6983,7 +8857,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201906",
@@ -6994,6 +8871,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7004,7 +8884,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802940023187",
@@ -7015,6 +8898,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7024,7 +8910,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201578",
@@ -7036,6 +8925,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7049,6 +8941,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7061,6 +8956,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7072,6 +8970,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7083,6 +8984,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7094,6 +8998,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -7105,6 +9013,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7118,6 +9029,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "kettlebell",
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7130,6 +9044,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7142,6 +9059,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7153,6 +9073,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7166,6 +9089,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7177,6 +9103,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7189,6 +9118,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7201,6 +9133,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7213,6 +9148,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7224,6 +9162,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7235,6 +9176,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7244,7 +9188,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803910929252",
@@ -7253,7 +9200,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803085423969",
@@ -7264,6 +9214,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7275,6 +9228,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7286,6 +9242,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7297,6 +9256,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7308,6 +9270,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7319,6 +9284,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7330,6 +9298,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7341,6 +9312,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7353,6 +9327,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7364,6 +9341,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7375,6 +9355,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7387,6 +9370,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7398,6 +9384,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7407,7 +9396,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803900495296",
@@ -7418,6 +9410,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7429,6 +9424,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7440,6 +9438,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7450,7 +9451,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200365",
@@ -7460,7 +9464,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200366",
@@ -7470,7 +9477,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200367",
@@ -7480,7 +9490,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200369",
@@ -7492,6 +9505,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7502,7 +9518,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801539998806",
@@ -7514,6 +9533,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7526,6 +9548,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7536,7 +9561,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201515",
@@ -7546,7 +9574,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200373",
@@ -7556,7 +9587,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200374",
@@ -7566,7 +9600,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200376",
@@ -7575,7 +9612,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201670",
@@ -7586,6 +9626,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7598,6 +9641,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7607,7 +9653,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200984",
@@ -7618,6 +9667,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7629,6 +9681,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7638,7 +9693,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800700740073",
@@ -7650,6 +9708,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7659,7 +9720,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800719503485",
@@ -7670,6 +9734,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7679,7 +9746,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802703228633",
@@ -7690,6 +9760,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7701,6 +9774,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7712,6 +9788,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7722,7 +9801,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-804111850421",
@@ -7733,6 +9815,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7745,6 +9830,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7757,6 +9845,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -7768,6 +9860,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7779,6 +9874,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7791,6 +9889,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7801,7 +9902,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801902038802",
@@ -7812,6 +9916,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7823,6 +9930,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7833,7 +9943,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201464",
@@ -7843,7 +9956,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201521",
@@ -7853,7 +9969,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201527",
@@ -7864,6 +9983,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7873,7 +9995,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201437",
@@ -7885,6 +10010,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -7895,7 +10023,11 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201020",
@@ -7906,6 +10038,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7917,6 +10052,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7926,7 +10064,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800728862725",
@@ -7937,6 +10078,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -7948,6 +10092,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7961,6 +10108,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -7972,6 +10123,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7983,6 +10137,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -7992,7 +10149,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801596386203",
@@ -8005,6 +10165,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "band",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8017,6 +10180,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8028,6 +10194,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8041,6 +10210,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "step"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8051,7 +10223,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201750",
@@ -8063,6 +10238,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8076,6 +10254,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8087,6 +10268,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8096,7 +10280,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800349425515",
@@ -8108,6 +10295,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8120,6 +10310,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "sandbag"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -8131,6 +10325,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8142,6 +10340,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8153,6 +10354,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8165,6 +10369,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8176,6 +10383,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8186,7 +10396,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802821067928",
@@ -8198,6 +10411,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8209,6 +10425,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8220,6 +10439,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8231,6 +10453,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8242,6 +10467,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8253,6 +10481,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8264,6 +10495,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8275,6 +10509,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8286,6 +10523,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8297,6 +10537,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8308,6 +10551,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8319,6 +10565,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8330,6 +10579,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8342,6 +10594,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8353,6 +10608,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8364,6 +10622,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8376,6 +10637,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8386,7 +10650,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803324704931",
@@ -8398,6 +10665,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8409,6 +10679,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8420,6 +10693,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bosu"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8431,6 +10707,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8443,6 +10722,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8454,6 +10736,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "step"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8465,6 +10750,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8477,6 +10765,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8489,6 +10780,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8501,6 +10795,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8514,6 +10811,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8526,6 +10826,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8538,6 +10841,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8550,6 +10856,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8562,6 +10871,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8572,7 +10884,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201494",
@@ -8582,7 +10897,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201274",
@@ -8591,7 +10909,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800441363294",
@@ -8602,6 +10923,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8614,6 +10938,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8626,6 +10953,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8635,7 +10965,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802490182244",
@@ -8646,6 +10979,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8659,6 +10995,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "step",
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8672,6 +11011,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "box",
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8685,6 +11027,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8697,6 +11042,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8709,6 +11057,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8721,6 +11072,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8731,7 +11085,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803897178806",
@@ -8743,6 +11100,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8755,6 +11115,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8765,7 +11128,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800878500396",
@@ -8777,6 +11143,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -8788,6 +11158,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8798,7 +11171,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200991",
@@ -8809,6 +11185,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8820,6 +11199,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8830,7 +11212,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803584566703",
@@ -8841,6 +11226,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8852,6 +11240,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8863,6 +11254,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -8875,6 +11269,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8885,7 +11282,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800228797395",
@@ -8898,6 +11298,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "swissBall",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8910,6 +11313,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8920,7 +11326,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201239",
@@ -8931,6 +11340,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8942,6 +11354,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8954,6 +11369,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8965,6 +11383,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8974,7 +11395,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803519162132",
@@ -8985,6 +11409,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8994,7 +11421,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201396",
@@ -9005,6 +11435,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9016,6 +11449,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9027,6 +11463,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9038,6 +11477,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -9049,6 +11491,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -9060,6 +11505,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9072,6 +11520,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9084,6 +11535,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "step",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9098,6 +11552,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "box",
       "dumbbell",
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9110,6 +11567,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9122,6 +11582,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9133,6 +11596,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9145,6 +11611,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9156,6 +11625,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9168,6 +11640,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9180,6 +11655,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9192,6 +11670,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -9203,6 +11685,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9213,7 +11698,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-804258285349",
@@ -9224,6 +11712,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9235,6 +11726,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9246,6 +11740,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9257,6 +11754,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9268,6 +11768,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9279,6 +11782,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9290,6 +11796,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9301,6 +11810,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9314,6 +11826,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9325,6 +11840,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9336,6 +11854,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9348,6 +11869,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -9360,6 +11884,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -9372,6 +11899,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -9384,6 +11915,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -9395,6 +11930,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9406,6 +11944,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9415,7 +11956,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803662178945",
@@ -9426,6 +11970,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9437,6 +11984,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9448,6 +11998,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9459,6 +12012,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9470,6 +12026,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9481,6 +12040,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -9492,6 +12054,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -9502,7 +12067,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-804221596873",
@@ -9513,6 +12081,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -9525,6 +12096,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9536,6 +12110,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -9549,6 +12126,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9561,6 +12141,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9574,6 +12157,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9585,6 +12171,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -9594,7 +12183,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200020",
@@ -9606,6 +12198,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9617,6 +12212,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -9628,6 +12226,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9639,6 +12240,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9650,6 +12254,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9661,6 +12268,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9672,6 +12282,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9684,6 +12297,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9696,6 +12312,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9708,6 +12327,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9720,6 +12342,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9730,7 +12355,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802670003629",
@@ -9741,6 +12369,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -9753,6 +12384,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9765,6 +12399,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9777,6 +12414,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9790,6 +12430,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9800,7 +12443,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201710",
@@ -9811,6 +12457,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -9821,7 +12470,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200142",
@@ -9833,6 +12485,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9847,6 +12502,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "cable",
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9857,7 +12515,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803227065885",
@@ -9870,6 +12531,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9882,6 +12546,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9894,6 +12561,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9904,7 +12574,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200822",
@@ -9916,6 +12589,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9928,6 +12604,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9938,7 +12617,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800092468685",
@@ -9950,6 +12632,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9962,6 +12647,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9972,7 +12660,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801549952869",
@@ -9984,6 +12675,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -9995,6 +12689,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10009,6 +12706,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "bench",
       "cable",
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10022,6 +12722,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10035,6 +12738,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10048,6 +12754,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10062,6 +12771,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "bench",
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10075,6 +12787,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10086,6 +12801,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -10098,6 +12816,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -10110,6 +12832,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -10122,6 +12848,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10135,6 +12864,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10146,6 +12878,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10158,6 +12893,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10167,7 +12905,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201556",
@@ -10179,6 +12920,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10191,6 +12935,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10203,6 +12950,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -10215,6 +12966,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -10227,6 +12982,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10239,6 +12997,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -10251,6 +13013,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10263,6 +13028,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -10275,6 +13044,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10287,6 +13059,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10299,6 +13074,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10312,6 +13090,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10324,6 +13105,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10336,6 +13120,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10349,6 +13136,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10361,6 +13151,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10373,6 +13166,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10385,6 +13181,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10396,6 +13195,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -10407,6 +13209,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10418,6 +13223,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10429,6 +13237,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -10440,6 +13251,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -10449,7 +13263,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801815901643",
@@ -10462,6 +13279,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "ezBar",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10475,6 +13295,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10485,7 +13308,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803024082751",
@@ -10498,6 +13324,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10510,6 +13339,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10523,6 +13355,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10533,7 +13368,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801631603825",
@@ -10544,6 +13382,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10555,6 +13396,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10565,7 +13409,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800827812954",
@@ -10576,6 +13423,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10587,6 +13437,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10598,6 +13451,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10610,6 +13466,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10621,6 +13480,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10633,6 +13495,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10643,7 +13508,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201080",
@@ -10652,7 +13520,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201712",
@@ -10663,6 +13534,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -10675,6 +13549,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10687,6 +13564,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10699,6 +13579,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -10711,6 +13595,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10722,6 +13609,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10733,6 +13623,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10745,6 +13638,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10757,6 +13653,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10769,6 +13668,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10781,6 +13683,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10791,7 +13696,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200351",
@@ -10803,6 +13711,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10814,6 +13725,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -10824,7 +13738,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803098871444",
@@ -10836,6 +13753,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10848,6 +13768,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10860,6 +13783,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10870,7 +13796,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201654",
@@ -10881,6 +13810,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "gymMat"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10891,7 +13823,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801106941261",
@@ -10903,6 +13838,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10915,6 +13853,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -10927,6 +13869,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10938,6 +13883,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -10949,6 +13897,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -10961,6 +13912,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10972,6 +13926,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -10984,6 +13941,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -10994,7 +13954,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201580",
@@ -11006,6 +13969,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11017,6 +13983,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -11028,6 +13997,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -11039,6 +14011,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -11051,6 +14026,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11063,6 +14041,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11075,6 +14056,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11085,7 +14069,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201284",
@@ -11096,6 +14083,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -11108,6 +14098,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11118,7 +14111,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801143477932",
@@ -11129,6 +14125,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11141,6 +14140,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11153,6 +14155,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11164,6 +14169,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11175,6 +14183,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -11184,7 +14195,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803054658882",
@@ -11195,6 +14209,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -11206,6 +14223,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -11215,7 +14235,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801796944468",
@@ -11227,6 +14250,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "sandbag"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -11239,6 +14266,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11252,6 +14282,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11265,6 +14298,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11278,6 +14314,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11291,6 +14330,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11304,6 +14346,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11317,6 +14362,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "swissBall",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11330,6 +14378,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11343,6 +14394,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11356,6 +14410,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11368,6 +14425,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11381,6 +14441,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "kettlebell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11392,6 +14455,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -11405,6 +14471,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11418,6 +14487,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11430,6 +14502,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11440,7 +14515,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201714",
@@ -11452,6 +14530,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11462,7 +14543,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201715",
@@ -11474,6 +14558,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11484,7 +14571,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200566",
@@ -11496,6 +14586,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11506,7 +14599,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200569",
@@ -11516,7 +14612,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201443",
@@ -11528,6 +14627,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11539,6 +14641,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -11550,6 +14655,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -11561,6 +14669,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -11572,6 +14683,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -11582,7 +14696,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200575",
@@ -11592,7 +14709,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201753",
@@ -11602,7 +14722,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201752",
@@ -11612,7 +14735,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800007088405",
@@ -11624,6 +14750,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11638,6 +14767,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "barbell",
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11648,7 +14780,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803458124239",
@@ -11659,6 +14794,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -11671,6 +14809,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11683,6 +14824,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11695,6 +14839,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11708,6 +14855,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11721,6 +14871,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11733,6 +14886,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11742,7 +14898,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201711",
@@ -11753,6 +14912,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -11766,6 +14928,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11779,6 +14944,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "smithMachine",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11791,6 +14959,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11803,6 +14974,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11815,6 +14989,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11827,6 +15004,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11839,6 +15019,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11851,6 +15034,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11863,6 +15049,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11875,6 +15064,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11887,6 +15079,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11899,6 +15094,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11911,6 +15109,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11924,6 +15125,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11937,6 +15141,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11948,6 +15155,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -11960,6 +15170,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11969,7 +15182,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802826502426",
@@ -11978,7 +15194,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803190153343",
@@ -11988,7 +15207,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201581",
@@ -12002,6 +15224,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "barbell",
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12013,6 +15238,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -12023,7 +15251,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801543039701",
@@ -12035,6 +15266,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12047,6 +15281,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12057,7 +15294,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200693",
@@ -12069,6 +15309,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12079,7 +15322,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200711",
@@ -12090,6 +15336,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -12100,7 +15349,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801313902045",
@@ -12112,6 +15364,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12122,7 +15377,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803529962627",
@@ -12134,6 +15392,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12145,6 +15406,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12158,6 +15422,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12171,6 +15438,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12183,6 +15453,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12195,6 +15468,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12207,6 +15483,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12221,6 +15500,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "barbell",
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12232,6 +15514,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -12243,6 +15528,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -12254,6 +15542,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12265,6 +15556,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -12276,6 +15570,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12287,6 +15584,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12298,6 +15598,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12309,6 +15612,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12321,6 +15627,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12333,6 +15642,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12345,6 +15657,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12358,6 +15673,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12371,6 +15689,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12383,6 +15704,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12395,6 +15719,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12407,6 +15734,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12420,6 +15750,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12432,6 +15765,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12444,6 +15780,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12456,6 +15795,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12468,6 +15810,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12480,6 +15825,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12492,6 +15840,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12504,6 +15855,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12517,6 +15871,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12527,7 +15884,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801786103132",
@@ -12538,6 +15898,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -12549,6 +15912,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -12561,6 +15927,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12571,7 +15940,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802378381798",
@@ -12582,6 +15954,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -12591,7 +15966,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201280",
@@ -12601,7 +15979,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801987361112",
@@ -12615,6 +15996,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "barbell",
       "cable",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12625,7 +16009,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200095",
@@ -12635,7 +16022,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200091",
@@ -12647,6 +16037,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12659,6 +16052,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12671,6 +16067,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12683,6 +16082,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12694,6 +16096,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -12705,6 +16110,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -12716,6 +16124,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -12727,6 +16138,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12737,7 +16151,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201531",
@@ -12748,6 +16165,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12761,6 +16181,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12773,6 +16196,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12785,6 +16211,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12799,6 +16228,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "cable",
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12813,6 +16245,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "cable",
       "ezBar",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12825,6 +16260,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12837,6 +16275,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12849,6 +16290,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12861,6 +16305,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12873,6 +16320,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12885,6 +16335,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12895,7 +16348,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201662",
@@ -12905,7 +16361,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201509",
@@ -12915,7 +16374,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803886778203",
@@ -12928,6 +16390,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12938,7 +16403,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803148727100",
@@ -12951,6 +16419,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12963,6 +16434,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12977,6 +16451,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "cable",
       "bench",
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -12988,6 +16465,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -13001,6 +16481,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13013,6 +16496,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13026,6 +16512,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13038,6 +16527,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13050,6 +16542,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13062,6 +16557,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13073,6 +16571,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -13083,7 +16584,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800334835389",
@@ -13096,6 +16600,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13110,6 +16617,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "barbell",
       "ezBar",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13121,6 +16631,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -13133,6 +16646,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -13145,6 +16662,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13157,6 +16677,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13169,6 +16692,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13181,6 +16707,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13193,6 +16722,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13205,6 +16737,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13217,6 +16752,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13229,6 +16767,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13241,6 +16782,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13253,6 +16797,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13265,6 +16812,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13277,6 +16827,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13289,6 +16842,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13301,6 +16857,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13313,6 +16872,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13325,6 +16887,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13337,6 +16902,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13350,6 +16918,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13362,6 +16933,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13374,6 +16948,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13386,6 +16963,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13398,6 +16978,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13411,6 +16994,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13424,6 +17010,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13436,6 +17025,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13448,6 +17040,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13461,6 +17056,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13474,6 +17072,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13487,6 +17088,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13499,6 +17103,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13511,6 +17118,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13523,6 +17133,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13535,6 +17148,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13548,6 +17164,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13560,6 +17179,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13572,6 +17194,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13584,6 +17209,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13596,6 +17224,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13608,6 +17239,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13620,6 +17254,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13632,6 +17269,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13644,6 +17284,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13657,6 +17300,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13669,6 +17315,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13681,6 +17330,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13693,6 +17345,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13705,6 +17360,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13715,7 +17373,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201824",
@@ -13728,6 +17389,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13739,6 +17403,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13752,6 +17419,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13765,6 +17435,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "swissBall",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13778,6 +17451,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "ezBar",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13791,6 +17467,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13804,6 +17483,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13816,6 +17498,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13828,6 +17513,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13840,6 +17528,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13852,6 +17543,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13865,6 +17559,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "ezBar",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13877,6 +17574,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13889,6 +17589,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13901,6 +17604,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13913,6 +17619,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13924,6 +17633,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -13935,6 +17647,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -13946,6 +17661,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -13956,7 +17674,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800639763673",
@@ -13965,7 +17686,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201000",
@@ -13976,6 +17700,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -13988,6 +17715,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14000,6 +17730,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14011,6 +17744,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "wall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -14022,6 +17758,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -14034,6 +17773,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14046,6 +17788,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14056,7 +17801,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200279",
@@ -14066,7 +17814,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800688134835",
@@ -14076,7 +17827,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201298",
@@ -14086,7 +17840,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803543969390",
@@ -14099,6 +17856,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14113,6 +17873,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "barbell",
       "ezBar",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14126,6 +17889,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14140,6 +17906,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "cable",
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14152,6 +17921,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14165,6 +17937,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14178,6 +17953,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14187,7 +17965,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200911",
@@ -14197,7 +17978,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800947739938",
@@ -14211,6 +17995,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "ezBar",
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14222,6 +18009,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14234,6 +18024,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14246,6 +18039,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14257,6 +18053,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14271,6 +18070,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "cable",
       "ezBar",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14282,6 +18084,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14293,6 +18098,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14304,6 +18112,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -14317,6 +18128,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14328,6 +18142,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -14339,6 +18156,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14351,6 +18171,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14363,6 +18186,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bodyweight",
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14375,6 +18201,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14389,6 +18218,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "cable",
       "ezBar",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14402,6 +18234,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14415,6 +18250,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14428,6 +18266,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14441,6 +18282,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14454,6 +18298,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14467,6 +18314,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14480,6 +18330,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14493,6 +18346,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "ezBar",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14505,6 +18361,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14516,6 +18375,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14527,6 +18389,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14538,6 +18403,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14551,6 +18419,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14561,7 +18432,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803459347416",
@@ -14572,6 +18446,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14584,6 +18461,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14594,7 +18474,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201519",
@@ -14606,6 +18489,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14618,6 +18504,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14629,6 +18518,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -14638,7 +18530,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802148595192",
@@ -14650,6 +18545,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14659,7 +18557,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201658",
@@ -14671,6 +18572,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14683,6 +18587,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14695,6 +18602,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14706,6 +18616,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14717,6 +18630,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -14728,6 +18644,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -14738,7 +18657,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201114",
@@ -14748,7 +18670,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200493",
@@ -14760,6 +18685,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14773,6 +18701,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14785,6 +18716,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14797,6 +18731,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14809,6 +18746,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14821,6 +18761,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14834,6 +18777,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "ezBar",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14848,6 +18794,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "cable",
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14860,6 +18809,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14872,6 +18824,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14881,7 +18836,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201485",
@@ -14893,6 +18851,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14904,6 +18865,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -14917,6 +18881,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14930,6 +18897,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14943,6 +18913,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14955,6 +18928,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14967,6 +18943,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14980,6 +18959,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -14992,6 +18974,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15005,6 +18990,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15018,6 +19006,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15031,6 +19022,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15043,6 +19037,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15053,7 +19050,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201448",
@@ -15066,6 +19066,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15078,6 +19081,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15090,6 +19096,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15101,6 +19110,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -15112,6 +19124,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -15124,6 +19139,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15136,6 +19154,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15149,6 +19170,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15161,6 +19185,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15173,6 +19200,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15186,6 +19216,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15199,6 +19232,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15211,6 +19247,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15224,6 +19263,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15237,6 +19279,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15249,6 +19294,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "sled"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15260,6 +19308,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -15270,7 +19321,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802756248321",
@@ -15282,6 +19336,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15294,6 +19351,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15306,6 +19366,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15318,6 +19381,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15330,6 +19396,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15342,6 +19411,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15354,6 +19426,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15366,6 +19441,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15377,6 +19455,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15386,7 +19467,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802713200026",
@@ -15398,6 +19482,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15410,6 +19497,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15422,6 +19512,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15436,6 +19529,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "ezBar",
       "barbell",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15446,7 +19542,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802058858035",
@@ -15457,6 +19556,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15468,6 +19570,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15478,7 +19583,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800684822795",
@@ -15491,6 +19599,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15503,6 +19614,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15516,6 +19630,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15526,7 +19643,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200805",
@@ -15536,7 +19656,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201900",
@@ -15546,7 +19669,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801742658394",
@@ -15557,6 +19683,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "wall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15566,7 +19695,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200659",
@@ -15576,7 +19708,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200660",
@@ -15586,7 +19721,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200661",
@@ -15596,7 +19734,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201336",
@@ -15608,6 +19749,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15619,6 +19763,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15629,7 +19776,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201230",
@@ -15640,6 +19790,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15651,6 +19804,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15662,6 +19818,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -15671,7 +19830,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201261",
@@ -15681,7 +19843,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201260",
@@ -15691,7 +19856,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201262",
@@ -15701,7 +19869,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201266",
@@ -15711,7 +19882,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802352587904",
@@ -15721,7 +19895,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803637412309",
@@ -15732,6 +19909,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "wall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15743,6 +19923,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -15755,6 +19938,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15767,6 +19953,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15779,6 +19968,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15791,6 +19983,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15803,6 +19998,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15816,6 +20014,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15827,6 +20028,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15838,6 +20042,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15850,6 +20057,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15862,6 +20072,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15873,6 +20086,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15884,6 +20100,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15895,6 +20114,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15904,7 +20126,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-804264741451",
@@ -15916,6 +20141,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15927,6 +20155,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -15939,6 +20170,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15950,6 +20184,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -15961,6 +20198,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -15972,6 +20212,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "gymMat"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -15983,6 +20226,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -15994,6 +20240,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16005,6 +20254,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "gymMat"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16017,6 +20269,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16028,6 +20283,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16040,6 +20298,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16049,7 +20310,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200165",
@@ -16058,7 +20322,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803905591937",
@@ -16069,6 +20336,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16081,6 +20351,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16093,6 +20366,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16105,6 +20381,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16118,6 +20397,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "swissBall",
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16130,6 +20412,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -16141,6 +20427,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16152,6 +20441,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16163,6 +20455,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16175,6 +20470,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16187,6 +20485,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16198,6 +20499,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16208,7 +20512,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800390977274",
@@ -16219,6 +20526,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bosu"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16230,6 +20540,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bosu"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16241,6 +20554,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16252,6 +20568,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16263,6 +20582,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16274,6 +20596,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16285,6 +20610,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16298,6 +20626,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16308,7 +20639,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802173871388",
@@ -16320,6 +20654,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16331,6 +20668,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16342,6 +20682,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16353,6 +20696,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16364,6 +20710,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -16375,6 +20724,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16386,6 +20738,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16397,6 +20752,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16408,6 +20766,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16419,6 +20780,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16428,7 +20792,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200173",
@@ -16437,7 +20804,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200174",
@@ -16446,7 +20816,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200178",
@@ -16456,7 +20829,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201889",
@@ -16467,6 +20843,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16478,6 +20857,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16489,6 +20871,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16501,6 +20886,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "gymMat",
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16511,7 +20899,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800663886043",
@@ -16522,6 +20913,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16533,6 +20927,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16544,6 +20941,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16556,6 +20956,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16567,6 +20970,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16578,6 +20984,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16589,6 +20998,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -16602,6 +21014,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "swissBall",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16613,6 +21028,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16625,6 +21043,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16636,6 +21057,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16647,6 +21071,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16659,6 +21086,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bodyweight",
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16670,6 +21100,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16679,7 +21112,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201307",
@@ -16690,6 +21126,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16701,6 +21140,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16712,6 +21154,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16724,6 +21169,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -16735,6 +21184,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16746,6 +21198,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16757,6 +21212,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16768,6 +21226,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16780,6 +21241,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "gymMat",
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16791,6 +21255,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16802,6 +21269,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16813,6 +21283,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "inclineBench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16824,6 +21297,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16833,7 +21309,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800058413297",
@@ -16844,6 +21323,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16856,6 +21338,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -16867,6 +21353,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16876,7 +21365,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201852",
@@ -16887,6 +21379,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16898,6 +21393,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16910,6 +21408,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16922,6 +21423,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -16933,6 +21437,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16942,7 +21449,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201909",
@@ -16953,6 +21463,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16964,6 +21477,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16975,6 +21491,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16986,6 +21505,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16997,6 +21519,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17008,6 +21533,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17020,6 +21548,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17031,6 +21562,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17043,6 +21577,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "medicineBall",
       "wall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17055,6 +21592,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17066,6 +21606,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17075,7 +21619,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802089522975",
@@ -17086,6 +21633,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17097,6 +21647,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17110,6 +21663,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17120,7 +21676,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201194",
@@ -17130,7 +21689,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000105",
@@ -17141,6 +21703,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17152,6 +21717,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17163,6 +21731,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17172,7 +21743,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201766",
@@ -17183,6 +21757,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17194,6 +21771,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17205,6 +21785,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17216,6 +21799,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17227,6 +21813,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -17236,7 +21825,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201079",
@@ -17247,6 +21839,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "gymMat"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17256,7 +21851,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201287",
@@ -17267,6 +21865,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17278,6 +21879,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -17290,6 +21894,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17301,6 +21908,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17312,6 +21922,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17323,6 +21936,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17333,7 +21949,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201374",
@@ -17343,7 +21962,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201193",
@@ -17357,6 +21979,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "dumbbell",
       "gymMat",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17369,6 +21994,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17380,6 +22008,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17390,7 +22021,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201477",
@@ -17401,6 +22035,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17412,6 +22049,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17423,6 +22063,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17435,6 +22078,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17447,6 +22093,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17458,6 +22107,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "gymMat"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17470,6 +22122,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17481,6 +22136,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17492,6 +22150,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17503,6 +22164,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17515,6 +22179,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17526,6 +22193,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17537,6 +22207,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17548,6 +22221,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17559,6 +22235,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17568,7 +22247,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803525521711",
@@ -17580,6 +22262,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17592,6 +22277,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17604,6 +22292,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17615,6 +22306,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17627,6 +22321,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17638,6 +22335,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17649,6 +22349,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17660,6 +22363,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17672,6 +22378,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -17684,6 +22394,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17696,6 +22409,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17708,6 +22424,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17720,6 +22439,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17731,6 +22453,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17742,6 +22467,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17753,6 +22481,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17764,6 +22495,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "pullUpBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17775,6 +22509,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17785,7 +22522,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-804129167175",
@@ -17796,6 +22536,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17807,6 +22550,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17818,6 +22564,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17829,6 +22578,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17839,7 +22592,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803588172571",
@@ -17850,6 +22606,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17861,6 +22620,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17872,6 +22634,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17883,6 +22648,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17894,6 +22662,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17906,6 +22677,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -17917,6 +22692,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17932,6 +22710,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "plate",
       "medicineBall",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17942,7 +22723,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801283666619",
@@ -17954,6 +22738,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17966,6 +22753,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -17977,6 +22767,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17988,6 +22781,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18000,6 +22796,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18013,6 +22812,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "dumbbell",
       "plate",
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18022,7 +22824,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800808521049",
@@ -18033,6 +22838,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18045,6 +22853,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "plate",
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18057,6 +22868,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "swissBall",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18070,6 +22884,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "swissBall",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18081,6 +22898,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18093,6 +22913,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "pullUpBar",
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18104,6 +22927,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18115,6 +22941,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18126,6 +22955,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "step"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18139,6 +22971,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18150,6 +22985,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18160,7 +22998,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000013",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200148",
@@ -18170,7 +23011,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000013",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800366182008",
@@ -18182,6 +23026,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18194,6 +23041,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18205,6 +23055,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18215,7 +23068,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000013",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201021",
@@ -18226,6 +23082,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18237,6 +23096,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18248,6 +23110,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "wall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18260,6 +23125,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18273,6 +23141,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "wall",
       "swissBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18284,6 +23155,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18296,6 +23170,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18308,6 +23185,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -18319,6 +23199,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18330,6 +23213,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18341,6 +23227,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18353,6 +23242,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "band",
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18364,6 +23256,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18375,6 +23270,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18388,6 +23286,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "machine",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18400,6 +23301,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18412,6 +23316,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18423,6 +23330,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18435,6 +23345,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18446,6 +23359,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18457,6 +23373,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "foamRoll"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -18470,6 +23389,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18482,6 +23404,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18494,6 +23419,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "smithMachine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18506,6 +23434,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -18516,7 +23447,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000013",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802473902450",
@@ -18525,7 +23459,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000013",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201876",
@@ -18534,7 +23471,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000013",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201200",
@@ -18545,6 +23485,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000013",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18557,6 +23500,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18567,7 +23513,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201524",
@@ -18577,7 +23526,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-803706703744",
@@ -18588,6 +23540,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18603,6 +23558,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "dumbbell",
       "kettlebell",
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18614,6 +23572,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18626,6 +23587,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18637,6 +23601,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18647,7 +23615,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201204",
@@ -18657,7 +23628,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200962",
@@ -18669,6 +23643,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -18679,7 +23656,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801245237116",
@@ -18689,7 +23669,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200285",
@@ -18699,7 +23682,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201318",
@@ -18711,6 +23697,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18723,6 +23712,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18734,6 +23726,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -18744,7 +23740,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200993",
@@ -18756,6 +23755,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -18767,6 +23769,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18779,6 +23784,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -18791,6 +23799,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -18803,6 +23814,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18813,7 +23828,11 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "distance"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402",
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200529",
@@ -18823,7 +23842,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200530",
@@ -18833,7 +23855,11 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402",
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802949073473",
@@ -18845,6 +23871,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -18856,6 +23885,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18866,7 +23898,11 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402",
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801036215431",
@@ -18875,7 +23911,11 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402",
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200595",
@@ -18885,7 +23925,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201523",
@@ -18895,7 +23938,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201549",
@@ -18908,6 +23954,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bodyweight",
       "machine"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -18918,7 +23967,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200927",
@@ -18930,6 +23982,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -18940,7 +23995,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201615",
@@ -18952,6 +24010,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -18962,7 +24023,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "distance"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000201104",
@@ -18974,6 +24038,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
     ]
   },
   {
@@ -18984,7 +24051,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000200908",
@@ -18994,7 +24064,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000110",
@@ -19004,7 +24077,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000004",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000109",
@@ -19016,6 +24092,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000004",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19026,7 +24106,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000004",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000111",
@@ -19036,7 +24119,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000004",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000112",
@@ -19046,7 +24132,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000004",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000114",
@@ -19056,7 +24145,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000005",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000115",
@@ -19066,7 +24158,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000005",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000116",
@@ -19076,7 +24171,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000005",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000119",
@@ -19086,7 +24184,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000006",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000118",
@@ -19096,7 +24197,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000006",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-000000000117",
@@ -19106,7 +24210,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000006",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000402"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801782636388",
@@ -19117,6 +24224,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000003",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -19128,6 +24238,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000003",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -19135,7 +24248,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "name": "Mobility Flow",
     "dimensionIds": [],
     "categoryId": "01910000-0000-7000-8000-000000000003",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800575027500",
@@ -19146,6 +24262,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000003",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -19157,6 +24276,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000003",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -19168,6 +24290,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000003",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -19179,6 +24304,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000003",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -19190,6 +24318,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000003",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -19201,6 +24332,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -19211,7 +24345,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800170194516",
@@ -19221,7 +24358,11 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801290574565",
@@ -19231,7 +24372,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801980907717",
@@ -19243,6 +24387,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19255,6 +24403,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19267,6 +24419,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19279,6 +24435,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19291,6 +24451,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -19303,6 +24466,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19314,6 +24481,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19325,6 +24496,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19336,6 +24510,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19347,6 +24524,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19360,6 +24540,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "cable",
       "step"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -19370,7 +24553,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801187687734",
@@ -19383,6 +24569,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19394,6 +24584,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19405,6 +24598,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19417,6 +24614,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19429,6 +24630,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19441,6 +24646,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19454,6 +24663,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19465,6 +24678,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19477,6 +24693,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19489,6 +24709,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19501,6 +24725,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19510,7 +24738,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800732510073",
@@ -19521,6 +24752,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19533,6 +24767,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -19545,6 +24782,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19554,7 +24795,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800934404560",
@@ -19565,6 +24809,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19576,6 +24823,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19587,6 +24837,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19598,6 +24852,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19608,7 +24865,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800762310688",
@@ -19620,6 +24880,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19632,6 +24896,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19644,6 +24912,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "medicineBall"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19656,6 +24928,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19667,6 +24943,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19679,6 +24959,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19690,6 +24974,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "rope"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19702,6 +24989,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19714,6 +25005,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19726,6 +25021,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19738,6 +25037,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "kettlebell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19750,6 +25053,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "sled"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19762,6 +25069,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "sled"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19775,6 +25086,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "box"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19787,6 +25102,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19798,6 +25117,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19810,6 +25132,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19822,6 +25148,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -19833,6 +25163,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19846,6 +25179,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench",
       "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -19857,6 +25193,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19867,7 +25206,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-802037379609",
@@ -19877,7 +25219,11 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401",
+      "01910000-0000-7000-8000-000000000403"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-800624864269",
@@ -19887,7 +25233,10 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-804117040364",
@@ -19900,6 +25249,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "barbell",
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -19911,6 +25263,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "trx"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19921,7 +25276,11 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "duration"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000001",
-    "equipmentIds": []
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403",
+      "01910000-0000-7000-8000-000000000404"
+    ]
   },
   {
     "id": "01910000-0000-7000-8000-801384238941",
@@ -19933,6 +25292,9 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000001",
     "equipmentIds": [
       "barbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   }
 ];

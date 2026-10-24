@@ -23,12 +23,14 @@ class ExerciseRecord {
     this.usesRpe = false,
     required this.categoryId,
     List<ExerciseEquipment> equipment = const <ExerciseEquipment>[],
+    List<String> focusIds = const <String>[],
     required this.notes,
     required this.isFavorite,
     required this.updatedAt,
     this.shadowsPlatformExercise = false,
     this.deletedAt,
-  }) : equipment = List<ExerciseEquipment>.unmodifiable(equipment);
+  })  : equipment = List<ExerciseEquipment>.unmodifiable(equipment),
+        focusIds = List<String>.unmodifiable(focusIds);
 
   final String id;
   final ExerciseLibraryOrigin origin;
@@ -41,6 +43,7 @@ class ExerciseRecord {
   final bool usesRpe;
   final String? categoryId;
   final List<ExerciseEquipment> equipment;
+  final List<String> focusIds;
   final String? notes;
   final bool isFavorite;
   final DateTime updatedAt;
@@ -64,6 +67,7 @@ class ExerciseRecord {
       usesRpe: usesRpe,
       categoryId: categoryId,
       equipment: equipment,
+      focusIds: focusIds,
       notes: notes,
       isFavorite: isFavorite,
       updatedAt: updatedAt,
@@ -83,6 +87,7 @@ class WorkoutSessionRecord {
     required this.updatedAt,
     this.endedAt,
     this.comment,
+    this.focusId,
     this.deletedAt,
   });
 
@@ -92,6 +97,7 @@ class WorkoutSessionRecord {
   final TrainingDayDate localDate;
   final DateTime? endedAt;
   final String? comment;
+  final String? focusId;
   final DateTime updatedAt;
   final DateTime? deletedAt;
 }
@@ -172,6 +178,40 @@ class ExerciseCategoryRecord {
   final String colorHex;
   final DateTime updatedAt;
   final DateTime? deletedAt;
+}
+
+/// A Focus: the training discipline a Workout is performed under. See
+/// CONTEXT.md. Distinct from a Category, which says what an exercise works.
+class FocusRecord {
+  const FocusRecord({
+    required this.id,
+    required this.name,
+    required this.sortOrder,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  final String id;
+  final String name;
+  final int sortOrder;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+
+  bool get isArchived => deletedAt != null;
+}
+
+/// One exercise the user has logged under a Focus: derived from the Workouts
+/// carrying that Focus, never stored.
+class FocusExerciseUse {
+  const FocusExerciseUse({
+    required this.exerciseId,
+    required this.lastPerformedAt,
+    required this.workoutCount,
+  });
+
+  final String exerciseId;
+  final DateTime lastPerformedAt;
+  final int workoutCount;
 }
 
 final class ExerciseCatalogSectionRecord {

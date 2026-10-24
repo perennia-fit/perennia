@@ -13,6 +13,7 @@ import {
   COMPOUNDS_SYNC_ENTITY,
   DOSES_SYNC_ENTITY,
   EXERCISE_CATEGORIES_SYNC_ENTITY,
+  FOCUSES_SYNC_ENTITY,
   EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
   EXERCISE_GROUPS_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
@@ -39,6 +40,7 @@ import {
   pushCompoundsInTransaction,
   pushDosesInTransaction,
   pushExerciseCategoriesInTransaction,
+  pushFocusesInTransaction,
   pushExerciseGroupMembersInTransaction,
   pushExerciseGroupsInTransaction,
   pushExercisesInTransaction,
@@ -373,6 +375,7 @@ export type AgentActivityStore = {
 
 type OpaqueTable =
   | typeof schema.exerciseCategories
+  | typeof schema.focuses
   | typeof schema.exercises
   | typeof schema.workoutSessions
   | typeof schema.workoutExercises
@@ -425,6 +428,10 @@ const UNDOABLE_ENTITY_REGISTRY: Record<
   [EXERCISE_CATEGORIES_SYNC_ENTITY]: {
     table: schema.exerciseCategories,
     push: pushExerciseCategoriesInTransaction
+  },
+  [FOCUSES_SYNC_ENTITY]: {
+    table: schema.focuses,
+    push: pushFocusesInTransaction
   },
   [EXERCISES_SYNC_ENTITY]: {
     table: schema.exercises,
@@ -780,7 +787,9 @@ async function readCurrentPayload(
   const rows = await transaction
     .select({ userId: table.userId, payload: table.payload })
     .from(table)
-    .where(eq(table.id, id))
+    // Scoped by owner as well as id: `focuses` is keyed (user_id, id) because
+    // starter Focus ids are shared by every account.
+    .where(and(eq(table.userId, userId), eq(table.id, id)))
     .limit(1);
   const existing = rows[0];
   if (existing === undefined || existing.userId !== userId) {

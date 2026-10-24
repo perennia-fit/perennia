@@ -24,6 +24,7 @@ export const METRIC_READINGS_SYNC_ENTITY = "metric_readings";
 export const NUTRITION_GOALS_SYNC_ENTITY = "nutrition_goals";
 export const USER_SETTINGS_SYNC_ENTITY = "user_settings";
 export const EXERCISE_CATEGORIES_SYNC_ENTITY = "exercise_categories";
+export const FOCUSES_SYNC_ENTITY = "focuses";
 export const EXERCISES_SYNC_ENTITY = "exercises";
 export const WORKOUT_SESSIONS_SYNC_ENTITY = "workout_sessions";
 export const WORKOUT_EXERCISES_SYNC_ENTITY = "workout_exercises";
@@ -48,6 +49,7 @@ export const ROUTINE_ENTRIES_SYNC_ENTITY = "routine_entries";
 export const TEMPLATE_LINKS_SYNC_ENTITY = "template_links";
 const SYNC_PULL_ENTITIES = [
   EXERCISE_CATEGORIES_SYNC_ENTITY,
+  FOCUSES_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
   WORKOUT_SESSIONS_SYNC_ENTITY,
   WORKOUT_EXERCISES_SYNC_ENTITY,
@@ -80,6 +82,7 @@ const SYNC_PULL_ENTITIES = [
 ] as const;
 const SYNC_PUSH_ENTITIES = [
   EXERCISE_CATEGORIES_SYNC_ENTITY,
+  FOCUSES_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
   WORKOUT_SESSIONS_SYNC_ENTITY,
   WORKOUT_EXERCISES_SYNC_ENTITY,
@@ -464,6 +467,12 @@ export type SyncStore = {
     deviceId: string;
     changes: SyncPushChange[];
   }): Promise<SyncPushResult>;
+  pushFocuses(input: {
+    userId: string;
+    correlationId?: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+  }): Promise<SyncPushResult>;
   pushExercises(input: {
     userId: string;
     correlationId?: string;
@@ -737,6 +746,121 @@ export async function pushExerciseCategoriesInTransaction(
         .update(schema.exerciseCategories)
         .set(rowValues)
         .where(eq(schema.exerciseCategories.id, change.id));
+    }
+
+    await maybeRecordActivityLog({ ...change, payload });
+    acceptedIds.push(change.id);
+    applied.push({
+      id: change.id,
+      updatedAt: updatedAt.toISOString(),
+      deviceId
+    });
+  }
+
+  return {
+    accepted: acceptedIds,
+    serverClock: serverClock.toISOString(),
+    applied
+  };
+}
+
+// A `Focus` (CONTEXT.md) is pushed on the same opaque LWW rails as an
+// Exercise Category: the server stores the payload verbatim and never reads
+// it. Workouts, Workout Templates and Exercises reference a Focus softly, so
+// nothing here (or in the pull path) orders or holds a referencing row on it.
+export async function pushFocusesInTransaction(
+  transaction: LoggedSetMutationDatabase,
+  {
+    userId,
+    deviceId,
+    changes,
+    serverClock
+  }: {
+    userId: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+    serverClock: Date;
+  }
+): Promise<SyncPushResult> {
+  const acceptedIds: string[] = [];
+  const applied: SyncAppliedChange[] = [];
+  const maybeRecordActivityLog = async (change: SyncPushChange) => {
+    if (!hasActivityLogEnvelope(change)) {
+      return;
+    }
+
+    await transaction
+      .insert(schema.activityLog)
+      .values({
+        id: change.activityLogId,
+        userId,
+        actor: change.actor,
+        batchId: change.batchId,
+        entityTable: FOCUSES_SYNC_ENTITY,
+        entityId: change.id,
+        beforeImage: change.beforeImage,
+        afterImage: change.afterImage,
+        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
+      })
+      .onConflictDoNothing({ target: schema.activityLog.id });
+  };
+
+  for (const change of changes) {
+    const updatedAt = normalizeIncomingUpdatedAt(
+      parseIsoDate(change.updatedAt, "updatedAt"),
+      serverClock
+    );
+    const deletedAt =
+      change.deletedAt === null
+        ? null
+        : parseIsoDate(change.deletedAt, "deletedAt");
+    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
+    const existingRows = await transaction
+      .select({
+        userId: schema.focuses.userId,
+        updatedAt: schema.focuses.updatedAt,
+        deviceId: schema.focuses.deviceId
+      })
+      .from(schema.focuses)
+      .where(
+        and(eq(schema.focuses.userId, userId), eq(schema.focuses.id, change.id))
+      )
+      .limit(1);
+    const existing = existingRows[0];
+
+    // TENANT ISOLATION comes from the (user_id, id) key itself: starter
+    // Focus ids are shared by every account, so each account's edit of
+    // "Weights" is its own row and can never touch another account's.
+    if (
+      existing !== undefined &&
+      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
+    ) {
+      await maybeRecordActivityLog(change);
+      acceptedIds.push(change.id);
+      continue;
+    }
+
+    const rowValues = {
+      id: change.id,
+      userId,
+      deviceId,
+      payload,
+      updatedAt,
+      deletedAt,
+      receivedAt: serverClock
+    };
+    if (existing === undefined) {
+      await transaction.insert(schema.focuses).values(rowValues);
+    } else {
+      await transaction
+        .update(schema.focuses)
+        .set(rowValues)
+        .where(
+          and(
+            eq(schema.focuses.userId, userId),
+            eq(schema.focuses.id, change.id)
+          )
+        );
     }
 
     await maybeRecordActivityLog({ ...change, payload });
@@ -4050,6 +4174,19 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
 
       return result;
     },
+    async pushFocuses({ userId, deviceId, changes }) {
+      const serverClock = new Date();
+      const result = await db.transaction((transaction) =>
+        pushFocusesInTransaction(transaction, {
+          userId,
+          deviceId,
+          changes,
+          serverClock
+        })
+      );
+
+      return result;
+    },
     async pushExercises({ userId, deviceId, changes }) {
       const serverClock = new Date();
       const result = await db.transaction((transaction) =>
@@ -4439,6 +4576,12 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         schema.exerciseCategories.id,
         cursorPosition
       );
+      const focusCursorFilter = pullCursorFilter(
+        FOCUSES_SYNC_ENTITY,
+        schema.focuses.receivedAt,
+        schema.focuses.id,
+        cursorPosition
+      );
       const exerciseCursorFilter = pullCursorFilter(
         EXERCISES_SYNC_ENTITY,
         schema.exercises.receivedAt,
@@ -4617,6 +4760,10 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         mode === SYNC_PULL_MODE_SNAPSHOT
           ? isNull(schema.exerciseCategories.deletedAt)
           : undefined;
+      const liveFocusSnapshotFilter =
+        mode === SYNC_PULL_MODE_SNAPSHOT
+          ? isNull(schema.focuses.deletedAt)
+          : undefined;
       const liveExerciseSnapshotFilter =
         mode === SYNC_PULL_MODE_SNAPSHOT
           ? isNull(schema.exercises.deletedAt)
@@ -4748,6 +4895,25 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
           asc(schema.exerciseCategories.receivedAt),
           asc(schema.exerciseCategories.id)
         )
+        .limit(limit);
+      const focusRows = await db
+        .select({
+          id: schema.focuses.id,
+          deviceId: schema.focuses.deviceId,
+          payload: schema.focuses.payload,
+          updatedAt: schema.focuses.updatedAt,
+          deletedAt: schema.focuses.deletedAt,
+          receivedAt: schema.focuses.receivedAt
+        })
+        .from(schema.focuses)
+        .where(
+          and(
+            eq(schema.focuses.userId, userId),
+            liveFocusSnapshotFilter,
+            focusCursorFilter
+          )
+        )
+        .orderBy(asc(schema.focuses.receivedAt), asc(schema.focuses.id))
         .limit(limit);
       const exerciseRows = await db
         .select({
@@ -5360,6 +5526,15 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
       const baseRows: PullRow[] = [
         ...exerciseCategoryRows.map((row): PullRow => ({
           entity: EXERCISE_CATEGORIES_SYNC_ENTITY,
+          id: row.id,
+          deviceId: row.deviceId,
+          payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
+          updatedAt: row.updatedAt,
+          deletedAt: row.deletedAt,
+          receivedAt: row.receivedAt
+        })),
+        ...focusRows.map((row): PullRow => ({
+          entity: FOCUSES_SYNC_ENTITY,
           id: row.id,
           deviceId: row.deviceId,
           payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
@@ -6094,6 +6269,7 @@ function pullCursorFilter(
   entity: SyncPullEntity,
   receivedAtColumn:
     | typeof schema.exerciseCategories.receivedAt
+    | typeof schema.focuses.receivedAt
     | typeof schema.exercises.receivedAt
     | typeof schema.workoutSessions.receivedAt
     | typeof schema.workoutExercises.receivedAt
@@ -6125,6 +6301,7 @@ function pullCursorFilter(
     | typeof schema.templateLinks.receivedAt,
   idColumn:
     | typeof schema.exerciseCategories.id
+    | typeof schema.focuses.id
     | typeof schema.exercises.id
     | typeof schema.workoutSessions.id
     | typeof schema.workoutExercises.id
@@ -6198,6 +6375,11 @@ function syncEntitySortRank(entity: SyncPullEntity) {
   switch (entity) {
     case EXERCISE_CATEGORIES_SYNC_ENTITY:
       return 0;
+    // A Focus before the Exercises (and Workouts/Templates) that name it.
+    // Their `focus_id`/`focus_ids` are soft references, so this ordering is
+    // cosmetic for a shared receive timestamp, never an FK requirement.
+    case FOCUSES_SYNC_ENTITY:
+      return 0.5;
     case EXERCISES_SYNC_ENTITY:
       return 1;
     // Preserve established entity ranks while ordering the Workout parent and

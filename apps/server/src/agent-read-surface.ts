@@ -189,6 +189,7 @@ export const AGENT_WORKOUT_LIST_FIELDS = [
   "endedAt",
   "timezone",
   "comment",
+  "focusId",
   "setCount",
   "exerciseNames"
 ] as const;
@@ -204,6 +205,10 @@ export const AgentWorkoutListItemSchema = z
     endedAt: z.string().min(1).nullable().optional(),
     timezone: z.string().min(1).nullable().optional(),
     comment: z.string().nullable().optional(),
+    focusId: z.string().min(1).nullable().optional().openapi({
+      description:
+        "Focus the Workout was performed under (see GET /agent/focuses), or null when none is set or the Workout is inferred from legacy Sets."
+    }),
     setCount: z.number().int().min(0).optional(),
     exerciseNames: z.array(z.string().min(1)).optional()
   })
@@ -280,6 +285,11 @@ export const AgentWorkoutDetailWorkoutSchema = z
     localDate: z.string().min(1).nullable(),
     endedAt: z.string().min(1).nullable(),
     comment: z.string().nullable(),
+    // Defaulted so a read store that predates Focus still parses as "none".
+    focusId: z.string().min(1).nullable().default(null).openapi({
+      description:
+        "Focus the Workout was performed under (see GET /agent/focuses), or null when none is set. May name a since-archived Focus."
+    }),
     updatedAt: z.string().min(1),
     active: z.boolean()
   })
@@ -1795,6 +1805,7 @@ async function buildAuthoritativeWorkoutDetail({
       endedAt:
         dateValue(workoutSession.payload.ended_at)?.toISOString() ?? null,
       comment: nullableString(workoutSession.payload.comment),
+      focusId: focusIdValue(workoutSession.payload.focus_id),
       updatedAt: workoutSession.updatedAt.toISOString(),
       active:
         workoutSession.deletedAt === null &&
@@ -2021,6 +2032,8 @@ async function buildLegacyWorkoutDetail({
         earliestSet.performedAtDate.toISOString().slice(0, 10),
       endedAt: earliestSet.workoutEndedAt,
       comment: earliestSet.workoutComment,
+      // A Workout inferred from legacy Sets has no synced row to carry one.
+      focusId: null,
       updatedAt: latestUpdatedAt,
       active: true
     },
@@ -2221,6 +2234,12 @@ async function workoutExerciseCatalog(
   );
 }
 
+// `focus_id` is a soft reference written by the device (absent on rows that
+// predate Focus); anything but a non-empty string reads as "no Focus".
+function focusIdValue(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 function payloadIsActive(payload: Record<string, unknown>) {
   return payload.deleted_at === null || payload.deleted_at === undefined;
 }
@@ -2232,6 +2251,7 @@ type WorkoutEnvelope = {
   endedAt: string | null;
   timezone: string | null;
   comment: string | null;
+  focusId: string | null;
   setCount: number;
   exerciseNames: string[];
 };
@@ -2270,6 +2290,7 @@ async function readWorkoutEnvelopes(
       endedAt: dateValue(row.payload.ended_at)?.toISOString() ?? null,
       timezone: stringValue(row.payload.timezone),
       comment: nullableString(row.payload.comment),
+      focusId: focusIdValue(row.payload.focus_id),
       setCount: grouped?.setCount ?? 0,
       exerciseNames: grouped?.exerciseNames ?? []
     }];
@@ -2320,6 +2341,7 @@ function groupSetsByWorkout(
     endedAt: group.earliestSet.workoutEndedAt,
     timezone: group.earliestSet.workoutTimezone,
     comment: group.earliestSet.workoutComment,
+    focusId: null,
     setCount: group.setCount,
     exerciseNames: [...group.exerciseNames].sort()
   }));
@@ -2363,6 +2385,7 @@ function projectWorkout(
     endedAt: workout.endedAt,
     timezone: workout.timezone,
     comment: workout.comment,
+    focusId: workout.focusId,
     setCount: workout.setCount,
     exerciseNames: workout.exerciseNames
   };

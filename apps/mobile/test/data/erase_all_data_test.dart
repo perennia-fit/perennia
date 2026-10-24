@@ -69,7 +69,14 @@ void main() {
         where: 'id != ?',
         variables: <Object>[seeded.userCategoryId],
       );
+      final starterFocusIds = await _liveIds(
+        database,
+        AppDatabase.focusesTable,
+        where: 'id != ?',
+        variables: <Object>[seeded.userFocusId],
+      );
       expect(platformExerciseIds, isNotEmpty);
+      expect(starterFocusIds, isNotEmpty);
       expect(otcCompoundIds, isNotEmpty);
       expect(defaultMealTypeIds, isNotEmpty);
       expect(platformCategoryIds, isNotEmpty);
@@ -93,6 +100,7 @@ void main() {
         AppDatabase.compoundsTable: otcCompoundIds,
         AppDatabase.mealTypesTable: defaultMealTypeIds,
         AppDatabase.exerciseCategoriesTable: platformCategoryIds,
+        AppDatabase.focusesTable: starterFocusIds,
       };
       for (final table in TrainingRepositories.eraseTableNames) {
         expect(
@@ -196,6 +204,7 @@ typedef _SeededIds = ({
   String userCompoundId,
   String userMealTypeId,
   String userCategoryId,
+  String userFocusId,
 });
 
 /// One live row in every erasable table, next to the bundled seeds (Platform
@@ -210,6 +219,7 @@ Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
   final userCategoryId = await repositories.catalog.createCategory(
     const ExerciseCategoryDraft(name: 'Grip'),
   );
+  final userFocusId = await repositories.focuses.create('Climbing');
   final exerciseId = await repositories.exercises.create(
     ExerciseDraft(
       name: 'Farmer Carry',
@@ -418,6 +428,7 @@ Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
     userCompoundId: compound.compoundId,
     userMealTypeId: userMealTypeId,
     userCategoryId: userCategoryId,
+    userFocusId: userFocusId,
   );
 }
 

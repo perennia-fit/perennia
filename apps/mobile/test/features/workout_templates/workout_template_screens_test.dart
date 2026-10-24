@@ -701,6 +701,10 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
+    // The Focus field makes the details card taller; settle the button fully
+    // on screen before tapping it.
+    await tester.ensureVisible(notesButton);
+    await tester.pumpAndSettle();
     await tester.tap(notesButton);
     await tester.pumpAndSettle();
     tester.view.viewInsets = const FakeViewPadding(bottom: 240);

@@ -2,10 +2,13 @@ part of 'training_repositories.dart';
 
 /// The authored values of a Workout Template itself.
 final class WorkoutTemplateDraft {
-  const WorkoutTemplateDraft({required this.name, this.notes});
+  const WorkoutTemplateDraft({required this.name, this.notes, this.focusId});
 
   final String name;
   final String? notes;
+
+  /// The Focus a Workout materialized from this template is performed under.
+  final String? focusId;
 }
 
 /// A new exercise entry in a Workout Template.
@@ -107,6 +110,7 @@ final class WorkoutTemplateSummaryRecord {
     required this.id,
     required this.name,
     required this.notes,
+    this.focusId,
     required this.exerciseCount,
     required this.updatedAt,
     required this.deletedAt,
@@ -115,6 +119,7 @@ final class WorkoutTemplateSummaryRecord {
   final String id;
   final String name;
   final String? notes;
+  final String? focusId;
   final int exerciseCount;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -128,6 +133,7 @@ final class WorkoutTemplateRecord {
     required this.id,
     required this.name,
     required this.notes,
+    this.focusId,
     required List<TemplateExerciseRecord> exercises,
     required List<TemplateGroupRecord> groups,
     required this.updatedAt,
@@ -138,6 +144,7 @@ final class WorkoutTemplateRecord {
   final String id;
   final String name;
   final String? notes;
+  final String? focusId;
   final List<TemplateExerciseRecord> exercises;
   final List<TemplateGroupRecord> groups;
   final DateTime updatedAt;
@@ -346,6 +353,45 @@ class WorkoutTemplateRepository {
         WorkoutTemplatesCompanion(
           name: Value<String>(normalizedName),
           notes: Value<String?>(normalizedNotes),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      final after = await _requireTemplateRow(id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.workoutTemplatesTable,
+        entityId: id,
+        beforeImage: _workoutTemplateImage(before),
+        afterImage: _workoutTemplateImage(after),
+      );
+    });
+  }
+
+  /// Sets the Focus a Workout materialized from this template is performed
+  /// under. Already-materialized Workouts keep the Focus they were given.
+  Future<void> setFocus(
+    String id, {
+    required String? focusId,
+    String actor = 'app',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+    return _database.transaction(() async {
+      final before = await _requireTemplateRow(id);
+      if (before.deletedAt != null) {
+        throw StateError('Workout Template is archived: $id.');
+      }
+      if (before.focusId == focusId) {
+        return;
+      }
+      await (_database.update(_database.workoutTemplates)
+            ..where((row) => row.id.equals(id)))
+          .write(
+        WorkoutTemplatesCompanion(
+          focusId: Value<String?>(focusId),
           updatedAt: Value<DateTime>(context.timestamp),
         ),
       );
@@ -1096,6 +1142,7 @@ class WorkoutTemplateRepository {
             id: id,
             name: _normalizeWorkoutTemplateName(draft.name),
             notes: Value<String?>(_normalizeOptionalText(draft.notes)),
+            focusId: Value<String?>(draft.focusId),
             updatedAt: context.timestamp,
           ),
         );
@@ -2006,6 +2053,7 @@ List<WorkoutTemplateSummaryRecord> _workoutTemplateSummariesFromJoinedRows(
         id: template.id,
         name: template.name,
         notes: template.notes,
+        focusId: template.focusId,
         exerciseCount: exerciseIdsByTemplate[id]?.length ?? 0,
         updatedAt: template.updatedAt.toUtc(),
         deletedAt: template.deletedAt?.toUtc(),
@@ -2108,6 +2156,7 @@ WorkoutTemplateRecord? _workoutTemplateFromJoinedRows(
     id: template.id,
     name: template.name,
     notes: template.notes,
+    focusId: template.focusId,
     exercises: exercises,
     groups: groups,
     updatedAt: template.updatedAt.toUtc(),

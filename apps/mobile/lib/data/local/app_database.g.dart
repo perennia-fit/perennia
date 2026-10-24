@@ -448,6 +448,410 @@ class ExerciseCategoriesCompanion extends UpdateCompanion<ExerciseCategoryRow> {
   }
 }
 
+class $FocusesTable extends Focuses with TableInfo<$FocusesTable, FocusRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FocusesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _sortOrderMeta =
+      const VerificationMeta('sortOrder');
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+      'sort_order', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _syncDeviceIdMeta =
+      const VerificationMeta('syncDeviceId');
+  @override
+  late final GeneratedColumn<String> syncDeviceId = GeneratedColumn<String>(
+      'sync_device_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _syncPreviouslySyncedMeta =
+      const VerificationMeta('syncPreviouslySynced');
+  @override
+  late final GeneratedColumn<bool> syncPreviouslySynced = GeneratedColumn<bool>(
+      'sync_previously_synced', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("sync_previously_synced" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        name,
+        sortOrder,
+        syncDeviceId,
+        syncPreviouslySynced,
+        updatedAt,
+        deletedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'focuses';
+  @override
+  VerificationContext validateIntegrity(Insertable<FocusRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(_sortOrderMeta,
+          sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
+    } else if (isInserting) {
+      context.missing(_sortOrderMeta);
+    }
+    if (data.containsKey('sync_device_id')) {
+      context.handle(
+          _syncDeviceIdMeta,
+          syncDeviceId.isAcceptableOrUnknown(
+              data['sync_device_id']!, _syncDeviceIdMeta));
+    }
+    if (data.containsKey('sync_previously_synced')) {
+      context.handle(
+          _syncPreviouslySyncedMeta,
+          syncPreviouslySynced.isAcceptableOrUnknown(
+              data['sync_previously_synced']!, _syncPreviouslySyncedMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FocusRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FocusRow(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      sortOrder: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      syncDeviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
+      syncPreviouslySynced: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool, data['${effectivePrefix}sync_previously_synced'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
+    );
+  }
+
+  @override
+  $FocusesTable createAlias(String alias) {
+    return $FocusesTable(attachedDatabase, alias);
+  }
+}
+
+class FocusRow extends DataClass implements Insertable<FocusRow> {
+  final String id;
+  final String name;
+  final int sortOrder;
+  final String? syncDeviceId;
+  final bool syncPreviouslySynced;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+  const FocusRow(
+      {required this.id,
+      required this.name,
+      required this.sortOrder,
+      this.syncDeviceId,
+      required this.syncPreviouslySynced,
+      required this.updatedAt,
+      this.deletedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || syncDeviceId != null) {
+      map['sync_device_id'] = Variable<String>(syncDeviceId);
+    }
+    map['sync_previously_synced'] = Variable<bool>(syncPreviouslySynced);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  FocusesCompanion toCompanion(bool nullToAbsent) {
+    return FocusesCompanion(
+      id: Value(id),
+      name: Value(name),
+      sortOrder: Value(sortOrder),
+      syncDeviceId: syncDeviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncDeviceId),
+      syncPreviouslySynced: Value(syncPreviouslySynced),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+    );
+  }
+
+  factory FocusRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FocusRow(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
+      syncPreviouslySynced:
+          serializer.fromJson<bool>(json['syncPreviouslySynced']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
+      'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  FocusRow copyWith(
+          {String? id,
+          String? name,
+          int? sortOrder,
+          Value<String?> syncDeviceId = const Value.absent(),
+          bool? syncPreviouslySynced,
+          DateTime? updatedAt,
+          Value<DateTime?> deletedAt = const Value.absent()}) =>
+      FocusRow(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        sortOrder: sortOrder ?? this.sortOrder,
+        syncDeviceId:
+            syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
+        syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
+        updatedAt: updatedAt ?? this.updatedAt,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+      );
+  FocusRow copyWithCompanion(FocusesCompanion data) {
+    return FocusRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      syncDeviceId: data.syncDeviceId.present
+          ? data.syncDeviceId.value
+          : this.syncDeviceId,
+      syncPreviouslySynced: data.syncPreviouslySynced.present
+          ? data.syncPreviouslySynced.value
+          : this.syncPreviouslySynced,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FocusRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('syncDeviceId: $syncDeviceId, ')
+          ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, sortOrder, syncDeviceId,
+      syncPreviouslySynced, updatedAt, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FocusRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.sortOrder == this.sortOrder &&
+          other.syncDeviceId == this.syncDeviceId &&
+          other.syncPreviouslySynced == this.syncPreviouslySynced &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class FocusesCompanion extends UpdateCompanion<FocusRow> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<int> sortOrder;
+  final Value<String?> syncDeviceId;
+  final Value<bool> syncPreviouslySynced;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<int> rowid;
+  const FocusesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.syncDeviceId = const Value.absent(),
+    this.syncPreviouslySynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FocusesCompanion.insert({
+    required String id,
+    required String name,
+    required int sortOrder,
+    this.syncDeviceId = const Value.absent(),
+    this.syncPreviouslySynced = const Value.absent(),
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        name = Value(name),
+        sortOrder = Value(sortOrder),
+        updatedAt = Value(updatedAt);
+  static Insertable<FocusRow> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<int>? sortOrder,
+    Expression<String>? syncDeviceId,
+    Expression<bool>? syncPreviouslySynced,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
+      if (syncPreviouslySynced != null)
+        'sync_previously_synced': syncPreviouslySynced,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FocusesCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? name,
+      Value<int>? sortOrder,
+      Value<String?>? syncDeviceId,
+      Value<bool>? syncPreviouslySynced,
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? deletedAt,
+      Value<int>? rowid}) {
+    return FocusesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      sortOrder: sortOrder ?? this.sortOrder,
+      syncDeviceId: syncDeviceId ?? this.syncDeviceId,
+      syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (syncDeviceId.present) {
+      map['sync_device_id'] = Variable<String>(syncDeviceId.value);
+    }
+    if (syncPreviouslySynced.present) {
+      map['sync_previously_synced'] =
+          Variable<bool>(syncPreviouslySynced.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FocusesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('syncDeviceId: $syncDeviceId, ')
+          ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ExercisesTable extends Exercises
     with TableInfo<$ExercisesTable, ExerciseRow> {
   @override
@@ -549,6 +953,14 @@ class $ExercisesTable extends Exercises
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant('[]'));
+  static const VerificationMeta _focusIdsMeta =
+      const VerificationMeta('focusIds');
+  @override
+  late final GeneratedColumn<String> focusIds = GeneratedColumn<String>(
+      'focus_ids', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('[]'));
   static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
   late final GeneratedColumn<String> notes = GeneratedColumn<String>(
@@ -596,6 +1008,7 @@ class $ExercisesTable extends Exercises
         usesRpe,
         categoryId,
         equipmentIds,
+        focusIds,
         notes,
         syncDeviceId,
         syncPreviouslySynced,
@@ -681,6 +1094,10 @@ class $ExercisesTable extends Exercises
           equipmentIds.isAcceptableOrUnknown(
               data['equipment_ids']!, _equipmentIdsMeta));
     }
+    if (data.containsKey('focus_ids')) {
+      context.handle(_focusIdsMeta,
+          focusIds.isAcceptableOrUnknown(data['focus_ids']!, _focusIdsMeta));
+    }
     if (data.containsKey('notes')) {
       context.handle(
           _notesMeta, notes.isAcceptableOrUnknown(data['notes']!, _notesMeta));
@@ -740,6 +1157,8 @@ class $ExercisesTable extends Exercises
           .read(DriftSqlType.string, data['${effectivePrefix}category_id']),
       equipmentIds: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}equipment_ids'])!,
+      focusIds: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}focus_ids'])!,
       notes: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}notes']),
       syncDeviceId: attachedDatabase.typeMapping
@@ -772,6 +1191,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
   final bool usesRpe;
   final String? categoryId;
   final String equipmentIds;
+  final String focusIds;
   final String? notes;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
@@ -790,6 +1210,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       required this.usesRpe,
       this.categoryId,
       required this.equipmentIds,
+      required this.focusIds,
       this.notes,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
@@ -812,6 +1233,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       map['category_id'] = Variable<String>(categoryId);
     }
     map['equipment_ids'] = Variable<String>(equipmentIds);
+    map['focus_ids'] = Variable<String>(focusIds);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
     }
@@ -842,6 +1264,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
           ? const Value.absent()
           : Value(categoryId),
       equipmentIds: Value(equipmentIds),
+      focusIds: Value(focusIds),
       notes:
           notes == null && nullToAbsent ? const Value.absent() : Value(notes),
       syncDeviceId: syncDeviceId == null && nullToAbsent
@@ -871,6 +1294,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       usesRpe: serializer.fromJson<bool>(json['usesRpe']),
       categoryId: serializer.fromJson<String?>(json['categoryId']),
       equipmentIds: serializer.fromJson<String>(json['equipmentIds']),
+      focusIds: serializer.fromJson<String>(json['focusIds']),
       notes: serializer.fromJson<String?>(json['notes']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
@@ -895,6 +1319,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       'usesRpe': serializer.toJson<bool>(usesRpe),
       'categoryId': serializer.toJson<String?>(categoryId),
       'equipmentIds': serializer.toJson<String>(equipmentIds),
+      'focusIds': serializer.toJson<String>(focusIds),
       'notes': serializer.toJson<String?>(notes),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
@@ -916,6 +1341,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
           bool? usesRpe,
           Value<String?> categoryId = const Value.absent(),
           String? equipmentIds,
+          String? focusIds,
           Value<String?> notes = const Value.absent(),
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
@@ -934,6 +1360,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
         usesRpe: usesRpe ?? this.usesRpe,
         categoryId: categoryId.present ? categoryId.value : this.categoryId,
         equipmentIds: equipmentIds ?? this.equipmentIds,
+        focusIds: focusIds ?? this.focusIds,
         notes: notes.present ? notes.value : this.notes,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
@@ -969,6 +1396,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       equipmentIds: data.equipmentIds.present
           ? data.equipmentIds.value
           : this.equipmentIds,
+      focusIds: data.focusIds.present ? data.focusIds.value : this.focusIds,
       notes: data.notes.present ? data.notes.value : this.notes,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
@@ -996,6 +1424,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
           ..write('usesRpe: $usesRpe, ')
           ..write('categoryId: $categoryId, ')
           ..write('equipmentIds: $equipmentIds, ')
+          ..write('focusIds: $focusIds, ')
           ..write('notes: $notes, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
@@ -1019,6 +1448,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       usesRpe,
       categoryId,
       equipmentIds,
+      focusIds,
       notes,
       syncDeviceId,
       syncPreviouslySynced,
@@ -1040,6 +1470,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
           other.usesRpe == this.usesRpe &&
           other.categoryId == this.categoryId &&
           other.equipmentIds == this.equipmentIds &&
+          other.focusIds == this.focusIds &&
           other.notes == this.notes &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
@@ -1060,6 +1491,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
   final Value<bool> usesRpe;
   final Value<String?> categoryId;
   final Value<String> equipmentIds;
+  final Value<String> focusIds;
   final Value<String?> notes;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
@@ -1079,6 +1511,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
     this.usesRpe = const Value.absent(),
     this.categoryId = const Value.absent(),
     this.equipmentIds = const Value.absent(),
+    this.focusIds = const Value.absent(),
     this.notes = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
@@ -1099,6 +1532,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
     this.usesRpe = const Value.absent(),
     this.categoryId = const Value.absent(),
     this.equipmentIds = const Value.absent(),
+    this.focusIds = const Value.absent(),
     this.notes = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
@@ -1122,6 +1556,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
     Expression<bool>? usesRpe,
     Expression<String>? categoryId,
     Expression<String>? equipmentIds,
+    Expression<String>? focusIds,
     Expression<String>? notes,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
@@ -1142,6 +1577,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
       if (usesRpe != null) 'uses_rpe': usesRpe,
       if (categoryId != null) 'category_id': categoryId,
       if (equipmentIds != null) 'equipment_ids': equipmentIds,
+      if (focusIds != null) 'focus_ids': focusIds,
       if (notes != null) 'notes': notes,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
@@ -1165,6 +1601,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
       Value<bool>? usesRpe,
       Value<String?>? categoryId,
       Value<String>? equipmentIds,
+      Value<String>? focusIds,
       Value<String?>? notes,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
@@ -1184,6 +1621,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
       usesRpe: usesRpe ?? this.usesRpe,
       categoryId: categoryId ?? this.categoryId,
       equipmentIds: equipmentIds ?? this.equipmentIds,
+      focusIds: focusIds ?? this.focusIds,
       notes: notes ?? this.notes,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -1232,6 +1670,9 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
     if (equipmentIds.present) {
       map['equipment_ids'] = Variable<String>(equipmentIds.value);
     }
+    if (focusIds.present) {
+      map['focus_ids'] = Variable<String>(focusIds.value);
+    }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
@@ -1269,6 +1710,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
           ..write('usesRpe: $usesRpe, ')
           ..write('categoryId: $categoryId, ')
           ..write('equipmentIds: $equipmentIds, ')
+          ..write('focusIds: $focusIds, ')
           ..write('notes: $notes, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
@@ -1323,6 +1765,12 @@ class $WorkoutSessionsTable extends WorkoutSessions
   late final GeneratedColumn<String> comment = GeneratedColumn<String>(
       'comment', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _focusIdMeta =
+      const VerificationMeta('focusId');
+  @override
+  late final GeneratedColumn<String> focusId = GeneratedColumn<String>(
+      'focus_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _syncDeviceIdMeta =
       const VerificationMeta('syncDeviceId');
   @override
@@ -1359,6 +1807,7 @@ class $WorkoutSessionsTable extends WorkoutSessions
         localDate,
         endedAt,
         comment,
+        focusId,
         syncDeviceId,
         syncPreviouslySynced,
         updatedAt,
@@ -1403,6 +1852,10 @@ class $WorkoutSessionsTable extends WorkoutSessions
       context.handle(_commentMeta,
           comment.isAcceptableOrUnknown(data['comment']!, _commentMeta));
     }
+    if (data.containsKey('focus_id')) {
+      context.handle(_focusIdMeta,
+          focusId.isAcceptableOrUnknown(data['focus_id']!, _focusIdMeta));
+    }
     if (data.containsKey('sync_device_id')) {
       context.handle(
           _syncDeviceIdMeta,
@@ -1446,6 +1899,8 @@ class $WorkoutSessionsTable extends WorkoutSessions
           .read(DriftSqlType.dateTime, data['${effectivePrefix}ended_at']),
       comment: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}comment']),
+      focusId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}focus_id']),
       syncDeviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
       syncPreviouslySynced: attachedDatabase.typeMapping.read(
@@ -1471,6 +1926,7 @@ class WorkoutSessionRow extends DataClass
   final String localDate;
   final DateTime? endedAt;
   final String? comment;
+  final String? focusId;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
   final DateTime updatedAt;
@@ -1482,6 +1938,7 @@ class WorkoutSessionRow extends DataClass
       required this.localDate,
       this.endedAt,
       this.comment,
+      this.focusId,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
       required this.updatedAt,
@@ -1498,6 +1955,9 @@ class WorkoutSessionRow extends DataClass
     }
     if (!nullToAbsent || comment != null) {
       map['comment'] = Variable<String>(comment);
+    }
+    if (!nullToAbsent || focusId != null) {
+      map['focus_id'] = Variable<String>(focusId);
     }
     if (!nullToAbsent || syncDeviceId != null) {
       map['sync_device_id'] = Variable<String>(syncDeviceId);
@@ -1522,6 +1982,9 @@ class WorkoutSessionRow extends DataClass
       comment: comment == null && nullToAbsent
           ? const Value.absent()
           : Value(comment),
+      focusId: focusId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(focusId),
       syncDeviceId: syncDeviceId == null && nullToAbsent
           ? const Value.absent()
           : Value(syncDeviceId),
@@ -1543,6 +2006,7 @@ class WorkoutSessionRow extends DataClass
       localDate: serializer.fromJson<String>(json['localDate']),
       endedAt: serializer.fromJson<DateTime?>(json['endedAt']),
       comment: serializer.fromJson<String?>(json['comment']),
+      focusId: serializer.fromJson<String?>(json['focusId']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
           serializer.fromJson<bool>(json['syncPreviouslySynced']),
@@ -1560,6 +2024,7 @@ class WorkoutSessionRow extends DataClass
       'localDate': serializer.toJson<String>(localDate),
       'endedAt': serializer.toJson<DateTime?>(endedAt),
       'comment': serializer.toJson<String?>(comment),
+      'focusId': serializer.toJson<String?>(focusId),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -1574,6 +2039,7 @@ class WorkoutSessionRow extends DataClass
           String? localDate,
           Value<DateTime?> endedAt = const Value.absent(),
           Value<String?> comment = const Value.absent(),
+          Value<String?> focusId = const Value.absent(),
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
           DateTime? updatedAt,
@@ -1585,6 +2051,7 @@ class WorkoutSessionRow extends DataClass
         localDate: localDate ?? this.localDate,
         endedAt: endedAt.present ? endedAt.value : this.endedAt,
         comment: comment.present ? comment.value : this.comment,
+        focusId: focusId.present ? focusId.value : this.focusId,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
         syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -1599,6 +2066,7 @@ class WorkoutSessionRow extends DataClass
       localDate: data.localDate.present ? data.localDate.value : this.localDate,
       endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
       comment: data.comment.present ? data.comment.value : this.comment,
+      focusId: data.focusId.present ? data.focusId.value : this.focusId,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
           : this.syncDeviceId,
@@ -1619,6 +2087,7 @@ class WorkoutSessionRow extends DataClass
           ..write('localDate: $localDate, ')
           ..write('endedAt: $endedAt, ')
           ..write('comment: $comment, ')
+          ..write('focusId: $focusId, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -1628,8 +2097,18 @@ class WorkoutSessionRow extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(id, startedAt, timezone, localDate, endedAt,
-      comment, syncDeviceId, syncPreviouslySynced, updatedAt, deletedAt);
+  int get hashCode => Object.hash(
+      id,
+      startedAt,
+      timezone,
+      localDate,
+      endedAt,
+      comment,
+      focusId,
+      syncDeviceId,
+      syncPreviouslySynced,
+      updatedAt,
+      deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1640,6 +2119,7 @@ class WorkoutSessionRow extends DataClass
           other.localDate == this.localDate &&
           other.endedAt == this.endedAt &&
           other.comment == this.comment &&
+          other.focusId == this.focusId &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
           other.updatedAt == this.updatedAt &&
@@ -1653,6 +2133,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSessionRow> {
   final Value<String> localDate;
   final Value<DateTime?> endedAt;
   final Value<String?> comment;
+  final Value<String?> focusId;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
   final Value<DateTime> updatedAt;
@@ -1665,6 +2146,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSessionRow> {
     this.localDate = const Value.absent(),
     this.endedAt = const Value.absent(),
     this.comment = const Value.absent(),
+    this.focusId = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1678,6 +2160,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSessionRow> {
     this.localDate = const Value.absent(),
     this.endedAt = const Value.absent(),
     this.comment = const Value.absent(),
+    this.focusId = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     required DateTime updatedAt,
@@ -1694,6 +2177,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSessionRow> {
     Expression<String>? localDate,
     Expression<DateTime>? endedAt,
     Expression<String>? comment,
+    Expression<String>? focusId,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
     Expression<DateTime>? updatedAt,
@@ -1707,6 +2191,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSessionRow> {
       if (localDate != null) 'local_date': localDate,
       if (endedAt != null) 'ended_at': endedAt,
       if (comment != null) 'comment': comment,
+      if (focusId != null) 'focus_id': focusId,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
         'sync_previously_synced': syncPreviouslySynced,
@@ -1723,6 +2208,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSessionRow> {
       Value<String>? localDate,
       Value<DateTime?>? endedAt,
       Value<String?>? comment,
+      Value<String?>? focusId,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
       Value<DateTime>? updatedAt,
@@ -1735,6 +2221,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSessionRow> {
       localDate: localDate ?? this.localDate,
       endedAt: endedAt ?? this.endedAt,
       comment: comment ?? this.comment,
+      focusId: focusId ?? this.focusId,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1764,6 +2251,9 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSessionRow> {
     if (comment.present) {
       map['comment'] = Variable<String>(comment.value);
     }
+    if (focusId.present) {
+      map['focus_id'] = Variable<String>(focusId.value);
+    }
     if (syncDeviceId.present) {
       map['sync_device_id'] = Variable<String>(syncDeviceId.value);
     }
@@ -1792,6 +2282,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSessionRow> {
           ..write('localDate: $localDate, ')
           ..write('endedAt: $endedAt, ')
           ..write('comment: $comment, ')
+          ..write('focusId: $focusId, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -18425,6 +18916,12 @@ class $WorkoutTemplatesTable extends WorkoutTemplates
   late final GeneratedColumn<String> notes = GeneratedColumn<String>(
       'notes', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _focusIdMeta =
+      const VerificationMeta('focusId');
+  @override
+  late final GeneratedColumn<String> focusId = GeneratedColumn<String>(
+      'focus_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _syncDeviceIdMeta =
       const VerificationMeta('syncDeviceId');
   @override
@@ -18458,6 +18955,7 @@ class $WorkoutTemplatesTable extends WorkoutTemplates
         id,
         name,
         notes,
+        focusId,
         syncDeviceId,
         syncPreviouslySynced,
         updatedAt,
@@ -18487,6 +18985,10 @@ class $WorkoutTemplatesTable extends WorkoutTemplates
     if (data.containsKey('notes')) {
       context.handle(
           _notesMeta, notes.isAcceptableOrUnknown(data['notes']!, _notesMeta));
+    }
+    if (data.containsKey('focus_id')) {
+      context.handle(_focusIdMeta,
+          focusId.isAcceptableOrUnknown(data['focus_id']!, _focusIdMeta));
     }
     if (data.containsKey('sync_device_id')) {
       context.handle(
@@ -18525,6 +19027,8 @@ class $WorkoutTemplatesTable extends WorkoutTemplates
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       notes: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}notes']),
+      focusId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}focus_id']),
       syncDeviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
       syncPreviouslySynced: attachedDatabase.typeMapping.read(
@@ -18547,6 +19051,7 @@ class WorkoutTemplateRow extends DataClass
   final String id;
   final String name;
   final String? notes;
+  final String? focusId;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
   final DateTime updatedAt;
@@ -18555,6 +19060,7 @@ class WorkoutTemplateRow extends DataClass
       {required this.id,
       required this.name,
       this.notes,
+      this.focusId,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
       required this.updatedAt,
@@ -18566,6 +19072,9 @@ class WorkoutTemplateRow extends DataClass
     map['name'] = Variable<String>(name);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || focusId != null) {
+      map['focus_id'] = Variable<String>(focusId);
     }
     if (!nullToAbsent || syncDeviceId != null) {
       map['sync_device_id'] = Variable<String>(syncDeviceId);
@@ -18584,6 +19093,9 @@ class WorkoutTemplateRow extends DataClass
       name: Value(name),
       notes:
           notes == null && nullToAbsent ? const Value.absent() : Value(notes),
+      focusId: focusId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(focusId),
       syncDeviceId: syncDeviceId == null && nullToAbsent
           ? const Value.absent()
           : Value(syncDeviceId),
@@ -18602,6 +19114,7 @@ class WorkoutTemplateRow extends DataClass
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       notes: serializer.fromJson<String?>(json['notes']),
+      focusId: serializer.fromJson<String?>(json['focusId']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
           serializer.fromJson<bool>(json['syncPreviouslySynced']),
@@ -18616,6 +19129,7 @@ class WorkoutTemplateRow extends DataClass
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'notes': serializer.toJson<String?>(notes),
+      'focusId': serializer.toJson<String?>(focusId),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -18627,6 +19141,7 @@ class WorkoutTemplateRow extends DataClass
           {String? id,
           String? name,
           Value<String?> notes = const Value.absent(),
+          Value<String?> focusId = const Value.absent(),
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
           DateTime? updatedAt,
@@ -18635,6 +19150,7 @@ class WorkoutTemplateRow extends DataClass
         id: id ?? this.id,
         name: name ?? this.name,
         notes: notes.present ? notes.value : this.notes,
+        focusId: focusId.present ? focusId.value : this.focusId,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
         syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -18646,6 +19162,7 @@ class WorkoutTemplateRow extends DataClass
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       notes: data.notes.present ? data.notes.value : this.notes,
+      focusId: data.focusId.present ? data.focusId.value : this.focusId,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
           : this.syncDeviceId,
@@ -18663,6 +19180,7 @@ class WorkoutTemplateRow extends DataClass
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('notes: $notes, ')
+          ..write('focusId: $focusId, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -18672,7 +19190,7 @@ class WorkoutTemplateRow extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(id, name, notes, syncDeviceId,
+  int get hashCode => Object.hash(id, name, notes, focusId, syncDeviceId,
       syncPreviouslySynced, updatedAt, deletedAt);
   @override
   bool operator ==(Object other) =>
@@ -18681,6 +19199,7 @@ class WorkoutTemplateRow extends DataClass
           other.id == this.id &&
           other.name == this.name &&
           other.notes == this.notes &&
+          other.focusId == this.focusId &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
           other.updatedAt == this.updatedAt &&
@@ -18691,6 +19210,7 @@ class WorkoutTemplatesCompanion extends UpdateCompanion<WorkoutTemplateRow> {
   final Value<String> id;
   final Value<String> name;
   final Value<String?> notes;
+  final Value<String?> focusId;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
   final Value<DateTime> updatedAt;
@@ -18700,6 +19220,7 @@ class WorkoutTemplatesCompanion extends UpdateCompanion<WorkoutTemplateRow> {
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.notes = const Value.absent(),
+    this.focusId = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -18710,6 +19231,7 @@ class WorkoutTemplatesCompanion extends UpdateCompanion<WorkoutTemplateRow> {
     required String id,
     required String name,
     this.notes = const Value.absent(),
+    this.focusId = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     required DateTime updatedAt,
@@ -18722,6 +19244,7 @@ class WorkoutTemplatesCompanion extends UpdateCompanion<WorkoutTemplateRow> {
     Expression<String>? id,
     Expression<String>? name,
     Expression<String>? notes,
+    Expression<String>? focusId,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
     Expression<DateTime>? updatedAt,
@@ -18732,6 +19255,7 @@ class WorkoutTemplatesCompanion extends UpdateCompanion<WorkoutTemplateRow> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (notes != null) 'notes': notes,
+      if (focusId != null) 'focus_id': focusId,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
         'sync_previously_synced': syncPreviouslySynced,
@@ -18745,6 +19269,7 @@ class WorkoutTemplatesCompanion extends UpdateCompanion<WorkoutTemplateRow> {
       {Value<String>? id,
       Value<String>? name,
       Value<String?>? notes,
+      Value<String?>? focusId,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
       Value<DateTime>? updatedAt,
@@ -18754,6 +19279,7 @@ class WorkoutTemplatesCompanion extends UpdateCompanion<WorkoutTemplateRow> {
       id: id ?? this.id,
       name: name ?? this.name,
       notes: notes ?? this.notes,
+      focusId: focusId ?? this.focusId,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -18773,6 +19299,9 @@ class WorkoutTemplatesCompanion extends UpdateCompanion<WorkoutTemplateRow> {
     }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
+    }
+    if (focusId.present) {
+      map['focus_id'] = Variable<String>(focusId.value);
     }
     if (syncDeviceId.present) {
       map['sync_device_id'] = Variable<String>(syncDeviceId.value);
@@ -18799,6 +19328,7 @@ class WorkoutTemplatesCompanion extends UpdateCompanion<WorkoutTemplateRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('notes: $notes, ')
+          ..write('focusId: $focusId, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -22821,6 +23351,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $ExerciseCategoriesTable exerciseCategories =
       $ExerciseCategoriesTable(this);
+  late final $FocusesTable focuses = $FocusesTable(this);
   late final $ExercisesTable exercises = $ExercisesTable(this);
   late final $WorkoutSessionsTable workoutSessions =
       $WorkoutSessionsTable(this);
@@ -23017,6 +23548,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
         exerciseCategories,
+        focuses,
         exercises,
         workoutSessions,
         mealTypes,
@@ -23412,6 +23944,204 @@ typedef $$ExerciseCategoriesTableProcessedTableManager = ProcessedTableManager<
     (ExerciseCategoryRow, $$ExerciseCategoriesTableReferences),
     ExerciseCategoryRow,
     PrefetchHooks Function({bool exercisesRefs})>;
+typedef $$FocusesTableCreateCompanionBuilder = FocusesCompanion Function({
+  required String id,
+  required String name,
+  required int sortOrder,
+  Value<String?> syncDeviceId,
+  Value<bool> syncPreviouslySynced,
+  required DateTime updatedAt,
+  Value<DateTime?> deletedAt,
+  Value<int> rowid,
+});
+typedef $$FocusesTableUpdateCompanionBuilder = FocusesCompanion Function({
+  Value<String> id,
+  Value<String> name,
+  Value<int> sortOrder,
+  Value<String?> syncDeviceId,
+  Value<bool> syncPreviouslySynced,
+  Value<DateTime> updatedAt,
+  Value<DateTime?> deletedAt,
+  Value<int> rowid,
+});
+
+class $$FocusesTableFilterComposer
+    extends Composer<_$AppDatabase, $FocusesTable> {
+  $$FocusesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$FocusesTableOrderingComposer
+    extends Composer<_$AppDatabase, $FocusesTable> {
+  $$FocusesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$FocusesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FocusesTable> {
+  $$FocusesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId, builder: (column) => column);
+
+  GeneratedColumn<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$FocusesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $FocusesTable,
+    FocusRow,
+    $$FocusesTableFilterComposer,
+    $$FocusesTableOrderingComposer,
+    $$FocusesTableAnnotationComposer,
+    $$FocusesTableCreateCompanionBuilder,
+    $$FocusesTableUpdateCompanionBuilder,
+    (FocusRow, BaseReferences<_$AppDatabase, $FocusesTable, FocusRow>),
+    FocusRow,
+    PrefetchHooks Function()> {
+  $$FocusesTableTableManager(_$AppDatabase db, $FocusesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FocusesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FocusesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FocusesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            Value<String?> syncDeviceId = const Value.absent(),
+            Value<bool> syncPreviouslySynced = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              FocusesCompanion(
+            id: id,
+            name: name,
+            sortOrder: sortOrder,
+            syncDeviceId: syncDeviceId,
+            syncPreviouslySynced: syncPreviouslySynced,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String name,
+            required int sortOrder,
+            Value<String?> syncDeviceId = const Value.absent(),
+            Value<bool> syncPreviouslySynced = const Value.absent(),
+            required DateTime updatedAt,
+            Value<DateTime?> deletedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              FocusesCompanion.insert(
+            id: id,
+            name: name,
+            sortOrder: sortOrder,
+            syncDeviceId: syncDeviceId,
+            syncPreviouslySynced: syncPreviouslySynced,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$FocusesTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $FocusesTable,
+    FocusRow,
+    $$FocusesTableFilterComposer,
+    $$FocusesTableOrderingComposer,
+    $$FocusesTableAnnotationComposer,
+    $$FocusesTableCreateCompanionBuilder,
+    $$FocusesTableUpdateCompanionBuilder,
+    (FocusRow, BaseReferences<_$AppDatabase, $FocusesTable, FocusRow>),
+    FocusRow,
+    PrefetchHooks Function()>;
 typedef $$ExercisesTableCreateCompanionBuilder = ExercisesCompanion Function({
   required String id,
   Value<String> libraryOrigin,
@@ -23425,6 +24155,7 @@ typedef $$ExercisesTableCreateCompanionBuilder = ExercisesCompanion Function({
   Value<bool> usesRpe,
   Value<String?> categoryId,
   Value<String> equipmentIds,
+  Value<String> focusIds,
   Value<String?> notes,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
@@ -23445,6 +24176,7 @@ typedef $$ExercisesTableUpdateCompanionBuilder = ExercisesCompanion Function({
   Value<bool> usesRpe,
   Value<String?> categoryId,
   Value<String> equipmentIds,
+  Value<String> focusIds,
   Value<String?> notes,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
@@ -23562,6 +24294,9 @@ class $$ExercisesTableFilterComposer
 
   ColumnFilters<String> get equipmentIds => $composableBuilder(
       column: $table.equipmentIds, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get focusIds => $composableBuilder(
+      column: $table.focusIds, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get notes => $composableBuilder(
       column: $table.notes, builder: (column) => ColumnFilters(column));
@@ -23711,6 +24446,9 @@ class $$ExercisesTableOrderingComposer
       column: $table.equipmentIds,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get focusIds => $composableBuilder(
+      column: $table.focusIds, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get notes => $composableBuilder(
       column: $table.notes, builder: (column) => ColumnOrderings(column));
 
@@ -23790,6 +24528,9 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<String> get equipmentIds => $composableBuilder(
       column: $table.equipmentIds, builder: (column) => column);
+
+  GeneratedColumn<String> get focusIds =>
+      $composableBuilder(column: $table.focusIds, builder: (column) => column);
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
@@ -23931,6 +24672,7 @@ class $$ExercisesTableTableManager extends RootTableManager<
             Value<bool> usesRpe = const Value.absent(),
             Value<String?> categoryId = const Value.absent(),
             Value<String> equipmentIds = const Value.absent(),
+            Value<String> focusIds = const Value.absent(),
             Value<String?> notes = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
@@ -23951,6 +24693,7 @@ class $$ExercisesTableTableManager extends RootTableManager<
             usesRpe: usesRpe,
             categoryId: categoryId,
             equipmentIds: equipmentIds,
+            focusIds: focusIds,
             notes: notes,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
@@ -23971,6 +24714,7 @@ class $$ExercisesTableTableManager extends RootTableManager<
             Value<bool> usesRpe = const Value.absent(),
             Value<String?> categoryId = const Value.absent(),
             Value<String> equipmentIds = const Value.absent(),
+            Value<String> focusIds = const Value.absent(),
             Value<String?> notes = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
@@ -23991,6 +24735,7 @@ class $$ExercisesTableTableManager extends RootTableManager<
             usesRpe: usesRpe,
             categoryId: categoryId,
             equipmentIds: equipmentIds,
+            focusIds: focusIds,
             notes: notes,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
@@ -24113,6 +24858,7 @@ typedef $$WorkoutSessionsTableCreateCompanionBuilder = WorkoutSessionsCompanion
   Value<String> localDate,
   Value<DateTime?> endedAt,
   Value<String?> comment,
+  Value<String?> focusId,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   required DateTime updatedAt,
@@ -24127,6 +24873,7 @@ typedef $$WorkoutSessionsTableUpdateCompanionBuilder = WorkoutSessionsCompanion
   Value<String> localDate,
   Value<DateTime?> endedAt,
   Value<String?> comment,
+  Value<String?> focusId,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   Value<DateTime> updatedAt,
@@ -24252,6 +24999,9 @@ class $$WorkoutSessionsTableFilterComposer
 
   ColumnFilters<String> get comment => $composableBuilder(
       column: $table.comment, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get focusId => $composableBuilder(
+      column: $table.focusId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
@@ -24420,6 +25170,9 @@ class $$WorkoutSessionsTableOrderingComposer
   ColumnOrderings<String> get comment => $composableBuilder(
       column: $table.comment, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get focusId => $composableBuilder(
+      column: $table.focusId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId,
       builder: (column) => ColumnOrderings(column));
@@ -24461,6 +25214,9 @@ class $$WorkoutSessionsTableAnnotationComposer
 
   GeneratedColumn<String> get comment =>
       $composableBuilder(column: $table.comment, builder: (column) => column);
+
+  GeneratedColumn<String> get focusId =>
+      $composableBuilder(column: $table.focusId, builder: (column) => column);
 
   GeneratedColumn<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => column);
@@ -24637,6 +25393,7 @@ class $$WorkoutSessionsTableTableManager extends RootTableManager<
             Value<String> localDate = const Value.absent(),
             Value<DateTime?> endedAt = const Value.absent(),
             Value<String?> comment = const Value.absent(),
+            Value<String?> focusId = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -24650,6 +25407,7 @@ class $$WorkoutSessionsTableTableManager extends RootTableManager<
             localDate: localDate,
             endedAt: endedAt,
             comment: comment,
+            focusId: focusId,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -24663,6 +25421,7 @@ class $$WorkoutSessionsTableTableManager extends RootTableManager<
             Value<String> localDate = const Value.absent(),
             Value<DateTime?> endedAt = const Value.absent(),
             Value<String?> comment = const Value.absent(),
+            Value<String?> focusId = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             required DateTime updatedAt,
@@ -24676,6 +25435,7 @@ class $$WorkoutSessionsTableTableManager extends RootTableManager<
             localDate: localDate,
             endedAt: endedAt,
             comment: comment,
+            focusId: focusId,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -35039,6 +35799,7 @@ typedef $$WorkoutTemplatesTableCreateCompanionBuilder
   required String id,
   required String name,
   Value<String?> notes,
+  Value<String?> focusId,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   required DateTime updatedAt,
@@ -35050,6 +35811,7 @@ typedef $$WorkoutTemplatesTableUpdateCompanionBuilder
   Value<String> id,
   Value<String> name,
   Value<String?> notes,
+  Value<String?> focusId,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   Value<DateTime> updatedAt,
@@ -35149,6 +35911,9 @@ class $$WorkoutTemplatesTableFilterComposer
 
   ColumnFilters<String> get notes => $composableBuilder(
       column: $table.notes, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get focusId => $composableBuilder(
+      column: $table.focusId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
@@ -35266,6 +36031,9 @@ class $$WorkoutTemplatesTableOrderingComposer
   ColumnOrderings<String> get notes => $composableBuilder(
       column: $table.notes, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get focusId => $composableBuilder(
+      column: $table.focusId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId,
       builder: (column) => ColumnOrderings(column));
@@ -35298,6 +36066,9 @@ class $$WorkoutTemplatesTableAnnotationComposer
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<String> get focusId =>
+      $composableBuilder(column: $table.focusId, builder: (column) => column);
 
   GeneratedColumn<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => column);
@@ -35428,6 +36199,7 @@ class $$WorkoutTemplatesTableTableManager extends RootTableManager<
             Value<String> id = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<String?> notes = const Value.absent(),
+            Value<String?> focusId = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -35438,6 +36210,7 @@ class $$WorkoutTemplatesTableTableManager extends RootTableManager<
             id: id,
             name: name,
             notes: notes,
+            focusId: focusId,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -35448,6 +36221,7 @@ class $$WorkoutTemplatesTableTableManager extends RootTableManager<
             required String id,
             required String name,
             Value<String?> notes = const Value.absent(),
+            Value<String?> focusId = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             required DateTime updatedAt,
@@ -35458,6 +36232,7 @@ class $$WorkoutTemplatesTableTableManager extends RootTableManager<
             id: id,
             name: name,
             notes: notes,
+            focusId: focusId,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -38852,6 +39627,8 @@ class $AppDatabaseManager {
   $AppDatabaseManager(this._db);
   $$ExerciseCategoriesTableTableManager get exerciseCategories =>
       $$ExerciseCategoriesTableTableManager(_db, _db.exerciseCategories);
+  $$FocusesTableTableManager get focuses =>
+      $$FocusesTableTableManager(_db, _db.focuses);
   $$ExercisesTableTableManager get exercises =>
       $$ExercisesTableTableManager(_db, _db.exercises);
   $$WorkoutSessionsTableTableManager get workoutSessions =>

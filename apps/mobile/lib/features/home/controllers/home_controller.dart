@@ -112,10 +112,11 @@ class HomeController extends StreamNotifier<HomeState> {
     ref.read(selectedTrainingDayProvider.notifier).addDays(1);
   }
 
-  Future<String> startNewWorkout() {
-    return ref
-        .read(homeRepositoryProvider)
-        .startNewWorkout(ref.read(selectedTrainingDayProvider));
+  Future<String> startNewWorkout({String? focusId}) {
+    return ref.read(homeRepositoryProvider).startNewWorkout(
+          ref.read(selectedTrainingDayProvider),
+          focusId: focusId,
+        );
   }
 
   Future<String> addExerciseToWorkout({

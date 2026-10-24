@@ -2120,4 +2120,198 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get autoBackupGrantPrompt =>
       'Choose a backup folder again to resume auto-backup.';
+
+  @override
+  String get startWorkoutSheetTitle => 'Start a workout';
+
+  @override
+  String get startWorkoutFromPlan => 'From a routine or template';
+
+  @override
+  String get startWorkoutSetUpRoutine => 'Set up a routine';
+
+  @override
+  String get startWorkoutFocusSection => 'Focus';
+
+  @override
+  String get startWorkoutEditFocusesTooltip => 'Edit focuses';
+
+  @override
+  String get startWorkoutEmpty => 'Empty workout';
+
+  @override
+  String get startWorkoutEmptySubtitle => 'Start without a focus';
+
+  @override
+  String startWorkoutFocusTileLabel(String focus) {
+    return 'Start a workout: $focus';
+  }
+
+  @override
+  String get workoutNoFocus => 'No focus';
+
+  @override
+  String get workoutChangeFocusTooltip => 'Change focus';
+
+  @override
+  String workoutFocusSemanticLabel(String focus) {
+    return 'Focus: $focus. Change focus';
+  }
+
+  @override
+  String get workoutChooseFocus => 'Choose a focus';
+
+  @override
+  String workoutFocusChanged(String focus) {
+    return 'Focus set to $focus';
+  }
+
+  @override
+  String get workoutFocusCleared => 'Focus removed';
+
+  @override
+  String get focusPickerTitle => 'Focus';
+
+  @override
+  String get focusPickerNone => 'No focus';
+
+  @override
+  String get focusPickerEdit => 'Edit focuses';
+
+  @override
+  String focusArchivedName(String focus) {
+    return '$focus (archived)';
+  }
+
+  @override
+  String focusLibraryYourExercises(String focus) {
+    return 'Recent under $focus';
+  }
+
+  @override
+  String focusLibraryCatalog(String focus) {
+    return 'More $focus exercises';
+  }
+
+  @override
+  String focusLibraryBrowseAll(String focus) {
+    return 'Browse all $focus exercises';
+  }
+
+  @override
+  String get focusLibrarySearchAll => 'Search all exercises';
+
+  @override
+  String focusLibraryAddExerciseTooltip(String exercise) {
+    return 'Add $exercise';
+  }
+
+  @override
+  String get focusUseToday => 'Today';
+
+  @override
+  String get focusUseYesterday => 'Yesterday';
+
+  @override
+  String focusUseDaysAgo(int days) {
+    return '$days days ago';
+  }
+
+  @override
+  String focusUseWorkoutCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count workouts',
+      one: '1 workout',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String focusUseSubtitle(String when, String count) {
+    return '$when · $count';
+  }
+
+  @override
+  String get exerciseCatalogFocusAll => 'All';
+
+  @override
+  String get exerciseCatalogFocusFilterLabel => 'Focus';
+
+  @override
+  String exerciseCatalogInFocus(String focus) {
+    return 'In $focus';
+  }
+
+  @override
+  String get exerciseCatalogOtherExercises => 'Other exercises';
+
+  @override
+  String get focusManagerTitle => 'Focuses';
+
+  @override
+  String get focusManagerLibrarySubtitle =>
+      'What you train, for starting a workout';
+
+  @override
+  String get focusManagerAdd => 'Add focus';
+
+  @override
+  String get focusManagerNameLabel => 'Name';
+
+  @override
+  String get focusManagerRename => 'Rename';
+
+  @override
+  String get focusManagerArchive => 'Archive';
+
+  @override
+  String get focusManagerSave => 'Save';
+
+  @override
+  String get focusManagerReorderHint => 'Press and hold to reorder.';
+
+  @override
+  String focusManagerArchiveTitle(String focus) {
+    return 'Archive $focus?';
+  }
+
+  @override
+  String get focusManagerArchiveBody =>
+      'Workouts already logged under it keep it. It stops being offered when you start a workout.';
+
+  @override
+  String get focusManagerDuplicateName =>
+      'A focus with that name already exists.';
+
+  @override
+  String get focusManagerEmptyName => 'Enter a name.';
+
+  @override
+  String get focusManagerEmpty =>
+      'No focuses. Add one to start workouts from it.';
+
+  @override
+  String get exerciseEditorFocusesLabel => 'Focuses';
+
+  @override
+  String get exerciseEditorFocusesHelp =>
+      'Offered first when you start a workout under one of these.';
+
+  @override
+  String get workoutTemplateFocusLabel => 'Focus';
+
+  @override
+  String homeSessionHeaderWithFocus(String focus, String time) {
+    return '$focus · $time';
+  }
+
+  @override
+  String get focusLibraryHeading => 'Add your first exercise';
+
+  @override
+  String focusLibraryStaples(String focus) {
+    return '$focus staples';
+  }
 }

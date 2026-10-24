@@ -33,6 +33,8 @@ import {
   AgentExerciseListResponseSchema,
   agentExerciseResolveRoute,
   AgentExerciseResolveResponseSchema,
+  agentFocusListRoute,
+  AgentFocusListResponseSchema,
   parseAgentExerciseListQuery,
   type AgentCatalogStore
 } from "./agent-catalog.js";
@@ -371,6 +373,7 @@ import {
   COMPOUNDS_SYNC_ENTITY,
   DOSES_SYNC_ENTITY,
   EXERCISE_CATEGORIES_SYNC_ENTITY,
+  FOCUSES_SYNC_ENTITY,
   EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
   EXERCISE_GROUPS_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
@@ -2237,6 +2240,52 @@ export function createApp(options: CreateAppOptions = {}) {
     });
 
     return context.json(AgentExerciseListResponseSchema.parse(result), 200);
+  });
+
+  app.openapi(agentFocusListRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentCatalogStore === undefined) {
+      return context.json(
+        AgentCatalogUnavailableResponseSchema.parse({
+          code: "agent_catalog_unavailable",
+          message: "Agent Exercise catalog storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+
+    const focuses = await agentCatalogStore.listFocuses({
+      userId: agentAuth.agent.userId
+    });
+
+    return context.json(AgentFocusListResponseSchema.parse({ focuses }), 200);
   });
 
   app.openapi(agentWorkoutBatchWriteRoute, async (context) => {
@@ -4844,6 +4893,14 @@ export function createApp(options: CreateAppOptions = {}) {
     switch (requestBody.entity) {
       case EXERCISE_CATEGORIES_SYNC_ENTITY:
         result = await syncStore.pushExerciseCategories({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
+      case FOCUSES_SYNC_ENTITY:
+        result = await syncStore.pushFocuses({
           userId: session.userId,
           correlationId: requestCorrelationId(context),
           deviceId: requestBody.deviceId,

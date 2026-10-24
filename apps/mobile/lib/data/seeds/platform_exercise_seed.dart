@@ -44,12 +44,14 @@ class PlatformExerciseSeed {
   const PlatformExerciseSeed({
     this.metadata = const PlatformExerciseSeedMetadata.empty(),
     required this.categories,
+    this.focuses = const <SeedFocus>[],
     this.redirects = const <SeedExerciseRedirect>[],
     required this.exercises,
   });
 
   factory PlatformExerciseSeed.fromJson(Map<String, Object?> json) {
     final categories = json['categories'] as List<Object?>? ?? <Object?>[];
+    final focuses = json['focuses'] as List<Object?>? ?? <Object?>[];
     final redirects =
         json['exercise_redirects'] as List<Object?>? ?? <Object?>[];
     final exercises = json['exercises'] as List<Object?>? ?? <Object?>[];
@@ -61,6 +63,10 @@ class PlatformExerciseSeed {
       categories: categories
           .cast<Map<String, Object?>>()
           .map(SeedExerciseCategory.fromJson)
+          .toList(growable: false),
+      focuses: focuses
+          .cast<Map<String, Object?>>()
+          .map(SeedFocus.fromJson)
           .toList(growable: false),
       redirects: redirects
           .cast<Map<String, Object?>>()
@@ -75,6 +81,7 @@ class PlatformExerciseSeed {
 
   final PlatformExerciseSeedMetadata metadata;
   final List<SeedExerciseCategory> categories;
+  final List<SeedFocus> focuses;
   final List<SeedExerciseRedirect> redirects;
   final List<SeedExercise> exercises;
 }
@@ -155,6 +162,38 @@ class SeedExerciseCategory {
   final DateTime updatedAt;
 }
 
+class SeedFocus {
+  const SeedFocus({
+    required this.id,
+    required this.name,
+    required this.sortOrder,
+    this.starterExerciseIds = const <String>[],
+    required this.updatedAt,
+  });
+
+  factory SeedFocus.fromJson(Map<String, Object?> json) {
+    return SeedFocus(
+      id: json['id']! as String,
+      name: json['name']! as String,
+      sortOrder: json['sort_order']! as int,
+      starterExerciseIds: List<String>.unmodifiable(
+        (json['starter_exercise_ids'] as List<Object?>? ?? <Object?>[])
+            .cast<String>(),
+      ),
+      updatedAt: DateTime.parse(json['updated_at']! as String).toUtc(),
+    );
+  }
+
+  final String id;
+  final String name;
+  final int sortOrder;
+
+  /// The staples this starter Focus offers first, before anything has been
+  /// logged under it. Bundled guidance, never stored or synced.
+  final List<String> starterExerciseIds;
+  final DateTime updatedAt;
+}
+
 class SeedExercise {
   const SeedExercise({
     required this.id,
@@ -162,6 +201,7 @@ class SeedExercise {
     required this.dimensions,
     required this.categoryId,
     this.equipment = const <ExerciseEquipment>[],
+    this.focusIds = const <String>[],
     required this.notes,
     required this.updatedAt,
   });
@@ -171,6 +211,8 @@ class SeedExercise {
         (json['dimension_ids'] as List<Object?>? ?? <Object?>[]).cast<String>();
     final equipmentIds =
         (json['equipment_ids'] as List<Object?>? ?? <Object?>[]).cast<String>();
+    final focusIds =
+        (json['focus_ids'] as List<Object?>? ?? <Object?>[]).cast<String>();
 
     return SeedExercise(
       id: json['id']! as String,
@@ -181,6 +223,7 @@ class SeedExercise {
       categoryId: json['category_id'] as String?,
       equipment:
           equipmentIds.map(ExerciseEquipment.fromId).toList(growable: false),
+      focusIds: List<String>.unmodifiable(focusIds),
       notes: json['notes'] as String?,
       updatedAt: DateTime.parse(json['updated_at']! as String).toUtc(),
     );
@@ -191,6 +234,7 @@ class SeedExercise {
   final List<DimensionId> dimensions;
   final String? categoryId;
   final List<ExerciseEquipment> equipment;
+  final List<String> focusIds;
   final String? notes;
   final DateTime updatedAt;
 }

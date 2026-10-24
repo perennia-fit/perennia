@@ -3768,6 +3768,15 @@
             },
             "description": "Structured Equipment ids associated with the exercise. Empty when none is known."
           },
+          "focusIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": [],
+            "description": "Ids of the Focuses this Exercise belongs to (see GET /agent/focuses). Empty when it belongs to none. Ids may name an archived Focus; history is never rewritten."
+          },
           "loadMode": {
             "$ref": "#/components/schemas/AgentExerciseLoadMode"
           },
@@ -3984,6 +3993,13 @@
               "minLength": 1
             }
           },
+          "focusIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
           "loadMode": {
             "$ref": "#/components/schemas/AgentExerciseLoadMode"
           },
@@ -4018,11 +4034,56 @@
           "category",
           "dimensions",
           "equipment",
+          "focusIds",
           "loadMode",
           "recordProfile",
           "favorite",
           "active",
           "shadowedPlatformExerciseId"
+        ]
+      },
+      "AgentFocusListResponse": {
+        "type": "object",
+        "properties": {
+          "focuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentFocus"
+            },
+            "description": "The caller's active Focuses in display order: the starter set merged with the user's own rows. Archived Focuses are omitted."
+          }
+        },
+        "required": [
+          "focuses"
+        ]
+      },
+      "AgentFocus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable Focus id. Starter Focus ids are fixed and identical on every device."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "User-visible Focus name, after any rename by the user."
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "User-defined display order; lower sorts first."
+          },
+          "starter": {
+            "type": "boolean",
+            "description": "True for one of Perennia's starter Focuses (possibly renamed or reordered by the user); false for a Focus the user created."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sortOrder",
+          "starter"
         ]
       },
       "AgentWorkoutBatchWriteResponse": {
@@ -4256,6 +4317,14 @@
             ],
             "default": null,
             "description": "Optional Workout comment."
+          },
+          "focusId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Focus the Workout is performed under (see GET /agent/focuses); must be an active starter or user Focus. Null clears it. Omit to keep the Workout's current Focus."
           },
           "deletedAt": {
             "type": [
@@ -4709,6 +4778,14 @@
               "minLength": 1
             },
             "default": []
+          },
+          "focusIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Ids of the Focuses this Exercise belongs to (see GET /agent/focuses); each must be an active starter or user Focus. Omit to keep the Exercise's current Focuses (a new Platform customization inherits the Platform exercise's); pass [] to clear them."
           },
           "notes": {
             "type": [
@@ -9555,6 +9632,14 @@
               "null"
             ]
           },
+          "focusId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Focus the Workout was performed under (see GET /agent/focuses), or null when none is set or the Workout is inferred from legacy Sets."
+          },
           "setCount": {
             "type": "integer",
             "minimum": 0
@@ -9579,6 +9664,7 @@
           "endedAt",
           "timezone",
           "comment",
+          "focusId",
           "setCount",
           "exerciseNames"
         ]
@@ -9674,6 +9760,15 @@
               "string",
               "null"
             ]
+          },
+          "focusId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "default": null,
+            "description": "Focus the Workout was performed under (see GET /agent/focuses), or null when none is set. May name a since-archived Focus."
           },
           "updatedAt": {
             "type": "string",
@@ -11365,6 +11460,14 @@
               "null"
             ]
           },
+          "focusId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Focus this Template's Workouts are performed under (see GET /agent/focuses); materializing copies it onto the new Workout. Null when none is set."
+          },
           "exerciseCount": {
             "type": "integer",
             "minimum": 0
@@ -11398,6 +11501,7 @@
           "id",
           "name",
           "notes",
+          "focusId",
           "exerciseCount",
           "groupCount",
           "updatedAt",
@@ -11470,6 +11574,14 @@
               "null"
             ]
           },
+          "focusId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Focus this Template's Workouts are performed under (see GET /agent/focuses); materializing copies it onto the new Workout. Null when none is set."
+          },
           "exercises": {
             "type": "array",
             "items": {
@@ -11524,6 +11636,7 @@
           "id",
           "name",
           "notes",
+          "focusId",
           "exercises",
           "groups",
           "exerciseCount",
@@ -12621,6 +12734,14 @@
               "null"
             ],
             "default": null
+          },
+          "focusId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Focus this Template's Workouts are performed under (see GET /agent/focuses); materializing copies it onto the new Workout. Must be an active starter or user Focus. Null clears it; omit to keep the Template's current Focus."
           },
           "updatedAt": {
             "type": "string",
@@ -14476,6 +14597,7 @@
             "type": "string",
             "enum": [
               "exercise_categories",
+              "focuses",
               "exercises",
               "workout_sessions",
               "workout_exercises",
@@ -15222,6 +15344,7 @@
             "type": "string",
             "enum": [
               "exercise_categories",
+              "focuses",
               "exercises",
               "workout_sessions",
               "workout_exercises",
@@ -17556,6 +17679,17 @@
           {
             "schema": {
               "type": "string",
+              "minLength": 1,
+              "description": "Optional Focus id or name filter (see GET /agent/focuses). Keeps exercises that belong to that Focus."
+            },
+            "required": false,
+            "description": "Optional Focus id or name filter (see GET /agent/focuses). Keeps exercises that belong to that Focus.",
+            "name": "focus",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "enum": [
                 "true",
                 "false"
@@ -17625,6 +17759,104 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentExerciseListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent catalog storage or API key storage is not configured. Instances without a wired AgentCatalogStore return agent_catalog_unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentCatalogUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/focuses": {
+      "get": {
+        "operationId": "listAgentFocuses",
+        "tags": [
+          "Agent Catalog"
+        ],
+        "summary": "List the caller's Focuses.",
+        "description": "A Focus is the training discipline a Workout is performed under (Weights, Endurance, Functional, Calisthenics, Mobility, plus any the user created). Returns the starter set merged with the user's synced Focus rows: a user row sharing a starter id carries the user's rename/reorder, and archived Focuses are omitted. Use these ids for `focusId` on Workout and Workout Template writes, `focusIds` on Exercise writes, and the `focus` filter on GET /agent/exercises.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's active Focuses in display order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentFocusListResponse"
                 }
               }
             }

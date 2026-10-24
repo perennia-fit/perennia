@@ -375,7 +375,12 @@ export {
   AgentExerciseResolveQuerySchema,
   agentExerciseListRoute,
   agentExerciseResolveRoute,
+  AgentFocusListResponseSchema,
+  AgentFocusSchema,
+  agentFocusListRoute,
   buildPlatformCatalogExercises,
+  isStarterFocusId,
+  mergeAgentFocuses,
   createDrizzleAgentCatalogStore,
   createInMemoryAgentCatalogStore,
   parseAgentExerciseListQuery,
@@ -390,7 +395,8 @@ export {
   type AgentExerciseListInput,
   type AgentExerciseListResponse,
   type AgentExerciseResolveInput,
-  type AgentExerciseResolveResponse
+  type AgentExerciseResolveResponse,
+  type AgentFocus
 } from "./agent-catalog.js";
 export {
   AGENT_ANALYTICS_DEFAULT_POINT_LIMIT,

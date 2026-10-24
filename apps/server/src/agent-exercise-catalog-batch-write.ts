@@ -104,6 +104,10 @@ export const AgentExerciseCatalogBatchWriteExerciseSchema = z
     usesRpe: z.boolean().default(false),
     isFavorite: z.boolean().default(false),
     equipment: z.array(z.string().min(1)).default([]),
+    focusIds: z.array(z.string().min(1)).optional().openapi({
+      description:
+        "Ids of the Focuses this Exercise belongs to (see GET /agent/focuses); each must be an active starter or user Focus. Omit to keep the Exercise's current Focuses (a new Platform customization inherits the Platform exercise's); pass [] to clear them.",
+    }),
     notes: z.string().nullable().default(null),
     customizesExerciseId: z.string().min(1).nullable().default(null).openapi({
       description:
@@ -496,6 +500,41 @@ export async function prepareAgentExerciseCatalogBatchWrite({
       }
     }
 
+    let focusIds: string[];
+    if (item.focusIds === undefined) {
+      // The payload below is rebuilt whole, so an edit that does not mention
+      // Focus must carry the stored membership through rather than wipe it.
+      const storedFocusIds = await catalogStore.getStoredExerciseFocusIds({
+        userId,
+        exerciseId: item.id,
+      });
+      focusIds =
+        storedFocusIds ?? customizedPlatformExercise?.focusIds ?? [];
+    } else {
+      focusIds = [...new Set(item.focusIds)];
+      let missingFocus = false;
+      for (const focusId of focusIds) {
+        const focus = await catalogStore.getFocusById({ userId, focusId });
+        if (focus === null) {
+          missingFocus = true;
+          errors.push(
+            exerciseIssue({
+              field: `exercises[${itemIndex}].focusIds`,
+              itemIndex,
+              exerciseId: item.id,
+              rule: "focus_not_found",
+              message:
+                "focusIds must reference active Focuses visible to the authenticated account (see GET /agent/focuses).",
+            }),
+          );
+          break;
+        }
+      }
+      if (missingFocus) {
+        continue;
+      }
+    }
+
     const recordProfile =
       item.recordProfile ?? defaultRecordProfileForDimensions(item.dimensions);
     const updatedAt = item.updatedAt ?? now.toISOString();
@@ -512,6 +551,7 @@ export async function prepareAgentExerciseCatalogBatchWrite({
       uses_rpe: item.usesRpe,
       category_id: item.categoryId,
       equipment_ids: JSON.stringify(item.equipment),
+      focus_ids: JSON.stringify(focusIds),
       notes: item.notes,
       updated_at: updatedAt,
       deleted_at: item.deletedAt,

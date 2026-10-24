@@ -446,6 +446,8 @@ export type AgentWorkoutCaptureGroupSnapshot = {
 
 export type AgentWorkoutCaptureSnapshot = {
   workoutId: string;
+  // The source Workout's Focus, which the captured Template takes on.
+  focusId?: string | null;
   exercises: AgentWorkoutCaptureExerciseSnapshot[];
   groups: AgentWorkoutCaptureGroupSnapshot[];
   sourceWarnings?: AgentPlanCaptureIssue[];
@@ -1334,6 +1336,7 @@ export async function runAgentPlanCapture({
         id: workoutTemplateId,
         name: request.name ?? content.suggestedName,
         notes: null,
+        focus_id: workout.focusId ?? null,
       },
       nowIso,
     ),
@@ -2727,8 +2730,13 @@ async function loadDrizzleWorkoutCaptureSource(
           limit: "synchronized-workout-structure",
         }),
       ];
+  const sourceFocusId = workoutSession?.payload.focus_id;
   return {
     workoutId,
+    focusId:
+      typeof sourceFocusId === "string" && sourceFocusId.length > 0
+        ? sourceFocusId
+        : null,
     exercises,
     groups,
     sourceWarnings,
