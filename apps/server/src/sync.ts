@@ -5637,7 +5637,7 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         )
         .slice(0, limit);
       const lastRow = baseRows.at(-1);
-      const rows = await withWorkoutStructurePullDependencies(
+      const rows = await withPullParentDependencies(
         db,
         userId,
         baseRows
@@ -5753,212 +5753,321 @@ type OpaquePullRow = {
   receivedAt: Date;
 };
 
-const WORKOUT_STRUCTURE_PULL_ENTITIES = new Set<SyncPullEntity>([
-  WORKOUT_EXERCISES_SYNC_ENTITY,
-  EXERCISE_GROUPS_SYNC_ENTITY,
-  EXERCISE_GROUP_MEMBERS_SYNC_ENTITY
-]);
+type PullParentReference = {
+  child: SyncPullEntity;
+  key: string;
+  parent: SyncPullEntity;
+};
 
 /**
- * Pull cursors order by receive time, not foreign-key topology. Include the
- * exact ancestors needed by structure rows in this bounded base page so a
- * fresh replica can apply the response transactionally even when a child was
- * received before its parent. The cursor still advances from the base page;
- * dependency rows are idempotent LWW context.
+ * Every foreign key a pulled row carries into the device's Drift schema, as
+ * `child.payload[key] → parent.id`. This mirrors the `.references(` columns in
+ * apps/mobile/lib/data/local/app_database.dart (the device runs with
+ * `PRAGMA foreign_keys = ON`); a new Drift FK on a synced table belongs here
+ * too, or a fresh replica can stall on it. Soft references (a Dose's
+ * `compound_id`, a Food Entry's `food_id`) are deliberately absent — the
+ * device never enforces them.
  */
-async function withWorkoutStructurePullDependencies(
+const PULL_PARENT_REFERENCES: readonly PullParentReference[] = [
+  {
+    child: EXERCISES_SYNC_ENTITY,
+    key: "category_id",
+    parent: EXERCISE_CATEGORIES_SYNC_ENTITY
+  },
+  {
+    child: WORKOUT_EXERCISES_SYNC_ENTITY,
+    key: "workout_id",
+    parent: WORKOUT_SESSIONS_SYNC_ENTITY
+  },
+  {
+    child: WORKOUT_EXERCISES_SYNC_ENTITY,
+    key: "exercise_id",
+    parent: EXERCISES_SYNC_ENTITY
+  },
+  {
+    child: EXERCISE_GROUPS_SYNC_ENTITY,
+    key: "workout_id",
+    parent: WORKOUT_SESSIONS_SYNC_ENTITY
+  },
+  {
+    child: EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
+    key: "group_id",
+    parent: EXERCISE_GROUPS_SYNC_ENTITY
+  },
+  {
+    child: EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
+    key: "workout_exercise_id",
+    parent: WORKOUT_EXERCISES_SYNC_ENTITY
+  },
+  {
+    child: LOGGED_SETS_SYNC_ENTITY,
+    key: "workout_id",
+    parent: WORKOUT_SESSIONS_SYNC_ENTITY
+  },
+  {
+    child: LOGGED_SETS_SYNC_ENTITY,
+    key: "exercise_id",
+    parent: EXERCISES_SYNC_ENTITY
+  },
+  {
+    child: FOOD_ENTRIES_SYNC_ENTITY,
+    key: "meal_id",
+    parent: MEALS_SYNC_ENTITY
+  },
+  {
+    child: METRIC_READINGS_SYNC_ENTITY,
+    key: "metric_id",
+    parent: METRICS_SYNC_ENTITY
+  },
+  {
+    child: PROTOCOL_COMPOUNDS_SYNC_ENTITY,
+    key: "protocol_id",
+    parent: PROTOCOLS_SYNC_ENTITY
+  },
+  {
+    child: PROTOCOL_COMPOUNDS_SYNC_ENTITY,
+    key: "compound_id",
+    parent: COMPOUNDS_SYNC_ENTITY
+  },
+  {
+    child: SCHEDULES_SYNC_ENTITY,
+    key: "protocol_compound_id",
+    parent: PROTOCOL_COMPOUNDS_SYNC_ENTITY
+  },
+  {
+    child: PROTOCOL_TARGET_OUTCOMES_SYNC_ENTITY,
+    key: "protocol_id",
+    parent: PROTOCOLS_SYNC_ENTITY
+  },
+  {
+    child: PROTOCOL_TARGET_OUTCOMES_SYNC_ENTITY,
+    key: "metric_id",
+    parent: METRICS_SYNC_ENTITY
+  },
+  {
+    child: TEMPLATE_EXERCISES_SYNC_ENTITY,
+    key: "workout_template_id",
+    parent: WORKOUT_TEMPLATES_SYNC_ENTITY
+  },
+  {
+    child: TEMPLATE_EXERCISES_SYNC_ENTITY,
+    key: "exercise_id",
+    parent: EXERCISES_SYNC_ENTITY
+  },
+  {
+    child: PRESCRIPTIONS_SYNC_ENTITY,
+    key: "template_exercise_id",
+    parent: TEMPLATE_EXERCISES_SYNC_ENTITY
+  },
+  {
+    child: TEMPLATE_GROUPS_SYNC_ENTITY,
+    key: "workout_template_id",
+    parent: WORKOUT_TEMPLATES_SYNC_ENTITY
+  },
+  {
+    child: TEMPLATE_GROUP_MEMBERS_SYNC_ENTITY,
+    key: "group_id",
+    parent: TEMPLATE_GROUPS_SYNC_ENTITY
+  },
+  {
+    child: TEMPLATE_GROUP_MEMBERS_SYNC_ENTITY,
+    key: "template_exercise_id",
+    parent: TEMPLATE_EXERCISES_SYNC_ENTITY
+  },
+  {
+    child: ROUTINE_ENTRIES_SYNC_ENTITY,
+    key: "routine_id",
+    parent: ROUTINES_SYNC_ENTITY
+  },
+  {
+    child: ROUTINE_ENTRIES_SYNC_ENTITY,
+    key: "workout_template_id",
+    parent: WORKOUT_TEMPLATES_SYNC_ENTITY
+  },
+  {
+    child: TEMPLATE_LINKS_SYNC_ENTITY,
+    key: "workout_id",
+    parent: WORKOUT_SESSIONS_SYNC_ENTITY
+  },
+  {
+    child: TEMPLATE_LINKS_SYNC_ENTITY,
+    key: "workout_template_id",
+    parent: WORKOUT_TEMPLATES_SYNC_ENTITY
+  },
+  {
+    child: TEMPLATE_LINKS_SYNC_ENTITY,
+    key: "routine_id",
+    parent: ROUTINES_SYNC_ENTITY
+  }
+];
+
+/**
+ * Pull cursors order by receive time, not foreign-key topology: a parent
+ * edited after its children were created is received later and so sorts after
+ * them, possibly onto a later page. The device applies each page in one
+ * transaction with Drift FKs enforced, so a child arriving a page ahead of its
+ * parent would roll the page back forever and freeze the cursor. Each page
+ * therefore carries, ahead of its base rows, the current server row of every
+ * parent those rows reference — transitively, so a Logged Set brings its
+ * Exercise and that Exercise's category. A tombstoned parent is included as
+ * the tombstone: the device stores it soft-deleted, which still satisfies the
+ * FK. The cursor still advances from the base page alone; dependency rows are
+ * idempotent LWW context the device may already hold.
+ */
+async function withPullParentDependencies(
   db: ServerDatabase,
   userId: string,
   baseRows: PullRow[]
 ): Promise<PullRow[]> {
-  if (
-    !baseRows.some((row) => WORKOUT_STRUCTURE_PULL_ENTITIES.has(row.entity))
-  ) {
-    return baseRows;
-  }
-
-  const payloadString = (
-    payload: Record<string, unknown>,
-    key: string
-  ): string | null => {
-    const value = payload[key];
-    return typeof value === "string" && value.length > 0 ? value : null;
-  };
-  const idsFrom = (entity: SyncPullEntity, key: string) =>
-    new Set(
-      baseRows
-        .filter((row) => row.entity === entity)
-        .flatMap((row) => {
-          const id = payloadString(row.payload, key);
-          return id === null ? [] : [id];
-        })
-    );
-  const groupIds = idsFrom(EXERCISE_GROUP_MEMBERS_SYNC_ENTITY, "group_id");
-  const workoutExerciseIds = idsFrom(
-    EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
-    "workout_exercise_id"
-  );
-  const groupRows =
-    groupIds.size === 0
-      ? []
-      : await db
-          .select({
-            id: schema.exerciseGroups.id,
-            deviceId: schema.exerciseGroups.deviceId,
-            payload: schema.exerciseGroups.payload,
-            updatedAt: schema.exerciseGroups.updatedAt,
-            deletedAt: schema.exerciseGroups.deletedAt,
-            receivedAt: schema.exerciseGroups.receivedAt
-          })
-          .from(schema.exerciseGroups)
-          .where(
-            and(
-              eq(schema.exerciseGroups.userId, userId),
-              inArray(schema.exerciseGroups.id, [...groupIds])
-            )
-          );
-  const workoutExerciseRows =
-    workoutExerciseIds.size === 0
-      ? []
-      : await db
-          .select({
-            id: schema.workoutExercises.id,
-            deviceId: schema.workoutExercises.deviceId,
-            payload: schema.workoutExercises.payload,
-            updatedAt: schema.workoutExercises.updatedAt,
-            deletedAt: schema.workoutExercises.deletedAt,
-            receivedAt: schema.workoutExercises.receivedAt
-          })
-          .from(schema.workoutExercises)
-          .where(
-            and(
-              eq(schema.workoutExercises.userId, userId),
-              inArray(schema.workoutExercises.id, [...workoutExerciseIds])
-            )
-          );
-  const contextualRows: PullRow[] = [
-    ...groupRows.map((row) =>
-      opaquePullRow(EXERCISE_GROUPS_SYNC_ENTITY, row)
-    ),
-    ...workoutExerciseRows.map((row) =>
-      opaquePullRow(WORKOUT_EXERCISES_SYNC_ENTITY, row)
-    ),
-    ...baseRows
-  ];
-  const workoutIds = new Set<string>();
-  const exerciseIds = new Set<string>();
-  for (const row of contextualRows) {
-    if (
-      row.entity === WORKOUT_EXERCISES_SYNC_ENTITY ||
-      row.entity === EXERCISE_GROUPS_SYNC_ENTITY
-    ) {
-      const workoutId = payloadString(row.payload, "workout_id");
-      if (workoutId !== null) {
-        workoutIds.add(workoutId);
-      }
-    }
-    if (row.entity === WORKOUT_EXERCISES_SYNC_ENTITY) {
-      const exerciseId = payloadString(row.payload, "exercise_id");
-      if (exerciseId !== null) {
-        exerciseIds.add(exerciseId);
-      }
-    }
-  }
-  const [workoutRows, exerciseRows] = await Promise.all([
-    workoutIds.size === 0
-      ? Promise.resolve([])
-      : db
-          .select({
-            id: schema.workoutSessions.id,
-            deviceId: schema.workoutSessions.deviceId,
-            payload: schema.workoutSessions.payload,
-            updatedAt: schema.workoutSessions.updatedAt,
-            deletedAt: schema.workoutSessions.deletedAt,
-            receivedAt: schema.workoutSessions.receivedAt
-          })
-          .from(schema.workoutSessions)
-          .where(
-            and(
-              eq(schema.workoutSessions.userId, userId),
-              inArray(schema.workoutSessions.id, [...workoutIds])
-            )
-          ),
-    exerciseIds.size === 0
-      ? Promise.resolve([])
-      : db
-          .select({
-            id: schema.exercises.id,
-            deviceId: schema.exercises.deviceId,
-            payload: schema.exercises.payload,
-            updatedAt: schema.exercises.updatedAt,
-            deletedAt: schema.exercises.deletedAt,
-            receivedAt: schema.exercises.receivedAt
-          })
-          .from(schema.exercises)
-          .where(
-            and(
-              eq(schema.exercises.userId, userId),
-              inArray(schema.exercises.id, [...exerciseIds])
-            )
-          )
-  ]);
-  const categoryIds = new Set(
-    exerciseRows.flatMap((row) => {
-      const categoryId = payloadString(row.payload, "category_id");
-      return categoryId === null ? [] : [categoryId];
-    })
-  );
-  const categoryRows =
-    categoryIds.size === 0
-      ? []
-      : await db
-          .select({
-            id: schema.exerciseCategories.id,
-            deviceId: schema.exerciseCategories.deviceId,
-            payload: schema.exerciseCategories.payload,
-            updatedAt: schema.exerciseCategories.updatedAt,
-            deletedAt: schema.exerciseCategories.deletedAt,
-            receivedAt: schema.exerciseCategories.receivedAt
-          })
-          .from(schema.exerciseCategories)
-          .where(
-            and(
-              eq(schema.exerciseCategories.userId, userId),
-              inArray(schema.exerciseCategories.id, [...categoryIds])
-            )
-          );
-  const dependencies = [
-    ...categoryRows.map((row) =>
-      opaquePullRow(EXERCISE_CATEGORIES_SYNC_ENTITY, row)
-    ),
-    ...exerciseRows.map((row) => opaquePullRow(EXERCISES_SYNC_ENTITY, row)),
-    ...workoutRows.map((row) =>
-      opaquePullRow(WORKOUT_SESSIONS_SYNC_ENTITY, row)
-    ),
-    ...workoutExerciseRows.map((row) =>
-      opaquePullRow(WORKOUT_EXERCISES_SYNC_ENTITY, row)
-    ),
-    ...groupRows.map((row) =>
-      opaquePullRow(EXERCISE_GROUPS_SYNC_ENTITY, row)
-    )
-  ];
-  const baseKeys = new Set(
+  const included = new Set(
     baseRows.map((row) => pullEnvelopeKey(row.entity, row.id))
   );
-  const dependencyByKey = new Map<string, PullRow>();
-  for (const row of dependencies) {
-    const key = pullEnvelopeKey(row.entity, row.id);
-    if (!baseKeys.has(key)) {
-      dependencyByKey.set(key, row);
+  const dependencies: PullRow[] = [];
+  let frontier = baseRows;
+  while (frontier.length > 0) {
+    const wanted = new Map<SyncPullEntity, Set<string>>();
+    for (const row of frontier) {
+      for (const reference of PULL_PARENT_REFERENCES) {
+        if (reference.child !== row.entity) {
+          continue;
+        }
+        const parentId = pullPayloadString(row.payload, reference.key);
+        if (
+          parentId === null ||
+          included.has(pullEnvelopeKey(reference.parent, parentId))
+        ) {
+          continue;
+        }
+        const ids = wanted.get(reference.parent) ?? new Set<string>();
+        ids.add(parentId);
+        wanted.set(reference.parent, ids);
+      }
     }
+    const fetched = (
+      await Promise.all(
+        [...wanted].map(([entity, ids]) =>
+          pullParentRowsById(db, userId, entity, [...ids])
+        )
+      )
+    ).flat();
+    for (const row of fetched) {
+      included.add(pullEnvelopeKey(row.entity, row.id));
+      dependencies.push(row);
+    }
+    frontier = fetched;
   }
-  const orderedDependencies = [...dependencyByKey.values()].sort(
+
+  if (dependencies.length === 0) {
+    return baseRows;
+  }
+  const orderedDependencies = dependencies.sort(
     (left, right) =>
       syncEntitySortRank(left.entity) - syncEntitySortRank(right.entity) ||
       left.id.localeCompare(right.id)
   );
   return [...orderedDependencies, ...baseRows];
 }
+
+function pullPayloadString(
+  payload: Record<string, unknown>,
+  key: string
+): string | null {
+  const value = payload[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+async function pullParentRowsById(
+  db: ServerDatabase,
+  userId: string,
+  entity: SyncPullEntity,
+  ids: string[]
+): Promise<PullRow[]> {
+  if (entity === METRICS_SYNC_ENTITY) {
+    // Metrics are column-shaped on the server, not an opaque payload.
+    const rows = await db
+      .select({
+        id: schema.metrics.id,
+        deviceId: schema.metrics.deviceId,
+        name: schema.metrics.name,
+        unit: schema.metrics.unit,
+        valueShape: schema.metrics.valueShape,
+        metricGroup: schema.metrics.metricGroup,
+        goalType: schema.metrics.goalType,
+        goalTargetValue: schema.metrics.goalTargetValue,
+        enabled: schema.metrics.enabled,
+        pinned: schema.metrics.pinned,
+        sortOrder: schema.metrics.sortOrder,
+        updatedAt: schema.metrics.updatedAt,
+        deletedAt: schema.metrics.deletedAt,
+        receivedAt: schema.metrics.receivedAt
+      })
+      .from(schema.metrics)
+      .where(
+        and(eq(schema.metrics.userId, userId), inArray(schema.metrics.id, ids))
+      );
+    return rows.map((row) => ({
+      entity: METRICS_SYNC_ENTITY,
+      id: row.id,
+      deviceId: row.deviceId,
+      payload: metricSyncPayload(row),
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
+      receivedAt: row.receivedAt
+    }));
+  }
+
+  const table = OPAQUE_PULL_PARENT_TABLES.get(entity);
+  if (table === undefined) {
+    throw new Error(`No pull parent table registered for ${entity}.`);
+  }
+  const rows = await db
+    .select({
+      id: table.id,
+      deviceId: table.deviceId,
+      payload: table.payload,
+      updatedAt: table.updatedAt,
+      deletedAt: table.deletedAt,
+      receivedAt: table.receivedAt
+    })
+    .from(table)
+    .where(and(eq(table.userId, userId), inArray(table.id, ids)));
+  return rows.map((row) => opaquePullRow(entity, row));
+}
+
+type OpaquePullParentTable =
+  | typeof schema.exerciseCategories
+  | typeof schema.exercises
+  | typeof schema.workoutSessions
+  | typeof schema.workoutExercises
+  | typeof schema.exerciseGroups
+  | typeof schema.meals
+  | typeof schema.compounds
+  | typeof schema.protocols
+  | typeof schema.protocolCompounds
+  | typeof schema.workoutTemplates
+  | typeof schema.templateExercises
+  | typeof schema.templateGroups
+  | typeof schema.routines;
+
+const OPAQUE_PULL_PARENT_TABLES = new Map<
+  SyncPullEntity,
+  OpaquePullParentTable
+>([
+  [EXERCISE_CATEGORIES_SYNC_ENTITY, schema.exerciseCategories],
+  [EXERCISES_SYNC_ENTITY, schema.exercises],
+  [WORKOUT_SESSIONS_SYNC_ENTITY, schema.workoutSessions],
+  [WORKOUT_EXERCISES_SYNC_ENTITY, schema.workoutExercises],
+  [EXERCISE_GROUPS_SYNC_ENTITY, schema.exerciseGroups],
+  [MEALS_SYNC_ENTITY, schema.meals],
+  [COMPOUNDS_SYNC_ENTITY, schema.compounds],
+  [PROTOCOLS_SYNC_ENTITY, schema.protocols],
+  [PROTOCOL_COMPOUNDS_SYNC_ENTITY, schema.protocolCompounds],
+  [WORKOUT_TEMPLATES_SYNC_ENTITY, schema.workoutTemplates],
+  [TEMPLATE_EXERCISES_SYNC_ENTITY, schema.templateExercises],
+  [TEMPLATE_GROUPS_SYNC_ENTITY, schema.templateGroups],
+  [ROUTINES_SYNC_ENTITY, schema.routines]
+]);
+
 
 function opaquePullRow(
   entity: SyncPullEntity,
