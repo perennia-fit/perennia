@@ -9,7 +9,8 @@
     "mobile:analyze": "dart run melos run mobile:analyze",
     "mobile:test": "dart run melos run mobile:test",
     "seed:exercises": "node tools/generate-wger-platform-exercises.mjs",
-    "seed:exercises:wger": "npm run seed:exercises"
+    "seed:exercises:wger": "npm run seed:exercises",
+    "test-data": "node tools/test-data.mjs"
   },
   "devDependencies": {
     "typescript": "^6.0.3"

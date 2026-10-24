@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../activity/widgets/activity_feed_screen.dart';
 import '../../protocols/widgets/compound_list_screen.dart';
@@ -121,8 +122,8 @@ class SettingsScreen extends ConsumerWidget {
       BackupSettingsScreen.autoBackupFolderButtonKey;
   static const autoBackupGrantPromptKey =
       BackupSettingsScreen.autoBackupGrantPromptKey;
-  static const autoBackupPassphraseFieldKey =
-      BackupSettingsScreen.autoBackupPassphraseFieldKey;
+  static const backupPassphraseFieldKey =
+      BackupSettingsScreen.backupPassphraseFieldKey;
   static const eraseAllDataButtonKey =
       DataManagementScreen.eraseAllDataButtonKey;
   static const confirmEraseAllDataButtonKey =
@@ -214,7 +215,7 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: settings.autoBackupEnabled
                       ? 'Auto-backup on · '
                           '${settings.autoBackupLastStatus.label}'
-                      : 'Auto-backup off',
+                      : context.l10n.backupSettingsHubSubtitle,
                   onTap: () => _push(context, const BackupSettingsScreen()),
                 ),
                 SettingsNavTile(

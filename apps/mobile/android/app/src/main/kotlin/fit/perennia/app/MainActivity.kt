@@ -12,6 +12,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var pendingNotificationPermissionResult: MethodChannel.Result? = null
     private var methodChannel: MethodChannel? = null
+    private val backupExport = BackupExportChannel(this)
 
     // a cold-start tap arrives before Flutter has registered its
     // callback. Buffer the payload until `timerNotificationsReady` drains it.
@@ -39,6 +40,10 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            BackupExportChannel.CHANNEL,
+        ).setMethodCallHandler(backupExport::handle)
         // A launch (cold start) from a timer notification carries its extras on
         // the Activity's intent.
         handleTimerNotificationIntent(intent)
@@ -49,6 +54,13 @@ class MainActivity : FlutterActivity() {
         // A warm tap (app already running) delivers the extras here.
         setIntent(intent)
         handleTimerNotificationIntent(intent)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (backupExport.onActivityResult(requestCode, resultCode, data)) {
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onRequestPermissionsResult(

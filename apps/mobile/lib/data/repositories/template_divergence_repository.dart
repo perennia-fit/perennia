@@ -84,7 +84,7 @@ final class TemplateDivergenceRepository {
     String actor = 'app',
     String? batchId,
   }) {
-    final context = _repositories._createWriteContext(
+    final context = _repositories._writeContexts.create(
       actor: actor,
       batchId: batchId,
     );

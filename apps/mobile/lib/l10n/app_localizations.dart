@@ -3427,6 +3427,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This backup was made by a newer version of Perennia. Update the app, then try again. Nothing on this device was changed.'**
   String get backupRestoreNewerVersionMessage;
+
+  /// No description provided for @backupSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup & restore'**
+  String get backupSettingsTitle;
+
+  /// No description provided for @backupSettingsHubSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up to a file or restore one'**
+  String get backupSettingsHubSubtitle;
+
+  /// No description provided for @backupNowSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up'**
+  String get backupNowSectionTitle;
+
+  /// No description provided for @backupNowDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Save your workouts, food, and body readings to a backup file. Keep it somewhere off this phone, like a cloud drive, so you can restore it on a new one.'**
+  String get backupNowDescription;
+
+  /// No description provided for @backupNowButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up now'**
+  String get backupNowButton;
+
+  /// No description provided for @backupNowProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Backing up…'**
+  String get backupNowProgress;
+
+  /// No description provided for @backupNowSavedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup saved.'**
+  String get backupNowSavedMessage;
+
+  /// No description provided for @backupNowFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save the backup'**
+  String get backupNowFailedTitle;
+
+  /// No description provided for @backupNowFailedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup file couldn\'t be written there. Try again, or choose another place.'**
+  String get backupNowFailedMessage;
+
+  /// No description provided for @backupNowUnsupportedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t save a backup file.'**
+  String get backupNowUnsupportedMessage;
+
+  /// No description provided for @backupPassphraseLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup passphrase'**
+  String get backupPassphraseLabel;
+
+  /// No description provided for @backupPassphraseHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional. When set, backups are encrypted, and restoring one asks for this passphrase. Without it the backup can\'t be opened.'**
+  String get backupPassphraseHelper;
+
+  /// No description provided for @autoBackupSwitchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-backup'**
+  String get autoBackupSwitchTitle;
+
+  /// No description provided for @autoBackupChooseFolderButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose backup folder'**
+  String get autoBackupChooseFolderButton;
+
+  /// No description provided for @autoBackupFolderWarningLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-backup folder warning'**
+  String get autoBackupFolderWarningLabel;
+
+  /// No description provided for @autoBackupGrantPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a backup folder again to resume auto-backup.'**
+  String get autoBackupGrantPrompt;
 }
 
 class _AppLocalizationsDelegate

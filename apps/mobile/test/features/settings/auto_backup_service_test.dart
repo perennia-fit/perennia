@@ -208,6 +208,9 @@ class _MemoryAutoBackupFolderAccess implements AutoBackupFolderAccess {
   }
 
   @override
+  Future<bool> isAvailable() async => true;
+
+  @override
   Future<bool> canWrite(String folderUri) async => canWriteGrant;
 
   @override

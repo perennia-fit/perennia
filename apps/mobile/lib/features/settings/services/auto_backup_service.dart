@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 
 import '../../../data/repositories/training_repositories.dart';
 import '../repositories/settings_repository.dart';
+import 'backup_export_service.dart';
 
 final autoBackupFolderAccessProvider = Provider<AutoBackupFolderAccess>(
   (ref) => const MethodChannelAutoBackupFolderAccess(),
@@ -13,6 +14,14 @@ final autoBackupFolderAccessProvider = Provider<AutoBackupFolderAccess>(
 
 final autoBackupSchedulerProvider = Provider<AutoBackupScheduler>(
   (ref) => const MethodChannelAutoBackupScheduler(),
+);
+
+/// Whether this platform answers the folder channel at all. Settings shows
+/// the auto-backup controls only when it does, so a platform without the
+/// native side never offers a switch that cannot work. See
+/// `BackupExportService` for why neither platform implements it yet.
+final autoBackupAvailableProvider = FutureProvider<bool>(
+  (ref) => ref.watch(autoBackupFolderAccessProvider).isAvailable(),
 );
 
 final autoBackupServiceProvider = Provider<AutoBackupService>((ref) {
@@ -25,6 +34,8 @@ final autoBackupServiceProvider = Provider<AutoBackupService>((ref) {
 });
 
 abstract interface class AutoBackupFolderAccess {
+  Future<bool> isAvailable();
+
   Future<AutoBackupFolderGrant?> chooseFolder();
 
   Future<bool> canWrite(String folderUri);
@@ -215,18 +226,7 @@ class AutoBackupService {
   }
 
   static String _fileNameFor(DateTime runAt) {
-    final utc = runAt.toUtc();
-    final stamp = [
-      utc.year.toString().padLeft(4, '0'),
-      utc.month.toString().padLeft(2, '0'),
-      utc.day.toString().padLeft(2, '0'),
-      'T',
-      utc.hour.toString().padLeft(2, '0'),
-      utc.minute.toString().padLeft(2, '0'),
-      utc.second.toString().padLeft(2, '0'),
-      'Z',
-    ].join();
-    return '$filePrefix$stamp$fileExtension';
+    return backupFileName(prefix: filePrefix, createdAt: runAt);
   }
 
   static bool _isAutoBackupFile(String fileName) {
@@ -315,6 +315,15 @@ class MethodChannelAutoBackupFolderAccess implements AutoBackupFolderAccess {
   );
 
   final MethodChannel _channel;
+
+  @override
+  Future<bool> isAvailable() async {
+    try {
+      return await _channel.invokeMethod<bool>('isAvailable') == true;
+    } on MissingPluginException {
+      return false;
+    }
+  }
 
   @override
   Future<AutoBackupFolderGrant?> chooseFolder() async {
