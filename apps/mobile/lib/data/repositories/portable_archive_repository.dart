@@ -306,12 +306,7 @@ class PortableArchiveRepository {
     final localIdByArchiveId = <String, String>{};
     for (final value in rowsByTable[AppDatabase.metricsTable]!) {
       final row = value as MetricRow;
-      final isActiveDefault = row.deletedAt == null &&
-          row.valueShape == MetricValueShape.scalar.name &&
-          row.metricGroup == MetricGroup.bodyComposition.name &&
-          row.goalType != null &&
-          MeasurementRepository.defaultMeasurementNames.contains(row.name);
-      if (!isActiveDefault) {
+      if (!_isActiveDefaultMeasurementRow(row)) {
         continue;
       }
       final localId = localIdByNameAndUnit[(row.name, row.unit)];
@@ -324,17 +319,8 @@ class PortableArchiveRepository {
     }
 
     String adopt(String id) => localIdByArchiveId[id] ?? id;
-    String? adoptImage(String? encoded, String idKey) {
-      if (encoded == null) {
-        return null;
-      }
-      final image = _decodeJsonObject(encoded);
-      final id = image[idKey];
-      if (id is! String || !localIdByArchiveId.containsKey(id)) {
-        return encoded;
-      }
-      return jsonEncode(<String, Object?>{...image, idKey: adopt(id)});
-    }
+    String? adoptImage(String? encoded, String idKey) =>
+        _repointActivityImage(encoded, idKey, localIdByArchiveId);
 
     const metricIdKeyByTable = <String, String>{
       AppDatabase.metricsTable: 'id',
