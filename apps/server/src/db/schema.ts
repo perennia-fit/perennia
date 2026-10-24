@@ -850,6 +850,32 @@ export const metricReadings = pgTable(
   })
 );
 
+// A device's own id for a default measurement (Body Weight, Body Fat) that
+// sync push folded into the user's existing one, keyed by the device's id.
+// Every install seeds the defaults under a random id, so the second device
+// to push its Body Weight would otherwise add a duplicate. The push handler
+// keeps one row and records the other id here, so that device's later
+// pushes (curation edits, readings logged against its id) land on the
+// surviving row. See `pushMetricsInTransaction` in sync.ts.
+export const metricAliases = pgTable(
+  "metric_aliases",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    metricId: text("metric_id")
+      .notNull()
+      .references(() => metrics.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => ({
+    metricIdIndex: index("metric_aliases_metric_id_index").on(table.metricId)
+  })
+);
+
 export const externalActivities = pgTable(
   "external_activities",
   {

@@ -14389,6 +14389,27 @@
                 "deviceId"
               ]
             }
+          },
+          "merged": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "intoId": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "id",
+                "intoId"
+              ]
+            },
+            "description": "Accepted rows the server stores under another id: the pushed id is an alias of `intoId`, and later pushes under it land there. The device keeps treating its row as never synced until a pull brings `intoId`."
           }
         },
         "required": [
@@ -14481,7 +14502,9 @@
               "template_groups",
               "template_group_members",
               "routine_entries",
-              "template_links"
+              "template_links",
+              "metrics",
+              "metric_readings"
             ],
             "description": "Synced entity type carried by this push batch."
           },
