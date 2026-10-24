@@ -88,6 +88,8 @@ const _outboundSyncActivityTables = <String>[
   AppDatabase.mealTypesTable,
   AppDatabase.mealsTable,
   AppDatabase.foodEntriesTable,
+  AppDatabase.metricsTable,
+  AppDatabase.metricReadingsTable,
   AppDatabase.compoundsTable,
   AppDatabase.dosesTable,
   AppDatabase.protocolsTable,
@@ -411,6 +413,20 @@ class SyncRepository implements SyncCycleRepository {
         session: session,
         deviceId: deviceId,
       );
+      // Metrics go before their readings, which the server stores only
+      // against a Metric it holds, and before Protocol target outcomes,
+      // which another device's database requires to reference a Metric it
+      // has.
+      final metricsResult = await _pushPendingMetricsWithClient(
+        client: client,
+        session: session,
+        deviceId: deviceId,
+      );
+      final metricReadingsResult = await _pushPendingMetricReadingsWithClient(
+        client: client,
+        session: session,
+        deviceId: deviceId,
+      );
       final compoundsResult = await _pushPendingCompoundsWithClient(
         client: client,
         session: session,
@@ -464,6 +480,8 @@ class SyncRepository implements SyncCycleRepository {
         mealTypesResult,
         mealsResult,
         foodEntriesResult,
+        metricsResult,
+        metricReadingsResult,
         compoundsResult,
         dosesResult,
         protocolsResult,
@@ -555,6 +573,37 @@ class SyncRepository implements SyncCycleRepository {
       entity: AppDatabase.foodsTable,
       loadPendingRows: _loadPendingFoodRows,
       acknowledgePushResponse: _acknowledgeFoodPushResponse,
+    );
+  }
+
+  Future<SyncPushResult> _pushPendingMetricsWithClient({
+    required PerenniaApiClient client,
+    required AuthSession session,
+    required String deviceId,
+  }) {
+    return _pushPendingEntityRowsWithClient(
+      client: client,
+      session: session,
+      deviceId: deviceId,
+      entity: AppDatabase.metricsTable,
+      loadPendingRows: () => _loadPendingEntityRows(AppDatabase.metricsTable),
+      acknowledgePushResponse: _acknowledgeMetricPushResponse,
+    );
+  }
+
+  Future<SyncPushResult> _pushPendingMetricReadingsWithClient({
+    required PerenniaApiClient client,
+    required AuthSession session,
+    required String deviceId,
+  }) {
+    return _pushPendingEntityRowsWithClient(
+      client: client,
+      session: session,
+      deviceId: deviceId,
+      entity: AppDatabase.metricReadingsTable,
+      loadPendingRows: () =>
+          _loadPendingEntityRows(AppDatabase.metricReadingsTable),
+      acknowledgePushResponse: _acknowledgeMetricReadingPushResponse,
     );
   }
 
@@ -1263,6 +1312,10 @@ class SyncRepository implements SyncCycleRepository {
         liveProtocolTargetOutcomeSnapshotIds,
         DateTime.parse(snapshotServerClock).toUtc(),
       );
+      await _dropDeferredChangesAbsentFromSnapshot(
+        AppDatabase.protocolTargetOutcomesTable,
+        liveProtocolTargetOutcomeSnapshotIds,
+      );
       await _markPreviouslySyncedScheduleRowsAbsentFromSnapshotDeleted(
         liveScheduleSnapshotIds,
         DateTime.parse(snapshotServerClock).toUtc(),
@@ -1533,6 +1586,10 @@ class SyncRepository implements SyncCycleRepository {
 
         throw FormatException('Unsupported sync entity: ${change.entity}.');
       }
+      appliedCount += await _applyDeferredChangesNowApplicable(
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
       if (persistCursor) {
         await _savePullCursor(cursorToSave);
       }
@@ -1721,8 +1778,9 @@ class SyncRepository implements SyncCycleRepository {
           ? null
           : DateTime.parse(change.occurredAt!).toUtc(),
     );
-    // The server's copy of a default measurement (from a canonical import)
-    // absorbs the one this device seeded; see the method for why on pull.
+    // The server's copy of a default measurement (another device's, or a
+    // canonical import's) absorbs the one this device seeded, which the
+    // server merged into it on push; see the method for why on pull.
     await _repositories.measurements.adoptSyncedDefaultMeasurement(
       change.id,
       batchId: batchId,
@@ -1916,6 +1974,35 @@ class SyncRepository implements SyncCycleRepository {
     return true;
   }
 
+  /// Applies a pulled Protocol target outcome, or holds it in
+  /// `deferred_sync_changes` while the Metric it targets is not on this device.
+  ///
+  /// Metrics are pull-only, but outcomes are pushed, so an outcome that targets
+  /// a Metric the user created on another device references a row this device
+  /// may never have been sent. `metric_id` is a Drift FK, and inserting such a
+  /// row fails the whole pull transaction on every retry: one device-local
+  /// Metric would stop this device's sync for good.
+  ///
+  /// Holding the change until the Metric arrives is the only option that keeps
+  /// all three of convergence, recoverability, and a batch that never fails:
+  /// - Storing the row with `metric_id` cleared makes a 'metric' outcome with no
+  ///   Metric, which the Protocol editor would then save and push, overwriting
+  ///   the real target on every device. And when the Metric did arrive, nothing
+  ///   would re-pull the outcome to restore its reference.
+  /// - Skipping it and only logging it never converges either: the cursor has
+  ///   moved past the outcome, so the Metric arriving later finds nothing to
+  ///   re-apply.
+  ///
+  /// A held change is kept verbatim (activity envelope included) and is the
+  /// last-writer-wins version for its row: an older pulled version never
+  /// replaces it, and a newer one that can be applied supersedes it.
+  /// [_applyDeferredChangesNowApplicable] runs it through this method again at
+  /// the end of every pull batch once its Metric exists, so it meets the same
+  /// LWW check against the local row and writes its Activity Log entry then,
+  /// as if it had just arrived. Until then the Protocol shows without that
+  /// outcome. The original stays recoverable from the pushing device's Activity
+  /// Log on the server. A full re-sync drops held changes the server no longer
+  /// has live.
   Future<bool> _applyPulledProtocolTargetOutcomeChange(
     SyncPulledChange change, {
     required String deviceId,
@@ -1935,6 +2022,29 @@ class SyncRepository implements SyncCycleRepository {
         )) {
       return false;
     }
+    final deferred = await _deferredChangeFor(change.entity, change.id);
+    if (deferred != null &&
+        !_lwwWins(
+          incomingUpdatedAt,
+          change.deviceId,
+          deferred.updatedAt.toUtc(),
+          deferred.deviceId,
+        )) {
+      return false;
+    }
+
+    final metricId = change.payload['metric_id'];
+    if (metricId is String && !await _metricExists(metricId)) {
+      await _deferPulledChange(
+        change,
+        missingEntityTable: AppDatabase.metricsTable,
+        missingEntityId: metricId,
+      );
+      return false;
+    }
+    if (deferred != null) {
+      await _dropDeferredChange(change.entity, change.id);
+    }
 
     await _repositories.protocols.applySyncImage(
       entityTable: AppDatabase.protocolTargetOutcomesTable,
@@ -1950,6 +2060,116 @@ class SyncRepository implements SyncCycleRepository {
           : DateTime.parse(change.occurredAt!).toUtc(),
     );
     return true;
+  }
+
+  Future<bool> _metricExists(String metricId) async {
+    final row = await (_database.selectOnly(_database.metrics)
+          ..addColumns(<Expression<Object>>[_database.metrics.id])
+          ..where(_database.metrics.id.equals(metricId)))
+        .getSingleOrNull();
+    return row != null;
+  }
+
+  Future<DeferredSyncChangeRow?> _deferredChangeFor(
+    String entityTable,
+    String entityId,
+  ) {
+    return (_database.select(_database.deferredSyncChanges)
+          ..where(
+            (row) =>
+                row.entityTable.equals(entityTable) &
+                row.entityId.equals(entityId),
+          ))
+        .getSingleOrNull();
+  }
+
+  Future<void> _deferPulledChange(
+    SyncPulledChange change, {
+    required String missingEntityTable,
+    required String missingEntityId,
+  }) {
+    return _database.into(_database.deferredSyncChanges).insertOnConflictUpdate(
+          DeferredSyncChangesCompanion.insert(
+            entityTable: change.entity,
+            entityId: change.id,
+            missingEntityTable: missingEntityTable,
+            missingEntityId: missingEntityId,
+            changeJson: jsonEncode(_pulledChangeJson(change)),
+            updatedAt: DateTime.parse(change.updatedAt).toUtc(),
+            deviceId: change.deviceId,
+            deferredAt: DateTime.now().toUtc(),
+          ),
+        );
+  }
+
+  Future<void> _dropDeferredChange(String entityTable, String entityId) {
+    return (_database.delete(_database.deferredSyncChanges)
+          ..where(
+            (row) =>
+                row.entityTable.equals(entityTable) &
+                row.entityId.equals(entityId),
+          ))
+        .go();
+  }
+
+  /// Applies every held change whose missing row now exists on this device,
+  /// however that row arrived (this batch, an earlier one, or a restore).
+  /// Returns how many were applied.
+  Future<int> _applyDeferredChangesNowApplicable({
+    required String deviceId,
+    required String syncBatchId,
+  }) async {
+    final ready = await (_database.select(_database.deferredSyncChanges)
+          ..where(
+            (row) =>
+                row.missingEntityTable.equals(AppDatabase.metricsTable) &
+                existsQuery(
+                  _database.selectOnly(_database.metrics)
+                    ..addColumns(<Expression<Object>>[_database.metrics.id])
+                    ..where(
+                      _database.metrics.id.equalsExp(row.missingEntityId),
+                    ),
+                ),
+          ))
+        .get();
+    var appliedCount = 0;
+    for (final row in ready) {
+      await _dropDeferredChange(row.entityTable, row.entityId);
+      final change = SyncPulledChange.fromJson(
+        jsonDecode(row.changeJson) as Map<String, Object?>,
+      );
+      final applied = switch (row.entityTable) {
+        AppDatabase.protocolTargetOutcomesTable =>
+          await _applyPulledProtocolTargetOutcomeChange(
+            change,
+            deviceId: deviceId,
+            syncBatchId: syncBatchId,
+          ),
+        _ => throw StateError(
+            'Unsupported deferred sync entity: ${row.entityTable}.',
+          ),
+      };
+      if (applied) {
+        appliedCount += 1;
+      }
+    }
+    return appliedCount;
+  }
+
+  /// Drops held changes for rows absent from a full re-sync snapshot: the
+  /// server no longer has them live, so they must never be applied later.
+  Future<void> _dropDeferredChangesAbsentFromSnapshot(
+    String entityTable,
+    Set<String> liveSnapshotIds,
+  ) async {
+    final held = await (_database.select(_database.deferredSyncChanges)
+          ..where((row) => row.entityTable.equals(entityTable)))
+        .get();
+    for (final row in held) {
+      if (!liveSnapshotIds.contains(row.entityId)) {
+        await _dropDeferredChange(row.entityTable, row.entityId);
+      }
+    }
   }
 
   Future<bool> _applyPulledScheduleChange(
@@ -2783,6 +3003,23 @@ class SyncRepository implements SyncCycleRepository {
         .get();
   }
 
+  Future<List<ActivityLogRow>> _loadPendingEntityRows(String entityTable) {
+    return (_database.select(_database.activityLog)
+          ..where(
+            (row) =>
+                row.deletedAt.isNull() &
+                row.syncAcknowledgedAt.isNull() &
+                row.entityTable.equals(entityTable) &
+                row.afterImage.isNotNull(),
+          )
+          ..orderBy([
+            (row) => OrderingTerm.asc(row.occurredAt),
+            (row) => OrderingTerm.asc(row.id),
+          ])
+          ..limit(_syncPushBatchLimit))
+        .get();
+  }
+
   Future<List<ActivityLogRow>> _loadPendingMealTypeRows() {
     return (_database.select(_database.activityLog)
           ..where(
@@ -3128,6 +3365,126 @@ class SyncRepository implements SyncCycleRepository {
               ..where((row) => row.id.equals(change.id)))
             .write(
           FoodsCompanion(
+            syncDeviceId: Value<String?>(change.deviceId),
+            syncPreviouslySynced: const Value<bool>(true),
+            updatedAt: Value<DateTime>(
+              DateTime.parse(change.updatedAt).toUtc(),
+            ),
+          ),
+        );
+      }
+    });
+
+    return List<String>.unmodifiable(acknowledgedRows.map((row) => row.id));
+  }
+
+  /// Acknowledges a Metrics push like any other entity's, except for the
+  /// rows the server reports as `merged`: a default measurement it folded
+  /// into the user's existing one and stores no row for (see
+  /// `pushMetricsInTransaction` on the server). Such a row stays
+  /// `syncPreviouslySynced` false, which is what it is, so the pull that
+  /// brings the survivor folds it in through
+  /// [MeasurementRepository.adoptSyncedDefaultMeasurement], and a full
+  /// re-sync never takes the server's lack of it for an archive.
+  Future<List<String>> _acknowledgeMetricPushResponse(
+    List<ActivityLogRow> pendingRows,
+    SyncPushResponse response,
+  ) async {
+    final mergedIds = response.merged.map((change) => change.id).toSet();
+    final acceptedEntityIds = response.accepted.toSet();
+    final appliedById = <String, SyncAppliedChange>{
+      for (final change in response.applied) change.id: change,
+    };
+    final acknowledgedRows = pendingRows
+        .where((row) => acceptedEntityIds.contains(row.entityId))
+        .toList(growable: false);
+    final acknowledgedAt = DateTime.now().toUtc();
+
+    await _database.transaction(() async {
+      for (final row in acknowledgedRows) {
+        final applied = appliedById[row.entityId];
+        await (_database.update(_database.activityLog)
+              ..where((table) => table.id.equals(row.id)))
+            .write(
+          ActivityLogCompanion(
+            syncAcknowledgedAt: Value<DateTime?>(acknowledgedAt),
+            afterImage: applied == null
+                ? const Value.absent()
+                : Value<String?>(
+                    _imageWithUpdatedAt(row.afterImage, applied.updatedAt),
+                  ),
+          ),
+        );
+        if (mergedIds.contains(row.entityId)) {
+          continue;
+        }
+        await (_database.update(_database.metrics)
+              ..where((table) => table.id.equals(row.entityId)))
+            .write(
+          const MetricsCompanion(
+            syncPreviouslySynced: Value<bool>(true),
+          ),
+        );
+      }
+      for (final change in response.applied) {
+        await (_database.update(_database.metrics)
+              ..where((row) => row.id.equals(change.id)))
+            .write(
+          MetricsCompanion(
+            syncDeviceId: Value<String?>(change.deviceId),
+            syncPreviouslySynced: Value<bool>(!mergedIds.contains(change.id)),
+            updatedAt: Value<DateTime>(
+              DateTime.parse(change.updatedAt).toUtc(),
+            ),
+          ),
+        );
+      }
+    });
+
+    return List<String>.unmodifiable(acknowledgedRows.map((row) => row.id));
+  }
+
+  Future<List<String>> _acknowledgeMetricReadingPushResponse(
+    List<ActivityLogRow> pendingRows,
+    SyncPushResponse response,
+  ) async {
+    final acceptedEntityIds = response.accepted.toSet();
+    final appliedById = <String, SyncAppliedChange>{
+      for (final change in response.applied) change.id: change,
+    };
+    final acknowledgedRows = pendingRows
+        .where((row) => acceptedEntityIds.contains(row.entityId))
+        .toList(growable: false);
+    final acknowledgedAt = DateTime.now().toUtc();
+
+    await _database.transaction(() async {
+      for (final row in acknowledgedRows) {
+        final applied = appliedById[row.entityId];
+        await (_database.update(_database.activityLog)
+              ..where((table) => table.id.equals(row.id)))
+            .write(
+          ActivityLogCompanion(
+            syncAcknowledgedAt: Value<DateTime?>(acknowledgedAt),
+            afterImage: applied == null
+                ? const Value.absent()
+                : Value<String?>(
+                    _imageWithUpdatedAt(row.afterImage, applied.updatedAt),
+                  ),
+          ),
+        );
+        await (_database.update(_database.metricReadings)
+              ..where((table) => table.id.equals(row.entityId)))
+            .write(
+          const MetricReadingsCompanion(
+            syncPreviouslySynced: Value<bool>(true),
+          ),
+        );
+      }
+      for (final change in response.applied) {
+        await (_database.update(_database.metricReadings)
+              ..where((row) => row.id.equals(change.id)))
+            .write(
+          MetricReadingsCompanion(
             syncDeviceId: Value<String?>(change.deviceId),
             syncPreviouslySynced: const Value<bool>(true),
             updatedAt: Value<DateTime>(
@@ -4256,6 +4613,26 @@ SyncPushChange _changeFromActivityLogRow(ActivityLogRow row) {
     occurredAt: row.occurredAt.toUtc().toIso8601String(),
     deletedAt: deletedAt as String?,
   );
+}
+
+/// The inverse of [SyncPulledChange.fromJson], for holding a change in
+/// `deferred_sync_changes`. Always writes the whole activity envelope, which
+/// `fromJson` accepts only all-or-nothing.
+Map<String, Object?> _pulledChangeJson(SyncPulledChange change) {
+  return <String, Object?>{
+    'entity': change.entity,
+    'id': change.id,
+    'deviceId': change.deviceId,
+    'payload': change.payload,
+    'updatedAt': change.updatedAt,
+    'deletedAt': change.deletedAt,
+    'activityLogId': change.activityLogId,
+    'actor': change.actor,
+    'batchId': change.batchId,
+    'beforeImage': change.beforeImage,
+    'afterImage': change.afterImage,
+    'occurredAt': change.occurredAt,
+  };
 }
 
 Map<String, Object?> _syncImageFromPull(SyncPulledChange change) {

@@ -171,6 +171,7 @@ const _keptTables = <String>{
   AppDatabase.integrationDataClassConsentsTable,
   AppDatabase.activityLogTable,
   AppDatabase.syncStatesTable,
+  AppDatabase.deferredSyncChangesTable,
   AppDatabase.monitoringSeriesCacheTable,
   AppDatabase.openFoodFactsCacheTable,
 };

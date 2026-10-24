@@ -494,6 +494,182 @@ test(
   }
 );
 
+test(
+  "body tracker replicas that each seeded Body Weight converge on one, with every reading",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicaA = new BodyTrackerReplica({
+        name: "Body Tracker A",
+        deviceId: "device-a",
+        server
+      });
+      const replicaB = new BodyTrackerReplica({
+        name: "Body Tracker B",
+        deviceId: "device-b",
+        server
+      });
+      const replicas = [replicaA, replicaB];
+
+      // Each install seeds its own Body Weight under a random id, logs
+      // readings against it, and B also keeps a measurement of its own.
+      const bodyWeightA = replicaA.seedDefault({
+        name: "Body Weight",
+        unit: "kilogram",
+        at: "2026-07-01T08:00:00.000Z"
+      });
+      const bodyWeightB = replicaB.seedDefault({
+        name: "Body Weight",
+        unit: "kilogram",
+        at: "2026-07-01T08:00:01.000Z"
+      });
+      const waistB = replicaB.createMeasurement({
+        name: "Waist",
+        unit: "centimeter",
+        at: "2026-07-01T08:00:02.000Z"
+      });
+      const readingIds = [
+        replicaA.logReading(bodyWeightA, 80.1, "2026-07-01T09:00:00.000Z"),
+        replicaA.logReading(bodyWeightA, 80.4, "2026-07-02T09:00:00.000Z"),
+        replicaB.logReading(bodyWeightB, 79.8, "2026-07-03T09:00:00.000Z"),
+        replicaB.logReading(bodyWeightB, 79.5, "2026-07-04T09:00:00.000Z")
+      ];
+      const waistReadingId = replicaB.logReading(
+        waistB,
+        84,
+        "2026-07-04T09:05:00.000Z"
+      );
+
+      // Both devices come online at once: the first push of Body Weight
+      // must not race the second into two server rows.
+      await Promise.all(replicas.map((replica) => replica.pushPending()));
+      for (let round = 0; round < 3; round += 1) {
+        await settlePlanReplicas(replicas);
+      }
+
+      const observer = new BodyTrackerReplica({
+        name: "Body Tracker Observer",
+        deviceId: "device-observer",
+        server
+      });
+      await observer.pullUntilSettled({ limit: 3 });
+
+      const bodyWeights = observer.liveMetrics("Body Weight");
+      assert.equal(bodyWeights.length, 1, "one Body Weight survives");
+      const survivor = bodyWeights[0];
+      assert.equal(
+        [bodyWeightA, bodyWeightB].includes(survivor.id),
+        true,
+        "the survivor is one of the devices' own ids"
+      );
+      assert.equal(survivor.payload.pinned, true);
+      assert.deepEqual(
+        observer
+          .liveReadings(survivor.id)
+          .map((reading) => reading.id)
+          .sort(),
+        [...readingIds].sort(),
+        "every Body Weight reading from both devices hangs off the survivor"
+      );
+      assert.deepEqual(
+        observer.liveReadings(waistB).map((reading) => reading.id),
+        [waistReadingId],
+        "a measurement of one device's own syncs as itself"
+      );
+
+      const finalState = observer.liveStateSignature();
+      for (const replica of replicas) {
+        assert.equal(replica.pending.length, 0, `${replica.name} is settled`);
+        assert.equal(
+          replica.liveStateSignature(),
+          finalState,
+          `${replica.name} converged on the observer's state`
+        );
+      }
+
+      // The folded id was never stored as a Metric on the server.
+      const loserId = survivor.id === bodyWeightA ? bodyWeightB : bodyWeightA;
+      const loserRows = await server.database.db
+        .select({ id: schema.metrics.id })
+        .from(schema.metrics)
+        .where(inArray(schema.metrics.id, [loserId]));
+      assert.deepEqual(loserRows, []);
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "a device's Body Weight folds into a canonical-import copy and its curation reaches the server",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      // Canonical import made the server's own Body Weight first, with the
+      // catalog's defaults: unpinned and disabled.
+      const importedId = `metric-${randomUUID()}`;
+      await server.database.db.insert(schema.metrics).values({
+        id: importedId,
+        userId: server.userId,
+        deviceId: "server-import",
+        name: "Body Weight",
+        unit: "kilogram",
+        valueShape: "scalar",
+        metricGroup: "bodyComposition",
+        goalType: "decrease",
+        enabled: false,
+        pinned: false,
+        sortOrder: 0,
+        updatedAt: new Date("2026-07-05T08:00:00.000Z")
+      });
+
+      const replica = new BodyTrackerReplica({
+        name: "Body Tracker",
+        deviceId: "device-a",
+        server
+      });
+      const deviceBodyWeight = replica.seedDefault({
+        name: "Body Weight",
+        unit: "kilogram",
+        at: "2026-07-01T08:00:00.000Z"
+      });
+      const readingId = replica.logReading(
+        deviceBodyWeight,
+        80.1,
+        "2026-07-01T09:00:00.000Z"
+      );
+
+      for (let round = 0; round < 3; round += 1) {
+        await settlePlanReplicas([replica]);
+      }
+
+      const [bodyWeight] = replica.liveMetrics("Body Weight");
+      assert.equal(bodyWeight.id, importedId);
+      assert.equal(replica.liveMetrics("Body Weight").length, 1);
+      assert.deepEqual(
+        replica.liveReadings(importedId).map((reading) => reading.id),
+        [readingId]
+      );
+
+      const [stored] = await server.database.db
+        .select({ pinned: schema.metrics.pinned, enabled: schema.metrics.enabled })
+        .from(schema.metrics)
+        .where(inArray(schema.metrics.id, [importedId]));
+      assert.deepEqual(
+        stored,
+        { pinned: true, enabled: true },
+        "the device's Body Tracker curation replaced the import's defaults"
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
 async function createConvergenceServer() {
   if (databaseUrl) {
     const serverApp = await createMigratedServerApp({
@@ -501,10 +677,11 @@ async function createConvergenceServer() {
       logger: { info() {}, error() {} },
       auth: false
     });
-    const { sessionToken } = await createSignedInUser(serverApp);
+    const { sessionToken, userId } = await createSignedInUser(serverApp);
     return {
       app: serverApp.app,
       sessionToken,
+      userId,
       database: serverApp.database,
       close: () => serverApp.database.close()
     };
@@ -603,6 +780,13 @@ class SyncReplicaHarness {
         const row = this.row(entityName, id);
         if (row !== undefined) {
           row.previouslySynced = true;
+        }
+      }
+      // A row the server stored under another id is still device-only.
+      for (const merged of response.merged ?? []) {
+        const row = this.row(entityName, merged.id);
+        if (row !== undefined) {
+          row.previouslySynced = false;
         }
       }
       for (const applied of response.applied) {
@@ -929,6 +1113,217 @@ class ForeignKeyCheckedReplica extends PlanTreeReplica {
       cursor = response.nextCursor;
     }
   }
+}
+
+const bodyTrackerEntityOrder = ["metrics", "metric_readings"];
+const defaultMeasurementNames = new Set(["Body Weight", "Body Fat"]);
+
+// A device's Body Tracker as the app keeps it: Metrics and their readings,
+// pushed metrics-first, and on pull the fold of a device-only default
+// measurement into the server's copy of it
+// (`MeasurementRepository.adoptSyncedDefaultMeasurement`). The survivor
+// takes the copy's curation and the copy is archived, both as changes the
+// device pushes; readings move over in place, because the server already
+// stores them under the survivor (or has yet to receive them, and then
+// receives them re-pointed).
+class BodyTrackerReplica extends SyncReplicaHarness {
+  constructor({ name, deviceId, server }) {
+    super({
+      name,
+      deviceId,
+      server,
+      entityOrder: bodyTrackerEntityOrder,
+      keyFor: planRowKey
+    });
+    this.tick = 0;
+  }
+
+  seedDefault({ name, unit, at }) {
+    return this.createMeasurement({ name, unit, at, goalType: "decrease" });
+  }
+
+  createMeasurement({ name, unit, at, goalType = "increase" }) {
+    const id = randomUUID();
+    this.stageChange("metrics", {
+      id,
+      payload: {
+        id,
+        name,
+        unit,
+        value_shape: "scalar",
+        metric_group: "bodyComposition",
+        goal_type: goalType,
+        goal_target_value: null,
+        enabled: true,
+        pinned: true,
+        sort_order: 0,
+        updated_at: at,
+        deleted_at: null
+      },
+      updatedAt: at,
+      deletedAt: null
+    });
+    return id;
+  }
+
+  logReading(metricId, value, at) {
+    const id = randomUUID();
+    this.stageChange("metric_readings", {
+      id,
+      payload: {
+        id,
+        metric_id: metricId,
+        // The app stores the value as JSON text.
+        value_json: JSON.stringify({ value }),
+        scalar_value: value,
+        scalar_entered: String(value),
+        at_time: at,
+        window_started_at: null,
+        window_ended_at: null,
+        provenance: "manual",
+        source: "manual",
+        external_id: null,
+        comment: null,
+        updated_at: at,
+        deleted_at: null
+      },
+      updatedAt: at,
+      deletedAt: null
+    });
+    return id;
+  }
+
+  applyPulledChange(change) {
+    super.applyPulledChange(change);
+    if (change.entity === "metrics") {
+      this.foldOwnCopiesInto(change.id);
+    }
+  }
+
+  foldOwnCopiesInto(survivorId) {
+    const survivor = this.row("metrics", survivorId);
+    if (!isLiveDefault(survivor)) {
+      return;
+    }
+    const copies = [...this.rows.values()].filter(
+      (row) =>
+        row.entity === "metrics" &&
+        row.id !== survivorId &&
+        !row.previouslySynced &&
+        isLiveDefault(row) &&
+        row.payload.name === survivor.payload.name &&
+        row.payload.unit === survivor.payload.unit
+    );
+    if (copies.length === 0) {
+      return;
+    }
+
+    const at = this.nextTimestamp();
+    const curation = copies[0].payload;
+    this.restage("metrics", survivor, at, {
+      goal_type: curation.goal_type,
+      goal_target_value: curation.goal_target_value,
+      enabled: curation.enabled,
+      pinned: curation.pinned,
+      sort_order: curation.sort_order
+    });
+    const copyIds = new Set(copies.map((copy) => copy.id));
+    const readingImages = [
+      ...[...this.rows.values()].filter(
+        (row) => row.entity === "metric_readings"
+      ),
+      ...this.pending
+        .filter((pending) => pending.entity === "metric_readings")
+        .map((pending) => pending.change)
+    ];
+    for (const image of readingImages) {
+      if (copyIds.has(image.payload.metric_id)) {
+        image.payload = { ...image.payload, metric_id: survivorId };
+      }
+    }
+    for (const copy of copies) {
+      this.restage("metrics", copy, at, {}, at);
+    }
+  }
+
+  restage(entityName, row, at, fields, deletedAt = row.deletedAt) {
+    this.stageChange(entityName, {
+      id: row.id,
+      payload: {
+        ...row.payload,
+        ...fields,
+        updated_at: at,
+        deleted_at: deletedAt
+      },
+      updatedAt: at,
+      deletedAt
+    });
+  }
+
+  nextTimestamp() {
+    this.tick += 1;
+    return new Date(
+      Date.UTC(2026, 7, 1, 0, 0, this.tick)
+    ).toISOString();
+  }
+
+  liveMetrics(name) {
+    return [...this.rows.values()].filter(
+      (row) =>
+        row.entity === "metrics" &&
+        row.deletedAt === null &&
+        row.payload.name === name
+    );
+  }
+
+  liveReadings(metricId) {
+    return [...this.rows.values()].filter(
+      (row) =>
+        row.entity === "metric_readings" &&
+        row.deletedAt === null &&
+        row.payload.metric_id === metricId
+    );
+  }
+
+  // What a user sees in Body Tracker, independent of how each replica
+  // happens to encode a payload it wrote itself.
+  liveStateSignature() {
+    return JSON.stringify(
+      [...this.rows.values()]
+        .filter((row) => row.deletedAt === null)
+        .map((row) =>
+          row.entity === "metrics"
+            ? {
+                entity: row.entity,
+                id: row.id,
+                name: row.payload.name,
+                unit: row.payload.unit,
+                pinned: row.payload.pinned,
+                enabled: row.payload.enabled
+              }
+            : {
+                entity: row.entity,
+                id: row.id,
+                metricId: row.payload.metric_id,
+                value: row.payload.scalar_value
+              }
+        )
+        .sort((left, right) =>
+          `${left.entity}:${left.id}`.localeCompare(`${right.entity}:${right.id}`)
+        )
+    );
+  }
+}
+
+function isLiveDefault(row) {
+  return (
+    row !== undefined &&
+    row.deletedAt === null &&
+    row.payload.value_shape === "scalar" &&
+    row.payload.metric_group === "bodyComposition" &&
+    row.payload.goal_type !== null &&
+    defaultMeasurementNames.has(row.payload.name)
+  );
 }
 
 class InMemorySyncStore {
