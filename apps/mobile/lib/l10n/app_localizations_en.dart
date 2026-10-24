@@ -2067,4 +2067,57 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get backupRestoreNewerVersionMessage =>
       'This backup was made by a newer version of Perennia. Update the app, then try again. Nothing on this device was changed.';
+
+  @override
+  String get backupSettingsTitle => 'Backup & restore';
+
+  @override
+  String get backupSettingsHubSubtitle => 'Back up to a file or restore one';
+
+  @override
+  String get backupNowSectionTitle => 'Back up';
+
+  @override
+  String get backupNowDescription =>
+      'Save your workouts, food, and body readings to a backup file. Keep it somewhere off this phone, like a cloud drive, so you can restore it on a new one.';
+
+  @override
+  String get backupNowButton => 'Back up now';
+
+  @override
+  String get backupNowProgress => 'Backing up…';
+
+  @override
+  String get backupNowSavedMessage => 'Backup saved.';
+
+  @override
+  String get backupNowFailedTitle => 'Couldn\'t save the backup';
+
+  @override
+  String get backupNowFailedMessage =>
+      'The backup file couldn\'t be written there. Try again, or choose another place.';
+
+  @override
+  String get backupNowUnsupportedMessage =>
+      'This device can\'t save a backup file.';
+
+  @override
+  String get backupPassphraseLabel => 'Backup passphrase';
+
+  @override
+  String get backupPassphraseHelper =>
+      'Optional. When set, backups are encrypted, and restoring one asks for this passphrase. Without it the backup can\'t be opened.';
+
+  @override
+  String get autoBackupSwitchTitle => 'Auto-backup';
+
+  @override
+  String get autoBackupChooseFolderButton => 'Choose backup folder';
+
+  @override
+  String get autoBackupFolderWarningLabel => 'Auto-backup folder warning';
+
+  @override
+  String get autoBackupGrantPrompt =>
+      'Choose a backup folder again to resume auto-backup.';
 }

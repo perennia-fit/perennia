@@ -19,6 +19,7 @@ import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
+import 'package:perennia/features/settings/services/auto_backup_service.dart';
 import 'package:perennia/features/settings/services/client_crash_reporting.dart';
 import 'package:perennia/features/sync/controllers/sync_status_controller.dart';
 import 'package:perennia/features/sync/repositories/sync_device_id_repository.dart';
@@ -990,6 +991,7 @@ void main() {
             autoBackupLastStatus: AutoBackupStatus.skippedMissingFolderGrant,
           ),
         ),
+        extraOverrides: [_autoBackupAvailable],
       );
       await _openHubScreen(tester, SettingsScreen.backupTileKey);
 
@@ -1002,11 +1004,24 @@ void main() {
       expect(find.byKey(SettingsScreen.autoBackupSwitchKey), findsOneWidget);
       expect(
           find.byKey(SettingsScreen.autoBackupFolderButtonKey), findsOneWidget);
-      expect(find.byKey(SettingsScreen.autoBackupPassphraseFieldKey),
+      expect(find.byKey(SettingsScreen.backupPassphraseFieldKey),
           findsOneWidget);
       expect(
           find.byKey(SettingsScreen.autoBackupGrantPromptKey), findsOneWidget);
       expect(find.text('Folder access needed'), findsOneWidget);
+    });
+
+    testWidgets(
+        'offers Back up now but no auto-backup where the platform has no '
+        'folder handler', (tester) async {
+      await _pumpSettings(tester);
+      await _openHubScreen(tester, SettingsScreen.backupTileKey);
+
+      expect(find.text('Back up now'), findsOneWidget);
+      expect(find.byKey(SettingsScreen.backupPassphraseFieldKey),
+          findsOneWidget);
+      expect(find.byKey(SettingsScreen.autoBackupSwitchKey), findsNothing);
+      expect(find.byKey(SettingsScreen.autoBackupFolderButtonKey), findsNothing);
     });
 
     testWidgets(
@@ -1026,6 +1041,7 @@ void main() {
           tester,
           theme: theme,
           settingsRepository: InMemorySettingsRepository(settings),
+          extraOverrides: [_autoBackupAvailable],
         );
         await _openHubScreen(tester, SettingsScreen.backupTileKey);
 
@@ -1266,7 +1282,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Increment 2.5 · PR tracking on'), findsOneWidget);
-      expect(find.text('Auto-backup off'), findsOneWidget);
+      expect(find.text('Back up to a file or restore one'), findsOneWidget);
       expect(find.text('Crash reporting off'), findsOneWidget);
       // Destructive controls live on sub-screens, never on the hub.
       expect(find.byKey(SettingsScreen.eraseAllDataButtonKey), findsNothing);
@@ -1450,6 +1466,11 @@ void main() {
 }
 
 const _garminCredentialId = 'credential-garmin-1';
+
+/// Stands in for a platform that implements the auto-backup folder channel;
+/// without it the test binding has no handler and Settings hides auto-backup.
+final _autoBackupAvailable =
+    autoBackupAvailableProvider.overrideWith((ref) async => true);
 
 Future<void> _openHubScreen(WidgetTester tester, Key tileKey) async {
   await tester.scrollUntilVisible(

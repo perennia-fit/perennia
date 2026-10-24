@@ -8,6 +8,7 @@ import UserNotifications
 {
   private let timerBackgroundChannelName = "perennia/timer_background"
   private var timerBackgroundChannel: FlutterMethodChannel?
+  private let backupExport = BackupExportChannel()
 
   // a cold-start tap arrives before Flutter registers its callback.
   // Buffer the payload until `timerNotificationsReady` drains it.
@@ -26,6 +27,16 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let backupRegistrar = engineBridge.pluginRegistry.registrar(
+      forPlugin: "BackupExportChannel")
+    {
+      FlutterMethodChannel(
+        name: BackupExportChannel.name,
+        binaryMessenger: backupRegistrar.messenger()
+      ).setMethodCallHandler { [weak self] call, result in
+        self?.backupExport.handle(call, result: result)
+      }
+    }
     guard
       let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "TimerBackgroundChannel")
     else {
@@ -258,5 +269,126 @@ import UserNotifications
     DispatchQueue.main.async {
       result(value)
     }
+  }
+}
+
+/// Handles `perennia/backup_export`. Settings → Back up now hands a finished
+/// backup here, and the system document export picker lets the user save it
+/// to Files, iCloud Drive or any other file provider. Why this is a
+/// foreground save and not a scheduled folder backup is recorded on
+/// `BackupExportService` in Dart.
+///
+/// Answers `saved`, `cancelled` or `unsupported` (nothing to present the
+/// picker from), or fails with `backup_write_failed` when the staging copy
+/// cannot be written.
+final class BackupExportChannel: NSObject, UIDocumentPickerDelegate {
+  static let name = "perennia/backup_export"
+
+  private var pendingResult: FlutterResult?
+  private var stagingDirectory: URL?
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "saveFile":
+      saveFile(call, result: result)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func saveFile(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard
+      let arguments = call.arguments as? [String: Any],
+      let fileName = arguments["fileName"] as? String,
+      let bytes = arguments["bytes"] as? FlutterStandardTypedData
+    else {
+      result(
+        FlutterError(
+          code: "invalid_backup_export",
+          message: "Backup export payload is missing fileName or bytes.",
+          details: nil
+        )
+      )
+      return
+    }
+    guard pendingResult == nil else {
+      result(
+        FlutterError(
+          code: "backup_export_busy",
+          message: "A backup save picker is already open.",
+          details: nil
+        )
+      )
+      return
+    }
+    guard let presenter = Self.topViewController() else {
+      result("unsupported")
+      return
+    }
+
+    // The picker exports an existing file, so stage the backup under its
+    // final name in a directory of its own, removed once the picker closes.
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let fileURL = directory.appendingPathComponent(
+      (fileName as NSString).lastPathComponent)
+    do {
+      try FileManager.default.createDirectory(
+        at: directory, withIntermediateDirectories: true)
+      try bytes.data.write(to: fileURL, options: .atomic)
+    } catch {
+      try? FileManager.default.removeItem(at: directory)
+      result(
+        FlutterError(
+          code: "backup_write_failed",
+          message: error.localizedDescription,
+          details: nil
+        )
+      )
+      return
+    }
+
+    let picker: UIDocumentPickerViewController
+    if #available(iOS 14.0, *) {
+      picker = UIDocumentPickerViewController(forExporting: [fileURL], asCopy: true)
+    } else {
+      picker = UIDocumentPickerViewController(url: fileURL, in: .exportToService)
+    }
+    picker.delegate = self
+    pendingResult = result
+    stagingDirectory = directory
+    presenter.present(picker, animated: true)
+  }
+
+  func documentPicker(
+    _ controller: UIDocumentPickerViewController,
+    didPickDocumentsAt urls: [URL]
+  ) {
+    finish("saved")
+  }
+
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    finish("cancelled")
+  }
+
+  private func finish(_ status: String) {
+    let result = pendingResult
+    pendingResult = nil
+    if let directory = stagingDirectory {
+      try? FileManager.default.removeItem(at: directory)
+    }
+    stagingDirectory = nil
+    result?(status)
+  }
+
+  private static func topViewController() -> UIViewController? {
+    let windows = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap { $0.windows }
+    var top = (windows.first { $0.isKeyWindow } ?? windows.first)?.rootViewController
+    while let presented = top?.presentedViewController {
+      top = presented
+    }
+    return top
   }
 }
