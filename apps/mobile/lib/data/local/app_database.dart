@@ -977,6 +977,34 @@ class SyncStates extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+// Sync bookkeeping: a pulled change that cannot be applied yet because a row it
+// references (a Drift FK) does not exist on this device, held verbatim until
+// that row arrives. One row per entity, keeping only the last-writer-wins
+// version of the change by (`updated_at`, `device_id`). See
+// `_applyPulledProtocolTargetOutcomeChange` in sync_repository.dart for why
+// this waits rather than storing the row without its reference.
+@DataClassName('DeferredSyncChangeRow')
+@TableIndex(
+  name: 'deferred_sync_changes_missing_entity_index',
+  columns: {#missingEntityTable, #missingEntityId},
+)
+class DeferredSyncChanges extends Table {
+  TextColumn get entityTable => text()();
+  TextColumn get entityId => text()();
+  TextColumn get missingEntityTable => text()();
+  TextColumn get missingEntityId => text()();
+
+  // The pulled change exactly as the server sent it, activity envelope
+  // included, so applying it later is the same as applying it on arrival.
+  TextColumn get changeJson => text()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get deviceId => text()();
+  DateTimeColumn get deferredAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {entityTable, entityId};
+}
+
 @DataClassName('IntegrationDataClassConsentRow')
 @TableIndex(
   name: 'integration_data_class_consents_credential_data_class_index',
@@ -1069,6 +1097,7 @@ class RoutineEntries extends Table {
     IntervalTimers,
     ActivityLog,
     SyncStates,
+    DeferredSyncChanges,
     Measurements,
     MeasurementEntries,
     Metrics,
@@ -1153,6 +1182,7 @@ class AppDatabase extends _$AppDatabase {
       'integration_data_class_consents';
   static const activityLogTable = 'activity_log';
   static const syncStatesTable = 'sync_states';
+  static const deferredSyncChangesTable = 'deferred_sync_changes';
   static const userSettingsTable = 'user_settings';
 
   static const tableNames = <String>[
@@ -1198,10 +1228,11 @@ class AppDatabase extends _$AppDatabase {
     openFoodFactsCacheTable,
     integrationDataClassConsentsTable,
     syncStatesTable,
+    deferredSyncChangesTable,
   ];
 
   @override
-  int get schemaVersion => 57;
+  int get schemaVersion => 58;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1828,6 +1859,10 @@ class AppDatabase extends _$AppDatabase {
               'AND sync_acknowledged_at IS NULL '
               'AND after_image IS NOT NULL',
             );
+          }
+          if (from < 58) {
+            await migrator.createTable(deferredSyncChanges);
+            await migrator.createIndex(deferredSyncChangesMissingEntityIndex);
           }
         },
         beforeOpen: (_) async => customStatement('PRAGMA foreign_keys = ON'),
