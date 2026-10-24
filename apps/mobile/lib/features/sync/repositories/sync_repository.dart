@@ -88,6 +88,8 @@ const _outboundSyncActivityTables = <String>[
   AppDatabase.mealTypesTable,
   AppDatabase.mealsTable,
   AppDatabase.foodEntriesTable,
+  AppDatabase.metricsTable,
+  AppDatabase.metricReadingsTable,
   AppDatabase.compoundsTable,
   AppDatabase.dosesTable,
   AppDatabase.protocolsTable,
@@ -411,6 +413,20 @@ class SyncRepository implements SyncCycleRepository {
         session: session,
         deviceId: deviceId,
       );
+      // Metrics go before their readings, which the server stores only
+      // against a Metric it holds, and before Protocol target outcomes,
+      // which another device's database requires to reference a Metric it
+      // has.
+      final metricsResult = await _pushPendingMetricsWithClient(
+        client: client,
+        session: session,
+        deviceId: deviceId,
+      );
+      final metricReadingsResult = await _pushPendingMetricReadingsWithClient(
+        client: client,
+        session: session,
+        deviceId: deviceId,
+      );
       final compoundsResult = await _pushPendingCompoundsWithClient(
         client: client,
         session: session,
@@ -464,6 +480,8 @@ class SyncRepository implements SyncCycleRepository {
         mealTypesResult,
         mealsResult,
         foodEntriesResult,
+        metricsResult,
+        metricReadingsResult,
         compoundsResult,
         dosesResult,
         protocolsResult,
@@ -555,6 +573,37 @@ class SyncRepository implements SyncCycleRepository {
       entity: AppDatabase.foodsTable,
       loadPendingRows: _loadPendingFoodRows,
       acknowledgePushResponse: _acknowledgeFoodPushResponse,
+    );
+  }
+
+  Future<SyncPushResult> _pushPendingMetricsWithClient({
+    required PerenniaApiClient client,
+    required AuthSession session,
+    required String deviceId,
+  }) {
+    return _pushPendingEntityRowsWithClient(
+      client: client,
+      session: session,
+      deviceId: deviceId,
+      entity: AppDatabase.metricsTable,
+      loadPendingRows: () => _loadPendingEntityRows(AppDatabase.metricsTable),
+      acknowledgePushResponse: _acknowledgeMetricPushResponse,
+    );
+  }
+
+  Future<SyncPushResult> _pushPendingMetricReadingsWithClient({
+    required PerenniaApiClient client,
+    required AuthSession session,
+    required String deviceId,
+  }) {
+    return _pushPendingEntityRowsWithClient(
+      client: client,
+      session: session,
+      deviceId: deviceId,
+      entity: AppDatabase.metricReadingsTable,
+      loadPendingRows: () =>
+          _loadPendingEntityRows(AppDatabase.metricReadingsTable),
+      acknowledgePushResponse: _acknowledgeMetricReadingPushResponse,
     );
   }
 
@@ -1721,8 +1770,9 @@ class SyncRepository implements SyncCycleRepository {
           ? null
           : DateTime.parse(change.occurredAt!).toUtc(),
     );
-    // The server's copy of a default measurement (from a canonical import)
-    // absorbs the one this device seeded; see the method for why on pull.
+    // The server's copy of a default measurement (another device's, or a
+    // canonical import's) absorbs the one this device seeded, which the
+    // server merged into it on push; see the method for why on pull.
     await _repositories.measurements.adoptSyncedDefaultMeasurement(
       change.id,
       batchId: batchId,
@@ -2783,6 +2833,23 @@ class SyncRepository implements SyncCycleRepository {
         .get();
   }
 
+  Future<List<ActivityLogRow>> _loadPendingEntityRows(String entityTable) {
+    return (_database.select(_database.activityLog)
+          ..where(
+            (row) =>
+                row.deletedAt.isNull() &
+                row.syncAcknowledgedAt.isNull() &
+                row.entityTable.equals(entityTable) &
+                row.afterImage.isNotNull(),
+          )
+          ..orderBy([
+            (row) => OrderingTerm.asc(row.occurredAt),
+            (row) => OrderingTerm.asc(row.id),
+          ])
+          ..limit(_syncPushBatchLimit))
+        .get();
+  }
+
   Future<List<ActivityLogRow>> _loadPendingMealTypeRows() {
     return (_database.select(_database.activityLog)
           ..where(
@@ -3128,6 +3195,126 @@ class SyncRepository implements SyncCycleRepository {
               ..where((row) => row.id.equals(change.id)))
             .write(
           FoodsCompanion(
+            syncDeviceId: Value<String?>(change.deviceId),
+            syncPreviouslySynced: const Value<bool>(true),
+            updatedAt: Value<DateTime>(
+              DateTime.parse(change.updatedAt).toUtc(),
+            ),
+          ),
+        );
+      }
+    });
+
+    return List<String>.unmodifiable(acknowledgedRows.map((row) => row.id));
+  }
+
+  /// Acknowledges a Metrics push like any other entity's, except for the
+  /// rows the server reports as `merged`: a default measurement it folded
+  /// into the user's existing one and stores no row for (see
+  /// `pushMetricsInTransaction` on the server). Such a row stays
+  /// `syncPreviouslySynced` false, which is what it is, so the pull that
+  /// brings the survivor folds it in through
+  /// [MeasurementRepository.adoptSyncedDefaultMeasurement], and a full
+  /// re-sync never takes the server's lack of it for an archive.
+  Future<List<String>> _acknowledgeMetricPushResponse(
+    List<ActivityLogRow> pendingRows,
+    SyncPushResponse response,
+  ) async {
+    final mergedIds = response.merged.map((change) => change.id).toSet();
+    final acceptedEntityIds = response.accepted.toSet();
+    final appliedById = <String, SyncAppliedChange>{
+      for (final change in response.applied) change.id: change,
+    };
+    final acknowledgedRows = pendingRows
+        .where((row) => acceptedEntityIds.contains(row.entityId))
+        .toList(growable: false);
+    final acknowledgedAt = DateTime.now().toUtc();
+
+    await _database.transaction(() async {
+      for (final row in acknowledgedRows) {
+        final applied = appliedById[row.entityId];
+        await (_database.update(_database.activityLog)
+              ..where((table) => table.id.equals(row.id)))
+            .write(
+          ActivityLogCompanion(
+            syncAcknowledgedAt: Value<DateTime?>(acknowledgedAt),
+            afterImage: applied == null
+                ? const Value.absent()
+                : Value<String?>(
+                    _imageWithUpdatedAt(row.afterImage, applied.updatedAt),
+                  ),
+          ),
+        );
+        if (mergedIds.contains(row.entityId)) {
+          continue;
+        }
+        await (_database.update(_database.metrics)
+              ..where((table) => table.id.equals(row.entityId)))
+            .write(
+          const MetricsCompanion(
+            syncPreviouslySynced: Value<bool>(true),
+          ),
+        );
+      }
+      for (final change in response.applied) {
+        await (_database.update(_database.metrics)
+              ..where((row) => row.id.equals(change.id)))
+            .write(
+          MetricsCompanion(
+            syncDeviceId: Value<String?>(change.deviceId),
+            syncPreviouslySynced: Value<bool>(!mergedIds.contains(change.id)),
+            updatedAt: Value<DateTime>(
+              DateTime.parse(change.updatedAt).toUtc(),
+            ),
+          ),
+        );
+      }
+    });
+
+    return List<String>.unmodifiable(acknowledgedRows.map((row) => row.id));
+  }
+
+  Future<List<String>> _acknowledgeMetricReadingPushResponse(
+    List<ActivityLogRow> pendingRows,
+    SyncPushResponse response,
+  ) async {
+    final acceptedEntityIds = response.accepted.toSet();
+    final appliedById = <String, SyncAppliedChange>{
+      for (final change in response.applied) change.id: change,
+    };
+    final acknowledgedRows = pendingRows
+        .where((row) => acceptedEntityIds.contains(row.entityId))
+        .toList(growable: false);
+    final acknowledgedAt = DateTime.now().toUtc();
+
+    await _database.transaction(() async {
+      for (final row in acknowledgedRows) {
+        final applied = appliedById[row.entityId];
+        await (_database.update(_database.activityLog)
+              ..where((table) => table.id.equals(row.id)))
+            .write(
+          ActivityLogCompanion(
+            syncAcknowledgedAt: Value<DateTime?>(acknowledgedAt),
+            afterImage: applied == null
+                ? const Value.absent()
+                : Value<String?>(
+                    _imageWithUpdatedAt(row.afterImage, applied.updatedAt),
+                  ),
+          ),
+        );
+        await (_database.update(_database.metricReadings)
+              ..where((table) => table.id.equals(row.entityId)))
+            .write(
+          const MetricReadingsCompanion(
+            syncPreviouslySynced: Value<bool>(true),
+          ),
+        );
+      }
+      for (final change in response.applied) {
+        await (_database.update(_database.metricReadings)
+              ..where((row) => row.id.equals(change.id)))
+            .write(
+          MetricReadingsCompanion(
             syncDeviceId: Value<String?>(change.deviceId),
             syncPreviouslySynced: const Value<bool>(true),
             updatedAt: Value<DateTime>(

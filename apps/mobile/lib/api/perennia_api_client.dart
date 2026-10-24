@@ -1381,6 +1381,7 @@ class SyncPushResponse {
     required this.accepted,
     required this.serverClock,
     required this.applied,
+    this.merged = const <SyncMergedChange>[],
   });
 
   factory SyncPushResponse.fromJson(Map<String, Object?> json) {
@@ -1406,6 +1407,11 @@ class SyncPushResponse {
       throw const FormatException('Expected applied to be a list.');
     }
 
+    final merged = json['merged'] ?? const <Object?>[];
+    if (merged is! List<Object?>) {
+      throw const FormatException('Expected merged to be a list.');
+    }
+
     return SyncPushResponse(
       protocolVersion: protocolVersion,
       accepted: accepted.cast<String>(),
@@ -1419,6 +1425,15 @@ class SyncPushResponse {
             return SyncAppliedChange.fromJson(change);
           })
           .toList(growable: false),
+      merged: merged
+          .map((change) {
+            if (change is! Map<String, Object?>) {
+              throw const FormatException(
+                  'Expected merged change to be an object.');
+            }
+            return SyncMergedChange.fromJson(change);
+          })
+          .toList(growable: false),
     );
   }
 
@@ -1426,6 +1441,34 @@ class SyncPushResponse {
   final List<String> accepted;
   final String serverClock;
   final List<SyncAppliedChange> applied;
+
+  /// Accepted rows the server stores under another id (`intoId`); see
+  /// the server's `pushMetricsInTransaction`.
+  final List<SyncMergedChange> merged;
+}
+
+class SyncMergedChange {
+  const SyncMergedChange({
+    required this.id,
+    required this.intoId,
+  });
+
+  factory SyncMergedChange.fromJson(Map<String, Object?> json) {
+    final id = json['id'];
+    if (id is! String || id.isEmpty) {
+      throw const FormatException('Expected id to be a non-empty string.');
+    }
+
+    final intoId = json['intoId'];
+    if (intoId is! String || intoId.isEmpty) {
+      throw const FormatException('Expected intoId to be a non-empty string.');
+    }
+
+    return SyncMergedChange(id: id, intoId: intoId);
+  }
+
+  final String id;
+  final String intoId;
 }
 
 class SyncAppliedChange {

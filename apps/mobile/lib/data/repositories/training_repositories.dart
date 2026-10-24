@@ -9857,9 +9857,11 @@ class MeasurementRepository {
   /// same name and unit is the server's copy from a canonical import (it
   /// arrives through sync unpinned and disabled, as the server's catalog
   /// defaults say), and is pinned and enabled here in place of seeding a
-  /// second row, so its imported readings show in Body Tracker. Nothing in
-  /// the app unpins a measurement, so this never overrides a user's choice.
-  /// One in a different unit is left alone and the default is seeded next to
+  /// second row, so its imported readings show in Body Tracker; the pin is
+  /// a change that syncs, so every device sees it. A pinned one pulled from
+  /// another device counts as having one, so a second device seeds nothing.
+  /// Nothing in the app unpins a measurement, so this never overrides a
+  /// user's choice. One in a different unit is left alone and the default is seeded next to
   /// it: a reading's value is stored in its measurement's unit.
   Future<void> ensureDefaultMeasurements({
     required MeasurementUnit bodyWeightUnit,
@@ -9924,54 +9926,55 @@ class MeasurementRepository {
   /// it, just pulled by sync as [syncedMetricId], so the device ends with one
   /// Body Weight (or Body Fat) holding both histories instead of two.
   ///
-  /// How the duplicate arises: metrics and their readings sync one way,
-  /// server to device. Neither is a push entity, so the Body Weight that
-  /// [ensureDefaultMeasurements] seeds, and every reading logged against it,
-  /// never leave the device. When the server's canonical import (Garmin and
-  /// other trackers) brings in a body-weight reading, it looks for the
-  /// user's Body Weight by name and unit (`findExistingBodyCompositionMetric`
-  /// in canonical-import-endpoint.ts), finds none because no device ever
-  /// sent one, and creates its own under a stable per-user id. Every device
-  /// then pulls that row next to the one it seeded.
-  ///
-  /// Why the dedupe sits here, on pull, and not in the server's push
-  /// handler: there is nothing to dedupe on push, because the device's copy
-  /// is never pushed. The pull is the one place both copies meet.
+  /// How the duplicate arises: every install seeds Body Weight and Body Fat
+  /// through [ensureDefaultMeasurements] under a fresh random id, so the
+  /// server's Body Weight (from another device, or one canonical import
+  /// created for a Garmin weigh-in, under a stable per-user id) never has
+  /// this device's id. When this device pushes its copy, the server folds it
+  /// into the existing one by name and unit and stores no row under its id
+  /// (`pushMetricsInTransaction` in the server's sync.ts; the response lists
+  /// it as `merged`). A copy pushed before the server had one of its own is
+  /// stored as itself and never needs this.
   ///
   /// Why the device gives up its id rather than the server's: the server's
   /// id is the one every device, agent, and later import refers to, so it
-  /// has to survive. The device's id never left the device, so rewriting
-  /// it is invisible to LWW: no server row or other replica holds it. (The
-  /// restore merge keeps the local id for the opposite reason: both of its
-  /// copies are device ids, and the local one may already be on the server.)
+  /// has to survive. The device's id is in no server row: the server
+  /// aliased it to the survivor, so the readings and edits this device
+  /// pushed under it already sit on the survivor there. (The restore merge
+  /// keeps the local id for the opposite reason: both of its copies are
+  /// device ids, and the local one may already be on the server.)
   ///
-  /// The identity rule matches the restore merge and the server's canonical
-  /// import: an active curated measurement named exactly like a default,
-  /// same name, same unit. Units must agree because a reading's value is
-  /// stored in its measurement's unit; a pound Body Weight never folds into
-  /// a kilogram one, and both stay. Only device-only rows
-  /// (`syncPreviouslySynced` false) fold in; two rows that both came from
-  /// the server are the server's to reconcile.
+  /// The identity rule matches the restore merge and the server: an active
+  /// curated measurement named exactly like a default, same name, same
+  /// unit. Units must agree because a reading's value is stored in its
+  /// measurement's unit; a pound Body Weight never folds into a kilogram
+  /// one, and both stay. Only copies the server holds no row for fold in:
+  /// `syncPreviouslySynced` false, which the push acknowledgement leaves
+  /// false for a `merged` row. Two rows that both live on the server are
+  /// the server's to reconcile; if each device folded its own into the
+  /// other's, both would end up archived.
   ///
   /// What the merged row keeps: the server's id, and the device copy's
   /// Body Tracker settings (pinned, enabled, order, goal), with a fresh
-  /// `updatedAt` so replaying the same server version cannot undo the merge.
-  /// The server's copy carries the import's catalog defaults (unpinned,
-  /// disabled); nothing a user did on any device ever reached it, so the
-  /// device's settings are the only user-authored ones there are. Taking
-  /// the server's by LWW would drop Body Weight out of Body Tracker. The
-  /// server's version is the recoverable loser: it is the before image of
-  /// the merge's Activity Log row, as sync's LWW losers always are, and no
-  /// dialog asks about it.
+  /// `updatedAt`, as a change this device pushes. A canonical-import copy
+  /// carries the catalog's defaults (unpinned, disabled), and taking those
+  /// by LWW would drop Body Weight out of Body Tracker; pushing the
+  /// device's settings puts them on the server, so a later server-side edit
+  /// of the row (an agent setting a goal) no longer brings `pinned=false`
+  /// back. The server's version is the recoverable loser: it is the before
+  /// image of the merge's Activity Log row, as sync's LWW losers always
+  /// are, and no dialog asks about it.
   ///
-  /// What follows the id: readings move over in place (they are device-only
-  /// too) and their Activity Log images are re-pointed, so an undo from
-  /// Recent activity acts on the merged measurement. Protocol target
-  /// outcomes do sync, so each one that pointed at the device copy is
-  /// re-pointed as a new, pushable change, and other devices stop
-  /// referencing an id only this device had. The device copy itself is
-  /// archived, not deleted: history survives, and any older Activity Log
-  /// image that still names it keeps a row to point at.
+  /// What follows the id: readings move over in place, with no change to
+  /// push, because the server already stores the ones it has under the
+  /// survivor; their Activity Log images are re-pointed, so the ones still
+  /// pending push against the survivor and an undo from Recent activity
+  /// acts on the merged measurement. Protocol target outcomes are re-pointed
+  /// as new, pushable changes, so other devices stop referencing an id only
+  /// this device had. The device copy itself is archived, not deleted:
+  /// history survives, and any older Activity Log image that still names it
+  /// keeps a row to point at. Its archive is pushed too, and the server
+  /// ignores it rather than archive the survivor.
   Future<void> adoptSyncedDefaultMeasurement(
     String syncedMetricId, {
     String actor = 'sync',

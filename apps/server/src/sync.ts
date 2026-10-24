@@ -6,6 +6,11 @@ import { ACCOUNT_DELETION_LOCAL_ONLY_MESSAGE } from "./account-deletion.js";
 import { CanonicalImportConsentDataClassSchema } from "./canonical-import.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
+import {
+  DEFAULT_MEASUREMENT_NAMES,
+  findActiveBodyCompositionMetric,
+  lockMetricIdentity
+} from "./metric-identity.js";
 import { SYNC_TOMBSTONE_RETENTION_MS } from "./sync-tombstone-gc.js";
 
 export const SYNC_PROTOCOL_VERSION = 1;
@@ -101,7 +106,9 @@ const SYNC_PUSH_ENTITIES = [
   TEMPLATE_GROUPS_SYNC_ENTITY,
   TEMPLATE_GROUP_MEMBERS_SYNC_ENTITY,
   ROUTINE_ENTRIES_SYNC_ENTITY,
-  TEMPLATE_LINKS_SYNC_ENTITY
+  TEMPLATE_LINKS_SYNC_ENTITY,
+  METRICS_SYNC_ENTITY,
+  METRIC_READINGS_SYNC_ENTITY
 ] as const;
 export const SYNC_PULL_MODE_DELTA = "delta";
 export const SYNC_PULL_MODE_SNAPSHOT = "snapshot";
@@ -205,7 +212,19 @@ export const SyncPushResponseSchema = z
         updatedAt: z.string().min(1),
         deviceId: z.string().min(1)
       })
-    )
+    ),
+    merged: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          intoId: z.string().min(1)
+        })
+      )
+      .optional()
+      .openapi({
+        description:
+          "Accepted rows the server stores under another id: the pushed id is an alias of `intoId`, and later pushes under it land there. The device keeps treating its row as never synced until a pull brings `intoId`."
+      })
   })
   .openapi("SyncPushResponse");
 
@@ -413,10 +432,16 @@ export type SyncAppliedChange = {
   deviceId: string;
 };
 
+export type SyncMergedChange = {
+  id: string;
+  intoId: string;
+};
+
 export type SyncPushResult = {
   accepted: string[];
   serverClock: string;
   applied: SyncAppliedChange[];
+  merged?: SyncMergedChange[];
 };
 
 export type SyncPullWindow = {
@@ -518,6 +543,18 @@ export type SyncStore = {
     changes: SyncPushChange[];
   }): Promise<SyncPushResult>;
   pushUserSettings(input: {
+    userId: string;
+    correlationId?: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+  }): Promise<SyncPushResult>;
+  pushMetrics(input: {
+    userId: string;
+    correlationId?: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+  }): Promise<SyncPushResult>;
+  pushMetricReadings(input: {
     userId: string;
     correlationId?: string;
     deviceId: string;
@@ -3447,6 +3484,519 @@ export async function pushIntegrationDataClassConsentsInTransaction(
   };
 }
 
+const MetricSyncPayloadSchema = z.object({
+  name: z.string().min(1),
+  unit: z.string().min(1),
+  value_shape: z.string().min(1),
+  metric_group: z.string().min(1),
+  goal_type: z.string().min(1).nullable(),
+  goal_target_value: z.number().finite().nullable(),
+  enabled: z.boolean(),
+  pinned: z.boolean(),
+  sort_order: z.number().int()
+});
+
+const nullableIsoTimestamp = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value, ctx) => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.valueOf())) {
+      ctx.addIssue({ code: "custom", message: "must be an ISO-8601 timestamp" });
+      return z.NEVER;
+    }
+    return date;
+  });
+
+const MetricReadingSyncPayloadSchema = z.object({
+  metric_id: z.string().min(1),
+  external_activity_id: z.string().min(1).nullable().optional(),
+  // The app stores a reading's value as JSON text; the server as jsonb.
+  value_json: z.union([
+    z.record(z.string(), z.unknown()),
+    z.string().transform((value, ctx) => {
+      try {
+        const parsed: unknown = JSON.parse(value);
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          !Array.isArray(parsed)
+        ) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        // Reported below.
+      }
+      ctx.addIssue({ code: "custom", message: "must be a JSON object" });
+      return z.NEVER;
+    })
+  ]),
+  scalar_value: z.number().finite().nullable().optional(),
+  scalar_entered: z.string().nullable().optional(),
+  at_time: nullableIsoTimestamp,
+  window_started_at: nullableIsoTimestamp,
+  window_ended_at: nullableIsoTimestamp,
+  // manual, integration, or agent (a reading an agent logged through the API).
+  provenance: z.string().min(1),
+  source: z.string().min(1),
+  external_id: z.string().min(1).nullable().optional(),
+  comment: z.string().nullable().optional()
+});
+
+/**
+ * Pushes a device's Metrics (Body Tracker measurements and their curation:
+ * pinned, enabled, order, goal) with per-row LWW, like every other entity,
+ * plus one fold for the default measurements.
+ *
+ * Why a fold: every install seeds Body Weight and Body Fat under a fresh
+ * random id (`MeasurementRepository.ensureDefaultMeasurements` in the app),
+ * so two devices of one user would each push their own Body Weight, and the
+ * user would see two. Fixed seed ids can't help: the seed runs before there
+ * is an account, a fixed id would collide across users on this global
+ * primary key, and every install to date already holds a random one.
+ *
+ * The fold: when a device pushes a live default the server has never seen
+ * (by id) and the user already has an active body-composition Metric with
+ * the same name and unit (`findActiveBodyCompositionMetric`, the rule
+ * canonical import attaches weigh-ins by), the server keeps that row and
+ * records the device's id as an alias of it (`metric_aliases`). The pushed
+ * row is then an LWW write to the surviving row; the device's id is never
+ * stored as a Metric. From then on every change the device pushes under
+ * its own id, and every reading logged against it
+ * (`pushMetricReadingsInTransaction`), lands on the surviving row.
+ *
+ * The response lists each folded id under `merged`. The device keeps its
+ * copy marked as never synced, which is true: the server holds no row by
+ * that id. Its next pull brings the survivor, and the app's pull-side merge
+ * (`MeasurementRepository.adoptSyncedDefaultMeasurement`) folds the copy
+ * into it, as it already does for a copy that was never pushed. That merge
+ * deliberately leaves alone two copies that both live on the server; with
+ * `merged` it can keep that rule. Folding by "this device wrote it" instead
+ * would let two devices each fold their own copy into the other's and
+ * archive both.
+ *
+ * Only defaults fold (named exactly like one, scalar, body composition,
+ * with a goal), matching the app's pull and restore merges. Two Metrics a
+ * user created by hand under one name stay two: that may be intended, and
+ * nothing else in the system would explain the merge to them.
+ *
+ * An archive pushed under an alias is accepted and not applied. It is the
+ * device retiring its own copy after the fold, and must not archive the row
+ * every device now shares.
+ */
+export async function pushMetricsInTransaction(
+  transaction: LoggedSetMutationDatabase,
+  {
+    userId,
+    deviceId,
+    changes,
+    serverClock
+  }: {
+    userId: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+    serverClock: Date;
+  }
+): Promise<SyncPushResult> {
+  const acceptedIds: string[] = [];
+  const applied: SyncAppliedChange[] = [];
+  const merged: SyncMergedChange[] = [];
+  await lockMetricIdentity(transaction, userId);
+
+  for (const change of changes) {
+    const fields = MetricSyncPayloadSchema.parse(change.payload);
+    const updatedAt = normalizeIncomingUpdatedAt(
+      parseIsoDate(change.updatedAt, "updatedAt"),
+      serverClock
+    );
+    const deletedAt =
+      change.deletedAt === null
+        ? null
+        : parseIsoDate(change.deletedAt, "deletedAt");
+    const existing = await readMetricClock(transaction, change.id);
+
+    // TENANT ISOLATION: a second user's push can never overwrite the
+    // first user's row keyed by the same client PK.
+    if (existing !== undefined && existing.userId !== userId) {
+      continue;
+    }
+
+    const survivorId =
+      existing === undefined
+        ? await metricAliasTarget(transaction, { userId, change, fields })
+        : null;
+    const targetId = survivorId ?? change.id;
+    const target =
+      survivorId === null
+        ? existing
+        : await readMetricClock(transaction, survivorId);
+    if (survivorId !== null) {
+      merged.push({ id: change.id, intoId: survivorId });
+    }
+    const recordActivity = () =>
+      recordPushedActivityLog(transaction, {
+        userId,
+        entityTable: METRICS_SYNC_ENTITY,
+        entityId: targetId,
+        change,
+        repoint: survivorId === null ? null : { key: "id", id: survivorId }
+      });
+
+    if (
+      (survivorId !== null && deletedAt !== null) ||
+      (target !== undefined &&
+        !lwwWins(updatedAt, deviceId, target.updatedAt, target.deviceId))
+    ) {
+      await recordActivity();
+      acceptedIds.push(change.id);
+      continue;
+    }
+
+    const rowValues = {
+      id: targetId,
+      userId,
+      deviceId,
+      name: fields.name,
+      unit: fields.unit,
+      valueShape: fields.value_shape,
+      metricGroup: fields.metric_group,
+      goalType: fields.goal_type,
+      goalTargetValue: fields.goal_target_value,
+      enabled: fields.enabled,
+      pinned: fields.pinned,
+      sortOrder: fields.sort_order,
+      updatedAt,
+      // A write through an alias never archives or restores the survivor;
+      // see the archive rule above.
+      ...(survivorId === null ? { deletedAt } : {}),
+      receivedAt: serverClock
+    };
+    if (target === undefined) {
+      await transaction.insert(schema.metrics).values(rowValues);
+    } else {
+      await transaction
+        .update(schema.metrics)
+        .set(rowValues)
+        .where(eq(schema.metrics.id, targetId));
+    }
+
+    await recordActivity();
+    acceptedIds.push(change.id);
+    applied.push({
+      id: change.id,
+      updatedAt: updatedAt.toISOString(),
+      deviceId
+    });
+  }
+
+  return {
+    accepted: acceptedIds,
+    serverClock: serverClock.toISOString(),
+    applied,
+    merged
+  };
+}
+
+/**
+ * Pushes a device's Metric Readings with per-row LWW.
+ *
+ * A reading's `metric_id` may be a device's id for a default measurement
+ * that `pushMetricsInTransaction` folded into another row; it is stored
+ * against the surviving row. A reading whose Metric the server does not
+ * hold for this user is not accepted, so the device keeps it pending and
+ * pushes it again once the Metric has arrived (the app pushes Metrics
+ * first, so this is a transient state, never a loss).
+ *
+ * Integration readings (provenance `integration`, from canonical import or
+ * a device's health store) are immutable observations: the app never edits
+ * their values, and offers delete-and-log-a-manual-one instead. A device's
+ * push may archive or restore one, or move it with its Metric's fold, but
+ * the server keeps the imported values.
+ */
+export async function pushMetricReadingsInTransaction(
+  transaction: LoggedSetMutationDatabase,
+  {
+    userId,
+    deviceId,
+    changes,
+    serverClock
+  }: {
+    userId: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+    serverClock: Date;
+  }
+): Promise<SyncPushResult> {
+  const acceptedIds: string[] = [];
+  const applied: SyncAppliedChange[] = [];
+
+  for (const change of changes) {
+    const fields = MetricReadingSyncPayloadSchema.parse(change.payload);
+    const updatedAt = normalizeIncomingUpdatedAt(
+      parseIsoDate(change.updatedAt, "updatedAt"),
+      serverClock
+    );
+    const deletedAt =
+      change.deletedAt === null
+        ? null
+        : parseIsoDate(change.deletedAt, "deletedAt");
+    const existingRows = await transaction
+      .select({
+        userId: schema.metricReadings.userId,
+        updatedAt: schema.metricReadings.updatedAt,
+        deviceId: schema.metricReadings.deviceId,
+        provenance: schema.metricReadings.provenance
+      })
+      .from(schema.metricReadings)
+      .where(eq(schema.metricReadings.id, change.id))
+      .limit(1);
+    const existing = existingRows[0];
+
+    // TENANT ISOLATION: a second user's push can never overwrite the
+    // first user's row keyed by the same client PK.
+    if (existing !== undefined && existing.userId !== userId) {
+      continue;
+    }
+    const metricId = await pushedReadingMetricId(transaction, {
+      userId,
+      metricId: fields.metric_id
+    });
+    if (metricId === null) {
+      continue;
+    }
+    const recordActivity = () =>
+      recordPushedActivityLog(transaction, {
+        userId,
+        entityTable: METRIC_READINGS_SYNC_ENTITY,
+        entityId: change.id,
+        change,
+        repoint:
+          metricId === fields.metric_id
+            ? null
+            : { key: "metric_id", id: metricId }
+      });
+    if (
+      existing !== undefined &&
+      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
+    ) {
+      await recordActivity();
+      acceptedIds.push(change.id);
+      continue;
+    }
+
+    const clock = {
+      id: change.id,
+      userId,
+      deviceId,
+      metricId,
+      updatedAt,
+      deletedAt,
+      receivedAt: serverClock
+    };
+    if (existing === undefined) {
+      await transaction.insert(schema.metricReadings).values({
+        ...clock,
+        externalActivityId: fields.external_activity_id ?? null,
+        valueJson: fields.value_json,
+        scalarValue: fields.scalar_value ?? null,
+        scalarEntered: fields.scalar_entered ?? null,
+        atTime: fields.at_time,
+        windowStartedAt: fields.window_started_at,
+        windowEndedAt: fields.window_ended_at,
+        provenance: fields.provenance,
+        source: fields.source,
+        externalId: fields.external_id ?? null,
+        comment: fields.comment ?? null
+      });
+    } else if (existing.provenance === "integration") {
+      await transaction
+        .update(schema.metricReadings)
+        .set(clock)
+        .where(eq(schema.metricReadings.id, change.id));
+    } else {
+      await transaction
+        .update(schema.metricReadings)
+        .set({
+          ...clock,
+          externalActivityId: fields.external_activity_id ?? null,
+          valueJson: fields.value_json,
+          scalarValue: fields.scalar_value ?? null,
+          scalarEntered: fields.scalar_entered ?? null,
+          atTime: fields.at_time,
+          windowStartedAt: fields.window_started_at,
+          windowEndedAt: fields.window_ended_at,
+          provenance: fields.provenance,
+          source: fields.source,
+          externalId: fields.external_id ?? null,
+          comment: fields.comment ?? null
+        })
+        .where(eq(schema.metricReadings.id, change.id));
+    }
+
+    await recordActivity();
+    acceptedIds.push(change.id);
+    applied.push({
+      id: change.id,
+      updatedAt: updatedAt.toISOString(),
+      deviceId
+    });
+  }
+
+  return {
+    accepted: acceptedIds,
+    serverClock: serverClock.toISOString(),
+    applied
+  };
+}
+
+async function readMetricClock(
+  transaction: LoggedSetMutationDatabase,
+  id: string
+) {
+  const rows = await transaction
+    .select({
+      userId: schema.metrics.userId,
+      updatedAt: schema.metrics.updatedAt,
+      deviceId: schema.metrics.deviceId
+    })
+    .from(schema.metrics)
+    .where(eq(schema.metrics.id, id))
+    .limit(1);
+  return rows[0];
+}
+
+/**
+ * The surviving Metric id for a pushed Metric the server holds no row for:
+ * the alias target if the device's id was folded before, or the user's
+ * matching body-composition Metric if this push is a default that folds
+ * now (recording the alias). Null when the push is a Metric of its own.
+ */
+async function metricAliasTarget(
+  transaction: LoggedSetMutationDatabase,
+  {
+    userId,
+    change,
+    fields
+  }: {
+    userId: string;
+    change: SyncPushChange;
+    fields: z.infer<typeof MetricSyncPayloadSchema>;
+  }
+): Promise<string | null> {
+  const aliases = await transaction
+    .select({ metricId: schema.metricAliases.metricId })
+    .from(schema.metricAliases)
+    .where(
+      and(
+        eq(schema.metricAliases.id, change.id),
+        eq(schema.metricAliases.userId, userId)
+      )
+    )
+    .limit(1);
+  if (aliases[0] !== undefined) {
+    return aliases[0].metricId;
+  }
+
+  const isLiveDefault =
+    change.deletedAt === null &&
+    fields.value_shape === "scalar" &&
+    fields.metric_group === "bodyComposition" &&
+    fields.goal_type !== null &&
+    DEFAULT_MEASUREMENT_NAMES.has(fields.name);
+  if (!isLiveDefault) {
+    return null;
+  }
+  const survivor = await findActiveBodyCompositionMetric(transaction, {
+    name: fields.name,
+    unit: fields.unit,
+    userId
+  });
+  if (survivor === null) {
+    return null;
+  }
+  await transaction
+    .insert(schema.metricAliases)
+    .values({ id: change.id, userId, metricId: survivor.id })
+    .onConflictDoNothing({ target: schema.metricAliases.id });
+  return survivor.id;
+}
+
+/**
+ * The Metric a pushed reading is stored against: its own `metric_id` when
+ * the user has that Metric, the surviving row when that id is an alias,
+ * and null when the server has neither (yet).
+ */
+async function pushedReadingMetricId(
+  transaction: LoggedSetMutationDatabase,
+  { userId, metricId }: { userId: string; metricId: string }
+): Promise<string | null> {
+  const metric = await readMetricClock(transaction, metricId);
+  if (metric !== undefined) {
+    return metric.userId === userId ? metricId : null;
+  }
+  const aliases = await transaction
+    .select({ metricId: schema.metricAliases.metricId })
+    .from(schema.metricAliases)
+    .where(
+      and(
+        eq(schema.metricAliases.id, metricId),
+        eq(schema.metricAliases.userId, userId)
+      )
+    )
+    .limit(1);
+  return aliases[0]?.metricId ?? null;
+}
+
+/**
+ * Records a pushed change's Activity Log envelope, if it carries one. When
+ * a Metric fold redirected the change, the entry names the surviving id in
+ * place of the device's, so the server's Activity Log speaks of the row
+ * that exists.
+ */
+async function recordPushedActivityLog(
+  transaction: LoggedSetMutationDatabase,
+  {
+    userId,
+    entityTable,
+    entityId,
+    change,
+    repoint
+  }: {
+    userId: string;
+    entityTable: SyncPullEntity;
+    entityId: string;
+    change: SyncPushChange;
+    repoint: { key: string; id: string } | null;
+  }
+) {
+  if (!hasActivityLogEnvelope(change)) {
+    return;
+  }
+  const image = (value: Record<string, unknown> | null) =>
+    value === null || repoint === null
+      ? value
+      : { ...value, [repoint.key]: repoint.id };
+
+  await transaction
+    .insert(schema.activityLog)
+    .values({
+      id: change.activityLogId,
+      userId,
+      actor: change.actor,
+      batchId: change.batchId,
+      entityTable,
+      entityId,
+      beforeImage: image(change.beforeImage),
+      afterImage: image(change.afterImage),
+      occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
+    })
+    .onConflictDoNothing({ target: schema.activityLog.id });
+}
+
 export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
   return {
     async verifyBearerToken(token) {
@@ -3681,6 +4231,28 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
       );
 
       return result;
+    },
+    async pushMetrics({ userId, deviceId, changes }) {
+      const serverClock = new Date();
+      return db.transaction((transaction) =>
+        pushMetricsInTransaction(transaction, {
+          userId,
+          deviceId,
+          changes,
+          serverClock
+        })
+      );
+    },
+    async pushMetricReadings({ userId, deviceId, changes }) {
+      const serverClock = new Date();
+      return db.transaction((transaction) =>
+        pushMetricReadingsInTransaction(transaction, {
+          userId,
+          deviceId,
+          changes,
+          serverClock
+        })
+      );
     },
     async pushIntegrationDataClassConsents({ userId, deviceId, changes }) {
       const serverClock = new Date();

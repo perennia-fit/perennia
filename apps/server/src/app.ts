@@ -378,6 +378,8 @@ import {
   FOODS_SYNC_ENTITY,
   LOGGED_SETS_SYNC_ENTITY,
   MEALS_SYNC_ENTITY,
+  METRICS_SYNC_ENTITY,
+  METRIC_READINGS_SYNC_ENTITY,
   MEAL_TYPES_SYNC_ENTITY,
   NUTRITION_GOALS_SYNC_ENTITY,
   USER_SETTINGS_SYNC_ENTITY,
@@ -5056,6 +5058,22 @@ export function createApp(options: CreateAppOptions = {}) {
           changes: requestBody.changes
         });
         break;
+      case METRICS_SYNC_ENTITY:
+        result = await syncStore.pushMetrics({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
+      case METRIC_READINGS_SYNC_ENTITY:
+        result = await syncStore.pushMetricReadings({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
       default:
         result = await syncStore.pushIntegrationDataClassConsents({
           userId: session.userId,
@@ -5089,7 +5107,8 @@ export function createApp(options: CreateAppOptions = {}) {
         protocolVersion: requestBody.protocolVersion,
         accepted: result.accepted,
         serverClock: result.serverClock,
-        applied: result.applied
+        applied: result.applied,
+        merged: result.merged
       }),
       200
     );
