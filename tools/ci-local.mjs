@@ -29,6 +29,21 @@ import process from 'node:process';
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const MOBILE = `${ROOT}/apps/mobile`;
 
+// Run from a git hook (tools/git-hooks/pre-push), we inherit git's repo-local
+// environment — GIT_DIR above all. Every child process then sees it, including
+// the git calls Flutter makes inside its own SDK folder to work out its version.
+// In a linked worktree GIT_DIR is absolute (.git/worktrees/<name>), so Flutter
+// reads THIS repo as its framework checkout, reports "0.0.0-unknown", and pub
+// fails to solve any SDK-constrained package (fl_chart first). In the main
+// checkout it is the relative ".git", which happens to resolve to Flutter's
+// own repo — which is why only worktree pushes broke. Drop the variables git
+// itself lists as repo-local (the set git's own submodule scripts clear); every
+// command here runs with cwd inside the repo, so git still finds it from cwd.
+{
+  const res = spawnSync('git', ['rev-parse', '--local-env-vars'], { encoding: 'utf8' });
+  for (const name of (res.stdout || '').split('\n')) if (name) delete process.env[name];
+}
+
 const PG_CONTAINER = 'prn-ci-local-postgres';
 const PG_IMAGE = 'postgres:16-alpine';
 const PG_PORT = 55432; // host port; avoids clashing with any local 5432
