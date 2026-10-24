@@ -59,6 +59,35 @@ The artifact lands in `apps/mobile/build/app/outputs/flutter-apk/`. Debug builds
 are signed with your local debug keystore, which is all you need to install on
 your own device.
 
+## Test data
+
+The app ships with no sample data, so a fresh install is empty. To see real
+history (charts, records, the Today screen, prefill from last session), load
+generated data onto a device or emulator running a **debug** build:
+
+```bash
+pnpm test-data                      # 12 weeks ending today, onto the only connected device
+```
+
+That writes four days of strength training a week, plus a weekend run, with
+progression, deloads and the odd missed rep. It adds a body-weight trend and
+logged meals, all against the bundled exercise library. Useful options:
+
+| Option | Effect |
+|---|---|
+| `--weeks 26` | Length of history |
+| `--seed 7` | Different but reproducible data; the same seed always gives the same history |
+| `--end 2026-06-30` | Fix the window, for screenshots that don't change day to day |
+| `--no-nutrition` | Training and body weight only |
+| `--no-push` | Only write `apps/mobile/build/test-data/perennia.sqlite` |
+| `--device SERIAL` | Choose a device when several are connected |
+
+Loading **replaces the app's database on that device**. It works only on debug
+builds (it uses `adb run-as`), so it can't touch a store install. The generator
+lives in `apps/mobile/tool/test_data/` and writes through the app's own
+repositories, so the file always matches the schema of your checkout. Regenerate
+after a schema change rather than reusing an old file.
+
 ## Running the server
 
 ```bash
