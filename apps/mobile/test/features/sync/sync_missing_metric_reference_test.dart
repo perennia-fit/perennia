@@ -10,12 +10,12 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/sync/repositories/sync_repository.dart';
 
-/// Metrics only ever flow server → device, but a Protocol target outcome is
-/// pushed. So a device that targets its own, user-created Metric pushes an
-/// outcome that references a row no other device has. These tests push such an
-/// outcome from device A through a fake server, pull it onto device B, and pin
-/// down that B's sync keeps moving: the outcome waits on B until its Metric
-/// arrives, and is applied then.
+/// A Protocol target outcome can reach a device before the Metric it targets:
+/// device A pushes both, but its Metric push can fail or run after the
+/// outcome's, and another device pulls in between. These tests push such an
+/// outcome from device A through a fake server that does not yet hold A's
+/// Metric, pull it onto device B, and pin down that B's sync keeps moving: the
+/// outcome waits on B until its Metric arrives, and is applied then.
 void main() {
   final warnAboutMultipleDatabases =
       driftRuntimeOptions.dontWarnAboutMultipleDatabases;
@@ -89,6 +89,7 @@ void main() {
       'instead of failing the pull', () async {
     final created = await createProtocolTargetingOwnMetricOnA();
     await server.push(databaseA, deviceId: 'device-a');
+    server.withholdMetric(created.metricId);
     expect(
       server.changes.map((change) => change['entity']),
       contains(AppDatabase.protocolTargetOutcomesTable),
@@ -148,6 +149,7 @@ void main() {
       () async {
     final created = await createProtocolTargetingOwnMetricOnA();
     await server.push(databaseA, deviceId: 'device-a');
+    server.withholdMetric(created.metricId);
     final original = server.changes.singleWhere(
       (change) => change['entity'] == AppDatabase.protocolTargetOutcomesTable,
     );
@@ -200,6 +202,7 @@ void main() {
       () async {
     final created = await createProtocolTargetingOwnMetricOnA();
     await server.push(databaseA, deviceId: 'device-a');
+    server.withholdMetric(created.metricId);
     await server.pull(databaseB, deviceId: 'device-b');
     expect(await databaseB.select(databaseB.deferredSyncChanges).get(),
         hasLength(1));
@@ -252,8 +255,17 @@ class _FakeSyncServer {
     );
   }
 
-  /// Puts device A's own Metric on the server, standing in for the metrics
-  /// push that does not exist yet.
+  /// Takes a pushed Metric back off the server, as if device A's Metric push
+  /// had not landed yet.
+  void withholdMetric(String metricId) {
+    changes.removeWhere(
+      (change) =>
+          change['entity'] == AppDatabase.metricsTable &&
+          change['id'] == metricId,
+    );
+  }
+
+  /// Puts device A's own Metric on the server: its Metric push landing late.
   Future<void> addServerMetric(
     AppDatabase database,
     String metricId, {

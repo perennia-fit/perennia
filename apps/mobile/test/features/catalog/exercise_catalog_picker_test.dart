@@ -8,6 +8,7 @@ import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/catalog/repositories/exercise_catalog_repository.dart';
 import 'package:perennia/features/catalog/widgets/exercise_catalog_picker.dart';
 import 'package:perennia/features/catalog/widgets/exercise_editor_screen.dart';
+import 'package:perennia/features/focus/repositories/focus_feature_repository.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
@@ -121,7 +122,7 @@ void main() {
     },
   );
 
-  testWidgets('filters exercises by type, body part, and equipment', (
+  testWidgets('filters exercises by Focus, body part, and equipment', (
     tester,
   ) async {
     await _pumpPicker(tester);
@@ -131,11 +132,7 @@ void main() {
     expect(find.text('Mobility Flow'), findsOneWidget);
     expect(find.text('Run'), findsOneWidget);
 
-    await _selectDropdownOption(
-      tester,
-      dropdownKey: ExerciseCatalogPicker.typeFilterKey,
-      optionText: 'Strength',
-    );
+    await _selectFocus(tester, _weightsFocusId);
 
     expect(find.text('Barbell Squat'), findsOneWidget);
     expect(find.text('Barbell Press'), findsOneWidget);
@@ -159,11 +156,7 @@ void main() {
 
     expect(find.text('Barbell Press'), findsOneWidget);
 
-    await _selectDropdownOption(
-      tester,
-      dropdownKey: ExerciseCatalogPicker.typeFilterKey,
-      optionText: 'Cardio',
-    );
+    await _selectFocus(tester, _enduranceFocusId);
 
     expect(find.text('Barbell Press'), findsNothing);
     expect(
@@ -204,8 +197,8 @@ void main() {
 
     await _selectDropdownOption(
       tester,
-      dropdownKey: ExerciseCatalogPicker.typeFilterKey,
-      optionText: 'Cardio',
+      dropdownKey: ExerciseCatalogPicker.bodyPartFilterKey,
+      optionText: 'Back',
     );
     await tester.enterText(
       find.byKey(ExerciseCatalogPicker.searchFieldKey),
@@ -343,7 +336,7 @@ void main() {
       find.byKey(ExerciseCatalogPicker.createExerciseButtonKey),
       findsOneWidget,
     );
-    expect(find.byKey(ExerciseCatalogPicker.typeFilterKey), findsNothing);
+    expect(find.byKey(ExerciseCatalogPicker.focusFilterKey), findsNothing);
     expect(find.byKey(ExerciseCatalogPicker.bodyPartFilterKey), findsNothing);
     expect(find.byKey(ExerciseCatalogPicker.equipmentFilterKey), findsNothing);
   });
@@ -518,6 +511,9 @@ Future<void> _pumpPicker(
             sections: sections ?? _sections,
           ),
         ),
+        focusFeatureRepositoryProvider.overrideWith(
+          (ref) => StubFocusFeatureRepository(focuses: _focuses),
+        ),
       ],
       child: MaterialApp(
         theme: theme ?? AppTheme.light(),
@@ -540,6 +536,8 @@ Future<void> _pumpPicker(
     ),
   );
   await _waitForFinder(tester, find.text(waitForText));
+  // The Focus chips load beside the catalog and shift the filters below them.
+  await tester.pumpAndSettle();
 }
 
 class _EmptyPickerSeedSource implements PlatformExerciseSeedSource {
@@ -564,6 +562,37 @@ Future<void> _waitForFinder(WidgetTester tester, Finder finder) async {
 
   fail('Timed out waiting for $finder.');
 }
+
+Future<void> _selectFocus(WidgetTester tester, String focusId) async {
+  await tester.tap(
+    find.byKey(ExerciseCatalogPicker.focusFilterOptionKey(focusId)),
+  );
+  await tester.pumpAndSettle();
+}
+
+const _weightsFocusId = '01910000-0000-7000-8000-000000000401';
+const _enduranceFocusId = '01910000-0000-7000-8000-000000000402';
+const _mobilityFocusId = '01910000-0000-7000-8000-000000000405';
+final _focuses = <FocusRecord>[
+  FocusRecord(
+    id: _weightsFocusId,
+    name: 'Weights',
+    sortOrder: 0,
+    updatedAt: DateTime.utc(2026),
+  ),
+  FocusRecord(
+    id: _enduranceFocusId,
+    name: 'Endurance',
+    sortOrder: 1,
+    updatedAt: DateTime.utc(2026),
+  ),
+  FocusRecord(
+    id: _mobilityFocusId,
+    name: 'Mobility',
+    sortOrder: 2,
+    updatedAt: DateTime.utc(2026),
+  ),
+];
 
 Future<void> _selectDropdownOption(
   WidgetTester tester, {
@@ -599,6 +628,7 @@ final _barbellPress = ExerciseRecord(
     ExerciseEquipment.barbell,
     ExerciseEquipment.bench,
   ],
+  focusIds: const <String>[_weightsFocusId],
   notes: null,
   isFavorite: true,
   updatedAt: _updatedAt,
@@ -674,6 +704,7 @@ final _sections = <ExerciseCatalogSectionRecord>[
         recordProfile: RecordProfile.repMax,
         categoryId: _backCategoryId,
         equipment: const <ExerciseEquipment>[ExerciseEquipment.barbell],
+        focusIds: const <String>[_weightsFocusId],
         notes: null,
         isFavorite: false,
         updatedAt: _updatedAt,
@@ -702,6 +733,7 @@ final _sections = <ExerciseCatalogSectionRecord>[
           ExerciseEquipment.bodyweight,
           ExerciseEquipment.gymMat,
         ],
+        focusIds: const <String>[_mobilityFocusId],
         notes: null,
         isFavorite: false,
         updatedAt: _updatedAt,
@@ -728,6 +760,7 @@ final _sections = <ExerciseCatalogSectionRecord>[
         loadMode: ExerciseLoadMode.added,
         recordProfile: RecordProfile.fastestPace,
         categoryId: _cardioCategoryId,
+        focusIds: const <String>[_enduranceFocusId],
         notes: null,
         isFavorite: false,
         updatedAt: _updatedAt,
@@ -758,6 +791,7 @@ final _shadowSections = <ExerciseCatalogSectionRecord>[
         recordProfile: RecordProfile.repMax,
         categoryId: _backCategoryId,
         equipment: const <ExerciseEquipment>[ExerciseEquipment.barbell],
+        focusIds: const <String>[_weightsFocusId],
         notes: null,
         isFavorite: false,
         shadowsPlatformExercise: true,
@@ -775,6 +809,7 @@ final _shadowSections = <ExerciseCatalogSectionRecord>[
         recordProfile: RecordProfile.repMax,
         categoryId: _backCategoryId,
         equipment: const <ExerciseEquipment>[ExerciseEquipment.barbell],
+        focusIds: const <String>[_weightsFocusId],
         notes: null,
         isFavorite: false,
         updatedAt: _updatedAt,

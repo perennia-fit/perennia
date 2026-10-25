@@ -20,6 +20,7 @@ import {
   AgentExerciseListResponseSchema,
   AgentExerciseResolveQuerySchema,
   AgentExerciseResolveResponseSchema,
+  AgentFocusListResponseSchema,
   parseAgentExerciseListQuery,
   type AgentCatalogStore
 } from "./agent-catalog.js";
@@ -381,6 +382,11 @@ export const AgentMcpNutritionGoalBatchWriteInputSchema =
     request: AgentNutritionGoalBatchWriteRequestSchema
   }).openapi("AgentMcpNutritionGoalBatchWriteInput");
 
+// New tool: authenticates only through the transport Authorization header.
+export const AgentMcpFocusListInputSchema = z
+  .object({})
+  .openapi("AgentMcpFocusListInput");
+
 export const AgentMcpSettingsReadInputSchema =
   AgentMcpAuthFieldsSchema.openapi("AgentMcpSettingsReadInput");
 
@@ -737,6 +743,45 @@ export function createAgentMcpServer({
             ...query
           })
         )
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_focuses",
+    {
+      title: "List Agent Focuses",
+      description:
+        "List the caller's active Focuses (the training discipline a Workout is performed under: the starter set merged with the user's own renames, reorders and additions; archived ones omitted) through the same catalog store as REST.",
+      inputSchema: AgentMcpFocusListInputSchema,
+      outputSchema: AgentFocusListResponseSchema
+    },
+    async (_input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentCatalogStore === undefined) {
+        return errorResult(
+          AgentCatalogUnavailableResponseSchema.parse({
+            code: "agent_catalog_unavailable",
+            message: "Agent Exercise catalog storage is not configured."
+          })
+        );
+      }
+
+      return successResult(
+        AgentFocusListResponseSchema.parse({
+          focuses: await agentCatalogStore.listFocuses({
+            userId: auth.agent.userId
+          })
+        })
       );
     }
   );

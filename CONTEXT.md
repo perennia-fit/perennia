@@ -82,6 +82,17 @@ A grouping label for exercises (typically a muscle group, or a modality family s
 Running or Cycling for cardio). Freely changeable; has no effect on recorded history.
 Distinct from Exercise Type.
 
+## Focus
+The training discipline a Workout is performed under, such as Weights, Endurance,
+Functional, Calisthenics, or Mobility. Perennia seeds a starter set; users rename,
+reorder, archive, and add their own. A Workout carries at most one Focus, and a
+Workout Template may carry one that materializing copies onto the new Workout. An
+Exercise may belong to any number of Focuses, which is what lets a picker open on
+the exercises that matter for today's session. Optional everywhere and freely
+changeable: changing or archiving a Focus never alters recorded Sets. Distinct from
+Category (what an exercise works, usually a body part) and from Exercise Type (what
+it measures).
+
 ## Equipment
 A structured, optional descriptor of the tool or apparatus normally used for an
 Exercise, such as Barbell, Dumbbell, Bench, or Bodyweight. Equipment helps filtering

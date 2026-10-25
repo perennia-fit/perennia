@@ -166,12 +166,15 @@ const JOBS = {
       'apps/mobile/assets/seeds/usda_foods.json',
       'apps/mobile/lib/api/**', 'apps/mobile/pubspec.yaml',
       'packages/contract/**', 'tools/generate-server-platform-exercise-seed.mjs',
+      'tools/platform-exercise-focus.mjs',
+      'tools/data/platform-exercise-focus-overrides.json',
       'tools/generate-server-usda-food-seed.mjs',
       '.node-version', 'package.json', 'pnpm-workspace.yaml',
       'pnpm-lock.yaml', 'tsconfig.base.json', '.github/workflows/ci.yml'],
     pnpm: true,
     run: () =>
       run('node tools/generate-server-platform-exercise-seed.mjs --check') &&
+      run('node tools/platform-exercise-focus.mjs --check') &&
       run('node tools/generate-server-usda-food-seed.mjs --check') &&
       run('corepack pnpm --filter @perennia/contract check:drift'),
   },

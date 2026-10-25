@@ -125,6 +125,11 @@ const COMMANDS = {
     operationId: "batchWriteAgentMeal"
   },
   "list-meals": { method: "GET", path: "/agent/meals", operationId: "listAgentMeals" },
+  "list-focuses": {
+    method: "GET",
+    path: "/agent/focuses",
+    operationId: "listAgentFocuses"
+  },
   "list-foods": { method: "GET", path: "/agent/foods", operationId: "listAgentFoods" },
   "search-platform-foods": {
     method: "GET",

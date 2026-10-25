@@ -37,6 +37,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `list-compounds` | GET | `/agent/protocols/compounds` |
 | `list-doses` | GET | `/agent/protocols/doses` |
 | `list-exercises` | GET | `/agent/exercises` |
+| `list-focuses` | GET | `/agent/focuses` |
 | `list-foods` | GET | `/agent/foods` |
 | `list-history-sets` | GET | `/agent/history/sets` |
 | `list-meals` | GET | `/agent/meals` |

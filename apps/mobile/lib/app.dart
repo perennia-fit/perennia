@@ -9,6 +9,7 @@ import 'features/auth/repositories/auth_repository.dart';
 import 'features/auth/widgets/sign_in_screen.dart';
 import 'features/body_tracker/widgets/body_tracker_screen.dart';
 import 'features/catalog/repositories/exercise_catalog_repository.dart';
+import 'features/focus/repositories/focus_feature_repository.dart';
 import 'features/home/repositories/home_repository.dart';
 import 'features/home/services/workout_auto_finish_service.dart';
 import 'features/home/widgets/home_screen.dart';
@@ -98,6 +99,11 @@ class PerenniaRoot extends StatelessWidget {
           // it.
           templatePickerFeatureRepositoryProvider.overrideWith(
             (ref) => const StubTemplatePickerFeatureRepository(),
+          ),
+        if (homeRepository != null)
+          // Same rationale again: the start sheet reads the Focuses.
+          focusFeatureRepositoryProvider.overrideWith(
+            (ref) => const StubFocusFeatureRepository(),
           ),
         if (routinePlanRepository != null)
           routinePlanFeatureRepositoryProvider.overrideWith(

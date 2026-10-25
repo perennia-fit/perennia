@@ -18,6 +18,7 @@ const AGENT_WORKOUT_TEMPLATE_LIST_FIELDS = [
   "id",
   "name",
   "notes",
+  "focusId",
   "exerciseCount",
   "groupCount",
   "updatedAt",
@@ -119,6 +120,10 @@ export const AgentWorkoutTemplateDetailSchema = z
     id: z.string().min(1),
     name: z.string().min(1),
     notes: z.string().nullable(),
+    focusId: z.string().min(1).nullable().openapi({
+      description:
+        "Focus this Template's Workouts are performed under (see GET /agent/focuses); materializing copies it onto the new Workout. Null when none is set."
+    }),
     exercises: z.array(AgentPlanTemplateExerciseSchema),
     groups: z.array(AgentPlanTemplateGroupSchema),
     exerciseCount: z.number().int().min(0),
@@ -140,6 +145,10 @@ const AgentWorkoutTemplateListItemSchema = z
     id: z.string().min(1),
     name: z.string().min(1),
     notes: z.string().nullable().optional(),
+    focusId: z.string().min(1).nullable().optional().openapi({
+      description:
+        "Focus this Template's Workouts are performed under (see GET /agent/focuses); materializing copies it onto the new Workout. Null when none is set."
+    }),
     exerciseCount: z.number().int().min(0).optional(),
     groupCount: z.number().int().min(0).optional(),
     updatedAt: ISO8601StringSchema.optional(),
@@ -875,6 +884,7 @@ function workoutTemplateSummary(
     id: row.id,
     name: payloadRequiredString(row, "name"),
     notes: payloadNullableString(row, "notes"),
+    focusId: payloadString(row, "focus_id"),
     exerciseCount: exerciseCounts.get(row.id) ?? 0,
     groupCount: groupCounts.get(row.id) ?? 0,
     updatedAt: row.updatedAt.toISOString(),
@@ -953,6 +963,7 @@ function workoutTemplateDetail(
     id: row.id,
     name: payloadRequiredString(row, "name"),
     notes: payloadNullableString(row, "notes"),
+    focusId: payloadString(row, "focus_id"),
     exercises,
     groups,
     exerciseCount: exerciseRows.length,

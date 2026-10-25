@@ -8,6 +8,10 @@ void main() {
       'lib/features/home/widgets/home_screen.dart',
       'lib/features/training/widgets/training_screen.dart',
       'lib/features/activity/widgets/activity_feed_screen.dart',
+      'lib/features/home/widgets/start_workout_sheet.dart',
+      'lib/features/focus/widgets/focus_manager_screen.dart',
+      'lib/features/focus/widgets/focus_picker_sheet.dart',
+      'lib/features/focus/widgets/focused_exercise_list.dart',
     ];
     final forbiddenPatterns = <String, RegExp>{
       'Text literal': RegExp(r'\bText\(\s*[' '"]'),

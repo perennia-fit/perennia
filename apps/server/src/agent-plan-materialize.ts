@@ -694,6 +694,13 @@ export async function runAgentPlanMaterialize({
       deleted_at: null,
     },
   };
+  // Materializing copies the Template's Focus onto the new Workout
+  // (CONTEXT.md "Focus"), exactly as the app does. It is a soft reference, so
+  // it is copied as stored even if the user has since archived that Focus.
+  const templateFocusId =
+    source.workoutTemplate === null
+      ? null
+      : payloadString(source.workoutTemplate.payload, "focus_id");
   const workoutSession: AgentPlanMaterializePreparedRow = {
     id: workoutId,
     updatedAt: nowIso,
@@ -704,6 +711,7 @@ export async function runAgentPlanMaterialize({
       local_date: localDate,
       ended_at: null,
       comment: null,
+      focus_id: templateFocusId,
       updated_at: nowIso,
       deleted_at: null,
     },

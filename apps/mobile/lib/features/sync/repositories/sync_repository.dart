@@ -64,12 +64,19 @@ const _planTreeSyncEntities = <_PlanSyncEntity>[
     remoteEntity: AppDatabase.routineEntriesTable,
   ),
 ];
+// A Focus syncs like the plan rows: an ordinary LWW row through the generic
+// plan path, with soft references from Workouts, Templates and Exercises.
+const _focusSyncEntity = _PlanSyncEntity(
+  localEntityTable: AppDatabase.focusesTable,
+  remoteEntity: AppDatabase.focusesTable,
+);
 const _templateLinksSyncEntity = _PlanSyncEntity(
   localEntityTable: AppDatabase.templateLinksTable,
   remoteEntity: AppDatabase.templateLinksTable,
 );
 const _outboundSyncActivityTables = <String>[
   AppDatabase.exerciseCategoriesTable,
+  AppDatabase.focusesTable,
   AppDatabase.exercisesTable,
   AppDatabase.workoutSessionsTable,
   AppDatabase.workoutExercisesTable,
@@ -355,6 +362,12 @@ class SyncRepository implements SyncCycleRepository {
         session: session,
         deviceId: deviceId,
       );
+      final focusesResult = await _pushPendingPlanEntityWithClient(
+        client: client,
+        session: session,
+        deviceId: deviceId,
+        entity: _focusSyncEntity,
+      );
       final exercisesResult = await _pushPendingExercisesWithClient(
         client: client,
         session: session,
@@ -471,6 +484,7 @@ class SyncRepository implements SyncCycleRepository {
       );
       final result = _mergePushResults(<SyncPushResult>[
         exerciseCategoriesResult,
+        focusesResult,
         exercisesResult,
         ...workoutStructureResults,
         ...planTreeResults,
@@ -667,6 +681,7 @@ class SyncRepository implements SyncCycleRepository {
       acknowledgePushResponse: _acknowledgeExerciseCategoryPushResponse,
     );
   }
+
 
   Future<SyncPushResult> _pushPendingExercisesWithClient({
     required PerenniaApiClient client,
@@ -985,6 +1000,12 @@ class SyncRepository implements SyncCycleRepository {
           session: session,
           deviceId: deviceId,
         );
+        await _pushPendingPlanEntityWithClient(
+          client: client,
+          session: session,
+          deviceId: deviceId,
+          entity: _focusSyncEntity,
+        );
         await _pushPendingExercisesWithClient(
           client: client,
           session: session,
@@ -1158,6 +1179,7 @@ class SyncRepository implements SyncCycleRepository {
     final liveIntegrationConsentSnapshotIds = <String>{};
     final livePlanSnapshotIds = <String, Set<String>>{
       for (final entity in <_PlanSyncEntity>[
+        _focusSyncEntity,
         ..._workoutStructureSyncEntities,
         ..._planTreeSyncEntities,
         _templateLinksSyncEntity,
@@ -1332,6 +1354,7 @@ class SyncRepository implements SyncCycleRepository {
         _templateLinksSyncEntity,
         ..._planTreeSyncEntities.reversed,
         ..._workoutStructureSyncEntities.reversed,
+        _focusSyncEntity,
       ]) {
         await _repositories.activityLog.markPlanRowsAbsentFromSnapshotDeleted(
           entityTable: entity.localEntityTable,
@@ -2318,6 +2341,7 @@ class SyncRepository implements SyncCycleRepository {
     return true;
   }
 
+
   Future<bool> _applyPulledExerciseChange(
     SyncPulledChange change, {
     required String deviceId,
@@ -2478,6 +2502,7 @@ class SyncRepository implements SyncCycleRepository {
       );
     }
   }
+
 
   Future<void> _markPreviouslySyncedExerciseRowsAbsentFromSnapshotDeleted(
     Set<String> liveSnapshotIds,
@@ -2951,6 +2976,7 @@ class SyncRepository implements SyncCycleRepository {
           ..limit(_syncPushBatchLimit))
         .get();
   }
+
 
   Future<List<ActivityLogRow>> _loadPendingExerciseRows() {
     return (_database.select(_database.activityLog)
@@ -4478,6 +4504,9 @@ _PlanSyncEntity? _planSyncEntityForRemote(String remoteEntity) {
   if (remoteEntity == _templateLinksSyncEntity.remoteEntity) {
     return _templateLinksSyncEntity;
   }
+  if (remoteEntity == _focusSyncEntity.remoteEntity) {
+    return _focusSyncEntity;
+  }
   for (final entity in <_PlanSyncEntity>[
     ..._workoutStructureSyncEntities,
     ..._planTreeSyncEntities,
@@ -4697,8 +4726,9 @@ int _comparePulledChangesForApply(
 int _syncApplyOrder(String entity) {
   return switch (entity) {
     // An ExerciseCategory before its Exercises (a Drift FK, `categoryId`,
-    //).
+    //). A Focus is only a soft reference, so its slot is tidy ordering.
     AppDatabase.exerciseCategoriesTable => 0,
+    AppDatabase.focusesTable => 0,
     AppDatabase.exercisesTable => 1,
     AppDatabase.workoutSessionsTable => 2,
     AppDatabase.workoutExercisesTable => 3,

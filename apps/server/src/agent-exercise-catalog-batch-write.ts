@@ -7,6 +7,10 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentCatalogUnavailableResponseSchema,
+  createActiveFocusCheck,
+  FOCUS_NOT_FOUND_RULE,
+  focusNotFoundMessage,
+  parseJsonStringArray,
   type AgentCatalogStore,
 } from "./agent-catalog.js";
 import type { ServerDatabase } from "./db/client.js";
@@ -104,6 +108,10 @@ export const AgentExerciseCatalogBatchWriteExerciseSchema = z
     usesRpe: z.boolean().default(false),
     isFavorite: z.boolean().default(false),
     equipment: z.array(z.string().min(1)).default([]),
+    focusIds: z.array(z.string().min(1)).optional().openapi({
+      description:
+        "Ids of the Focuses this Exercise belongs to (see GET /agent/focuses); each must be an active starter or user Focus. Omit to keep the Exercise's current Focuses (a new Platform customization inherits the Platform exercise's); pass [] to clear them.",
+    }),
     notes: z.string().nullable().default(null),
     customizesExerciseId: z.string().min(1).nullable().default(null).openapi({
       description:
@@ -296,6 +304,11 @@ type PreparedExercise = {
   updatedAt: string;
   deletedAt: string | null;
   payload: Record<string, unknown>;
+  // True when the request omitted focusIds. The payload is rebuilt whole, so
+  // the write transaction then carries the stored row's `focus_ids` (its
+  // before-image) through; `payload.focus_ids` holds the value for an
+  // Exercise with no stored row (the customized Platform Exercise's, or []).
+  keepStoredFocusIds: boolean;
   result: z.infer<typeof AgentExerciseCatalogBatchWriteExerciseResultSchema>;
 };
 
@@ -380,6 +393,7 @@ export async function prepareAgentExerciseCatalogBatchWrite({
   const seenExerciseIds = new Set<string>();
   const preparedCategories: PreparedCategory[] = [];
   const preparedExercises: PreparedExercise[] = [];
+  const isActiveFocus = createActiveFocusCheck({ catalogStore, userId });
 
   // Category ids created earlier in this same batch are valid exercise
   // category references even though they are not yet persisted.
@@ -496,6 +510,32 @@ export async function prepareAgentExerciseCatalogBatchWrite({
       }
     }
 
+    let focusIds: string[];
+    if (item.focusIds === undefined) {
+      focusIds = customizedPlatformExercise?.focusIds ?? [];
+    } else {
+      focusIds = [...new Set(item.focusIds)];
+      let missingFocus = false;
+      for (const focusId of focusIds) {
+        if (!(await isActiveFocus(focusId))) {
+          missingFocus = true;
+          errors.push(
+            exerciseIssue({
+              field: `exercises[${itemIndex}].focusIds`,
+              itemIndex,
+              exerciseId: item.id,
+              rule: FOCUS_NOT_FOUND_RULE,
+              message: focusNotFoundMessage("focusIds"),
+            }),
+          );
+          break;
+        }
+      }
+      if (missingFocus) {
+        continue;
+      }
+    }
+
     const recordProfile =
       item.recordProfile ?? defaultRecordProfileForDimensions(item.dimensions);
     const updatedAt = item.updatedAt ?? now.toISOString();
@@ -512,6 +552,7 @@ export async function prepareAgentExerciseCatalogBatchWrite({
       uses_rpe: item.usesRpe,
       category_id: item.categoryId,
       equipment_ids: JSON.stringify(item.equipment),
+      focus_ids: JSON.stringify(focusIds),
       notes: item.notes,
       updated_at: updatedAt,
       deleted_at: item.deletedAt,
@@ -522,6 +563,7 @@ export async function prepareAgentExerciseCatalogBatchWrite({
       updatedAt,
       deletedAt: item.deletedAt,
       payload,
+      keepStoredFocusIds: item.focusIds === undefined,
       result: AgentExerciseCatalogBatchWriteExerciseResultSchema.parse({
         id: item.id,
         name: item.name,
@@ -615,16 +657,25 @@ export function createDrizzleAgentExerciseCatalogBatchWriteStore(
             table: schema.exercises,
             id: exercise.id,
           });
+          const payload =
+            exercise.keepStoredFocusIds && beforeImage !== null
+              ? {
+                  ...exercise.payload,
+                  focus_ids: JSON.stringify(
+                    parseJsonStringArray(beforeImage.focus_ids),
+                  ),
+                }
+              : exercise.payload;
           exerciseChanges.push({
             id: exercise.id,
-            payload: exercise.payload,
+            payload,
             updatedAt: exercise.updatedAt,
             deletedAt: exercise.deletedAt,
             activityLogId: `agent:${batchId}:exercise:${exercise.id}`,
             actor: "agent",
             batchId,
             beforeImage,
-            afterImage: exercise.payload,
+            afterImage: payload,
             occurredAt: exercise.updatedAt,
           });
         }

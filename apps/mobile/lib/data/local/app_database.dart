@@ -29,6 +29,26 @@ class ExerciseCategories extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// A Focus: the training discipline a Workout is performed under. The starter
+/// Focuses are seeded with fixed ids like the Categories; users rename,
+/// reorder, archive, and add their own, and every Focus syncs as an ordinary
+/// LWW row.
+@DataClassName('FocusRow')
+class Focuses extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  IntColumn get sortOrder => integer()();
+  TextColumn get syncDeviceId => text().nullable()();
+  BoolColumn get syncPreviouslySynced => boolean().withDefault(
+        const Constant(false),
+      )();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 @DataClassName('ExerciseRow')
 class Exercises extends Table {
   TextColumn get id => text()();
@@ -47,6 +67,10 @@ class Exercises extends Table {
   TextColumn get categoryId =>
       text().nullable().references(ExerciseCategories, #id)();
   TextColumn get equipmentIds => text().withDefault(const Constant('[]'))();
+  // A JSON list of Focus ids. Deliberately not a foreign key, like every Focus
+  // reference: a pulled row may name a Focus whose own row arrives on a later
+  // page, and an archived Focus is a tombstone, never a missing row.
+  TextColumn get focusIds => text().withDefault(const Constant('[]'))();
   TextColumn get notes => text().nullable()();
   // only User Library exercises (and user customizations of a
   // Platform exercise, i.e. a shadowing copy per) sync — the Platform
@@ -65,6 +89,8 @@ class Exercises extends Table {
 }
 
 @DataClassName('WorkoutSessionRow')
+// "Recent under a Focus" groups the Workouts carrying one Focus.
+@TableIndex(name: 'workout_sessions_focus_id_index', columns: {#focusId})
 class WorkoutSessions extends Table {
   TextColumn get id => text()();
   DateTimeColumn get startedAt => dateTime()();
@@ -73,6 +99,9 @@ class WorkoutSessions extends Table {
       text().withDefault(const Constant('1970-01-01'))();
   DateTimeColumn get endedAt => dateTime().nullable()();
   TextColumn get comment => text().nullable()();
+  // The Focus this Workout is performed under; see `Exercises.focusIds` for
+  // why it is not a foreign key.
+  TextColumn get focusId => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -320,6 +349,8 @@ class WorkoutTemplates extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   TextColumn get notes => text().nullable()();
+  // Copied onto the Workout when the template is materialized.
+  TextColumn get focusId => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -1081,6 +1112,7 @@ class RoutineEntries extends Table {
 @DriftDatabase(
   tables: <Type>[
     ExerciseCategories,
+    Focuses,
     Exercises,
     WorkoutSessions,
     MealTypes,
@@ -1145,6 +1177,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   static const exerciseCategoriesTable = 'exercise_categories';
+  static const focusesTable = 'focuses';
   static const exercisesTable = 'exercises';
   static const workoutSessionsTable = 'workout_sessions';
   static const mealTypesTable = 'meal_types';
@@ -1187,6 +1220,7 @@ class AppDatabase extends _$AppDatabase {
 
   static const tableNames = <String>[
     exerciseCategoriesTable,
+    focusesTable,
     exercisesTable,
     workoutSessionsTable,
     mealTypesTable,
@@ -1232,7 +1266,7 @@ class AppDatabase extends _$AppDatabase {
   ];
 
   @override
-  int get schemaVersion => 58;
+  int get schemaVersion => 59;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1863,6 +1897,57 @@ class AppDatabase extends _$AppDatabase {
           if (from < 58) {
             await migrator.createTable(deferredSyncChanges);
             await migrator.createIndex(deferredSyncChangesMissingEntityIndex);
+          }
+          if (from < 59) {
+            // Focus: a new table plus the optional references to it. The
+            // columns are added only where an older table exists without them,
+            // so an upgrade from a version that creates these tables above
+            // (already in their current shape) is a no-op here.
+            await migrator.createTable(focuses);
+            for (final entry in <({
+              String tableName,
+              GeneratedColumn<Object> column,
+              Future<void> Function() add,
+            })>[
+              (
+                tableName: exercises.actualTableName,
+                column: exercises.focusIds,
+                add: () => migrator.addColumn(exercises, exercises.focusIds),
+              ),
+              (
+                tableName: workoutSessions.actualTableName,
+                column: workoutSessions.focusId,
+                add: () => migrator.addColumn(
+                      workoutSessions,
+                      workoutSessions.focusId,
+                    ),
+              ),
+              (
+                tableName: workoutTemplates.actualTableName,
+                column: workoutTemplates.focusId,
+                add: () => migrator.addColumn(
+                      workoutTemplates,
+                      workoutTemplates.focusId,
+                    ),
+              ),
+            ]) {
+              if (await _tableExists(entry.tableName) &&
+                  !await _columnExists(
+                    entry.tableName,
+                    entry.column.name,
+                  )) {
+                await entry.add();
+              }
+            }
+            // Drift's addColumn() and createTable() do not install
+            // @TableIndex declarations. Some upgrade paths reach here before
+            // workout_sessions exists; its own creation installs the index.
+            if (await _tableExists(workoutSessions.actualTableName)) {
+              await customStatement(
+                'CREATE INDEX IF NOT EXISTS workout_sessions_focus_id_index '
+                'ON workout_sessions (focus_id)',
+              );
+            }
           }
         },
         beforeOpen: (_) async => customStatement('PRAGMA foreign_keys = ON'),

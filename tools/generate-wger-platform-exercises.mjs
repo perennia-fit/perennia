@@ -6,6 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { applyPlatformExerciseCleanup } from "./platform-exercise-cleanup.mjs";
+import {
+  readPlatformExerciseFocusOverrides,
+  withSeedFocuses,
+} from "./platform-exercise-focus.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -275,7 +279,7 @@ async function main() {
       left.from_exercise_id.localeCompare(right.from_exercise_id, "en-US"),
     );
 
-  const seed = {
+  const seed = withSeedFocuses({
     metadata: {
       source_name:
         "wger English exercise fixtures enriched with Workout.cool exercise attributes",
@@ -329,7 +333,7 @@ async function main() {
     categories,
     exercise_redirects: exerciseRedirects,
     exercises: allExercises,
-  };
+  }, readPlatformExerciseFocusOverrides());
 
   writeFileSync(outputPath, `${JSON.stringify(seed, null, 2)}\n`);
   writeFileSync(

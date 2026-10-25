@@ -40,6 +40,8 @@ jobs:
               - 'apps/mobile/pubspec.yaml'
               - 'packages/contract/**'
               - 'tools/generate-server-platform-exercise-seed.mjs'
+              - 'tools/platform-exercise-focus.mjs'
+              - 'tools/data/platform-exercise-focus-overrides.json'
               - 'tools/generate-server-usda-food-seed.mjs'
               - '.node-version'
               - 'package.json'
@@ -199,6 +201,9 @@ jobs:
 
       - name: Check server Platform Exercise seed is in sync
         run: node tools/generate-server-platform-exercise-seed.mjs --check
+
+      - name: Check Platform Exercise Focuses are current
+        run: node tools/platform-exercise-focus.mjs --check
 
       - name: Check server USDA Food seed is in sync
         run: node tools/generate-server-usda-food-seed.mjs --check

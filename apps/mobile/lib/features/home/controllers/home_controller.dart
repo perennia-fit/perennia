@@ -100,6 +100,20 @@ class HomeController extends StreamNotifier<HomeState> {
         );
   }
 
+  // Workouts with an exercise add in flight. Held by the controller, so the
+  // guard lives as long as the app's provider scope and no longer.
+  final _workoutsAddingAnExercise = <String>{};
+
+  /// Claims an exercise add for [workoutId]; false while another add for the
+  /// same Workout has not landed, which absorbs a double-tap on a row.
+  bool beginExerciseAdd(String workoutId) {
+    return _workoutsAddingAnExercise.add(workoutId);
+  }
+
+  void endExerciseAdd(String workoutId) {
+    _workoutsAddingAnExercise.remove(workoutId);
+  }
+
   void selectTrainingDay(TrainingDayDate localDate) {
     ref.read(selectedTrainingDayProvider.notifier).select(localDate);
   }
@@ -112,10 +126,11 @@ class HomeController extends StreamNotifier<HomeState> {
     ref.read(selectedTrainingDayProvider.notifier).addDays(1);
   }
 
-  Future<String> startNewWorkout() {
-    return ref
-        .read(homeRepositoryProvider)
-        .startNewWorkout(ref.read(selectedTrainingDayProvider));
+  Future<String> startNewWorkout({String? focusId}) {
+    return ref.read(homeRepositoryProvider).startNewWorkout(
+          ref.read(selectedTrainingDayProvider),
+          focusId: focusId,
+        );
   }
 
   Future<String> addExerciseToWorkout({
