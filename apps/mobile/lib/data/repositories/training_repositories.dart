@@ -92,6 +92,7 @@ export '../../domain/training/set_validation.dart'
         validateNutritionGoalTargets;
 
 part 'csv_export_repository.dart';
+part 'focus_repository.dart';
 part 'portable_archive_repository.dart';
 part 'plan_sync_repository.dart';
 part 'routine_plan_repository.dart';
@@ -130,6 +131,7 @@ class TrainingRepositories {
       this,
       platformSeedSource ?? const AssetPlatformExerciseSeedSource(),
     );
+    focuses = FocusRepository._(this);
     exercises = ExerciseRepository._(this);
     workoutSessions = WorkoutSessionRepository._(this);
     workoutExercises = WorkoutExerciseRepository._(this);
@@ -178,6 +180,7 @@ class TrainingRepositories {
 
   late final ActivityLogRepository activityLog;
   late final CatalogRepository catalog;
+  late final FocusRepository focuses;
   late final ExerciseRepository exercises;
   late final WorkoutSessionRepository workoutSessions;
   late final WorkoutExerciseRepository workoutExercises;
@@ -223,6 +226,7 @@ class TrainingRepositories {
     AppDatabase.workoutTemplatesTable,
     AppDatabase.exercisesTable,
     AppDatabase.exerciseCategoriesTable,
+    AppDatabase.focusesTable,
     AppDatabase.foodEntriesTable,
     AppDatabase.mealsTable,
     AppDatabase.foodsTable,
@@ -346,6 +350,8 @@ class TrainingRepositories {
           platformExercises.map((row) => row.id).toSet(),
       AppDatabase.exerciseCategoriesTable:
           platformSeed.categories.map((category) => category.id).toSet(),
+      AppDatabase.focusesTable:
+          platformSeed.focuses.map((focus) => focus.id).toSet(),
       AppDatabase.mealTypesTable: NutritionRepository._defaultMealTypes
           .map((mealType) => mealType.id)
           .toSet(),
@@ -536,7 +542,9 @@ class CatalogRepository {
     required String actor,
   }) async {
     final seed = await _platformSeedSource.load();
-    if (seed.categories.isEmpty && seed.exercises.isEmpty) {
+    if (seed.categories.isEmpty &&
+        seed.focuses.isEmpty &&
+        seed.exercises.isEmpty) {
       return;
     }
 
@@ -606,6 +614,7 @@ class CatalogRepository {
                 categoryId: Value<String?>(exercise.categoryId),
                 equipmentIds:
                     Value<String>(_encodeEquipment(exercise.equipment)),
+                focusIds: Value<String>(_encodeFocusIds(exercise.focusIds)),
                 notes: Value<String?>(exercise.notes),
                 updatedAt: exercise.updatedAt,
               ),
@@ -620,10 +629,13 @@ class CatalogRepository {
         );
       }
 
+      await _repositories.focuses._seedStarterFocuses(seed.focuses, context);
+
       await _applyPlatformExerciseRedirects(seed, context);
 
       await _sanitizeLegacyWgerAttributionNotes(context);
       await _backfillExistingPlatformSeedEquipment(seed, context);
+      await _reconcilePlatformSeedFocuses(seed, context);
     });
   }
 
@@ -703,6 +715,7 @@ class CatalogRepository {
               categoryId: Value<String?>(canonical.categoryId),
               equipmentIds:
                   Value<String>(_encodeEquipment(canonical.equipment)),
+              focusIds: Value<String>(_encodeFocusIds(canonical.focusIds)),
               notes: Value<String?>(canonical.notes),
               updatedAt: canonical.updatedAt,
               deletedAt: Value<DateTime?>(canonical.updatedAt),
@@ -757,6 +770,99 @@ class CatalogRepository {
         context,
         entityTable: AppDatabase.exercisesTable,
         entityId: exercise.id,
+        beforeImage: _exerciseImage(before),
+        afterImage: _exerciseImage(after),
+      );
+    }
+  }
+
+  /// Keeps every Platform exercise's Focuses equal to the bundled seed.
+  /// Platform rows are read-only to users (customizing makes a separate User
+  /// Library copy), so the seed is their only source of truth and a later
+  /// seed that remaps an exercise reaches every install. `updatedAt` is left
+  /// as seeded: Platform rows never sync, and every device holds the same row.
+  ///
+  /// The run that first fills Platform rows (the upgrade that introduced
+  /// Focus) also gives each customization made before it, a user exercise
+  /// shadowing a Platform one by name and still naming no Focus, that Platform
+  /// exercise's Focuses. That happens once: Platform rows are never empty
+  /// again, so a user who later clears a customization's Focuses keeps it.
+  Future<void> _reconcilePlatformSeedFocuses(
+    PlatformExerciseSeed seed,
+    WriteContext context,
+  ) async {
+    final seedById = <String, SeedExercise>{
+      for (final exercise in seed.exercises) exercise.id: exercise,
+    };
+    final platformRows = await (_database.select(_database.exercises)
+          ..where(
+            (row) =>
+                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name),
+          ))
+        .get();
+    final platformFocusIdsByName = <String, String>{};
+    var filledEmptyPlatformRows = false;
+    for (final before in platformRows) {
+      final seeded = seedById[before.id];
+      if (seeded == null) {
+        continue;
+      }
+      final focusIds = _encodeFocusIds(seeded.focusIds);
+      if (before.deletedAt == null) {
+        platformFocusIdsByName[normalizeExerciseName(before.name)] = focusIds;
+      }
+      if (_sameStringSet(
+        _decodeFocusIds(before.focusIds).toSet(),
+        seeded.focusIds.toSet(),
+      )) {
+        continue;
+      }
+      filledEmptyPlatformRows |= before.focusIds == '[]';
+      await (_database.update(_database.exercises)
+            ..where((row) => row.id.equals(before.id)))
+          .write(ExercisesCompanion(focusIds: Value<String>(focusIds)));
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.exercisesTable,
+        entityId: before.id,
+        beforeImage: _exerciseImage(before),
+        afterImage: _exerciseImage(before.copyWith(focusIds: focusIds)),
+      );
+    }
+    if (!filledEmptyPlatformRows) {
+      return;
+    }
+
+    final customizations = await (_database.select(_database.exercises)
+          ..where(
+            (row) =>
+                row.libraryOrigin.equals(ExerciseLibraryOrigin.user.name) &
+                row.focusIds.equals('[]') &
+                row.deletedAt.isNull(),
+          ))
+        .get();
+    for (final before in customizations) {
+      final focusIds = platformFocusIdsByName[normalizeExerciseName(before.name)];
+      if (focusIds == null || focusIds == '[]') {
+        continue;
+      }
+      // A User Library row syncs, so the change carries a fresh stamp.
+      final after = before.copyWith(
+        focusIds: focusIds,
+        updatedAt: context.timestamp,
+      );
+      await (_database.update(_database.exercises)
+            ..where((row) => row.id.equals(before.id)))
+          .write(
+        ExercisesCompanion(
+          focusIds: Value<String>(focusIds),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.exercisesTable,
+        entityId: before.id,
         beforeImage: _exerciseImage(before),
         afterImage: _exerciseImage(after),
       );
@@ -919,16 +1025,12 @@ class CatalogRepository {
 
     return _database.transaction(() async {
       final activeRows = await _activeCategoryQuery().get();
-      final activeIds = activeRows.map((row) => row.id).toSet();
-      if (categoryIds.length != activeIds.length ||
-          categoryIds.toSet().length != categoryIds.length ||
-          !categoryIds.every(activeIds.contains)) {
-        throw ArgumentError.value(
-          categoryIds,
-          'categoryIds',
-          'Ordering must include each active category exactly once.',
-        );
-      }
+      _requireEachActiveIdOnce(
+        categoryIds,
+        activeRows.map((row) => row.id),
+        name: 'categoryIds',
+        noun: 'category',
+      );
 
       final beforeById = <String, ExerciseCategoryRow>{
         for (final row in activeRows) row.id: row,
@@ -1308,6 +1410,9 @@ class ExerciseRepository {
           usesRpe: Value<bool>(draft.usesRpe),
           categoryId: Value<String?>(draft.categoryId),
           equipmentIds: Value<String>(_encodeEquipment(draft.equipment)),
+          focusIds: draft.focusIds == null
+              ? const Value<String>.absent()
+              : Value<String>(_encodeFocusIds(draft.focusIds!)),
           notes: Value<String?>(draft.notes),
           updatedAt: Value<DateTime>(context.timestamp),
         ),
@@ -1494,6 +1599,7 @@ class ExerciseRepository {
             usesRpe: platform.usesRpe,
             categoryId: platform.categoryId,
             equipment: _decodeEquipment(platform.equipmentIds),
+            focusIds: _decodeFocusIds(platform.focusIds),
             notes: platform.notes,
           );
       await _ensureUniqueActiveUserName(customization.name);
@@ -1518,6 +1624,11 @@ class ExerciseRepository {
               categoryId: Value<String?>(customization.categoryId),
               equipmentIds: Value<String>(
                 _encodeEquipment(customization.equipment),
+              ),
+              focusIds: Value<String>(
+                _encodeFocusIds(
+                  customization.focusIds ?? _decodeFocusIds(platform.focusIds),
+                ),
               ),
               notes: Value<String?>(customization.notes),
               updatedAt: context.timestamp,
@@ -1661,6 +1772,9 @@ class ExerciseRepository {
             usesRpe: Value<bool>(draft.usesRpe),
             categoryId: Value<String?>(draft.categoryId),
             equipmentIds: Value<String>(_encodeEquipment(draft.equipment)),
+            focusIds: Value<String>(
+              _encodeFocusIds(draft.focusIds ?? const <String>[]),
+            ),
             notes: Value<String?>(draft.notes),
             updatedAt: context.timestamp,
           ),
@@ -1957,6 +2071,44 @@ class WorkoutSessionRepository {
     });
   }
 
+  /// Records the Focus the Workout is performed under, or clears it with
+  /// null. Changing it never touches the Workout's exercises or Sets.
+  Future<void> setFocus(
+    String id, {
+    required String? focusId,
+    String actor = 'app',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final before = await _requireRow(id);
+      if (before.focusId == focusId) {
+        return;
+      }
+
+      await (_database.update(_database.workoutSessions)
+            ..where((row) => row.id.equals(id)))
+          .write(
+        WorkoutSessionsCompanion(
+          focusId: Value<String?>(focusId),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      final after = await _requireRow(id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.workoutSessionsTable,
+        entityId: id,
+        beforeImage: _workoutSessionImage(before),
+        afterImage: _workoutSessionImage(after),
+      );
+    });
+  }
+
   Future<void> moveToTrainingDay(
     String id, {
     required TrainingDayDate localDate,
@@ -2032,6 +2184,7 @@ class WorkoutSessionRepository {
               localDate: Value<String>(localDate.storageValue),
               endedAt: Value<DateTime?>(copyEndedAt),
               comment: Value<String?>(source.comment),
+              focusId: Value<String?>(source.focusId),
               updatedAt: context.timestamp,
             ),
           );
@@ -2305,6 +2458,7 @@ class WorkoutSessionRepository {
             localDate: Value<String>(localDate.storageValue),
             endedAt: Value<DateTime?>(draft.endedAt?.toUtc()),
             comment: Value<String?>(_normalizeOptionalText(draft.comment)),
+            focusId: Value<String?>(draft.focusId),
             updatedAt: context.timestamp,
           ),
         );
@@ -12926,6 +13080,8 @@ class ActivityLogRepository {
               ..where((row) => row.id.equals(entityId)))
             .getSingleOrNull();
         return row == null ? null : _exerciseCategoryImage(row);
+      case AppDatabase.focusesTable:
+        return _repositories.focuses._imageFor(entityId);
       case AppDatabase.exercisesTable:
         final row = await (_database.select(_database.exercises)
               ..where((row) => row.id.equals(entityId)))
@@ -13107,6 +13263,9 @@ class ActivityLogRepository {
         (_database.update(_database.exerciseCategories)
               ..where((row) => row.id.equals(entityId)))
             .write(_exerciseCategoryCompanionFromImage(image)),
+      AppDatabase.focusesTable => (_database.update(_database.focuses)
+            ..where((row) => row.id.equals(entityId)))
+          .write(_focusCompanionFromImage(image)),
       AppDatabase.exercisesTable => (_database.update(_database.exercises)
             ..where((row) => row.id.equals(entityId)))
           .write(_exerciseCompanionFromImage(image)),
@@ -13236,8 +13395,11 @@ class ExerciseDraft {
     this.usesRpe = false,
     this.categoryId,
     List<ExerciseEquipment> equipment = const <ExerciseEquipment>[],
+    Iterable<String>? focusIds,
     this.notes,
-  }) : equipment = List<ExerciseEquipment>.unmodifiable(equipment);
+  })  : equipment = List<ExerciseEquipment>.unmodifiable(equipment),
+        focusIds =
+            focusIds == null ? null : List<String>.unmodifiable(focusIds);
 
   final String name;
   final ExerciseType type;
@@ -13248,6 +13410,11 @@ class ExerciseDraft {
   final bool usesRpe;
   final String? categoryId;
   final List<ExerciseEquipment> equipment;
+
+  /// The Focuses the exercise belongs to. Null on an update leaves the
+  /// stored Focuses as they are, so an editor that does not show them cannot
+  /// clear them; on a create it means none.
+  final List<String>? focusIds;
   final String? notes;
 
   ExerciseLoadMode get effectiveLoadMode {
@@ -13283,6 +13450,7 @@ class WorkoutSessionDraft {
     this.localDate,
     this.endedAt,
     this.comment,
+    this.focusId,
   });
 
   final DateTime startedAt;
@@ -13290,6 +13458,7 @@ class WorkoutSessionDraft {
   final TrainingDayDate? localDate;
   final DateTime? endedAt;
   final String? comment;
+  final String? focusId;
 }
 
 class WorkoutExerciseDraft {
@@ -14217,6 +14386,7 @@ ExerciseRecord _exerciseFromRow(ExerciseRow row) {
     usesRpe: row.usesRpe,
     categoryId: row.categoryId,
     equipment: _decodeEquipment(row.equipmentIds),
+    focusIds: _decodeFocusIds(row.focusIds),
     notes: row.notes,
     isFavorite: row.isFavorite,
     updatedAt: row.updatedAt.toUtc(),
@@ -14232,6 +14402,7 @@ WorkoutSessionRecord _workoutSessionFromRow(WorkoutSessionRow row) {
     localDate: TrainingDayDate.parse(row.localDate),
     endedAt: row.endedAt?.toUtc(),
     comment: row.comment,
+    focusId: row.focusId,
     updatedAt: row.updatedAt.toUtc(),
     deletedAt: row.deletedAt?.toUtc(),
   );
@@ -14889,6 +15060,7 @@ Map<String, Object?> _exerciseImage(ExerciseRow row) {
     'uses_rpe': row.usesRpe,
     'category_id': row.categoryId,
     'equipment_ids': row.equipmentIds,
+    'focus_ids': row.focusIds,
     'notes': row.notes,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
@@ -14979,6 +15151,7 @@ Map<String, Object?> _workoutSessionImage(WorkoutSessionRow row) {
     'local_date': row.localDate,
     'ended_at': row.endedAt == null ? null : _iso(row.endedAt!),
     'comment': row.comment,
+    'focus_id': row.focusId,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
@@ -15254,6 +15427,7 @@ Map<String, Object?> _workoutTemplateImage(WorkoutTemplateRow row) {
     'id': row.id,
     'name': row.name,
     'notes': row.notes,
+    'focus_id': row.focusId,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
@@ -15576,6 +15750,7 @@ ExercisesCompanion _exerciseCompanionFromImage(Map<String, Object?> image) {
     equipmentIds: Value<String>(
       _activityNullableString(image, 'equipment_ids') ?? '[]',
     ),
+    focusIds: _imageFocusIds(image),
     notes: Value<String?>(_activityNullableString(image, 'notes')),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
@@ -15613,6 +15788,7 @@ WorkoutSessionsCompanion _workoutSessionCompanionFromImage(
     localDate: Value<String>(_activityRequiredString(image, 'local_date')),
     endedAt: Value<DateTime?>(_activityNullableDateTime(image, 'ended_at')),
     comment: Value<String?>(_activityNullableString(image, 'comment')),
+    focusId: _imageFocusId(image),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
@@ -15985,6 +16161,7 @@ WorkoutTemplatesCompanion _workoutTemplateCompanionFromImage(
   return WorkoutTemplatesCompanion(
     name: Value<String>(_activityRequiredString(image, 'name')),
     notes: Value<String?>(_activityNullableString(image, 'notes')),
+    focusId: _imageFocusId(image),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
@@ -16433,6 +16610,26 @@ String _normalizeCategoryName(String name) {
 
 String _normalizeCategoryNameForStorage(String name) {
   return name.trim();
+}
+
+/// A reorder names each active row exactly once: no duplicates, no archived
+/// or unknown ids, none left out.
+void _requireEachActiveIdOnce(
+  List<String> orderedIds,
+  Iterable<String> activeIds, {
+  required String name,
+  required String noun,
+}) {
+  final active = activeIds.toSet();
+  if (orderedIds.length != active.length ||
+      orderedIds.toSet().length != orderedIds.length ||
+      !orderedIds.every(active.contains)) {
+    throw ArgumentError.value(
+      orderedIds,
+      name,
+      'Ordering must include each active $noun exactly once.',
+    );
+  }
 }
 
 String _normalizeGroupNameForStorage(String name) {

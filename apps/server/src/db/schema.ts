@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex
@@ -399,11 +400,13 @@ export const foods = pgTable(
 // sync rails, mirroring `foods` exactly. The client seeds a small deterministic
 // default set (Breakfast/Lunch/Dinner/Snack, stable ids) the first time it is
 // needed; those rows are ordinary user-editable/archivable rows (unlike the
-// Platform exercise library) so they sync like any other Meal Type.
+// Platform exercise library) so they sync like any other Meal Type. Because
+// every account shares those default ids, the key is (user_id, id) rather than
+// id alone, exactly like `focuses`.
 export const mealTypes = pgTable(
   "meal_types",
   {
-    id: text("id").primaryKey(),
+    id: text("id").notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -416,6 +419,10 @@ export const mealTypes = pgTable(
       .defaultNow()
   },
   (table) => ({
+    pk: primaryKey({
+      name: "meal_types_user_id_id_pk",
+      columns: [table.userId, table.id]
+    }),
     userUpdatedAtIndex: index("meal_types_user_updated_at_index").on(
       table.userId,
       table.updatedAt
@@ -425,14 +432,17 @@ export const mealTypes = pgTable(
 
 // A user's `Exercise Category` (CONTEXT.md) on the opaque-payload
 // sync rails: the server never inspects domain columns, exactly like
-// meals/compounds. Only User Library categories sync — the Platform Library
-// is a deterministic bundled seed and never crosses the server.
-// Archives via the in-payload deleted_at; merge by UUID, tenant-isolated by
-// userId.
+// meals/compounds. Archives via the in-payload deleted_at. The Platform
+// categories are a bundled seed with FIXED ids on every device, and the app
+// pushes them (and a user's rename/recolor/archive of them) like any other
+// category, so every account holds a row under the same ids. The key is
+// therefore (user_id, id), exactly like `focuses`: with a global id key the
+// first account to push "Chest" owned that row and every other account's push
+// or edit of it was silently dropped by tenant isolation.
 export const exerciseCategories = pgTable(
   "exercise_categories",
   {
-    id: text("id").primaryKey(),
+    id: text("id").notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -445,9 +455,50 @@ export const exerciseCategories = pgTable(
       .defaultNow()
   },
   (table) => ({
+    pk: primaryKey({
+      name: "exercise_categories_user_id_id_pk",
+      columns: [table.userId, table.id]
+    }),
     userUpdatedAtIndex: index(
       "exercise_categories_user_updated_at_index"
     ).on(table.userId, table.updatedAt)
+  })
+);
+
+// A user's `Focus` (CONTEXT.md) on the opaque-payload sync rails, shaped
+// like `exercise_categories` (and keyed the same way). The starter Focuses are a bundled seed with
+// FIXED ids on every device; a row here is either a user-created Focus or a
+// user's rename/reorder/archive of a starter one under that same id, and
+// archive is the ordinary deleted_at tombstone. Because every account shares
+// the starter ids, the key is (user_id, id) rather than id alone: with a
+// global id key the first account to edit "Weights" would own that row and
+// every other account's edit would be dropped by tenant isolation. Workouts,
+// Workout Templates and Exercises reference a Focus softly by id inside their
+// payloads, so nothing references this table by FK.
+export const focuses = pgTable(
+  "focuses",
+  {
+    id: text("id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: "focuses_user_id_id_pk",
+      columns: [table.userId, table.id]
+    }),
+    userUpdatedAtIndex: index("focuses_user_updated_at_index").on(
+      table.userId,
+      table.updatedAt
+    )
   })
 );
 
@@ -480,12 +531,13 @@ export const exercises = pgTable(
 
 // Protocols catalogue entry (CONTEXT.md `Compound`) on the opaque-payload sync
 // rails: the server never inspects domain columns, exactly like meals/food
-// entries. Archives via the in-payload deleted_at (PROTOCOLS.md §7); merge by
-// UUID, tenant-isolated by userId.
+// entries. Archives via the in-payload deleted_at (PROTOCOLS.md §7). The
+// app's OTC seed Compounds carry FIXED ids on every device and sync like any
+// other Compound, so the key is (user_id, id), exactly like `focuses`.
 export const compounds = pgTable(
   "compounds",
   {
-    id: text("id").primaryKey(),
+    id: text("id").notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -498,6 +550,10 @@ export const compounds = pgTable(
       .defaultNow()
   },
   (table) => ({
+    pk: primaryKey({
+      name: "compounds_user_id_id_pk",
+      columns: [table.userId, table.id]
+    }),
     userUpdatedAtIndex: index("compounds_user_updated_at_index").on(
       table.userId,
       table.updatedAt

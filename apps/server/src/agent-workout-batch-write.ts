@@ -7,6 +7,10 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentCatalogUnavailableResponseSchema,
+  createActiveFocusCheck,
+  FOCUS_NOT_FOUND_RULE,
+  focusNotFoundMessage,
+  payloadFocusId,
   type AgentCatalogStore,
   type AgentExercise
 } from "./agent-catalog.js";
@@ -53,6 +57,10 @@ export const AgentWorkoutBatchWriteWorkoutSchema = z
     }),
     comment: z.string().nullable().default(null).openapi({
       description: "Optional Workout comment."
+    }),
+    focusId: z.string().min(1).nullable().optional().openapi({
+      description:
+        "Focus the Workout is performed under (see GET /agent/focuses); must be an active starter or user Focus. Null clears it. Omit to keep the Workout's current Focus."
     }),
     deletedAt: ISO8601StringSchema.nullable().default(null).openapi({
       description:
@@ -298,6 +306,28 @@ export async function prepareAgentWorkoutBatchWrite({
   const warnings: AgentWorkoutBatchWriteIssue[] = [];
   const preparedSets: AgentWorkoutBatchPreparedSet[] = [];
 
+  const focusId = request.workout.focusId;
+  if (typeof focusId === "string") {
+    const isActiveFocus = createActiveFocusCheck({ catalogStore, userId });
+    const firstSet = request.sets[0];
+    if (!(await isActiveFocus(focusId)) && firstSet !== undefined) {
+      // The issue shape is per-Set; a Workout-level rule is reported against
+      // the first item with a `workout.*` field path so it stays unambiguous.
+      errors.push(
+        AgentWorkoutBatchWriteIssueSchema.parse({
+          field: "workout.focusId",
+          dimension: null,
+          rule: FOCUS_NOT_FOUND_RULE,
+          message: focusNotFoundMessage("focusId"),
+          limit: null,
+          itemIndex: 0,
+          setId: firstSet.id,
+          exerciseName: firstSet.exerciseName
+        })
+      );
+    }
+  }
+
   for (const [itemIndex, item] of request.sets.entries()) {
     const resolution = await catalogStore.resolveExerciseName({
       userId,
@@ -411,19 +441,6 @@ export function createDrizzleAgentWorkoutBatchWriteStore(
 
         const resolvedWorkout = workout ?? workoutFromPreparedSets(sets);
         const workoutUpdatedAt = serverClock.toISOString();
-        const workoutPayload = {
-          id: resolvedWorkout.id,
-          started_at: resolvedWorkout.startedAt,
-          timezone: resolvedWorkout.timezone,
-          local_date: localDateInTimezone(
-            resolvedWorkout.startedAt,
-            resolvedWorkout.timezone
-          ),
-          ended_at: resolvedWorkout.endedAt,
-          comment: resolvedWorkout.comment,
-          updated_at: workoutUpdatedAt,
-          deleted_at: resolvedWorkout.deletedAt
-        };
         const existingWorkoutRows = await transaction
           .select({
             userId: schema.workoutSessions.userId,
@@ -435,6 +452,25 @@ export function createDrizzleAgentWorkoutBatchWriteStore(
         const existingWorkout = existingWorkoutRows[0];
         const workoutBeforeImage =
           existingWorkout?.userId === userId ? existingWorkout.payload : null;
+        const workoutPayload = {
+          id: resolvedWorkout.id,
+          started_at: resolvedWorkout.startedAt,
+          timezone: resolvedWorkout.timezone,
+          local_date: localDateInTimezone(
+            resolvedWorkout.startedAt,
+            resolvedWorkout.timezone
+          ),
+          ended_at: resolvedWorkout.endedAt,
+          comment: resolvedWorkout.comment,
+          // This payload replaces the stored one whole, so a write that does
+          // not mention Focus carries the device-set `focus_id` through.
+          focus_id:
+            resolvedWorkout.focusId === undefined
+              ? payloadFocusId(workoutBeforeImage)
+              : resolvedWorkout.focusId,
+          updated_at: workoutUpdatedAt,
+          deleted_at: resolvedWorkout.deletedAt
+        };
         const workoutResult = await pushWorkoutSessionsInTransaction(
           transaction,
           {
@@ -545,8 +581,8 @@ function buildLoggedSetPayload({
     workout_deleted_at: request.workout.deletedAt,
     exercise_id: exercise.id,
     exercise_name: exercise.name,
-    exercise_category_id: exercise.category.id,
-    exercise_category_name: exercise.category.name,
+    exercise_category_id: exercise.category?.id ?? null,
+    exercise_category_name: exercise.category?.name ?? null,
     exercise_equipment: exercise.equipment,
     exercise_library: exercise.library,
     exercise_query: item.exerciseName,

@@ -192,6 +192,7 @@ String _verbFor(ActivityLogEntry entry) {
 String _entityLabel(String entityTable) {
   return switch (entityTable) {
     AppDatabase.exerciseCategoriesTable => 'category',
+    AppDatabase.focusesTable => 'focus',
     AppDatabase.exercisesTable => 'exercise',
     AppDatabase.workoutSessionsTable => 'workout',
     AppDatabase.workoutExercisesTable => 'workout exercise',

@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/training/training_dimensions.dart';
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
+import '../../focus/widgets/focus_visuals.dart';
 
 class ExerciseEditorScreen extends ConsumerStatefulWidget {
   const ExerciseEditorScreen({
@@ -40,6 +43,10 @@ class ExerciseEditorScreen extends ConsumerStatefulWidget {
   static const unilateralToggleKey = Key('exercise-editor-unilateral');
   static const rpeToggleKey = Key('exercise-editor-rpe');
 
+  static Key focusChipKey(String id) {
+    return Key('exercise-editor-focus-$id');
+  }
+
   static Key equipmentChipKey(String id) {
     return Key('exercise-editor-equipment-$id');
   }
@@ -70,6 +77,8 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
   bool _usesRpe = false;
   String? _categoryId;
   List<ExerciseEquipment> _equipment = <ExerciseEquipment>[];
+  List<String> _focusIds = <String>[];
+  List<FocusRecord> _focuses = const <FocusRecord>[];
   ExerciseRecord? _exercise;
   String? _errorText;
   bool _isLoading = true;
@@ -127,12 +136,14 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
   Future<void> _load() async {
     final repositories = ref.read(trainingRepositoriesProvider);
     await repositories.catalog.ensurePlatformLibrarySeeded();
-    final categories = await repositories.catalog.listCategories();
     final exerciseId = widget.exerciseId ?? widget.platformExerciseId;
-    ExerciseRecord? exercise;
-    if (exerciseId != null) {
-      exercise = await repositories.exercises.getById(exerciseId);
-    }
+    final (categories, focuses, exercise) = await (
+      repositories.catalog.listCategories(),
+      repositories.focuses.listActive(),
+      exerciseId == null
+          ? Future<ExerciseRecord?>.value()
+          : repositories.exercises.getById(exerciseId),
+    ).wait;
 
     if (!mounted) {
       return;
@@ -140,6 +151,7 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
 
     setState(() {
       _categories = categories;
+      _focuses = focuses;
       _exercise = exercise;
       if (exercise != null) {
         _nameController.text = exercise.name;
@@ -152,6 +164,7 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
         _usesRpe = exercise.usesRpe;
         _categoryId = exercise.categoryId;
         _equipment = exercise.equipment.toList(growable: true);
+        _focusIds = exercise.focusIds.toList(growable: true);
       } else {
         _nameController.text = widget.initialName?.trim() ?? '';
         _categoryId = categories.isEmpty ? null : categories.first.id;
@@ -214,6 +227,7 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
                       setState(() => _categoryId = value);
                     },
                   ),
+                  ..._focusChoices(),
                   const SizedBox(height: AppDimens.base),
                   Text('Equipment', style: context.textStyles.h2),
                   const SizedBox(height: AppDimens.dense),
@@ -423,6 +437,7 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
       usesRpe: _usesRpe,
       categoryId: _categoryId,
       equipment: _equipment,
+      focusIds: _focusIds,
       notes: _emptyToNull(_notesController.text),
     );
 
@@ -472,6 +487,7 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
         _usesRpe = false;
         _categoryId = _categories.isEmpty ? null : _categories.first.id;
         _equipment = <ExerciseEquipment>[];
+        _focusIds = <String>[];
         _errorText = null;
       });
       return;
@@ -556,7 +572,54 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
         exercise.usesRpe != draft.usesRpe ||
         exercise.categoryId != draft.categoryId ||
         !_equipmentEquals(exercise.equipment, draft.equipment) ||
+        !setEquals(
+          exercise.focusIds.toSet(),
+          (draft.focusIds ?? const <String>[]).toSet(),
+        ) ||
         exercise.notes != draft.notes;
+  }
+
+  /// The Focuses this exercise is offered under when a Workout starts from
+  /// one. Archived Focuses the exercise still names stay attached without a
+  /// chip, so saving here never drops them silently.
+  List<Widget> _focusChoices() {
+    final focuses = _focuses;
+    if (focuses.isEmpty) {
+      return const <Widget>[];
+    }
+    final l10n = context.l10n;
+    return <Widget>[
+      const SizedBox(height: AppDimens.base),
+      Text(l10n.exerciseEditorFocusesLabel, style: context.textStyles.h2),
+      const SizedBox(height: AppDimens.dense / 2),
+      Text(
+        l10n.exerciseEditorFocusesHelp,
+        style: context.textStyles.caption.copyWith(
+          color: context.colors.textSecondary,
+        ),
+      ),
+      const SizedBox(height: AppDimens.dense),
+      Wrap(
+        spacing: AppDimens.dense,
+        runSpacing: AppDimens.dense,
+        children: [
+          for (final focus in focuses)
+            FocusChip(
+              key: ExerciseEditorScreen.focusChipKey(focus.id),
+              icon: focusIcon(focus.id),
+              label: focus.name,
+              selected: _focusIds.contains(focus.id),
+              onSelected: (selected) {
+                setState(() {
+                  _focusIds = selected
+                      ? <String>[..._focusIds, focus.id]
+                      : _focusIds.where((id) => id != focus.id).toList();
+                });
+              },
+            ),
+        ],
+      ),
+    ];
   }
 
   void _popOrReload([ExerciseRecord? result]) {
@@ -656,3 +719,4 @@ String? _emptyToNull(String value) {
   final trimmed = value.trim();
   return trimmed.isEmpty ? null : trimmed;
 }
+

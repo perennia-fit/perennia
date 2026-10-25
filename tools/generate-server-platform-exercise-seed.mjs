@@ -8,7 +8,8 @@
 // available server-side without a runtime cross-package file read, we emit a
 // committed TypeScript module that compiles into dist/ as part of the module
 // graph. The generator keeps ONLY the fields the agent catalog needs (id, name,
-// dimension_ids, category_id, equipment_ids) plus categories — the heavy
+// dimension_ids, category_id, equipment_ids, focus_ids) plus categories and the
+// starter Focuses — the heavy
 // per-record source_attribution/license metadata is dropped. Re-run and commit
 // the output whenever the mobile seed changes; a drift check guards it in CI.
 //
@@ -35,6 +36,14 @@ function build() {
     name: String(category.name)
   }));
 
+  // Starter Focuses carry fixed ids shared with every device, so the agent
+  // surface can resolve and validate a Focus reference without a synced row.
+  const focuses = (seed.focuses ?? []).map((focus) => ({
+    id: String(focus.id),
+    name: String(focus.name),
+    sortOrder: Number(focus.sort_order)
+  }));
+
   const exercises = (seed.exercises ?? []).map((exercise) => ({
     id: String(exercise.id),
     name: String(exercise.name),
@@ -43,7 +52,8 @@ function build() {
       exercise.category_id === null || exercise.category_id === undefined
         ? null
         : String(exercise.category_id),
-    equipmentIds: (exercise.equipment_ids ?? []).map(String)
+    equipmentIds: (exercise.equipment_ids ?? []).map(String),
+    focusIds: (exercise.focus_ids ?? []).map(String)
   }));
   const redirects = (seed.exercise_redirects ?? []).map((redirect) => ({
     fromExerciseId: String(redirect.from_exercise_id),
@@ -66,12 +76,19 @@ export type PlatformSeedCategory = {
   name: string;
 };
 
+export type PlatformSeedFocus = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
 export type PlatformSeedExercise = {
   id: string;
   name: string;
   dimensionIds: DimensionId[];
   categoryId: string | null;
   equipmentIds: string[];
+  focusIds: string[];
 };
 
 export type PlatformSeedExerciseRedirect = {
@@ -85,6 +102,8 @@ export const PLATFORM_EXERCISE_SEED_CATEGORIES: readonly PlatformSeedCategory[] 
   const body =
     header +
     JSON.stringify(categories, null, 2) +
+    ";\n\nexport const PLATFORM_EXERCISE_SEED_FOCUSES: readonly PlatformSeedFocus[] =\n" +
+    JSON.stringify(focuses, null, 2) +
     ";\n\nexport const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =\n" +
     JSON.stringify(exercises, null, 2) +
     ";\n\nexport const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedirect[] =\n" +

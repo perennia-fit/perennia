@@ -24,6 +24,7 @@ export const METRIC_READINGS_SYNC_ENTITY = "metric_readings";
 export const NUTRITION_GOALS_SYNC_ENTITY = "nutrition_goals";
 export const USER_SETTINGS_SYNC_ENTITY = "user_settings";
 export const EXERCISE_CATEGORIES_SYNC_ENTITY = "exercise_categories";
+export const FOCUSES_SYNC_ENTITY = "focuses";
 export const EXERCISES_SYNC_ENTITY = "exercises";
 export const WORKOUT_SESSIONS_SYNC_ENTITY = "workout_sessions";
 export const WORKOUT_EXERCISES_SYNC_ENTITY = "workout_exercises";
@@ -48,6 +49,7 @@ export const ROUTINE_ENTRIES_SYNC_ENTITY = "routine_entries";
 export const TEMPLATE_LINKS_SYNC_ENTITY = "template_links";
 const SYNC_PULL_ENTITIES = [
   EXERCISE_CATEGORIES_SYNC_ENTITY,
+  FOCUSES_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
   WORKOUT_SESSIONS_SYNC_ENTITY,
   WORKOUT_EXERCISES_SYNC_ENTITY,
@@ -80,6 +82,7 @@ const SYNC_PULL_ENTITIES = [
 ] as const;
 const SYNC_PUSH_ENTITIES = [
   EXERCISE_CATEGORIES_SYNC_ENTITY,
+  FOCUSES_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
   WORKOUT_SESSIONS_SYNC_ENTITY,
   WORKOUT_EXERCISES_SYNC_ENTITY,
@@ -464,6 +467,12 @@ export type SyncStore = {
     deviceId: string;
     changes: SyncPushChange[];
   }): Promise<SyncPushResult>;
+  pushFocuses(input: {
+    userId: string;
+    correlationId?: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+  }): Promise<SyncPushResult>;
   pushExercises(input: {
     userId: string;
     correlationId?: string;
@@ -649,110 +658,94 @@ export type SyncStore = {
 
 type LoggedSetMutationDatabase = Pick<ServerDatabase, "select" | "insert" | "update">;
 
+// The opaque sync tables a device seeds under FIXED ids shared by every
+// account: the Platform exercise categories and starter Focuses (bundled
+// platform_exercises.json), the default Meal Types and the OTC seed Compounds.
+// The app pushes those seeded rows, and a user's rename/reorder/archive of
+// them, as ordinary LWW rows, so these tables are keyed (user_id, id) and every
+// read and write here is scoped by both columns. TENANT ISOLATION comes from
+// the key itself: each account's "Chest" is its own row and can never touch
+// another account's, so the generic owner check never fires. (With a global id
+// key the first account to push a seeded id owned it, and every other
+// account's push or edit of it was silently dropped.)
+type AccountKeyedSyncTable =
+  | typeof schema.exerciseCategories
+  | typeof schema.focuses
+  | typeof schema.mealTypes
+  | typeof schema.compounds;
+
+async function pushAccountKeyedSyncRowsInTransaction(
+  transaction: LoggedSetMutationDatabase,
+  input: {
+    userId: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+    serverClock: Date;
+    table: AccountKeyedSyncTable;
+    entityTable: SyncPullEntity;
+  }
+): Promise<SyncPushResult> {
+  const { userId, table } = input;
+  const ownRow = (id: string) =>
+    and(eq(table.userId, userId), eq(table.id, id));
+  return pushOpaqueSyncRowsInTransaction(transaction, {
+    ...input,
+    async readExisting(id) {
+      const rows = await transaction
+        .select({
+          userId: table.userId,
+          updatedAt: table.updatedAt,
+          deviceId: table.deviceId
+        })
+        .from(table)
+        .where(ownRow(id))
+        .limit(1);
+      return rows[0];
+    },
+    async writeRow(existing, row) {
+      if (existing === undefined) {
+        await transaction.insert(table).values(row);
+      } else {
+        await transaction.update(table).set(row).where(ownRow(row.id));
+      }
+    }
+  });
+}
+
 export async function pushExerciseCategoriesInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
-    }
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
+    ...input,
+    table: schema.exerciseCategories,
+    entityTable: EXERCISE_CATEGORIES_SYNC_ENTITY
+  });
+}
 
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: EXERCISE_CATEGORIES_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.exerciseCategories.userId,
-        updatedAt: schema.exerciseCategories.updatedAt,
-        deviceId: schema.exerciseCategories.deviceId
-      })
-      .from(schema.exerciseCategories)
-      .where(eq(schema.exerciseCategories.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION: a second user's push can never overwrite the
-    // first user's row keyed by the same client PK.
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.exerciseCategories).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.exerciseCategories)
-        .set(rowValues)
-        .where(eq(schema.exerciseCategories.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
+// A `Focus` (CONTEXT.md) is pushed on the same opaque LWW rails as an
+// Exercise Category: the server stores the payload verbatim and never reads
+// it. Workouts, Workout Templates and Exercises reference a Focus softly, so
+// nothing here (or in the pull path) orders or holds a referencing row on it.
+export async function pushFocusesInTransaction(
+  transaction: LoggedSetMutationDatabase,
+  input: {
+    userId: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+    serverClock: Date;
   }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+): Promise<SyncPushResult> {
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
+    ...input,
+    table: schema.focuses,
+    entityTable: FOCUSES_SYNC_ENTITY
+  });
 }
 
 export async function pushNutritionGoalsInTransaction(
@@ -975,108 +968,40 @@ export async function pushUserSettingsInTransaction(
 
 export async function pushExercisesInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
+  return pushOpaqueSyncRowsInTransaction(transaction, {
+    ...input,
+    entityTable: EXERCISES_SYNC_ENTITY,
+    async readExisting(id) {
+      const rows = await transaction
+        .select({
+          userId: schema.exercises.userId,
+          updatedAt: schema.exercises.updatedAt,
+          deviceId: schema.exercises.deviceId,
+          payload: schema.exercises.payload
+        })
+        .from(schema.exercises)
+        .where(eq(schema.exercises.id, id))
+        .limit(1);
+      return rows[0];
+    },
+    async writeRow(existing, row) {
+      if (existing === undefined) {
+        await transaction.insert(schema.exercises).values(row);
+      } else {
+        await transaction
+          .update(schema.exercises)
+          .set(row)
+          .where(eq(schema.exercises.id, row.id));
+      }
     }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: EXERCISES_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.exercises.userId,
-        updatedAt: schema.exercises.updatedAt,
-        deviceId: schema.exercises.deviceId
-      })
-      .from(schema.exercises)
-      .where(eq(schema.exercises.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION: a second user's push can never overwrite the
-    // first user's row keyed by the same client PK.
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.exercises).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.exercises)
-        .set(rowValues)
-        .where(eq(schema.exercises.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  });
 }
 
 export async function pushLoggedSetsInTransaction(
@@ -1328,108 +1253,18 @@ export async function pushFoodsInTransaction(
 
 export async function pushMealTypesInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
-    }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: MEAL_TYPES_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.mealTypes.userId,
-        updatedAt: schema.mealTypes.updatedAt,
-        deviceId: schema.mealTypes.deviceId
-      })
-      .from(schema.mealTypes)
-      .where(eq(schema.mealTypes.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION: a second user's push can never overwrite the
-    // first user's row keyed by the same client PK.
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.mealTypes).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.mealTypes)
-        .set(rowValues)
-        .where(eq(schema.mealTypes.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
+    ...input,
+    table: schema.mealTypes,
+    entityTable: MEAL_TYPES_SYNC_ENTITY
+  });
 }
 
 export async function pushMealsInTransaction(
@@ -1642,108 +1477,18 @@ export async function pushFoodEntriesInTransaction(
 
 export async function pushCompoundsInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
-    }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: COMPOUNDS_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.compounds.userId,
-        updatedAt: schema.compounds.updatedAt,
-        deviceId: schema.compounds.deviceId
-      })
-      .from(schema.compounds)
-      .where(eq(schema.compounds.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION: a second user's push can never overwrite the
-    // first user's row keyed by the same client PK.
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.compounds).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.compounds)
-        .set(rowValues)
-        .where(eq(schema.compounds.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
+    ...input,
+    table: schema.compounds,
+    entityTable: COMPOUNDS_SYNC_ENTITY
+  });
 }
 
 export async function pushDosesInTransaction(
@@ -2380,7 +2125,49 @@ type OpaqueSyncExistingRow = {
   userId: string;
   updatedAt: Date;
   deviceId: string;
+  // Read only by entities with carry-forward keys (see below).
+  payload?: Record<string, unknown>;
 };
+
+// Payload keys added to an entity after devices were already syncing it.
+// The push stores payloads verbatim (LWW), and a device still on an older
+// app version pushes these entities WITHOUT the newer keys — so a plain
+// replace would silently drop, say, a Workout's Focus that a newer device or
+// an agent set. An ABSENT key therefore means "keep the stored value", the
+// same rule newer devices apply on pull; a key present with `null` still
+// clears. Add a key here when a release adds it to an already-synced entity.
+const SYNC_CARRY_FORWARD_PAYLOAD_KEYS: Partial<
+  Record<SyncPullEntity, readonly string[]>
+> = {
+  [WORKOUT_SESSIONS_SYNC_ENTITY]: ["focus_id"],
+  [WORKOUT_TEMPLATES_SYNC_ENTITY]: ["focus_id"],
+  // JSON-encoded string array, like `equipment_ids`.
+  [EXERCISES_SYNC_ENTITY]: ["focus_ids"]
+};
+
+function carryForwardOmittedPayloadKeys<
+  T extends Record<string, unknown> | null | undefined
+>(
+  entityTable: SyncPullEntity,
+  incoming: T,
+  stored: Record<string, unknown> | undefined
+): T {
+  const keys = SYNC_CARRY_FORWARD_PAYLOAD_KEYS[entityTable];
+  if (keys === undefined || incoming == null || stored === undefined) {
+    return incoming;
+  }
+  const carried = keys.filter(
+    (key) => !Object.hasOwn(incoming, key) && Object.hasOwn(stored, key)
+  );
+  if (carried.length === 0) {
+    return incoming;
+  }
+  const result: Record<string, unknown> = { ...incoming };
+  for (const key of carried) {
+    result[key] = stored[key];
+  }
+  return result as T;
+}
 
 type OpaqueSyncRowValues = {
   id: string;
@@ -2447,17 +2234,34 @@ async function pushOpaqueSyncRowsInTransaction(
       change.deletedAt === null
         ? null
         : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
     const existing = await readExisting(change.id);
 
+    // TENANT ISOLATION: a second user's push can never overwrite the
+    // first user's row keyed by the same client PK.
     if (existing !== undefined && existing.userId !== userId) {
       continue;
     }
+    // Older clients omit keys added later; carry the stored value into the
+    // written payload and into the Activity Log images, so the logged
+    // after-image matches the stored row and no phantom change is recorded.
+    const carry = <T extends Record<string, unknown> | null | undefined>(
+      image: T
+    ) => carryForwardOmittedPayloadKeys(entityTable, image, existing?.payload);
+    const payload = syncPayloadClock(
+      carry(change.payload),
+      updatedAt,
+      deletedAt
+    );
+    const loggedChange: SyncPushChange = {
+      ...change,
+      beforeImage: carry(change.beforeImage),
+      afterImage: carry(change.afterImage)
+    };
     if (
       existing !== undefined &&
       !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
     ) {
-      await maybeRecordActivityLog(change);
+      await maybeRecordActivityLog(loggedChange);
       acceptedIds.push(change.id);
       continue;
     }
@@ -2471,7 +2275,7 @@ async function pushOpaqueSyncRowsInTransaction(
       deletedAt,
       receivedAt: serverClock
     });
-    await maybeRecordActivityLog({ ...change, payload });
+    await maybeRecordActivityLog({ ...loggedChange, payload });
     acceptedIds.push(change.id);
     applied.push({
       id: change.id,
@@ -2504,7 +2308,8 @@ export async function pushWorkoutSessionsInTransaction(
         .select({
           userId: schema.workoutSessions.userId,
           updatedAt: schema.workoutSessions.updatedAt,
-          deviceId: schema.workoutSessions.deviceId
+          deviceId: schema.workoutSessions.deviceId,
+          payload: schema.workoutSessions.payload
         })
         .from(schema.workoutSessions)
         .where(eq(schema.workoutSessions.id, id))
@@ -2637,108 +2442,40 @@ export async function pushExerciseGroupMembersInTransaction(
 
 export async function pushWorkoutTemplatesInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
+  return pushOpaqueSyncRowsInTransaction(transaction, {
+    ...input,
+    entityTable: WORKOUT_TEMPLATES_SYNC_ENTITY,
+    async readExisting(id) {
+      const rows = await transaction
+        .select({
+          userId: schema.workoutTemplates.userId,
+          updatedAt: schema.workoutTemplates.updatedAt,
+          deviceId: schema.workoutTemplates.deviceId,
+          payload: schema.workoutTemplates.payload
+        })
+        .from(schema.workoutTemplates)
+        .where(eq(schema.workoutTemplates.id, id))
+        .limit(1);
+      return rows[0];
+    },
+    async writeRow(existing, row) {
+      if (existing === undefined) {
+        await transaction.insert(schema.workoutTemplates).values(row);
+      } else {
+        await transaction
+          .update(schema.workoutTemplates)
+          .set(row)
+          .where(eq(schema.workoutTemplates.id, row.id));
+      }
     }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: WORKOUT_TEMPLATES_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.workoutTemplates.userId,
-        updatedAt: schema.workoutTemplates.updatedAt,
-        deviceId: schema.workoutTemplates.deviceId
-      })
-      .from(schema.workoutTemplates)
-      .where(eq(schema.workoutTemplates.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION: a second user's push can never overwrite the
-    // first user's row keyed by the same client PK.
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.workoutTemplates).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.workoutTemplates)
-        .set(rowValues)
-        .where(eq(schema.workoutTemplates.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  });
 }
 
 export async function pushTemplateExercisesInTransaction(
@@ -4050,6 +3787,19 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
 
       return result;
     },
+    async pushFocuses({ userId, deviceId, changes }) {
+      const serverClock = new Date();
+      const result = await db.transaction((transaction) =>
+        pushFocusesInTransaction(transaction, {
+          userId,
+          deviceId,
+          changes,
+          serverClock
+        })
+      );
+
+      return result;
+    },
     async pushExercises({ userId, deviceId, changes }) {
       const serverClock = new Date();
       const result = await db.transaction((transaction) =>
@@ -4439,6 +4189,12 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         schema.exerciseCategories.id,
         cursorPosition
       );
+      const focusCursorFilter = pullCursorFilter(
+        FOCUSES_SYNC_ENTITY,
+        schema.focuses.receivedAt,
+        schema.focuses.id,
+        cursorPosition
+      );
       const exerciseCursorFilter = pullCursorFilter(
         EXERCISES_SYNC_ENTITY,
         schema.exercises.receivedAt,
@@ -4617,6 +4373,10 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         mode === SYNC_PULL_MODE_SNAPSHOT
           ? isNull(schema.exerciseCategories.deletedAt)
           : undefined;
+      const liveFocusSnapshotFilter =
+        mode === SYNC_PULL_MODE_SNAPSHOT
+          ? isNull(schema.focuses.deletedAt)
+          : undefined;
       const liveExerciseSnapshotFilter =
         mode === SYNC_PULL_MODE_SNAPSHOT
           ? isNull(schema.exercises.deletedAt)
@@ -4748,6 +4508,25 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
           asc(schema.exerciseCategories.receivedAt),
           asc(schema.exerciseCategories.id)
         )
+        .limit(limit);
+      const focusRows = await db
+        .select({
+          id: schema.focuses.id,
+          deviceId: schema.focuses.deviceId,
+          payload: schema.focuses.payload,
+          updatedAt: schema.focuses.updatedAt,
+          deletedAt: schema.focuses.deletedAt,
+          receivedAt: schema.focuses.receivedAt
+        })
+        .from(schema.focuses)
+        .where(
+          and(
+            eq(schema.focuses.userId, userId),
+            liveFocusSnapshotFilter,
+            focusCursorFilter
+          )
+        )
+        .orderBy(asc(schema.focuses.receivedAt), asc(schema.focuses.id))
         .limit(limit);
       const exerciseRows = await db
         .select({
@@ -5360,6 +5139,15 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
       const baseRows: PullRow[] = [
         ...exerciseCategoryRows.map((row): PullRow => ({
           entity: EXERCISE_CATEGORIES_SYNC_ENTITY,
+          id: row.id,
+          deviceId: row.deviceId,
+          payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
+          updatedAt: row.updatedAt,
+          deletedAt: row.deletedAt,
+          receivedAt: row.receivedAt
+        })),
+        ...focusRows.map((row): PullRow => ({
+          entity: FOCUSES_SYNC_ENTITY,
           id: row.id,
           deviceId: row.deviceId,
           payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
@@ -6094,6 +5882,7 @@ function pullCursorFilter(
   entity: SyncPullEntity,
   receivedAtColumn:
     | typeof schema.exerciseCategories.receivedAt
+    | typeof schema.focuses.receivedAt
     | typeof schema.exercises.receivedAt
     | typeof schema.workoutSessions.receivedAt
     | typeof schema.workoutExercises.receivedAt
@@ -6125,6 +5914,7 @@ function pullCursorFilter(
     | typeof schema.templateLinks.receivedAt,
   idColumn:
     | typeof schema.exerciseCategories.id
+    | typeof schema.focuses.id
     | typeof schema.exercises.id
     | typeof schema.workoutSessions.id
     | typeof schema.workoutExercises.id
@@ -6198,6 +5988,11 @@ function syncEntitySortRank(entity: SyncPullEntity) {
   switch (entity) {
     case EXERCISE_CATEGORIES_SYNC_ENTITY:
       return 0;
+    // A Focus before the Exercises (and Workouts/Templates) that name it.
+    // Their `focus_id`/`focus_ids` are soft references, so this ordering is
+    // cosmetic for a shared receive timestamp, never an FK requirement.
+    case FOCUSES_SYNC_ENTITY:
+      return 0.5;
     case EXERCISES_SYNC_ENTITY:
       return 1;
     // Preserve established entity ranks while ordering the Workout parent and

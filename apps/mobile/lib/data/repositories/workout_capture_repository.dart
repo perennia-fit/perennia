@@ -72,7 +72,12 @@ final class WorkoutCaptureRepository {
 
       final templateWrite =
           await _repositories.workoutTemplates._createWithContent(
-        WorkoutTemplateDraft(name: normalizedName),
+        WorkoutTemplateDraft(
+          name: normalizedName,
+          focusId: (await _repositories.workoutSessions
+                  ._requireRow(request.workoutId))
+              .focusId,
+        ),
         _workoutTemplateContentDraftFromCapture(content),
         context,
         exercisePolicy: _WorkoutTemplateContentExercisePolicy.historicalFact,

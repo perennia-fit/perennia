@@ -5,11 +5,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart'
-    show TemplateDivergenceSummary;
+    show ExerciseRecord, FocusRecord, TemplateDivergenceSummary;
 import '../../../domain/training/training_day.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
+import '../../focus/controllers/focus_providers.dart';
+import '../../focus/repositories/focus_feature_repository.dart';
+import '../../focus/widgets/focus_picker_sheet.dart';
+import '../../focus/widgets/focus_visuals.dart';
+import '../../focus/widgets/focused_exercise_list.dart';
 import '../../template_divergence/repositories/template_divergence_feature_repository.dart';
 import '../../template_divergence/widgets/template_update_prompt_dialog.dart';
 import '../../training/services/timer_notification_router.dart';
@@ -55,6 +60,14 @@ class WorkoutScreen extends ConsumerWidget {
 
   static Key resumeButtonKey(String workoutId) {
     return Key('workout.$workoutId.resume');
+  }
+
+  static Key focusButtonKey(String workoutId) {
+    return Key('workout.$workoutId.focus');
+  }
+
+  static Key chooseFocusButtonKey(String workoutId) {
+    return Key('workout.$workoutId.chooseFocus');
   }
 
   static Key notesButtonKey(String workoutId) {
@@ -168,6 +181,7 @@ class _WorkoutContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(homeControllerProvider.notifier);
+    final focus = ref.watch(focusRecordProvider(workout.focusId));
     return Scaffold(
       appBar: AppBar(
         title: Text(context.l10n.workoutTitle),
@@ -269,7 +283,13 @@ class _WorkoutContent extends ConsumerWidget {
             children: [
               _WorkoutHeader(
                 workout: workout,
-                onAddExercise: () => _showExercisePicker(context, controller),
+                focus: focus,
+                onChangeFocus: () => _changeFocus(context, ref),
+                onAddExercise: () => _showExercisePicker(
+                  context,
+                  controller,
+                  initialFocusId: workout.focusId,
+                ),
                 onFinish: () => _finishWorkout(context, controller, ref),
                 onResume: () async {
                   await controller.resumeWorkout(workout.id);
@@ -282,17 +302,54 @@ class _WorkoutContent extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: AppDimens.base),
-              Text(context.l10n.workoutExercisesTitle,
-                  style: context.textStyles.h2),
-              const SizedBox(height: AppDimens.dense),
-              if (workout.workoutExercises.isEmpty)
+              // The focused list titles itself: its rows are suggestions, so
+              // they never sit under the logged-exercises heading.
+              if (workout.workoutExercises.isNotEmpty || focus == null) ...[
+                Text(
+                  context.l10n.workoutExercisesTitle,
+                  style: context.textStyles.h2,
+                ),
+                const SizedBox(height: AppDimens.dense),
+              ],
+              if (workout.workoutExercises.isEmpty && focus != null)
+                FocusedExerciseList(
+                  focus: focus,
+                  onExerciseSelected: (exercise) => unawaited(
+                    _addExerciseAndOpen(context, controller, exercise),
+                  ),
+                  onBrowseFocus: () => unawaited(
+                    _showExercisePicker(
+                      context,
+                      controller,
+                      initialFocusId: focus.id,
+                    ),
+                  ),
+                  onSearchAll: () => unawaited(
+                    _showExercisePicker(context, controller),
+                  ),
+                )
+              else if (workout.workoutExercises.isEmpty) ...[
                 Text(
                   context.l10n.homeNoExercisesLoggedYet,
                   style: context.textStyles.body.copyWith(
                     color: context.colors.textSecondary,
                   ),
-                )
-              else
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: WorkoutScreen.chooseFocusButtonKey(workout.id),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, AppDimens.touchTarget),
+                      foregroundColor: context.colors.textPrimary,
+                      iconColor: Theme.of(context).colorScheme.primary,
+                    ),
+                    onPressed: () => unawaited(_changeFocus(context, ref)),
+                    icon: const Icon(Icons.flag_outlined),
+                    label: Text(context.l10n.workoutChooseFocus),
+                  ),
+                ),
+              ] else
                 _WorkoutExerciseList(
                   exercises: workout.workoutExercises,
                   exerciseGroups: workout.exerciseGroups,
@@ -433,16 +490,69 @@ class _WorkoutContent extends ConsumerWidget {
     );
   }
 
-  Future<void> _showExercisePicker(
+  Future<void> _changeFocus(BuildContext context, WidgetRef ref) async {
+    final pick = await pickChangedFocus(context, current: workout.focusId);
+    if (pick == null) {
+      return;
+    }
+    await ref
+        .read(focusFeatureRepositoryProvider)
+        .setWorkoutFocus(workout.id, pick.focusId);
+    if (!context.mounted) {
+      return;
+    }
+    final focusName = pick.focusId == null
+        ? null
+        : ref.read(focusesByIdProvider).value?[pick.focusId]?.name;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          focusName == null
+              ? context.l10n.workoutFocusCleared
+              : context.l10n.workoutFocusChanged(focusName),
+        ),
+      ),
+    );
+  }
+
+  /// Adds [exercise] and lands on it, from the picker sheet or the focused
+  /// list alike. Guarded per Workout until the add has landed: a rapid
+  /// double-tap fires the row's onTap twice before the first add resolves,
+  /// which would otherwise add the exercise twice and stack two pages for
+  /// what the user experienced as one tap.
+  Future<void> _addExerciseAndOpen(
     BuildContext context,
     HomeController controller,
-  ) {
-    // Guards the whole sheet lifetime: a rapid double-tap on a catalog row
-    // fires ExerciseCatalogPicker's onTap twice before the first
-    // addExerciseToWorkout await resolves. Without this, both selections
-    // would add the exercise and auto-land, stacking two ExercisePage
-    // routes for what the user experienced as one tap.
-    var isAddingExercise = false;
+    ExerciseRecord exercise, {
+    VoidCallback? closeSheet,
+  }) async {
+    if (!controller.beginExerciseAdd(workout.id)) {
+      return;
+    }
+    try {
+      final workoutExerciseId = await controller.addExerciseToWorkout(
+        workoutId: workout.id,
+        exerciseId: exercise.id,
+      );
+      closeSheet?.call();
+      if (!context.mounted) {
+        return;
+      }
+      // Auto-land into the just-added exercise instead of leaving the user
+      // back on the workout card list.
+      unawaited(
+        Navigator.of(context).push(buildExercisePageRoute(workoutExerciseId)),
+      );
+    } finally {
+      controller.endExerciseAdd(workout.id);
+    }
+  }
+
+  Future<void> _showExercisePicker(
+    BuildContext context,
+    HomeController controller, {
+    String? initialFocusId,
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -453,30 +563,19 @@ class _WorkoutContent extends ConsumerWidget {
             child: SizedBox(
               height: MediaQuery.sizeOf(sheetContext).height * 0.85,
               child: ExerciseCatalogPicker(
-                onExerciseSelected: (exercise) {
-                  if (isAddingExercise) {
-                    return;
-                  }
-                  isAddingExercise = true;
-                  unawaited(() async {
-                    final workoutExerciseId =
-                        await controller.addExerciseToWorkout(
-                      workoutId: workout.id,
-                      exerciseId: exercise.id,
-                    );
-                    if (sheetContext.mounted) {
-                      Navigator.of(sheetContext).pop();
-                    }
-                    if (!context.mounted) {
-                      return;
-                    }
-                    // Auto-land into the just-added exercise instead of
-                    // leaving the user back on the workout card list.
-                    Navigator.of(context).push(
-                      buildExercisePageRoute(workoutExerciseId),
-                    );
-                  }());
-                },
+                initialFocusId: initialFocusId,
+                onExerciseSelected: (exercise) => unawaited(
+                  _addExerciseAndOpen(
+                    context,
+                    controller,
+                    exercise,
+                    closeSheet: () {
+                      if (sheetContext.mounted) {
+                        Navigator.of(sheetContext).pop();
+                      }
+                    },
+                  ),
+                ),
               ),
             ),
           ),
@@ -798,12 +897,16 @@ class _MenuRow extends StatelessWidget {
 class _WorkoutHeader extends StatelessWidget {
   const _WorkoutHeader({
     required this.workout,
+    required this.focus,
+    required this.onChangeFocus,
     required this.onAddExercise,
     required this.onFinish,
     required this.onResume,
   });
 
   final HomeWorkoutSummary workout;
+  final FocusRecord? focus;
+  final Future<void> Function() onChangeFocus;
   final Future<void> Function() onAddExercise;
   final Future<void> Function() onFinish;
   final Future<void> Function() onResume;
@@ -856,6 +959,12 @@ class _WorkoutHeader extends StatelessWidget {
                 color: context.colors.textSecondary,
               ),
             ),
+            const SizedBox(height: AppDimens.dense),
+            _FocusControl(
+              workoutId: workout.id,
+              focus: focus,
+              onPressed: onChangeFocus,
+            ),
             const SizedBox(height: AppDimens.base),
             SizedBox(
               width: double.infinity,
@@ -884,6 +993,75 @@ class _WorkoutHeader extends StatelessWidget {
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Workout's Focus, and the way to change it. A quiet control: the Focus
+/// shapes which exercises are offered first, it is not a mode to manage.
+class _FocusControl extends StatelessWidget {
+  const _FocusControl({
+    required this.workoutId,
+    required this.focus,
+    required this.onPressed,
+  });
+
+  final String workoutId;
+  final FocusRecord? focus;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final focus = this.focus;
+    final name =
+        focus == null ? l10n.workoutNoFocus : focusDisplayName(context, focus);
+    // Its own node: without `container`, the label and tap merge into the
+    // header card, and a screen reader announces the whole card as one
+    // "Change focus" button.
+    // `excludeSemantics` drops the InkWell's own tap, so the node carries it.
+    return Semantics(
+      container: true,
+      button: true,
+      label: l10n.workoutFocusSemanticLabel(name),
+      onTap: () => unawaited(onPressed()),
+      excludeSemantics: true,
+      child: InkWell(
+        key: WorkoutScreen.focusButtonKey(workoutId),
+        borderRadius: AppRadii.cardMd,
+        onTap: () => unawaited(onPressed()),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
+          child: Row(
+            children: [
+              Icon(
+                focus == null ? Icons.flag_outlined : focusIcon(focus.id),
+                size: 20,
+                color: focus == null
+                    ? context.colors.textSecondary
+                    : Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: AppDimens.dense),
+              Flexible(
+                child: Text(
+                  name,
+                  style: context.textStyles.body.copyWith(
+                    color: focus == null
+                        ? context.colors.textSecondary
+                        : context.colors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: AppDimens.dense / 2),
+              Icon(
+                Icons.arrow_drop_down,
+                color: context.colors.textSecondary,
+              ),
+            ],
+          ),
         ),
       ),
     );

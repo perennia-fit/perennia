@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { createMigratedServerApp, schema } from "../src/index.ts";
 
@@ -122,9 +122,12 @@ test(
         .select()
         .from(schema.exerciseCategories)
         .where(eq(schema.exerciseCategories.id, categoryId));
-      assert.equal(storedCategory.length, 1);
-      assert.equal(storedCategory[0].userId, userA.userId);
-      assert.equal(storedCategory[0].payload.name, "Back");
+      // The table is keyed (user_id, id): B's push is B's own row under the
+      // same id and never touches A's.
+      assert.deepEqual(
+        Object.fromEntries(storedCategory.map((row) => [row.userId, row.payload.name])),
+        { [userA.userId]: "Back", [userB.userId]: "Hijacked" }
+      );
 
       // Device B (same user A account, different device) pulls its own rows;
       // both the ExerciseCategory and Exercise round-trip.
@@ -143,13 +146,14 @@ test(
       assert.equal(pulledExercise.payload.category_id, categoryId);
       assert.equal(pulledExercise.deletedAt, null);
 
-      // User B pulls and sees NEITHER row — strict per-user scoping on read.
+      // User B pulls none of A's rows — strict per-user scoping on read —
+      // only its own copy under the shared Category id.
       const userBPulled = await pullAll(serverApp.app, userB.sessionToken);
-      assert.equal(
-        userBPulled.filter(
-          (change) => change.id === exerciseId || change.id === categoryId
-        ).length,
-        0
+      assert.deepEqual(
+        userBPulled
+          .filter((change) => change.id === exerciseId || change.id === categoryId)
+          .map((change) => change.payload.name),
+        ["Hijacked"]
       );
 
       // A newer Exercise edit wins LWW; an older replay loses.
@@ -224,7 +228,12 @@ test(
       const categoryStillLive = await serverApp.database.db
         .select()
         .from(schema.exerciseCategories)
-        .where(eq(schema.exerciseCategories.id, categoryId));
+        .where(
+          and(
+            eq(schema.exerciseCategories.userId, userA.userId),
+            eq(schema.exerciseCategories.id, categoryId)
+          )
+        );
       assert.equal(categoryStillLive.length, 1);
       assert.equal(categoryStillLive[0].deletedAt, null);
 

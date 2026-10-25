@@ -639,6 +639,29 @@ class PortableArchiveRepository {
           updatedAtOf: (row) => row.updatedAt,
           imageOf: _exerciseCategoryImage,
         ),
+        _TypedPortableArchiveEntity<FocusRow>(
+          tableName: AppDatabase.focusesTable,
+          selectRows: () {
+            final query = _database.select(_database.focuses)
+              ..orderBy([
+                (row) => OrderingTerm.asc(row.id),
+              ]);
+            return query.get();
+          },
+          fromJson: FocusRow.fromJson,
+          toJson: (row) => row.toJson(),
+          findById: (id) {
+            final query = _database.select(_database.focuses)
+              ..where((row) => row.id.equals(id));
+            return query.getSingleOrNull();
+          },
+          upsert: (row) => _database
+              .into(_database.focuses)
+              .insert(row, mode: InsertMode.insertOrReplace),
+          idOf: (row) => row.id,
+          updatedAtOf: (row) => row.updatedAt,
+          imageOf: _focusImage,
+        ),
         _TypedPortableArchiveEntity<ExerciseRow>(
           tableName: AppDatabase.exercisesTable,
           selectRows: () {
@@ -648,7 +671,10 @@ class PortableArchiveRepository {
               ]);
             return query.get();
           },
-          fromJson: ExerciseRow.fromJson,
+          // Archives written before schema 59 carry no Focuses on exercises.
+          fromJson: (json) => ExerciseRow.fromJson(
+            <String, dynamic>{'focusIds': '[]', ...json},
+          ),
           toJson: (row) => row.toJson(),
           findById: (id) {
             final query = _database.select(_database.exercises)
@@ -1572,6 +1598,9 @@ class PortableArchiveRepository {
     if (archiveSchemaVersion < 52 &&
         (tableName == AppDatabase.templateGroupsTable ||
             tableName == AppDatabase.templateGroupMembersTable)) {
+      return true;
+    }
+    if (archiveSchemaVersion < 59 && tableName == AppDatabase.focusesTable) {
       return true;
     }
     return archiveSchemaVersion < 53 &&

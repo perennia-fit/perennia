@@ -20,9 +20,11 @@ import 'package:perennia/features/catalog/repositories/exercise_catalog_reposito
 import 'package:perennia/features/catalog/widgets/exercise_catalog_picker.dart';
 import 'package:perennia/features/catalog/widgets/exercise_editor_screen.dart';
 import 'package:perennia/features/exercise/widgets/exercise_page.dart';
+import 'package:perennia/features/focus/repositories/focus_feature_repository.dart';
 import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
 import 'package:perennia/features/home/widgets/home_screen.dart';
+import 'package:perennia/features/home/widgets/start_workout_sheet.dart';
 import 'package:perennia/features/home/widgets/workout_screen.dart';
 import 'package:perennia/features/metrics/controllers/metrics_controller.dart';
 import 'package:perennia/features/metrics/widgets/metrics_screen.dart';
@@ -36,13 +38,14 @@ import 'package:perennia/features/routine_plans/controllers/routine_plan_control
 import 'package:perennia/features/routine_plans/repositories/routine_plan_feature_repository.dart';
 import 'package:perennia/features/routine_plans/widgets/routine_plan_list_screen.dart';
 import 'package:perennia/features/settings/repositories/integration_consent_repository.dart';
-import 'package:perennia/features/template_divergence/repositories/template_divergence_feature_repository.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/features/settings/services/client_crash_reporting.dart';
 import 'package:perennia/features/settings/widgets/settings_screen.dart';
 import 'package:perennia/features/sync/controllers/sync_status_controller.dart';
 import 'package:perennia/features/sync/services/sync_coordinator.dart';
 import 'package:perennia/features/sync/services/sync_providers.dart';
+import 'package:perennia/features/template_divergence/repositories/template_divergence_feature_repository.dart';
+import 'package:perennia/features/template_picker/repositories/template_picker_feature_repository.dart';
 import 'package:perennia/features/template_picker/widgets/template_picker_sheet.dart';
 import 'package:perennia/features/up_next/repositories/up_next_feature_repository.dart';
 import 'package:perennia/l10n/l10n.dart';
@@ -856,6 +859,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(HomeScreen.logWorkoutKey));
     await tester.pumpAndSettle();
+    // Workout opens the start sheet; an empty workout is still one choice.
+    await tester.tap(find.byKey(StartWorkoutSheet.emptyWorkoutKey));
+    await tester.pumpAndSettle();
 
     expect(find.byType(WorkoutScreen), findsOneWidget);
   });
@@ -874,6 +880,9 @@ void main() {
     await tester.tap(find.byKey(HomeScreen.logButtonKey));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(HomeScreen.logWorkoutKey));
+    await tester.pumpAndSettle();
+    // Workout opens the start sheet; an empty workout is still one choice.
+    await tester.tap(find.byKey(StartWorkoutSheet.emptyWorkoutKey));
     await tester.pumpAndSettle();
 
     expect(find.text('Could not start workout. Try again.'), findsOneWidget);
@@ -1321,6 +1330,12 @@ void main() {
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
           ),
+          templatePickerFeatureRepositoryProvider.overrideWith(
+            (ref) => const StubTemplatePickerFeatureRepository(),
+          ),
+          focusFeatureRepositoryProvider.overrideWith(
+            (ref) => const StubFocusFeatureRepository(),
+          ),
           _homeNutritionDayOverride(),
           homeRepositoryProvider.overrideWith((ref) => repository),
         ],
@@ -1331,6 +1346,8 @@ void main() {
     await tester.pump();
 
     await tester.tap(find.byKey(HomeScreen.startWorkoutButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(StartWorkoutSheet.emptyWorkoutKey));
     await tester.pumpAndSettle();
 
     expect(find.byType(WorkoutScreen), findsOneWidget);
@@ -1890,6 +1907,13 @@ void main() {
       findsOneWidget,
     );
 
+    // The header's Focus row pushes the last card toward the fold.
+    await tester.ensureVisible(
+      find.byKey(
+        WorkoutScreen.reorderExerciseHandleKey('workout-exercise-curl'),
+      ),
+    );
+    await tester.pumpAndSettle();
     final cardFinder = find.byKey(
       WorkoutScreen.exerciseCardKey('workout-exercise-curl'),
     );
@@ -2163,7 +2187,10 @@ class _DeferredAuthRepository extends InMemoryAuthRepository {
 
 class _FailingStartHomeRepository extends StubHomeRepository {
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     throw StateError('Database unavailable');
   }
 }
@@ -2252,7 +2279,10 @@ class _ErrorHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     throw StateError('Training Day unavailable');
   }
 
@@ -2308,7 +2338,10 @@ class _LoadingHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-loading';
   }
 
@@ -2372,7 +2405,10 @@ class _ScrollableHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-new';
   }
 
@@ -2425,7 +2461,10 @@ class _DateEchoHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-${localDate.storageValue}';
   }
 
@@ -2503,7 +2542,10 @@ class _StartWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     startedDates.add(localDate);
     final workoutId = 'workout-${startedDates.length}';
     _workouts.add(
@@ -2612,7 +2654,10 @@ class _AddExerciseHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-1';
   }
 
@@ -2731,7 +2776,10 @@ class _WorkoutActionsHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-1';
   }
 
@@ -2804,7 +2852,10 @@ class _FinishableWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-1';
   }
 
@@ -2937,7 +2988,10 @@ class _WorkoutExerciseManagementHomeRepository
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'workout-1';
   }
 
@@ -3141,7 +3195,10 @@ class _MultiSessionHomeRepository extends _HomeRepositoryTestDefaults {
   }
 
   @override
-  Future<String> startNewWorkout(TrainingDayDate localDate) async {
+  Future<String> startNewWorkout(
+    TrainingDayDate localDate, {
+    String? focusId,
+  }) async {
     return 'new-workout';
   }
 

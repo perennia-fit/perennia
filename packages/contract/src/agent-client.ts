@@ -412,9 +412,10 @@ export type AgentExercise = {
   "id": string;
   "library": AgentExerciseLibrary;
   "name": string;
-  "category": AgentExerciseCategory;
+  "category": NullableAgentExerciseCategory;
   "dimensions": Array<AgentExerciseDimensionId>;
   "equipment": Array<string>;
+  "focusIds"?: Array<string>;
   "loadMode": AgentExerciseLoadMode;
   "recordProfile": AgentExerciseRecordProfile;
   "favorite": boolean;
@@ -465,6 +466,7 @@ export type AgentExerciseCatalogBatchWriteExercise = {
   "usesRpe"?: boolean;
   "isFavorite"?: boolean;
   "equipment"?: Array<string>;
+  "focusIds"?: Array<string>;
   "notes"?: string | null;
   "customizesExerciseId"?: string | null;
   "updatedAt"?: string;
@@ -510,15 +512,16 @@ export type AgentExerciseDimensionId = "load" | "reps" | "duration" | "distance"
 
 export type AgentExerciseLibrary = "user" | "platform";
 
-export type AgentExerciseListField = "id" | "name" | "library" | "category" | "dimensions" | "equipment" | "loadMode" | "recordProfile" | "favorite" | "active" | "shadowedPlatformExerciseId";
+export type AgentExerciseListField = "id" | "name" | "library" | "category" | "dimensions" | "equipment" | "focusIds" | "loadMode" | "recordProfile" | "favorite" | "active" | "shadowedPlatformExerciseId";
 
 export type AgentExerciseListItem = {
   "id": string;
   "name": string;
   "library"?: AgentExerciseLibrary;
-  "category"?: AgentExerciseCategory;
+  "category"?: NullableAgentExerciseCategory;
   "dimensions"?: Array<AgentExerciseDimensionId>;
   "equipment"?: Array<string>;
+  "focusIds"?: Array<string>;
   "loadMode"?: AgentExerciseLoadMode;
   "recordProfile"?: AgentExerciseRecordProfile;
   "favorite"?: boolean;
@@ -550,6 +553,17 @@ export type AgentExerciseResolveResponse = {
   "matchedExercise": NullableAgentExercise;
   "candidates": Array<AgentExercise>;
   "guidance": NullableAgentExerciseResolveGuidance;
+};
+
+export type AgentFocus = {
+  "id": string;
+  "name": string;
+  "sortOrder": number;
+  "starter": boolean;
+};
+
+export type AgentFocusListResponse = {
+  "focuses": Array<AgentFocus>;
 };
 
 export type AgentFoodBatchWriteFood = {
@@ -1408,6 +1422,7 @@ export type AgentPlanTreeBatchWriteWorkoutTemplate = {
   "id": string;
   "name": string;
   "notes"?: string | null;
+  "focusId"?: string | null;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
 };
@@ -1824,6 +1839,7 @@ export type AgentWorkoutBatchWriteWorkout = {
   "endedAt"?: string | null;
   "timezone": string;
   "comment"?: string | null;
+  "focusId"?: string | null;
   "deletedAt"?: string | null;
 };
 
@@ -1852,6 +1868,7 @@ export type AgentWorkoutDetailWorkout = {
   "localDate": string | null;
   "endedAt": string | null;
   "comment": string | null;
+  "focusId"?: string | null;
   "updatedAt": string;
   "active": boolean;
 };
@@ -1902,7 +1919,7 @@ export type AgentWorkoutFuelling = {
   "minutesUntilPostWorkoutMeal": number | null;
 };
 
-export type AgentWorkoutListField = "id" | "startedAt" | "endedAt" | "timezone" | "comment" | "setCount" | "exerciseNames";
+export type AgentWorkoutListField = "id" | "startedAt" | "endedAt" | "timezone" | "comment" | "focusId" | "setCount" | "exerciseNames";
 
 export type AgentWorkoutListItem = {
   "id": string;
@@ -1910,6 +1927,7 @@ export type AgentWorkoutListItem = {
   "endedAt"?: string | null;
   "timezone"?: string | null;
   "comment"?: string | null;
+  "focusId"?: string | null;
   "setCount"?: number;
   "exerciseNames"?: Array<string>;
 };
@@ -1926,6 +1944,7 @@ export type AgentWorkoutTemplateDetail = {
   "id": string;
   "name": string;
   "notes": string | null;
+  "focusId": string | null;
   "exercises": Array<AgentPlanTemplateExercise>;
   "groups": Array<AgentPlanTemplateGroup>;
   "exerciseCount": number;
@@ -1950,12 +1969,13 @@ export type AgentWorkoutTemplateLink = {
   "active": boolean;
 };
 
-export type AgentWorkoutTemplateListField = "id" | "name" | "notes" | "exerciseCount" | "groupCount" | "updatedAt" | "deletedAt";
+export type AgentWorkoutTemplateListField = "id" | "name" | "notes" | "focusId" | "exerciseCount" | "groupCount" | "updatedAt" | "deletedAt";
 
 export type AgentWorkoutTemplateListItem = {
   "id": string;
   "name": string;
   "notes"?: string | null;
+  "focusId"?: string | null;
   "exerciseCount"?: number;
   "groupCount"?: number;
   "updatedAt"?: string;
@@ -1973,6 +1993,8 @@ export type AgentWorkoutTemplateListResponse = {
 export type NullableAgentAnalyticsRecord = AgentAnalyticsRecord | unknown | null;
 
 export type NullableAgentExercise = AgentExercise | unknown | null;
+
+export type NullableAgentExerciseCategory = AgentExerciseCategory | unknown | null;
 
 export type NullableAgentExerciseResolveGuidance = AgentExerciseResolveGuidance | unknown | null;
 
@@ -2073,6 +2095,7 @@ export type ListAgentDosesInput = {
 export type ListAgentExercisesInput = {
   "search"?: string;
   "category"?: string;
+  "focus"?: string;
   "favorite"?: "true" | "false";
   "activeOnly"?: "true" | "false";
   "limit"?: number;
@@ -2217,6 +2240,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentCompounds",
   "listAgentDoses",
   "listAgentExercises",
+  "listAgentFocuses",
   "listAgentFoods",
   "listAgentHistorySets",
   "listAgentMeals",
@@ -2548,7 +2572,16 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/exercises",
       expectedStatus: 200,
-      query: { "search": input.search, "category": input.category, "favorite": input.favorite, "activeOnly": input.activeOnly, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      query: { "search": input.search, "category": input.category, "focus": input.focus, "favorite": input.favorite, "activeOnly": input.activeOnly, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      signal: options.signal
+    });
+  }
+
+  async listAgentFocuses(options: AgentClientRequestOptions = {}): Promise<AgentFocusListResponse> {
+    return this.request<AgentFocusListResponse>({
+      method: "GET",
+      path: "/agent/focuses",
+      expectedStatus: 200,
       signal: options.signal
     });
   }
