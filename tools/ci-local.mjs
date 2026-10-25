@@ -18,7 +18,8 @@
 //   pnpm ci:local --publish --dry-run        # print what would be posted, send nothing
 //
 // Jobs that need Postgres spin up an ephemeral postgres:16-alpine container
-// (host port 55432, auto-removed on exit). Requires Docker to be running.
+// (named per run, on a free loopback port Docker assigns, removed on exit), so
+// several worktrees can run the gate at once. Requires Docker to be running.
 //
 // This script intentionally runs the SAME commands as ci.yml so a green run
 // here means a green run there. When you change ci.yml, update this file too.
@@ -44,10 +45,17 @@ const MOBILE = `${ROOT}/apps/mobile`;
   for (const name of (res.stdout || '').split('\n')) if (name) delete process.env[name];
 }
 
-const PG_CONTAINER = 'prn-ci-local-postgres';
+// Each run owns its container and host port. Several worktrees (or agent
+// sessions) often run the gate at once on one machine; a fixed name and port
+// made one run's `docker rm -f` tear down another run's database mid-test. The
+// pid is unique among live runs, and Docker picks a free port (`-p 127.0.0.1::5432`)
+// that startPostgres() reads back. The owner label lets a later run sweep
+// containers left by a run that was killed before its `finally` could clean up.
+const PG_CONTAINER = `prn-ci-local-postgres-${process.pid}`;
+const PG_OWNER_LABEL = 'prn-ci-local.owner-pid';
 const PG_IMAGE = 'postgres:16-alpine';
-const PG_PORT = 55432; // host port; avoids clashing with any local 5432
 const PG_BOOTSTRAP_DB = 'perennia_test';
+let pgPort; // host port, assigned by Docker in startPostgres()
 
 // Every DB job gets its OWN database, recreated immediately before it runs.
 // ci.yml declares a `services: postgres` block per job, so on hosted CI each job
@@ -55,8 +63,10 @@ const PG_BOOTSTRAP_DB = 'perennia_test';
 // job satisfy — or contradict — a later job's assertions, which is exactly the
 // kind of divergence this script exists to rule out.
 const dbNameFor = (job) => `${PG_BOOTSTRAP_DB}_${job}`;
+// 127.0.0.1, not localhost: the port is published on IPv4 loopback only, and
+// localhost can resolve to ::1 first.
 const dbUrlFor = (job) =>
-  `postgres://postgres:postgres@localhost:${PG_PORT}/${dbNameFor(job)}`;
+  `postgres://postgres:postgres@127.0.0.1:${pgPort}/${dbNameFor(job)}`;
 
 // ---- shell helpers ---------------------------------------------------------
 
@@ -266,15 +276,47 @@ function changedFiles() {
 
 // ---- Postgres lifecycle ----------------------------------------------------
 
-function startPostgres() {
-  console.log(`\n▸ Starting ephemeral Postgres (${PG_IMAGE}) on host port ${PG_PORT}…`);
-  capture(`docker rm -f ${PG_CONTAINER}`); // clear any stale container
-  const up = run(
-    `docker run -d --rm --name ${PG_CONTAINER} ` +
-    `-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres ` +
-    `-e POSTGRES_DB=${PG_BOOTSTRAP_DB} -p ${PG_PORT}:5432 ${PG_IMAGE}`,
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM'; // exists, owned by someone else
+  }
+}
+
+// Remove containers whose owning run is gone (killed by Ctrl-C or a crash, so
+// its `finally` never ran). Containers of live runs are left alone.
+function sweepOrphanedPostgres() {
+  const list = capture(
+    `docker ps -a --filter label=${PG_OWNER_LABEL} --format "{{.ID}} {{.Labels}}"`,
   );
-  if (!up) throw new Error('Failed to start Postgres container (is Docker running? is the port free?)');
+  if (!list.ok) return;
+  const owner = new RegExp(`(?:^|,)${PG_OWNER_LABEL.replace('.', '\\.')}=(\\d+)`);
+  for (const line of list.out.split('\n')) {
+    const [id, labels = ''] = line.trim().split(/\s+(.*)/);
+    const pid = owner.exec(labels)?.[1];
+    if (id && pid && !pidAlive(Number(pid))) capture(`docker rm -f ${id}`);
+  }
+}
+
+function startPostgres() {
+  console.log(`\n▸ Starting ephemeral Postgres (${PG_IMAGE}) as ${PG_CONTAINER}…`);
+  sweepOrphanedPostgres();
+  capture(`docker rm -f ${PG_CONTAINER}`); // a dead run that had our pid
+  const up = run(
+    `docker run -d --rm --name ${PG_CONTAINER} --label ${PG_OWNER_LABEL}=${process.pid} ` +
+    `-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres ` +
+    `-e POSTGRES_DB=${PG_BOOTSTRAP_DB} -p 127.0.0.1::5432 ${PG_IMAGE}`,
+  );
+  if (!up) throw new Error('Failed to start Postgres container (is Docker running?)');
+
+  // `docker port` prints the binding, e.g. "127.0.0.1:61234".
+  const port = capture(`docker port ${PG_CONTAINER} 5432/tcp`);
+  const match = port.ok && /:(\d+)\s*$/m.exec(port.out.split('\n')[0]);
+  if (!match) throw new Error(`Could not read Postgres host port: ${port.out}`);
+  pgPort = Number(match[1]);
+  console.log(`  host port ${pgPort}`);
 
   // The postgres:*-alpine entrypoint starts a TEMPORARY server to run init
   // scripts, then RESTARTS into the real one. `pg_isready` transiently succeeds
