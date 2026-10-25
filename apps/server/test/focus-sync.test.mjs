@@ -572,6 +572,125 @@ test(
   }
 );
 
+// A device still on an app version from before Focus pushes these entities
+// without the newer key; the server must not let that silently drop the
+// stored Focus. An explicit null still clears it.
+for (const { entity, key, focused, stored, basePayload } of [
+  {
+    entity: "workout_sessions",
+    key: "focus_id",
+    focused: CALISTHENICS,
+    stored: storedWorkoutFocus,
+    basePayload: (id) => ({
+      id,
+      started_at: "2026-06-24T05:00:00.000Z",
+      timezone: "Australia/Brisbane",
+      local_date: "2026-06-24",
+      ended_at: null,
+      comment: null
+    })
+  },
+  {
+    entity: "workout_templates",
+    key: "focus_id",
+    focused: MOBILITY,
+    stored: storedTemplateFocus,
+    basePayload: (id) => ({ id, name: "Morning flow", notes: null })
+  },
+  {
+    entity: "exercises",
+    key: "focus_ids",
+    focused: JSON.stringify([WEIGHTS, ENDURANCE]),
+    stored: storedExerciseFocusIds,
+    basePayload: (id) => ({ id, name: "Rower intervals", equipment_ids: "[]" })
+  }
+]) {
+  test(
+    `an older client's ${entity} push without ${key} keeps the stored value; an explicit null clears it`,
+    { skip },
+    async () => {
+      const serverApp = await migratedApp();
+      try {
+        const user = await createSignedInUser(serverApp);
+        const id = randomUUID();
+        const change = (updatedAt, payload, comment) => {
+          const full = { ...payload, updated_at: updatedAt, deleted_at: null };
+          return {
+            id,
+            payload: full,
+            updatedAt,
+            deletedAt: null,
+            activityLogId: randomUUID(),
+            actor: "app",
+            batchId: randomUUID(),
+            beforeImage: null,
+            afterImage: { ...full, comment },
+            occurredAt: updatedAt
+          };
+        };
+        const push = async (deviceId, pushed) => {
+          const response = await syncPush(serverApp.app, user.sessionToken, {
+            deviceId,
+            entity,
+            changes: [pushed]
+          });
+          assert.equal(response.status, 200, await response.clone().text());
+          assert.deepEqual((await response.json()).applied.map((row) => row.id), [id]);
+        };
+        const loggedAfterImage = async (activityLogId) => {
+          const [row] = await serverApp.database.sql`
+            select after_image from activity_log where id = ${activityLogId}
+          `;
+          return row.after_image;
+        };
+
+        // A new-version device sets the Focus.
+        await push(
+          "device-new",
+          change("2026-06-24T06:00:00.000Z", { ...basePayload(id), [key]: focused }, "set")
+        );
+        assert.equal(await stored(serverApp, id), focused);
+
+        // An old-version device edits the row without knowing the key.
+        const legacyEdit = change("2026-06-24T07:00:00.000Z", basePayload(id), "legacy");
+        assert.equal(Object.hasOwn(legacyEdit.payload, key), false);
+        await push("device-old", legacyEdit);
+        assert.equal(await stored(serverApp, id), focused);
+        const legacyImage = await loggedAfterImage(legacyEdit.activityLogId);
+        assert.equal(legacyImage[key], focused);
+        assert.equal(legacyImage.comment, "legacy");
+
+        // A fresh device pulls the Focus.
+        const pulled = (await pullAll(serverApp.app, user.sessionToken)).find(
+          (pulledChange) => pulledChange.entity === entity && pulledChange.id === id
+        );
+        assert.ok(pulled);
+        assert.equal(pulled.payload[key], focused);
+
+        // Present-but-null still clears.
+        const clear = change(
+          "2026-06-24T08:00:00.000Z",
+          { ...basePayload(id), [key]: null },
+          "clear"
+        );
+        await push("device-new", clear);
+        const [row] = await serverApp.database.sql`
+          select payload from ${serverApp.database.sql(entity)} where id = ${id}
+        `;
+        assert.equal(Object.hasOwn(row.payload, key), true);
+        assert.equal(row.payload[key], null);
+        assert.equal((await loggedAfterImage(clear.activityLogId))[key], null);
+
+        // Once cleared, a later old-client edit keeps it cleared.
+        await push("device-old", change("2026-06-24T09:00:00.000Z", basePayload(id), "again"));
+        assert.equal(await stored(serverApp, id), null);
+      } finally {
+        await serverApp.database.close();
+      }
+    }
+  );
+}
+
 function exerciseFixture({ id, name, focusIds }) {
   return {
     id,

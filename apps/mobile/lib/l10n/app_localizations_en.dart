@@ -2306,4 +2306,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String focusLibraryStaples(String focus) {
     return '$focus staples';
   }
+
+  @override
+  String get focusManagerSaveFailed => 'Could not save the focus. Try again.';
 }

@@ -31,7 +31,10 @@ final focusExerciseGroupsProvider =
     Provider.autoDispose.family<FocusExerciseGroups?, String>((ref, focusId) {
   final catalog = ref.watch(exerciseCatalogControllerProvider).value;
   final uses = ref.watch(focusExerciseUsesProvider(focusId)).value;
-  if (catalog == null || uses == null) {
+  // Wait for the staples too: ranking without them shows the Focus
+  // alphabetically for a frame, then re-sorts under the user's thumb.
+  final starters = ref.watch(focusStarterExerciseIdsProvider);
+  if (catalog == null || uses == null || starters.isLoading) {
     return null;
   }
   return focusExerciseGroups(
@@ -41,9 +44,7 @@ final focusExerciseGroupsProvider =
     ],
     focusId: focusId,
     uses: uses,
-    starterIds:
-        ref.watch(focusStarterExerciseIdsProvider).value?[focusId] ??
-            const <String>[],
+    starterIds: starters.value?[focusId] ?? const <String>[],
   );
 });
 

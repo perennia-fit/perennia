@@ -27,10 +27,10 @@ String focusDisplayName(BuildContext context, FocusRecord focus) {
       : focus.name;
 }
 
-/// A Focus as a selectable chip, wherever Focuses are chosen. Selection is
-/// translucent Signal Cyan with a cyan edge, as DESIGN.md sets selection; the
-/// theme's secondary (Rested Teal) is reserved for Save. The icon stays
-/// neutral so a chip row adds no extra cyan marks.
+/// A Focus as a selectable chip, wherever Focuses are chosen. The theme gives
+/// selection its Signal Cyan tint; the chip adds a cyan edge so the selected
+/// one reads at a glance, and keeps its icon neutral so a chip row adds no
+/// extra cyan marks.
 class FocusChip extends StatelessWidget {
   const FocusChip({
     super.key,
@@ -55,7 +55,6 @@ class FocusChip extends StatelessWidget {
           ? null
           : Icon(icon, size: 18, color: context.colors.textSecondary),
       selected: selected,
-      selectedColor: primary.withValues(alpha: 0.22),
       side: BorderSide(color: selected ? primary : context.colors.divider),
       labelStyle: context.textStyles.label.copyWith(
         color: context.colors.textPrimary,

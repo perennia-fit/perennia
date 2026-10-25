@@ -1205,5 +1205,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "focusManagerSaveFailed": "Could not save the focus. Try again."
 }

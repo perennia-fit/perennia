@@ -121,6 +121,61 @@ void main() {
     expect(squat!.focusIds, <String>[_weightsId]);
   });
 
+  test('a later seed that remaps a Platform exercise reaches the device',
+      () async {
+    // As if an earlier seed had mapped the squat to Endurance only.
+    await (database.update(database.exercises)
+          ..where((row) => row.id.equals(_squatId)))
+        .write(
+      const ExercisesCompanion(focusIds: Value<String>('["$_enduranceId"]')),
+    );
+    final reopened = TrainingRepositories(
+      database,
+      platformSeedSource: _SeedSource(_seed),
+    );
+
+    await reopened.catalog.ensurePlatformLibrarySeeded();
+
+    expect((await reopened.exercises.getById(_squatId))!.focusIds, <String>[
+      _weightsId,
+    ]);
+  });
+
+  test('a customization made before Focus existed gets its Focuses once',
+      () async {
+    // Before the upgrade: Platform rows name no Focus, and the user has a
+    // customized copy of the squat, also with none.
+    await (database.update(database.exercises)
+          ..where((row) => row.libraryOrigin.equals('platform')))
+        .write(const ExercisesCompanion(focusIds: Value<String>('[]')));
+    final copyId = await repositories.exercises.customizePlatformExercise(_squatId);
+    await (database.update(database.exercises)
+          ..where((row) => row.id.equals(copyId)))
+        .write(const ExercisesCompanion(focusIds: Value<String>('[]')));
+
+    await TrainingRepositories(
+      database,
+      platformSeedSource: _SeedSource(_seed),
+    ).catalog.ensurePlatformLibrarySeeded();
+    final filled = await repositories.exercises.getById(copyId);
+    expect(filled!.focusIds, <String>[_weightsId]);
+
+    // A user who then clears it keeps that choice on later launches.
+    await repositories.exercises.update(
+      copyId,
+      ExerciseDraft(
+        name: filled.name,
+        type: filled.type,
+        focusIds: const <String>[],
+      ),
+    );
+    await TrainingRepositories(
+      database,
+      platformSeedSource: _SeedSource(_seed),
+    ).catalog.ensurePlatformLibrarySeeded();
+    expect((await repositories.exercises.getById(copyId))!.focusIds, isEmpty);
+  });
+
   test('a renamed or archived starter Focus is not reseeded', () async {
     await repositories.focuses.rename(_weightsId, name: 'Lifting');
     await repositories.focuses.archive(_enduranceId);

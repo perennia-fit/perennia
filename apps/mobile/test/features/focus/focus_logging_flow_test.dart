@@ -51,6 +51,17 @@ void main() {
       expect(find.byKey(StartWorkoutSheet.setUpRoutineKey), findsOneWidget);
       expect(find.byKey(StartWorkoutSheet.browsePlansKey), findsNothing);
 
+      // A screen reader can activate the tile, not just see it.
+      expect(
+        tester.getSemantics(
+          find.byKey(StartWorkoutSheet.focusTileKey(_weightsId)),
+        ),
+        matchesSemantics(
+          label: 'Start a workout: Weights',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
       await tester.tap(find.byKey(StartWorkoutSheet.focusTileKey(_weightsId)));
       await tester.pumpAndSettle();
 
@@ -179,6 +190,16 @@ void main() {
     );
     expect(find.byKey(FocusedExerciseList.exerciseRowKey(_rowId)), findsNothing);
     expect(find.text('Weights'), findsOneWidget);
+    // The Focus control is its own button for a screen reader, not a part of
+    // the header card's node.
+    expect(
+      tester.getSemantics(find.byKey(WorkoutScreen.focusButtonKey('workout-1'))),
+      matchesSemantics(
+        label: 'Focus: Weights. Change focus',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
   });
 
   testWidgets('with nothing logged yet, the Focus\'s staples lead', (

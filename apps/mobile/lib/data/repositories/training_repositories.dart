@@ -635,7 +635,7 @@ class CatalogRepository {
 
       await _sanitizeLegacyWgerAttributionNotes(context);
       await _backfillExistingPlatformSeedEquipment(seed, context);
-      await _backfillExistingPlatformSeedFocuses(seed, context);
+      await _reconcilePlatformSeedFocuses(seed, context);
     });
   }
 
@@ -776,37 +776,89 @@ class CatalogRepository {
     }
   }
 
-  /// Gives Platform exercises seeded before Focus existed their Focuses.
-  /// Only a row with no Focus at all is filled, so a seed update never
-  /// overwrites an assignment, and `updatedAt` is left as seeded: Platform
-  /// rows never sync, and every device then holds the same row.
-  Future<void> _backfillExistingPlatformSeedFocuses(
+  /// Keeps every Platform exercise's Focuses equal to the bundled seed.
+  /// Platform rows are read-only to users (customizing makes a separate User
+  /// Library copy), so the seed is their only source of truth and a later
+  /// seed that remaps an exercise reaches every install. `updatedAt` is left
+  /// as seeded: Platform rows never sync, and every device holds the same row.
+  ///
+  /// The run that first fills Platform rows (the upgrade that introduced
+  /// Focus) also gives each customization made before it, a user exercise
+  /// shadowing a Platform one by name and still naming no Focus, that Platform
+  /// exercise's Focuses. That happens once: Platform rows are never empty
+  /// again, so a user who later clears a customization's Focuses keeps it.
+  Future<void> _reconcilePlatformSeedFocuses(
     PlatformExerciseSeed seed,
     WriteContext context,
   ) async {
-    final rows = await (_database.select(_database.exercises)
-          ..where(
-            (row) =>
-                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name) &
-                row.focusIds.equals('[]'),
-          ))
-        .get();
-    if (rows.isEmpty) {
-      return;
-    }
     final seedById = <String, SeedExercise>{
       for (final exercise in seed.exercises) exercise.id: exercise,
     };
-    for (final before in rows) {
+    final platformRows = await (_database.select(_database.exercises)
+          ..where(
+            (row) =>
+                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name),
+          ))
+        .get();
+    final platformFocusIdsByName = <String, String>{};
+    var filledEmptyPlatformRows = false;
+    for (final before in platformRows) {
       final seeded = seedById[before.id];
-      if (seeded == null || seeded.focusIds.isEmpty) {
+      if (seeded == null) {
         continue;
       }
       final focusIds = _encodeFocusIds(seeded.focusIds);
+      if (before.deletedAt == null) {
+        platformFocusIdsByName[normalizeExerciseName(before.name)] = focusIds;
+      }
+      if (_sameStringSet(
+        _decodeFocusIds(before.focusIds).toSet(),
+        seeded.focusIds.toSet(),
+      )) {
+        continue;
+      }
+      filledEmptyPlatformRows |= before.focusIds == '[]';
       await (_database.update(_database.exercises)
             ..where((row) => row.id.equals(before.id)))
           .write(ExercisesCompanion(focusIds: Value<String>(focusIds)));
-      final after = before.copyWith(focusIds: focusIds);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.exercisesTable,
+        entityId: before.id,
+        beforeImage: _exerciseImage(before),
+        afterImage: _exerciseImage(before.copyWith(focusIds: focusIds)),
+      );
+    }
+    if (!filledEmptyPlatformRows) {
+      return;
+    }
+
+    final customizations = await (_database.select(_database.exercises)
+          ..where(
+            (row) =>
+                row.libraryOrigin.equals(ExerciseLibraryOrigin.user.name) &
+                row.focusIds.equals('[]') &
+                row.deletedAt.isNull(),
+          ))
+        .get();
+    for (final before in customizations) {
+      final focusIds = platformFocusIdsByName[normalizeExerciseName(before.name)];
+      if (focusIds == null || focusIds == '[]') {
+        continue;
+      }
+      // A User Library row syncs, so the change carries a fresh stamp.
+      final after = before.copyWith(
+        focusIds: focusIds,
+        updatedAt: context.timestamp,
+      );
+      await (_database.update(_database.exercises)
+            ..where((row) => row.id.equals(before.id)))
+          .write(
+        ExercisesCompanion(
+          focusIds: Value<String>(focusIds),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
       await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,

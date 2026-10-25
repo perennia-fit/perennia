@@ -125,11 +125,8 @@ class _FocusOption extends StatelessWidget {
       minTileHeight: AppDimens.touchTarget + AppDimens.dense,
       leading: Icon(icon, color: isSelected ? primary : null),
       title: Text(label, style: context.textStyles.body),
-      // Selection reads from the check and the semantics, not from tinting
-      // the label, which would fall below AA contrast in the light theme.
       trailing: isSelected ? Icon(Icons.check, color: primary) : null,
       selected: isSelected,
-      selectedColor: context.colors.textPrimary,
       onTap: onTap,
     );
   }

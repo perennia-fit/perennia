@@ -17,6 +17,15 @@ class AppTheme {
       onPrimary: DesignTokens.onPrimary,
       secondary: colors.save,
       onSecondary: DesignTokens.onSave,
+      // Material 3 draws selection (chips, the navigation indicator, tonal
+      // buttons) in secondaryContainer, which would otherwise fall back to
+      // the Save teal. DESIGN.md makes selection Signal Cyan, so it is a cyan
+      // tint over the surface, with primary text on it.
+      secondaryContainer: Color.alphaBlend(
+        DesignTokens.primary.withValues(alpha: 0.22),
+        colors.surface,
+      ),
+      onSecondaryContainer: colors.textPrimary,
       error: DesignTokens.destructive,
       onError: DesignTokens.onDestructive,
       surface: colors.surface,
@@ -43,6 +52,9 @@ class AppTheme {
         colors,
         AppTextStyles.tokens,
       ],
+      // A selected tile reads from its check or trailing mark; tinting its
+      // label Signal Cyan would fall below AA contrast on the light ground.
+      listTileTheme: ListTileThemeData(selectedColor: colors.textPrimary),
       appBarTheme: AppBarTheme(
         backgroundColor: colors.chrome,
         foregroundColor: colors.textPrimary,

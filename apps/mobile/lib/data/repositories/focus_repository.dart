@@ -170,9 +170,12 @@ class FocusRepository {
   /// The exercises the user has logged in Workouts under [focusId], most
   /// recently performed first. Derived on every read from the Workouts
   /// themselves, never stored, so it cannot drift from what was logged.
+  ///
+  /// Archived or shadowed exercises still count here and are dropped by the
+  /// caller, so the limit leaves room for them.
   Stream<List<FocusExerciseUse>> watchRecentExerciseUses(
     String focusId, {
-    int limit = 20,
+    int limit = 30,
   }) {
     return _database
         .customSelect(
@@ -184,12 +187,9 @@ class FocusRepository {
           FROM workout_exercises
           JOIN workout_sessions
             ON workout_sessions.id = workout_exercises.workout_id
-          JOIN exercises
-            ON exercises.id = workout_exercises.exercise_id
           WHERE workout_sessions.focus_id = ?
             AND workout_sessions.deleted_at IS NULL
             AND workout_exercises.deleted_at IS NULL
-            AND exercises.deleted_at IS NULL
           GROUP BY workout_exercises.exercise_id
           ORDER BY last_started_at DESC, workout_exercises.exercise_id
           LIMIT ?
@@ -198,10 +198,12 @@ class FocusRepository {
             Variable<String>(focusId),
             Variable<int>(limit),
           ],
+          // Not `exercises`: callers drop ids missing from the live catalog
+          // (archived or shadowed), so an exercise edit or favorite toggle
+          // need not re-run this grouping.
           readsFrom: <ResultSetImplementation<HasResultSet, dynamic>>{
             _database.workoutExercises,
             _database.workoutSessions,
-            _database.exercises,
           },
         )
         .watch()

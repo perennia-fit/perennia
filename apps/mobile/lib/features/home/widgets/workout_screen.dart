@@ -22,9 +22,6 @@ import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
 
-/// Workouts with an exercise add in flight; see `_addExerciseAndOpen`.
-final _workoutsAddingAnExercise = <String>{};
-
 class WorkoutScreen extends ConsumerWidget {
   const WorkoutScreen({
     super.key,
@@ -529,7 +526,7 @@ class _WorkoutContent extends ConsumerWidget {
     ExerciseRecord exercise, {
     VoidCallback? closeSheet,
   }) async {
-    if (!_workoutsAddingAnExercise.add(workout.id)) {
+    if (!controller.beginExerciseAdd(workout.id)) {
       return;
     }
     try {
@@ -547,7 +544,7 @@ class _WorkoutContent extends ConsumerWidget {
         Navigator.of(context).push(buildExercisePageRoute(workoutExerciseId)),
       );
     } finally {
-      _workoutsAddingAnExercise.remove(workout.id);
+      controller.endExerciseAdd(workout.id);
     }
   }
 
@@ -1021,9 +1018,15 @@ class _FocusControl extends StatelessWidget {
     final focus = this.focus;
     final name =
         focus == null ? l10n.workoutNoFocus : focusDisplayName(context, focus);
+    // Its own node: without `container`, the label and tap merge into the
+    // header card, and a screen reader announces the whole card as one
+    // "Change focus" button.
+    // `excludeSemantics` drops the InkWell's own tap, so the node carries it.
     return Semantics(
+      container: true,
       button: true,
       label: l10n.workoutFocusSemanticLabel(name),
+      onTap: () => unawaited(onPressed()),
       excludeSemantics: true,
       child: InkWell(
         key: WorkoutScreen.focusButtonKey(workoutId),

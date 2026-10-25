@@ -3817,6 +3817,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{focus} staples'**
   String focusLibraryStaples(String focus);
+
+  /// No description provided for @focusManagerSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the focus. Try again.'**
+  String get focusManagerSaveFailed;
 }
 
 class _AppLocalizationsDelegate

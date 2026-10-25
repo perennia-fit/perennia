@@ -247,16 +247,25 @@ class _FocusNameDialogState extends State<_FocusNameDialog> {
     try {
       await widget.save(name);
     } on DuplicateFocusNameException {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-          _errorText = l10n.focusManagerDuplicateName;
-        });
-      }
+      _showError(l10n.focusManagerDuplicateName);
+      return;
+    } on Object {
+      // Any other failure keeps the dialog usable, with the reason shown,
+      // instead of leaving Save disabled.
+      _showError(l10n.focusManagerSaveFailed);
       return;
     }
     if (mounted) {
       Navigator.of(context).pop();
+    }
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      setState(() {
+        _isSaving = false;
+        _errorText = message;
+      });
     }
   }
 

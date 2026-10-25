@@ -273,9 +273,12 @@ class _FocusTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // `excludeSemantics` drops the InkWell's own tap, so the node carries it.
     return Semantics(
+      container: true,
       button: true,
       label: context.l10n.startWorkoutFocusTileLabel(focus.name),
+      onTap: onTap,
       excludeSemantics: true,
       child: Material(
         key: StartWorkoutSheet.focusTileKey(focus.id),
