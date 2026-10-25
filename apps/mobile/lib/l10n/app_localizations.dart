@@ -3578,12 +3578,6 @@ abstract class AppLocalizations {
   /// **'No focus'**
   String get workoutNoFocus;
 
-  /// No description provided for @workoutChangeFocusTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Change focus'**
-  String get workoutChangeFocusTooltip;
-
   /// No description provided for @workoutFocusSemanticLabel.
   ///
   /// In en, this message translates to:
@@ -3673,12 +3667,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Yesterday'**
   String get focusUseYesterday;
-
-  /// No description provided for @focusUseDaysAgo.
-  ///
-  /// In en, this message translates to:
-  /// **'{days} days ago'**
-  String focusUseDaysAgo(int days);
 
   /// No description provided for @focusUseWorkoutCount.
   ///

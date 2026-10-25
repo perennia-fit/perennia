@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../theme/theme.dart';
+import '../theme/theme.dart';
 
 /// One bordered surface holding a run of rows, separated by hairlines
 /// indented by the base gutter: a grouped list, never a stack of cards.
@@ -36,19 +36,22 @@ class GroupedRows extends StatelessWidget {
   }
 }
 
-/// The selected look of a Focus chip wherever one appears: translucent Signal
-/// Cyan with a cyan edge, as DESIGN.md sets selection; the theme's secondary
-/// (Rested Teal) is reserved for Save. Avatar icons stay neutral so the chip
-/// row adds no extra cyan marks.
-({Color selectedColor, BorderSide side, TextStyle labelStyle, Color iconColor})
-    focusChipStyle(BuildContext context, {required bool isSelected}) {
-  final primary = Theme.of(context).colorScheme.primary;
-  return (
-    selectedColor: primary.withValues(alpha: 0.22),
-    side: BorderSide(color: isSelected ? primary : context.colors.divider),
-    labelStyle: context.textStyles.label.copyWith(
-      color: context.colors.textPrimary,
-    ),
-    iconColor: context.colors.textSecondary,
-  );
+/// A muted, tracked label heading a run of rows or tiles.
+class SectionLabel extends StatelessWidget {
+  const SectionLabel({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      child: Text(
+        text,
+        style: context.textStyles.label.copyWith(
+          color: context.colors.textSecondary,
+        ),
+      ),
+    );
+  }
 }

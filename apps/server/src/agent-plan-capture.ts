@@ -8,6 +8,7 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentCatalogUnavailableResponseSchema,
+  payloadFocusId,
   type AgentCatalogStore,
   type AgentExercise,
 } from "./agent-catalog.js";
@@ -2730,13 +2731,9 @@ async function loadDrizzleWorkoutCaptureSource(
           limit: "synchronized-workout-structure",
         }),
       ];
-  const sourceFocusId = workoutSession?.payload.focus_id;
   return {
     workoutId,
-    focusId:
-      typeof sourceFocusId === "string" && sourceFocusId.length > 0
-        ? sourceFocusId
-        : null,
+    focusId: payloadFocusId(workoutSession?.payload),
     exercises,
     groups,
     sourceWarnings,

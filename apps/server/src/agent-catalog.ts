@@ -571,10 +571,6 @@ export type AgentFocus = z.infer<typeof AgentFocusSchema>;
 export type AgentFocusListInput = {
   userId: string;
 };
-export type AgentFocusGetInput = {
-  userId: string;
-  focusId: string;
-};
 export type AgentCatalogStore = {
   getExerciseById(input: AgentExerciseGetInput): Promise<AgentExercise | null>;
   getExercisesByIds(input: AgentExercisesGetInput): Promise<AgentExercise[]>;
@@ -592,19 +588,46 @@ export type AgentCatalogStore = {
   ): Promise<AgentCatalogCategory | null>;
   // The caller's active Focuses (starter set merged with their synced rows).
   listFocuses(input: AgentFocusListInput): Promise<AgentFocus[]>;
-  // An active Focus by id — the reference check behind `focus_not_found`.
-  // A starter id resolves without any synced row; a starter or user Focus
-  // the caller archived does not.
-  getFocusById(input: AgentFocusGetInput): Promise<AgentFocus | null>;
-  // The Focus membership stored on the caller's own User Library Exercise
-  // row, or null when the caller has no such row. Read straight from the row
-  // (not through the projected AgentExercise) so a write that omits focusIds
-  // can carry the stored value through without depending on the rest of the
-  // row being projectable.
-  getStoredExerciseFocusIds(
-    input: AgentExerciseGetInput,
-  ): Promise<string[] | null>;
 };
+
+export const FOCUS_NOT_FOUND_RULE = "focus_not_found";
+
+export function focusNotFoundMessage(field: "focusId" | "focusIds"): string {
+  return field === "focusId"
+    ? "focusId must reference an active Focus visible to the authenticated account (see GET /agent/focuses)."
+    : "focusIds must reference active Focuses visible to the authenticated account (see GET /agent/focuses).";
+}
+
+// The reference check behind `focus_not_found`, shared by every agent write
+// that names a Focus: the id must be one of the caller's active Focuses. A
+// starter id resolves without any synced row; a starter or user Focus the
+// caller archived does not. The Focus list is loaded at most once per check
+// (i.e. per request), and only when a write actually names a Focus.
+export function createActiveFocusCheck({
+  catalogStore,
+  userId,
+}: {
+  catalogStore: Pick<AgentCatalogStore, "listFocuses">;
+  userId: string;
+}): (focusId: string) => Promise<boolean> {
+  let activeIds: Promise<ReadonlySet<string>> | undefined;
+  return async (focusId) => {
+    activeIds ??= catalogStore
+      .listFocuses({ userId })
+      .then((focuses) => new Set(focuses.map((focus) => focus.id)));
+    return (await activeIds).has(focusId);
+  };
+}
+
+// `focus_id` is a soft reference set on a device or by an agent write; rows
+// that predate Focus lack it, and anything but a non-empty string reads as
+// "no Focus".
+export function payloadFocusId(
+  payload: Record<string, unknown> | null | undefined,
+): string | null {
+  const value = payload?.focus_id;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
 
 export function parseAgentExerciseListQuery(
   query: z.infer<typeof AgentExerciseListQuerySchema>,
@@ -713,15 +736,15 @@ export function createInMemoryAgentCatalogStore(
     },
     async listExercises(input) {
       const fields = normalizeFieldSelection(input.fields);
+      const focusIdKeys =
+        input.focus === undefined
+          ? undefined
+          : resolveFocusFilter(input.focus, focusesForUser(input.userId));
       const visible = filterVisibleExercises(exercises, input.userId)
         .filter((exercise) => (input.activeOnly ? exercise.active : true))
         .filter((exercise) => matchesSearch(exercise, input.search))
         .filter((exercise) => matchesCategory(exercise, input.category))
-        .filter((exercise) =>
-          matchesFocus(exercise, input.focus, () =>
-            focusesForUser(input.userId),
-          ),
-        )
+        .filter((exercise) => matchesFocus(exercise, focusIdKeys))
         .filter((exercise) =>
           input.favorite === undefined
             ? true
@@ -808,22 +831,6 @@ export function createInMemoryAgentCatalogStore(
     },
     async listFocuses(input) {
       return focusesForUser(input.userId);
-    },
-    async getFocusById(input) {
-      return (
-        focusesForUser(input.userId).find(
-          (focus) => focus.id === input.focusId,
-        ) ?? null
-      );
-    },
-    async getStoredExerciseFocusIds(input) {
-      const owned = exercises.find(
-        (exercise) =>
-          exercise.id === input.exerciseId &&
-          exercise.library === "user" &&
-          exercise.ownerUserId === input.userId,
-      );
-      return owned === undefined ? null : [...(owned.focusIds ?? [])];
     },
   };
 }
@@ -923,25 +930,33 @@ function matchesCategory(
 
 // A focus filter names a Focus by id or by (case-insensitive) name. The id
 // form matches without consulting the Focus list, so an exercise filed under a
-// since-archived Focus is still reachable by that Focus's id.
+// since-archived Focus is still reachable by that Focus's id. Resolved once
+// per listing into the normalized ids an exercise may carry to match.
+function resolveFocusFilter(
+  focus: string,
+  focuses: readonly AgentFocus[],
+): ReadonlySet<string> {
+  const focusKey = normalizeName(focus);
+  const ids = new Set([focusKey]);
+  for (const candidate of focuses) {
+    if (normalizeName(candidate.name) === focusKey) {
+      ids.add(normalizeName(candidate.id));
+    }
+  }
+  return ids;
+}
+
 function matchesFocus(
   exercise: AgentCatalogExercise,
-  focus: string | undefined,
-  listFocuses: () => readonly AgentFocus[],
+  focusIdKeys: ReadonlySet<string> | undefined,
 ) {
-  if (focus === undefined) {
+  if (focusIdKeys === undefined) {
     return true;
   }
 
-  const focusKey = normalizeName(focus);
-  const exerciseFocusIds = (exercise.focusIds ?? []).map(normalizeName);
-  if (exerciseFocusIds.includes(focusKey)) {
-    return true;
-  }
-  const namedIds = listFocuses()
-    .filter((candidate) => normalizeName(candidate.name) === focusKey)
-    .map((candidate) => normalizeName(candidate.id));
-  return namedIds.some((id) => exerciseFocusIds.includes(id));
+  return (exercise.focusIds ?? []).some((id) =>
+    focusIdKeys.has(normalizeName(id)),
+  );
 }
 
 function isCandidate(exercise: AgentCatalogExercise, queryKey: string) {
@@ -1124,7 +1139,7 @@ export function buildPlatformCatalogExercises(): readonly AgentCatalogExercise[]
   return cachedPlatformCatalog;
 }
 
-function parseJsonStringArray(value: unknown): string[] {
+export function parseJsonStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map((entry) => String(entry));
   }
@@ -1333,26 +1348,6 @@ export function createDrizzleAgentCatalogStore(
     },
     async listFocuses(input) {
       return mergeAgentFocuses(await loadUserFocusRows(input.userId));
-    },
-    async getFocusById(input) {
-      const focuses = mergeAgentFocuses(await loadUserFocusRows(input.userId));
-      return focuses.find((focus) => focus.id === input.focusId) ?? null;
-    },
-    async getStoredExerciseFocusIds(input) {
-      const rows = await db
-        .select({ payload: schema.exercises.payload })
-        .from(schema.exercises)
-        .where(
-          and(
-            eq(schema.exercises.id, input.exerciseId),
-            eq(schema.exercises.userId, input.userId),
-          ),
-        )
-        .limit(1);
-      const row = rows[0];
-      return row === undefined
-        ? null
-        : parseJsonStringArray(row.payload?.focus_ids);
     },
   };
 }

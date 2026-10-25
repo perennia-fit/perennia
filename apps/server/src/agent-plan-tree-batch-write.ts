@@ -7,6 +7,10 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentCatalogUnavailableResponseSchema,
+  createActiveFocusCheck,
+  FOCUS_NOT_FOUND_RULE,
+  focusNotFoundMessage,
+  payloadFocusId,
   type AgentCatalogStore,
   type AgentExercise,
 } from "./agent-catalog.js";
@@ -825,24 +829,20 @@ export async function prepareAgentPlanTreeBatchWrite({
     exerciseById,
     errors,
   });
+  const isActiveFocus = createActiveFocusCheck({ catalogStore, userId });
   for (const [itemIndex, item] of request.workoutTemplates.entries()) {
     if (typeof item.focusId !== "string") {
       continue;
     }
-    const focus = await catalogStore.getFocusById({
-      userId,
-      focusId: item.focusId,
-    });
-    if (focus === null) {
+    if (!(await isActiveFocus(item.focusId))) {
       errors.push(
         structuralIssue({
           entityType: "workoutTemplate",
           itemIndex,
           entityId: item.id,
           field: "focusId",
-          rule: "focus_not_found",
-          message:
-            "focusId must reference an active Focus visible to the authenticated account (see GET /agent/focuses).",
+          rule: FOCUS_NOT_FOUND_RULE,
+          message: focusNotFoundMessage("focusId"),
           limit: "active-caller-visible",
         }),
       );
@@ -1202,13 +1202,9 @@ function carryThroughTemplateFocus({
     const stored = references.workoutTemplates.find(
       (row) => row.id === item.id && row.userId === userId,
     );
-    const storedFocusId = stored?.payload.focus_id;
     const prepared = rows.workoutTemplates[itemIndex];
     if (prepared !== undefined) {
-      prepared.payload.focus_id =
-        typeof storedFocusId === "string" && storedFocusId.length > 0
-          ? storedFocusId
-          : null;
+      prepared.payload.focus_id = payloadFocusId(stored?.payload);
     }
   }
 }

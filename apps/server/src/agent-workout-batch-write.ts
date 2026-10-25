@@ -7,6 +7,10 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentCatalogUnavailableResponseSchema,
+  createActiveFocusCheck,
+  FOCUS_NOT_FOUND_RULE,
+  focusNotFoundMessage,
+  payloadFocusId,
   type AgentCatalogStore,
   type AgentExercise
 } from "./agent-catalog.js";
@@ -304,18 +308,17 @@ export async function prepareAgentWorkoutBatchWrite({
 
   const focusId = request.workout.focusId;
   if (typeof focusId === "string") {
-    const focus = await catalogStore.getFocusById({ userId, focusId });
+    const isActiveFocus = createActiveFocusCheck({ catalogStore, userId });
     const firstSet = request.sets[0];
-    if (focus === null && firstSet !== undefined) {
+    if (!(await isActiveFocus(focusId)) && firstSet !== undefined) {
       // The issue shape is per-Set; a Workout-level rule is reported against
       // the first item with a `workout.*` field path so it stays unambiguous.
       errors.push(
         AgentWorkoutBatchWriteIssueSchema.parse({
           field: "workout.focusId",
           dimension: null,
-          rule: "focus_not_found",
-          message:
-            "focusId must reference an active Focus visible to the authenticated account (see GET /agent/focuses).",
+          rule: FOCUS_NOT_FOUND_RULE,
+          message: focusNotFoundMessage("focusId"),
           limit: null,
           itemIndex: 0,
           setId: firstSet.id,
@@ -463,7 +466,7 @@ export function createDrizzleAgentWorkoutBatchWriteStore(
           // not mention Focus carries the device-set `focus_id` through.
           focus_id:
             resolvedWorkout.focusId === undefined
-              ? storedFocusId(workoutBeforeImage)
+              ? payloadFocusId(workoutBeforeImage)
               : resolvedWorkout.focusId,
           updated_at: workoutUpdatedAt,
           deleted_at: resolvedWorkout.deletedAt
@@ -621,11 +624,6 @@ function workoutFromPreparedSets(
     comment: payload.workout_comment ?? null,
     deletedAt: payload.workout_deleted_at ?? null
   });
-}
-
-function storedFocusId(payload: Record<string, unknown> | null): string | null {
-  const focusId = payload?.focus_id;
-  return typeof focusId === "string" && focusId.length > 0 ? focusId : null;
 }
 
 function localDateInTimezone(startedAt: string, timezone: string) {

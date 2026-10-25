@@ -46,7 +46,6 @@ class PerenniaRoot extends StatelessWidget {
     this.homeRepository,
     this.upNextFeatureRepository,
     this.templatePickerRepository,
-    this.focusFeatureRepository,
     this.routinePlanRepository,
     this.workoutTemplateRepository,
     this.settingsRepository,
@@ -58,7 +57,6 @@ class PerenniaRoot extends StatelessWidget {
   final HomeRepository? homeRepository;
   final UpNextFeatureRepository? upNextFeatureRepository;
   final TemplatePickerFeatureRepository? templatePickerRepository;
-  final FocusFeatureRepository? focusFeatureRepository;
   final RoutinePlanFeatureRepository? routinePlanRepository;
   final WorkoutTemplateFeatureRepository? workoutTemplateRepository;
   final SettingsRepository? settingsRepository;
@@ -102,11 +100,7 @@ class PerenniaRoot extends StatelessWidget {
           templatePickerFeatureRepositoryProvider.overrideWith(
             (ref) => const StubTemplatePickerFeatureRepository(),
           ),
-        if (focusFeatureRepository != null)
-          focusFeatureRepositoryProvider.overrideWith(
-            (ref) => focusFeatureRepository!,
-          )
-        else if (homeRepository != null)
+        if (homeRepository != null)
           // Same rationale again: the start sheet reads the Focuses.
           focusFeatureRepositoryProvider.overrideWith(
             (ref) => const StubFocusFeatureRepository(),

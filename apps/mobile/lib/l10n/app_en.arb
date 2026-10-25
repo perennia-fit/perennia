@@ -1069,7 +1069,6 @@
     }
   },
   "workoutNoFocus": "No focus",
-  "workoutChangeFocusTooltip": "Change focus",
   "workoutFocusSemanticLabel": "Focus: {focus}. Change focus",
   "@workoutFocusSemanticLabel": {
     "placeholders": {
@@ -1134,14 +1133,6 @@
   },
   "focusUseToday": "Today",
   "focusUseYesterday": "Yesterday",
-  "focusUseDaysAgo": "{days} days ago",
-  "@focusUseDaysAgo": {
-    "placeholders": {
-      "days": {
-        "type": "int"
-      }
-    }
-  },
   "focusUseWorkoutCount": "{count, plural, =1{1 workout} other{{count} workouts}}",
   "@focusUseWorkoutCount": {
     "placeholders": {

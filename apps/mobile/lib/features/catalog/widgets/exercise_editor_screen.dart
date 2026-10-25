@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,7 +9,6 @@ import '../../../domain/training/training_dimensions.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../focus/widgets/focus_visuals.dart';
-import '../../focus/widgets/grouped_rows.dart';
 
 class ExerciseEditorScreen extends ConsumerStatefulWidget {
   const ExerciseEditorScreen({
@@ -136,13 +136,14 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
   Future<void> _load() async {
     final repositories = ref.read(trainingRepositoriesProvider);
     await repositories.catalog.ensurePlatformLibrarySeeded();
-    final categories = await repositories.catalog.listCategories();
-    final focuses = await repositories.focuses.listActive();
     final exerciseId = widget.exerciseId ?? widget.platformExerciseId;
-    ExerciseRecord? exercise;
-    if (exerciseId != null) {
-      exercise = await repositories.exercises.getById(exerciseId);
-    }
+    final (categories, focuses, exercise) = await (
+      repositories.catalog.listCategories(),
+      repositories.focuses.listActive(),
+      exerciseId == null
+          ? Future<ExerciseRecord?>.value()
+          : repositories.exercises.getById(exerciseId),
+    ).wait;
 
     if (!mounted) {
       return;
@@ -571,7 +572,10 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
         exercise.usesRpe != draft.usesRpe ||
         exercise.categoryId != draft.categoryId ||
         !_equipmentEquals(exercise.equipment, draft.equipment) ||
-        !_sameIds(exercise.focusIds, draft.focusIds ?? const <String>[]) ||
+        !setEquals(
+          exercise.focusIds.toSet(),
+          (draft.focusIds ?? const <String>[]).toSet(),
+        ) ||
         exercise.notes != draft.notes;
   }
 
@@ -600,23 +604,11 @@ class _ExerciseEditorScreenState extends ConsumerState<ExerciseEditorScreen> {
         runSpacing: AppDimens.dense,
         children: [
           for (final focus in focuses)
-            FilterChip(
+            FocusChip(
               key: ExerciseEditorScreen.focusChipKey(focus.id),
-              avatar: Icon(
-                focusIcon(focus.id),
-                size: 18,
-                color: context.colors.textSecondary,
-              ),
-              label: Text(focus.name),
+              icon: focusIcon(focus.id),
+              label: focus.name,
               selected: _focusIds.contains(focus.id),
-              selectedColor:
-                  focusChipStyle(context, isSelected: true).selectedColor,
-              side: focusChipStyle(
-                context,
-                isSelected: _focusIds.contains(focus.id),
-              ).side,
-              labelStyle: focusChipStyle(context, isSelected: false).labelStyle,
-              showCheckmark: false,
               onSelected: (selected) {
                 setState(() {
                   _focusIds = selected
@@ -728,7 +720,3 @@ String? _emptyToNull(String value) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
-bool _sameIds(List<String> left, List<String> right) {
-  return left.toSet().length == right.toSet().length &&
-      left.toSet().containsAll(right);
-}

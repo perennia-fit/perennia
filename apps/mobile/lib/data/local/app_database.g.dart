@@ -23403,6 +23403,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PlanRoutinesTable planRoutines = $PlanRoutinesTable(this);
   late final $TemplateLinksTable templateLinks = $TemplateLinksTable(this);
   late final $RoutineEntriesTable routineEntries = $RoutineEntriesTable(this);
+  late final Index workoutSessionsFocusIdIndex = Index(
+      'workout_sessions_focus_id_index',
+      'CREATE INDEX workout_sessions_focus_id_index ON workout_sessions (focus_id)');
   late final Index mealTypesSortOrderIndex = Index(
       'meal_types_sort_order_index',
       'CREATE INDEX meal_types_sort_order_index ON meal_types (sort_order)');
@@ -23587,6 +23590,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         planRoutines,
         templateLinks,
         routineEntries,
+        workoutSessionsFocusIdIndex,
         mealTypesSortOrderIndex,
         mealsLocalDateIndex,
         foodsSourceNameIndex,

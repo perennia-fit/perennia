@@ -22,6 +22,9 @@ import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
 
+/// Workouts with an exercise add in flight; see `_addExerciseAndOpen`.
+final _workoutsAddingAnExercise = <String>{};
+
 class WorkoutScreen extends ConsumerWidget {
   const WorkoutScreen({
     super.key,
@@ -181,10 +184,7 @@ class _WorkoutContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(homeControllerProvider.notifier);
-    final focusId = workout.focusId;
-    final focus = focusId == null
-        ? null
-        : ref.watch(focusesByIdProvider).value?[focusId];
+    final focus = ref.watch(focusRecordProvider(workout.focusId));
     return Scaffold(
       appBar: AppBar(
         title: Text(context.l10n.workoutTitle),
@@ -494,11 +494,8 @@ class _WorkoutContent extends ConsumerWidget {
   }
 
   Future<void> _changeFocus(BuildContext context, WidgetRef ref) async {
-    final pick = await showFocusPickerSheet(
-      context,
-      selectedFocusId: workout.focusId,
-    );
-    if (pick == null || pick.focusId == workout.focusId) {
+    final pick = await pickChangedFocus(context, current: workout.focusId);
+    if (pick == null) {
       return;
     }
     await ref
@@ -521,23 +518,37 @@ class _WorkoutContent extends ConsumerWidget {
     );
   }
 
+  /// Adds [exercise] and lands on it, from the picker sheet or the focused
+  /// list alike. Guarded per Workout until the add has landed: a rapid
+  /// double-tap fires the row's onTap twice before the first add resolves,
+  /// which would otherwise add the exercise twice and stack two pages for
+  /// what the user experienced as one tap.
   Future<void> _addExerciseAndOpen(
     BuildContext context,
     HomeController controller,
-    ExerciseRecord exercise,
-  ) async {
-    final workoutExerciseId = await controller.addExerciseToWorkout(
-      workoutId: workout.id,
-      exerciseId: exercise.id,
-    );
-    if (!context.mounted) {
+    ExerciseRecord exercise, {
+    VoidCallback? closeSheet,
+  }) async {
+    if (!_workoutsAddingAnExercise.add(workout.id)) {
       return;
     }
-    // Auto-land into the just-added exercise instead of leaving the user back
-    // on the workout card list.
-    await Navigator.of(context).push(
-      buildExercisePageRoute(workoutExerciseId),
-    );
+    try {
+      final workoutExerciseId = await controller.addExerciseToWorkout(
+        workoutId: workout.id,
+        exerciseId: exercise.id,
+      );
+      closeSheet?.call();
+      if (!context.mounted) {
+        return;
+      }
+      // Auto-land into the just-added exercise instead of leaving the user
+      // back on the workout card list.
+      unawaited(
+        Navigator.of(context).push(buildExercisePageRoute(workoutExerciseId)),
+      );
+    } finally {
+      _workoutsAddingAnExercise.remove(workout.id);
+    }
   }
 
   Future<void> _showExercisePicker(
@@ -545,12 +556,6 @@ class _WorkoutContent extends ConsumerWidget {
     HomeController controller, {
     String? initialFocusId,
   }) {
-    // Guards the whole sheet lifetime: a rapid double-tap on a catalog row
-    // fires ExerciseCatalogPicker's onTap twice before the first
-    // addExerciseToWorkout await resolves. Without this, both selections
-    // would add the exercise and auto-land, stacking two ExercisePage
-    // routes for what the user experienced as one tap.
-    var isAddingExercise = false;
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -562,30 +567,18 @@ class _WorkoutContent extends ConsumerWidget {
               height: MediaQuery.sizeOf(sheetContext).height * 0.85,
               child: ExerciseCatalogPicker(
                 initialFocusId: initialFocusId,
-                onExerciseSelected: (exercise) {
-                  if (isAddingExercise) {
-                    return;
-                  }
-                  isAddingExercise = true;
-                  unawaited(() async {
-                    final workoutExerciseId =
-                        await controller.addExerciseToWorkout(
-                      workoutId: workout.id,
-                      exerciseId: exercise.id,
-                    );
-                    if (sheetContext.mounted) {
-                      Navigator.of(sheetContext).pop();
-                    }
-                    if (!context.mounted) {
-                      return;
-                    }
-                    // Auto-land into the just-added exercise instead of
-                    // leaving the user back on the workout card list.
-                    Navigator.of(context).push(
-                      buildExercisePageRoute(workoutExerciseId),
-                    );
-                  }());
-                },
+                onExerciseSelected: (exercise) => unawaited(
+                  _addExerciseAndOpen(
+                    context,
+                    controller,
+                    exercise,
+                    closeSheet: () {
+                      if (sheetContext.mounted) {
+                        Navigator.of(sheetContext).pop();
+                      }
+                    },
+                  ),
+                ),
               ),
             ),
           ),

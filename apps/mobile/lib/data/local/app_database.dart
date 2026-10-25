@@ -89,6 +89,8 @@ class Exercises extends Table {
 }
 
 @DataClassName('WorkoutSessionRow')
+// "Recent under a Focus" groups the Workouts carrying one Focus.
+@TableIndex(name: 'workout_sessions_focus_id_index', columns: {#focusId})
 class WorkoutSessions extends Table {
   TextColumn get id => text()();
   DateTimeColumn get startedAt => dateTime()();
@@ -1936,6 +1938,15 @@ class AppDatabase extends _$AppDatabase {
                   )) {
                 await entry.add();
               }
+            }
+            // Drift's addColumn() and createTable() do not install
+            // @TableIndex declarations. Some upgrade paths reach here before
+            // workout_sessions exists; its own creation installs the index.
+            if (await _tableExists(workoutSessions.actualTableName)) {
+              await customStatement(
+                'CREATE INDEX IF NOT EXISTS workout_sessions_focus_id_index '
+                'ON workout_sessions (focus_id)',
+              );
             }
           }
         },

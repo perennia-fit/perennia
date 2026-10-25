@@ -770,113 +770,43 @@ export async function pushExerciseCategoriesInTransaction(
 // nothing here (or in the pull path) orders or holds a referencing row on it.
 export async function pushFocusesInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
+  const { userId } = input;
+  // TENANT ISOLATION comes from the (user_id, id) key itself: starter Focus
+  // ids are shared by every account, so each account's edit of "Weights" is
+  // its own row and can never touch another account's. Reads and writes are
+  // therefore scoped by both columns, and the generic owner check never fires.
+  const ownRow = (id: string) =>
+    and(eq(schema.focuses.userId, userId), eq(schema.focuses.id, id));
+  return pushOpaqueSyncRowsInTransaction(transaction, {
+    ...input,
+    entityTable: FOCUSES_SYNC_ENTITY,
+    async readExisting(id) {
+      const rows = await transaction
+        .select({
+          userId: schema.focuses.userId,
+          updatedAt: schema.focuses.updatedAt,
+          deviceId: schema.focuses.deviceId
+        })
+        .from(schema.focuses)
+        .where(ownRow(id))
+        .limit(1);
+      return rows[0];
+    },
+    async writeRow(existing, row) {
+      if (existing === undefined) {
+        await transaction.insert(schema.focuses).values(row);
+      } else {
+        await transaction.update(schema.focuses).set(row).where(ownRow(row.id));
+      }
     }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: FOCUSES_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.focuses.userId,
-        updatedAt: schema.focuses.updatedAt,
-        deviceId: schema.focuses.deviceId
-      })
-      .from(schema.focuses)
-      .where(
-        and(eq(schema.focuses.userId, userId), eq(schema.focuses.id, change.id))
-      )
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION comes from the (user_id, id) key itself: starter
-    // Focus ids are shared by every account, so each account's edit of
-    // "Weights" is its own row and can never touch another account's.
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.focuses).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.focuses)
-        .set(rowValues)
-        .where(
-          and(
-            eq(schema.focuses.userId, userId),
-            eq(schema.focuses.id, change.id)
-          )
-        );
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  });
 }
 
 export async function pushNutritionGoalsInTransaction(

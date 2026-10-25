@@ -884,7 +884,7 @@ function workoutTemplateSummary(
     id: row.id,
     name: payloadRequiredString(row, "name"),
     notes: payloadNullableString(row, "notes"),
-    focusId: payloadFocusId(row),
+    focusId: payloadString(row, "focus_id"),
     exerciseCount: exerciseCounts.get(row.id) ?? 0,
     groupCount: groupCounts.get(row.id) ?? 0,
     updatedAt: row.updatedAt.toISOString(),
@@ -963,7 +963,7 @@ function workoutTemplateDetail(
     id: row.id,
     name: payloadRequiredString(row, "name"),
     notes: payloadNullableString(row, "notes"),
-    focusId: payloadFocusId(row),
+    focusId: payloadString(row, "focus_id"),
     exercises,
     groups,
     exerciseCount: exerciseRows.length,
@@ -1244,13 +1244,6 @@ function payloadRequiredString(row: OpaquePlanRow, field: string): string {
     throw new Error(`Plan row ${row.id} is missing ${field}.`);
   }
   return value;
-}
-
-// `focus_id` is a soft reference set on a device or by an agent write;
-// templates that predate Focus lack it, which reads as "no Focus".
-function payloadFocusId(row: OpaquePlanRow): string | null {
-  const value = row.payload.focus_id;
-  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function payloadNullableString(row: OpaquePlanRow, field: string): string | null {

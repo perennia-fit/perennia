@@ -15,7 +15,6 @@ import 'focus_visuals.dart';
 class FocusManagerScreen extends ConsumerWidget {
   const FocusManagerScreen({super.key});
 
-  static const routeName = '/focuses';
   static const addButtonKey = Key('focus-manager.add');
   static const nameFieldKey = Key('focus-manager.name');
   static const saveNameButtonKey = Key('focus-manager.save');

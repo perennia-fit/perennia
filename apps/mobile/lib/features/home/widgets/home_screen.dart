@@ -231,20 +231,8 @@ class HomeScreen extends ConsumerWidget {
           );
         case BrowsePlans():
           await loadRoutine(navigationContext);
-        case SetUpRoutine():
-          await Navigator.of(navigationContext).pushNamed(
-            RoutinePlanListScreen.routeName,
-          );
         case StartWithFocus(:final focusId):
           await startWorkout(navigationContext, focusId: focusId);
-        case StartEmpty():
-          await startWorkout(navigationContext);
-        case EditFocuses():
-          await Navigator.of(navigationContext).push(
-            MaterialPageRoute<void>(
-              builder: (_) => const FocusManagerScreen(),
-            ),
-          );
       }
     }
 
@@ -968,10 +956,7 @@ class _WorkoutSummaryTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final exerciseNames = exercises.map((exercise) => exercise.name).toList();
-    final focusId = workout.focusId;
-    final focus = focusId == null
-        ? null
-        : ref.watch(focusesByIdProvider).value?[focusId];
+    final focus = ref.watch(focusRecordProvider(workout.focusId));
     return Material(
       key: HomeScreen.sessionBlockKey(workout.id),
       color: context.colors.surface,

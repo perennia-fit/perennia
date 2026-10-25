@@ -4,9 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/repositories/training_repositories.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
-import '../../catalog/controllers/exercise_catalog_controller.dart';
 import '../controllers/focus_providers.dart';
-import 'grouped_rows.dart';
+import '../../../widgets/grouped_rows.dart';
 
 /// The first exercises a Workout under a Focus offers: the ones the user has
 /// logged under that Focus, most recent first, then the rest of the Focus's
@@ -19,8 +18,6 @@ class FocusedExerciseList extends ConsumerWidget {
     required this.onExerciseSelected,
     required this.onBrowseFocus,
     required this.onSearchAll,
-    this.historyLimit = 8,
-    this.catalogLimit = 6,
   });
 
   static const historySectionKey = Key('focused-exercises.history');
@@ -35,44 +32,21 @@ class FocusedExerciseList extends ConsumerWidget {
   final ValueChanged<ExerciseRecord> onExerciseSelected;
   final VoidCallback onBrowseFocus;
   final VoidCallback onSearchAll;
-  final int historyLimit;
-  final int catalogLimit;
+
+  static const _recentLimit = 8;
+  static const _catalogLimit = 6;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final catalog = ref.watch(exerciseCatalogControllerProvider).value;
-    final uses = ref.watch(focusExerciseUsesProvider(focus.id)).value;
-    final starterIds =
-        ref.watch(focusStarterExerciseIdsProvider).value?[focus.id] ??
-            const <String>[];
-    if (catalog == null || uses == null) {
+    final groups = ref.watch(focusExerciseGroupsProvider(focus.id));
+    if (groups == null) {
       // Local reads resolve within a frame; holding the layout empty avoids a
       // spinner on the logging path.
       return const SizedBox(height: AppDimens.touchTarget);
     }
-
-    final exerciseById = <String, ExerciseRecord>{
-      for (final section in catalog.sections)
-        if (!section.isVirtual)
-          for (final exercise in section.exercises) exercise.id: exercise,
-    };
-    final history = <(ExerciseRecord, FocusExerciseUse)>[
-      for (final use in uses)
-        if (exerciseById[use.exerciseId] case final exercise?) (exercise, use),
-    ].take(historyLimit).toList(growable: false);
-    final historyIds = {for (final (exercise, _) in history) exercise.id};
-    final hasStaples = starterIds.any(
-      (id) => !historyIds.contains(id) && exerciseById.containsKey(id),
-    );
-    final focusCatalog = exerciseById.values
-        .where(
-          (exercise) =>
-              exercise.focusIds.contains(focus.id) &&
-              !historyIds.contains(exercise.id),
-        )
-        .toList()
-      ..sort(_staplesThenFavoritesThenName(starterIds));
+    final history = groups.recent.take(_recentLimit).toList(growable: false);
+    final focusCatalog = [...groups.staples, ...groups.rest];
 
     // Suggestions, not logged work: the region names itself as the way to
     // add the first exercise, and with no history the staples lead instead
@@ -83,7 +57,7 @@ class FocusedExerciseList extends ConsumerWidget {
         Text(l10n.focusLibraryHeading, style: context.textStyles.h2),
         const SizedBox(height: AppDimens.dense),
         if (history.isNotEmpty) ...[
-          _SectionLabel(
+          SectionLabel(
             key: historySectionKey,
             text: l10n.focusLibraryYourExercises(focus.name),
           ),
@@ -101,16 +75,16 @@ class FocusedExerciseList extends ConsumerWidget {
           const SizedBox(height: AppDimens.base + AppDimens.dense),
         ],
         if (focusCatalog.isNotEmpty) ...[
-          _SectionLabel(
+          SectionLabel(
             key: catalogSectionKey,
-            text: hasStaples
+            text: groups.staples.isNotEmpty
                 ? l10n.focusLibraryStaples(focus.name)
                 : l10n.focusLibraryCatalog(focus.name),
           ),
           const SizedBox(height: AppDimens.dense),
           GroupedRows(
             children: [
-              for (final exercise in focusCatalog.take(catalogLimit))
+              for (final exercise in focusCatalog.take(_catalogLimit))
                 _ExerciseRow(
                   exercise: exercise,
                   subtitle: null,
@@ -149,29 +123,6 @@ class FocusedExerciseList extends ConsumerWidget {
   }
 }
 
-/// Staples in their curated order, then favorites, then the rest by name.
-Comparator<ExerciseRecord> _staplesThenFavoritesThenName(
-  List<String> starterIds,
-) {
-  final rank = <String, int>{
-    for (var index = 0; index < starterIds.length; index += 1)
-      starterIds[index]: index,
-  };
-  return (left, right) {
-    final leftRank = rank[left.id];
-    final rightRank = rank[right.id];
-    if (leftRank != null || rightRank != null) {
-      if (leftRank == null) return 1;
-      if (rightRank == null) return -1;
-      return leftRank.compareTo(rightRank);
-    }
-    if (left.isFavorite != right.isFavorite) {
-      return left.isFavorite ? -1 : 1;
-    }
-    return left.name.toLowerCase().compareTo(right.name.toLowerCase());
-  };
-}
-
 String _useSubtitle(BuildContext context, FocusExerciseUse use) {
   final l10n = context.l10n;
   final now = DateTime.now();
@@ -182,30 +133,11 @@ String _useSubtitle(BuildContext context, FocusExerciseUse use) {
   final when = switch (days) {
     <= 0 => l10n.focusUseToday,
     1 => l10n.focusUseYesterday,
-    < 30 => l10n.focusUseDaysAgo(days),
+    < 30 => l10n.activityRelativeDaysAgo(days),
     _ => MaterialLocalizations.of(context).formatMediumDate(performed),
   };
   return l10n.focusUseSubtitle(
       when, l10n.focusUseWorkoutCount(use.workoutCount));
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({super.key, required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      header: true,
-      child: Text(
-        text,
-        style: context.textStyles.label.copyWith(
-          color: context.colors.textSecondary,
-        ),
-      ),
-    );
-  }
 }
 
 class _ExerciseRow extends StatelessWidget {

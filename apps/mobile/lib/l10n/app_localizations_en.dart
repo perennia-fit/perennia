@@ -2151,9 +2151,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutNoFocus => 'No focus';
 
   @override
-  String get workoutChangeFocusTooltip => 'Change focus';
-
-  @override
   String workoutFocusSemanticLabel(String focus) {
     return 'Focus: $focus. Change focus';
   }
@@ -2211,11 +2208,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get focusUseYesterday => 'Yesterday';
-
-  @override
-  String focusUseDaysAgo(int days) {
-    return '$days days ago';
-  }
 
   @override
   String focusUseWorkoutCount(int count) {

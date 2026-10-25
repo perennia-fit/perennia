@@ -802,14 +802,11 @@ class CatalogRepository {
       if (seeded == null || seeded.focusIds.isEmpty) {
         continue;
       }
+      final focusIds = _encodeFocusIds(seeded.focusIds);
       await (_database.update(_database.exercises)
             ..where((row) => row.id.equals(before.id)))
-          .write(
-        ExercisesCompanion(
-          focusIds: Value<String>(_encodeFocusIds(seeded.focusIds)),
-        ),
-      );
-      final after = await _requireExerciseRow(before.id);
+          .write(ExercisesCompanion(focusIds: Value<String>(focusIds)));
+      final after = before.copyWith(focusIds: focusIds);
       await _repositories._activityLogWriter.append(
         context,
         entityTable: AppDatabase.exercisesTable,
@@ -976,16 +973,12 @@ class CatalogRepository {
 
     return _database.transaction(() async {
       final activeRows = await _activeCategoryQuery().get();
-      final activeIds = activeRows.map((row) => row.id).toSet();
-      if (categoryIds.length != activeIds.length ||
-          categoryIds.toSet().length != categoryIds.length ||
-          !categoryIds.every(activeIds.contains)) {
-        throw ArgumentError.value(
-          categoryIds,
-          'categoryIds',
-          'Ordering must include each active category exactly once.',
-        );
-      }
+      _requireEachActiveIdOnce(
+        categoryIds,
+        activeRows.map((row) => row.id),
+        name: 'categoryIds',
+        noun: 'category',
+      );
 
       final beforeById = <String, ExerciseCategoryRow>{
         for (final row in activeRows) row.id: row,
@@ -16565,6 +16558,26 @@ String _normalizeCategoryName(String name) {
 
 String _normalizeCategoryNameForStorage(String name) {
   return name.trim();
+}
+
+/// A reorder names each active row exactly once: no duplicates, no archived
+/// or unknown ids, none left out.
+void _requireEachActiveIdOnce(
+  List<String> orderedIds,
+  Iterable<String> activeIds, {
+  required String name,
+  required String noun,
+}) {
+  final active = activeIds.toSet();
+  if (orderedIds.length != active.length ||
+      orderedIds.toSet().length != orderedIds.length ||
+      !orderedIds.every(active.contains)) {
+    throw ArgumentError.value(
+      orderedIds,
+      name,
+      'Ordering must include each active $noun exactly once.',
+    );
+  }
 }
 
 String _normalizeGroupNameForStorage(String name) {

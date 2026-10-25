@@ -10,6 +10,7 @@ import {
   AgentCatalogUnavailableResponseSchema,
   AgentExerciseSchema,
   createDrizzleAgentCatalogStore,
+  payloadFocusId,
   resolvePlatformExerciseId,
   type AgentExercise
 } from "./agent-catalog.js";
@@ -1805,7 +1806,7 @@ async function buildAuthoritativeWorkoutDetail({
       endedAt:
         dateValue(workoutSession.payload.ended_at)?.toISOString() ?? null,
       comment: nullableString(workoutSession.payload.comment),
-      focusId: focusIdValue(workoutSession.payload.focus_id),
+      focusId: payloadFocusId(workoutSession.payload),
       updatedAt: workoutSession.updatedAt.toISOString(),
       active:
         workoutSession.deletedAt === null &&
@@ -2234,12 +2235,6 @@ async function workoutExerciseCatalog(
   );
 }
 
-// `focus_id` is a soft reference written by the device (absent on rows that
-// predate Focus); anything but a non-empty string reads as "no Focus".
-function focusIdValue(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
 function payloadIsActive(payload: Record<string, unknown>) {
   return payload.deleted_at === null || payload.deleted_at === undefined;
 }
@@ -2290,7 +2285,7 @@ async function readWorkoutEnvelopes(
       endedAt: dateValue(row.payload.ended_at)?.toISOString() ?? null,
       timezone: stringValue(row.payload.timezone),
       comment: nullableString(row.payload.comment),
-      focusId: focusIdValue(row.payload.focus_id),
+      focusId: payloadFocusId(row.payload),
       setCount: grouped?.setCount ?? 0,
       exerciseNames: grouped?.exerciseNames ?? []
     }];

@@ -5,11 +5,13 @@ import '../../../data/repositories/training_repositories.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../focus/controllers/focus_providers.dart';
+import '../../focus/widgets/focus_manager_screen.dart';
 import '../../focus/widgets/focus_visuals.dart';
-import '../../focus/widgets/grouped_rows.dart';
+import '../../routine_plans/widgets/routine_plan_list_screen.dart';
 import '../../routine_plans/widgets/localized_cadence_slot_label.dart';
 import '../../template_picker/repositories/template_picker_feature_repository.dart';
 import '../../up_next/controllers/up_next_controller.dart';
+import '../../../widgets/grouped_rows.dart';
 
 /// What the user chose to start in [showStartWorkoutSheet].
 sealed class StartWorkoutChoice {
@@ -34,26 +36,12 @@ final class BrowsePlans extends StartWorkoutChoice {
   const BrowsePlans();
 }
 
-/// Go and create a Routine: there is no plan to start from yet.
-final class SetUpRoutine extends StartWorkoutChoice {
-  const SetUpRoutine();
-}
-
-/// Start an empty Workout under a Focus.
+/// Start an empty Workout, under a Focus or, with null, under none: the path
+/// that existed before.
 final class StartWithFocus extends StartWorkoutChoice {
   const StartWithFocus(this.focusId);
 
-  final String focusId;
-}
-
-/// Start an empty Workout with no Focus: the path that existed before.
-final class StartEmpty extends StartWorkoutChoice {
-  const StartEmpty();
-}
-
-/// Open the Focus manager.
-final class EditFocuses extends StartWorkoutChoice {
-  const EditFocuses();
+  final String? focusId;
 }
 
 /// The single decision point for a Workout: follow the plan, or say what
@@ -125,7 +113,7 @@ class StartWorkoutSheet extends ConsumerWidget {
             Text(l10n.startWorkoutSheetTitle, style: context.textStyles.h1),
             const SizedBox(height: AppDimens.base),
             if (pending.isNotEmpty) ...[
-              _SectionLabel(text: l10n.homeUpNextTitle),
+              SectionLabel(text: l10n.homeUpNextTitle),
               const SizedBox(height: AppDimens.dense),
               GroupedRows(
                 children: [
@@ -136,7 +124,7 @@ class StartWorkoutSheet extends ConsumerWidget {
                         card.workoutTemplateId,
                       ),
                       templateName: card.templateName,
-                      context: l10n.homeUpNextRoutineSubtitle(
+                      subtitle: l10n.homeUpNextRoutineSubtitle(
                         suggestion.routineName,
                         localizedCadenceSlotLabel(
                           l10n,
@@ -184,7 +172,9 @@ class StartWorkoutSheet extends ConsumerWidget {
                     minimumSize: const Size(0, AppDimens.touchTarget),
                     foregroundColor: context.colors.textSecondary,
                   ),
-                  onPressed: () => choose(const SetUpRoutine()),
+                  onPressed: () => Navigator.of(context).pushNamed(
+                    RoutinePlanListScreen.routeName,
+                  ),
                   icon: const Icon(Icons.assignment_outlined),
                   label: Text(l10n.startWorkoutSetUpRoutine),
                 ),
@@ -193,12 +183,16 @@ class StartWorkoutSheet extends ConsumerWidget {
             Row(
               children: [
                 Expanded(
-                  child: _SectionLabel(text: l10n.startWorkoutFocusSection),
+                  child: SectionLabel(text: l10n.startWorkoutFocusSection),
                 ),
                 IconButton(
                   key: editFocusesKey,
                   tooltip: l10n.startWorkoutEditFocusesTooltip,
-                  onPressed: () => choose(const EditFocuses()),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const FocusManagerScreen(),
+                    ),
+                  ),
                   icon: const Icon(Icons.edit_outlined),
                 ),
               ],
@@ -225,7 +219,7 @@ class StartWorkoutSheet extends ConsumerWidget {
                       color: context.colors.textSecondary,
                     ),
                   ),
-                  onTap: () => choose(const StartEmpty()),
+                  onTap: () => choose(const StartWithFocus(null)),
                 ),
               ],
             ),
@@ -329,53 +323,34 @@ class _UpNextRow extends StatelessWidget {
   const _UpNextRow({
     super.key,
     required this.templateName,
-    required this.context,
+    required this.subtitle,
     required this.onTap,
   });
 
   final String templateName;
-  final String context;
+  final String subtitle;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext buildContext) {
+  Widget build(BuildContext context) {
     return ListTile(
       minTileHeight: AppDimens.touchTarget + AppDimens.dense,
       leading: Icon(
         Icons.play_circle_outline,
-        color: Theme.of(buildContext).colorScheme.primary,
+        color: Theme.of(context).colorScheme.primary,
       ),
-      title: Text(templateName, style: buildContext.textStyles.h2),
+      title: Text(templateName, style: context.textStyles.h2),
       subtitle: Text(
-        context,
-        style: buildContext.textStyles.caption.copyWith(
-          color: buildContext.colors.textSecondary,
+        subtitle,
+        style: context.textStyles.caption.copyWith(
+          color: context.colors.textSecondary,
         ),
       ),
       trailing: Icon(
         Icons.chevron_right,
-        color: buildContext.colors.textSecondary,
+        color: context.colors.textSecondary,
       ),
       onTap: onTap,
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      header: true,
-      child: Text(
-        text,
-        style: context.textStyles.label.copyWith(
-          color: context.colors.textSecondary,
-        ),
-      ),
     );
   }
 }

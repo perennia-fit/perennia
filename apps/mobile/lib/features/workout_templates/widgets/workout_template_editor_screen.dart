@@ -706,20 +706,18 @@ class _TemplateFocusField extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final focusId = template.focusId;
-    final focus =
-        focusId == null ? null : ref.watch(focusesByIdProvider).value?[focusId];
+    final focus = ref.watch(focusRecordProvider(template.focusId));
     final name =
         focus == null ? l10n.workoutNoFocus : focusDisplayName(context, focus);
     return InkWell(
       key: WorkoutTemplateEditorScreen.focusFieldKey,
       borderRadius: AppRadii.cardMd,
       onTap: () async {
-        final pick = await showFocusPickerSheet(
+        final pick = await pickChangedFocus(
           context,
-          selectedFocusId: template.focusId,
+          current: template.focusId,
         );
-        if (pick == null || pick.focusId == template.focusId) {
+        if (pick == null) {
           return;
         }
         await ref

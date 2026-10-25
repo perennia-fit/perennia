@@ -320,7 +320,8 @@ void main() {
   });
 
   test('applies a pulled Focus and records it in the Activity Log', () async {
-    await repositories.focuses.applySyncImage(
+    await repositories.activityLog.applyPlanSyncImage(
+      entityTable: AppDatabase.focusesTable,
       image: <String, Object?>{
         'id': '01a16cdc-0000-7000-8000-000000000001',
         'name': 'Climbing',
@@ -329,6 +330,7 @@ void main() {
         'deleted_at': null,
       },
       deviceId: 'device-b',
+      localDeviceId: 'device-a',
       batchId: 'pulled',
     );
 

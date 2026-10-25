@@ -8,9 +8,9 @@ import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/training/training_dimensions.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
+import '../../../domain/training/focus_exercise_groups.dart';
 import '../../focus/controllers/focus_providers.dart';
 import '../../focus/widgets/focus_visuals.dart';
-import '../../focus/widgets/grouped_rows.dart';
 import '../controllers/exercise_catalog_controller.dart';
 import '../search/exercise_search.dart';
 import 'exercise_editor_screen.dart';
@@ -114,6 +114,7 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
   String _selectedBodyPartId = _allFilterId;
   String _selectedEquipmentId = _allFilterId;
   String _query = '';
+  int _visibleTotalCount = 0;
   int _visibleExerciseLimit = ExerciseCatalogPicker.pageSize;
 
   @override
@@ -147,7 +148,11 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
     final focuses =
         ref.watch(activeFocusesProvider).value ?? const <FocusRecord>[];
     final selectedFocus = _selectedFocus(focuses);
-    final visibleSections = _currentVisibleSections(focuses);
+    final visibleSections = _currentVisibleSections(selectedFocus);
+    _visibleTotalCount = visibleSections.fold<int>(
+      0,
+      (total, section) => total + section.exercises.length,
+    );
     final selectedBodyPartId = _effectiveSelectedId(
       _selectedBodyPartId,
       filterOptions.bodyPartOptions,
@@ -313,15 +318,7 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
       return;
     }
 
-    final visibleSections = _currentVisibleSections(
-      ref.read(activeFocusesProvider).value ?? const <FocusRecord>[],
-      listen: false,
-    );
-    final totalCount = visibleSections.fold<int>(
-      0,
-      (total, section) => total + section.exercises.length,
-    );
-
+    final totalCount = _visibleTotalCount;
     if (_visibleExerciseLimit >= totalCount) {
       return;
     }
@@ -347,25 +344,20 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
     return null;
   }
 
-  // [listen] is false outside build (the scroll listener), where Riverpod
-  // allows only reads.
+  /// Computed in build only; the scroll listener reads the count it left in
+  /// [_visibleTotalCount] instead of recomputing the sections.
   List<ExerciseCatalogSectionRecord> _currentVisibleSections(
-    List<FocusRecord> focuses, {
-    bool listen = true,
-  }) {
+    FocusRecord? focus,
+  ) {
     final filterOptions = _filterOptions;
-    final focus = _selectedFocus(focuses);
-    final usesProvider =
-        focus == null ? null : focusExerciseUsesProvider(focus.id);
-    final uses = usesProvider == null
+    final uses = focus == null
         ? const <FocusExerciseUse>[]
-        : (listen ? ref.watch(usesProvider) : ref.read(usesProvider)).value ??
+        : ref.watch(focusExerciseUsesProvider(focus.id)).value ??
             const <FocusExerciseUse>[];
-    final starters = (listen
-                ? ref.watch(focusStarterExerciseIdsProvider)
-                : ref.read(focusStarterExerciseIdsProvider))
-            .value?[focus?.id] ??
-        const <String>[];
+    final starters = focus == null
+        ? const <String>[]
+        : ref.watch(focusStarterExerciseIdsProvider).value?[focus.id] ??
+            const <String>[];
     return _visibleSections(
       widget.sections,
       focus: focus,
@@ -384,9 +376,9 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
   }
 
   /// With a Focus selected and no search, the user's own exercises under it
-  /// come first, then the Focus's staples, then the rest of it by Category. A search looks
-  /// through everything, with the Focus's matches ranked first, so an
-  /// exercise outside the Focus is always one search away.
+  /// come first, then the Focus's staples, then the rest of it by Category.
+  /// A search looks through everything, with the Focus's matches ranked
+  /// first, so an exercise outside the Focus is always one search away.
   List<ExerciseCatalogSectionRecord> _visibleSections(
     List<ExerciseCatalogSectionRecord> sections, {
     required FocusRecord? focus,
@@ -454,21 +446,19 @@ class _CatalogSectionsState extends ConsumerState<_CatalogSections> {
       ];
     }
 
-    final matchingById = <String, ExerciseRecord>{
-      for (final section in filteredSections)
-        for (final exercise in section.exercises) exercise.id: exercise,
+    final groups = focusExerciseGroups(
+      exercises: [for (final section in filteredSections) ...section.exercises],
+      focusId: focus.id,
+      uses: focusUses,
+      starterIds: starterIds,
+    );
+    final history = [for (final (exercise, _) in groups.recent) exercise];
+    final staples = groups.staples;
+    final ledIds = {
+      for (final exercise in history) exercise.id,
+      for (final exercise in staples) exercise.id,
     };
-    final history = <ExerciseRecord>[
-      for (final use in focusUses)
-        if (matchingById[use.exerciseId] case final exercise?) exercise,
-    ];
-    final historyIds = {for (final exercise in history) exercise.id};
-    final staples = <ExerciseRecord>[
-      for (final id in starterIds)
-        if (!historyIds.contains(id))
-          if (matchingById[id] case final exercise?) exercise,
-    ];
-    final ledIds = {...historyIds, for (final exercise in staples) exercise.id};
+    // The rest of the Focus stays grouped by Category, as the whole library is.
     return <ExerciseCatalogSectionRecord>[
       if (history.isNotEmpty)
         ExerciseCatalogSectionRecord(
@@ -1160,58 +1150,26 @@ class _FocusChips extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            _FocusChip(
+            FocusChip(
               key: ExerciseCatalogPicker.focusFilterOptionKey(null),
               label: l10n.exerciseCatalogFocusAll,
               icon: null,
-              isSelected: selectedFocusId == null,
-              onSelected: () => onSelected(null),
+              selected: selectedFocusId == null,
+              onSelected: (_) => onSelected(null),
             ),
             for (final focus in focuses) ...[
               const SizedBox(width: AppDimens.dense / 2),
-              _FocusChip(
+              FocusChip(
                 key: ExerciseCatalogPicker.focusFilterOptionKey(focus.id),
                 label: focus.name,
                 icon: focusIcon(focus.id),
-                isSelected: selectedFocusId == focus.id,
-                onSelected: () => onSelected(focus.id),
+                selected: selectedFocusId == focus.id,
+                onSelected: (_) => onSelected(focus.id),
               ),
             ],
           ],
         ),
       ),
-    );
-  }
-}
-
-class _FocusChip extends StatelessWidget {
-  const _FocusChip({
-    super.key,
-    required this.label,
-    required this.icon,
-    required this.isSelected,
-    required this.onSelected,
-  });
-
-  final String label;
-  final IconData? icon;
-  final bool isSelected;
-  final VoidCallback onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final icon = this.icon;
-    final style = focusChipStyle(context, isSelected: isSelected);
-    return ChoiceChip(
-      label: Text(label),
-      avatar: icon == null ? null : Icon(icon, size: 18, color: style.iconColor),
-      selected: isSelected,
-      selectedColor: style.selectedColor,
-      side: style.side,
-      labelStyle: style.labelStyle,
-      showCheckmark: false,
-      materialTapTargetSize: MaterialTapTargetSize.padded,
-      onSelected: (_) => onSelected(),
     );
   }
 }

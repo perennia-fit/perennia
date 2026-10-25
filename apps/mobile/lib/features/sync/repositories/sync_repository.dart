@@ -64,6 +64,12 @@ const _planTreeSyncEntities = <_PlanSyncEntity>[
     remoteEntity: AppDatabase.routineEntriesTable,
   ),
 ];
+// A Focus syncs like the plan rows: an ordinary LWW row through the generic
+// plan path, with soft references from Workouts, Templates and Exercises.
+const _focusSyncEntity = _PlanSyncEntity(
+  localEntityTable: AppDatabase.focusesTable,
+  remoteEntity: AppDatabase.focusesTable,
+);
 const _templateLinksSyncEntity = _PlanSyncEntity(
   localEntityTable: AppDatabase.templateLinksTable,
   remoteEntity: AppDatabase.templateLinksTable,
@@ -356,10 +362,11 @@ class SyncRepository implements SyncCycleRepository {
         session: session,
         deviceId: deviceId,
       );
-      final focusesResult = await _pushPendingFocusesWithClient(
+      final focusesResult = await _pushPendingPlanEntityWithClient(
         client: client,
         session: session,
         deviceId: deviceId,
+        entity: _focusSyncEntity,
       );
       final exercisesResult = await _pushPendingExercisesWithClient(
         client: client,
@@ -675,20 +682,6 @@ class SyncRepository implements SyncCycleRepository {
     );
   }
 
-  Future<SyncPushResult> _pushPendingFocusesWithClient({
-    required PerenniaApiClient client,
-    required AuthSession session,
-    required String deviceId,
-  }) {
-    return _pushPendingEntityRowsWithClient(
-      client: client,
-      session: session,
-      deviceId: deviceId,
-      entity: AppDatabase.focusesTable,
-      loadPendingRows: _loadPendingFocusRows,
-      acknowledgePushResponse: _acknowledgeFocusPushResponse,
-    );
-  }
 
   Future<SyncPushResult> _pushPendingExercisesWithClient({
     required PerenniaApiClient client,
@@ -1007,10 +1000,11 @@ class SyncRepository implements SyncCycleRepository {
           session: session,
           deviceId: deviceId,
         );
-        await _pushPendingFocusesWithClient(
+        await _pushPendingPlanEntityWithClient(
           client: client,
           session: session,
           deviceId: deviceId,
+          entity: _focusSyncEntity,
         );
         await _pushPendingExercisesWithClient(
           client: client,
@@ -1167,7 +1161,6 @@ class SyncRepository implements SyncCycleRepository {
     required int limit,
   }) async {
     final liveExerciseCategorySnapshotIds = <String>{};
-    final liveFocusSnapshotIds = <String>{};
     final liveExerciseSnapshotIds = <String>{};
     final liveLoggedSetSnapshotIds = <String>{};
     final liveFoodSnapshotIds = <String>{};
@@ -1186,6 +1179,7 @@ class SyncRepository implements SyncCycleRepository {
     final liveIntegrationConsentSnapshotIds = <String>{};
     final livePlanSnapshotIds = <String, Set<String>>{
       for (final entity in <_PlanSyncEntity>[
+        _focusSyncEntity,
         ..._workoutStructureSyncEntities,
         ..._planTreeSyncEntities,
         _templateLinksSyncEntity,
@@ -1215,9 +1209,6 @@ class SyncRepository implements SyncCycleRepository {
         livePlanSnapshotIds[change.entity]?.add(change.id);
         if (change.entity == AppDatabase.exerciseCategoriesTable) {
           liveExerciseCategorySnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.focusesTable) {
-          liveFocusSnapshotIds.add(change.id);
         }
         if (change.entity == AppDatabase.exercisesTable) {
           liveExerciseSnapshotIds.add(change.id);
@@ -1289,10 +1280,6 @@ class SyncRepository implements SyncCycleRepository {
     await _database.transaction(() async {
       await _markPreviouslySyncedExerciseCategoryRowsAbsentFromSnapshotDeleted(
         liveExerciseCategorySnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedFocusRowsAbsentFromSnapshotDeleted(
-        liveFocusSnapshotIds,
         DateTime.parse(snapshotServerClock).toUtc(),
       );
       await _markPreviouslySyncedExerciseRowsAbsentFromSnapshotDeleted(
@@ -1367,6 +1354,7 @@ class SyncRepository implements SyncCycleRepository {
         _templateLinksSyncEntity,
         ..._planTreeSyncEntities.reversed,
         ..._workoutStructureSyncEntities.reversed,
+        _focusSyncEntity,
       ]) {
         await _repositories.activityLog.markPlanRowsAbsentFromSnapshotDeleted(
           entityTable: entity.localEntityTable,
@@ -1400,17 +1388,6 @@ class SyncRepository implements SyncCycleRepository {
       for (final change in orderedChanges) {
         if (change.entity == AppDatabase.exerciseCategoriesTable) {
           final applied = await _applyPulledExerciseCategoryChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.focusesTable) {
-          final applied = await _applyPulledFocusChange(
             change,
             deviceId: deviceId,
             syncBatchId: syncBatchId,
@@ -2364,40 +2341,6 @@ class SyncRepository implements SyncCycleRepository {
     return true;
   }
 
-  Future<bool> _applyPulledFocusChange(
-    SyncPulledChange change, {
-    required String deviceId,
-    required String syncBatchId,
-  }) async {
-    final existing = await (_database.select(_database.focuses)
-          ..where((row) => row.id.equals(change.id)))
-        .getSingleOrNull();
-    final incomingUpdatedAt = DateTime.parse(change.updatedAt).toUtc();
-    final existingDeviceId = existing?.syncDeviceId ?? deviceId;
-    if (existing != null &&
-        !_lwwWins(
-          incomingUpdatedAt,
-          change.deviceId,
-          existing.updatedAt.toUtc(),
-          existingDeviceId,
-        )) {
-      return false;
-    }
-
-    await _repositories.focuses.applySyncImage(
-      image: _syncImageFromPull(change),
-      deviceId: change.deviceId,
-      actor: _actorForPulledChange(change),
-      batchId: change.batchId ?? syncBatchId,
-      activityLogId: change.activityLogId,
-      activityBeforeImage: change.beforeImage,
-      activityAfterImage: change.afterImage,
-      activityOccurredAt: change.occurredAt == null
-          ? null
-          : DateTime.parse(change.occurredAt!).toUtc(),
-    );
-    return true;
-  }
 
   Future<bool> _applyPulledExerciseChange(
     SyncPulledChange change, {
@@ -2560,30 +2503,6 @@ class SyncRepository implements SyncCycleRepository {
     }
   }
 
-  Future<void> _markPreviouslySyncedFocusRowsAbsentFromSnapshotDeleted(
-    Set<String> liveSnapshotIds,
-    DateTime timestamp,
-  ) async {
-    final localRows = await (_database.select(_database.focuses)
-          ..where(
-            (row) =>
-                row.syncPreviouslySynced.equals(true) & row.deletedAt.isNull(),
-          ))
-        .get();
-    for (final row in localRows) {
-      if (liveSnapshotIds.contains(row.id)) {
-        continue;
-      }
-      await (_database.update(_database.focuses)
-            ..where((table) => table.id.equals(row.id)))
-          .write(
-        FocusesCompanion(
-          updatedAt: Value<DateTime>(timestamp),
-          deletedAt: Value<DateTime?>(timestamp),
-        ),
-      );
-    }
-  }
 
   Future<void> _markPreviouslySyncedExerciseRowsAbsentFromSnapshotDeleted(
     Set<String> liveSnapshotIds,
@@ -3058,22 +2977,6 @@ class SyncRepository implements SyncCycleRepository {
         .get();
   }
 
-  Future<List<ActivityLogRow>> _loadPendingFocusRows() {
-    return (_database.select(_database.activityLog)
-          ..where(
-            (row) =>
-                row.deletedAt.isNull() &
-                row.syncAcknowledgedAt.isNull() &
-                row.entityTable.equals(AppDatabase.focusesTable) &
-                row.afterImage.isNotNull(),
-          )
-          ..orderBy([
-            (row) => OrderingTerm.asc(row.occurredAt),
-            (row) => OrderingTerm.asc(row.id),
-          ])
-          ..limit(_syncPushBatchLimit))
-        .get();
-  }
 
   Future<List<ActivityLogRow>> _loadPendingExerciseRows() {
     return (_database.select(_database.activityLog)
@@ -3824,59 +3727,6 @@ class SyncRepository implements SyncCycleRepository {
               ..where((row) => row.id.equals(change.id)))
             .write(
           ExerciseCategoriesCompanion(
-            syncDeviceId: Value<String?>(change.deviceId),
-            syncPreviouslySynced: const Value<bool>(true),
-            updatedAt: Value<DateTime>(
-              DateTime.parse(change.updatedAt).toUtc(),
-            ),
-          ),
-        );
-      }
-    });
-
-    return List<String>.unmodifiable(acknowledgedRows.map((row) => row.id));
-  }
-  Future<List<String>> _acknowledgeFocusPushResponse(
-    List<ActivityLogRow> pendingRows,
-    SyncPushResponse response,
-  ) async {
-    final acceptedEntityIds = response.accepted.toSet();
-    final appliedById = <String, SyncAppliedChange>{
-      for (final change in response.applied) change.id: change,
-    };
-    final acknowledgedRows = pendingRows
-        .where((row) => acceptedEntityIds.contains(row.entityId))
-        .toList(growable: false);
-    final acknowledgedAt = DateTime.now().toUtc();
-
-    await _database.transaction(() async {
-      for (final row in acknowledgedRows) {
-        final applied = appliedById[row.entityId];
-        await (_database.update(_database.activityLog)
-              ..where((table) => table.id.equals(row.id)))
-            .write(
-          ActivityLogCompanion(
-            syncAcknowledgedAt: Value<DateTime?>(acknowledgedAt),
-            afterImage: applied == null
-                ? const Value.absent()
-                : Value<String?>(
-                    _imageWithUpdatedAt(row.afterImage, applied.updatedAt),
-                  ),
-          ),
-        );
-        await (_database.update(_database.focuses)
-              ..where((table) => table.id.equals(row.entityId)))
-            .write(
-          const FocusesCompanion(
-            syncPreviouslySynced: Value<bool>(true),
-          ),
-        );
-      }
-      for (final change in response.applied) {
-        await (_database.update(_database.focuses)
-              ..where((row) => row.id.equals(change.id)))
-            .write(
-          FocusesCompanion(
             syncDeviceId: Value<String?>(change.deviceId),
             syncPreviouslySynced: const Value<bool>(true),
             updatedAt: Value<DateTime>(
@@ -4653,6 +4503,9 @@ final class _PlanSyncEntity {
 _PlanSyncEntity? _planSyncEntityForRemote(String remoteEntity) {
   if (remoteEntity == _templateLinksSyncEntity.remoteEntity) {
     return _templateLinksSyncEntity;
+  }
+  if (remoteEntity == _focusSyncEntity.remoteEntity) {
+    return _focusSyncEntity;
   }
   for (final entity in <_PlanSyncEntity>[
     ..._workoutStructureSyncEntities,

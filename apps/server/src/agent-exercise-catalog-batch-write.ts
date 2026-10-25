@@ -7,6 +7,10 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentCatalogUnavailableResponseSchema,
+  createActiveFocusCheck,
+  FOCUS_NOT_FOUND_RULE,
+  focusNotFoundMessage,
+  parseJsonStringArray,
   type AgentCatalogStore,
 } from "./agent-catalog.js";
 import type { ServerDatabase } from "./db/client.js";
@@ -300,6 +304,11 @@ type PreparedExercise = {
   updatedAt: string;
   deletedAt: string | null;
   payload: Record<string, unknown>;
+  // True when the request omitted focusIds. The payload is rebuilt whole, so
+  // the write transaction then carries the stored row's `focus_ids` (its
+  // before-image) through; `payload.focus_ids` holds the value for an
+  // Exercise with no stored row (the customized Platform Exercise's, or []).
+  keepStoredFocusIds: boolean;
   result: z.infer<typeof AgentExerciseCatalogBatchWriteExerciseResultSchema>;
 };
 
@@ -384,6 +393,7 @@ export async function prepareAgentExerciseCatalogBatchWrite({
   const seenExerciseIds = new Set<string>();
   const preparedCategories: PreparedCategory[] = [];
   const preparedExercises: PreparedExercise[] = [];
+  const isActiveFocus = createActiveFocusCheck({ catalogStore, userId });
 
   // Category ids created earlier in this same batch are valid exercise
   // category references even though they are not yet persisted.
@@ -502,29 +512,20 @@ export async function prepareAgentExerciseCatalogBatchWrite({
 
     let focusIds: string[];
     if (item.focusIds === undefined) {
-      // The payload below is rebuilt whole, so an edit that does not mention
-      // Focus must carry the stored membership through rather than wipe it.
-      const storedFocusIds = await catalogStore.getStoredExerciseFocusIds({
-        userId,
-        exerciseId: item.id,
-      });
-      focusIds =
-        storedFocusIds ?? customizedPlatformExercise?.focusIds ?? [];
+      focusIds = customizedPlatformExercise?.focusIds ?? [];
     } else {
       focusIds = [...new Set(item.focusIds)];
       let missingFocus = false;
       for (const focusId of focusIds) {
-        const focus = await catalogStore.getFocusById({ userId, focusId });
-        if (focus === null) {
+        if (!(await isActiveFocus(focusId))) {
           missingFocus = true;
           errors.push(
             exerciseIssue({
               field: `exercises[${itemIndex}].focusIds`,
               itemIndex,
               exerciseId: item.id,
-              rule: "focus_not_found",
-              message:
-                "focusIds must reference active Focuses visible to the authenticated account (see GET /agent/focuses).",
+              rule: FOCUS_NOT_FOUND_RULE,
+              message: focusNotFoundMessage("focusIds"),
             }),
           );
           break;
@@ -562,6 +563,7 @@ export async function prepareAgentExerciseCatalogBatchWrite({
       updatedAt,
       deletedAt: item.deletedAt,
       payload,
+      keepStoredFocusIds: item.focusIds === undefined,
       result: AgentExerciseCatalogBatchWriteExerciseResultSchema.parse({
         id: item.id,
         name: item.name,
@@ -655,16 +657,25 @@ export function createDrizzleAgentExerciseCatalogBatchWriteStore(
             table: schema.exercises,
             id: exercise.id,
           });
+          const payload =
+            exercise.keepStoredFocusIds && beforeImage !== null
+              ? {
+                  ...exercise.payload,
+                  focus_ids: JSON.stringify(
+                    parseJsonStringArray(beforeImage.focus_ids),
+                  ),
+                }
+              : exercise.payload;
           exerciseChanges.push({
             id: exercise.id,
-            payload: exercise.payload,
+            payload,
             updatedAt: exercise.updatedAt,
             deletedAt: exercise.deletedAt,
             activityLogId: `agent:${batchId}:exercise:${exercise.id}`,
             actor: "agent",
             batchId,
             beforeImage,
-            afterImage: exercise.payload,
+            afterImage: payload,
             occurredAt: exercise.updatedAt,
           });
         }

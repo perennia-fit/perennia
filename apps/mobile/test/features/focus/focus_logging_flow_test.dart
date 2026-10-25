@@ -106,7 +106,9 @@ void main() {
       await tester.tap(find.byKey(StartWorkoutSheet.emptyWorkoutKey));
       await tester.pumpAndSettle();
 
-      expect(await result, isA<StartEmpty>());
+      final choice = await result;
+      expect(choice, isA<StartWithFocus>());
+      expect((choice! as StartWithFocus).focusId, isNull);
     });
 
     testWidgets('meets tap-target and contrast guidelines in both themes', (

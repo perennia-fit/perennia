@@ -52,7 +52,7 @@ class FocusRepository {
       await _database.into(_database.focuses).insert(
             FocusesCompanion.insert(
               id: id,
-              name: _normalizeFocusNameForStorage(name),
+              name: _normalizeCategoryNameForStorage(name),
               sortOrder: _nextPosition(activeRows, (row) => row.sortOrder),
               updatedAt: context.timestamp,
             ),
@@ -75,7 +75,7 @@ class FocusRepository {
     return _database.transaction(() async {
       final before = await _requireRow(id);
       await _ensureUniqueActiveName(name, exceptId: id);
-      final normalized = _normalizeFocusNameForStorage(name);
+      final normalized = _normalizeCategoryNameForStorage(name);
       if (normalized == before.name) {
         return;
       }
@@ -102,16 +102,12 @@ class FocusRepository {
     );
     return _database.transaction(() async {
       final activeRows = await _activeQuery().get();
-      final activeIds = activeRows.map((row) => row.id).toSet();
-      if (focusIds.length != activeIds.length ||
-          focusIds.toSet().length != focusIds.length ||
-          !focusIds.every(activeIds.contains)) {
-        throw ArgumentError.value(
-          focusIds,
-          'focusIds',
-          'Ordering must include each active Focus exactly once.',
-        );
-      }
+      _requireEachActiveIdOnce(
+        focusIds,
+        activeRows.map((row) => row.id),
+        name: 'focusIds',
+        noun: 'Focus',
+      );
       final beforeById = <String, FocusRow>{
         for (final row in activeRows) row.id: row,
       };
@@ -214,9 +210,8 @@ class FocusRepository {
               .map(
                 (row) => FocusExerciseUse(
                   exerciseId: row.read<String>('exercise_id'),
-                  lastPerformedAt: _focusSqlDateTime(
-                    row.data['last_started_at'],
-                  ),
+                  lastPerformedAt:
+                      row.read<DateTime>('last_started_at').toUtc(),
                   workoutCount: row.read<int>('workout_count'),
                 ),
               )
@@ -224,47 +219,6 @@ class FocusRepository {
         );
   }
 
-  /// Applies a pulled Focus sync image: upserts the row, stamping the source
-  /// device, and appends a sync-acknowledged Activity Log entry so the value
-  /// it replaced stays recoverable.
-  Future<void> applySyncImage({
-    required Map<String, Object?> image,
-    required String deviceId,
-    required String batchId,
-    String actor = 'sync',
-    String? activityLogId,
-    Map<String, Object?>? activityBeforeImage,
-    Map<String, Object?>? activityAfterImage,
-    DateTime? activityOccurredAt,
-  }) {
-    final context = _repositories._writeContexts.create(
-      actor: actor,
-      batchId: batchId,
-    );
-    return _database.transaction(() async {
-      final id = _activityRequiredString(image, 'id');
-      final localBeforeImage = await _imageFor(id);
-      await _database.into(_database.focuses).insertOnConflictUpdate(
-            _focusSyncCompanionFromImage(image, syncDeviceId: deviceId),
-          );
-      final localAfterImage = await _imageFor(id);
-      if (localAfterImage == null ||
-          (localBeforeImage != null &&
-              _activityImagesEqual(localBeforeImage, localAfterImage))) {
-        return;
-      }
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.focusesTable,
-        entityId: id,
-        beforeImage: activityBeforeImage ?? localBeforeImage,
-        afterImage: activityAfterImage ?? localAfterImage,
-        id: activityLogId,
-        occurredAt: activityOccurredAt,
-        syncAcknowledgedAt: context.timestamp,
-      );
-    });
-  }
 
   /// Inserts the starter Focuses this device has never had. Runs inside the
   /// Platform Library seed transaction; a starter the user archived or
@@ -362,19 +316,6 @@ class DuplicateFocusNameException implements Exception {
   String toString() => 'Duplicate Focus name: $name.';
 }
 
-String _normalizeFocusNameForStorage(String name) => name.trim();
-
-// `customSelect` hands back the stored Drift value of a DATETIME column,
-// which is Unix seconds unless the database stores DateTimes as text.
-DateTime _focusSqlDateTime(Object? value) {
-  return switch (value) {
-    final int seconds =>
-      DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true),
-    final String text => DateTime.parse(text).toUtc(),
-    _ => throw StateError('Unexpected stored date value: $value.'),
-  };
-}
-
 FocusRecord _focusFromRow(FocusRow row) {
   return FocusRecord(
     id: row.id,
@@ -435,10 +376,14 @@ String _encodeFocusIds(Iterable<String> focusIds) {
   return jsonEncode(focusIds.toSet().toList(growable: false));
 }
 
+// Most exercises a user creates name no Focus; skip the decode for them. The
+// record that receives the list makes its own unmodifiable copy.
 List<String> _decodeFocusIds(String encoded) {
-  final decoded = jsonDecode(encoded);
-  if (decoded is! List) {
+  if (encoded == '[]') {
     return const <String>[];
   }
-  return List<String>.unmodifiable(decoded.whereType<String>());
+  final decoded = jsonDecode(encoded);
+  return decoded is List
+      ? decoded.whereType<String>().toList(growable: false)
+      : const <String>[];
 }

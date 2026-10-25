@@ -30,6 +30,16 @@ Future<FocusPick?> showFocusPickerSheet(
   );
 }
 
+/// Shows the picker and returns the pick only when it differs from
+/// [current], so callers write a change and nothing else.
+Future<FocusPick?> pickChangedFocus(
+  BuildContext context, {
+  required String? current,
+}) async {
+  final pick = await showFocusPickerSheet(context, selectedFocusId: current);
+  return pick == null || pick.focusId == current ? null : pick;
+}
+
 class _FocusPickerSheet extends ConsumerWidget {
   const _FocusPickerSheet({required this.selectedFocusId});
 

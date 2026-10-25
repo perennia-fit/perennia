@@ -110,7 +110,6 @@ final class WorkoutTemplateSummaryRecord {
     required this.id,
     required this.name,
     required this.notes,
-    this.focusId,
     required this.exerciseCount,
     required this.updatedAt,
     required this.deletedAt,
@@ -119,7 +118,6 @@ final class WorkoutTemplateSummaryRecord {
   final String id;
   final String name;
   final String? notes;
-  final String? focusId;
   final int exerciseCount;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -2053,7 +2051,6 @@ List<WorkoutTemplateSummaryRecord> _workoutTemplateSummariesFromJoinedRows(
         id: template.id,
         name: template.name,
         notes: template.notes,
-        focusId: template.focusId,
         exerciseCount: exerciseIdsByTemplate[id]?.length ?? 0,
         updatedAt: template.updatedAt.toUtc(),
         deletedAt: template.deletedAt?.toUtc(),
