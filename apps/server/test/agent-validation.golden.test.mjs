@@ -18,25 +18,61 @@ import {
   validateAgentTemplateGroup
 } from "../src/index.ts";
 
-const SHARED_VALIDATION_DOMAINS = new Set([
-  "set-validation",
-  "nutrient-validation",
-  "dose-validation",
-  "nutrition-goal-validation",
-  "plan-validation",
-  "predefined-set-validation",
-  "settings-validation"
+// One entry per shared validation domain this runner implements. Dispatch is a
+// lookup, not a fallthrough: a vector whose domain is missing here fails loudly
+// rather than being judged by whichever validator happened to sit last.
+const VALIDATORS_BY_DOMAIN = new Map([
+  ["set-validation", (vectorCase) => validateAgentSet(vectorCase.input)],
+  ["nutrient-validation", (vectorCase) => validateAgentFoodEntry(vectorCase.input)],
+  ["dose-validation", (vectorCase) => validateAgentDose(vectorCase.input)],
+  [
+    "nutrition-goal-validation",
+    (vectorCase) => validateAgentNutritionGoalTargets(vectorCase.input)
+  ],
+  ["plan-validation", (vectorCase) => validatePlanVectorCase(vectorCase)],
+  [
+    "predefined-set-validation",
+    (vectorCase) => validateAgentPredefinedSet(vectorCase.input)
+  ],
+  ["settings-validation", (vectorCase) => validateAgentSettings(vectorCase.input)]
+]);
+
+// Every other domain under packages/golden-vectors, with who checks it. Every
+// vector must land in exactly one place, so a domain in neither table is a
+// vector no TypeScript code checks — the silent gap this guard exists to close.
+const DOMAINS_OWNED_ELSEWHERE = new Set([
+  "analytics", // analytics.golden.test.mjs (also claims vectors with no domain)
+  "nutrition-analytics", // nutrition-analytics.golden.test.mjs
+  "reading-normalization", // metric-reading-normalization.golden.test.mjs
+  "workout-capture", // agent-plan-capture.golden.test.mjs
+  "plan-divergence", // agent-plan-capture.golden.test.mjs
+  "template-materialize", // agent-plan-materialize.test.mjs (needs Postgres)
+  "routine-up-next", // agent-plan-reads.test.mjs (needs Postgres)
+  "effect-window", // effect-window.golden.test.mjs
+  // Dart only: Body Tracker measurements have no server implementation, so
+  // these vectors pin the app against its own spec.
+  "measurement-validation",
+  "measurement-delta"
 ]);
 
 test("server validation matches the shared golden vectors", async () => {
   const vectorsUrl = new URL("../../../packages/golden-vectors/vectors/", import.meta.url);
-  const filenames = (await readdir(vectorsUrl)).filter((name) => name.endsWith(".json"));
+  const filenames = (await readdir(vectorsUrl)).filter(
+    (name) => name.endsWith(".json") && !name.endsWith(".schema.json")
+  );
 
   for (const filename of filenames) {
     const vector = JSON.parse(await readFile(new URL(filename, vectorsUrl), "utf8"));
-    if (!SHARED_VALIDATION_DOMAINS.has(vector.domain)) {
+    if (vector.domain === undefined || DOMAINS_OWNED_ELSEWHERE.has(vector.domain)) {
       continue;
     }
+    const validate = VALIDATORS_BY_DOMAIN.get(vector.domain);
+    assert.ok(
+      validate,
+      `${filename}: no TypeScript golden runner implements domain ` +
+        `"${String(vector.domain)}". Add it to VALIDATORS_BY_DOMAIN, or to ` +
+        "DOMAINS_OWNED_ELSEWHERE if another runner checks it."
+    );
 
     // The TS limits and the vector's limits block must agree exactly so the
     // implementation and the spec stay in lockstep.
@@ -66,20 +102,7 @@ test("server validation matches the shared golden vectors", async () => {
     }
 
     for (const vectorCase of vector.cases) {
-      const result =
-        vector.domain === "set-validation"
-          ? validateAgentSet(vectorCase.input)
-          : vector.domain === "nutrient-validation"
-            ? validateAgentFoodEntry(vectorCase.input)
-            : vector.domain === "nutrition-goal-validation"
-              ? validateAgentNutritionGoalTargets(vectorCase.input)
-              : vector.domain === "predefined-set-validation"
-                ? validateAgentPredefinedSet(vectorCase.input)
-                : vector.domain === "plan-validation"
-                  ? validatePlanVectorCase(vectorCase)
-                : vector.domain === "settings-validation"
-                  ? validateAgentSettings(vectorCase.input)
-                  : validateAgentDose(vectorCase.input);
+      const result = validate(vectorCase);
       const expected = vectorCase.expected;
       const reason = `${filename} ${vectorCase.name}`;
 

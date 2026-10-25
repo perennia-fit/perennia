@@ -112,6 +112,23 @@ const DEPENDENCY_HYGIENE_PATHS = [
   '.github/workflows/ci.yml',
 ];
 
+// The ci.yml "Dart golden vectors" step: every Dart test that reads
+// packages/golden-vectors, discovered with the same `git grep` rather than
+// listed, so a new vector runner cannot be left out. The list is built here
+// instead of with `$(...)` so the command also works under cmd.exe.
+function runDartGoldenRunners() {
+  const found = capture(
+    'git grep -l -e golden-vectors -- "test/*_test.dart"', { cwd: MOBILE },
+  );
+  const runners = found.ok ? found.out.split('\n').filter(Boolean) : [];
+  if (!runners.length) {
+    console.error('  ✖ No Dart test reads packages/golden-vectors');
+    return false;
+  }
+  console.log(runners.map((f) => `  ${f}`).join('\n'));
+  return run(`flutter test ${runners.join(' ')}`, { cwd: MOBILE });
+}
+
 const JOBS = {
   dependency_hygiene: {
     title: 'Dependency update coverage',
@@ -139,19 +156,17 @@ const JOBS = {
     title: 'Golden-vector parity (TS + Dart)',
     paths: [
       'apps/server/src/analytics/**', 'apps/server/src/metric-reading-normalization.ts',
+      'apps/server/src/agent-validation.ts', 'apps/server/src/agent-plan-capture.ts',
       'apps/server/test/analytics.golden.test.mjs',
       'apps/server/test/metric-reading-normalization.golden.test.mjs',
+      'apps/server/test/agent-validation.golden.test.mjs',
+      'apps/server/test/agent-plan-capture.golden.test.mjs',
       'apps/server/test/nutrition-analytics.golden.test.mjs',
       'apps/server/src/agent-protocols.ts',
       'apps/server/test/effect-window.golden.test.mjs',
       'apps/server/package.json', '.node-version',
-      'apps/mobile/lib/domain/analytics/**', 'apps/mobile/lib/domain/metrics/**',
-      'apps/mobile/lib/domain/nutrition/**', 'apps/mobile/lib/domain/effect/**',
-      'apps/mobile/lib/domain/training/training_dimensions.dart',
-      'apps/mobile/test/domain/exercise_analytics_test.dart',
-      'apps/mobile/test/domain/metric_reading_normalization_test.dart',
-      'apps/mobile/test/domain/nutrition_aggregation_golden_test.dart',
-      'apps/mobile/test/domain/effect_window_golden_test.dart',
+      'apps/mobile/lib/domain/**', 'apps/mobile/lib/features/body_tracker/**',
+      'apps/mobile/test/domain/**', 'apps/mobile/test/features/body_tracker/**',
       'apps/mobile/pubspec.yaml', 'pubspec.yaml', 'pubspec.lock',
       'packages/golden-vectors/**', 'pnpm-workspace.yaml', 'pnpm-lock.yaml',
       'tsconfig.base.json', '.github/workflows/ci.yml',
@@ -160,7 +175,7 @@ const JOBS = {
     run: () =>
       run('flutter pub get') &&
       run('corepack pnpm --filter @perennia/server test:golden-vectors') &&
-      run('flutter test test/domain/exercise_analytics_test.dart test/domain/metric_reading_normalization_test.dart test/domain/nutrition_aggregation_golden_test.dart test/domain/effect_window_golden_test.dart', { cwd: MOBILE }),
+      runDartGoldenRunners(),
   },
 
   contract: {
