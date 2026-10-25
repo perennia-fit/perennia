@@ -270,6 +270,146 @@ test(
   }
 );
 
+// Category is optional on the app (`Exercises.categoryId` is nullable), so a
+// synced User Library exercise may carry `category_id: null` or omit it. The
+// catalog projection used to require a non-empty category and turned the whole
+// listing into a 500 for that user.
+test(
+  "a synced User Library exercise with no Category lists with a null " +
+    "category, and category filtering still matches categorized exercises",
+  { skip },
+  async () => {
+    const serverApp = await createMigratedServerApp({
+      databaseUrl,
+      logger: { info() {}, error() {} },
+      auth: {
+        baseUrl: "http://localhost",
+        secret: "test-secret-at-least-thirty-two-characters",
+        emailSender: null
+      },
+      rateLimit: false
+    });
+
+    try {
+      const user = await createSignedInUser(serverApp);
+      const agentSecret = await createAgentKey(serverApp, user.sessionToken);
+
+      const categoryId = randomUUID();
+      const uncategorizedId = randomUUID();
+      const missingCategoryId = randomUUID();
+      const categorizedId = randomUUID();
+      const updatedAt = "2025-07-01T08:00:00.000Z";
+
+      await syncPushOk(serverApp.app, user.sessionToken, {
+        deviceId: "device-a",
+        entity: "exercise_categories",
+        changes: [
+          {
+            id: categoryId,
+            payload: categoryPayload(categoryId, "Grip Work", updatedAt),
+            updatedAt,
+            deletedAt: null
+          }
+        ]
+      });
+      const { category_id: _omitted, ...missingCategoryPayload } =
+        exercisePayload({
+          id: missingCategoryId,
+          name: "Uncategorized Farmer Hold",
+          categoryId: null,
+          updatedAt
+        });
+      await syncPushOk(serverApp.app, user.sessionToken, {
+        deviceId: "device-a",
+        entity: "exercises",
+        changes: [
+          {
+            id: uncategorizedId,
+            payload: exercisePayload({
+              id: uncategorizedId,
+              name: "Uncategorized Pinch Carry",
+              categoryId: null,
+              updatedAt
+            }),
+            updatedAt,
+            deletedAt: null
+          },
+          {
+            id: missingCategoryId,
+            payload: missingCategoryPayload,
+            updatedAt,
+            deletedAt: null
+          },
+          {
+            id: categorizedId,
+            payload: exercisePayload({
+              id: categorizedId,
+              name: "Uncategorized Grip Crush",
+              categoryId,
+              updatedAt
+            }),
+            updatedAt,
+            deletedAt: null
+          }
+        ]
+      });
+
+      const list = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises?search=Uncategorized&limit=100"
+      );
+      assert.equal(list.status, 200);
+      const listBody = await list.json();
+      const byId = new Map(
+        listBody.exercises.map((exercise) => [exercise.id, exercise])
+      );
+      assert.equal(byId.get(uncategorizedId)?.category, null);
+      assert.equal(byId.get(missingCategoryId)?.category, null);
+      assert.deepEqual(byId.get(categorizedId)?.category, {
+        id: categoryId,
+        name: "Grip Work"
+      });
+
+      // The unfiltered listing (Platform Library included) also serves.
+      const fullList = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises?limit=100"
+      );
+      assert.equal(fullList.status, 200);
+
+      // resolve projects the same shape.
+      const resolve = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises/resolve?name=Uncategorized%20Pinch%20Carry"
+      );
+      assert.equal(resolve.status, 200);
+      const resolveBody = await resolve.json();
+      assert.equal(resolveBody.resolution, "matched");
+      assert.equal(resolveBody.matchedExercise.id, uncategorizedId);
+      assert.equal(resolveBody.matchedExercise.category, null);
+
+      // A category filter matches by name or id and skips uncategorized rows.
+      for (const filter of ["grip%20work", categoryId]) {
+        const filtered = await getAgent(
+          serverApp.app,
+          agentSecret,
+          `/agent/exercises?search=Uncategorized&category=${filter}`
+        );
+        assert.equal(filtered.status, 200);
+        assert.deepEqual(
+          (await filtered.json()).exercises.map((exercise) => exercise.id),
+          [categorizedId]
+        );
+      }
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
 function categoryPayload(id, name, updatedAt) {
   return {
     id,

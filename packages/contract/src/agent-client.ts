@@ -412,7 +412,7 @@ export type AgentExercise = {
   "id": string;
   "library": AgentExerciseLibrary;
   "name": string;
-  "category": AgentExerciseCategory;
+  "category": NullableAgentExerciseCategory;
   "dimensions": Array<AgentExerciseDimensionId>;
   "equipment": Array<string>;
   "focusIds"?: Array<string>;
@@ -518,7 +518,7 @@ export type AgentExerciseListItem = {
   "id": string;
   "name": string;
   "library"?: AgentExerciseLibrary;
-  "category"?: AgentExerciseCategory;
+  "category"?: NullableAgentExerciseCategory;
   "dimensions"?: Array<AgentExerciseDimensionId>;
   "equipment"?: Array<string>;
   "focusIds"?: Array<string>;
@@ -1993,6 +1993,8 @@ export type AgentWorkoutTemplateListResponse = {
 export type NullableAgentAnalyticsRecord = AgentAnalyticsRecord | unknown | null;
 
 export type NullableAgentExercise = AgentExercise | unknown | null;
+
+export type NullableAgentExerciseCategory = AgentExerciseCategory | unknown | null;
 
 export type NullableAgentExerciseResolveGuidance = AgentExerciseResolveGuidance | unknown | null;
 

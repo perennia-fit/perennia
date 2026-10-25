@@ -91,6 +91,14 @@ export const AgentExerciseCategorySchema = z
   })
   .openapi("AgentExerciseCategory");
 
+// Category is optional on an Exercise: the app's `Exercises.categoryId` is
+// nullable and agent batch-write accepts `categoryId: null`, so the catalog
+// projects "no Category" as null rather than rejecting the row (which used to
+// fail the whole listing with a 500).
+const NullableAgentExerciseCategorySchema = z
+  .union([AgentExerciseCategorySchema, z.null()])
+  .openapi("NullableAgentExerciseCategory");
+
 export const AgentFocusSchema = z
   .object({
     id: z.string().min(1).openapi({
@@ -131,8 +139,8 @@ export const AgentExerciseSchema = z
     name: z.string().min(1).openapi({
       description: "User-visible Exercise name.",
     }),
-    category: AgentExerciseCategorySchema.openapi({
-      description: "Exercise Category label.",
+    category: NullableAgentExerciseCategorySchema.openapi({
+      description: "Exercise Category label, or null when the exercise has no Category.",
     }),
     dimensions: z.array(AgentExerciseDimensionIdSchema).max(4).openapi({
       description: "Exercise Type dimension set used for set entry.",
@@ -175,7 +183,7 @@ export const AgentExerciseListItemSchema = z
     id: z.string().min(1),
     name: z.string().min(1),
     library: AgentExerciseLibrarySchema.optional(),
-    category: AgentExerciseCategorySchema.optional(),
+    category: NullableAgentExerciseCategorySchema.optional(),
     dimensions: z.array(AgentExerciseDimensionIdSchema).max(4).optional(),
     equipment: z.array(z.string().min(1)).optional(),
     focusIds: z.array(z.string().min(1)).optional(),
@@ -823,9 +831,9 @@ export function createInMemoryAgentCatalogStore(
       // a Category referenced by at least one of the caller's own exercises
       // is a valid match too.
       const embedded = filterVisibleExercises(exercises, input.userId).find(
-        (exercise) => exercise.category.id === input.categoryId,
+        (exercise) => exercise.category?.id === input.categoryId,
       );
-      return embedded === undefined
+      return embedded?.category == null
         ? null
         : { id: embedded.category.id, name: embedded.category.name };
     },
@@ -919,6 +927,10 @@ function matchesCategory(
 ) {
   if (category === undefined) {
     return true;
+  }
+
+  if (exercise.category === null) {
+    return false;
   }
 
   const categoryKey = normalizeName(category);
@@ -1118,13 +1130,13 @@ export function buildPlatformCatalogExercises(): readonly AgentCatalogExercise[]
       library: "platform" as const,
       ownerUserId: null,
       name: exercise.name,
-      category: {
-        id: exercise.categoryId ?? "",
-        name:
-          exercise.categoryId === null
-            ? ""
-            : categoriesById.get(exercise.categoryId) ?? "",
-      },
+      category:
+        exercise.categoryId === null
+          ? null
+          : {
+              id: exercise.categoryId,
+              name: categoriesById.get(exercise.categoryId) ?? "",
+            },
       dimensions,
       equipment: exercise.equipmentIds,
       focusIds: exercise.focusIds,
@@ -1178,15 +1190,20 @@ export function toAgentCatalogExerciseFromPayload({
     typeof payload.record_profile === "string"
       ? (payload.record_profile as RecordProfile)
       : defaultRecordProfileForDimensions(dimensions);
+  // The app writes `category_id: null` for an uncategorized exercise; rows
+  // from older or foreign writers may omit the key entirely. Both mean none.
   const categoryId =
-    typeof payload.category_id === "string" ? payload.category_id : "";
+    typeof payload.category_id === "string" && payload.category_id.length > 0
+      ? payload.category_id
+      : null;
 
   return {
     id: String(payload.id),
     library,
     ownerUserId,
     name: String(payload.name ?? ""),
-    category: { id: categoryId, name: categoryName },
+    category:
+      categoryId === null ? null : { id: categoryId, name: categoryName },
     dimensions,
     equipment: parseJsonStringArray(payload.equipment_ids),
     // `focus_ids` rides the payload JSON-encoded exactly like
