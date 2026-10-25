@@ -20062,7 +20062,7 @@
           "Agent Reads"
         ],
         "summary": "Read a descriptive Effect window for a Compound/Protocol × Metric.",
-        "description": "Computes a descriptive before/during/after summary of one outcome Metric around the logged Dose timeline of a Compound or Protocol over a range. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+        "description": "Computes a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course (start to end date; no end date = ongoing until now) or a Compound's logged Dose timeline (earliest to latest Dose; a single Dose = ongoing until now), with BEFORE and AFTER mirroring DURING's length. The window is the same one the app's Effect view shows; the range only scopes the Dose markers returned. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
         "security": [
           {
             "bearerAuth": []
@@ -20073,10 +20073,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "description": "The Compound whose logged Doses drive the timeline. Provide exactly one of compoundId or protocolId."
+              "description": "The Compound whose logged Doses (earliest to latest) are the DURING span. Provide exactly one of compoundId or protocolId."
             },
             "required": false,
-            "description": "The Compound whose logged Doses drive the timeline. Provide exactly one of compoundId or protocolId.",
+            "description": "The Compound whose logged Doses (earliest to latest) are the DURING span. Provide exactly one of compoundId or protocolId.",
             "name": "compoundId",
             "in": "query"
           },
@@ -20084,10 +20084,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "description": "The Protocol whose tagged Doses drive the timeline. Provide exactly one of compoundId or protocolId."
+              "description": "The Protocol whose declared start/end dates are the DURING span; its tagged Doses are returned as markers. Provide exactly one of compoundId or protocolId."
             },
             "required": false,
-            "description": "The Protocol whose tagged Doses drive the timeline. Provide exactly one of compoundId or protocolId.",
+            "description": "The Protocol whose declared start/end dates are the DURING span; its tagged Doses are returned as markers. Provide exactly one of compoundId or protocolId.",
             "name": "protocolId",
             "in": "query"
           },
@@ -20117,10 +20117,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "description": "Inclusive ISO-8601 lower bound of the analysis range."
+              "description": "Inclusive ISO-8601 lower bound of the Dose markers returned. Does not move the window."
             },
             "required": true,
-            "description": "Inclusive ISO-8601 lower bound of the analysis range.",
+            "description": "Inclusive ISO-8601 lower bound of the Dose markers returned. Does not move the window.",
             "name": "from",
             "in": "query"
           },
@@ -20128,10 +20128,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "description": "Exclusive ISO-8601 upper bound of the analysis range."
+              "description": "Exclusive ISO-8601 upper bound of the Dose markers returned. Does not move the window."
             },
             "required": true,
-            "description": "Exclusive ISO-8601 upper bound of the analysis range.",
+            "description": "Exclusive ISO-8601 upper bound of the Dose markers returned. Does not move the window.",
             "name": "to",
             "in": "query"
           }

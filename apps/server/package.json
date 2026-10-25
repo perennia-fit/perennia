@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test --test-concurrency=1 test/*.test.mjs",
     "test:sync-convergence": "node --import tsx --test --test-concurrency=1 test/sync-convergence.test.mjs",
-    "test:golden-vectors": "node --import tsx --test test/analytics.golden.test.mjs test/metric-reading-normalization.golden.test.mjs test/agent-validation.golden.test.mjs test/nutrition-analytics.golden.test.mjs"
+    "test:golden-vectors": "node --import tsx --test test/analytics.golden.test.mjs test/metric-reading-normalization.golden.test.mjs test/agent-validation.golden.test.mjs test/nutrition-analytics.golden.test.mjs test/effect-window.golden.test.mjs"
   },
   "dependencies": {
     "@better-auth/api-key": "1.6.26",

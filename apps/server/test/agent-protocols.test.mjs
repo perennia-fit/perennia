@@ -9,6 +9,7 @@ import {
   createDatabaseClient,
   computeEffectWindowSegments,
   createDrizzleAgentProtocolsStore,
+  deriveEffectWindow,
   prepareAgentCompoundBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
@@ -181,15 +182,21 @@ test("prepareAgentCompoundBatchWrite rejects a duplicate id in one batch", () =>
 });
 
 // ---------------------------------------------------------------------------
-// Deterministic effect-window computation fixture
+// Deterministic effect-window computation fixture (the window derivation and
+// count/mean are pinned across languages by effect-window.golden.test.mjs;
+// these cover the agent-only min/max)
 // ---------------------------------------------------------------------------
 
 test("computeEffectWindowSegments buckets samples into before/during/after with count/min/max/mean", () => {
   // DURING = first dose (day 10) → last dose (day 20); length 10 days.
   // BEFORE = [day 0, day 10); AFTER = [day 20, day 30).
   const d = (day) => new Date(Date.UTC(2026, 0, day));
+  const window = deriveEffectWindow(
+    { kind: "compound", doseTimes: [d(10), d(15), d(20)] },
+    d(31)
+  );
   const segments = computeEffectWindowSegments({
-    doses: [{ tookAt: d(10) }, { tookAt: d(15) }, { tookAt: d(20) }],
+    window,
     samples: [
       { at: d(1), value: 100 }, // before
       { at: d(5), value: 102 }, // before
@@ -201,8 +208,8 @@ test("computeEffectWindowSegments buckets samples into before/during/after with 
     ]
   });
 
-  assert.equal(segments.duringStart.toISOString(), d(10).toISOString());
-  assert.equal(segments.duringEnd.toISOString(), d(20).toISOString());
+  assert.equal(window.duringStart.toISOString(), d(10).toISOString());
+  assert.equal(window.duringEnd.toISOString(), d(20).toISOString());
 
   assert.deepEqual(segments.before, { count: 2, min: 100, max: 102, mean: 101 });
   assert.deepEqual(segments.during, { count: 2, min: 90, max: 94, mean: 92 });
@@ -216,10 +223,18 @@ test("computeEffectWindowSegments buckets samples into before/during/after with 
 });
 
 test("computeEffectWindowSegments returns empty aggregates with a null window when there are no doses", () => {
-  const segments = computeEffectWindowSegments({ doses: [], samples: [] });
-  assert.equal(segments.duringStart, null);
-  assert.equal(segments.duringEnd, null);
+  const window = deriveEffectWindow(
+    { kind: "compound", doseTimes: [] },
+    new Date(Date.UTC(2026, 0, 1))
+  );
+  assert.equal(window, null);
+  const segments = computeEffectWindowSegments({
+    window,
+    samples: [{ at: new Date(Date.UTC(2026, 0, 1)), value: 1 }]
+  });
   assert.deepEqual(segments.before, { count: 0, min: null, max: null, mean: null });
+  assert.deepEqual(segments.during, { count: 0, min: null, max: null, mean: null });
+  assert.deepEqual(segments.after, { count: 0, min: null, max: null, mean: null });
 });
 
 // ---------------------------------------------------------------------------
@@ -1332,6 +1347,135 @@ test(
         max: 88,
         mean: 88
       });
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "effect-window read for a Protocol spans its declared course, not its tagged Doses, and the range only scopes the markers",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-effect-protocol-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const protocolId = createUuidV7();
+    const compoundId = createUuidV7();
+    const metricId = randomUUID();
+    const updatedAt = new Date("2026-01-01T00:00:00.000Z");
+
+    try {
+      await insertUser(database, userId);
+      await database.db.insert(schema.metrics).values({
+        id: metricId,
+        userId,
+        deviceId: "device-1",
+        name: "Body Weight",
+        unit: "kilogram",
+        valueShape: "scalar",
+        metricGroup: "body",
+        sortOrder: 0,
+        updatedAt
+      });
+      for (const [day, value] of [
+        [1, 100],
+        [8, 96],
+        [12, 92],
+        [22, 90],
+        [30, 89]
+      ]) {
+        await database.db.insert(schema.metricReadings).values({
+          id: randomUUID(),
+          userId,
+          deviceId: "device-1",
+          metricId,
+          valueJson: { value },
+          scalarValue: value,
+          atTime: new Date(isoDay(day)),
+          provenance: "manual",
+          source: "manual",
+          updatedAt
+        });
+      }
+
+      // Declared course: day 5 → day 25. The tagged Doses (day 10, day 15)
+      // sit inside it and must not narrow it; the untagged Dose on day 2 is
+      // not this Protocol's at all.
+      await insertOpaqueFixture(database, schema.protocols, {
+        id: protocolId,
+        userId,
+        updatedAt,
+        payload: {
+          name: "Cut",
+          start_date: isoDay(5),
+          end_date: isoDay(25)
+        }
+      });
+      for (const [day, tagged] of [
+        [10, true],
+        [15, true],
+        [2, false]
+      ]) {
+        await insertOpaqueFixture(database, schema.doses, {
+          id: createUuidV7(),
+          userId,
+          updatedAt,
+          payload: {
+            compound_id: compoundId,
+            compound_name: "X",
+            amount_value: 5,
+            unit: "gram",
+            route: "oral",
+            took_at: isoDay(day),
+            protocol_id: tagged ? protocolId : null
+          }
+        });
+      }
+
+      const response = await app.request(
+        `/agent/protocols/effect-window?protocolId=${protocolId}&metricId=${metricId}&from=${isoDay(1)}&to=${isoDay(12)}`,
+        { headers: authHeaders() }
+      );
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.window.duringStart, isoDay(5));
+      assert.equal(body.window.duringEnd, isoDay(25));
+      // The range [day 1, day 12) lists only the day-10 marker.
+      assert.deepEqual(
+        body.doses.map((dose) => dose.tookAt),
+        [isoDay(10)]
+      );
+      // before [Dec 16, day 5): day 1. during [day 5, day 25): day 8, 12, 22.
+      // after [day 25, Feb 14): day 30.
+      assert.deepEqual(body.segments.before, {
+        count: 1,
+        min: 100,
+        max: 100,
+        mean: 100
+      });
+      assert.deepEqual(body.segments.during, {
+        count: 3,
+        min: 90,
+        max: 96,
+        mean: (96 + 92 + 90) / 3
+      });
+      assert.deepEqual(body.segments.after, {
+        count: 1,
+        min: 89,
+        max: 89,
+        mean: 89
+      });
+
+      const missing = await app.request(
+        `/agent/protocols/effect-window?protocolId=${createUuidV7()}&metricId=${metricId}&from=${isoDay(1)}&to=${isoDay(12)}`,
+        { headers: authHeaders() }
+      );
+      assert.equal(missing.status, 422);
     } finally {
       await database.close();
     }
