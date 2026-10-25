@@ -410,6 +410,105 @@ test(
   }
 );
 
+// A synced exercise can reference a Category the server holds no usable row
+// for: a seeded Category whose push never landed, or a row without a name.
+// Neither may fail the listing. A seeded id still resolves to the Platform
+// seed name (the app seeds those Categories under the same fixed ids); an
+// unknown one projects as no Category, as the app's Exercise List shows it.
+test(
+  "an exercise whose Category reference does not resolve still lists: a " +
+    "seeded id takes the Platform seed name, anything else is null",
+  { skip },
+  async () => {
+    const serverApp = await createMigratedServerApp({
+      databaseUrl,
+      logger: { info() {}, error() {} },
+      auth: {
+        baseUrl: "http://localhost",
+        secret: "test-secret-at-least-thirty-two-characters",
+        emailSender: null
+      },
+      rateLimit: false
+    });
+
+    try {
+      const user = await createSignedInUser(serverApp);
+      const agentSecret = await createAgentKey(serverApp, user.sessionToken);
+
+      const seededChestCategoryId = "01910000-0000-7000-8000-000000000007";
+      const unnamedCategoryId = randomUUID();
+      const seededRefId = randomUUID();
+      const unknownRefId = randomUUID();
+      const unnamedRefId = randomUUID();
+      const updatedAt = "2025-07-02T08:00:00.000Z";
+
+      // A Category row whose payload carries no name. Written straight to the
+      // table: the app never produces one, but the projection must not trust
+      // an opaque payload to be well formed.
+      await serverApp.database.db.insert(schema.exerciseCategories).values({
+        id: unnamedCategoryId,
+        userId: user.userId,
+        deviceId: "device-a",
+        payload: { id: unnamedCategoryId, sort_order: 1 },
+        updatedAt: new Date(updatedAt),
+        deletedAt: null
+      });
+
+      await syncPushOk(serverApp.app, user.sessionToken, {
+        deviceId: "device-a",
+        entity: "exercises",
+        changes: [
+          [seededRefId, "Dangling Seeded Press", seededChestCategoryId],
+          [unknownRefId, "Dangling Unknown Row", randomUUID()],
+          [unnamedRefId, "Dangling Unnamed Curl", unnamedCategoryId]
+        ].map(([id, name, categoryId]) => ({
+          id,
+          payload: exercisePayload({ id, name, categoryId, updatedAt }),
+          updatedAt,
+          deletedAt: null
+        }))
+      });
+
+      const list = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises?search=Dangling&limit=100"
+      );
+      assert.equal(list.status, 200);
+      const byId = new Map(
+        (await list.json()).exercises.map((exercise) => [exercise.id, exercise])
+      );
+      assert.deepEqual(byId.get(seededRefId)?.category, {
+        id: seededChestCategoryId,
+        name: "Chest"
+      });
+      assert.equal(byId.get(unknownRefId)?.category, null);
+      assert.equal(byId.get(unnamedRefId)?.category, null);
+
+      const filtered = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises?search=Dangling&category=chest"
+      );
+      assert.equal(filtered.status, 200);
+      assert.deepEqual(
+        (await filtered.json()).exercises.map((exercise) => exercise.id),
+        [seededRefId]
+      );
+
+      const resolve = await getAgent(
+        serverApp.app,
+        agentSecret,
+        "/agent/exercises/resolve?name=Dangling%20Unknown%20Row"
+      );
+      assert.equal(resolve.status, 200);
+      assert.equal((await resolve.json()).matchedExercise.category, null);
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
 function categoryPayload(id, name, updatedAt) {
   return {
     id,

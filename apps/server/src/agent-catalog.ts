@@ -1098,6 +1098,33 @@ function defaultRecordProfileForDimensions(
 }
 
 let cachedPlatformCatalog: readonly AgentCatalogExercise[] | undefined;
+const platformCategoryNamesById = new Map(
+  PLATFORM_EXERCISE_SEED_CATEGORIES.map((category) => [
+    category.id,
+    category.name,
+  ]),
+);
+
+// Projects a Category reference to its label, or null when it cannot be named.
+// The name comes from the caller's synced Category row when it has one; failing
+// that, from the Platform seed, whose Categories every device seeds under the
+// same fixed ids (so a seeded row the server never received still has its
+// seed name). A reference neither source can name is a dangling id: the app's
+// Exercise List shows such an exercise as Uncategorized, so it projects as no
+// Category rather than as an unnamed one the schema would reject.
+function resolveCategoryLabel(
+  categoryId: string | null,
+  syncedName: string | null | undefined,
+): AgentCatalogExercise["category"] {
+  if (categoryId === null) {
+    return null;
+  }
+  const name =
+    syncedName !== null && syncedName !== undefined && syncedName.length > 0
+      ? syncedName
+      : platformCategoryNamesById.get(categoryId);
+  return name === undefined ? null : { id: categoryId, name };
+}
 const platformExerciseRedirects = new Map(
   PLATFORM_EXERCISE_SEED_REDIRECTS.map((redirect) => [
     redirect.fromExerciseId,
@@ -1116,13 +1143,6 @@ export function buildPlatformCatalogExercises(): readonly AgentCatalogExercise[]
     return cachedPlatformCatalog;
   }
 
-  const categoriesById = new Map(
-    PLATFORM_EXERCISE_SEED_CATEGORIES.map((category) => [
-      category.id,
-      category.name,
-    ]),
-  );
-
   cachedPlatformCatalog = PLATFORM_EXERCISE_SEED_EXERCISES.map((exercise) => {
     const dimensions = exercise.dimensionIds;
     return {
@@ -1130,13 +1150,7 @@ export function buildPlatformCatalogExercises(): readonly AgentCatalogExercise[]
       library: "platform" as const,
       ownerUserId: null,
       name: exercise.name,
-      category:
-        exercise.categoryId === null
-          ? null
-          : {
-              id: exercise.categoryId,
-              name: categoriesById.get(exercise.categoryId) ?? "",
-            },
+      category: resolveCategoryLabel(exercise.categoryId, null),
       dimensions,
       equipment: exercise.equipmentIds,
       focusIds: exercise.focusIds,
@@ -1167,7 +1181,9 @@ export function parseJsonStringArray(value: unknown): string[] {
 }
 
 // Maps a synced Exercise row (opaque `payload` written by the app's
-// `_exerciseImage`) plus its resolved Category name to an AgentCatalogExercise.
+// `_exerciseImage`) plus the name on the caller's synced Category row for its
+// `category_id` (null or empty when there is no such row) to an
+// AgentCatalogExercise.
 export function toAgentCatalogExerciseFromPayload({
   ownerUserId,
   deletedAt,
@@ -1177,7 +1193,7 @@ export function toAgentCatalogExerciseFromPayload({
   ownerUserId: string;
   deletedAt: Date | null;
   payload: Record<string, unknown>;
-  categoryName: string;
+  categoryName: string | null;
 }): AgentCatalogExercise {
   const library =
     payload.library_origin === "platform" ? "platform" : ("user" as const);
@@ -1202,8 +1218,7 @@ export function toAgentCatalogExerciseFromPayload({
     library,
     ownerUserId,
     name: String(payload.name ?? ""),
-    category:
-      categoryId === null ? null : { id: categoryId, name: categoryName },
+    category: resolveCategoryLabel(categoryId, categoryName),
     dimensions,
     equipment: parseJsonStringArray(payload.equipment_ids),
     // `focus_ids` rides the payload JSON-encoded exactly like
@@ -1250,8 +1265,8 @@ export function createDrizzleAgentCatalogStore(
         payload: row.payload ?? {},
         categoryName:
           typeof row.payload?.category_id === "string"
-            ? categoryNamesById.get(row.payload.category_id) ?? ""
-            : "",
+            ? categoryNamesById.get(row.payload.category_id) ?? null
+            : null,
       }),
     );
   }
