@@ -284,8 +284,9 @@ so the two never drift.
   `pnpm ci:local --changed` — only jobs whose paths changed vs `main`;
   `--list`, `--skip-db` as documented in the file header.
 - DB jobs (`js`, `sync`) need Docker running — they spin up an ephemeral
-  `postgres:16-alpine` (host port 55432, auto-removed) and force `CI=true` to
-  match the hosted environment.
+  `postgres:16-alpine` (named per run, on a Docker-assigned loopback port,
+  auto-removed) and force `CI=true` to match the hosted environment. Runs in
+  parallel worktrees get separate containers and don't collide.
 - `workflow_lint` self-skips where actionlint is not installed; hosted CI covers
   that gap.
 
