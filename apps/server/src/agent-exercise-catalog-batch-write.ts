@@ -723,7 +723,9 @@ async function readBeforeImage({
       payload: table.payload,
     })
     .from(table)
-    .where(eq(table.id, id))
+    // Scoped by owner as well as id: `exercise_categories` is keyed
+    // (user_id, id) because Platform category ids are shared by every account.
+    .where(and(eq(table.userId, userId), eq(table.id, id)))
     .limit(1);
   const existing = existingRows[0];
   if (existing === undefined || existing.userId !== userId) {

@@ -2369,6 +2369,7 @@ async function validateOpaqueBatchRows(
       await readOpaqueOwners(
         transaction,
         group.table,
+        userId,
         group.rows.map((row) => row.id)
       )
     );
@@ -2417,6 +2418,7 @@ async function validateOpaqueBatchRows(
     const referencedOwners = await readOpaqueOwners(
       transaction,
       OPAQUE_TABLES[tableKey],
+      userId,
       ids
     );
     for (const [id, owner] of referencedOwners) {
@@ -2453,9 +2455,17 @@ async function validateOpaqueBatchRows(
   return errors;
 }
 
+// `compounds` is keyed (user_id, id) because OTC seed Compound ids are shared
+// by every account: another account's row under the same id is that account's
+// own Compound, not an owner of this one, so only the caller's rows count.
+const ACCOUNT_KEYED_OPAQUE_TABLES: ReadonlySet<OpaqueTable> = new Set([
+  schema.compounds
+]);
+
 async function readOpaqueOwners(
   transaction: Pick<ServerDatabase, "select">,
   table: OpaqueTable,
+  userId: string,
   ids: string[]
 ) {
   if (ids.length === 0) {
@@ -2464,7 +2474,11 @@ async function readOpaqueOwners(
   const rows = await transaction
     .select({ id: table.id, userId: table.userId })
     .from(table)
-    .where(inArray(table.id, ids));
+    .where(
+      ACCOUNT_KEYED_OPAQUE_TABLES.has(table)
+        ? and(eq(table.userId, userId), inArray(table.id, ids))
+        : inArray(table.id, ids)
+    );
   return new Map(rows.map((row) => [row.id, row.userId]));
 }
 
@@ -2477,7 +2491,9 @@ async function readBeforeImage(
   const existingRows = await transaction
     .select({ userId: table.userId, payload: table.payload })
     .from(table)
-    .where(eq(table.id, id))
+    // Scoped by owner as well as id: `compounds` is keyed (user_id, id)
+    // because OTC seed Compound ids are shared by every account.
+    .where(and(eq(table.userId, userId), eq(table.id, id)))
     .limit(1);
   const existing = existingRows[0];
   if (existing === undefined || existing.userId !== userId) {

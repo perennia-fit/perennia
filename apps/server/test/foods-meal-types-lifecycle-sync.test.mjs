@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { createMigratedServerApp, schema } from "../src/index.ts";
 
@@ -122,9 +122,12 @@ test(
         .select()
         .from(schema.mealTypes)
         .where(eq(schema.mealTypes.id, mealTypeId));
-      assert.equal(storedMealType.length, 1);
-      assert.equal(storedMealType[0].userId, userA.userId);
-      assert.equal(storedMealType[0].payload.name, "Second Breakfast");
+      // The table is keyed (user_id, id): B's push is B's own row under the
+      // same id and never touches A's.
+      assert.deepEqual(
+        Object.fromEntries(storedMealType.map((row) => [row.userId, row.payload.name])),
+        { [userA.userId]: "Second Breakfast", [userB.userId]: "Hijacked" }
+      );
 
       // Device B (same user A account, different device) pulls its own rows;
       // both the Food and Meal Type round-trip.
@@ -141,13 +144,14 @@ test(
       assert.equal(pulledMealType.payload.name, "Second Breakfast");
       assert.equal(pulledFood.deletedAt, null);
 
-      // User B pulls and sees NEITHER row — strict per-user scoping on read.
+      // User B pulls none of A's rows — strict per-user scoping on read —
+      // only its own copy under the shared MealType id.
       const userBPulled = await pullAll(serverApp.app, userB.sessionToken);
-      assert.equal(
-        userBPulled.filter(
-          (change) => change.id === foodId || change.id === mealTypeId
-        ).length,
-        0
+      assert.deepEqual(
+        userBPulled
+          .filter((change) => change.id === foodId || change.id === mealTypeId)
+          .map((change) => change.payload.name),
+        ["Hijacked"]
       );
 
       // A newer Food edit wins LWW; an older replay loses.
@@ -218,7 +222,12 @@ test(
       const mealTypeStillLive = await serverApp.database.db
         .select()
         .from(schema.mealTypes)
-        .where(eq(schema.mealTypes.id, mealTypeId));
+        .where(
+          and(
+            eq(schema.mealTypes.userId, userA.userId),
+            eq(schema.mealTypes.id, mealTypeId)
+          )
+        );
       assert.equal(mealTypeStillLive.length, 1);
       assert.equal(mealTypeStillLive[0].deletedAt, null);
 
