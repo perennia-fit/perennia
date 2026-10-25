@@ -7574,9 +7574,9 @@ class EffectRepository {
   /// Compound-only window ([windowForCompound]) instead derives DURING from
   /// the actual logged Doses.
   EffectWindow windowForProtocol(ProtocolRecord protocol, {DateTime? now}) {
-    return EffectWindow(
-      duringStart: protocol.startDate,
-      duringEnd: protocol.endDate,
+    return effectWindowForProtocol(
+      startDate: protocol.startDate,
+      endDate: protocol.endDate,
       now: now ?? DateTime.now(),
     );
   }
@@ -7591,13 +7591,8 @@ class EffectRepository {
     DateTime? now,
   }) async {
     final doses = await _repositories.protocols.dosesForCompound(compoundId);
-    if (doses.isEmpty) {
-      return null;
-    }
-    final tookAtTimes = doses.map((dose) => dose.tookAt).toList()..sort();
-    return EffectWindow(
-      duringStart: tookAtTimes.first,
-      duringEnd: tookAtTimes.length == 1 ? null : tookAtTimes.last,
+    return effectWindowForDoseTimes(
+      doses.map((dose) => dose.tookAt),
       now: now ?? DateTime.now(),
     );
   }

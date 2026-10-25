@@ -2346,7 +2346,7 @@ export function createAgentMcpServer({
     {
       title: "Read Agent Effect Window",
       description:
-        "Read a descriptive before/during/after summary of one outcome Metric around a Compound's or Protocol's logged Dose timeline over a range, through the same REST path. Aggregates are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+        "Read a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course or a Compound's logged Dose timeline (the same window the app's Effect view shows; the range only scopes the Dose markers returned), through the same REST path. Aggregates are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
       inputSchema: AgentMcpEffectWindowInputSchema,
       outputSchema: AgentEffectWindowResponseSchema
     },

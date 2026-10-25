@@ -705,12 +705,12 @@ export const AgentEffectWindowQuerySchema = z
     compoundId: z.string().trim().min(1).optional().openapi({
       param: { name: "compoundId", in: "query" },
       description:
-        "The Compound whose logged Doses drive the timeline. Provide exactly one of compoundId or protocolId."
+        "The Compound whose logged Doses (earliest to latest) are the DURING span. Provide exactly one of compoundId or protocolId."
     }),
     protocolId: z.string().trim().min(1).optional().openapi({
       param: { name: "protocolId", in: "query" },
       description:
-        "The Protocol whose tagged Doses drive the timeline. Provide exactly one of compoundId or protocolId."
+        "The Protocol whose declared start/end dates are the DURING span; its tagged Doses are returned as markers. Provide exactly one of compoundId or protocolId."
     }),
     metricId: z.string().trim().min(1).optional().openapi({
       param: { name: "metricId", in: "query" },
@@ -724,11 +724,13 @@ export const AgentEffectWindowQuerySchema = z
     }),
     from: z.string().trim().min(1).openapi({
       param: { name: "from", in: "query" },
-      description: "Inclusive ISO-8601 lower bound of the analysis range."
+      description:
+        "Inclusive ISO-8601 lower bound of the Dose markers returned. Does not move the window."
     }),
     to: z.string().trim().min(1).openapi({
       param: { name: "to", in: "query" },
-      description: "Exclusive ISO-8601 upper bound of the analysis range."
+      description:
+        "Exclusive ISO-8601 upper bound of the Dose markers returned. Does not move the window."
     })
   })
   .openapi("AgentEffectWindowQuery");
@@ -1027,7 +1029,7 @@ export const agentEffectWindowRoute = createRoute({
   tags: ["Agent Reads"],
   summary: "Read a descriptive Effect window for a Compound/Protocol × Metric.",
   description:
-    "Computes a descriptive before/during/after summary of one outcome Metric around the logged Dose timeline of a Compound or Protocol over a range. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+    "Computes a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course (start to end date; no end date = ongoing until now) or a Compound's logged Dose timeline (earliest to latest Dose; a single Dose = ongoing until now), with BEFORE and AFTER mirroring DURING's length. The window is the same one the app's Effect view shows; the range only scopes the Dose markers returned. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
   security: [{ bearerAuth: [] }],
   request: { query: AgentEffectWindowQuerySchema },
   responses: {
@@ -1621,7 +1623,29 @@ export function agentProtocolsWriteFailure(
 // ---------------------------------------------------------------------------
 
 export type EffectWindowSample = { at: Date; value: number };
-export type EffectWindowDose = { tookAt: Date };
+
+/**
+ * What an Effect window is anchored to. A Protocol is a time-bounded course, so
+ * its declared start/end are DURING whatever Doses were logged against it (the
+ * tagged Doses are markers on top, never the bounds). An ad-hoc Compound has no
+ * declared course, so its logged Doses are.
+ */
+export type EffectWindowSource =
+  | { kind: "protocol"; startDate: Date; endDate: Date | null }
+  | { kind: "compound"; doseTimes: readonly Date[] };
+
+/**
+ * DURING plus the mirrored BEFORE/AFTER spans of the same length on either
+ * side. `duringEnd === null` is a course still running: `duringEndOrNow` (the
+ * clock at derivation) ends DURING and starts AFTER.
+ */
+export type EffectWindow = {
+  duringStart: Date;
+  duringEnd: Date | null;
+  duringEndOrNow: Date;
+  beforeStart: Date;
+  afterEnd: Date;
+};
 
 export type EffectAggregate = {
   count: number;
@@ -1631,64 +1655,92 @@ export type EffectAggregate = {
 };
 
 export type EffectWindowSegments = {
-  duringStart: Date | null;
-  duringEnd: Date | null;
   before: EffectAggregate;
   during: EffectAggregate;
   after: EffectAggregate;
 };
 
 /**
- * The descriptive Effect computation (PROTOCOLS.md §4): the window's DURING span
- * is the actual logged Dose timeline's bounds (earliest → latest Dose), with the
- * mirrored BEFORE/AFTER spans of equal length immediately surrounding it. Each
- * segment aggregates whatever outcome samples fall in it (count/min/max/mean).
- * Half-open segments `[start, end)`, so a boundary sample lands in exactly one.
- * Pure — no I/O, nothing stored — which is what makes it golden-vectorable.
+ * Derives the Effect window exactly as the app does (`effectWindowForProtocol`
+ * / `effectWindowForDoseTimes` in apps/mobile/lib/domain/effect/effect.dart);
+ * `packages/golden-vectors/vectors/m29-effect-window.json` pins both. A
+ * Protocol with no end date is ongoing until `now`. A Compound spans its
+ * earliest to latest Dose; exactly one Dose has no latest to end on, so it is
+ * ongoing until `now` too rather than a zero-length window that buckets
+ * nothing. No Dose, no window.
+ */
+export function deriveEffectWindow(
+  source: EffectWindowSource,
+  now: Date
+): EffectWindow | null {
+  let duringStart: Date;
+  let duringEnd: Date | null;
+  if (source.kind === "protocol") {
+    duringStart = source.startDate;
+    duringEnd = source.endDate;
+  } else {
+    const times = source.doseTimes
+      .map((tookAt) => tookAt.getTime())
+      .sort((left, right) => left - right);
+    if (times.length === 0) {
+      return null;
+    }
+    duringStart = new Date(times[0]!);
+    duringEnd = times.length === 1 ? null : new Date(times[times.length - 1]!);
+  }
+  const duringEndOrNow = duringEnd ?? now;
+  const duringLengthMs = duringEndOrNow.getTime() - duringStart.getTime();
+  return {
+    duringStart,
+    duringEnd,
+    duringEndOrNow,
+    beforeStart: new Date(duringStart.getTime() - duringLengthMs),
+    afterEnd: new Date(duringEndOrNow.getTime() + duringLengthMs)
+  };
+}
+
+/**
+ * The descriptive Effect computation (PROTOCOLS.md §4): each segment of
+ * `window` aggregates whatever outcome samples fall in it (count/min/max/mean).
+ * Half-open segments `[start, end)`, so a boundary sample lands in exactly one,
+ * and a sample outside all three is dropped, never moved to the nearest. No
+ * window means every segment is empty. Pure — no I/O, nothing stored — which
+ * is what makes it golden-vectorable.
  */
 export function computeEffectWindowSegments({
-  doses,
+  window,
   samples
 }: {
-  doses: readonly EffectWindowDose[];
+  window: EffectWindow | null;
   samples: readonly EffectWindowSample[];
 }): EffectWindowSegments {
-  if (doses.length === 0) {
+  if (window === null) {
     return {
-      duringStart: null,
-      duringEnd: null,
       before: emptyAggregate(),
       during: emptyAggregate(),
       after: emptyAggregate()
     };
   }
 
-  const times = doses
-    .map((dose) => dose.tookAt.getTime())
-    .sort((left, right) => left - right);
-  const duringStart = new Date(times[0]!);
-  const duringEnd = new Date(times[times.length - 1]!);
-  const duringLengthMs = duringEnd.getTime() - duringStart.getTime();
-  const beforeStart = new Date(duringStart.getTime() - duringLengthMs);
-  const afterEnd = new Date(duringEnd.getTime() + duringLengthMs);
-
+  const beforeStart = window.beforeStart.getTime();
+  const duringStart = window.duringStart.getTime();
+  const duringEnd = window.duringEndOrNow.getTime();
+  const afterEnd = window.afterEnd.getTime();
   const before: number[] = [];
   const during: number[] = [];
   const after: number[] = [];
   for (const sample of samples) {
     const at = sample.at.getTime();
-    if (at >= beforeStart.getTime() && at < duringStart.getTime()) {
+    if (at >= beforeStart && at < duringStart) {
       before.push(sample.value);
-    } else if (at >= duringStart.getTime() && at < duringEnd.getTime()) {
+    } else if (at >= duringStart && at < duringEnd) {
       during.push(sample.value);
-    } else if (at >= duringEnd.getTime() && at < afterEnd.getTime()) {
+    } else if (at >= duringEnd && at < afterEnd) {
       after.push(sample.value);
     }
   }
 
   return {
-    duringStart,
-    duringEnd,
     before: aggregate(before),
     during: aggregate(during),
     after: aggregate(after)
@@ -1941,26 +1993,75 @@ export function createDrizzleAgentProtocolsStore(
         return { ok: false, message: "The requested Metric was not found." };
       }
 
+      // The window comes from every logged Dose of the Compound (or tagged to
+      // the Protocol), whatever the range: the app derives its window from
+      // the same Doses, and a range that clipped them would move DURING. The
+      // range only scopes the Dose markers listed back.
       const doseRows = await selectOpaque(db, schema.doses, userId);
-      const doses = doseRows.filter((row) => {
+      const sourceDoses: { row: OpaqueRow; tookAt: Date }[] = [];
+      for (const row of doseRows) {
         if (row.deletedAt !== null) {
-          return false;
+          continue;
         }
         if (
           query.compoundId !== undefined &&
           row.payload.compound_id !== query.compoundId
         ) {
-          return false;
+          continue;
         }
         if (
           query.protocolId !== undefined &&
           row.payload.protocol_id !== query.protocolId
         ) {
-          return false;
+          continue;
         }
         const tookAt = parseOptionalDate(String(row.payload.took_at ?? ""));
-        return tookAt !== null && tookAt >= from && tookAt < to;
-      });
+        if (tookAt !== null) {
+          sourceDoses.push({ row, tookAt });
+        }
+      }
+
+      let windowSource: EffectWindowSource | null;
+      if (query.protocolId !== undefined) {
+        // An archived Protocol keeps its Effect (archive is not delete), so
+        // only a Protocol that was never written is an error.
+        const [protocolRow] = await db
+          .select({ payload: schema.protocols.payload })
+          .from(schema.protocols)
+          .where(
+            and(
+              eq(schema.protocols.userId, userId),
+              eq(schema.protocols.id, query.protocolId)
+            )
+          );
+        if (protocolRow === undefined) {
+          return { ok: false, message: "The requested Protocol was not found." };
+        }
+        const startDate = parseOptionalDate(
+          String(protocolRow.payload.start_date ?? "")
+        );
+        // The app requires a start date. A row without one (an agent write
+        // allows it) declares no course, so it derives no window.
+        windowSource =
+          startDate === null
+            ? null
+            : {
+                kind: "protocol",
+                startDate,
+                endDate: parseOptionalDate(
+                  String(protocolRow.payload.end_date ?? "")
+                )
+              };
+      } else {
+        windowSource = {
+          kind: "compound",
+          doseTimes: sourceDoses.map((dose) => dose.tookAt)
+        };
+      }
+      const window =
+        windowSource === null
+          ? null
+          : deriveEffectWindow(windowSource, new Date());
 
       const readingRows = await db
         .select({
@@ -1992,20 +2093,13 @@ export function createDrizzleAgentProtocolsStore(
         samples.push({ at, value: reading.scalarValue });
       }
 
-      const segments = computeEffectWindowSegments({
-        doses: doses.map((row) => ({
-          tookAt: parseOptionalDate(String(row.payload.took_at ?? "")) ?? new Date(0)
-        })),
-        samples
-      });
+      const segments = computeEffectWindowSegments({ window, samples });
 
-      const doseMarkers = doses
-        .slice()
-        .sort((left, right) =>
-          String(left.payload.took_at) < String(right.payload.took_at) ? -1 : 1
-        )
+      const doseMarkers = sourceDoses
+        .filter((dose) => dose.tookAt >= from && dose.tookAt < to)
+        .sort((left, right) => left.tookAt.getTime() - right.tookAt.getTime())
         .slice(0, AGENT_EFFECT_WINDOW_MAX_DOSES)
-        .map((row) => ({
+        .map(({ row }) => ({
           doseId: row.id,
           compoundName: String(row.payload.compound_name ?? ""),
           amountValue: Number(row.payload.amount_value ?? 0),
@@ -2028,8 +2122,8 @@ export function createDrizzleAgentProtocolsStore(
           },
           range: { from: from.toISOString(), to: to.toISOString() },
           window: {
-            duringStart: segments.duringStart?.toISOString() ?? null,
-            duringEnd: segments.duringEnd?.toISOString() ?? null
+            duringStart: window?.duringStart.toISOString() ?? null,
+            duringEnd: window?.duringEnd?.toISOString() ?? null
           },
           doses: doseMarkers,
           segments: {
