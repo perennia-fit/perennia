@@ -142,13 +142,16 @@ const JOBS = {
       'apps/server/test/analytics.golden.test.mjs',
       'apps/server/test/metric-reading-normalization.golden.test.mjs',
       'apps/server/test/nutrition-analytics.golden.test.mjs',
+      'apps/server/src/agent-protocols.ts',
+      'apps/server/test/effect-window.golden.test.mjs',
       'apps/server/package.json', '.node-version',
       'apps/mobile/lib/domain/analytics/**', 'apps/mobile/lib/domain/metrics/**',
-      'apps/mobile/lib/domain/nutrition/**',
+      'apps/mobile/lib/domain/nutrition/**', 'apps/mobile/lib/domain/effect/**',
       'apps/mobile/lib/domain/training/training_dimensions.dart',
       'apps/mobile/test/domain/exercise_analytics_test.dart',
       'apps/mobile/test/domain/metric_reading_normalization_test.dart',
       'apps/mobile/test/domain/nutrition_aggregation_golden_test.dart',
+      'apps/mobile/test/domain/effect_window_golden_test.dart',
       'apps/mobile/pubspec.yaml', 'pubspec.yaml', 'pubspec.lock',
       'packages/golden-vectors/**', 'pnpm-workspace.yaml', 'pnpm-lock.yaml',
       'tsconfig.base.json', '.github/workflows/ci.yml',
@@ -157,7 +160,7 @@ const JOBS = {
     run: () =>
       run('flutter pub get') &&
       run('corepack pnpm --filter @perennia/server test:golden-vectors') &&
-      run('flutter test test/domain/exercise_analytics_test.dart test/domain/metric_reading_normalization_test.dart test/domain/nutrition_aggregation_golden_test.dart', { cwd: MOBILE }),
+      run('flutter test test/domain/exercise_analytics_test.dart test/domain/metric_reading_normalization_test.dart test/domain/nutrition_aggregation_golden_test.dart test/domain/effect_window_golden_test.dart', { cwd: MOBILE }),
   },
 
   contract: {
