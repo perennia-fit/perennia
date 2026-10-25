@@ -31,7 +31,7 @@ void main() {
 
     final database = AppDatabase.openFile(file);
     await database.customSelect('SELECT 1').get();
-    expect(database.schemaVersion, 59);
+    expect(database.schemaVersion, 60);
     expect(
       (await database
           .customSelect(
@@ -207,7 +207,7 @@ void main() {
     addTearDown(database.close);
     await database.customSelect('SELECT 1').get();
 
-    expect(database.schemaVersion, 59);
+    expect(database.schemaVersion, 60);
     expect(
       await _indexNames(database, AppDatabase.activityLogTable),
       contains('activity_log_pending_sync_index'),
@@ -237,7 +237,7 @@ void main() {
     final fresh = AppDatabase.inMemory();
     addTearDown(fresh.close);
 
-    expect(database.schemaVersion, 59);
+    expect(database.schemaVersion, 60);
     expect(
       await _columnNames(database, AppDatabase.deferredSyncChangesTable),
       await _columnNames(fresh, AppDatabase.deferredSyncChangesTable),
@@ -249,6 +249,44 @@ void main() {
     expect(
       await _indexNames(database, AppDatabase.deferredSyncChangesTable),
       contains('deferred_sync_changes_missing_entity_index'),
+    );
+  });
+
+  test('schema 59 adds the quarantined sync changes table', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'prn_quarantined_sync_changes_migration_',
+    );
+    addTearDown(() async {
+      if (directory.existsSync()) {
+        await directory.delete(recursive: true);
+      }
+    });
+    final file = File('${directory.path}/v59.sqlite');
+    final legacy = sqlite.sqlite3.open(file.path);
+    try {
+      legacy.execute('PRAGMA user_version = 59;');
+    } finally {
+      legacy.close();
+    }
+
+    final database = AppDatabase.openFile(file);
+    addTearDown(database.close);
+    await database.customSelect('SELECT 1').get();
+    final fresh = AppDatabase.inMemory();
+    addTearDown(fresh.close);
+
+    expect(database.schemaVersion, 60);
+    expect(
+      await _columnNames(database, AppDatabase.quarantinedSyncChangesTable),
+      await _columnNames(fresh, AppDatabase.quarantinedSyncChangesTable),
+    );
+    expect(
+      await _indexNames(database, AppDatabase.quarantinedSyncChangesTable),
+      await _indexNames(fresh, AppDatabase.quarantinedSyncChangesTable),
+    );
+    expect(
+      await _indexNames(database, AppDatabase.quarantinedSyncChangesTable),
+      contains('quarantined_sync_changes_entity_index'),
     );
   });
 }

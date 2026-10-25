@@ -87,6 +87,8 @@ class SettingsScreen extends ConsumerWidget {
   static const syncStatusRowKey = SyncSettingsScreen.syncStatusRowKey;
   static const syncNowButtonKey = SyncSettingsScreen.syncNowButtonKey;
   static const syncFailureBannerKey = SyncSettingsScreen.syncFailureBannerKey;
+  static const quarantinedChangesRowKey =
+      SyncSettingsScreen.quarantinedChangesRowKey;
   static const integrationStatusRowKey =
       SyncSettingsScreen.integrationStatusRowKey;
   static const integrationFailureBannerKey =

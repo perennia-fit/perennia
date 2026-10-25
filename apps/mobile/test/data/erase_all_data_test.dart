@@ -180,6 +180,7 @@ const _keptTables = <String>{
   AppDatabase.activityLogTable,
   AppDatabase.syncStatesTable,
   AppDatabase.deferredSyncChangesTable,
+  AppDatabase.quarantinedSyncChangesTable,
   AppDatabase.monitoringSeriesCacheTable,
   AppDatabase.openFoodFactsCacheTable,
 };

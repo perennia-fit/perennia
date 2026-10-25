@@ -11408,6 +11408,363 @@ class DeferredSyncChangesCompanion
   }
 }
 
+class $QuarantinedSyncChangesTable extends QuarantinedSyncChanges
+    with TableInfo<$QuarantinedSyncChangesTable, QuarantinedSyncChangeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $QuarantinedSyncChangesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _entityTableMeta =
+      const VerificationMeta('entityTable');
+  @override
+  late final GeneratedColumn<String> entityTable = GeneratedColumn<String>(
+      'entity_table', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _entityIdMeta =
+      const VerificationMeta('entityId');
+  @override
+  late final GeneratedColumn<String> entityId = GeneratedColumn<String>(
+      'entity_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _changeJsonMeta =
+      const VerificationMeta('changeJson');
+  @override
+  late final GeneratedColumn<String> changeJson = GeneratedColumn<String>(
+      'change_json', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _failureKindMeta =
+      const VerificationMeta('failureKind');
+  @override
+  late final GeneratedColumn<String> failureKind = GeneratedColumn<String>(
+      'failure_kind', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _quarantinedAtMeta =
+      const VerificationMeta('quarantinedAt');
+  @override
+  late final GeneratedColumn<DateTime> quarantinedAt =
+      GeneratedColumn<DateTime>('quarantined_at', aliasedName, false,
+          type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, entityTable, entityId, changeJson, failureKind, quarantinedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'quarantined_sync_changes';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<QuarantinedSyncChangeRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('entity_table')) {
+      context.handle(
+          _entityTableMeta,
+          entityTable.isAcceptableOrUnknown(
+              data['entity_table']!, _entityTableMeta));
+    }
+    if (data.containsKey('entity_id')) {
+      context.handle(_entityIdMeta,
+          entityId.isAcceptableOrUnknown(data['entity_id']!, _entityIdMeta));
+    }
+    if (data.containsKey('change_json')) {
+      context.handle(
+          _changeJsonMeta,
+          changeJson.isAcceptableOrUnknown(
+              data['change_json']!, _changeJsonMeta));
+    } else if (isInserting) {
+      context.missing(_changeJsonMeta);
+    }
+    if (data.containsKey('failure_kind')) {
+      context.handle(
+          _failureKindMeta,
+          failureKind.isAcceptableOrUnknown(
+              data['failure_kind']!, _failureKindMeta));
+    } else if (isInserting) {
+      context.missing(_failureKindMeta);
+    }
+    if (data.containsKey('quarantined_at')) {
+      context.handle(
+          _quarantinedAtMeta,
+          quarantinedAt.isAcceptableOrUnknown(
+              data['quarantined_at']!, _quarantinedAtMeta));
+    } else if (isInserting) {
+      context.missing(_quarantinedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  QuarantinedSyncChangeRow map(Map<String, dynamic> data,
+      {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return QuarantinedSyncChangeRow(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      entityTable: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}entity_table']),
+      entityId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}entity_id']),
+      changeJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}change_json'])!,
+      failureKind: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}failure_kind'])!,
+      quarantinedAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}quarantined_at'])!,
+    );
+  }
+
+  @override
+  $QuarantinedSyncChangesTable createAlias(String alias) {
+    return $QuarantinedSyncChangesTable(attachedDatabase, alias);
+  }
+}
+
+class QuarantinedSyncChangeRow extends DataClass
+    implements Insertable<QuarantinedSyncChangeRow> {
+  final int id;
+  final String? entityTable;
+  final String? entityId;
+  final String changeJson;
+  final String failureKind;
+  final DateTime quarantinedAt;
+  const QuarantinedSyncChangeRow(
+      {required this.id,
+      this.entityTable,
+      this.entityId,
+      required this.changeJson,
+      required this.failureKind,
+      required this.quarantinedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || entityTable != null) {
+      map['entity_table'] = Variable<String>(entityTable);
+    }
+    if (!nullToAbsent || entityId != null) {
+      map['entity_id'] = Variable<String>(entityId);
+    }
+    map['change_json'] = Variable<String>(changeJson);
+    map['failure_kind'] = Variable<String>(failureKind);
+    map['quarantined_at'] = Variable<DateTime>(quarantinedAt);
+    return map;
+  }
+
+  QuarantinedSyncChangesCompanion toCompanion(bool nullToAbsent) {
+    return QuarantinedSyncChangesCompanion(
+      id: Value(id),
+      entityTable: entityTable == null && nullToAbsent
+          ? const Value.absent()
+          : Value(entityTable),
+      entityId: entityId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(entityId),
+      changeJson: Value(changeJson),
+      failureKind: Value(failureKind),
+      quarantinedAt: Value(quarantinedAt),
+    );
+  }
+
+  factory QuarantinedSyncChangeRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return QuarantinedSyncChangeRow(
+      id: serializer.fromJson<int>(json['id']),
+      entityTable: serializer.fromJson<String?>(json['entityTable']),
+      entityId: serializer.fromJson<String?>(json['entityId']),
+      changeJson: serializer.fromJson<String>(json['changeJson']),
+      failureKind: serializer.fromJson<String>(json['failureKind']),
+      quarantinedAt: serializer.fromJson<DateTime>(json['quarantinedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'entityTable': serializer.toJson<String?>(entityTable),
+      'entityId': serializer.toJson<String?>(entityId),
+      'changeJson': serializer.toJson<String>(changeJson),
+      'failureKind': serializer.toJson<String>(failureKind),
+      'quarantinedAt': serializer.toJson<DateTime>(quarantinedAt),
+    };
+  }
+
+  QuarantinedSyncChangeRow copyWith(
+          {int? id,
+          Value<String?> entityTable = const Value.absent(),
+          Value<String?> entityId = const Value.absent(),
+          String? changeJson,
+          String? failureKind,
+          DateTime? quarantinedAt}) =>
+      QuarantinedSyncChangeRow(
+        id: id ?? this.id,
+        entityTable: entityTable.present ? entityTable.value : this.entityTable,
+        entityId: entityId.present ? entityId.value : this.entityId,
+        changeJson: changeJson ?? this.changeJson,
+        failureKind: failureKind ?? this.failureKind,
+        quarantinedAt: quarantinedAt ?? this.quarantinedAt,
+      );
+  QuarantinedSyncChangeRow copyWithCompanion(
+      QuarantinedSyncChangesCompanion data) {
+    return QuarantinedSyncChangeRow(
+      id: data.id.present ? data.id.value : this.id,
+      entityTable:
+          data.entityTable.present ? data.entityTable.value : this.entityTable,
+      entityId: data.entityId.present ? data.entityId.value : this.entityId,
+      changeJson:
+          data.changeJson.present ? data.changeJson.value : this.changeJson,
+      failureKind:
+          data.failureKind.present ? data.failureKind.value : this.failureKind,
+      quarantinedAt: data.quarantinedAt.present
+          ? data.quarantinedAt.value
+          : this.quarantinedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('QuarantinedSyncChangeRow(')
+          ..write('id: $id, ')
+          ..write('entityTable: $entityTable, ')
+          ..write('entityId: $entityId, ')
+          ..write('changeJson: $changeJson, ')
+          ..write('failureKind: $failureKind, ')
+          ..write('quarantinedAt: $quarantinedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id, entityTable, entityId, changeJson, failureKind, quarantinedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is QuarantinedSyncChangeRow &&
+          other.id == this.id &&
+          other.entityTable == this.entityTable &&
+          other.entityId == this.entityId &&
+          other.changeJson == this.changeJson &&
+          other.failureKind == this.failureKind &&
+          other.quarantinedAt == this.quarantinedAt);
+}
+
+class QuarantinedSyncChangesCompanion
+    extends UpdateCompanion<QuarantinedSyncChangeRow> {
+  final Value<int> id;
+  final Value<String?> entityTable;
+  final Value<String?> entityId;
+  final Value<String> changeJson;
+  final Value<String> failureKind;
+  final Value<DateTime> quarantinedAt;
+  const QuarantinedSyncChangesCompanion({
+    this.id = const Value.absent(),
+    this.entityTable = const Value.absent(),
+    this.entityId = const Value.absent(),
+    this.changeJson = const Value.absent(),
+    this.failureKind = const Value.absent(),
+    this.quarantinedAt = const Value.absent(),
+  });
+  QuarantinedSyncChangesCompanion.insert({
+    this.id = const Value.absent(),
+    this.entityTable = const Value.absent(),
+    this.entityId = const Value.absent(),
+    required String changeJson,
+    required String failureKind,
+    required DateTime quarantinedAt,
+  })  : changeJson = Value(changeJson),
+        failureKind = Value(failureKind),
+        quarantinedAt = Value(quarantinedAt);
+  static Insertable<QuarantinedSyncChangeRow> custom({
+    Expression<int>? id,
+    Expression<String>? entityTable,
+    Expression<String>? entityId,
+    Expression<String>? changeJson,
+    Expression<String>? failureKind,
+    Expression<DateTime>? quarantinedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (entityTable != null) 'entity_table': entityTable,
+      if (entityId != null) 'entity_id': entityId,
+      if (changeJson != null) 'change_json': changeJson,
+      if (failureKind != null) 'failure_kind': failureKind,
+      if (quarantinedAt != null) 'quarantined_at': quarantinedAt,
+    });
+  }
+
+  QuarantinedSyncChangesCompanion copyWith(
+      {Value<int>? id,
+      Value<String?>? entityTable,
+      Value<String?>? entityId,
+      Value<String>? changeJson,
+      Value<String>? failureKind,
+      Value<DateTime>? quarantinedAt}) {
+    return QuarantinedSyncChangesCompanion(
+      id: id ?? this.id,
+      entityTable: entityTable ?? this.entityTable,
+      entityId: entityId ?? this.entityId,
+      changeJson: changeJson ?? this.changeJson,
+      failureKind: failureKind ?? this.failureKind,
+      quarantinedAt: quarantinedAt ?? this.quarantinedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (entityTable.present) {
+      map['entity_table'] = Variable<String>(entityTable.value);
+    }
+    if (entityId.present) {
+      map['entity_id'] = Variable<String>(entityId.value);
+    }
+    if (changeJson.present) {
+      map['change_json'] = Variable<String>(changeJson.value);
+    }
+    if (failureKind.present) {
+      map['failure_kind'] = Variable<String>(failureKind.value);
+    }
+    if (quarantinedAt.present) {
+      map['quarantined_at'] = Variable<DateTime>(quarantinedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('QuarantinedSyncChangesCompanion(')
+          ..write('id: $id, ')
+          ..write('entityTable: $entityTable, ')
+          ..write('entityId: $entityId, ')
+          ..write('changeJson: $changeJson, ')
+          ..write('failureKind: $failureKind, ')
+          ..write('quarantinedAt: $quarantinedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $MeasurementsTable extends Measurements
     with TableInfo<$MeasurementsTable, MeasurementRow> {
   @override
@@ -23374,6 +23731,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SyncStatesTable syncStates = $SyncStatesTable(this);
   late final $DeferredSyncChangesTable deferredSyncChanges =
       $DeferredSyncChangesTable(this);
+  late final $QuarantinedSyncChangesTable quarantinedSyncChanges =
+      $QuarantinedSyncChangesTable(this);
   late final $MeasurementsTable measurements = $MeasurementsTable(this);
   late final $MeasurementEntriesTable measurementEntries =
       $MeasurementEntriesTable(this);
@@ -23457,6 +23816,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final Index deferredSyncChangesMissingEntityIndex = Index(
       'deferred_sync_changes_missing_entity_index',
       'CREATE INDEX deferred_sync_changes_missing_entity_index ON deferred_sync_changes (missing_entity_table, missing_entity_id)');
+  late final Index quarantinedSyncChangesEntityIndex = Index(
+      'quarantined_sync_changes_entity_index',
+      'CREATE UNIQUE INDEX quarantined_sync_changes_entity_index ON quarantined_sync_changes (entity_table, entity_id)');
   late final Index measurementsSortOrderIndex = Index(
       'measurements_sort_order_index',
       'CREATE INDEX measurements_sort_order_index ON measurements (sort_order)');
@@ -23569,6 +23931,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         activityLog,
         syncStates,
         deferredSyncChanges,
+        quarantinedSyncChanges,
         measurements,
         measurementEntries,
         metrics,
@@ -23609,6 +23972,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         activityLogBatchIdIndex,
         activityLogPendingSyncIndex,
         deferredSyncChangesMissingEntityIndex,
+        quarantinedSyncChangesEntityIndex,
         measurementsSortOrderIndex,
         measurementEntriesMeasurementIdIndex,
         measurementEntriesMeasuredAtIndex,
@@ -31079,6 +31443,196 @@ typedef $$DeferredSyncChangesTableProcessedTableManager = ProcessedTableManager<
     ),
     DeferredSyncChangeRow,
     PrefetchHooks Function()>;
+typedef $$QuarantinedSyncChangesTableCreateCompanionBuilder
+    = QuarantinedSyncChangesCompanion Function({
+  Value<int> id,
+  Value<String?> entityTable,
+  Value<String?> entityId,
+  required String changeJson,
+  required String failureKind,
+  required DateTime quarantinedAt,
+});
+typedef $$QuarantinedSyncChangesTableUpdateCompanionBuilder
+    = QuarantinedSyncChangesCompanion Function({
+  Value<int> id,
+  Value<String?> entityTable,
+  Value<String?> entityId,
+  Value<String> changeJson,
+  Value<String> failureKind,
+  Value<DateTime> quarantinedAt,
+});
+
+class $$QuarantinedSyncChangesTableFilterComposer
+    extends Composer<_$AppDatabase, $QuarantinedSyncChangesTable> {
+  $$QuarantinedSyncChangesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get entityTable => $composableBuilder(
+      column: $table.entityTable, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get entityId => $composableBuilder(
+      column: $table.entityId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get changeJson => $composableBuilder(
+      column: $table.changeJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get failureKind => $composableBuilder(
+      column: $table.failureKind, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get quarantinedAt => $composableBuilder(
+      column: $table.quarantinedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$QuarantinedSyncChangesTableOrderingComposer
+    extends Composer<_$AppDatabase, $QuarantinedSyncChangesTable> {
+  $$QuarantinedSyncChangesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get entityTable => $composableBuilder(
+      column: $table.entityTable, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get entityId => $composableBuilder(
+      column: $table.entityId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get changeJson => $composableBuilder(
+      column: $table.changeJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get failureKind => $composableBuilder(
+      column: $table.failureKind, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get quarantinedAt => $composableBuilder(
+      column: $table.quarantinedAt,
+      builder: (column) => ColumnOrderings(column));
+}
+
+class $$QuarantinedSyncChangesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $QuarantinedSyncChangesTable> {
+  $$QuarantinedSyncChangesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get entityTable => $composableBuilder(
+      column: $table.entityTable, builder: (column) => column);
+
+  GeneratedColumn<String> get entityId =>
+      $composableBuilder(column: $table.entityId, builder: (column) => column);
+
+  GeneratedColumn<String> get changeJson => $composableBuilder(
+      column: $table.changeJson, builder: (column) => column);
+
+  GeneratedColumn<String> get failureKind => $composableBuilder(
+      column: $table.failureKind, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get quarantinedAt => $composableBuilder(
+      column: $table.quarantinedAt, builder: (column) => column);
+}
+
+class $$QuarantinedSyncChangesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $QuarantinedSyncChangesTable,
+    QuarantinedSyncChangeRow,
+    $$QuarantinedSyncChangesTableFilterComposer,
+    $$QuarantinedSyncChangesTableOrderingComposer,
+    $$QuarantinedSyncChangesTableAnnotationComposer,
+    $$QuarantinedSyncChangesTableCreateCompanionBuilder,
+    $$QuarantinedSyncChangesTableUpdateCompanionBuilder,
+    (
+      QuarantinedSyncChangeRow,
+      BaseReferences<_$AppDatabase, $QuarantinedSyncChangesTable,
+          QuarantinedSyncChangeRow>
+    ),
+    QuarantinedSyncChangeRow,
+    PrefetchHooks Function()> {
+  $$QuarantinedSyncChangesTableTableManager(
+      _$AppDatabase db, $QuarantinedSyncChangesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$QuarantinedSyncChangesTableFilterComposer(
+                  $db: db, $table: table),
+          createOrderingComposer: () =>
+              $$QuarantinedSyncChangesTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$QuarantinedSyncChangesTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String?> entityTable = const Value.absent(),
+            Value<String?> entityId = const Value.absent(),
+            Value<String> changeJson = const Value.absent(),
+            Value<String> failureKind = const Value.absent(),
+            Value<DateTime> quarantinedAt = const Value.absent(),
+          }) =>
+              QuarantinedSyncChangesCompanion(
+            id: id,
+            entityTable: entityTable,
+            entityId: entityId,
+            changeJson: changeJson,
+            failureKind: failureKind,
+            quarantinedAt: quarantinedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String?> entityTable = const Value.absent(),
+            Value<String?> entityId = const Value.absent(),
+            required String changeJson,
+            required String failureKind,
+            required DateTime quarantinedAt,
+          }) =>
+              QuarantinedSyncChangesCompanion.insert(
+            id: id,
+            entityTable: entityTable,
+            entityId: entityId,
+            changeJson: changeJson,
+            failureKind: failureKind,
+            quarantinedAt: quarantinedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$QuarantinedSyncChangesTableProcessedTableManager
+    = ProcessedTableManager<
+        _$AppDatabase,
+        $QuarantinedSyncChangesTable,
+        QuarantinedSyncChangeRow,
+        $$QuarantinedSyncChangesTableFilterComposer,
+        $$QuarantinedSyncChangesTableOrderingComposer,
+        $$QuarantinedSyncChangesTableAnnotationComposer,
+        $$QuarantinedSyncChangesTableCreateCompanionBuilder,
+        $$QuarantinedSyncChangesTableUpdateCompanionBuilder,
+        (
+          QuarantinedSyncChangeRow,
+          BaseReferences<_$AppDatabase, $QuarantinedSyncChangesTable,
+              QuarantinedSyncChangeRow>
+        ),
+        QuarantinedSyncChangeRow,
+        PrefetchHooks Function()>;
 typedef $$MeasurementsTableCreateCompanionBuilder = MeasurementsCompanion
     Function({
   required String id,
@@ -39667,6 +40221,9 @@ class $AppDatabaseManager {
       $$SyncStatesTableTableManager(_db, _db.syncStates);
   $$DeferredSyncChangesTableTableManager get deferredSyncChanges =>
       $$DeferredSyncChangesTableTableManager(_db, _db.deferredSyncChanges);
+  $$QuarantinedSyncChangesTableTableManager get quarantinedSyncChanges =>
+      $$QuarantinedSyncChangesTableTableManager(
+          _db, _db.quarantinedSyncChanges);
   $$MeasurementsTableTableManager get measurements =>
       $$MeasurementsTableTableManager(_db, _db.measurements);
   $$MeasurementEntriesTableTableManager get measurementEntries =>

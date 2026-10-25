@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -776,6 +777,439 @@ void main() {
     expect(secondResult.appliedCount, 0);
     expect(requests, hasLength(2));
     expect(jsonDecode(requests.last.body)['cursor'], 'cursor-unknown-1');
+  });
+
+  test(
+      'quarantines a known-type change that fails to apply and still '
+      'advances the cursor', () async {
+    final logs = _captureDebugPrint();
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const firstSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c011';
+    const brokenSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    const secondSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c012';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final brokenChange = <String, Object?>{
+      ..._pulledChange(
+        id: brokenSetId,
+        updatedAt: updatedAt,
+        repsEntered: '6',
+        deviceId: 'device-b',
+      ),
+      'payload': <String, Object?>{
+        ..._loggedSetPayload(brokenSetId, updatedAt, repsEntered: '6'),
+        'comment': 'private-protocol-note',
+      },
+      // Parses as an envelope, fails DateTime.parse while applying.
+      'updatedAt': 'not-a-timestamp',
+    };
+    final requests = <http.Request>[];
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          final cursor = jsonDecode(request.body)['cursor'];
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': 1,
+              'nextCursor': 'cursor-broken-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': cursor == null
+                  ? <Object?>[
+                      _pulledChange(
+                        id: firstSetId,
+                        updatedAt: updatedAt,
+                        repsEntered: '5',
+                        deviceId: 'device-b',
+                      ),
+                      brokenChange,
+                      _pulledChange(
+                        id: secondSetId,
+                        updatedAt: updatedAt,
+                        repsEntered: '8',
+                        deviceId: 'device-b',
+                      ),
+                    ]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final firstResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(firstResult.appliedCount, 2);
+    expect((await _loggedSet(database, firstSetId)).repsEntered, '5');
+    expect((await _loggedSet(database, secondSetId)).repsEntered, '8');
+    expect(
+      await (database.select(database.loggedSets)
+            ..where((row) => row.id.equals(brokenSetId)))
+          .getSingleOrNull(),
+      isNull,
+    );
+    expect(await _storedPullCursor(database), 'cursor-broken-1');
+    final held = await _quarantinedChanges(database);
+    expect(held, hasLength(1));
+    expect(held.single.entityTable, AppDatabase.loggedSetsTable);
+    expect(held.single.entityId, brokenSetId);
+    expect(held.single.failureKind, 'format');
+    final heldChange =
+        jsonDecode(held.single.changeJson) as Map<String, Object?>;
+    expect(heldChange['payload'], brokenChange['payload']);
+    expect(heldChange['updatedAt'], 'not-a-timestamp');
+    expect(
+      (await SyncStatusRepository(database).loadStatus())
+          .quarantinedChangeCount,
+      1,
+    );
+    expect(logs, isNotEmpty);
+    expect(logs.join('\n'), isNot(contains('private-protocol-note')));
+    expect(logs.join('\n'), isNot(contains('not-a-timestamp')));
+
+    final secondResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(secondResult.appliedCount, 0);
+    expect(requests, hasLength(2));
+    expect(jsonDecode(requests.last.body)['cursor'], 'cursor-broken-1');
+    expect(await _quarantinedChanges(database), hasLength(1));
+  });
+
+  test('quarantines a malformed change envelope and still advances the cursor',
+      () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const firstSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c011';
+    const brokenSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final missingDeviceId = _pulledChange(
+      id: brokenSetId,
+      updatedAt: updatedAt,
+      repsEntered: '6',
+      deviceId: 'device-b',
+    )..remove('deviceId');
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': 1,
+              'nextCursor': 'cursor-envelope-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': <Object?>[
+                missingDeviceId,
+                'not-an-object',
+                _pulledChange(
+                  id: firstSetId,
+                  updatedAt: updatedAt,
+                  repsEntered: '5',
+                  deviceId: 'device-b',
+                ),
+              ],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+      limit: 3,
+    );
+
+    expect(result.appliedCount, 1);
+    // Malformed entries still filled the page, so there may be more.
+    expect(result.hasMore, isTrue);
+    expect((await _loggedSet(database, firstSetId)).repsEntered, '5');
+    expect(await _storedPullCursor(database), 'cursor-envelope-1');
+    final held = await _quarantinedChanges(database);
+    expect(
+      held.map((row) => (row.entityTable, row.entityId, row.failureKind)),
+      <(String?, String?, String)>[
+        (AppDatabase.loggedSetsTable, brokenSetId, 'envelope'),
+        (null, null, 'envelope'),
+      ],
+    );
+    expect(jsonDecode(held.first.changeJson), missingDeviceId);
+    expect(jsonDecode(held.last.changeJson), 'not-an-object');
+  });
+
+  test('a later valid version of a quarantined row supersedes it', () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final cursor = jsonDecode(request.body)['cursor'];
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': 1,
+              'nextCursor': cursor == null ? 'cursor-1' : 'cursor-2',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': <Object?>[
+                if (cursor == null)
+                  <String, Object?>{
+                    ..._pulledChange(
+                      id: setId,
+                      updatedAt: updatedAt,
+                      repsEntered: '6',
+                      deviceId: 'device-b',
+                    ),
+                    'updatedAt': 'not-a-timestamp',
+                  }
+                else
+                  _pulledChange(
+                    id: setId,
+                    updatedAt: updatedAt.add(const Duration(minutes: 1)),
+                    repsEntered: '7',
+                    deviceId: 'device-b',
+                  ),
+              ],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+    expect(await _quarantinedChanges(database), hasLength(1));
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(result.appliedCount, 1);
+    expect((await _loggedSet(database, setId)).repsEntered, '7');
+    expect(await _quarantinedChanges(database), isEmpty);
+    expect(await _storedPullCursor(database), 'cursor-2');
+  });
+
+  test('retries a quarantined change at the end of the next pull', () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    // Held by an earlier build that could not apply it; this one can.
+    await database.into(database.quarantinedSyncChanges).insert(
+          QuarantinedSyncChangesCompanion.insert(
+            entityTable: const Value<String?>(AppDatabase.loggedSetsTable),
+            entityId: const Value<String?>(setId),
+            changeJson: jsonEncode(
+              _pulledChange(
+                id: setId,
+                updatedAt: updatedAt,
+                repsEntered: '6',
+                deviceId: 'device-b',
+              ),
+            ),
+            failureKind: 'format',
+            quarantinedAt: updatedAt,
+          ),
+        );
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': 1,
+              'nextCursor': 'cursor-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(result.appliedCount, 1);
+    expect((await _loggedSet(database, setId)).repsEntered, '6');
+    expect(await _quarantinedChanges(database), isEmpty);
+  });
+
+  test('holds a change whose parent row is missing until the parent exists',
+      () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const setId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c013';
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final cursor = jsonDecode(request.body)['cursor'];
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': 1,
+              'nextCursor': 'cursor-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': cursor == null
+                  ? <Object?>[
+                      _pulledChange(
+                        id: setId,
+                        updatedAt: updatedAt,
+                        repsEntered: '6',
+                        deviceId: 'device-b',
+                      ),
+                    ]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    // The Logged Set's Workout and Exercise (Drift FKs) are not here yet.
+    final firstResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(firstResult.appliedCount, 0);
+    expect(await _storedPullCursor(database), 'cursor-1');
+    expect(
+      (await _quarantinedChanges(database))
+          .map((row) => (row.entityId, row.failureKind)),
+      <(String?, String)>[(setId, 'constraint')],
+    );
+    // Its savepoint rolled back: nothing of the failed apply is left behind.
+    expect(
+      await (database.select(database.activityLog)
+            ..where((row) => row.entityId.equals(setId)))
+          .get(),
+      isEmpty,
+    );
+
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final secondResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(secondResult.appliedCount, 1);
+    expect((await _loggedSet(database, setId)).repsEntered, '6');
+    expect(await _quarantinedChanges(database), isEmpty);
+  });
+
+  test(
+      'full re-sync keeps local rows when a snapshot entry is unidentifiable '
+      'and drops quarantined changes it did not resend', () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 8);
+    const brokenSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c001';
+    const absentSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c002';
+    const staleHeldSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c003';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    for (final id in <String>[brokenSetId, absentSetId]) {
+      await _insertLoggedSet(
+        database,
+        id: id,
+        updatedAt: updatedAt,
+        repsEntered: '4',
+        syncDeviceId: 'device-b',
+        syncPreviouslySynced: true,
+      );
+    }
+    await database.into(database.quarantinedSyncChanges).insert(
+          QuarantinedSyncChangesCompanion.insert(
+            entityTable: const Value<String?>(AppDatabase.loggedSetsTable),
+            entityId: const Value<String?>(staleHeldSetId),
+            changeJson: jsonEncode('held-by-an-earlier-pull'),
+            failureKind: 'envelope',
+            quarantinedAt: updatedAt,
+          ),
+        );
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          if (body['mode'] != 'snapshot') {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': 1,
+                'fullResyncRequired': true,
+                'nextCursor': null,
+                'serverClock': '2026-06-22T09:00:00.000Z',
+                'changes': <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': 1,
+              'nextCursor': 'snapshot-cursor-1',
+              'serverClock': '2026-06-22T09:00:02.000Z',
+              'changes': body['cursor'] == null
+                  ? <Object?>[
+                      <String, Object?>{
+                        ..._pulledChange(
+                          id: brokenSetId,
+                          updatedAt: updatedAt,
+                          repsEntered: '9',
+                          deviceId: 'device-b',
+                        ),
+                        'updatedAt': 'not-a-timestamp',
+                      },
+                      42,
+                    ]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(result.fullResyncRequired, isTrue);
+    expect(await _storedPullCursor(database), 'snapshot-cursor-1');
+    expect((await _loggedSet(database, brokenSetId)).deletedAt, isNull);
+    // The unidentifiable entry could have been this row, so the snapshot
+    // does not prove it deleted.
+    expect((await _loggedSet(database, absentSetId)).deletedAt, isNull);
+    expect(
+      (await _quarantinedChanges(database))
+          .map((row) => (row.entityId, row.failureKind)),
+      <(String?, String)>[(null, 'envelope'), (brokenSetId, 'format')],
+    );
   });
 
   test('pulls Metric definitions before Metric Readings', () async {
@@ -4347,6 +4781,27 @@ Future<LoggedSetRow> _loggedSet(AppDatabase database, String id) {
   return (database.select(database.loggedSets)
         ..where((row) => row.id.equals(id)))
       .getSingle();
+}
+
+Future<List<QuarantinedSyncChangeRow>> _quarantinedChanges(
+  AppDatabase database,
+) {
+  return (database.select(database.quarantinedSyncChanges)
+        ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+      .get();
+}
+
+/// Records what `debugPrint` is asked to print for the rest of the test.
+List<String> _captureDebugPrint() {
+  final logs = <String>[];
+  final original = debugPrint;
+  debugPrint = (message, {wrapWidth}) {
+    if (message != null) {
+      logs.add(message);
+    }
+  };
+  addTearDown(() => debugPrint = original);
+  return logs;
 }
 
 Future<String?> _storedPullCursor(AppDatabase database) async {
