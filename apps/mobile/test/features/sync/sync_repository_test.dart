@@ -708,6 +708,76 @@ void main() {
     });
   });
 
+  test('skips an unknown entity type and still advances the cursor', () async {
+    final updatedAt = DateTime.utc(2026, 6, 22, 9);
+    const firstSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c011';
+    const secondSetId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c012';
+    await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+    final requests = <http.Request>[];
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          final cursor = jsonDecode(request.body)['cursor'];
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': 1,
+              'nextCursor': 'cursor-unknown-1',
+              'serverClock': '2026-06-22T09:00:01.000Z',
+              'changes': cursor == null
+                  ? <Object?>[
+                      _pulledChange(
+                        id: firstSetId,
+                        updatedAt: updatedAt,
+                        repsEntered: '5',
+                        deviceId: 'device-b',
+                      ),
+                      <String, Object?>{
+                        'entity': 'entity_from_a_newer_server',
+                        'id': 'future-row-1',
+                        'deviceId': 'device-b',
+                        'payload': <String, Object?>{'secret': 'not logged'},
+                        'updatedAt': updatedAt.toIso8601String(),
+                        'deletedAt': null,
+                      },
+                      _pulledChange(
+                        id: secondSetId,
+                        updatedAt: updatedAt,
+                        repsEntered: '8',
+                        deviceId: 'device-b',
+                      ),
+                    ]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    final firstResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(firstResult.appliedCount, 2);
+    expect((await _loggedSet(database, firstSetId)).repsEntered, '5');
+    expect((await _loggedSet(database, secondSetId)).repsEntered, '8');
+    expect(await _storedPullCursor(database), 'cursor-unknown-1');
+
+    final secondResult = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+
+    expect(secondResult.appliedCount, 0);
+    expect(requests, hasLength(2));
+    expect(jsonDecode(requests.last.body)['cursor'], 'cursor-unknown-1');
+  });
+
   test('pulls Metric definitions before Metric Readings', () async {
     final updatedAt = DateTime.utc(2026, 6, 25, 7);
     const metricId = 'metric-resting-heart-rate';
