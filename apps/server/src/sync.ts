@@ -658,110 +658,74 @@ export type SyncStore = {
 
 type LoggedSetMutationDatabase = Pick<ServerDatabase, "select" | "insert" | "update">;
 
+// The opaque sync tables a device seeds under FIXED ids shared by every
+// account: the Platform exercise categories and starter Focuses (bundled
+// platform_exercises.json), the default Meal Types and the OTC seed Compounds.
+// The app pushes those seeded rows, and a user's rename/reorder/archive of
+// them, as ordinary LWW rows, so these tables are keyed (user_id, id) and every
+// read and write here is scoped by both columns. TENANT ISOLATION comes from
+// the key itself: each account's "Chest" is its own row and can never touch
+// another account's, so the generic owner check never fires. (With a global id
+// key the first account to push a seeded id owned it, and every other
+// account's push or edit of it was silently dropped.)
+type AccountKeyedSyncTable =
+  | typeof schema.exerciseCategories
+  | typeof schema.focuses
+  | typeof schema.mealTypes
+  | typeof schema.compounds;
+
+async function pushAccountKeyedSyncRowsInTransaction(
+  transaction: LoggedSetMutationDatabase,
+  input: {
+    userId: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+    serverClock: Date;
+    table: AccountKeyedSyncTable;
+    entityTable: SyncPullEntity;
+  }
+): Promise<SyncPushResult> {
+  const { userId, table } = input;
+  const ownRow = (id: string) =>
+    and(eq(table.userId, userId), eq(table.id, id));
+  return pushOpaqueSyncRowsInTransaction(transaction, {
+    ...input,
+    async readExisting(id) {
+      const rows = await transaction
+        .select({
+          userId: table.userId,
+          updatedAt: table.updatedAt,
+          deviceId: table.deviceId
+        })
+        .from(table)
+        .where(ownRow(id))
+        .limit(1);
+      return rows[0];
+    },
+    async writeRow(existing, row) {
+      if (existing === undefined) {
+        await transaction.insert(table).values(row);
+      } else {
+        await transaction.update(table).set(row).where(ownRow(row.id));
+      }
+    }
+  });
+}
+
 export async function pushExerciseCategoriesInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
-    }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: EXERCISE_CATEGORIES_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.exerciseCategories.userId,
-        updatedAt: schema.exerciseCategories.updatedAt,
-        deviceId: schema.exerciseCategories.deviceId
-      })
-      .from(schema.exerciseCategories)
-      .where(eq(schema.exerciseCategories.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION: a second user's push can never overwrite the
-    // first user's row keyed by the same client PK.
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.exerciseCategories).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.exerciseCategories)
-        .set(rowValues)
-        .where(eq(schema.exerciseCategories.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
+    ...input,
+    table: schema.exerciseCategories,
+    entityTable: EXERCISE_CATEGORIES_SYNC_ENTITY
+  });
 }
 
 // A `Focus` (CONTEXT.md) is pushed on the same opaque LWW rails as an
@@ -777,35 +741,10 @@ export async function pushFocusesInTransaction(
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const { userId } = input;
-  // TENANT ISOLATION comes from the (user_id, id) key itself: starter Focus
-  // ids are shared by every account, so each account's edit of "Weights" is
-  // its own row and can never touch another account's. Reads and writes are
-  // therefore scoped by both columns, and the generic owner check never fires.
-  const ownRow = (id: string) =>
-    and(eq(schema.focuses.userId, userId), eq(schema.focuses.id, id));
-  return pushOpaqueSyncRowsInTransaction(transaction, {
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
     ...input,
-    entityTable: FOCUSES_SYNC_ENTITY,
-    async readExisting(id) {
-      const rows = await transaction
-        .select({
-          userId: schema.focuses.userId,
-          updatedAt: schema.focuses.updatedAt,
-          deviceId: schema.focuses.deviceId
-        })
-        .from(schema.focuses)
-        .where(ownRow(id))
-        .limit(1);
-      return rows[0];
-    },
-    async writeRow(existing, row) {
-      if (existing === undefined) {
-        await transaction.insert(schema.focuses).values(row);
-      } else {
-        await transaction.update(schema.focuses).set(row).where(ownRow(row.id));
-      }
-    }
+    table: schema.focuses,
+    entityTable: FOCUSES_SYNC_ENTITY
   });
 }
 
@@ -1314,108 +1253,18 @@ export async function pushFoodsInTransaction(
 
 export async function pushMealTypesInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
-    }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: MEAL_TYPES_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.mealTypes.userId,
-        updatedAt: schema.mealTypes.updatedAt,
-        deviceId: schema.mealTypes.deviceId
-      })
-      .from(schema.mealTypes)
-      .where(eq(schema.mealTypes.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION: a second user's push can never overwrite the
-    // first user's row keyed by the same client PK.
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.mealTypes).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.mealTypes)
-        .set(rowValues)
-        .where(eq(schema.mealTypes.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
+    ...input,
+    table: schema.mealTypes,
+    entityTable: MEAL_TYPES_SYNC_ENTITY
+  });
 }
 
 export async function pushMealsInTransaction(
@@ -1628,108 +1477,18 @@ export async function pushFoodEntriesInTransaction(
 
 export async function pushCompoundsInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
-    }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: COMPOUNDS_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.compounds.userId,
-        updatedAt: schema.compounds.updatedAt,
-        deviceId: schema.compounds.deviceId
-      })
-      .from(schema.compounds)
-      .where(eq(schema.compounds.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION: a second user's push can never overwrite the
-    // first user's row keyed by the same client PK.
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.compounds).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.compounds)
-        .set(rowValues)
-        .where(eq(schema.compounds.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
+    ...input,
+    table: schema.compounds,
+    entityTable: COMPOUNDS_SYNC_ENTITY
+  });
 }
 
 export async function pushDosesInTransaction(
