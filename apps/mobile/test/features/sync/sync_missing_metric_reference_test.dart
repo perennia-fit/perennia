@@ -10,12 +10,9 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/sync/repositories/sync_repository.dart';
 
-/// Metrics only ever flow server → device, but a Protocol target outcome is
-/// pushed. So a device that targets its own, user-created Metric pushes an
-/// outcome that references a row no other device has. These tests push such an
-/// outcome from device A through a fake server, pull it onto device B, and pin
-/// down that B's sync keeps moving: the outcome waits on B until its Metric
-/// arrives, and is applied then.
+/// These tests model a server with a pulled Protocol target outcome but without
+/// its Metric. They pin down that the outcome waits on device B until its
+/// Metric arrives, and is applied then.
 void main() {
   final warnAboutMultipleDatabases =
       driftRuntimeOptions.dontWarnAboutMultipleDatabases;
@@ -239,6 +236,11 @@ class _FakeSyncServer {
       deviceId: deviceId,
     );
     expect(result.pushedCount, greaterThan(0));
+    // The regular sync cycle pushes Metrics before outcomes. Remove the Metric
+    // here to model a server response where that referenced row has not arrived.
+    changes.removeWhere(
+      (change) => change['entity'] == AppDatabase.metricsTable,
+    );
   }
 
   Future<SyncPullResult> pull(
