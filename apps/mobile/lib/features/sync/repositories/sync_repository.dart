@@ -1607,7 +1607,16 @@ class SyncRepository implements SyncCycleRepository {
           continue;
         }
 
-        throw FormatException('Unsupported sync entity: ${change.entity}.');
+        // Forward compatibility: an entity type this build does not know
+        // came from a newer server or client. Skip it and let the rest of
+        // the page apply and the cursor advance. Throwing here would roll the
+        // transaction back before the cursor is saved, so every later pull
+        // would re-fetch the same row and fail on it forever. The log names
+        // only the entity and id, never the payload, which can hold
+        // Protocols data.
+        debugPrint(
+          'Sync pull skipped unknown entity ${change.entity} (${change.id}).',
+        );
       }
       appliedCount += await _applyDeferredChangesNowApplicable(
         deviceId: deviceId,

@@ -1,0 +1,227 @@
+{
+  "name": "m29-effect-window",
+  "domain": "effect-window",
+  "schemaVersion": 1,
+  "schema": "m29-effect-window.schema.json",
+  "cases": [
+    {
+      "name": "protocol closed course: before/during/after all populated",
+      "input": {
+        "source": {
+          "kind": "protocol",
+          "startDate": "2026-01-15T00:00:00.000Z",
+          "endDate": "2026-02-14T00:00:00.000Z"
+        },
+        "now": "2026-03-16T00:00:00.000Z",
+        "samples": [
+          { "at": "2026-01-01T08:00:00.000Z", "value": 82.0 },
+          { "at": "2026-01-08T08:00:00.000Z", "value": 81.5 },
+          { "at": "2026-01-20T08:00:00.000Z", "value": 80.2 },
+          { "at": "2026-02-05T08:00:00.000Z", "value": 79.0 },
+          { "at": "2026-02-20T08:00:00.000Z", "value": 79.5 },
+          { "at": "2026-03-01T08:00:00.000Z", "value": 80.0 }
+        ]
+      },
+      "expected": {
+        "window": {
+          "duringStart": "2026-01-15T00:00:00.000Z",
+          "duringEnd": "2026-02-14T00:00:00.000Z",
+          "duringEndOrNow": "2026-02-14T00:00:00.000Z",
+          "beforeStart": "2025-12-16T00:00:00.000Z",
+          "afterEnd": "2026-03-16T00:00:00.000Z"
+        },
+        "segments": {
+          "before": { "count": 2, "mean": 81.75 },
+          "during": { "count": 2, "mean": 79.6 },
+          "after": { "count": 2, "mean": 79.75 }
+        },
+        "deltas": { "during": -2.15, "after": 0.15, "overall": -2.0 }
+      }
+    },
+    {
+      "name": "protocol with no end date is ongoing: now ends DURING, no after data degrades to null",
+      "input": {
+        "source": {
+          "kind": "protocol",
+          "startDate": "2026-06-01T00:00:00.000Z",
+          "endDate": null
+        },
+        "now": "2026-07-03T00:00:00.000Z",
+        "samples": [
+          { "at": "2026-05-10T00:00:00.000Z", "value": 70.0 },
+          { "at": "2026-05-25T00:00:00.000Z", "value": 70.5 },
+          { "at": "2026-06-10T00:00:00.000Z", "value": 69.0 },
+          { "at": "2026-06-25T00:00:00.000Z", "value": 68.5 },
+          { "at": "2026-07-01T00:00:00.000Z", "value": 68.0 }
+        ]
+      },
+      "expected": {
+        "window": {
+          "duringStart": "2026-06-01T00:00:00.000Z",
+          "duringEnd": null,
+          "duringEndOrNow": "2026-07-03T00:00:00.000Z",
+          "beforeStart": "2026-04-30T00:00:00.000Z",
+          "afterEnd": "2026-08-04T00:00:00.000Z"
+        },
+        "segments": {
+          "before": { "count": 2, "mean": 70.25 },
+          "during": { "count": 3, "mean": 68.5 },
+          "after": { "count": 0, "mean": null }
+        },
+        "deltas": { "during": -1.75, "after": null, "overall": null }
+      }
+    },
+    {
+      "name": "protocol sparse data: no reading exists before the course started",
+      "input": {
+        "source": {
+          "kind": "protocol",
+          "startDate": "2026-02-01T00:00:00.000Z",
+          "endDate": "2026-02-15T00:00:00.000Z"
+        },
+        "now": "2026-03-01T00:00:00.000Z",
+        "samples": [
+          { "at": "2026-02-05T00:00:00.000Z", "value": 55.0 },
+          { "at": "2026-02-20T00:00:00.000Z", "value": 58.0 }
+        ]
+      },
+      "expected": {
+        "window": {
+          "duringStart": "2026-02-01T00:00:00.000Z",
+          "duringEnd": "2026-02-15T00:00:00.000Z",
+          "duringEndOrNow": "2026-02-15T00:00:00.000Z",
+          "beforeStart": "2026-01-18T00:00:00.000Z",
+          "afterEnd": "2026-03-01T00:00:00.000Z"
+        },
+        "segments": {
+          "before": { "count": 0, "mean": null },
+          "during": { "count": 1, "mean": 55.0 },
+          "after": { "count": 1, "mean": 58.0 }
+        },
+        "deltas": { "during": null, "after": 3.0, "overall": null }
+      }
+    },
+    {
+      "name": "half-open segments: a sample on a shared boundary belongs to exactly one segment, and one on afterEnd to none",
+      "input": {
+        "source": {
+          "kind": "protocol",
+          "startDate": "2026-05-01T00:00:00.000Z",
+          "endDate": "2026-05-11T00:00:00.000Z"
+        },
+        "now": "2026-06-01T00:00:00.000Z",
+        "samples": [
+          { "at": "2026-04-20T00:00:00.000Z", "value": 10.0 },
+          { "at": "2026-04-21T00:00:00.000Z", "value": 20.0 },
+          { "at": "2026-05-01T00:00:00.000Z", "value": 30.0 },
+          { "at": "2026-05-11T00:00:00.000Z", "value": 40.0 },
+          { "at": "2026-05-21T00:00:00.000Z", "value": 50.0 }
+        ]
+      },
+      "expected": {
+        "window": {
+          "duringStart": "2026-05-01T00:00:00.000Z",
+          "duringEnd": "2026-05-11T00:00:00.000Z",
+          "duringEndOrNow": "2026-05-11T00:00:00.000Z",
+          "beforeStart": "2026-04-21T00:00:00.000Z",
+          "afterEnd": "2026-05-21T00:00:00.000Z"
+        },
+        "segments": {
+          "before": { "count": 1, "mean": 20.0 },
+          "during": { "count": 1, "mean": 30.0 },
+          "after": { "count": 1, "mean": 40.0 }
+        },
+        "deltas": { "during": 10.0, "after": 10.0, "overall": 20.0 }
+      }
+    },
+    {
+      "name": "compound: DURING spans the earliest to the latest logged Dose, whatever order they arrive in",
+      "input": {
+        "source": {
+          "kind": "compound",
+          "doseTimes": [
+            "2026-02-09T07:30:00.000Z",
+            "2026-01-10T07:30:00.000Z",
+            "2026-01-25T07:30:00.000Z"
+          ]
+        },
+        "now": "2026-04-01T00:00:00.000Z",
+        "samples": [
+          { "at": "2025-12-01T00:00:00.000Z", "value": 80.0 },
+          { "at": "2025-12-20T00:00:00.000Z", "value": 84.0 },
+          { "at": "2026-01-05T00:00:00.000Z", "value": 83.0 },
+          { "at": "2026-01-20T00:00:00.000Z", "value": 82.0 },
+          { "at": "2026-02-01T00:00:00.000Z", "value": 81.4 },
+          { "at": "2026-02-09T07:30:00.000Z", "value": 81.0 },
+          { "at": "2026-03-01T00:00:00.000Z", "value": 81.6 },
+          { "at": "2026-03-20T00:00:00.000Z", "value": 90.0 }
+        ]
+      },
+      "expected": {
+        "window": {
+          "duringStart": "2026-01-10T07:30:00.000Z",
+          "duringEnd": "2026-02-09T07:30:00.000Z",
+          "duringEndOrNow": "2026-02-09T07:30:00.000Z",
+          "beforeStart": "2025-12-11T07:30:00.000Z",
+          "afterEnd": "2026-03-11T07:30:00.000Z"
+        },
+        "segments": {
+          "before": { "count": 2, "mean": 83.5 },
+          "during": { "count": 2, "mean": 81.7 },
+          "after": { "count": 2, "mean": 81.3 }
+        },
+        "deltas": { "during": -1.8, "after": -0.4, "overall": -2.2 }
+      }
+    },
+    {
+      "name": "compound with a single logged Dose is ongoing until now, never a zero-length window",
+      "input": {
+        "source": {
+          "kind": "compound",
+          "doseTimes": ["2026-08-10T09:00:00.000Z"]
+        },
+        "now": "2026-08-20T09:00:00.000Z",
+        "samples": [
+          { "at": "2026-07-25T00:00:00.000Z", "value": 50.0 },
+          { "at": "2026-08-01T00:00:00.000Z", "value": 60.0 },
+          { "at": "2026-08-05T00:00:00.000Z", "value": 62.0 },
+          { "at": "2026-08-15T00:00:00.000Z", "value": 65.0 }
+        ]
+      },
+      "expected": {
+        "window": {
+          "duringStart": "2026-08-10T09:00:00.000Z",
+          "duringEnd": null,
+          "duringEndOrNow": "2026-08-20T09:00:00.000Z",
+          "beforeStart": "2026-07-31T09:00:00.000Z",
+          "afterEnd": "2026-08-30T09:00:00.000Z"
+        },
+        "segments": {
+          "before": { "count": 2, "mean": 61.0 },
+          "during": { "count": 1, "mean": 65.0 },
+          "after": { "count": 0, "mean": null }
+        },
+        "deltas": { "during": 4.0, "after": null, "overall": null }
+      }
+    },
+    {
+      "name": "compound with no logged Dose derives no window, so every segment is empty",
+      "input": {
+        "source": { "kind": "compound", "doseTimes": [] },
+        "now": "2026-08-20T09:00:00.000Z",
+        "samples": [
+          { "at": "2026-08-15T00:00:00.000Z", "value": 65.0 }
+        ]
+      },
+      "expected": {
+        "window": null,
+        "segments": {
+          "before": { "count": 0, "mean": null },
+          "during": { "count": 0, "mean": null },
+          "after": { "count": 0, "mean": null }
+        },
+        "deltas": { "during": null, "after": null, "overall": null }
+      }
+    }
+  ]
+}

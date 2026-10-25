@@ -663,9 +663,13 @@ Set `deletedAt` on any row to archive it.
 ## Effect Window Read
 
 `effect-window` (`GET /agent/protocols/effect-window`) computes a descriptive
-before/during/after summary of one outcome Metric around the logged Dose timeline
-of a Compound or Protocol over a range. Provide exactly one of `compoundId` /
-`protocolId` and exactly one of `metricId` / `metricKey`, plus `from` and `to`.
+before/during/after summary of one outcome Metric. DURING is a Protocol's
+declared course (start to end date, ongoing until now with no end date) or a
+Compound's logged Doses (earliest to latest, ongoing until now after a single
+Dose); BEFORE and AFTER mirror its length. It is the same window the app's
+Effect view shows. Provide exactly one of `compoundId` / `protocolId` and
+exactly one of `metricId` / `metricKey`, plus `from` and `to`, which scope only
+the Dose markers returned, never the window.
 
 ```bash
 node scripts/prn-agent.mjs effect-window \

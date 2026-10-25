@@ -62,6 +62,8 @@ jobs:
               - 'apps/server/test/agent-validation.golden.test.mjs'
               - 'apps/server/test/agent-plan-capture.golden.test.mjs'
               - 'apps/server/test/nutrition-analytics.golden.test.mjs'
+              - 'apps/server/src/agent-protocols.ts'
+              - 'apps/server/test/effect-window.golden.test.mjs'
               - 'apps/server/package.json'
               - '.node-version'
               - 'apps/mobile/lib/domain/**'

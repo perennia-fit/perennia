@@ -34,6 +34,9 @@ and log, never a feature-parity contract or a visual asset source.
    running the CI gate locally, and what a reviewable pull request looks like.
 5. [docs/development.md](docs/development.md) — building and running the app and
    server from source, and the gate.
+6. [docs/designs/SITEMAP.md](docs/designs/SITEMAP.md) — the index of design specs.
+   Before changing an area, read the spec that covers it; it is the contract the
+   code was built against (see [Development methodology](#development-methodology--spec-driven)).
 
 ## Current state
 
@@ -56,8 +59,9 @@ shipped to an app store yet.
 
 ## Non-negotiable invariants
 
-These come from ADRs and §1.1/§4 of the high-level design. Violating one is a bug
-even if the feature "works":
+These were settled before this repository's design record began, and every
+design spec must preserve them. Violating one is a bug even if the feature
+"works":
 
 - **A Workout is a session**, not a day-bucket. Training Day is a derived view.
 - **Sets are self-describing** — values + units stored as entered. Exercise Type is
@@ -138,9 +142,10 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
 - **Terminology discipline**: code identifiers, UI copy, and API fields use
   CONTEXT.md terms (e.g. `Workout` not `Session`, `archive` not `delete`,
   Dimension vs Annotation).
-- **Document decisions in the code**: when a non-obvious choice is load-bearing,
-  the reasoning belongs in the docstring next to it, not in a tracker or a
-  document a reader has to go find.
+- **Document decisions where they bite**: a feature's intent, scope, and rejected
+  alternatives live in its design spec under `docs/designs/`. A load-bearing
+  choice at one code site still gets its reasoning in the docstring next to it —
+  a reader of that line should not have to go find the spec to avoid breaking it.
 - **UI work**: tokens and component rules come from DESIGN.md — don't hardcode
   colors, radii, or spacing in widgets; map DESIGN.md tokens to the Flutter theme
   and consume them from there.
@@ -150,6 +155,117 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
   scenario.
 - Do not commit FitNotes assets (screenshots, icons, names of their image files).
   Reference their help pages by URL only.
+
+## Development methodology — spec-driven
+
+Non-trivial changes are designed before they are built, using the
+[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
+(EGM). The idea in one paragraph: the agent that discussed a feature with you
+(the **Elephant**) has too much context to judge its own spec — it fills gaps
+from memory and approves its own assumptions. So the spec is written to stand on
+its own, and then reviewed by fresh subagents (the **Goldfish**) that see only the
+document and the code. If a Goldfish can't implement from the spec without
+guessing, the spec isn't done. A human approves it; then the code is built
+against it; then the spec stays in the tree as the record of why the code is the
+way it is.
+
+EGM artifact directory: .egm/
+
+(That line is read by the EGM skills: briefs, drafts, and review reports go to
+`.egm/`, which is gitignored. Only the finished spec is committed.)
+
+### When a spec is required
+
+Use judgment; the process exists to catch expensive mistakes, not to tax small
+ones. Write a spec first when a change does any of these:
+
+- touches one of the [non-negotiable invariants](#non-negotiable-invariants), or
+  could plausibly be read as bending one;
+- changes the Drift schema, the sync protocol, or anything that merges data
+  (import, restore, conflict handling);
+- adds or changes an API operation, MCP tool, or the contract (the agent surface
+  must get the same operation the app does);
+- changes a validation rule or an analytics computation (anything golden-vectored);
+- introduces a domain concept that needs a new [CONTEXT.md](CONTEXT.md) term;
+- adds a screen or changes a logging flow on the gym-floor path.
+
+Skip it for bug fixes that restore specified behavior, refactors with no
+behavior change, dependency bumps, copy and styling fixes within DESIGN.md, and
+test-only changes. If a "small fix" turns out to need a decision nobody has made,
+stop and write the spec.
+
+### The loop
+
+| Step | Command (Claude Code) | Output |
+|---|---|---|
+| 1. Brainstorm | `/egm:egm-brainstorm` | `.egm/concepts_brief.md` — the problem, stress-tested by a Goldfish swarm |
+| 2. Draft | `/egm:egm-draft` | `docs/designs/<feature>.md`, written section by section with your approval at each gate |
+| 3. Review | `/egm:egm-review docs/designs/<feature>.md` | Goldfish reports in `.egm/`: zoom-out (YAGNI, reuse), comprehension, design critique, implementation readiness |
+| 4. Resolve | `/egm:egm-resolve` (offered by review) | Findings fixed or contested in the spec. Take what's useful; review is deliberately noisy |
+| 5. Spec PR | — | A pull request with the spec and its SITEMAP entry, reviewed by a human |
+| 6. Implement | — | Code built against the merged spec, in its own pull request |
+| 7. Drift | `/egm:egm-drift-report docs/designs` | `.egm/<date>_DRIFT_REPORT.md`; reconcile by fixing the code or the spec — a human picks which |
+
+Other harnesses use the same skills without the `egm:` prefix; install
+instructions for Codex, Antigravity, and others are in the EGM README. The order
+is a default, not a ritual: skip brainstorm when the problem is already clear,
+re-run review after a large revision, go back to the spec when implementation
+goes wrong.
+
+### What a Perennia spec must contain
+
+Start from the EGM template (the draft skill applies it): Overview, Problem,
+Goals / Non-Goals, Open Questions, Critical User Journeys (Given / When / Then),
+Technical Plan, Alternatives Considered, Non-Functional Requirements, Detailed
+Implementation Plan, Verification Plan. On top of that, every spec here must:
+
+- **Link [CONTEXT.md](CONTEXT.md), [ARCHITECTURE.md](ARCHITECTURE.md), and this
+  file**, plus [DESIGN.md](DESIGN.md) for UI work. Goldfish reviewers read files
+  the spec links and nothing else of the project's conventions — they run without
+  CLAUDE.md, AGENTS.md, or conversation history. What the spec doesn't link, they
+  don't know.
+- **Name the invariants it touches** and say how each is preserved. "None" is a
+  valid answer only if it's true.
+- **Use CONTEXT.md terms**, and list any new term with its proposed definition.
+  The CONTEXT.md change lands in the implementation pull request.
+- **State the agent-surface consequence** of any app capability: the REST
+  operation, the MCP tool, and what the contract diff will show.
+- **State the validation and analytics consequence**: which rules change, which
+  tier (hard reject / soft warn), and which golden vectors cover it.
+- **Verify with the gate.** The Verification Plan names the `pnpm ci:local` jobs
+  that must pass and the tests to add — repositories against in-memory SQLite,
+  sync simulation, kill-and-reopen mid-workout where logging is involved,
+  accessibility for screens.
+- **Be self-contained and publishable.** This repository is public. A spec must
+  not link to, quote, or depend on unpublished planning documents; if earlier
+  reasoning matters, restate it in the spec.
+
+Specs don't contain implementation code. Signatures, schemas, and pseudocode are
+fine. The Detailed Implementation Plan lists every file to create or modify and
+why, and leaves the implementer **no design decisions** — that's the bar
+implementation-readiness review checks.
+
+### Where specs live
+
+- `docs/designs/<feature>.md` — one spec per feature or subsystem change, with an
+  Author / Status / Date header. Status moves **Draft → In Review → Approved →
+  Current** (implemented and matching the code), or **Superseded** with a link to
+  its replacement. Specs are living: when the behavior changes, the spec changes in
+  the same pull request.
+- [docs/designs/SITEMAP.md](docs/designs/SITEMAP.md) — the index. The draft skill
+  registers new specs there; check it did.
+
+### Implementing against a spec
+
+- Build what the merged spec says. The Detailed Implementation Plan is the scope:
+  don't add what it doesn't list, and don't skip what it does.
+- If implementation needs a decision the spec doesn't make, or shows the spec is
+  wrong, **stop and update the spec** (a small follow-up to the spec, or in the
+  implementation pull request with the change called out) instead of deciding
+  silently in code. A spec that no longer matches the code is drift, and drift
+  misleads the next agent.
+- Link the spec from the implementation pull request, and set its Status to
+  **Current** in that pull request once the code matches it.
 
 ## CI and PR workflow
 
@@ -174,6 +290,12 @@ so the two never drift.
   that gap.
 
 ### Creating a PR
+
+A change that needs a spec goes in two pull requests: first the spec
+(`docs/designs/<feature>.md` + its SITEMAP entry, reviewed on its own), then the
+implementation, linking the merged spec. Don't fold an unreviewed spec into the
+implementation pull request — the point is that a human agrees on the design
+before code makes it expensive to change. Everything else is one pull request.
 
 Run the gate locally and make it green first: `pnpm ci:local --changed` (or the
 full gate for a wide change). A `pre-push` hook (`tools/git-hooks/pre-push`,

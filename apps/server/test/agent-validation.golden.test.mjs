@@ -48,6 +48,7 @@ const DOMAINS_OWNED_ELSEWHERE = new Set([
   "plan-divergence", // agent-plan-capture.golden.test.mjs
   "template-materialize", // agent-plan-materialize.test.mjs (needs Postgres)
   "routine-up-next", // agent-plan-reads.test.mjs (needs Postgres)
+  "effect-window", // effect-window.golden.test.mjs
   // Dart only: Body Tracker measurements have no server implementation, so
   // these vectors pin the app against its own spec.
   "measurement-validation",

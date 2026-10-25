@@ -921,6 +921,7 @@ export {
   agentProtocolsBatchMarkerId,
   agentProtocolsWriteFailure,
   computeEffectWindowSegments,
+  deriveEffectWindow,
   createDrizzleAgentProtocolsStore,
   prepareAgentCompoundBatchWrite,
   prepareAgentDoseBatchWrite,

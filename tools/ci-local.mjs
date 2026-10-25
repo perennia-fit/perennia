@@ -162,6 +162,8 @@ const JOBS = {
       'apps/server/test/agent-validation.golden.test.mjs',
       'apps/server/test/agent-plan-capture.golden.test.mjs',
       'apps/server/test/nutrition-analytics.golden.test.mjs',
+      'apps/server/src/agent-protocols.ts',
+      'apps/server/test/effect-window.golden.test.mjs',
       'apps/server/package.json', '.node-version',
       'apps/mobile/lib/domain/**', 'apps/mobile/lib/features/body_tracker/**',
       'apps/mobile/test/domain/**', 'apps/mobile/test/features/body_tracker/**',
