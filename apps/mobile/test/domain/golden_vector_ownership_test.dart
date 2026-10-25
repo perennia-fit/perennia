@@ -34,12 +34,9 @@ const Map<String, String> _dartRunnerByDomain = <String, String>{
   'measurement-delta': 'test/features/body_tracker/measurement_delta_test.dart',
 };
 
-const Set<String> _domainsCheckedOnlyInTypeScript = <String>{
-  // The retired "predefined set" working name (CONTEXT.md, Prescription). The
-  // app validates Prescriptions with `validatePrescription`, pinned by
-  // `plan-validation`; only the server still exports the old validator.
-  'predefined-set-validation',
-};
+// Empty today: every vector domain is pinned on both sides. A domain that
+// only the server implements goes here, with the reason it has no Dart twin.
+const Set<String> _domainsCheckedOnlyInTypeScript = <String>{};
 
 void main() {
   test('every golden vector domain has a Dart runner or is TypeScript-only',

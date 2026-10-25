@@ -5,14 +5,12 @@ import test from "node:test";
 import {
   DOSE_VALIDATION_LIMITS,
   PLAN_VALIDATION_LIMITS,
-  PREDEFINED_SET_VALIDATION_LIMITS,
   SETTINGS_VALIDATION_LIMITS,
   validateAgentDose,
   validateAgentFoodEntry,
   validateAgentNutritionGoalTargets,
   validateAgentPrescription,
   validateAgentRoutineCadence,
-  validateAgentPredefinedSet,
   validateAgentSet,
   validateAgentSettings,
   validateAgentTemplateGroup
@@ -30,10 +28,6 @@ const VALIDATORS_BY_DOMAIN = new Map([
     (vectorCase) => validateAgentNutritionGoalTargets(vectorCase.input)
   ],
   ["plan-validation", (vectorCase) => validatePlanVectorCase(vectorCase)],
-  [
-    "predefined-set-validation",
-    (vectorCase) => validateAgentPredefinedSet(vectorCase.input)
-  ],
   ["settings-validation", (vectorCase) => validateAgentSettings(vectorCase.input)]
 ]);
 
@@ -78,13 +72,6 @@ test("server validation matches the shared golden vectors", async () => {
     // implementation and the spec stay in lockstep.
     if (vector.domain === "dose-validation") {
       assert.deepEqual(vector.limits, DOSE_VALIDATION_LIMITS, `${filename} limits`);
-    }
-    if (vector.domain === "predefined-set-validation") {
-      assert.deepEqual(
-        vector.limits,
-        PREDEFINED_SET_VALIDATION_LIMITS,
-        `${filename} limits`
-      );
     }
     if (vector.domain === "plan-validation") {
       assert.deepEqual(
