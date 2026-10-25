@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:drift/native.dart' show SqliteException;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -136,18 +137,34 @@ class SyncStatusRepository {
 
   Stream<SyncStatusState> watchStatus({DateTime Function()? now}) {
     final observedAt = now ?? _clock;
-    return (_database.select(_database.syncStates)
-          ..where((state) => state.id.equals(syncStateId)))
+    // One trigger query over both tables, so the status updates when either
+    // the sync state or the quarantined-change count changes.
+    return _database
+        .customSelect(
+          'SELECT 1',
+          readsFrom: <ResultSetImplementation<Object?, Object?>>{
+            _database.syncStates,
+            _database.quarantinedSyncChanges,
+          },
+        )
         .watch()
-        .map((rows) => _stateFromRow(
-            rows.isEmpty ? null : rows.single, observedAt().toUtc()));
+        .asyncMap((_) => loadStatus(observedAt: observedAt()));
   }
 
   Future<SyncStatusState> loadStatus({DateTime? observedAt}) async {
     return _stateFromRow(
       await _loadRow(),
       (observedAt ?? _clock()).toUtc(),
+      quarantinedChangeCount: await _quarantinedChangeCount(),
     );
+  }
+
+  Future<int> _quarantinedChangeCount() async {
+    final count = countAll();
+    final row = await (_database.selectOnly(_database.quarantinedSyncChanges)
+          ..addColumns(<Expression<Object>>[count]))
+        .getSingle();
+    return row.read(count) ?? 0;
   }
 
   Future<void> recordSyncing({DateTime? at}) {
@@ -232,9 +249,17 @@ class SyncStatusRepository {
         );
   }
 
-  SyncStatusState _stateFromRow(SyncStateRow? row, DateTime observedAt) {
+  SyncStatusState _stateFromRow(
+    SyncStateRow? row,
+    DateTime observedAt, {
+    required int quarantinedChangeCount,
+  }) {
     if (row == null) {
-      return SyncStatusState.initial(observedAt);
+      return SyncStatusState(
+        kind: SyncStatusKind.idle,
+        observedAt: observedAt,
+        quarantinedChangeCount: quarantinedChangeCount,
+      );
     }
     return SyncStatusState(
       kind: _syncStatusKind(row.syncStatus),
@@ -243,6 +268,7 @@ class SyncStatusRepository {
       lastFailureAt: row.lastFailureAt?.toUtc(),
       lastFailureMessage: row.lastFailureMessage,
       observedAt: observedAt,
+      quarantinedChangeCount: quarantinedChangeCount,
     );
   }
 }
@@ -1127,6 +1153,7 @@ class SyncRepository implements SyncCycleRepository {
 
       final applied = await _applyPulledSyncChanges(
         response.changes,
+        malformedChanges: response.malformedChanges,
         deviceId: deviceId,
         persistCursor: true,
         cursorToSave: response.nextCursor,
@@ -1137,7 +1164,9 @@ class SyncRepository implements SyncCycleRepository {
         nextCursor: response.nextCursor,
         serverClock: response.serverClock,
         fullResyncRequired: false,
-        hasMore: response.changes.length == limit,
+        // A malformed entry still took a slot on the page.
+        hasMore:
+            response.changes.length + response.malformedChanges.length == limit,
         userSettingsApplied: applied.userSettingsApplied,
       );
       if (manageStatus) {
@@ -1186,10 +1215,69 @@ class SyncRepository implements SyncCycleRepository {
       ])
         entity.remoteEntity: <String>{},
     };
+    final quarantinedIds = <int>{};
+    // A malformed entry that does not say which row it is could be any live
+    // row, so the snapshot no longer proves any row absent.
+    var everyRowIdentified = true;
     var appliedCount = 0;
     String? cursor;
     String? nextCursor;
     String? serverClock;
+
+    void markLive(String entity, String id) {
+      livePlanSnapshotIds[entity]?.add(id);
+      if (entity == AppDatabase.exerciseCategoriesTable) {
+        liveExerciseCategorySnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.exercisesTable) {
+        liveExerciseSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.loggedSetsTable) {
+        liveLoggedSetSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.foodsTable) {
+        liveFoodSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.mealTypesTable) {
+        liveMealTypeSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.mealsTable) {
+        liveMealSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.foodEntriesTable) {
+        liveFoodEntrySnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.metricsTable) {
+        liveMetricSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.metricReadingsTable) {
+        liveMetricReadingSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.compoundsTable) {
+        liveCompoundSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.dosesTable) {
+        liveDoseSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.protocolsTable) {
+        liveProtocolSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.protocolCompoundsTable) {
+        liveProtocolCompoundSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.protocolTargetOutcomesTable) {
+        liveProtocolTargetOutcomeSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.schedulesTable) {
+        liveScheduleSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.nutritionGoalsTable) {
+        liveNutritionGoalSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.integrationDataClassConsentsTable) {
+        liveIntegrationConsentSnapshotIds.add(id);
+      }
+    }
 
     while (true) {
       final response = await client.pullSync(
@@ -1206,68 +1294,28 @@ class SyncRepository implements SyncCycleRepository {
       }
 
       for (final change in response.changes) {
-        livePlanSnapshotIds[change.entity]?.add(change.id);
-        if (change.entity == AppDatabase.exerciseCategoriesTable) {
-          liveExerciseCategorySnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.exercisesTable) {
-          liveExerciseSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.loggedSetsTable) {
-          liveLoggedSetSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.foodsTable) {
-          liveFoodSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.mealTypesTable) {
-          liveMealTypeSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.mealsTable) {
-          liveMealSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.foodEntriesTable) {
-          liveFoodEntrySnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.metricsTable) {
-          liveMetricSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.metricReadingsTable) {
-          liveMetricReadingSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.compoundsTable) {
-          liveCompoundSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.dosesTable) {
-          liveDoseSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.protocolsTable) {
-          liveProtocolSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.protocolCompoundsTable) {
-          liveProtocolCompoundSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.protocolTargetOutcomesTable) {
-          liveProtocolTargetOutcomeSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.schedulesTable) {
-          liveScheduleSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.nutritionGoalsTable) {
-          liveNutritionGoalSnapshotIds.add(change.id);
-        }
-        if (change.entity == AppDatabase.integrationDataClassConsentsTable) {
-          liveIntegrationConsentSnapshotIds.add(change.id);
+        markLive(change.entity, change.id);
+      }
+      for (final malformed in response.malformedChanges) {
+        final entity = malformed.entity;
+        final id = malformed.id;
+        if (entity == null || id == null) {
+          everyRowIdentified = false;
+        } else {
+          markLive(entity, id);
         }
       }
-      appliedCount += (await _applyPulledSyncChanges(
+      final applied = await _applyPulledSyncChanges(
         response.changes,
+        malformedChanges: response.malformedChanges,
         deviceId: deviceId,
-      ))
-          .appliedCount;
+      );
+      appliedCount += applied.appliedCount;
+      quarantinedIds.addAll(applied.quarantinedIds);
       nextCursor = response.nextCursor;
       serverClock = response.serverClock;
 
-      if (response.changes.isEmpty) {
+      if (response.changes.isEmpty && response.malformedChanges.isEmpty) {
         break;
       }
       if (response.nextCursor == cursor) {
@@ -1278,90 +1326,97 @@ class SyncRepository implements SyncCycleRepository {
 
     final snapshotServerClock = serverClock;
     await _database.transaction(() async {
-      await _markPreviouslySyncedExerciseCategoryRowsAbsentFromSnapshotDeleted(
-        liveExerciseCategorySnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedExerciseRowsAbsentFromSnapshotDeleted(
-        liveExerciseSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedRowsAbsentFromSnapshotDeleted(
-        liveLoggedSetSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedFoodRowsAbsentFromSnapshotDeleted(
-        liveFoodSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedMealTypeRowsAbsentFromSnapshotDeleted(
-        liveMealTypeSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedMealRowsAbsentFromSnapshotDeleted(
-        liveMealSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedFoodEntryRowsAbsentFromSnapshotDeleted(
-        liveFoodEntrySnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedMetricRowsAbsentFromSnapshotDeleted(
-        liveMetricSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedMetricReadingRowsAbsentFromSnapshotDeleted(
-        liveMetricReadingSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedCompoundRowsAbsentFromSnapshotDeleted(
-        liveCompoundSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedDoseRowsAbsentFromSnapshotDeleted(
-        liveDoseSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedProtocolRowsAbsentFromSnapshotDeleted(
-        liveProtocolSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedProtocolCompoundRowsAbsentFromSnapshotDeleted(
-        liveProtocolCompoundSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedProtocolTargetOutcomeRowsAbsentFromSnapshotDeleted(
-        liveProtocolTargetOutcomeSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _dropDeferredChangesAbsentFromSnapshot(
-        AppDatabase.protocolTargetOutcomesTable,
-        liveProtocolTargetOutcomeSnapshotIds,
-      );
-      await _markPreviouslySyncedScheduleRowsAbsentFromSnapshotDeleted(
-        liveScheduleSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedNutritionGoalRowsAbsentFromSnapshotDeleted(
-        liveNutritionGoalSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      await _markPreviouslySyncedConsentRowsAbsentFromSnapshotDeleted(
-        liveIntegrationConsentSnapshotIds,
-        DateTime.parse(snapshotServerClock).toUtc(),
-      );
-      for (final entity in <_PlanSyncEntity>[
-        _templateLinksSyncEntity,
-        ..._planTreeSyncEntities.reversed,
-        ..._workoutStructureSyncEntities.reversed,
-        _focusSyncEntity,
-      ]) {
-        await _repositories.activityLog.markPlanRowsAbsentFromSnapshotDeleted(
-          entityTable: entity.localEntityTable,
-          liveSnapshotIds: livePlanSnapshotIds[entity.remoteEntity]!,
-          timestamp: DateTime.parse(snapshotServerClock).toUtc(),
+      // Marking rows deleted because the snapshot did not send them is only
+      // sound when the snapshot named every row it sent. Keeping a row the
+      // server has deleted is recoverable (it can be archived again); deleting
+      // one it still has is not.
+      if (everyRowIdentified) {
+        await _markPreviouslySyncedExerciseCategoryRowsAbsentFromSnapshotDeleted(
+          liveExerciseCategorySnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
         );
+        await _markPreviouslySyncedExerciseRowsAbsentFromSnapshotDeleted(
+          liveExerciseSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedRowsAbsentFromSnapshotDeleted(
+          liveLoggedSetSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedFoodRowsAbsentFromSnapshotDeleted(
+          liveFoodSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedMealTypeRowsAbsentFromSnapshotDeleted(
+          liveMealTypeSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedMealRowsAbsentFromSnapshotDeleted(
+          liveMealSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedFoodEntryRowsAbsentFromSnapshotDeleted(
+          liveFoodEntrySnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedMetricRowsAbsentFromSnapshotDeleted(
+          liveMetricSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedMetricReadingRowsAbsentFromSnapshotDeleted(
+          liveMetricReadingSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedCompoundRowsAbsentFromSnapshotDeleted(
+          liveCompoundSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedDoseRowsAbsentFromSnapshotDeleted(
+          liveDoseSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedProtocolRowsAbsentFromSnapshotDeleted(
+          liveProtocolSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedProtocolCompoundRowsAbsentFromSnapshotDeleted(
+          liveProtocolCompoundSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedProtocolTargetOutcomeRowsAbsentFromSnapshotDeleted(
+          liveProtocolTargetOutcomeSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _dropDeferredChangesAbsentFromSnapshot(
+          AppDatabase.protocolTargetOutcomesTable,
+          liveProtocolTargetOutcomeSnapshotIds,
+        );
+        await _markPreviouslySyncedScheduleRowsAbsentFromSnapshotDeleted(
+          liveScheduleSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedNutritionGoalRowsAbsentFromSnapshotDeleted(
+          liveNutritionGoalSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedConsentRowsAbsentFromSnapshotDeleted(
+          liveIntegrationConsentSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        for (final entity in <_PlanSyncEntity>[
+          _templateLinksSyncEntity,
+          ..._planTreeSyncEntities.reversed,
+          ..._workoutStructureSyncEntities.reversed,
+          _focusSyncEntity,
+        ]) {
+          await _repositories.activityLog.markPlanRowsAbsentFromSnapshotDeleted(
+            entityTable: entity.localEntityTable,
+            liveSnapshotIds: livePlanSnapshotIds[entity.remoteEntity]!,
+            timestamp: DateTime.parse(snapshotServerClock).toUtc(),
+          );
+        }
       }
+      await _dropQuarantinedChangesNotInSnapshot(quarantinedIds);
       await _savePullCursor(nextCursor);
     });
 
@@ -1372,252 +1427,103 @@ class SyncRepository implements SyncCycleRepository {
     );
   }
 
-  Future<({int appliedCount, bool userSettingsApplied})>
-      _applyPulledSyncChanges(
+  /// Applies one page of pulled changes and, when [persistCursor] is set,
+  /// saves [cursorToSave] in the same transaction.
+  ///
+  /// A change of a known entity type that this build cannot read or apply is
+  /// quarantined, not dropped and not allowed to stall the pull. Failing the
+  /// page instead would roll back the cursor with it, so every later pull
+  /// would fetch the same row and fail on it forever: one corrupt row would
+  /// stop this device receiving anything else. Skipping it silently, as an
+  /// unknown entity type is skipped, would lose a real row of real data with
+  /// no trace. So each change applies in its own savepoint; when it fails with
+  /// an error that comes from the row itself ([_quarantineFailureKind]) only
+  /// that savepoint rolls back, the change is kept verbatim in
+  /// `quarantined_sync_changes`, and the rest of the page applies and the
+  /// cursor advances. Any other error (a full disk, a closed database) is not
+  /// the row's fault and still fails the page, to be retried whole.
+  ///
+  /// A quarantined change stays recoverable:
+  /// - [_retryQuarantinedChanges] runs every held change through the normal
+  ///   apply path again at the end of each batch, so one that failed on a
+  ///   missing parent applies once the parent arrives, and one this build
+  ///   could not parse applies after an update that can. It meets the same
+  ///   last-writer-wins check against the local row as on arrival, so a held
+  ///   change never overwrites a newer local edit.
+  /// - A later valid change for the same row is the server's newer state and
+  ///   supersedes the held one, which is then dropped.
+  /// - A full re-sync drops held changes the snapshot did not send again.
+  /// - Sync Status shows how many are held, so a stuck one is visible.
+  /// Nothing about the row's content is logged or stored outside that table:
+  /// payloads can hold Protocols data.
+  ///
+  /// [malformedChanges] are entries whose envelope did not parse at all; they
+  /// are quarantined the same way, for a later build to read.
+  Future<_PulledBatchResult> _applyPulledSyncChanges(
     List<SyncPulledChange> changes, {
+    List<SyncMalformedPulledChange> malformedChanges =
+        const <SyncMalformedPulledChange>[],
     required String deviceId,
     bool persistCursor = false,
     String? cursorToSave,
   }) async {
     var appliedCount = 0;
     var userSettingsApplied = false;
+    final quarantinedIds = <int>{};
     final syncBatchId = _repositories.createId(DateTime.now().toUtc());
     final orderedChanges = changes.toList(growable: false)
       ..sort(_comparePulledChangesForApply);
     await _database.transaction(() async {
-      for (final change in orderedChanges) {
-        if (change.entity == AppDatabase.exerciseCategoriesTable) {
-          final applied = await _applyPulledExerciseCategoryChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.exercisesTable) {
-          final applied = await _applyPulledExerciseChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.loggedSetsTable) {
-          final applied = await _applyPulledLoggedSetChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.foodsTable) {
-          final applied = await _applyPulledFoodChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.mealTypesTable) {
-          final applied = await _applyPulledMealTypeChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.mealsTable) {
-          final applied = await _applyPulledMealChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.foodEntriesTable) {
-          final applied = await _applyPulledFoodEntryChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.metricsTable) {
-          final applied = await _applyPulledMetricChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.metricReadingsTable) {
-          final applied = await _applyPulledMetricReadingChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.compoundsTable) {
-          final applied = await _applyPulledCompoundChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.dosesTable) {
-          final applied = await _applyPulledDoseChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.protocolsTable) {
-          final applied = await _applyPulledProtocolChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.protocolCompoundsTable) {
-          final applied = await _applyPulledProtocolCompoundChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.protocolTargetOutcomesTable) {
-          final applied = await _applyPulledProtocolTargetOutcomeChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.schedulesTable) {
-          final applied = await _applyPulledScheduleChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.userSettingsTable) {
-          final applied = await _applyPulledUserSettingsChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-            userSettingsApplied = true;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.nutritionGoalsTable) {
-          final applied = await _applyPulledNutritionGoalChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        if (change.entity == AppDatabase.integrationDataClassConsentsTable) {
-          final applied = await _applyPulledIntegrationConsentChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-        final planEntity = _planSyncEntityForRemote(change.entity);
-        if (planEntity != null) {
-          final applied = await _repositories.activityLog.applyPlanSyncImage(
-            entityTable: planEntity.localEntityTable,
-            image: _syncImageFromPull(change),
-            deviceId: change.deviceId,
-            localDeviceId: deviceId,
-            actor: _actorForPulledChange(change),
-            batchId: change.batchId ?? syncBatchId,
-            activityLogId: change.activityLogId,
-            activityBeforeImage: change.beforeImage,
-            activityAfterImage: change.afterImage,
-            activityOccurredAt: change.occurredAt == null
-                ? null
-                : DateTime.parse(change.occurredAt!).toUtc(),
-          );
-          if (applied) {
-            appliedCount += 1;
-          }
-          continue;
-        }
-
-        // Forward compatibility: an entity type this build does not know
-        // came from a newer server or client. Skip it and let the rest of
-        // the page apply and the cursor advance. Throwing here would roll the
-        // transaction back before the cursor is saved, so every later pull
-        // would re-fetch the same row and fail on it forever. The log names
-        // only the entity and id, never the payload, which can hold
-        // Protocols data.
-        debugPrint(
-          'Sync pull skipped unknown entity ${change.entity} (${change.id}).',
+      for (final malformed in malformedChanges) {
+        quarantinedIds.add(
+          await _quarantinePulledChange(
+            changeJson: malformed.raw,
+            entityTable: malformed.entity,
+            entityId: malformed.id,
+            failureKind: 'envelope',
+          ),
         );
       }
+      for (final change in orderedChanges) {
+        try {
+          final outcome = await _database.transaction(() async {
+            final outcome = await _applyPulledChange(
+              change,
+              deviceId: deviceId,
+              syncBatchId: syncBatchId,
+            );
+            if (outcome.known) {
+              await _releaseQuarantinedChange(change.entity, change.id);
+            }
+            return outcome;
+          });
+          if (outcome.applied) {
+            appliedCount += 1;
+          }
+          if (outcome.userSettingsApplied) {
+            userSettingsApplied = true;
+          }
+        } on Object catch (error) {
+          final failureKind = _quarantineFailureKind(error);
+          if (failureKind == null) {
+            rethrow;
+          }
+          quarantinedIds.add(
+            await _quarantinePulledChange(
+              changeJson: _pulledChangeJson(change),
+              entityTable: change.entity,
+              entityId: change.id,
+              failureKind: failureKind,
+            ),
+          );
+        }
+      }
+      final retried = await _retryQuarantinedChanges(
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      appliedCount += retried.appliedCount;
+      userSettingsApplied = userSettingsApplied || retried.userSettingsApplied;
       appliedCount += await _applyDeferredChangesNowApplicable(
         deviceId: deviceId,
         syncBatchId: syncBatchId,
@@ -1626,10 +1532,299 @@ class SyncRepository implements SyncCycleRepository {
         await _savePullCursor(cursorToSave);
       }
     });
+    return _PulledBatchResult(
+      appliedCount: appliedCount,
+      userSettingsApplied: userSettingsApplied,
+      quarantinedIds: quarantinedIds,
+    );
+  }
+
+  /// Applies one pulled change through its entity's apply path. `known` is
+  /// false for an entity type this build does not handle, which is skipped.
+  Future<({bool known, bool applied, bool userSettingsApplied})>
+      _applyPulledChange(
+    SyncPulledChange change, {
+    required String deviceId,
+    required String syncBatchId,
+  }) async {
+    if (change.entity == AppDatabase.exerciseCategoriesTable) {
+      final applied = await _applyPulledExerciseCategoryChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.exercisesTable) {
+      final applied = await _applyPulledExerciseChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.loggedSetsTable) {
+      final applied = await _applyPulledLoggedSetChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.foodsTable) {
+      final applied = await _applyPulledFoodChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.mealTypesTable) {
+      final applied = await _applyPulledMealTypeChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.mealsTable) {
+      final applied = await _applyPulledMealChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.foodEntriesTable) {
+      final applied = await _applyPulledFoodEntryChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.metricsTable) {
+      final applied = await _applyPulledMetricChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.metricReadingsTable) {
+      final applied = await _applyPulledMetricReadingChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.compoundsTable) {
+      final applied = await _applyPulledCompoundChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.dosesTable) {
+      final applied = await _applyPulledDoseChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.protocolsTable) {
+      final applied = await _applyPulledProtocolChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.protocolCompoundsTable) {
+      final applied = await _applyPulledProtocolCompoundChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.protocolTargetOutcomesTable) {
+      final applied = await _applyPulledProtocolTargetOutcomeChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.schedulesTable) {
+      final applied = await _applyPulledScheduleChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.userSettingsTable) {
+      final applied = await _applyPulledUserSettingsChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (
+        known: true,
+        applied: applied,
+        userSettingsApplied: applied,
+      );
+    }
+    if (change.entity == AppDatabase.nutritionGoalsTable) {
+      final applied = await _applyPulledNutritionGoalChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.integrationDataClassConsentsTable) {
+      final applied = await _applyPulledIntegrationConsentChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    final planEntity = _planSyncEntityForRemote(change.entity);
+    if (planEntity != null) {
+      final applied = await _repositories.activityLog.applyPlanSyncImage(
+        entityTable: planEntity.localEntityTable,
+        image: _syncImageFromPull(change),
+        deviceId: change.deviceId,
+        localDeviceId: deviceId,
+        actor: _actorForPulledChange(change),
+        batchId: change.batchId ?? syncBatchId,
+        activityLogId: change.activityLogId,
+        activityBeforeImage: change.beforeImage,
+        activityAfterImage: change.afterImage,
+        activityOccurredAt: change.occurredAt == null
+            ? null
+            : DateTime.parse(change.occurredAt!).toUtc(),
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+
+    // Forward compatibility: an entity type this build does not know
+    // came from a newer server or client. Skip it and let the rest of
+    // the page apply and the cursor advance. Throwing here would roll the
+    // transaction back before the cursor is saved, so every later pull
+    // would re-fetch the same row and fail on it forever. The log names
+    // only the entity and id, never the payload, which can hold
+    // Protocols data.
+    debugPrint(
+      'Sync pull skipped unknown entity ${change.entity} (${change.id}).',
+    );
+    return (known: false, applied: false, userSettingsApplied: false);
+  }
+
+  /// Keeps a pulled change this build could not read or apply, replacing any
+  /// change already held for the same row (the newer one from the server
+  /// wins). Returns the held row's id. Logs only the entity, id and failure
+  /// kind, never the payload.
+  Future<int> _quarantinePulledChange({
+    required Object? changeJson,
+    required String? entityTable,
+    required String? entityId,
+    required String failureKind,
+  }) async {
+    if (entityTable != null && entityId != null) {
+      await _releaseQuarantinedChange(entityTable, entityId);
+    }
+    debugPrint(
+      'Sync pull quarantined ${entityTable ?? 'an unidentified change'}'
+      '${entityId == null ? '' : ' ($entityId)'}: $failureKind.',
+    );
+    return _database.into(_database.quarantinedSyncChanges).insert(
+          QuarantinedSyncChangesCompanion.insert(
+            entityTable: Value<String?>(entityTable),
+            entityId: Value<String?>(entityId),
+            changeJson: jsonEncode(changeJson),
+            failureKind: failureKind,
+            quarantinedAt: DateTime.now().toUtc(),
+          ),
+        );
+  }
+
+  Future<void> _releaseQuarantinedChange(String entityTable, String entityId) {
+    return (_database.delete(_database.quarantinedSyncChanges)
+          ..where(
+            (row) =>
+                row.entityTable.equals(entityTable) &
+                row.entityId.equals(entityId),
+          ))
+        .go();
+  }
+
+  /// Runs every quarantined change through the apply path again, each in its
+  /// own savepoint. One that applies (or loses last-writer-wins to the local
+  /// row, which is just as final) is released; one that still fails for a
+  /// row-shaped reason stays held untouched. A held change that now parses as
+  /// an entity type this build does not know is dropped, as it would have
+  /// been on arrival.
+  Future<({int appliedCount, bool userSettingsApplied})>
+      _retryQuarantinedChanges({
+    required String deviceId,
+    required String syncBatchId,
+  }) async {
+    final held = await (_database.select(_database.quarantinedSyncChanges)
+          ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+        .get();
+    var appliedCount = 0;
+    var userSettingsApplied = false;
+    for (final row in held) {
+      try {
+        final outcome = await _database.transaction(() async {
+          final decoded = jsonDecode(row.changeJson);
+          if (decoded is! Map<String, Object?>) {
+            throw const FormatException('Expected change to be an object.');
+          }
+          final change = SyncPulledChange.fromJson(decoded);
+          final outcome = await _applyPulledChange(
+            change,
+            deviceId: deviceId,
+            syncBatchId: syncBatchId,
+          );
+          await (_database.delete(_database.quarantinedSyncChanges)
+                ..where((held) => held.id.equals(row.id)))
+              .go();
+          return outcome;
+        });
+        if (outcome.applied) {
+          appliedCount += 1;
+        }
+        if (outcome.userSettingsApplied) {
+          userSettingsApplied = true;
+        }
+      } on Object catch (error) {
+        if (_quarantineFailureKind(error) == null) {
+          rethrow;
+        }
+      }
+    }
     return (
       appliedCount: appliedCount,
-      userSettingsApplied: userSettingsApplied
+      userSettingsApplied: userSettingsApplied,
     );
+  }
+
+  /// Drops quarantined changes a full re-sync snapshot did not hold again:
+  /// the snapshot is every live row, so a change still on the server came
+  /// back in it (and was applied or quarantined afresh), and any other is for
+  /// a row the server no longer has.
+  Future<void> _dropQuarantinedChangesNotInSnapshot(Set<int> keptIds) {
+    return (_database.delete(_database.quarantinedSyncChanges)
+          ..where((row) => row.id.isNotIn(keptIds)))
+        .go();
   }
 
   Future<bool> _applyPulledFoodChange(
@@ -4537,6 +4732,20 @@ class _GuardedPendingRows {
   final List<String> acknowledgedActivityLogIds;
 }
 
+class _PulledBatchResult {
+  const _PulledBatchResult({
+    required this.appliedCount,
+    required this.userSettingsApplied,
+    required this.quarantinedIds,
+  });
+
+  final int appliedCount;
+  final bool userSettingsApplied;
+
+  /// Rows written to `quarantined_sync_changes` by this batch.
+  final Set<int> quarantinedIds;
+}
+
 class _FullResyncSnapshotResult {
   const _FullResyncSnapshotResult({
     required this.appliedCount,
@@ -4813,6 +5022,31 @@ Map<String, Object?>? _decodeImage(String? encoded) {
   }
   return decoded;
 }
+
+/// The quarantine category for an error raised while reading or applying one
+/// pulled change, or null when the error is not the row's fault and must fail
+/// the whole page instead (a full disk, a busy or closed database, a bug).
+///
+/// The categories are what a malformed row can raise: a [FormatException] from
+/// an unparseable field (`DateTime.parse`, `_requiredString`), a [TypeError]
+/// from a payload value of the wrong JSON type, an [ArgumentError] from a value
+/// out of range, Drift's [InvalidDataException] from a companion it rejects,
+/// and an SQLite constraint violation (a missing parent, a NOT NULL or CHECK
+/// column). The category is all that is kept: an error's message can quote
+/// the payload, and payloads can hold Protocols data.
+String? _quarantineFailureKind(Object error) {
+  return switch (error) {
+    FormatException() => 'format',
+    TypeError() => 'type',
+    InvalidDataException() => 'invalid_data',
+    ArgumentError() => 'argument',
+    SqliteException(resultCode: _sqliteConstraintResultCode) => 'constraint',
+    _ => null,
+  };
+}
+
+/// SQLITE_CONSTRAINT, the primary result code of every constraint violation.
+const _sqliteConstraintResultCode = 19;
 
 String _requiredString(Map<String, Object?> json, String key) {
   final value = json[key];

@@ -1036,6 +1036,38 @@ class DeferredSyncChanges extends Table {
   Set<Column<Object>> get primaryKey => {entityTable, entityId};
 }
 
+// Sync bookkeeping: a pulled change of a known entity type that this build
+// could not read or apply (a malformed envelope, an unparseable field, a
+// constraint it breaks), kept verbatim so it is never lost and never stalls
+// the pull. `SyncRepository` retries every held change at the end of each pull
+// batch, a later version of the same row from the server supersedes it, and a
+// full re-sync drops the ones the server no longer sends. See
+// `_applyPulledSyncChanges` in sync_repository.dart for the policy.
+@DataClassName('QuarantinedSyncChangeRow')
+@TableIndex(
+  name: 'quarantined_sync_changes_entity_index',
+  columns: {#entityTable, #entityId},
+  unique: true,
+)
+class QuarantinedSyncChanges extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  // Null when the envelope itself was too malformed to say which row it was.
+  TextColumn get entityTable => text().nullable()();
+  TextColumn get entityId => text().nullable()();
+
+  // The pulled change as JSON, activity envelope included, so a retry is the
+  // same as the original arrival. A malformed envelope is kept exactly as the
+  // server sent it, for a later build that can read it.
+  TextColumn get changeJson => text()();
+
+  // A short category (`envelope`, `format`, `type`, `invalid_data`, `argument`,
+  // `constraint`), never the error message: messages can quote payload values,
+  // and payloads can hold Protocols data.
+  TextColumn get failureKind => text()();
+  DateTimeColumn get quarantinedAt => dateTime()();
+}
+
 @DataClassName('IntegrationDataClassConsentRow')
 @TableIndex(
   name: 'integration_data_class_consents_credential_data_class_index',
@@ -1130,6 +1162,7 @@ class RoutineEntries extends Table {
     ActivityLog,
     SyncStates,
     DeferredSyncChanges,
+    QuarantinedSyncChanges,
     Measurements,
     MeasurementEntries,
     Metrics,
@@ -1216,6 +1249,7 @@ class AppDatabase extends _$AppDatabase {
   static const activityLogTable = 'activity_log';
   static const syncStatesTable = 'sync_states';
   static const deferredSyncChangesTable = 'deferred_sync_changes';
+  static const quarantinedSyncChangesTable = 'quarantined_sync_changes';
   static const userSettingsTable = 'user_settings';
 
   static const tableNames = <String>[
@@ -1263,10 +1297,11 @@ class AppDatabase extends _$AppDatabase {
     integrationDataClassConsentsTable,
     syncStatesTable,
     deferredSyncChangesTable,
+    quarantinedSyncChangesTable,
   ];
 
   @override
-  int get schemaVersion => 59;
+  int get schemaVersion => 60;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1948,6 +1983,10 @@ class AppDatabase extends _$AppDatabase {
                 'ON workout_sessions (focus_id)',
               );
             }
+          }
+          if (from < 60) {
+            await migrator.createTable(quarantinedSyncChanges);
+            await migrator.createIndex(quarantinedSyncChangesEntityIndex);
           }
         },
         beforeOpen: (_) async => customStatement('PRAGMA foreign_keys = ON'),

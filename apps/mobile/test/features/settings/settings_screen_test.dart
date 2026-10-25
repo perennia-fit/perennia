@@ -292,6 +292,35 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
     });
 
+    testWidgets('shows how many pulled changes are held back', (
+      tester,
+    ) async {
+      await _pumpSettings(
+        tester,
+        syncStatus: SyncStatusState(
+          kind: SyncStatusKind.synced,
+          lastSuccessfulSyncAt: DateTime.utc(2026, 6, 22, 10),
+          observedAt: DateTime.utc(2026, 6, 22, 12),
+          quarantinedChangeCount: 2,
+        ),
+      );
+
+      await _openHubScreen(tester, SettingsScreen.syncTileKey);
+      await tester.scrollUntilVisible(
+        find.byKey(SettingsScreen.quarantinedChangesRowKey),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      expect(find.text('Changes held back'), findsOneWidget);
+      expect(
+        find.textContaining('2 changes from the server could not be applied'),
+        findsOneWidget,
+      );
+      // Sync keeps working around held changes: no failure banner.
+      expect(find.byKey(SettingsScreen.syncFailureBannerKey), findsNothing);
+    });
+
     testWidgets('shows Garmin stale status with manual FIT fallback', (
       tester,
     ) async {

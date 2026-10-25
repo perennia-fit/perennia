@@ -28,6 +28,7 @@ final class SyncStatusState {
     this.firstFailureAt,
     this.lastFailureAt,
     this.lastFailureMessage,
+    this.quarantinedChangeCount = 0,
     List<IntegrationStatusState> integrationStatuses =
         const <IntegrationStatusState>[],
   }) : integrationStatuses = List<IntegrationStatusState>.unmodifiable(
@@ -48,6 +49,10 @@ final class SyncStatusState {
   final DateTime? firstFailureAt;
   final DateTime? lastFailureAt;
   final String? lastFailureMessage;
+
+  /// Pulled changes this device holds because it could not read or apply
+  /// them. Sync still succeeds around them; they are retried on every sync.
+  final int quarantinedChangeCount;
   final DateTime observedAt;
   final List<IntegrationStatusState> integrationStatuses;
 
