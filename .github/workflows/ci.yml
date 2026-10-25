@@ -49,21 +49,25 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'tsconfig.base.json'
               - '.github/workflows/ci.yml'
+            # The Dart step discovers its runners, so these cover whole trees
+            # rather than naming files: a named list is how the Protocols
+            # vectors (m26) fell outside this job.
             golden_vectors:
               - 'apps/server/src/analytics/**'
               - 'apps/server/src/metric-reading-normalization.ts'
+              - 'apps/server/src/agent-validation.ts'
+              - 'apps/server/src/agent-plan-capture.ts'
               - 'apps/server/test/analytics.golden.test.mjs'
               - 'apps/server/test/metric-reading-normalization.golden.test.mjs'
+              - 'apps/server/test/agent-validation.golden.test.mjs'
+              - 'apps/server/test/agent-plan-capture.golden.test.mjs'
               - 'apps/server/test/nutrition-analytics.golden.test.mjs'
               - 'apps/server/package.json'
               - '.node-version'
-              - 'apps/mobile/lib/domain/analytics/**'
-              - 'apps/mobile/lib/domain/metrics/**'
-              - 'apps/mobile/lib/domain/nutrition/**'
-              - 'apps/mobile/lib/domain/training/training_dimensions.dart'
-              - 'apps/mobile/test/domain/exercise_analytics_test.dart'
-              - 'apps/mobile/test/domain/metric_reading_normalization_test.dart'
-              - 'apps/mobile/test/domain/nutrition_aggregation_golden_test.dart'
+              - 'apps/mobile/lib/domain/**'
+              - 'apps/mobile/lib/features/body_tracker/**'
+              - 'apps/mobile/test/domain/**'
+              - 'apps/mobile/test/features/body_tracker/**'
               - 'apps/mobile/pubspec.yaml'
               - 'pubspec.yaml'
               - 'pubspec.lock'
@@ -246,9 +250,21 @@ jobs:
       - name: TypeScript golden vectors
         run: pnpm --filter @perennia/server test:golden-vectors
 
+      # Every Dart test that reads packages/golden-vectors, discovered rather than
+      # listed: a hand-kept list let a vector runner (m26 dose validation) sit
+      # outside this job, so a vector-only change merged with no Dart run at all.
+      # Mirrored by runDartGoldenRunners() in tools/ci-local.mjs.
       - name: Dart golden vectors
         working-directory: apps/mobile
-        run: flutter test test/domain/exercise_analytics_test.dart test/domain/metric_reading_normalization_test.dart test/domain/nutrition_aggregation_golden_test.dart
+        run: |
+          runners=$(git grep -l -e 'golden-vectors' -- 'test/*_test.dart')
+          if [ -z "$runners" ]; then
+            echo "::error::No Dart test reads packages/golden-vectors"
+            exit 1
+          fi
+          echo "$runners"
+          # shellcheck disable=SC2086 # word-splitting the file list is intended
+          flutter test $runners
 
   js:
     name: JS workspace checks
