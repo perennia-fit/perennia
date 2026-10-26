@@ -15,3 +15,12 @@ RPE, side, completion, and timing so runners prove those fields disappear.
 Expected output contains only reusable fixed Prescription content. Captured
 Workout groups always declare `rounds: 1` because Workout facts do not retain a
 round count and any larger inferred value would multiply the logged Sets.
+
+## Barcode candidates
+
+`m36-barcode-candidates.json` (domain `barcode-candidates`) pins how a scanned
+or typed code becomes the list of Open Food Facts barcodes to try. The app runs
+it in `apps/mobile/test/domain/barcode_candidates_golden_test.dart` against
+`barcodeCandidates` in `apps/mobile/lib/domain/nutrition/open_food_facts.dart`;
+the server runs it in `apps/server/test/barcode-candidates.golden.test.mjs`
+against `apps/server/src/barcode-candidates.ts`.

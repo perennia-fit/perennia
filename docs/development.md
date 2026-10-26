@@ -88,6 +88,45 @@ lives in `apps/mobile/tool/test_data/` and writes through the app's own
 repositories, so the file always matches the schema of your checkout. Regenerate
 after a schema change rather than reusing an old file.
 
+## Refreshing the Open Food Facts bundle
+
+The app ships an offline bundle of Open Food Facts products,
+`apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz`, built from Open Food
+Facts' JSONL dump. The design is in
+[open-food-facts.md](designs/open-food-facts.md). Refreshes are planned at most
+once a quarter, with an app release, each in its own pull request.
+
+1.  Download the dump. It is about 13 GB compressed and Open Food Facts replaces
+    it daily, keeping no history, so keep your copy if you may need to rebuild
+    the same bundle. Note its `Last-Modified` date; that is the dataset version.
+
+    ```bash
+    curl -sIL https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz | grep -i last-modified
+    curl -L -C - -o openfoodfacts-products.jsonl.gz https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz
+    ```
+
+2.  Run the builder from `apps/mobile` (about 30 minutes):
+
+    ```bash
+    dart run tool/open_food_facts_bundle/build_bundle.dart --input <path to openfoodfacts-products.jsonl.gz> --dataset-version <YYYY-MM-DD>
+    ```
+
+3.  Read the report it prints. Check that:
+    *   each country keeps a similar share of its eligible products. A
+        country far below the others usually means Open Food Facts moved a
+        field: the first build, reading only the legacy `nutriments`, kept 8
+        products for the United Kingdom;
+    *   the exclusions by reason, and the counts of products dropped for
+        missing core nutrients or zero scans, are close to the last refresh's;
+    *   "nutrients read from" shows how many products used `nutrition` and how
+        many the legacy `nutriments`;
+    *   the compressed bundle is under the 6 MB budget. The builder exits with
+        an error when it is not.
+
+4.  Run `flutter test test/data/open_food_facts_bundle_asset_test.dart` from
+    `apps/mobile`, then open the pull request. Record the dataset version and
+    paste the builder's report in its description.
+
 ## Running the server
 
 ```bash

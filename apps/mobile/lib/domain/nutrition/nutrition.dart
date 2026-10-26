@@ -304,7 +304,7 @@ class NutrientAmount {
     final scaled = value! * factor;
     return NutrientAmount.complete(
       value: scaled,
-      entered: _formatDerivedValue(scaled),
+      entered: formatNutrientEntered(scaled),
       unit: unit,
     );
   }
@@ -728,7 +728,7 @@ NutrientAmount _deriveRecipeNutrientPer100({
   final per100 = total / totalBaseQuantity * 100;
   return NutrientAmount.complete(
     value: per100,
-    entered: _formatDerivedValue(per100),
+    entered: formatNutrientEntered(per100),
     unit: id.defaultUnit,
   );
 }
@@ -907,6 +907,9 @@ class PlatformFoodRecord {
     this.servingLabel,
     this.servingSize,
     this.packageSize,
+    this.brand,
+    this.sourceModifiedAt,
+    this.scans,
   });
 
   final String id;
@@ -917,6 +920,15 @@ class PlatformFoodRecord {
   final String? servingLabel;
   final double? servingSize;
   final double? packageSize;
+
+  /// The product's first listed brand, where the source records one.
+  final String? brand;
+
+  /// When the source last changed this product (UTC), where it records one.
+  final DateTime? sourceModifiedAt;
+
+  /// The source's scan count, used only to rank search results.
+  final int? scans;
 
   List<PortionUnit> get availablePortionUnits {
     return availablePortionUnitsForFood(
@@ -1722,7 +1734,11 @@ double _requiredPortionSize(double? value, PortionUnit unit) {
   throw StateError('Portion unit ${unit.name} is not available.');
 }
 
-String _formatDerivedValue(double value) {
+/// Formats a derived nutrient value as its `entered` text: six decimal places,
+/// with trailing zeros and a trailing point removed. The Open Food Facts
+/// mapping uses the same rule, so a bundled product and the same product
+/// fetched live produce the same text.
+String formatNutrientEntered(double value) {
   final fixed = value.toStringAsFixed(6);
   return fixed
       .replaceFirst(RegExp(r'0+$'), '')
