@@ -1,7 +1,7 @@
 # Open Food Facts Integration
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Draft
+*   **Status:** Approved (2026-10-26)
 *   **Date:** 2026-10-26 (revised after Goldfish review; first draft 2026-10-25)
 
 --------------------------------------------------------------------------------
