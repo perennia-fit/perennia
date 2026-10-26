@@ -2,7 +2,9 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved (2026-10-26)
-*   **Date:** 2026-10-26 (revised after Goldfish review; first draft 2026-10-25)
+*   **Date:** 2026-10-27 (amended after the first bundle build: where nutrient
+    values are read from; revised after Goldfish review 2026-10-26; first draft
+    2026-10-25)
 
 --------------------------------------------------------------------------------
 
@@ -130,10 +132,10 @@ same barcode with different numbers.
     bundle of Open Food Facts products. For each launch country (AU, US, UK, CA,
     NZ), the bundle takes up to 10,000 products that Open Food Facts lists for
     that country, that have been scanned at least once, and that have a name
-    and known energy, protein, carbohydrate and fat (from Open Food Facts'
-    `_100g` fields, which hold per-100 g or per-100 ml values). It ranks them by
-    scan count and merges the five lists with no duplicate barcodes. With the
-    network off:
+    and known energy, protein, carbohydrate and fat (per 100 g or ml; see
+    [Where nutrient values are read from](#where-nutrient-values-are-read-from)).
+    It ranks them by scan count and merges the five lists with no duplicate
+    barcodes. With the network off:
     *   typing in the picker returns matching bundled products as the user
         types, within 100 ms after the 300 ms typing pause ends, on the
         reference device (see [Performance and storage](#performance-and-storage));
@@ -382,7 +384,9 @@ fallback for energy (see [Future Improvements](#future-improvements)).
 
 There is one product mapping, written in Dart, in the app's pure domain layer
 (no Flutter imports). The app's live path and the bundle builder both use it,
-so a bundled product and the same product fetched live produce the same record.
+so a bundled product and the same product fetched live produce the same record
+(with one accepted exception for `search.pl` results, described in
+[Where nutrient values are read from](#where-nutrient-values-are-read-from)).
 The server never maps products: it reads the bundle's already-mapped records.
 
 One rule is shared by the app and the server and checked by golden vectors in
@@ -398,9 +402,11 @@ layer and changes it as follows.
 Kept as they are:
 
 *   **Name:** `product_name`, then `product_name_en`, then `generic_name`.
-*   **Nutrients:** the existing key list and unit multipliers (sodium,
-    cholesterol and caffeine from grams to milligrams). Negative values are
-    dropped as unknown.
+*   **Nutrients:** the same twelve Nutrients as today (energy, protein,
+    carbohydrate, sugar, fat, saturated, monounsaturated and polyunsaturated
+    fat, fibre, sodium, cholesterol and caffeine). Negative values are dropped
+    as unknown. Where they are read from changes; see
+    [Where nutrient values are read from](#where-nutrient-values-are-read-from).
 *   **Serving and package:** parsed from `serving_quantity`,
     `serving_quantity_unit`, `serving_size`, `product_quantity`,
     `product_quantity_unit` and `quantity`, which also decide `isLiquid`.
@@ -408,8 +414,9 @@ Kept as they are:
 
 Changed:
 
-*   **Energy:** only `energy-kcal_100g`. The `energy-kcal_value` fallback is
-    removed, because it is on the label's basis, which can be per serving.
+*   **Energy:** kilocalories only (`energy-kcal`). The `energy-kcal_value`
+    fallback is removed, because it is on the label's basis, which can be per
+    serving. Kilojoules are not converted (a Future Improvement).
 *   **Brand (new):** the first comma-separated entry of `brands`, trimmed;
     `null` if empty.
 *   **Change date (new):** `last_modified_t`, in Unix seconds.
@@ -427,10 +434,153 @@ Changed:
     The existing Food Entry validator is not called here: its limits are per
     entry (10,000 kcal; 2,000 g per macro), so they would exclude nothing at
     100 g. Logging still runs that validator as today.
+*   **Exclusion order.** The reasons are checked in the order listed, and the
+    first that applies is the one reported.
 *   **Nutrient text.** Each known value is formatted once with the existing
     rule (six decimal places, trailing zeros and point removed) into its
     `entered` text. The numeric value is that text parsed back, so the app and
     the server read the same number from the same text.
+
+#### Where nutrient values are read from
+
+Open Food Facts stores nutrition in two structures, and a product line or API
+response can carry either:
+
+*   **`nutrition`** (current). `nutrition.aggregated_set` holds one value per
+    nutrient, already combined from the product's input sets
+    (`nutrition.input_sets`, which the mapping does not read). Its fields:
+    *   `per`: `100g`, `100ml` or `serving`;
+    *   `preparation`: `as_sold` or `prepared`;
+    *   `nutrients`: an object keyed by nutrient (`energy-kcal`, `proteins`,
+        `fat` and so on), each entry with a `value` (a number), a `unit`
+        (`kcal`, `g`, `mg` and others) and a `source` (`packaging`,
+        `manufacturer` or `estimate`), plus fields the mapping ignores
+        (`modifier`, `source_index`, `source_per`).
+*   **`nutriments`** (legacy). Flat keys such as `energy-kcal_100g` and
+    `sodium_100g`, in fixed units (grams, except energy in kcal).
+
+A trimmed example from the 2026-10-26 dump (product `00014137`):
+
+```json
+{
+  "nutrition": {
+    "aggregated_set": {
+      "per": "100g",
+      "preparation": "as_sold",
+      "nutrients": {
+        "energy-kcal": { "value": 243, "unit": "kcal", "source": "packaging", "source_index": 0, "source_per": "100g" },
+        "carbohydrates": { "value": 47.7, "unit": "g", "source": "packaging", "source_index": 0, "source_per": "100g" },
+        "calcium": { "value": 0.038424589, "unit": "g", "source": "estimate", "modifier": "~", "source_index": 2, "source_per": "100g" }
+      }
+    },
+    "input_sets": []
+  },
+  "nutriments": {}
+}
+```
+
+In the dump of 2026-10-26 most products carry only the current structure: their
+`nutriments` object is empty. Among scanned products listed for the United
+Kingdom, 9 have the four core Nutrients (energy, protein, carbohydrate, fat) in
+`nutriments` and 79,125 have them in `nutrition.aggregated_set`; for Canada the
+counts are 18 and 26,292. About half of the scanned Australian products have
+only the current structure. API v3.6 returns the same shape as the dump. API v2
+still fills `nutriments` for compatibility, with estimated values mixed in and
+no way to tell them apart.
+
+**Which structure.** `openFoodFactsNutrientStructure(product)` returns
+`nutrition` when all of these hold, and `nutriments` otherwise:
+
+*   `product['nutrition']` is an object;
+*   its `aggregated_set` is an object;
+*   `aggregated_set.per` is the string `100g` or `100ml`;
+*   `aggregated_set.preparation` is the string `as_sold`.
+
+The mapping reads only the structure this function returns, never a mix. If a
+qualifying `aggregated_set` lacks a Nutrient, or holds it only as an estimate,
+that Nutrient is unknown, even when `nutriments` has a value for it.
+
+**Reading `nutrition`.** Each Nutrient is read from
+`nutrition.aggregated_set.nutrients.<key>`; these keys have no aliases:
+
+| Nutrient | Key | Default unit |
+| :------- | :-- | :----------- |
+| energy | `energy-kcal` | kcal |
+| protein | `proteins` | g |
+| carbohydrate | `carbohydrates` | g |
+| sugar | `sugars` | g |
+| fat | `fat` | g |
+| saturated fat | `saturated-fat` | g |
+| monounsaturated fat | `monounsaturated-fat` | g |
+| polyunsaturated fat | `polyunsaturated-fat` | g |
+| fibre | `fiber` | g |
+| sodium | `sodium` | mg |
+| cholesterol | `cholesterol` | mg |
+| caffeine | `caffeine` | mg |
+
+For each key, in this order:
+
+1.  If the entry is not an object, the Nutrient is unknown.
+2.  If `source` is the string `estimate`, the Nutrient is unknown. A missing or
+    other `source` is kept.
+3.  `value` is parsed by the same rule as a `nutriments` value: a finite number,
+    or a string that, trimmed and with `,` read as `.`, parses as a finite
+    number. Anything else, or a missing `value`, makes the Nutrient unknown.
+4.  `unit`, trimmed, must match exactly (case-sensitive). Energy accepts only
+    `kcal`. The other Nutrients accept `g`, `mg`, `µg` (written with U+00B5
+    micro sign or U+03BC Greek mu) and `mcg`, and the value is converted into
+    the Nutrient's default unit by powers of 1,000 (for example sodium `0.5 g`
+    becomes `500`, protein `500 mg` becomes `0.5`, caffeine `40000 µg` becomes
+    `40`). A missing, empty or other unit makes the Nutrient unknown.
+
+**Reading `nutriments`.** Each Nutrient is read from its `_100g` key, the first
+present of:
+
+| Nutrient | Keys | Multiplier |
+| :------- | :--- | :--------- |
+| energy | `energy-kcal_100g` | 1 |
+| protein | `proteins_100g` | 1 |
+| carbohydrate | `carbohydrates_100g` | 1 |
+| sugar | `sugars_100g` | 1 |
+| fat | `fat_100g` | 1 |
+| saturated fat | `saturated-fat_100g` | 1 |
+| monounsaturated fat | `monounsaturated-fat_100g`, then `mono-unsaturated-fat_100g` | 1 |
+| polyunsaturated fat | `polyunsaturated-fat_100g`, then `poly-unsaturated-fat_100g` | 1 |
+| fibre | `fiber_100g`, then `fibers_100g` | 1 |
+| sodium | `sodium_100g` | 1,000 (g to mg) |
+| cholesterol | `cholesterol_100g` | 1,000 (g to mg) |
+| caffeine | `caffeine_100g` | 1,000 (g to mg) |
+
+The value is parsed by the rule in step 3 above and multiplied.
+
+**After either path,** a negative value makes the Nutrient unknown. The
+remaining value is formatted with `formatNutrientEntered` into its `entered`
+text, and the `implausible` check runs on that text parsed back. So a skipped
+estimate or a value with an unknown unit is never checked, and fat given as
+`100100 mg` is checked as 100.1 g and excluded. A very small value can format
+as `0` at six decimal places; it is then a known zero, as the existing rule
+already treats it.
+
+**Why estimates are skipped.** Open Food Facts computes them from the
+ingredient list rather than taking them from the label, while the disclaimer on
+every Open Food Facts food attributes the values to contributors and tells the
+user to check the label. In the 2026-10-26 dump almost all estimates are
+vitamins and minerals: about 9,000 of the 568,000 values for energy, protein,
+carbohydrate and fat are estimates.
+
+**Live responses.** The live requests ask for `nutrition.aggregated_set` and
+`nutriments` (see [Live requests](#live-requests)); API v3.6 accepts the dotted
+field, which leaves out `input_sets` and halves the response for a typical
+product. A product request therefore reads the same structure as the dump.
+`search.pl` returned HTTP 503 on 2026-10-26 and 2026-10-27, so its current
+shape was not observed. If it returns only `nutriments`, filled by the v2
+compatibility rule, a live search result can carry estimated values that the
+bundle and the product request skip, and keeping that result as an `online` row
+keeps those values. This gap is accepted: such a result already carries the
+disclaimer, it applies only to products outside the bundle that the user opens
+from a live search, and a later scan of the same product replaces the row when
+its change date is newer. A scan that returns the same change date leaves the
+row, and its estimated values, as they are.
 
 ### Building the bundle
 
@@ -449,8 +599,8 @@ and imports only the domain mapping, which has no Flutter imports.
 Its input is Open Food Facts' JSONL dump
 (`https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz`;
 13.3 GB compressed when checked on 2026-10-26, updated daily). Each line is one
-product object with the same fields the API returns, so the mapping reads it
-with no adapter. `--dataset-version` is the dump's `Last-Modified` date.
+product object in the shape API v3.6 returns, so the mapping reads it with no
+adapter. `--dataset-version` is the dump's `Last-Modified` date.
 
 The builder:
 
@@ -460,9 +610,15 @@ The builder:
     skipped before it is decoded, to save time.
 2.  Decodes each remaining line, maps it, and keeps it when the mapping did not
     exclude it, energy, protein, carbohydrate and fat are known, and
-    `unique_scans_n` is greater than 0.
-3.  For each country tag listed in the product's `countries_tags`, adds it to
-    that country's candidates. Each country keeps its best 10,000 by
+    `unique_scans_n` is greater than 0. With each kept product it records the
+    product's `countries_tags` and its `openFoodFactsNutrientStructure`.
+    Duplicates are resolved across the whole file, by mapped code, before any
+    ranking: when two kept lines map to the same code, the copy with the later
+    `modifiedAt` wins, then the one with more scans, then the earlier line; the
+    loser, with its country tags, is dropped and counted as a duplicate (the
+    2026-10-26 dump had none).
+3.  For each country tag recorded with a winning product, adds it to that
+    country's candidates. Each country keeps its best 10,000 by
     `unique_scans_n` descending, then `code` ascending.
 4.  Merges the five lists, removes duplicate codes, and sorts by `code`
     ascending (string order).
@@ -470,8 +626,16 @@ The builder:
     writes `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz`.
 6.  Prints a report: products per country before and after the limit, products
     excluded by reason, products dropped for missing core nutrients or zero
-    scans, the merged count, the compressed size, and the run time. It exits
-    with an error if the compressed file is larger than 6 MB.
+    scans, duplicates, how many of the merged products had their Nutrients read
+    from `nutrition` and how many from `nutriments`, the merged count, the
+    compressed size, and the run time. It exits with an error if the compressed
+    file is larger than 6 MB (6 × 1,024 × 1,024 bytes, here and wherever this
+    spec says 6 MB).
+
+A country that keeps far fewer products than the others in the report is the
+first sign that Open Food Facts changed where it stores a field: the first
+build, against a mapping that read only `nutriments`, kept 8 products for the
+United Kingdom and 18 for Canada.
 
 Running it again on the same dump produces the same product lines and the same
 content hash. The gzip bytes may differ; nothing depends on them. Open Food
@@ -725,9 +889,9 @@ layer (only repositories touch the network, per
 | Product | `GET https://world.openfoodfacts.org/api/v3.6/product/<code>.json` | `fields` |
 
 *   **`fields`:** `code`, `product_name`, `product_name_en`, `generic_name`,
-    `brands`, `nutriments`, `serving_quantity`, `serving_quantity_unit`,
-    `serving_size`, `product_quantity`, `product_quantity_unit`, `quantity`,
-    `unique_scans_n`, `last_modified_t`.
+    `brands`, `nutrition.aggregated_set`, `nutriments`, `serving_quantity`,
+    `serving_quantity_unit`, `serving_size`, `product_quantity`,
+    `product_quantity_unit`, `quantity`, `unique_scans_n`, `last_modified_t`.
 *   **Search endpoint:** full-text search is not in API v2 or v3. `search.pl` is
     the legacy endpoint the Open Food Facts documentation still lists for it.
     Search-a-licious is the planned replacement, but it reports version 0.1.0
@@ -1199,6 +1363,25 @@ it visible in review.
 *   **Reason for Rejection**: One transaction on its own connection, with WAL,
     keeps readers working on the last committed state and keeps CUJ 9 simple.
 
+### Alternative S: Other ways to read nutrient values
+
+*   **Read only `nutriments`, through API v2.** API v2 still fills
+    `nutriments` for every product. But the dump's `nutriments` is empty for
+    most products, v2 is deprecated, and v2 mixes estimated values in with no
+    marker.
+*   **Keep estimated values.** More products would have fibre, sodium and
+    micronutrients. But estimates are computed from the ingredient list, not
+    the label, which contradicts the disclaimer, and few core values are
+    estimates, so the bundle barely grows.
+*   **Merge both structures per Nutrient.** Fills gaps from whichever has a
+    value. But a product could then mix values from different sets, and the
+    rule is harder to test.
+*   **Reason for Rejection**: One structure per product, `nutrition` first,
+    with estimates skipped, keeps the bundle's and the product request's values
+    traceable to the label, with one rule for the dump and both live requests.
+    The one known gap, a `search.pl` result filled by the v2 rule, is described
+    in [Where nutrient values are read from](#where-nutrient-values-are-read-from).
+
 --------------------------------------------------------------------------------
 
 ## Non-Functional Requirements
@@ -1253,6 +1436,7 @@ it visible in review.
 | `search.pl` is legacy and sometimes returns 503. | Online search fails some of the time. | The device's matches stay on screen; the "unavailable" line explains it; Search-a-licious is a Future Improvement. |
 | Open Food Facts bans an IP address for heavy use. | Live lookups stop for that device. | The request budget sits below the published limits, nothing retries on its own, and every request carries a User-Agent with a contact email. |
 | The JSONL dump's format changes. | The builder fails or drops products. | The builder's report shows exclusions by reason; a refresh is reviewed in its own pull request. |
+| Open Food Facts moves nutrition to another structure again, as it moved it from `nutriments` to `nutrition`. | Products lose their Nutrients and drop out of the bundle; live results show unknown values. | The report's per-country counts and its count by structure; the mapping test has a case for each structure. |
 | The server's first Open Food Facts request loads the bundle synchronously. | The Node event loop, and every request in flight on that process, waits an estimated few hundred milliseconds, once per process. | Measured in the server test. If it becomes a problem, load the bundle at startup, before the server accepts requests. |
 | ODbL share-alike for synced Food Entry snapshots. | Unclear obligation for the hosted server. | A lawyer's check before public release (a Non-Goal). |
 
@@ -1275,7 +1459,8 @@ it visible in review.
     as the supported search API. One client method changes.
 *   **Kilojoule energy.** Australian and New Zealand labels lead with kJ. If the
     builder's report shows many AU or NZ products dropped for missing
-    `energy-kcal_100g`, derive kcal from `energy-kj_100g` (divide by 4.184).
+    kilocalories, derive kcal from `energy-kj` (`energy-kj_100g` in
+    `nutriments`), dividing by 4.184.
 *   **Country-aware live search.** Filter or rank live results by the device's
     region, once the right parameters are confirmed against a working endpoint.
 *   **Country packs** for regions outside the launch list, downloaded once on
@@ -1349,8 +1534,15 @@ Conventions in this plan:
         *   `ExcludedOpenFoodFactsProduct`: `OpenFoodFactsExclusion reason`, an
             enum `missingCode`, `missingName`, `missingChangeDate`,
             `implausible`.
-    *   The rules are in [The product mapping](#the-product-mapping). Nutrient
-        text uses `formatNutrientEntered` (file 2).
+    *   The rules are in [The product mapping](#the-product-mapping), including
+        [Where nutrient values are read from](#where-nutrient-values-are-read-from).
+        Nutrient text uses `formatNutrientEntered` (file 2).
+    *   `OpenFoodFactsNutrientStructure openFoodFactsNutrientStructure(Map<String, Object?> product)`,
+        with the enum `OpenFoodFactsNutrientStructure { nutrition, nutriments }`:
+        the rule in "Which structure" under
+        [Where nutrient values are read from](#where-nutrient-values-are-read-from).
+        `mapOpenFoodFactsProduct` calls it, so the mapping and the builder's
+        report cannot disagree.
     *   `NutrientVector nutrientVectorFromText(Map<NutrientId, String> text)`:
         each entry `(id, entered)` becomes
         `NutrientAmount.complete(value: double.parse(entered), entered: entered, unit: id.defaultUnit)`;
@@ -1402,6 +1594,9 @@ Conventions in this plan:
         package, already a dependency.
     *   Exits non-zero on a missing or unreadable input, a malformed date, or an
         over-budget result.
+    *   The report's count by structure uses the
+        `openFoodFactsNutrientStructure` (file 1) result recorded with each
+        product in step 2; raw dump lines are not kept.
 
 ##### 4. `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz` (Create)
 
@@ -1487,6 +1682,28 @@ Conventions in this plan:
             unknown);
         *   a negative value (unknown);
         *   sodium, cholesterol and caffeine converted to milligrams;
+        *   the trimmed dump example in
+            [Where nutrient values are read from](#where-nutrient-values-are-read-from),
+            used verbatim as a fixture, with `nutriments` empty: energy `243`,
+            carbohydrate `47.7`, nothing else known;
+        *   `per` `100ml`;
+        *   units: sodium `0.5 g` gives `500`, protein `500 mg` gives `0.5`,
+            caffeine `40000 µg` written with each of U+00B5 and U+03BC gives
+            `40`, cholesterol `20 mcg` gives `0.02`; `G`, an empty unit and a
+            missing unit give unknown; `energy-kcal` in `kJ` gives unknown;
+        *   `value` as a string (`"47,7"` gives `47.7`), as a non-numeric
+            string, and missing (unknown);
+        *   a negative aggregated value (unknown);
+        *   an `estimate` value skipped (unknown) beside a `packaging` value
+            kept, and an entry with no `source` kept;
+        *   an `estimate` energy of 950 kcal: not excluded, energy unknown;
+            fat `100100 mg`: excluded as implausible;
+        *   both structures present: only `nutrition.aggregated_set` is read;
+            a qualifying set with no core keys, or only estimates, while
+            `nutriments` has values: the Nutrients stay unknown;
+        *   `nutrition` with a `prepared` set, or `per` equal to `serving`:
+            read from `nutriments`;
+        *   no `nutrition`: read from `nutriments`;
         *   `product_name_en` used when `product_name` is absent;
         *   no name (excluded);
         *   no `last_modified_t` (excluded);
@@ -1496,6 +1713,10 @@ Conventions in this plan:
         *   a liquid;
         *   values whose text needs trailing zeros removed;
         *   `fallbackCode` used when `code` is absent.
+    *   **`openFoodFactsNutrientStructure`:** each condition in "Which
+        structure" failing on its own (`nutrition` not an object,
+        `aggregated_set` missing, `per` `serving` or not a string,
+        `preparation` `prepared`), and all holding.
     *   **Line format:** encode then decode returns the same product; nulls are
         written as `null`; the key order is as specified.
     *   **`buildFoodSearchMatch`:** mixed case, punctuation, more than 8 words,
