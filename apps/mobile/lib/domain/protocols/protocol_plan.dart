@@ -18,7 +18,12 @@
 /// time that is not `HH:MM` in 00:00-23:59, exactly as the TypeScript twin's
 /// decoders do. A whole number reads as an integer however it was written
 /// (`2.0` is 2), because TypeScript's JSON.parse cannot tell them apart.
-/// Range checks (how many times, how long a cycle) are validation's job
+///
+/// The one range a decoder checks is plannability, and it checks it here,
+/// once, so the core never has to: every N days with N below 1, an untimed
+/// count below 1, a timed rule with no times and a cycle of no days at all
+/// throw a [FormatException], and the constructors assert the same. Every
+/// other range check (how many times, how long a cycle) is validation's job
 /// (`protocol_plan_validation.dart`), not the decoder's.
 library;
 
@@ -54,7 +59,7 @@ sealed class ScheduleDays {
           _intList(map['weekdays'], 'weekdays'),
         ),
       'every_n_days' => EveryNDaysScheduleDays(
-          n: _int(map['n'], 'n'),
+          n: _plannableInt(map['n'], 'n'),
           anchor: _date(map['anchor'], 'anchor'),
           anchorIsDefault: _bool(map['anchor_is_default'], 'anchor_is_default'),
         ),
@@ -98,13 +103,13 @@ class WeekdayScheduleDays extends ScheduleDays {
 
 /// Every [n] days, counted from [anchor] (day 0). The anchor is always
 /// stored; [anchorIsDefault] marks one the editor set to the Protocol's
-/// start, which moves with the start (D1).
+/// start, which moves with the start (D1). [n] is at least 1.
 class EveryNDaysScheduleDays extends ScheduleDays {
   const EveryNDaysScheduleDays({
     required this.n,
     required this.anchor,
     required this.anchorIsDefault,
-  });
+  }) : assert(n >= 1, 'Every N days needs an N of at least 1.');
 
   final int n;
   final ProtocolDayDate anchor;
@@ -113,13 +118,8 @@ class EveryNDaysScheduleDays extends ScheduleDays {
   /// A date before the anchor counts backwards from it: Dart's `%` is never
   /// negative for a positive divisor, so day −3 of an every-3-days rule is
   /// planned just like day 3.
-  ///
-  /// An [n] below 1, which validation rejects, throws a [RangeError] here
-  /// rather than planning on a meaningless modulo, as the TypeScript twin
-  /// does.
   @override
-  bool includes(ProtocolDayDate date) =>
-      date.daysBetween(anchor) % _planPeriod(n) == 0;
+  bool includes(ProtocolDayDate date) => date.daysBetween(anchor) % n == 0;
 
   @override
   Map<String, Object?> toJson() => <String, Object?>{
@@ -147,7 +147,7 @@ sealed class ScheduleRule {
         ),
       'untimed' => UntimedScheduleRule(
           days: ScheduleDays.fromJson(map['days']),
-          count: _int(map['count'], 'count'),
+          count: _plannableInt(map['count'], 'count'),
         ),
       'as_needed' => const AsNeededScheduleRule(),
       'unscheduled' => const UnscheduledScheduleRule(),
@@ -161,7 +161,8 @@ sealed class ScheduleRule {
 /// One or more `HH:MM` clock times on each planned day, stored sorted.
 class TimedScheduleRule extends ScheduleRule {
   TimedScheduleRule({required this.days, required Iterable<String> times})
-      : times = List<String>.unmodifiable(times);
+      : assert(times.isNotEmpty, 'A timed rule needs at least one time.'),
+        times = List<String>.unmodifiable(times);
 
   final ScheduleDays days;
   final List<String> times;
@@ -175,10 +176,11 @@ class TimedScheduleRule extends ScheduleRule {
       };
 }
 
-/// A count of untimed doses on each planned day. Untimed planned doses count
-/// like any other, but never get a reminder.
+/// A count of untimed doses on each planned day, at least 1. Untimed planned
+/// doses count like any other, but never get a reminder.
 class UntimedScheduleRule extends ScheduleRule {
-  const UntimedScheduleRule({required this.days, required this.count});
+  const UntimedScheduleRule({required this.days, required this.count})
+      : assert(count >= 1, 'An untimed rule needs a count of at least 1.');
 
   final ScheduleDays days;
   final int count;
@@ -217,20 +219,26 @@ class UnscheduledScheduleRule extends ScheduleRule {
 
 /// A repeating on/off cycle (D4): [onDays] on, then [offDays] off, counted
 /// from cycle day 0 at [anchor]. A date is on-cycle when
-/// `(date − anchor) mod (onDays + offDays) < onDays`.
+/// `(date − anchor) mod (onDays + offDays) < onDays`, so the cycle is at
+/// least 1 day long.
 class ProtocolCycle {
   const ProtocolCycle({
     required this.onDays,
     required this.offDays,
     required this.anchor,
     required this.anchorIsDefault,
-  });
+  }) : assert(onDays + offDays >= 1, 'A cycle is at least 1 day long.');
 
   factory ProtocolCycle.fromJson(Object? json) {
     final map = _object(json, 'cycle');
+    final onDays = _int(map['on_days'], 'on_days');
+    final offDays = _int(map['off_days'], 'off_days');
+    if (onDays + offDays < 1) {
+      throw FormatException('Expected a cycle of at least 1 day.', json);
+    }
     return ProtocolCycle(
-      onDays: _int(map['on_days'], 'on_days'),
-      offDays: _int(map['off_days'], 'off_days'),
+      onDays: onDays,
+      offDays: offDays,
       anchor: _date(map['anchor'], 'anchor'),
       anchorIsDefault: _bool(map['anchor_is_default'], 'anchor_is_default'),
     );
@@ -244,7 +252,7 @@ class ProtocolCycle {
   /// Whether [date] falls in an on-period. A Pause never shifts this: the
   /// anchor stays where it is (CUJ 5).
   bool isOn(ProtocolDayDate date) {
-    return date.daysBetween(anchor) % _planPeriod(onDays + offDays) < onDays;
+    return date.daysBetween(anchor) % (onDays + offDays) < onDays;
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -319,19 +327,54 @@ class ProtocolPeriod {
       };
 }
 
+/// The planned amount, unit and route that a Schedule Version, a planned
+/// dose, a slot fill and a "Log all planned" row each carry, the twin of
+/// the TypeScript `PlanAmount`. All four are present for `timed` and
+/// `untimed` rules and null for `as_needed` and `unscheduled` (D7
+/// `amount_required`). Its JSON is flat: the four keys sit in the carrier's
+/// own object, in this order.
+class PlanAmount {
+  const PlanAmount({
+    this.amountValue,
+    this.amountEntered,
+    this.unit,
+    this.route,
+  });
+
+  /// Reads the four keys from [map], the carrier's own JSON object.
+  factory PlanAmount.fromJson(Map<String, Object?> map) {
+    return PlanAmount(
+      amountValue: _nullableDouble(map['amountValue'], 'amountValue'),
+      amountEntered: _nullableString(map['amountEntered'], 'amountEntered'),
+      unit: _nullableUnit(map['unit']),
+      route: _nullableRoute(map['route']),
+    );
+  }
+
+  /// No amount: what `as_needed` and `unscheduled` versions carry.
+  static const PlanAmount none = PlanAmount();
+
+  final double? amountValue;
+  final String? amountEntered;
+  final DoseUnit? unit;
+  final DoseRoute? route;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'amountValue': amountValue,
+        'amountEntered': amountEntered,
+        'unit': unit?.name,
+        'route': route?.name,
+      };
+}
+
 /// One stored state of a Protocol Member's Schedule (CONTEXT.md `Schedule
 /// Version`), applying from [effectiveFrom]. Versions are insert-only (D1).
-/// The amount, unit and route are present for `timed` and `untimed` rules
-/// and null for `as_needed` and `unscheduled` (D7 `amount_required`).
 class ScheduleVersion {
   const ScheduleVersion({
     required this.id,
     required this.effectiveFrom,
     required this.rule,
-    this.amountValue,
-    this.amountEntered,
-    this.unit,
-    this.route,
+    this.amount = PlanAmount.none,
   });
 
   factory ScheduleVersion.fromJson(Object? json) {
@@ -340,26 +383,20 @@ class ScheduleVersion {
       id: _string(map['id'], 'id'),
       effectiveFrom: _date(map['effectiveFrom'], 'effectiveFrom'),
       rule: ScheduleRule.fromJson(map['rule']),
-      amountValue: _nullableDouble(map['amountValue'], 'amountValue'),
-      amountEntered: _nullableString(map['amountEntered'], 'amountEntered'),
-      unit: _nullableUnit(map['unit']),
-      route: _nullableRoute(map['route']),
+      amount: PlanAmount.fromJson(map),
     );
   }
 
   final String id;
   final ProtocolDayDate effectiveFrom;
   final ScheduleRule rule;
-  final double? amountValue;
-  final String? amountEntered;
-  final DoseUnit? unit;
-  final DoseRoute? route;
+  final PlanAmount amount;
 
   Map<String, Object?> toJson() => <String, Object?>{
         'id': id,
         'effectiveFrom': effectiveFrom.storageValue,
         'rule': rule.toJson(),
-        ...planAmountJson(amountValue, amountEntered, unit, route),
+        ...amount.toJson(),
       };
 }
 
@@ -469,34 +506,22 @@ enum PlanDayState {
 /// One planned dose (CONTEXT.md `Planned dose`): derived, never stored.
 /// [localTime] is null for an untimed planned dose.
 class PlannedDose {
-  const PlannedDose({
-    required this.localTime,
-    this.amountValue,
-    this.amountEntered,
-    this.unit,
-    this.route,
-  });
+  const PlannedDose({required this.localTime, this.amount = PlanAmount.none});
 
   factory PlannedDose.fromJson(Object? json) {
     final map = _object(json, 'planned dose');
     return PlannedDose(
       localTime: _nullableTime(map['localTime'], 'localTime'),
-      amountValue: _nullableDouble(map['amountValue'], 'amountValue'),
-      amountEntered: _nullableString(map['amountEntered'], 'amountEntered'),
-      unit: _nullableUnit(map['unit']),
-      route: _nullableRoute(map['route']),
+      amount: PlanAmount.fromJson(map),
     );
   }
 
   final String? localTime;
-  final double? amountValue;
-  final String? amountEntered;
-  final DoseUnit? unit;
-  final DoseRoute? route;
+  final PlanAmount amount;
 
   Map<String, Object?> toJson() => <String, Object?>{
         'localTime': localTime,
-        ...planAmountJson(amountValue, amountEntered, unit, route),
+        ...amount.toJson(),
       };
 }
 
@@ -596,17 +621,20 @@ enum DayStatusKind {
 }
 
 /// Why a [DayStatusKind.notPlanned] day has nothing planned, in the
-/// precedence order D6 picks it across Protocols.
+/// precedence order D6 picks it across Protocols. Each is the [PlanDayState]
+/// a Protocol reports for it, and shares that state's wire name.
 enum NotPlannedReason {
-  notScheduledToday('not_scheduled_today'),
-  asNeeded('as_needed'),
-  noSchedule('no_schedule'),
-  removed('removed'),
-  outside('outside');
+  notScheduledToday(PlanDayState.notScheduledToday),
+  asNeeded(PlanDayState.asNeeded),
+  noSchedule(PlanDayState.noSchedule),
+  removed(PlanDayState.removed),
+  outside(PlanDayState.outside);
 
-  const NotPlannedReason(this.wireName);
+  const NotPlannedReason(this.state);
 
-  final String wireName;
+  final PlanDayState state;
+
+  String get wireName => state.wireName;
 
   static NotPlannedReason fromWireName(Object? name) => _byWireName(
         values,
@@ -624,10 +652,7 @@ class PlanSlotFill {
     required this.protocolId,
     required this.plannedLocalTime,
     required this.doseId,
-    this.amountValue,
-    this.amountEntered,
-    this.unit,
-    this.route,
+    this.amount = PlanAmount.none,
   });
 
   factory PlanSlotFill.fromJson(Object? json) {
@@ -637,10 +662,7 @@ class PlanSlotFill {
       protocolId: _string(map['protocolId'], 'protocolId'),
       plannedLocalTime:
           _nullableTime(map['plannedLocalTime'], 'plannedLocalTime'),
-      amountValue: _nullableDouble(map['amountValue'], 'amountValue'),
-      amountEntered: _nullableString(map['amountEntered'], 'amountEntered'),
-      unit: _nullableUnit(map['unit']),
-      route: _nullableRoute(map['route']),
+      amount: PlanAmount.fromJson(map),
       doseId: _nullableString(map['doseId'], 'doseId'),
     );
   }
@@ -648,10 +670,7 @@ class PlanSlotFill {
   final int slot;
   final String protocolId;
   final String? plannedLocalTime;
-  final double? amountValue;
-  final String? amountEntered;
-  final DoseUnit? unit;
-  final DoseRoute? route;
+  final PlanAmount amount;
   final String? doseId;
 
   bool get isFilled => doseId != null;
@@ -660,7 +679,7 @@ class PlanSlotFill {
         'slot': slot,
         'protocolId': protocolId,
         'plannedLocalTime': plannedLocalTime,
-        ...planAmountJson(amountValue, amountEntered, unit, route),
+        ...amount.toJson(),
         'doseId': doseId,
       };
 }
@@ -720,33 +739,9 @@ class DayStatus {
       };
 }
 
-/// The planned amount's wire keys, shared by every type that carries one
-/// (versions, planned doses, slot fills and "Log all planned" rows).
-Map<String, Object?> planAmountJson(
-  double? amountValue,
-  String? amountEntered,
-  DoseUnit? unit,
-  DoseRoute? route,
-) {
-  return <String, Object?>{
-    'amountValue': amountValue,
-    'amountEntered': amountEntered,
-    'unit': unit?.name,
-    'route': route?.name,
-  };
-}
-
-/// [period] when it is at least 1 day; a modulo by anything less throws.
-int _planPeriod(int period) {
-  if (period < 1) {
-    throw RangeError.value(period, 'period', 'A plan period is at least 1 day');
-  }
-  return period;
-}
-
 void _requireVersion(Map<String, Object?> map) {
   final version = map['v'];
-  if (_wholeNumber(version) != protocolPlanJsonVersion) {
+  if (planWholeNumber(version) != protocolPlanJsonVersion) {
     throw FormatException('Unsupported plan JSON version.', version);
   }
 }
@@ -797,16 +792,27 @@ bool _bool(Object? value, String field) {
 }
 
 int _int(Object? value, String field) {
-  final whole = _wholeNumber(value);
+  final whole = planWholeNumber(value);
   if (whole != null) {
     return whole;
   }
   throw FormatException('Expected a $field integer.', value);
 }
 
+/// An every-N-days N or an untimed count: an integer of at least 1, the
+/// least the core can plan on.
+int _plannableInt(Object? value, String field) {
+  final whole = _int(value, field);
+  if (whole < 1) {
+    throw FormatException('Expected a $field of at least 1.', value);
+  }
+  return whole;
+}
+
 /// [value] as an integer when it is a finite whole number, an `int` or a
-/// `double` such as 2.0, else null.
-int? _wholeNumber(Object? value) {
+/// `double` such as 2.0, else null; `Number.isInteger` reads JSON the same
+/// way in TypeScript. The decoders and the validators share it.
+int? planWholeNumber(Object? value) {
   if (value is int) {
     return value;
   }
@@ -848,24 +854,30 @@ String _time(Object? value, String field) {
 String? _nullableTime(Object? value, String field) =>
     value == null ? null : _time(value, field);
 
+/// A timed rule's times: at least one, the least the core can plan on.
 List<String> _timeList(Object? value) {
-  return _list(value, 'times').map((item) => _time(item, 'time')).toList();
+  final times =
+      _list(value, 'times').map((item) => _time(item, 'time')).toList();
+  if (times.isEmpty) {
+    throw FormatException('Expected at least one time.', value);
+  }
+  return times;
 }
 
 DoseUnit? _nullableUnit(Object? value) => value == null
     ? null
-    : _byWireName<DoseUnit>(
-        DoseUnit.values,
-        (unit) => unit.name,
-        _string(value, 'unit'),
-        'Dose unit',
-      );
+    : _fromRegistryName(doseUnitFromName, _string(value, 'unit'));
 
 DoseRoute? _nullableRoute(Object? value) => value == null
     ? null
-    : _byWireName<DoseRoute>(
-        DoseRoute.values,
-        (route) => route.name,
-        _string(value, 'route'),
-        'Dose route',
-      );
+    : _fromRegistryName(doseRouteFromName, _string(value, 'route'));
+
+/// [fromName]'s registry member for [name]. A name outside the registry is
+/// malformed JSON here, so its [ArgumentError] reads as a [FormatException].
+T _fromRegistryName<T>(T Function(String name) fromName, String name) {
+  try {
+    return fromName(name);
+  } on ArgumentError catch (error) {
+    throw FormatException(error.message.toString(), name);
+  }
+}

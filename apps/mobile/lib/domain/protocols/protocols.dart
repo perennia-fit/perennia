@@ -59,6 +59,10 @@ class ProtocolDayDate implements Comparable<ProtocolDayDate> {
 
   static final _storagePattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
 
+  /// The last date a `YYYY-MM-DD` value holds.
+  static const ProtocolDayDate max =
+      ProtocolDayDate(year: 9999, month: 12, day: 31);
+
   final int year;
   final int month;
   final int day;
@@ -78,7 +82,7 @@ class ProtocolDayDate implements Comparable<ProtocolDayDate> {
   /// repeats a date in autumn and skips one in spring (and in a zone whose
   /// change falls at midnight, local midnight itself may not exist). UTC has
   /// no such days, so every date is exactly one day apart from the next.
-  DateTime _utcMidnight() => DateTime.utc(year, month, day);
+  DateTime utcMidnight() => DateTime.utc(year, month, day);
 
   /// The date [days] calendar days after this one (before it, when negative).
   /// Computed in UTC, so it never depends on the device's timezone.
@@ -91,16 +95,24 @@ class ProtocolDayDate implements Comparable<ProtocolDayDate> {
   /// this date is later, zero on the same date. The same UTC arithmetic as
   /// [addDays], so `other.addDays(daysBetween(other)) == this`.
   int daysBetween(ProtocolDayDate other) {
-    return _utcMidnight().difference(other._utcMidnight()).inDays;
+    return utcMidnight().difference(other.utcMidnight()).inDays;
   }
 
   /// The ISO 8601 weekday of this date: 1 is Monday and 7 is Sunday, as a
   /// Schedule Rule's chosen weekdays store it.
-  int get isoWeekday => _utcMidnight().weekday;
+  int get isoWeekday => utcMidnight().weekday;
 
+  /// Calendar order, compared field by field: the plan core compares dates
+  /// on every planned day, so this never builds a string.
   @override
   int compareTo(ProtocolDayDate other) {
-    return storageValue.compareTo(other.storageValue);
+    if (year != other.year) {
+      return year.compareTo(other.year);
+    }
+    if (month != other.month) {
+      return month.compareTo(other.month);
+    }
+    return day.compareTo(other.day);
   }
 
   @override

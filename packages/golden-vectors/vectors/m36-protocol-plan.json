@@ -115,6 +115,41 @@
       "expected": {"v": 1, "kind": "untimed", "days": {"kind": "every_n_days", "n": 2, "anchor": "0050-01-02", "anchor_is_default": false}, "count": 1}
     },
     {
+      "name": "rule-codec-rejects-every-0-days",
+      "function": "rule_codec",
+      "note": "File 5: plannability is the one range the decoder checks, so the core never plans on a modulo by 0; every N days needs an N of at least 1.",
+      "input": {"json": {"v": 1, "kind": "timed", "days": {"kind": "every_n_days", "n": 0, "anchor": "2026-09-01", "anchor_is_default": true}, "times": ["08:00"]}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-rejects-a-negative-every-n",
+      "function": "rule_codec",
+      "note": "File 5: every N days with a negative N plans nothing meaningful, so it is rejected like 0.",
+      "input": {"json": {"v": 1, "kind": "untimed", "days": {"kind": "every_n_days", "n": -2, "anchor": "2026-09-01", "anchor_is_default": false}, "count": 1}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-rejects-an-untimed-count-of-0",
+      "function": "rule_codec",
+      "note": "File 5: an untimed rule plans at least one dose a day; a count of 0 would read as planned with nothing planned.",
+      "input": {"json": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 0}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-rejects-a-negative-untimed-count",
+      "function": "rule_codec",
+      "note": "File 5: a negative count is rejected at the decoder, so neither twin has to plan it.",
+      "input": {"json": {"v": 1, "kind": "untimed", "days": {"kind": "weekdays", "weekdays": [1]}, "count": -1}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-rejects-a-timed-rule-with-no-times",
+      "function": "rule_codec",
+      "note": "File 5: a timed rule plans at least one time a day.",
+      "input": {"json": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": []}},
+      "expected": {"rejects": true}
+    },
+    {
       "name": "period-codec-cycle-and-pause",
       "function": "period_codec",
       "note": "Data shapes: a cycle with its anchor, and one inclusive Pause.",
@@ -171,6 +206,20 @@
       "function": "period_codec",
       "note": "File 5: the cycle anchor must be a real date.",
       "input": {"json": {"v": 1, "cycle": {"on_days": 21, "off_days": 7, "anchor": "2026-13-01", "anchor_is_default": false}, "pauses": []}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "period-codec-rejects-a-cycle-of-no-days",
+      "function": "period_codec",
+      "note": "File 5: a cycle is at least 1 day long (on_days + off_days), so the core never takes a modulo by 0.",
+      "input": {"json": {"v": 1, "cycle": {"on_days": 0, "off_days": 0, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "period-codec-rejects-a-cycle-that-sums-below-1-day",
+      "function": "period_codec",
+      "note": "File 5: the length checked is on_days + off_days, so a negative off-period that cancels the on-period is rejected too.",
+      "input": {"json": {"v": 1, "cycle": {"on_days": 2, "off_days": -2, "anchor": "2026-09-01", "anchor_is_default": false}, "pauses": []}},
       "expected": {"rejects": true}
     },
     {

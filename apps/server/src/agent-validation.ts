@@ -4,7 +4,13 @@ import {
   AgentApiKeyUnavailableResponseSchema,
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
-import { isPlanLocalTime, isValidLocalDate } from "./protocol-plan.js";
+import {
+  compareIds,
+  isJsonObject,
+  isPlanLocalTime,
+  isValidLocalDate,
+  isWholeNumber
+} from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import type {
   DimensionId,
@@ -1792,7 +1798,7 @@ export function validateAgentScheduleRule(
         doseIssue({
           field: "rule.times",
           rule: "times_count",
-          message: "A timed rule plans 1 to 12 times a day.",
+          message: `A timed rule plans 1 to ${limits.maxTimesPerDay} times a day.`,
           limit: limits.maxTimesPerDay
         })
       );
@@ -1812,7 +1818,7 @@ export function validateAgentScheduleRule(
         doseIssue({
           field: "rule.times",
           rule: "times_many",
-          message: "More than 6 times a day is unusual.",
+          message: `More than ${limits.warnTimesPerDay} times a day is unusual.`,
           limit: limits.warnTimesPerDay
         })
       );
@@ -1822,7 +1828,7 @@ export function validateAgentScheduleRule(
       doseIssue({
         field: "rule.count",
         rule: "untimed_count",
-        message: "An untimed rule plans 1 to 12 doses a day.",
+        message: `An untimed rule plans 1 to ${limits.maxUntimedCount} doses a day.`,
         limit: limits.maxUntimedCount
       })
     );
@@ -1852,7 +1858,7 @@ export function validateAgentScheduleRule(
         doseIssue({
           field: "rule.days.n",
           rule: "every_n_range",
-          message: "Every N days takes N from 2 to 365.",
+          message: `Every N days takes N from ${limits.minEveryNDays} to ${limits.maxEveryNDays}.`,
           limit: `${limits.minEveryNDays}-${limits.maxEveryNDays}`
         })
       );
@@ -1904,7 +1910,7 @@ export function validateAgentProtocolPeriod(
         doseIssue({
           field: "period.cycle",
           rule: "cycle_lengths",
-          message: "A cycle is 1 to 3650 days on and 1 to 3650 days off.",
+          message: `A cycle is 1 to ${maximum} days on and 1 to ${maximum} days off.`,
           limit: maximum
         })
       );
@@ -1963,9 +1969,7 @@ export function validateAgentProtocolPeriod(
   }
 
   // Pauses are inclusive at both ends, so two that share a day overlap.
-  const byStart = [...ranges].sort((left, right) =>
-    left.from < right.from ? -1 : left.from > right.from ? 1 : 0
-  );
+  const byStart = [...ranges].sort((left, right) => compareIds(left.from, right.from));
   let latestEnd: string | null = null;
   let overlaps = false;
   for (const range of byStart) {
@@ -2024,23 +2028,13 @@ function requireBoundDate(localDate: string, field: string): string {
   return localDate;
 }
 
-/// A whole number in range. JSON cannot tell 3.0 from 3, so neither does
-/// this, nor the Dart twin.
+/// A whole number in range, as the plan core's decoders read one.
 function isIntegerInRange(value: unknown, minimum: number, maximum: number): boolean {
-  return (
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= minimum &&
-    value <= maximum
-  );
+  return isWholeNumber(value) && value >= minimum && value <= maximum;
 }
 
 function isLocalDateValue(value: unknown): value is string {
   return typeof value === "string" && isValidLocalDate(value);
-}
-
-function isJsonObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // ---------------------------------------------------------------------------

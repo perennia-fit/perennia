@@ -37,18 +37,13 @@ List<PlanDay> planDays(
   ProtocolDayDate from,
   ProtocolDayDate to,
 ) {
-  final sortedProtocols = protocols.toList()
-    ..sort((a, b) => a.protocolId.compareTo(b.protocolId));
-  final compoundIdsByProtocol = [
-    for (final protocol in sortedProtocols)
-      protocol.members.map((member) => member.compoundId).toSet().toList()
-        ..sort(),
-  ];
+  final plans = protocols.map(_ProtocolPlan.new).toList()
+    ..sort((a, b) => a.protocol.protocolId.compareTo(b.protocol.protocolId));
   final days = <PlanDay>[];
   for (var date = from; date.compareTo(to) <= 0; date = date.addDays(1)) {
-    for (var index = 0; index < sortedProtocols.length; index += 1) {
-      for (final compoundId in compoundIdsByProtocol[index]) {
-        days.add(_planDay(sortedProtocols[index], compoundId, date));
+    for (final plan in plans) {
+      for (final compoundId in plan.compoundIds) {
+        days.add(_planDay(plan, compoundId, date));
       }
     }
   }
@@ -56,15 +51,21 @@ List<PlanDay> planDays(
 }
 
 PlanDay _planDay(
-  PlanProtocol protocol,
+  _ProtocolPlan plan,
   String compoundId,
   ProtocolDayDate date,
 ) {
-  PlanDay state(PlanDayState state) => PlanDay(
+  final protocol = plan.protocol;
+  PlanDay state(
+    PlanDayState state, [
+    List<PlannedDose> planned = const <PlannedDose>[],
+  ]) =>
+      PlanDay(
         protocolId: protocol.protocolId,
         compoundId: compoundId,
         localDate: date,
         state: state,
+        planned: planned,
       );
 
   final end = protocol.endLocalDate;
@@ -84,18 +85,17 @@ PlanDay _planDay(
   if (archivedOn != null && date.compareTo(archivedOn) > 0) {
     return state(PlanDayState.removed);
   }
-  final member = _coveringMember(protocol.members, compoundId, date);
-  if (member == null) {
+  final row = plan.coveringRow(compoundId, date);
+  if (row == null) {
     return state(PlanDayState.removed);
   }
 
-  final version = _applyingVersion(member.versions, date);
+  final version = row.applyingVersion(date);
   if (version == null) {
     return state(PlanDayState.noSchedule);
   }
-  final rule = version.rule;
+  final rule = version.version.rule;
   final ScheduleDays days;
-  final List<String?> times;
   switch (rule) {
     case UnscheduledScheduleRule():
       return state(PlanDayState.noSchedule);
@@ -103,88 +103,123 @@ PlanDay _planDay(
       return state(PlanDayState.asNeeded);
     case TimedScheduleRule():
       days = rule.days;
-      times = rule.times;
     case UntimedScheduleRule():
       days = rule.days;
-      times = List<String?>.filled(rule.count, null);
   }
   if (!days.includes(date)) {
     return state(PlanDayState.notScheduledToday);
   }
-  return PlanDay(
-    protocolId: protocol.protocolId,
-    compoundId: compoundId,
-    localDate: date,
-    state: PlanDayState.planned,
-    planned: times.map(
-      (localTime) => PlannedDose(
-        localTime: localTime,
-        amountValue: version.amountValue,
-        amountEntered: version.amountEntered,
-        unit: version.unit,
-        route: version.route,
-      ),
-    ),
-  );
+  return state(PlanDayState.planned, version.planned);
 }
 
-/// The member row of [compoundId] that covers [date], or null when none
-/// does (D1). A row covers its first version's `effectiveFrom` through its
-/// `archivedOn`, both inclusive; a row with no versions has no first date,
-/// so it covers every date through its `archivedOn` and plans nothing. When
-/// two rows cover one date (removed and re-added that day), the larger
-/// member id, the newer UUIDv7 row, wins.
-PlanMember? _coveringMember(
-  Iterable<PlanMember> members,
-  String compoundId,
-  ProtocolDayDate date,
-) {
-  PlanMember? covering;
-  for (final member in members) {
-    if (member.compoundId != compoundId) {
-      continue;
+/// One Protocol as [planDays] reads it on every date, worked out once per
+/// call: its Compound ids in order, and each Compound's member rows.
+class _ProtocolPlan {
+  _ProtocolPlan._(this.protocol, this.compoundIds, this._rowsByCompound);
+
+  factory _ProtocolPlan(PlanProtocol protocol) {
+    final rowsByCompound = <String, List<_MemberRow>>{};
+    for (final member in protocol.members) {
+      rowsByCompound
+          .putIfAbsent(member.compoundId, () => [])
+          .add(_MemberRow(member));
     }
-    final archivedOn = member.archivedOn;
+    for (final rows in rowsByCompound.values) {
+      rows.sort((a, b) => b.memberId.compareTo(a.memberId));
+    }
+    return _ProtocolPlan._(
+      protocol,
+      rowsByCompound.keys.toList()..sort(),
+      rowsByCompound,
+    );
+  }
+
+  final PlanProtocol protocol;
+  final List<String> compoundIds;
+
+  /// Each Compound's rows, the larger member id first.
+  final Map<String, List<_MemberRow>> _rowsByCompound;
+
+  /// The member row of [compoundId] that covers [date], or null when none
+  /// does (D1). When two rows cover one date (removed and re-added that
+  /// day), the larger member id, the newer UUIDv7 row, wins, and rows are
+  /// kept in that order, so the first that covers it is the one.
+  _MemberRow? coveringRow(String compoundId, ProtocolDayDate date) {
+    for (final row in _rowsByCompound[compoundId] ?? const <_MemberRow>[]) {
+      if (row.covers(date)) {
+        return row;
+      }
+    }
+    return null;
+  }
+}
+
+/// One member row, with its versions in `effectiveFrom` order, then id
+/// order, and each version's planned doses built once.
+class _MemberRow {
+  _MemberRow(PlanMember member)
+      : memberId = member.memberId,
+        archivedOn = member.archivedOn,
+        _versions = [
+          for (final version in member.versions) _VersionPlan(version),
+        ]..sort(_VersionPlan.compare);
+
+  final String memberId;
+  final ProtocolDayDate? archivedOn;
+  final List<_VersionPlan> _versions;
+
+  /// A row covers its first version's `effectiveFrom` through its
+  /// `archivedOn`, both inclusive; a row with no versions has no first date,
+  /// so it covers every date through its `archivedOn` and plans nothing.
+  bool covers(ProtocolDayDate date) {
+    final archivedOn = this.archivedOn;
     if (archivedOn != null && date.compareTo(archivedOn) > 0) {
-      continue;
+      return false;
     }
-    final firstDate = member.versions.isEmpty
-        ? null
-        : member.versions
-            .map((version) => version.effectiveFrom)
-            .reduce((a, b) => a.compareTo(b) <= 0 ? a : b);
-    if (firstDate != null && date.compareTo(firstDate) < 0) {
-      continue;
-    }
-    if (covering == null || member.memberId.compareTo(covering.memberId) > 0) {
-      covering = member;
-    }
+    return _versions.isEmpty ||
+        date.compareTo(_versions.first.version.effectiveFrom) >= 0;
   }
-  return covering;
+
+  /// The Schedule Version that applies on [date] (D1): the latest
+  /// `effectiveFrom` on or before it, and on a shared date the larger id,
+  /// which is the latest edit because ids are UUIDv7. In version order, that
+  /// is the last one on or before [date].
+  _VersionPlan? applyingVersion(ProtocolDayDate date) {
+    for (var index = _versions.length - 1; index >= 0; index -= 1) {
+      if (_versions[index].version.effectiveFrom.compareTo(date) <= 0) {
+        return _versions[index];
+      }
+    }
+    return null;
+  }
 }
 
-/// The Schedule Version that applies on [date] (D1): the latest
-/// `effectiveFrom` on or before it, and on a shared date the larger id,
-/// which is the latest edit because ids are UUIDv7.
-ScheduleVersion? _applyingVersion(
-  Iterable<ScheduleVersion> versions,
-  ProtocolDayDate date,
-) {
-  ScheduleVersion? applying;
-  for (final version in versions) {
-    if (version.effectiveFrom.compareTo(date) > 0) {
-      continue;
-    }
-    if (applying == null) {
-      applying = version;
-      continue;
-    }
-    final byDate = version.effectiveFrom.compareTo(applying.effectiveFrom);
-    if (byDate > 0 || (byDate == 0 && version.id.compareTo(applying.id) > 0)) {
-      applying = version;
-    }
+/// One Schedule Version and the planned doses it plans on each of its days,
+/// shared by every date it plans (empty for a rule that plans nothing).
+class _VersionPlan {
+  _VersionPlan(this.version)
+      : planned = List<PlannedDose>.unmodifiable(
+          _plannedTimes(version.rule).map(
+            (localTime) =>
+                PlannedDose(localTime: localTime, amount: version.amount),
+          ),
+        );
+
+  final ScheduleVersion version;
+  final List<PlannedDose> planned;
+
+  static List<String?> _plannedTimes(ScheduleRule rule) => switch (rule) {
+        TimedScheduleRule() => rule.times,
+        UntimedScheduleRule() => List<String?>.filled(rule.count, null),
+        AsNeededScheduleRule() ||
+        UnscheduledScheduleRule() =>
+          const <String?>[],
+      };
+
+  static int compare(_VersionPlan a, _VersionPlan b) {
+    final byDate = a.version.effectiveFrom.compareTo(b.version.effectiveFrom);
+    return byDate != 0 ? byDate : a.version.id.compareTo(b.version.id);
   }
-  return applying;
 }
 
 /// One Day Status per Compound and date in [planDays], for dates up to and
@@ -289,10 +324,7 @@ DayStatus _dayStatus(
           slot: index,
           protocolId: slots[index].protocolId,
           plannedLocalTime: slots[index].dose.localTime,
-          amountValue: slots[index].dose.amountValue,
-          amountEntered: slots[index].dose.amountEntered,
-          unit: slots[index].dose.unit,
-          route: slots[index].dose.route,
+          amount: slots[index].dose.amount,
           doseId: filledBy[index],
         ),
     ],
@@ -352,7 +384,7 @@ DayStatusKind _plannedStatus(
     return (DayStatusKind.offCycle, null);
   }
   for (final reason in NotPlannedReason.values) {
-    if (states.contains(_stateForReason(reason))) {
+    if (states.contains(reason.state)) {
       return (DayStatusKind.notPlanned, reason);
     }
   }
@@ -361,41 +393,25 @@ DayStatusKind _plannedStatus(
   throw StateError('A Compound date with nothing planned has no reason.');
 }
 
-PlanDayState _stateForReason(NotPlannedReason reason) {
-  return switch (reason) {
-    NotPlannedReason.notScheduledToday => PlanDayState.notScheduledToday,
-    NotPlannedReason.asNeeded => PlanDayState.asNeeded,
-    NotPlannedReason.noSchedule => PlanDayState.noSchedule,
-    NotPlannedReason.removed => PlanDayState.removed,
-    NotPlannedReason.outside => PlanDayState.outside,
-  };
-}
-
 /// One planned dose that "Log all planned" would log now (D6).
 class DueUnfilledDose {
   const DueUnfilledDose({
     required this.compoundId,
     required this.slot,
     required this.protocolId,
-    this.amountValue,
-    this.amountEntered,
-    this.unit,
-    this.route,
+    this.amount = PlanAmount.none,
   });
 
   final String compoundId;
   final int slot;
   final String protocolId;
-  final double? amountValue;
-  final String? amountEntered;
-  final DoseUnit? unit;
-  final DoseRoute? route;
+  final PlanAmount amount;
 
   Map<String, Object?> toJson() => <String, Object?>{
         'compoundId': compoundId,
         'slot': slot,
         'protocolId': protocolId,
-        ...planAmountJson(amountValue, amountEntered, unit, route),
+        ...amount.toJson(),
       };
 }
 
@@ -426,10 +442,7 @@ List<DueUnfilledDose> dueUnfilled(
           compoundId: status.compoundId,
           slot: fill.slot,
           protocolId: fill.protocolId,
-          amountValue: fill.amountValue,
-          amountEntered: fill.amountEntered,
-          unit: fill.unit,
-          route: fill.route,
+          amount: fill.amount,
         ),
       );
     }
@@ -468,19 +481,11 @@ ProtocolDayDate? endDateForDoseCount({
     UntimedScheduleRule() => (rule.days, rule.count),
     AsNeededScheduleRule() || UnscheduledScheduleRule() => (null, 0),
   };
-  if (days == null || perDay <= 0) {
+  if (days == null) {
     return null;
   }
   final cycle = period?.cycle;
-  final rulePeriod = switch (days) {
-    DailyScheduleDays() => 1,
-    WeekdayScheduleDays() => 7,
-    EveryNDaysScheduleDays() => days.n,
-  };
   final cycleLength = cycle == null ? 1 : cycle.onDays + cycle.offDays;
-  if (rulePeriod < 1 || cycleLength < 1) {
-    throw RangeError('A plan period is at least 1 day.');
-  }
 
   // Days are counted as offsets from the start. Ignoring Pauses, which day
   // plans what repeats every `repeatDays`, so whole repeats are skipped
@@ -488,11 +493,16 @@ ProtocolDayDate? endDateForDoseCount({
   // days for an every-N rule, else every day. An every-365-days rule on a
   // long cycle repeats only every few million days, yet visits a few
   // thousand rule days per repeat.
+  final (rulePeriod, stride, anchorOffset) = switch (days) {
+    DailyScheduleDays() => (1, 1, 0),
+    WeekdayScheduleDays() => (7, 1, 0),
+    EveryNDaysScheduleDays(:final n, :final anchor) => (
+        n,
+        n,
+        anchor.daysBetween(startLocalDate),
+      ),
+  };
   final repeatDays = _lcm(rulePeriod, cycleLength);
-  final stride = days is EveryNDaysScheduleDays ? days.n : 1;
-  final anchorOffset = days is EveryNDaysScheduleDays
-      ? days.anchor.daysBetween(startLocalDate)
-      : 0;
   int firstRuleDay(int day) => day + (anchorOffset - day) % stride;
   bool plansOn(int day) {
     final date = startLocalDate.addDays(day);
@@ -511,8 +521,7 @@ ProtocolDayDate? endDateForDoseCount({
 
   // Walk the gaps between Pauses: step over each Pause at once, skip whole
   // repeats inside a gap, then visit the rule's days to the gap's end.
-  final lastDay = const ProtocolDayDate(year: 9999, month: 12, day: 31)
-      .daysBetween(startLocalDate);
+  final lastDay = ProtocolDayDate.max.daysBetween(startLocalDate);
   final pauses = [
     for (final pause in period?.pauses ?? const <ProtocolPause>[])
       (

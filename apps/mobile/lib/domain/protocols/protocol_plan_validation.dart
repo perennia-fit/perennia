@@ -65,7 +65,7 @@ DoseValidationResult validateScheduleRule(
   if (kind == 'timed') {
     _validateTimes(rule['times'], errors, warnings);
   } else {
-    final count = _integerOrNull(rule['count']);
+    final count = planWholeNumber(rule['count']);
     if (count == null ||
         count < 1 ||
         count > ProtocolPlanValidationLimits.maxUntimedCount) {
@@ -73,7 +73,8 @@ DoseValidationResult validateScheduleRule(
         const DoseValidationIssue(
           field: 'rule.count',
           rule: 'untimed_count',
-          message: 'An untimed rule plans 1 to 12 doses a day.',
+          message: 'An untimed rule plans 1 to '
+              '${ProtocolPlanValidationLimits.maxUntimedCount} doses a day.',
           limit: ProtocolPlanValidationLimits.maxUntimedCount,
         ),
       );
@@ -122,7 +123,8 @@ void _validateTimes(
       const DoseValidationIssue(
         field: 'rule.times',
         rule: 'times_count',
-        message: 'A timed rule plans 1 to 12 times a day.',
+        message: 'A timed rule plans 1 to '
+            '${ProtocolPlanValidationLimits.maxTimesPerDay} times a day.',
         limit: ProtocolPlanValidationLimits.maxTimesPerDay,
       ),
     );
@@ -142,7 +144,8 @@ void _validateTimes(
       const DoseValidationIssue(
         field: 'rule.times',
         rule: 'times_many',
-        message: 'More than 6 times a day is unusual.',
+        message: 'More than ${ProtocolPlanValidationLimits.warnTimesPerDay} '
+            'times a day is unusual.',
         limit: ProtocolPlanValidationLimits.warnTimesPerDay,
       ),
     );
@@ -156,7 +159,7 @@ void _validateDays(Object? rawDays, List<DoseValidationIssue> errors) {
     case 'weekdays':
       final weekdays = days['weekdays'];
       final values = weekdays is List<Object?>
-          ? weekdays.map(_integerOrNull).toList()
+          ? weekdays.map(planWholeNumber).toList()
           : const <int?>[];
       if (values.isEmpty ||
           values.any((day) => day == null || day < 1 || day > 7) ||
@@ -172,7 +175,7 @@ void _validateDays(Object? rawDays, List<DoseValidationIssue> errors) {
         );
       }
     case 'every_n_days':
-      final n = _integerOrNull(days['n']);
+      final n = planWholeNumber(days['n']);
       if (n == null ||
           n < ProtocolPlanValidationLimits.minEveryNDays ||
           n > ProtocolPlanValidationLimits.maxEveryNDays) {
@@ -180,8 +183,11 @@ void _validateDays(Object? rawDays, List<DoseValidationIssue> errors) {
           const DoseValidationIssue(
             field: 'rule.days.n',
             rule: 'every_n_range',
-            message: 'Every N days takes N from 2 to 365.',
-            limit: '2-365',
+            message: 'Every N days takes N from '
+                '${ProtocolPlanValidationLimits.minEveryNDays} to '
+                '${ProtocolPlanValidationLimits.maxEveryNDays}.',
+            limit: '${ProtocolPlanValidationLimits.minEveryNDays}-'
+                '${ProtocolPlanValidationLimits.maxEveryNDays}',
           ),
         );
       }
@@ -226,8 +232,8 @@ DoseValidationResult validateProtocolPeriod({
     if (_dateOrNull(cycle['anchor']) == null) {
       errors.add(_anchorDateIssue('period.cycle.anchor'));
     }
-    final onDays = _integerOrNull(cycle['on_days']);
-    final offDays = _integerOrNull(cycle['off_days']);
+    final onDays = planWholeNumber(cycle['on_days']);
+    final offDays = planWholeNumber(cycle['off_days']);
     bool inRange(int? days) =>
         days != null &&
         days >= 1 &&
@@ -237,7 +243,10 @@ DoseValidationResult validateProtocolPeriod({
         const DoseValidationIssue(
           field: 'period.cycle',
           rule: 'cycle_lengths',
-          message: 'A cycle is 1 to 3650 days on and 1 to 3650 days off.',
+          message: 'A cycle is 1 to '
+              '${ProtocolPlanValidationLimits.maxCycleLengthDays} days on and '
+              '1 to ${ProtocolPlanValidationLimits.maxCycleLengthDays} days '
+              'off.',
           limit: ProtocolPlanValidationLimits.maxCycleLengthDays,
         ),
       );
@@ -336,18 +345,6 @@ DoseValidationIssue _anchorDateIssue(String field) {
     message: 'An anchor must be a real YYYY-MM-DD date.',
     limit: 'YYYY-MM-DD',
   );
-}
-
-/// [value] as an integer, or null when it is not a finite whole number. A
-/// JSON `3.0` counts as 3, as `Number.isInteger` does in TypeScript.
-int? _integerOrNull(Object? value) {
-  if (value is int) {
-    return value;
-  }
-  if (value is double && value.isFinite && value == value.truncateToDouble()) {
-    return value.toInt();
-  }
-  return null;
 }
 
 ProtocolDayDate? _dateOrNull(Object? value) {

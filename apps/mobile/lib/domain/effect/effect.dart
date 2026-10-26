@@ -155,8 +155,7 @@ EffectBounds effectBoundsFromLocalDates({
   required int timezoneOffsetMinutes,
 }) {
   DateTime localMidnight(ProtocolDayDate date) =>
-      DateTime.utc(date.year, date.month, date.day)
-          .subtract(Duration(minutes: timezoneOffsetMinutes));
+      date.utcMidnight().subtract(Duration(minutes: timezoneOffsetMinutes));
 
   return EffectBounds(
     startDate: localMidnight(startLocalDate),

@@ -177,9 +177,15 @@ export type DueUnfilledDose = PlanAmount & {
 // type, a date that is not a real `YYYY-MM-DD` date and a time that is not
 // `HH:MM` in 00:00-23:59, exactly as the Dart twin's decoders reject them; a
 // whole number reads as an integer however it was written (`2.0` is 2), as
-// JSON.parse already gives it. Range checks (how many times, how long a
-// cycle) are the shared validators' job (D7), which read the stored JSON
-// itself, so they can judge values these decoders would reject.
+// JSON.parse already gives it.
+//
+// The one range a decoder checks is plannability, and it checks it here, once,
+// so the core never has to: every N days with N below 1, an untimed count
+// below 1, a timed rule with no times and a cycle of no days at all are
+// rejected, as the Dart twin's decoders reject them. Every other range check
+// (how many times, how long a cycle) is the shared validators' job (D7), which
+// read the stored JSON itself, so they can judge values these decoders would
+// reject.
 // ---------------------------------------------------------------------------
 
 export class ProtocolPlanCodecError extends Error {
@@ -198,16 +204,14 @@ export function decodeScheduleRule(json: unknown): ScheduleRule {
         v: 1,
         kind: "timed",
         days: decodeScheduleRuleDays(object.days),
-        times: requireArray(object.times, "Schedule Rule times").map((time) =>
-          requireLocalTime(time, "Schedule Rule time")
-        )
+        times: requireLocalTimes(object.times, "Schedule Rule times")
       };
     case "untimed":
       return {
         v: 1,
         kind: "untimed",
         days: decodeScheduleRuleDays(object.days),
-        count: requireInteger(object.count, "Schedule Rule count")
+        count: requirePlannableInteger(object.count, "Schedule Rule count")
       };
     case "as_needed":
     case "unscheduled":
@@ -219,16 +223,12 @@ export function decodeScheduleRule(json: unknown): ScheduleRule {
   }
 }
 
+/**
+ * The stored JSON of a decoded rule: a deep copy, because the decoded value
+ * already is that JSON, with only its known keys, in stored order.
+ */
 export function encodeScheduleRule(rule: ScheduleRule): Record<string, unknown> {
-  switch (rule.kind) {
-    case "timed":
-      return { v: 1, kind: "timed", days: encodeScheduleRuleDays(rule.days), times: [...rule.times] };
-    case "untimed":
-      return { v: 1, kind: "untimed", days: encodeScheduleRuleDays(rule.days), count: rule.count };
-    case "as_needed":
-    case "unscheduled":
-      return { v: 1, kind: rule.kind };
-  }
+  return structuredClone(rule);
 }
 
 export function decodeProtocolPeriod(json: unknown): ProtocolPeriod | null {
@@ -254,17 +254,11 @@ export function decodeProtocolPeriod(json: unknown): ProtocolPeriod | null {
   };
 }
 
+/** The stored JSON of a decoded period, as `encodeScheduleRule` copies a rule. */
 export function encodeProtocolPeriod(
   period: ProtocolPeriod | null
 ): Record<string, unknown> | null {
-  if (period === null) {
-    return null;
-  }
-  return {
-    v: 1,
-    cycle: period.cycle === null ? null : { ...period.cycle },
-    pauses: period.pauses.map((pause) => ({ from: pause.from, to: pause.to }))
-  };
+  return period === null ? null : structuredClone(period);
 }
 
 function decodeScheduleRuleDays(json: unknown): ScheduleRuleDays {
@@ -282,7 +276,7 @@ function decodeScheduleRuleDays(json: unknown): ScheduleRuleDays {
     case "every_n_days":
       return {
         kind: "every_n_days",
-        n: requireInteger(object.n, "Schedule Rule n"),
+        n: requirePlannableInteger(object.n, "Schedule Rule n"),
         anchor: requireLocalDate(object.anchor, "Schedule Rule anchor"),
         anchor_is_default: requireBoolean(
           object.anchor_is_default,
@@ -296,27 +290,16 @@ function decodeScheduleRuleDays(json: unknown): ScheduleRuleDays {
   }
 }
 
-function encodeScheduleRuleDays(days: ScheduleRuleDays): Record<string, unknown> {
-  switch (days.kind) {
-    case "daily":
-      return { kind: "daily" };
-    case "weekdays":
-      return { kind: "weekdays", weekdays: [...days.weekdays] };
-    case "every_n_days":
-      return {
-        kind: "every_n_days",
-        n: days.n,
-        anchor: days.anchor,
-        anchor_is_default: days.anchor_is_default
-      };
-  }
-}
-
 function decodeProtocolCycle(json: unknown): ProtocolCycle {
   const object = requireObject(json, "Protocol cycle");
+  const onDays = requireInteger(object.on_days, "Protocol cycle on_days");
+  const offDays = requireInteger(object.off_days, "Protocol cycle off_days");
+  if (onDays + offDays < 1) {
+    throw new ProtocolPlanCodecError("A Protocol cycle must be at least 1 day long.");
+  }
   return {
-    on_days: requireInteger(object.on_days, "Protocol cycle on_days"),
-    off_days: requireInteger(object.off_days, "Protocol cycle off_days"),
+    on_days: onDays,
+    off_days: offDays,
     anchor: requireLocalDate(object.anchor, "Protocol cycle anchor"),
     anchor_is_default: requireBoolean(
       object.anchor_is_default,
@@ -325,11 +308,24 @@ function decodeProtocolCycle(json: unknown): ProtocolCycle {
   };
 }
 
+/** Whether `json` is a JSON object: not null, not an array. */
+export function isJsonObject(json: unknown): json is Record<string, unknown> {
+  return typeof json === "object" && json !== null && !Array.isArray(json);
+}
+
+/**
+ * Whether `json` is a whole number. JSON cannot tell 3.0 from 3, so neither
+ * does this, nor the Dart twin's `planWholeNumber`.
+ */
+export function isWholeNumber(json: unknown): json is number {
+  return typeof json === "number" && Number.isInteger(json);
+}
+
 function requireObject(json: unknown, what: string): Record<string, unknown> {
-  if (typeof json !== "object" || json === null || Array.isArray(json)) {
+  if (!isJsonObject(json)) {
     throw new ProtocolPlanCodecError(`${what} must be a JSON object.`);
   }
-  return json as Record<string, unknown>;
+  return json;
 }
 
 function requireVersion1(object: Record<string, unknown>, what: string) {
@@ -370,11 +366,29 @@ function requireLocalTime(json: unknown, what: string): LocalTime {
   return localTime;
 }
 
+/** A timed rule's times: at least one, the least the core can plan on. */
+function requireLocalTimes(json: unknown, what: string): LocalTime[] {
+  const times = requireArray(json, what).map((time) => requireLocalTime(time, `${what} entry`));
+  if (times.length === 0) {
+    throw new ProtocolPlanCodecError(`${what} must hold at least one time.`);
+  }
+  return times;
+}
+
 function requireInteger(json: unknown, what: string): number {
-  if (typeof json !== "number" || !Number.isInteger(json)) {
+  if (!isWholeNumber(json)) {
     throw new ProtocolPlanCodecError(`${what} must be an integer.`);
   }
   return json;
+}
+
+/** An every-N-days N or an untimed count: an integer of at least 1. */
+function requirePlannableInteger(json: unknown, what: string): number {
+  const value = requireInteger(json, what);
+  if (value < 1) {
+    throw new ProtocolPlanCodecError(`${what} must be at least 1.`);
+  }
+  return value;
 }
 
 function requireBoolean(json: unknown, what: string): boolean {
@@ -401,7 +415,7 @@ export function isPlanLocalTime(value: string): boolean {
  * The UTC epoch day of a `YYYY-MM-DD` date, or null when it is not a real
  * calendar date (`2026-02-30`, `2026-13-01`, another format).
  */
-export function localDateEpochDay(localDate: string): number | null {
+function localDateEpochDay(localDate: string): number | null {
   const match = LOCAL_DATE_PATTERN.exec(localDate);
   if (match === null) {
     return null;
@@ -441,26 +455,17 @@ function localDateFromEpochDay(day: number): LocalDate {
   return new Date(day * MS_PER_DAY).toISOString().slice(0, 10);
 }
 
-/** Whole days from `from` to `to`; negative when `to` is earlier. */
-function localDaysBetween(from: LocalDate, to: LocalDate): number {
-  return epochDay(to) - epochDay(from);
-}
-
-/** ISO 8601 weekday, 1 = Monday through 7 = Sunday. */
-function localDateIsoWeekday(localDate: LocalDate): number {
+/** ISO 8601 weekday of an epoch day, 1 = Monday through 7 = Sunday. */
+function epochDayIsoWeekday(day: number): number {
   // Epoch day 0 (1970-01-01) was a Thursday, ISO weekday 4.
-  return floorMod(epochDay(localDate) + 3, 7) + 1;
+  return floorMod(day + 3, 7) + 1;
 }
 
 /**
- * A modulo that is never negative, so dates before an anchor count too. A
- * divisor below 1 (an every-0-days rule or an empty cycle that skipped
- * validation) throws, as the Dart twin does, instead of planning on NaN.
+ * A modulo that is never negative, so dates before an anchor count too. The
+ * decoders guarantee every plan period is at least 1 day.
  */
 function floorMod(value: number, divisor: number): number {
-  if (!(divisor >= 1)) {
-    throw new RangeError(`A plan period must be at least 1 day, not ${divisor}.`);
-  }
   return ((value % divisor) + divisor) % divisor;
 }
 
@@ -478,32 +483,113 @@ export function planDays(
   from: LocalDate,
   to: LocalDate
 ): PlanDay[] {
-  const sortedProtocols = [...protocols].sort((left, right) =>
-    compareIds(left.protocolId, right.protocolId)
-  );
-  const compoundIdsByProtocol = sortedProtocols.map((protocol) =>
-    [...new Set(protocol.members.map((member) => member.compoundId))].sort(compareIds)
-  );
+  const plans = protocols
+    .map(protocolPlan)
+    .sort((left, right) => compareIds(left.protocol.protocolId, right.protocol.protocolId));
 
   const days: PlanDay[] = [];
   const lastDay = epochDay(to);
   for (let day = epochDay(from); day <= lastDay; day += 1) {
     const localDate = localDateFromEpochDay(day);
-    sortedProtocols.forEach((protocol, index) => {
-      for (const compoundId of compoundIdsByProtocol[index]!) {
-        days.push(planDayFor(protocol, compoundId, localDate));
+    for (const plan of plans) {
+      for (const compoundId of plan.compoundIds) {
+        days.push(planDayFor(plan, compoundId, localDate, day));
       }
-    });
+    }
   }
   return days;
 }
 
-/** D4's order: outside, paused, off cycle, removed, then the Schedule. */
+/**
+ * One Protocol as `planDays` reads it on every date, worked out once per call:
+ * its optional fields read once, its cycle in epoch days, its Compound ids in
+ * order, and each Compound's member rows.
+ */
+type ProtocolPlan = {
+  protocol: PlanProtocol;
+  endLocalDate: LocalDate | null;
+  archivedOn: LocalDate | null;
+  pauses: readonly ProtocolPause[];
+  cycle: { anchorDay: number; length: number; onDays: number } | null;
+  compoundIds: string[];
+  /** Each Compound's rows, the larger `memberId` first. */
+  rowsByCompound: Map<string, MemberRow[]>;
+};
+
+/** One member row, with its versions in `effectiveFrom` order, then id order. */
+type MemberRow = {
+  memberId: string;
+  archivedOn: LocalDate | null;
+  versions: VersionPlan[];
+};
+
+/** One Schedule Version, with its amount and every-N anchor worked out once. */
+type VersionPlan = {
+  version: PlanScheduleVersion;
+  amount: Required<PlanAmount>;
+  /** The every-N-days anchor as an epoch day; 0 for any other days. */
+  anchorDay: number;
+};
+
+function protocolPlan(protocol: PlanProtocol): ProtocolPlan {
+  const rowsByCompound = new Map<string, MemberRow[]>();
+  for (const member of protocol.members) {
+    pushToGroup(rowsByCompound, member.compoundId, memberRow(member));
+  }
+  for (const rows of rowsByCompound.values()) {
+    rows.sort((left, right) => compareIds(right.memberId, left.memberId));
+  }
+  const period = protocol.period ?? null;
+  const cycle = period?.cycle ?? null;
+  return {
+    protocol,
+    endLocalDate: protocol.endLocalDate ?? null,
+    archivedOn: protocol.archivedOn ?? null,
+    pauses: period?.pauses ?? [],
+    cycle:
+      cycle === null
+        ? null
+        : {
+            anchorDay: epochDay(cycle.anchor),
+            length: cycle.on_days + cycle.off_days,
+            onDays: cycle.on_days
+          },
+    compoundIds: [...rowsByCompound.keys()].sort(compareIds),
+    rowsByCompound
+  };
+}
+
+function memberRow(member: PlanMember): MemberRow {
+  const versions = member.versions
+    .map((version) => ({
+      version,
+      amount: planAmount(version),
+      anchorDay:
+        version.rule.kind !== "as_needed" &&
+        version.rule.kind !== "unscheduled" &&
+        version.rule.days.kind === "every_n_days"
+          ? epochDay(version.rule.days.anchor)
+          : 0
+    }))
+    .sort(
+      (left, right) =>
+        compareIds(left.version.effectiveFrom, right.version.effectiveFrom) ||
+        compareIds(left.version.id, right.version.id)
+    );
+  return { memberId: member.memberId, archivedOn: member.archivedOn ?? null, versions };
+}
+
+/**
+ * D4's order: outside, paused, off cycle, removed, then the Schedule. `day` is
+ * `localDate` as an epoch day, for the cycle and rule-day arithmetic.
+ */
 function planDayFor(
-  protocol: PlanProtocol,
+  plan: ProtocolPlan,
   compoundId: string,
-  localDate: LocalDate
+  localDate: LocalDate,
+  day: number
 ): PlanDay {
+  const { protocol, endLocalDate, cycle } = plan;
   const unplanned = (state: PlanDayState): PlanDay => ({
     protocolId: protocol.protocolId,
     compoundId,
@@ -512,7 +598,6 @@ function planDayFor(
     planned: []
   });
 
-  const endLocalDate = protocol.endLocalDate ?? null;
   if (
     localDate < protocol.startLocalDate ||
     (endLocalDate !== null && localDate > endLocalDate)
@@ -520,46 +605,36 @@ function planDayFor(
     return unplanned("outside");
   }
 
-  const period = protocol.period ?? null;
-  if (
-    period !== null &&
-    period.pauses.some((pause) => pause.from <= localDate && localDate <= pause.to)
-  ) {
+  if (plan.pauses.some((pause) => pause.from <= localDate && localDate <= pause.to)) {
     return unplanned("paused");
   }
 
-  const cycle = period?.cycle ?? null;
-  if (
-    cycle !== null &&
-    floorMod(localDaysBetween(cycle.anchor, localDate), cycle.on_days + cycle.off_days) >=
-      cycle.on_days
-  ) {
+  if (cycle !== null && floorMod(day - cycle.anchorDay, cycle.length) >= cycle.onDays) {
     return unplanned("off_cycle");
   }
 
-  const protocolArchivedOn = protocol.archivedOn ?? null;
-  if (protocolArchivedOn !== null && localDate > protocolArchivedOn) {
+  if (plan.archivedOn !== null && localDate > plan.archivedOn) {
     return unplanned("removed");
   }
 
-  const member = coveringMember(protocol.members, compoundId, localDate);
-  if (member === null) {
+  const row = coveringRow(plan.rowsByCompound.get(compoundId) ?? [], localDate);
+  if (row === null) {
     return unplanned("removed");
   }
 
-  const version = applyingVersion(member.versions, localDate);
-  if (version === null || version.rule.kind === "unscheduled") {
+  const applying = applyingVersion(row.versions, localDate);
+  if (applying === null || applying.version.rule.kind === "unscheduled") {
     return unplanned("no_schedule");
   }
-  const rule = version.rule;
+  const rule = applying.version.rule;
   if (rule.kind === "as_needed") {
     return unplanned("as_needed");
   }
-  if (!ruleDaysInclude(rule.days, localDate)) {
+  if (!ruleDaysInclude(rule.days, day, applying.anchorDay)) {
     return unplanned("not_scheduled_today");
   }
 
-  const amount = planAmount(version);
+  const { amount } = applying;
   return {
     protocolId: protocol.protocolId,
     compoundId,
@@ -573,77 +648,53 @@ function planDayFor(
 }
 
 /**
- * The member row of `compoundId` covering `localDate`: from its first
- * version's `effectiveFrom` through its `archivedOn` (the archive day itself
- * is still covered). When two rows cover one date (removed and re-added the
- * same day), the larger `memberId` wins. A row with no versions has no first
- * date, so it covers every date up to its archive and plans nothing.
+ * The member row covering `localDate`: from its first version's
+ * `effectiveFrom` through its `archivedOn` (the archive day itself is still
+ * covered). When two rows cover one date (removed and re-added the same day),
+ * the larger `memberId` wins, and `rows` come in that order, so the first
+ * covering row is the one. A row with no versions has no first date, so it
+ * covers every date up to its archive and plans nothing.
  */
-function coveringMember(
-  members: readonly PlanMember[],
-  compoundId: string,
-  localDate: LocalDate
-): PlanMember | null {
-  let covering: PlanMember | null = null;
-  for (const member of members) {
-    if (member.compoundId !== compoundId) {
+function coveringRow(rows: readonly MemberRow[], localDate: LocalDate): MemberRow | null {
+  for (const row of rows) {
+    if (row.archivedOn !== null && localDate > row.archivedOn) {
       continue;
     }
-    const archivedOn = member.archivedOn ?? null;
-    if (archivedOn !== null && localDate > archivedOn) {
-      continue;
-    }
-    const firstEffectiveFrom = member.versions.reduce<LocalDate | null>(
-      (earliest, version) =>
-        earliest === null || version.effectiveFrom < earliest
-          ? version.effectiveFrom
-          : earliest,
-      null
-    );
-    if (firstEffectiveFrom !== null && localDate < firstEffectiveFrom) {
-      continue;
-    }
-    if (covering === null || compareIds(member.memberId, covering.memberId) > 0) {
-      covering = member;
+    const first = row.versions[0];
+    if (first === undefined || localDate >= first.version.effectiveFrom) {
+      return row;
     }
   }
-  return covering;
+  return null;
 }
 
 /**
  * The version with the latest `effectiveFrom` on or before `localDate`; on a
  * shared date the larger id (UUIDv7, so the latest edit) wins, on every device
- * and the server alike (D1).
+ * and the server alike (D1). In version order, that is the last one on or
+ * before `localDate`.
  */
 function applyingVersion(
-  versions: readonly PlanScheduleVersion[],
+  versions: readonly VersionPlan[],
   localDate: LocalDate
-): PlanScheduleVersion | null {
-  let applying: PlanScheduleVersion | null = null;
-  for (const version of versions) {
-    if (version.effectiveFrom > localDate) {
-      continue;
-    }
-    if (
-      applying === null ||
-      version.effectiveFrom > applying.effectiveFrom ||
-      (version.effectiveFrom === applying.effectiveFrom &&
-        compareIds(version.id, applying.id) > 0)
-    ) {
-      applying = version;
+): VersionPlan | null {
+  for (let index = versions.length - 1; index >= 0; index -= 1) {
+    const candidate = versions[index]!;
+    if (candidate.version.effectiveFrom <= localDate) {
+      return candidate;
     }
   }
-  return applying;
+  return null;
 }
 
-function ruleDaysInclude(days: ScheduleRuleDays, localDate: LocalDate): boolean {
+function ruleDaysInclude(days: ScheduleRuleDays, day: number, anchorDay: number): boolean {
   switch (days.kind) {
     case "daily":
       return true;
     case "weekdays":
-      return days.weekdays.includes(localDateIsoWeekday(localDate));
+      return days.weekdays.includes(epochDayIsoWeekday(day));
     case "every_n_days":
-      return floorMod(localDaysBetween(days.anchor, localDate), days.n) === 0;
+      return floorMod(day - anchorDay, days.n) === 0;
   }
 }
 
@@ -654,6 +705,16 @@ function planAmount(amount: PlanAmount): Required<PlanAmount> {
     unit: amount.unit ?? null,
     route: amount.route ?? null
   };
+}
+
+/** Appends `item` to the group `key` names in `groups`, starting it if new. */
+function pushToGroup<T>(groups: Map<string, T[]>, key: string, item: T): void {
+  const group = groups.get(key);
+  if (group === undefined) {
+    groups.set(key, [item]);
+  } else {
+    group.push(item);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -683,43 +744,27 @@ export function dayStatuses(
   doses: readonly PlanDose[],
   today: LocalDate
 ): DayStatus[] {
-  const groups = new Map<string, { compoundId: string; localDate: LocalDate; days: PlanDay[] }>();
+  const daysByGroup = new Map<string, PlanDay[]>();
   for (const planDay of planDays) {
-    if (planDay.localDate > today) {
-      continue;
-    }
-    const key = groupKey(planDay.compoundId, planDay.localDate);
-    const group = groups.get(key);
-    if (group === undefined) {
-      groups.set(key, {
-        compoundId: planDay.compoundId,
-        localDate: planDay.localDate,
-        days: [planDay]
-      });
-    } else {
-      group.days.push(planDay);
+    if (planDay.localDate <= today) {
+      pushToGroup(daysByGroup, groupKey(planDay.compoundId, planDay.localDate), planDay);
     }
   }
-
   const dosesByGroup = new Map<string, PlanDose[]>();
   for (const dose of doses) {
-    const key = groupKey(dose.compoundId, dose.localDate);
-    const groupDoses = dosesByGroup.get(key);
-    if (groupDoses === undefined) {
-      dosesByGroup.set(key, [dose]);
-    } else {
-      groupDoses.push(dose);
-    }
+    pushToGroup(dosesByGroup, groupKey(dose.compoundId, dose.localDate), dose);
   }
 
-  return [...groups.entries()]
-    .sort(([, left], [, right]) =>
-      left.localDate === right.localDate
-        ? compareIds(left.compoundId, right.compoundId)
-        : compareIds(left.localDate, right.localDate)
+  // Every group holds at least one PlanDay, which names its Compound and date.
+  return [...daysByGroup.entries()]
+    .map(([key, days]) => ({ key, days, first: days[0]! }))
+    .sort(
+      (left, right) =>
+        compareIds(left.first.localDate, right.first.localDate) ||
+        compareIds(left.first.compoundId, right.first.compoundId)
     )
-    .map(([key, group]) =>
-      dayStatusFor(group.compoundId, group.localDate, group.days, dosesByGroup.get(key) ?? [], today)
+    .map(({ key, days, first }) =>
+      dayStatusFor(first.compoundId, first.localDate, days, dosesByGroup.get(key) ?? [], today)
     );
 }
 
@@ -850,7 +895,7 @@ function groupKey(compoundId: string, localDate: LocalDate): string {
  * Code-unit order, the same as Dart's `String.compareTo`, so ids, dates and
  * `HH:MM` times sort identically in both languages.
  */
-function compareIds(left: string, right: string): number {
+export function compareIds(left: string, right: string): number {
   if (left === right) {
     return 0;
   }
