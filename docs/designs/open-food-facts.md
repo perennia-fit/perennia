@@ -236,38 +236,6 @@ same barcode with different numbers.
 Two questions are deferred, not blocking: the legal check above, and a kilojoule
 fallback for energy (see [Future Improvements](#future-improvements)).
 
-### Known gaps in the Detailed Implementation Plan
-
-An implementation-readiness review (2026-10-26) found that the design holds but
-the plan is not yet implementable without decisions. These must be fixed in
-this spec before pull request 1 starts:
-
-*   **Pull request 1 is not green as planned.** The mapping excludes products
-    without `last_modified_t`, but the old live request does not ask for it and
-    no test fixture has it, so live lookups and their tests would fail. Pull
-    request 1 must request `openFoodFactsFields`, update the fixtures in
-    `add_food_repository_test.dart` and `add_food_picker_test.dart`, keep
-    `_openFoodFactsLookupKey` and `_openFoodFactsBarcode` until pull request 2,
-    and take file 22 (`PlatformFoodRecord` fields) from pull request 2.
-*   **Existing code the plan does not list:** tests using `openFoodFactsCache`
-    (`nutrition_repository_test.dart`, `sync_repository_test.dart`); tests
-    asserting `schemaVersion` 60 (three migration tests); the eight
-    `AddFoodRepository` fakes; the Settings hub's rule of no inline controls (the
-    switch needs its own sub-screen); `AppSettings.==` and `hashCode`; the
-    golden ownership guard's literal-filename rule; the platform-search 503
-    schema, which must become a union with `AgentFoodsUnavailableResponseSchema`;
-    the full nutrient vector the agent read schema requires; the app-shell tests
-    that would start the installer; and `AboutScreen` being a `const`
-    `StatelessWidget`.
-*   **Decisions still open:** the picker state's enum names, a setting field and
-    status-line precedence; how a typed barcode opens the log-portion screen;
-    a marker for a live copy shown in a device row's place; how the database
-    file reaches the installer and which provider exposes its status; `busy_timeout`
-    and a second `ensureInstalled` call during an install; test seams for the
-    server's 503 and for save latency during an install; the mapping from
-    unavailable causes to reasons; the replacement text for About's offline
-    paragraph; and the server attribution fields in file 39.
-
 ## Critical User Journeys (CUJs)
 
 ### CUJ 1: Scan a common product with no signal
@@ -614,18 +582,22 @@ Its schema:
 | Table | Columns |
 | :---- | :------ |
 | `reference_meta` | `key` text primary key, `value` text. One key: `bundle_content_hash`. |
-| `open_food_facts_products` | `code` text primary key; `name` text; `brand` text nullable; `is_liquid` boolean; `serving_label` text nullable; `serving_size` real nullable; `package_size` real nullable; `nutrients_json` text (the compact form); `modified_at` integer; `scans` integer nullable; `origin` text, `bundle` or `online` (why the row is kept; see [One product, one row](#one-product-one-row)). |
-| `open_food_facts_products_fts` | FTS5 virtual table over `name` and `brand`, external content `open_food_facts_products`, tokenizer `unicode61 remove_diacritics 2`, kept in step by insert, update and delete triggers. |
+| `open_food_facts_products` | `id` integer primary key (autoincrement, the FTS5 row id); `code` text, unique; `name` text; `brand` text nullable; `is_liquid` boolean; `serving_label` text nullable; `serving_size` real nullable; `package_size` real nullable; `nutrients_json` text (the compact form); `modified_at` integer; `scans` integer nullable; `origin` text, `bundle` or `online` (why the row is kept; see [One product, one row](#one-product-one-row)). |
+| `open_food_facts_products_fts` | FTS5 virtual table over `name` and `brand`, external content `open_food_facts_products` with `content_rowid='id'`, tokenizer `unicode61 remove_diacritics 2`, kept in step by insert, update and delete triggers. |
 
-The database is opened with `PRAGMA journal_mode=WAL`, so a reader on one
-connection is never blocked by a writer on another. It has no migrations: when
-its schema version changes, `onUpgrade` drops every table and creates the
-schema again, and the missing content hash makes the installer run.
+Every connection is opened with `PRAGMA journal_mode=WAL` and
+`PRAGMA busy_timeout=5000`. With WAL, a reader on one connection is never
+blocked by a writer on another; the busy timeout makes a second writer wait for
+the lock instead of failing at once. The database is never vacuumed, so the
+integer row ids stay stable for FTS5. It has no migrations: when its schema
+version changes, `onUpgrade` drops every table and creates the schema again,
+and the missing content hash makes the installer run.
 
 On each app start, after the first frame:
 
-1.  The repository opens the app's connection to `FoodReferenceDatabase`
-    (creating the schema on first use), and reads `bundle_content_hash`.
+1.  The repository resolves `food_reference.sqlite` in the cache directory,
+    opens the app's connection to `FoodReferenceDatabase` (creating the schema
+    on first use), and reads `bundle_content_hash`.
 2.  On the UI isolate, it loads the asset's bytes with `rootBundle.load` (about
     2.5 MB, a single read) and decodes only the start of the gzip stream, up
     to the end of the header line (a few hundred bytes). If `format` or
@@ -641,8 +613,21 @@ On each app start, after the first frame:
         `modified_at` is greater, and the row stays `online`;
     3.  writes `bundle_content_hash`.
 4.  When the isolate returns, the status becomes `ready`, or `failed` if it
-    threw. A failure is reported to the opt-in crash reporter only; the next
-    app start tries again.
+    threw.
+
+Every failure in these steps (resolving the cache directory, opening the
+database, reading the asset, the isolate) sets the status to `failed`, is
+reported to the opt-in crash reporter only, and is never thrown to the caller.
+The next app start tries again.
+
+Only one install runs at a time. A call to install while one is running returns
+the running install. Erase all data waits for a running install to finish, then
+resets the database and installs again (see
+[One product, one row](#one-product-one-row)).
+
+The repository holds the current status (`unknown` before the first check,
+then `installing`, `ready` or `failed`). Its status stream gives a new listener
+the current status first, then each change.
 
 While the install runs, readers see the last committed state: on a refresh,
 the previous bundle; on the first install, only the device cache, with the
@@ -676,6 +661,13 @@ A live search stores nothing. When a live result shares a code with one of the
 device's matches and has a greater `modified_at`, the picker shows the live
 copy in that match's place; it is stored only if the user opens it.
 
+Storing never delays the screen: when the user opens a live result or a live
+barcode lookup finds a product, the log-portion screen opens with the live copy
+at once, and the write runs in the background. During a first install it can
+wait up to the 5-second busy timeout for the install's lock; if it still fails,
+the product is simply not kept, and the failure goes to the opt-in crash
+reporter only.
+
 There is no eviction. The device cache grows only by products the user opened
 or scanned. A reinstall deletes only `bundle` rows, so a product the user opened
 or scanned is never lost to a refresh, even when the new bundle drops it. Erase
@@ -687,8 +679,9 @@ device cache is empty.
 
 **Barcode candidates** (golden-vectored, used by the app and the server):
 
-*   Remove spaces and hyphens. The result must be 6 to 18 digits (the existing
-    rule), or it is not a barcode and the candidate list is empty.
+*   Remove all whitespace and hyphens (the existing rule, `[\s-]`). The result
+    must be 6 to 18 digits, or it is not a barcode and the candidate list is
+    empty.
 *   Candidates, in order: the code as given; if it has 12 digits, the code with
     a leading `0` (a UPC-A code, the 12-digit North American barcode, as Open
     Food Facts usually stores it); if it has 13 digits and starts with `0`, the
@@ -750,10 +743,12 @@ layer (only repositories touch the network, per
 *   **Timeouts:** 10 seconds per request.
 *   **Outcomes:** the client returns one of `results` (with products), `notFound`
     (HTTP 404, or v3 `status: failure` with `result.id: product_not_found`),
-    `offline` (no connection or a timeout), or `unavailable` (HTTP 429 or 503,
-    another non-2xx status, a body that does not parse, or the local budget),
-    with the reason kept for tests. Products in a response are mapped;
-    excluded products are left out. Nothing is retried.
+    `offline` (no connection or a timeout), or `unavailable` with a reason kept
+    for tests: `rateLimited` (HTTP 429), `busy` (HTTP 503), `httpError` (any
+    other non-2xx status), `malformed` (a body that does not parse) or
+    `budgetExceeded` (the local request budget; nothing was sent). The user sees
+    the same "unavailable" line for every reason. Products in a response are
+    mapped; excluded products are left out. Nothing is retried.
 *   **The setting:** `AddFoodRepository` reads the device setting
     `onlineFoodLookups` (default on) and passes it to the Open Food Facts
     repository as `allowOnline`. When it is false, the repository returns
@@ -770,57 +765,87 @@ layer (only repositories touch the network, per
 
 ### The picker, the scanner and the log-portion screen
 
-With the **Open Food Facts** filter selected:
+With the **Open Food Facts** filter selected, the picker shows, from top to
+bottom:
 
-*   Typing runs the local search. The device's own matches (bundle and device
-    cache) form the first group.
-*   Below them, a row with the label `Search Open Food Facts for "<query>"`
-    (the **online search row**) appears when the query has match parts or
-    barcode candidates and online lookups are on. Tapping it, or the keyboard's
-    search action, sends one search (or, for a barcode, one product request).
-*   Live results whose barcode is not among the device's matches form a second
-    group, headed "From Open Food Facts", in the order Open Food Facts returned
-    them. There is no paging: users refine the query instead.
-*   One status line replaces the online search row when it applies:
+1.  **The bundle line**, when it applies: "Preparing the offline food list."
+    while the status is `installing`; "The offline food list could not be
+    prepared. It will try again next time the app opens." when it is `failed`.
+    Nothing for `unknown` or `ready`.
+2.  **The device's own matches** (bundle and device cache), from the local
+    search as the user types. When the query has neither match parts nor
+    barcode candidates, this group is replaced by the line "Type a product or
+    brand name." and nothing below it is shown.
+3.  **The online slot**, which shows exactly one of the following, checked in
+    this order:
 
-| State | Line |
-| :---- | :--- |
-| Bundle installing | "Preparing the offline food list." |
-| Bundle failed | "The offline food list could not be prepared. It will try again next time the app opens." |
-| Offline | "You're offline. Showing foods on this device." |
-| Unavailable | "Open Food Facts is unavailable. Try again in a minute." |
-| Lookups off | "Online lookups are off. Turn them on in Settings > Food data." |
-| No live results | "No matches on Open Food Facts." |
+    | Condition | Shown |
+    | :-------- | :---- |
+    | Online lookups are off | "Online lookups are off. Turn them on in Settings > Food data." |
+    | A live request is running | The online search row, with a progress indicator in place of its icon |
+    | The last live request found no connection | "You're offline. Showing foods on this device." |
+    | The last live request was unavailable | "Open Food Facts is unavailable. Try again in a minute." |
+    | The last live search returned no products | "No matches on Open Food Facts." |
+    | Otherwise | The **online search row**, labelled `Search Open Food Facts for "<query>"` |
 
-The other filters (Recent, User, USDA) are unchanged.
+    Tapping the online search row, or the keyboard's search action, submits the
+    query (below). Changing the query clears the last live request's state.
+4.  **"From Open Food Facts"**, the live results whose barcode is not among the
+    device's matches, in the order Open Food Facts returned them. There is no
+    paging: users refine the query instead.
 
-Scanning uses the barcode rules. The existing `BarcodeLookupStatus` values are
-kept and one is added: `notFound` (also used when lookups are off, with the
-"Online lookups are off" line), `needsNetwork` (shown with the "You're offline"
-line), and `unavailable` (new, shown with the "unavailable" line). The two
+**Submitting the query** (the online search row or the keyboard's search
+action, in the Open Food Facts filter):
+
+*   If the query has barcode candidates and one of the device's matches has a
+    candidate code, that product opens on the log-portion screen and nothing is
+    sent.
+*   If the query has barcode candidates and no match, one live product request
+    is sent. A found product opens on the log-portion screen; otherwise the
+    barcode result below applies.
+*   Otherwise, one live search is sent. When results arrive, a live result whose
+    code is among the device's matches and whose change date is later takes
+    that match's place in group 2 (Goal 4); the rest form group 4.
+
+The other filters (Recent, User, USDA) keep their behaviour.
+
+**Scanning** uses the barcode rules. The existing `BarcodeLookupStatus` values
+are kept and two are added. Each miss shows the existing not-found state (Quick
+add and creating a User Food) with one line:
+
+| `BarcodeLookupStatus` | Line under the not-found state |
+| :-------------------- | :----------------------------- |
+| `notFound` | none |
+| `needsNetwork` | "You're offline. Showing foods on this device." |
+| `unavailable` (new) | "Open Food Facts is unavailable. Try again in a minute." |
+| `disabled` (new) | "Online lookups are off. Turn them on in Settings > Food data." |
+
+A typed barcode that is submitted and not found uses the same banner. The two
 existing "needs network the first time" messages are removed.
 
-Online search never puts the picker into `AsyncLoading`: the device's matches
-stay on screen while the request runs, and the online search row shows a
-progress indicator in place of its icon.
+A live request never puts the picker into `AsyncLoading`: the device's matches
+stay on screen while it runs.
 
 Styling follows [DESIGN.md](../../DESIGN.md): the online search row is a
 standard list row with a leading search icon and primary text colour, not a
-Signal Cyan action, so the screen keeps one primary accent. Status lines use
-secondary text. Every new control is at least 48 dp tall.
+Signal Cyan action, so the screen keeps one primary accent. The bundle line and
+the status lines use secondary text. Every new control is at least 48 dp tall.
 
-The existing `OpenFoodFactsAttributionNotice` is extended rather than joined by
-a second widget. It gains two optional inputs, `code` and `changeDate`:
+**Attribution.** The existing `OpenFoodFactsAttributionNotice` is extended
+rather than joined by a second widget. It gains two optional inputs, `code` and
+`changeDate`. Both forms keep the existing source and ODbL links.
 
-*   **Compact form** (the picker): the line "Open Food Facts data, from its
-    contributors. Check the label." It replaces the current text, "Open Food
-    Facts branded data is live-query and cached on this device.", which the
-    bundle makes false.
-*   **Full form** (the log-portion screen): the existing source and ODbL links;
-    when `code` is set, a **View on Open Food Facts** `AttributionLinkButton`
-    for `https://world.openfoodfacts.org/product/<code>`; the disclaimer; and,
-    when `changeDate` is set, "Open Food Facts data from <date>", formatted with
-    `DateFormat.yMMMd` in the device's locale and local time zone.
+*   **Compact form** (the picker): its sentence becomes "Open Food Facts data,
+    from its contributors. Check the label." It replaces "Open Food Facts
+    branded data is live-query and cached on this device.", which the bundle
+    makes false.
+*   **Full form** (the log-portion screen): the existing sentence "Open Food
+    Facts branded and barcode data is provided by Open Food Facts." and links;
+    then, when `code` is set, a **View on Open Food Facts**
+    `AttributionLinkButton` for `https://world.openfoodfacts.org/product/<code>`;
+    the disclaimer; and, when `changeDate` is set, "Open Food Facts data from
+    <date>", formatted with `DateFormat.yMMMd` in the device's locale and local
+    time zone.
 
 `AttributionLinkButton` shows the URL in a dialog where it can be copied; it
 does not open a browser. This spec keeps that behaviour, which needs no new
@@ -831,14 +856,16 @@ name when known, and the full notice. A food opened from the Recent list carries
 its barcode as its Food id, so it gets the product link and the disclaimer; its
 change date is not in the snapshot, so the date line is left out.
 
-`PlatformFoodRecord` and `FoodPickerItem` gain two nullable fields, `brand` and
-`sourceModifiedAt`, which are `null` for USDA and User Foods. A Food Entry's
-snapshot is unchanged: it keeps the product name, values and source, not the
-brand or the change date.
+`PlatformFoodRecord` and `FoodPickerItem` gain three nullable fields, `brand`,
+`sourceModifiedAt` and `scans`, which are `null` for USDA and User Foods.
+`FoodPickerItem` also gains `isLiveResult` (default `false`), which marks a live
+copy that is not stored, so opening it stores it. A Food Entry's snapshot is
+unchanged: it keeps the product name, values and source, not the brand or the
+change date.
 
 On the Nutrition Day view, every Food Entry whose snapshot source is Open Food
-Facts shows `FoodSourceBadge` with `showLicense: false`, in the slot imported
-entries use.
+Facts shows `FoodSourceBadge(source: FoodSource.openFoodFacts, showLicense: false)`,
+in the slot imported entries use.
 
 The About screen's Open Food Facts paragraph becomes:
 
@@ -853,9 +880,16 @@ The About screen's Open Food Facts paragraph becomes:
 > Not for medical use. Searching online sends your search text or barcode to
 > Open Food Facts; you can turn this off under Settings > Food data.
 
-followed by the existing source link and ODbL link, and a DbCL link. The
-existing offline paragraph loses its claim that Open Food Facts needs the
-network the first time.
+While the bundle header is loading, or if it cannot be read, the parenthesis
+"(dataset version …, … products)" is left out. The paragraph is followed by the
+existing source and ODbL links and a DbCL link.
+
+The About screen's offline paragraph, which today says Open Food Facts lookups
+"need network once", becomes:
+
+> USDA foods and the offline Open Food Facts list work with no network.
+> Searching Open Food Facts online needs a connection, and products you open or
+> scan stay on this device. Quick Entry stays available.
 
 ### Agent surface
 
@@ -877,8 +911,12 @@ No new parameter is added: a barcode is searched through `search`. Responses:
     word parts nor barcode candidates, returns 200 with empty `foods`. Listing
     the whole bundle is not supported.
 *   If the bundle file cannot be read, the response is HTTP 503 with the
-    existing `AgentFoodsUnavailableResponseSchema`; the MCP tool returns the same
-    body through its existing error result.
+    existing `AgentFoodsUnavailableResponseSchema` and the message "The Open Food
+    Facts bundle is not available on this server." The route's 503 schema
+    becomes the union of `AgentApiKeyUnavailableResponseSchema` and
+    `AgentFoodsUnavailableResponseSchema`, as `agentFoodListRoute` already
+    declares. The MCP tool returns the same body through `errorResult`, as the
+    food batch-write tool does.
 
 Search on the server, over the bundle only:
 
@@ -898,15 +936,24 @@ an app with the same dataset version decodes identically.
 
 Response:
 
-*   Each food gains `brand`, `sourceModifiedAt` (ISO-8601) and `productUrl`, all
-    `null` for USDA. `nutrientsPer100` carries only the nutrients the bundle
-    reports, each `complete`, with `entered` and `value` read from the text;
-    absent nutrients are unknown.
+*   Each food gains `brand`, `sourceModifiedAt` (ISO-8601, UTC) and
+    `productUrl`, all nullable and `null` for USDA. `nutrientsPer100` has the
+    same shape as for USDA: every Nutrient id is present, built with the
+    existing `nutrientVectorStorage` in `agent-foods.ts`. A nutrient the bundle
+    reports is `complete`, with `entered` and `value` read from its text; any
+    other is `{ status: "unknown", value: null, entered: null }` with its
+    default unit.
 *   `attribution.source` accepts `openFoodFacts`. `attribution` gains
     `disclaimer` (the Goal 7 text for Open Food Facts, `null` for USDA). For Open
     Food Facts, `datasetVersion`, `sourceName`, `sourceUrl`, `licenseName` and
     `attributionText` come from the bundle header, so the response says where
     the ODbL copy is.
+
+The route summary becomes "Search the bundled USDA and Open Food Facts Platform
+Food reference data." The `search` parameter's description becomes
+"Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode.
+Omit to list the bundled USDA catalog; with `source=openFoodFacts`, omitting it
+returns no foods."
 
 On the server, a new module `apps/server/src/open-food-facts-bundle.ts` reads the
 bundle once, on the first Open Food Facts request, synchronously: gunzip, split,
@@ -926,7 +973,8 @@ generated module, and reading the same file in development and in the image
 keeps one copy (see [Alternative O](#alternative-o-copy-the-bundle-into-the-server-package-at-build-time)).
 
 The MCP tool takes the same input and returns the same output. The contract
-diff shows the widened enum and the new response fields in
+diff shows the widened enum, the new response fields, the 503 union and the new
+descriptions in
 `packages/contract/openapi.json`, `agent-client.ts`, the Dart API client and the
 agent command map. Widening an enum in a response is
 additive, but a client that treats the `source` enum as closed can reject an
@@ -1244,25 +1292,40 @@ it visible in review.
 ## Detailed Implementation Plan
 
 The work lands in three implementation pull requests, in this order, each
-green on `pnpm ci:local --changed` on its own. Each links this spec.
+green on `pnpm ci:local --changed` on its own. Each links this spec. The
+summaries below name the main work; the file entries that follow are the full
+list.
 
-1.  **Shared rules and the bundle:** the Dart mapping in the domain layer (and
-    removal of the old helpers), the barcode candidate rule in both languages
-    with its golden vectors, the builder, the bundle file, the bundle asset test
-    and the licence files. This pull request also changes the live path's
-    mapping (the energy fallback and the plausibility exclusion).
-2.  **The app:** the reference database, the installer, the client, the
-    repository and its provider, the picker, the scanner, the log-portion screen,
-    the day view, the setting, About, Erase all data and the `AppDatabase` change.
-3.  **The server:** the bundle reader, the widened agent operation and MCP tool,
+1.  **Shared rules and the bundle.** The Dart mapping in the domain layer, the
+    `PlatformFoodRecord` fields it needs, the barcode candidate rule in both
+    languages with its golden vectors, the builder, the bundle file, the asset
+    test and the licence files. **The app's live path is not changed:** the old
+    `OpenFoodFactsRepository` and its `_openFoodFacts*` helpers stay as they are
+    until pull request 2, so the two mappings exist side by side for one pull
+    request.
+2.  **The app.** The reference database, the installer, the client, the
+    repository and its providers, the picker, the scanner, the log-portion
+    screen, the Nutrition Day view, the setting and its screen, the About
+    screen, Erase all data, the `AppDatabase` change, and removal of the old
+    repository and helpers.
+3.  **The server.** The bundle reader, the widened agent operation and MCP tool,
     the contract regeneration and the Dockerfile.
 
-The CONTEXT.md change lands in pull request 2, the first one with user-visible
-behaviour. This spec's Status becomes **Current** in pull request 3.
+The CONTEXT.md change lands in pull request 2, the first one that changes app
+screens. This spec's Status becomes **Current** in pull request 3.
 
-CI job names below are given as the `ci-local.mjs` key with the `ci.yml` job id
-in brackets where they differ: `mobile`, `golden` [`golden_vectors`], `contract`
-[`contract-drift`], `js`, `sync` [`sync-convergence`].
+Conventions in this plan:
+
+*   Paths are from the repository root.
+*   "Live" and "online" mean the same thing (a request to Open Food Facts).
+*   The change date is `modifiedAt` in the bundle line, `modified_at` in
+    SQLite, `sourceModifiedAt` on `PlatformFoodRecord`, `FoodPickerItem` and the
+    agent response, and `changeDate` on the attribution notice.
+*   `origin` values are written `bundle` and `online` in prose and `'bundle'`
+    and `'online'` in SQL.
+*   CI jobs are named by their `ci-local.mjs` key, with the `ci.yml` job id in
+    brackets where it differs: `mobile`, `golden` [`golden_vectors`], `contract`
+    [`contract-drift`], `js`, `sync` [`sync-convergence`].
 
 ### Target Files to Create/Modify
 
@@ -1270,53 +1333,75 @@ in brackets where they differ: `mobile`, `golden` [`golden_vectors`], `contract`
 
 ##### 1. `apps/mobile/lib/domain/nutrition/open_food_facts.dart` (Create)
 
-*   **Type / Scope**: Dart domain module, pure (imports only `dart:` libraries and
-    other files under `lib/domain/`).
+*   **Type / Scope**: Dart domain module, pure (imports only `dart:` libraries
+    and other files under `apps/mobile/lib/domain/`).
 *   **Proposed Changes**:
     *   `OpenFoodFactsMappingResult mapOpenFoodFactsProduct(Map<String, Object?> product, {String? fallbackCode})`.
-        `OpenFoodFactsMappingResult` is either `MappedOpenFoodFactsProduct`
-        (fields `code`, `name`, `brand`, `isLiquid`, `servingLabel`,
-        `servingSize`, `packageSize`, `nutrientText` as
-        `Map<NutrientId, String>`, `modifiedAt` as `DateTime` UTC, `scans` as
-        `int?`) or `ExcludedOpenFoodFactsProduct` (field `reason`:
-        `missingCode`, `missingName`, `missingChangeDate`, `implausible`).
-        Rules as in [The product mapping](#the-product-mapping).
+        `fallbackCode` is used as the code when `product['code']` is absent: the
+        live product request passes the requested code; the builder and the live
+        search pass none.
+    *   `OpenFoodFactsMappingResult` is a sealed class with two cases:
+        *   `MappedOpenFoodFactsProduct`: `String code`, `String name`,
+            `String? brand`, `bool isLiquid`, `String? servingLabel`,
+            `double? servingSize`, `double? packageSize`,
+            `Map<NutrientId, String> nutrientText`, `DateTime modifiedAt` (UTC),
+            `int? scans`;
+        *   `ExcludedOpenFoodFactsProduct`: `OpenFoodFactsExclusion reason`, an
+            enum `missingCode`, `missingName`, `missingChangeDate`,
+            `implausible`.
+    *   The rules are in [The product mapping](#the-product-mapping). Nutrient
+        text uses `formatNutrientEntered` (file 2).
     *   `NutrientVector nutrientVectorFromText(Map<NutrientId, String> text)`:
-        each entry becomes `NutrientAmount.complete(value: double.parse(text), entered: text, unit: id.defaultUnit)`;
+        each entry `(id, entered)` becomes
+        `NutrientAmount.complete(value: double.parse(entered), entered: entered, unit: id.defaultUnit)`;
         the vector is built with `NutrientVector.full`, so absent nutrients are
         unknown.
-    *   `PlatformFoodRecord toPlatformFoodRecord(MappedOpenFoodFactsProduct p)`.
+    *   `Map<NutrientId, String> nutrientTextFromVector(NutrientVector vector)`:
+        the `entered` text of every complete amount; used when storing a live
+        product.
+    *   `PlatformFoodRecord toPlatformFoodRecord(MappedOpenFoodFactsProduct product)`,
+        setting `foodSource: FoodSource.openFoodFacts`, `brand`,
+        `sourceModifiedAt` and `scans`.
     *   `List<String> barcodeCandidates(String raw)`, the rule in
         [Search and barcode rules](#search-and-barcode-rules).
-    *   `String? buildFoodSearchMatch(String query)`: the FTS5 match expression,
-        or `null` when the query has no parts.
-    *   Constants: `openFoodFactsFields` (the live `fields` list),
-        `openFoodFactsDisclaimer` (the Goal 7 text),
-        `String openFoodFactsProductUrl(String code)`.
-    *   The bundle line format: `String encodeBundleProductLine(MappedOpenFoodFactsProduct p)`,
-        `MappedOpenFoodFactsProduct decodeBundleProductLine(String line)`,
-        `BundleHeader` (fields as in [The bundle file](#the-bundle-file)) with
-        `toJsonLine()` and `fromJsonLine(String)`, and the constants
-        `bundleFormat` and `bundleFormatVersion`.
+    *   `String? buildFoodSearchMatch(String query)`: the FTS5 match
+        expression, or `null` when the query has no parts.
+    *   Constants `openFoodFactsFields` (the live `fields` list, as one
+        comma-joined string) and `openFoodFactsDisclaimer` (the Goal 7 text),
+        and the function `String openFoodFactsProductUrl(String code)`.
+    *   The bundle format: `const bundleFormat = 'perennia-open-food-facts-bundle'`
+        and `const bundleFormatVersion = 1`;
+        `String encodeBundleProductLine(MappedOpenFoodFactsProduct product)`;
+        `MappedOpenFoodFactsProduct decodeBundleProductLine(String line)`; and
+        `BundleHeader`, with the header's fields (as in
+        [The bundle file](#the-bundle-file)), `String toJsonLine()` and
+        `static BundleHeader fromJsonLine(String line)`.
 
-##### 2. `apps/mobile/lib/data/repositories/training_repositories.dart` (Modify)
+##### 2. `apps/mobile/lib/domain/nutrition/nutrition.dart` (Modify)
 
-*   **Type / Scope**: Repository aggregate.
-*   **Proposed Changes**: Delete `_openFoodFactsRecordFromProduct` and the
-    `_openFoodFacts*` helpers below it. The existing `OpenFoodFactsRepository`
-    (still here until pull request 2) calls `mapOpenFoodFactsProduct` and
-    `toPlatformFoodRecord`, skipping excluded products.
+*   **Type / Scope**: Domain model.
+*   **Proposed Changes**:
+    *   `PlatformFoodRecord` gains `final String? brand`,
+        `final DateTime? sourceModifiedAt` and `final int? scans`, all optional
+        and `null` by default.
+    *   The private `_formatDerivedValue` becomes the public
+        `String formatNutrientEntered(double value)`, with the same body (six
+        decimal places, trailing zeros and point removed). Its two callers in
+        this file are updated. It is the rule file 1 uses, so there is one copy
+        of it.
 
 ##### 3. `apps/mobile/tool/open_food_facts_bundle/build_bundle.dart` (Create)
 
 *   **Type / Scope**: Maintainer tool, run with `dart run`.
 *   **Proposed Changes**: The steps in [Building the bundle](#building-the-bundle).
-    Arguments `--input` (a local `.jsonl.gz` path) and `--dataset-version`
-    (`YYYY-MM-DD`). Constants at the top: the five country tags, the
-    per-country limit (10,000) and the size budget (6 MB). The content hash is
-    computed with `Sha256` from the `cryptography` package, already a dependency.
-    Exits non-zero on a missing or unreadable input, a bad date, or an
-    over-budget result.
+    *   Arguments: `--input` (a local `.jsonl.gz` path) and `--dataset-version`
+        (`YYYY-MM-DD`).
+    *   Constants at the top: the five country tags, the per-country limit
+        (10,000) and the size budget (6 MB).
+    *   The content hash is computed with `Sha256` from the `cryptography`
+        package, already a dependency.
+    *   Exits non-zero on a missing or unreadable input, a malformed date, or an
+        over-budget result.
 
 ##### 4. `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz` (Create)
 
@@ -1327,27 +1412,39 @@ in brackets where they differ: `mobile`, `golden` [`golden_vectors`], `contract`
 
 ##### 5. `apps/mobile/assets/seeds/open_food_facts_bundle.LICENSE.md` (Create)
 
-*   **Type / Scope**: Licence notice.
+*   **Type / Scope**: Licence notice. Not bundled into the app; the About screen
+    names its repository path, and the bundle header carries the licence URLs.
+    (`platform_exercises.LICENSE.md` is bundled because the exercise screens
+    show no such link; the USDA seed is public domain and has no licence file.)
 *   **Proposed Changes**: States that the bundle is a derived database of Open
-    Food Facts, made available under ODbL 1.0, with individual contents under
-    DbCL 1.0; links openfoodfacts.org and both licences; names file 3 as the
-    method used to derive it; and repeats the disclaimer.
+    Food Facts (`https://world.openfoodfacts.org/`), made available under ODbL
+    1.0, with individual contents under DbCL 1.0, and links both licences. It
+    names `apps/mobile/tool/open_food_facts_bundle/build_bundle.dart` as the
+    method used to derive it, and repeats the disclaimer.
 
 ##### 6. `THIRD_PARTY_DATA.md` (Create)
 
 *   **Type / Scope**: Repository-root notice.
-*   **Proposed Changes**: One table: each bundled dataset (the Open Food Facts
-    bundle, the USDA FoodData Central seed, the platform exercises), its file, its
-    licence, the attribution required, and its licence file. States that the
-    data licences are separate from the AGPL-3.0 code licence.
+*   **Proposed Changes**: One table: each dataset the repository ships (the Open
+    Food Facts bundle, the USDA FoodData Central seed, the Platform Library
+    exercise data), its file, its licence, the attribution required, and its
+    licence file if any. States that the data licences are separate from the
+    AGPL-3.0 code licence.
 
-##### 7. `packages/golden-vectors/vectors/m36-barcode-candidates.json` and `packages/golden-vectors/vectors/README.md` (Create, Modify)
+##### 7. `packages/golden-vectors/vectors/m36-barcode-candidates.json` and `packages/golden-vectors/vectors/README.md` (Create; Modify)
 
 *   **Type / Scope**: Golden vector fixture and its documentation.
-*   **Proposed Changes**: `domain: "barcode-candidates"`, cases of
-    `{ name, input, expected: string[] }`: 8, 12 and 13 digits; a 13-digit code
-    starting with `0`; spaces and hyphens; letters; 5 and 19 digits; empty. The
-    README gains a short section naming the fixture and its two runners.
+*   **Proposed Changes**:
+    *   Top level: `"name": "m36-barcode-candidates"`,
+        `"domain": "barcode-candidates"`, and `"cases"`: a list of
+        `{ "name", "input", "expected": [strings] }` (the shape
+        `packages/golden-vectors/test/vectors.test.mjs` checks).
+    *   Cases: 6 and 18 digits (the boundaries); 5 and 19 digits (not barcodes);
+        8 digits; 12 digits; 13 digits not starting with `0`; 13 digits starting
+        with `0`; spaces, a tab, a newline and hyphens inside a code; letters;
+        the empty string.
+    *   The README gains a short section naming the fixture and its two
+        runners.
 
 ##### 8. `apps/server/src/barcode-candidates.ts` (Create)
 
@@ -1355,49 +1452,74 @@ in brackets where they differ: `mobile`, `golden` [`golden_vectors`], `contract`
 *   **Proposed Changes**: `export function barcodeCandidates(raw: string): string[]`,
     the same rule as file 1.
 
-##### 9. `apps/server/test/barcode-candidates.golden.test.mjs`, `apps/server/package.json` and `apps/server/test/agent-validation.golden.test.mjs` (Create, Modify, Modify)
+##### 9. Server golden runner and registration (Create; Modify; Modify)
 
-*   **Type / Scope**: TypeScript golden runner and its registration.
-*   **Proposed Changes**: The runner loads every fixture with domain
-    `barcode-candidates`, asserts each case, and asserts at least one ran. Add it
-    to the `test:golden-vectors` script. Add `barcode-candidates` to
-    `DOMAINS_OWNED_ELSEWHERE`, with a comment naming the runner.
+*   **Files**: `apps/server/test/barcode-candidates.golden.test.mjs` (Create),
+    `apps/server/package.json` (Modify),
+    `apps/server/test/agent-validation.golden.test.mjs` (Modify).
+*   **Proposed Changes**:
+    *   The runner loads every fixture whose `domain` is `barcode-candidates`,
+        asserts each case against file 8, and asserts at least one case ran.
+    *   `package.json`: add the runner to the `test:golden-vectors` script.
+    *   `agent-validation.golden.test.mjs`: add `barcode-candidates` to
+        `DOMAINS_OWNED_ELSEWHERE`, with a comment naming the runner.
 
-##### 10. `apps/mobile/test/domain/barcode_candidates_golden_test.dart` and `apps/mobile/test/domain/golden_vector_ownership_test.dart` (Create, Modify)
+##### 10. Dart golden runner and registration (Create; Modify)
 
-*   **Type / Scope**: Dart golden runner and its registration.
-*   **Proposed Changes**: The runner reads the fixtures from
-    `packages/golden-vectors`, which is what the golden job's discovery step
-    looks for, with the same at-least-one-case guard. Map `barcode-candidates`
-    to it in the ownership table.
+*   **Files**: `apps/mobile/test/domain/barcode_candidates_golden_test.dart`
+    (Create), `apps/mobile/test/domain/golden_vector_ownership_test.dart`
+    (Modify).
+*   **Proposed Changes**:
+    *   The runner loads `packages/golden-vectors/vectors/m36-barcode-candidates.json`
+        by that file name (the ownership guard requires the owner file to name
+        the fixture, as `effect_window_golden_test.dart` does), asserts each
+        case against file 1, and asserts at least one case ran.
+    *   The ownership table maps `barcode-candidates` to the runner.
 
 ##### 11. `apps/mobile/test/domain/open_food_facts_mapping_test.dart` (Create)
 
 *   **Type / Scope**: Dart unit test.
-*   **Proposed Changes**: Mapping cases: a full product; only the four core
-    nutrients; `energy-kcal_value` present without `energy-kcal_100g` (energy
-    unknown); a negative value (unknown); sodium, cholesterol and caffeine
-    converted to milligrams; `product_name_en` used when `product_name` is
-    absent; no name (excluded); no `last_modified_t` (excluded); energy 901 kcal
-    and fat 100.1 g (each excluded as implausible); `brands` with several
-    entries; serving and package as numbers with units, and as text only; a
-    liquid; values whose text needs trailing zeros removed. Line format: encode
-    then decode returns the same product; nulls written as `null`; key order.
-    `buildFoodSearchMatch`: mixed case, punctuation, more than 8 words, typed
-    FTS5 operators (`AND`, `NEAR`, `*`, `:`) searched as text, empty and
-    punctuation-only queries.
+*   **Proposed Changes**:
+    *   **Mapping:**
+        *   a full product;
+        *   only the four core nutrients;
+        *   `energy-kcal_value` present without `energy-kcal_100g` (energy
+            unknown);
+        *   a negative value (unknown);
+        *   sodium, cholesterol and caffeine converted to milligrams;
+        *   `product_name_en` used when `product_name` is absent;
+        *   no name (excluded);
+        *   no `last_modified_t` (excluded);
+        *   energy 901 kcal, and fat 100.1 g (each excluded as implausible);
+        *   `brands` with several entries;
+        *   serving and package given as numbers with units, and as text only;
+        *   a liquid;
+        *   values whose text needs trailing zeros removed;
+        *   `fallbackCode` used when `code` is absent.
+    *   **Line format:** encode then decode returns the same product; nulls are
+        written as `null`; the key order is as specified.
+    *   **`buildFoodSearchMatch`:** mixed case, punctuation, more than 8 words,
+        typed FTS5 operators (`AND`, `NEAR`, `*`, `:`) searched as text, empty
+        and punctuation-only queries.
+    *   **`nutrientTextFromVector`:** the inverse of `nutrientVectorFromText` for
+        complete amounts.
 
 ##### 12. `apps/mobile/test/data/open_food_facts_bundle_asset_test.dart` (Create)
 
-*   **Type / Scope**: Dart test that reads the committed bundle (replaces any
-    separate verify tool).
-*   **Proposed Changes**: Fails if: the header's `format` or `formatVersion` is
-    not the known value; `productCount` differs from the number of lines; codes
-    are not unique or not sorted; a line does not decode with
-    `decodeBundleProductLine` or has a key not in the format; a nutrient key is
-    not a `NutrientId`; `contentHash` differs from the SHA-256 of the product
-    lines; or the file is over 6 MB. The asset is under `apps/mobile`, so the
-    `mobile` job already runs on changes to it.
+*   **Type / Scope**: Dart test that reads the committed bundle. The builder has
+    no separate verify mode.
+*   **Proposed Changes**: Fails if any of these holds:
+    *   the header's `format` or `formatVersion` differs from `bundleFormat` and
+        `bundleFormatVersion`;
+    *   `productCount` differs from the number of product lines;
+    *   codes are not unique, or not sorted;
+    *   a line does not decode with `decodeBundleProductLine`, or has a key not
+        in the format;
+    *   a nutrient key is not a `NutrientId`;
+    *   `contentHash` differs from the SHA-256 of the product lines;
+    *   the file is over 6 MB.
+
+    The asset is under `apps/mobile`, so the `mobile` job runs on changes to it.
 
 ##### 13. `.github/workflows/ci.yml` and `tools/ci-local.mjs` (Modify)
 
@@ -1405,267 +1527,422 @@ in brackets where they differ: `mobile`, `golden` [`golden_vectors`], `contract`
 *   **Proposed Changes**: `golden` [`golden_vectors`]: add
     `apps/server/src/barcode-candidates.ts` and
     `apps/server/test/barcode-candidates.golden.test.mjs` to its paths. The Dart
-    side needs no change: the job's paths already cover `apps/mobile/test/domain/**`,
-    and its Dart step runs every test that reads `packages/golden-vectors`.
+    side needs no change: the job's paths already cover
+    `apps/mobile/test/domain/**`, and its Dart step runs every test that reads
+    `packages/golden-vectors`.
 
 ##### 14. `docs/development.md` (Modify)
 
 *   **Type / Scope**: Documentation.
 *   **Proposed Changes**: A section "Refreshing the Open Food Facts bundle":
-    downloading the dump (size, and that it changes daily), the builder command,
-    reading the report, recording the dataset version and report in the pull
-    request, and the rule that a refresh happens at most once a quarter in its
-    own pull request.
+    *   downloading the dump, with its size and that it changes daily;
+    *   the builder command and how to read its report;
+    *   recording the dataset version and the report in the pull request;
+    *   that refreshes are planned at most once a quarter, with an app release,
+        each in its own pull request.
 
 #### Pull request 2: the app
 
-##### 15. `apps/mobile/lib/data/local/food_reference_database.dart` and `food_reference_database.g.dart` (Create; the second generated)
+##### 15. `apps/mobile/lib/data/local/food_reference_database.dart` and `apps/mobile/lib/data/local/food_reference_database.g.dart` (Create; `.g.dart` generated)
 
-*   **Type / Scope**: Drift database (Dart tables, generated code committed like
-    `app_database.g.dart`).
+*   **Type / Scope**: Drift database (Dart tables). The generated file is
+    committed like `app_database.g.dart`.
 *   **Proposed Changes**:
-    *   `FoodReferenceDatabase` with tables `ReferenceMeta` and
-        `OpenFoodFactsProducts` (columns in
-        [Installing the bundle on the device](#installing-the-bundle-on-the-device)),
+    *   `@DriftDatabase(tables: [ReferenceMeta, OpenFoodFactsProducts])`.
+        `class FoodReferenceDatabase extends _$FoodReferenceDatabase`, with
         `schemaVersion = 1`.
-    *   `onCreate` creates the FTS5 table and its three triggers with
-        `customStatement`. `onUpgrade` drops every table and runs `onCreate`.
-    *   Factories: `FoodReferenceDatabase.memory()` for tests;
-        `FoodReferenceDatabase.connect(File file)`, which opens
-        `NativeDatabase.createInBackground(file, setup: …)` with
-        `PRAGMA journal_mode=WAL`; and `FoodReferenceDatabase.openInIsolate(File file)`,
-        used by the installer, which opens `NativeDatabase(file, setup: …)` with
-        the same pragma.
-    *   Queries: `searchProducts(String match, int limit)` (the FTS5 join and
-        order), `productsByCodes(List<String> codes)` (in the given order),
-        `keepProduct(OpenFoodFactsProductRow row)` (a product the user opened or
-        scanned: insert it, or on a conflict update the values only if
-        `excluded.modified_at > modified_at`, and set `origin = 'online'` in
-        both cases), `resetAll()` (delete every product row and the
-        `bundle_content_hash` key), `metaValue(key)`, `setMeta(key, value)`, and
-        `replaceBundle(Iterable<String> productLines, BundleHeader header)`, which
-        runs the three install steps in one transaction; its insert is
-        `INSERT … ON CONFLICT(code) DO UPDATE SET <values> WHERE excluded.modified_at > modified_at`,
-        which never changes `origin`. These two writes are the
-        [One product, one row](#one-product-one-row) rules.
-    *   `foodReferenceDatabaseProvider` (Riverpod): resolves
-        `getApplicationCacheDirectory()` lazily, connects, and closes the
-        database on dispose. It is the only owner of the app's connection.
+    *   `@DataClassName('OpenFoodFactsProductRow')` on `OpenFoodFactsProducts`,
+        whose columns are as in
+        [Installing the bundle on the device](#installing-the-bundle-on-the-device):
+        `id` autoincrement and `code` unique.
+    *   `onCreate` calls `m.createAll()`, then creates the FTS5 table and its
+        insert, update and delete triggers with `customStatement`. `onUpgrade`
+        drops every table and runs `onCreate`.
+    *   Factories:
+        *   `FoodReferenceDatabase.memory()`, for tests;
+        *   `FoodReferenceDatabase.connect(File file)`: the app's connection,
+            through `NativeDatabase.createInBackground(file, setup: …)`;
+        *   `FoodReferenceDatabase.openInIsolate(File file)`: the installer's
+            connection, through `NativeDatabase(file, setup: …)`.
+
+        Every `setup` runs `PRAGMA journal_mode=WAL` and
+        `PRAGMA busy_timeout=5000`.
+    *   Queries:
+        *   `Future<List<OpenFoodFactsProductRow>> searchProducts(String match, int limit)`:
+            the FTS5 join and order, with `bm25` ascending.
+        *   `Future<List<OpenFoodFactsProductRow>> productsByCodes(List<String> codes)`,
+            in the given order.
+        *   `Future<void> keepProduct(OpenFoodFactsProductsCompanion row)`:
+            insert with `origin = 'online'`. On a conflict on `code`, always set
+            `origin = 'online'`, and replace the other values only when
+            `excluded.modified_at > modified_at`.
+        *   `Future<void> replaceBundle(Iterable<String> productLines, BundleHeader header, {Future<void> Function()? beforeCommitForTesting})`:
+            the three install steps in one transaction. Its insert is
+            `INSERT … ON CONFLICT(code) DO UPDATE SET <values> WHERE excluded.modified_at > modified_at`
+            and never changes `origin`. `beforeCommitForTesting` runs just
+            before the transaction commits.
+        *   `Future<void> resetAll()`: delete every product row and the
+            `bundle_content_hash` key.
+        *   `Future<String?> metaValue(String key)` and
+            `Future<void> setMeta(String key, String value)`.
 
 ##### 16. `apps/mobile/lib/data/open_food_facts/open_food_facts_client.dart` (Create)
 
 *   **Type / Scope**: Repository-layer HTTP client.
 *   **Proposed Changes**:
-    *   `OpenFoodFactsClient({required http.Client httpClient, Uri? baseUrl, DateTime Function()? clock})`;
-        `baseUrl` defaults to `https://world.openfoodfacts.org/` (tests and the
-        staging check pass another).
+    *   `OpenFoodFactsClient({required http.Client httpClient, Uri? baseUrl, DateTime Function()? clock})`.
+        `baseUrl` defaults to `https://world.openfoodfacts.org/`; tests and the
+        staging check pass another.
     *   `Future<OpenFoodFactsOutcome> search(String query)` and
         `Future<OpenFoodFactsOutcome> product(String code)`, with the endpoints,
-        parameters, timeout and outcomes from [Live requests](#live-requests).
-        `OpenFoodFactsOutcome` is a sealed class: `OpenFoodFactsResults(List<MappedOpenFoodFactsProduct>)`,
-        `OpenFoodFactsNotFound`, `OpenFoodFactsOffline`,
-        `OpenFoodFactsUnavailable(reason)` with `reason` one of `busy`, `httpError`,
-        `malformed`, `rateLimited`.
-    *   `RequestBudget` (same file): a sliding 60-second window with a capacity;
-        `bool tryAcquire()`. One budget for search (10), one for products (15).
+        parameters, timeout and outcomes in [Live requests](#live-requests).
+        `product` passes `code` as the mapping's `fallbackCode`.
+    *   `OpenFoodFactsOutcome` is a sealed class:
+        *   `OpenFoodFactsResults(List<MappedOpenFoodFactsProduct> products)`;
+        *   `OpenFoodFactsNotFound()`;
+        *   `OpenFoodFactsOffline()`;
+        *   `OpenFoodFactsUnavailable(OpenFoodFactsUnavailableReason reason)`,
+            where the reason is one of `rateLimited`, `busy`, `httpError`,
+            `malformed` and `budgetExceeded`, mapped as in
+            [Live requests](#live-requests).
+    *   `RequestBudget` (same file): a sliding 60-second window with a capacity,
+        and `bool tryAcquire()`. One budget for search (capacity 10), one for
+        products (capacity 15).
     *   `const openFoodFactsContactEmail = '<supplied by the maintainer>';` and
         `String perenniaUserAgent()`, returning
-        `Perennia/${appVersion.split('+').first} ($openFoodFactsContactEmail)`.
+        `Perennia/${perenniaAppVersion.split('+').first} ($openFoodFactsContactEmail)`.
+        A test in file 37 fails while the constant is not an email address, so
+        pull request 2 cannot merge until the maintainer sets it (see
+        [Open Questions](#open-questions)).
 
-##### 17. `apps/mobile/lib/data/app_version.dart` and `apps/mobile/lib/data/repositories/portable_archive_repository.dart` (Create, Modify)
+##### 17. App version constant (Create; Modify; Modify)
 
-*   **Type / Scope**: Shared constant.
-*   **Proposed Changes**: `const appVersion = '0.1.0+1';`, moved from
-    `PortableArchiveRepository.appVersion`, which now refers to it so existing
-    callers are unchanged.
+*   **Files**: `apps/mobile/lib/data/app_version.dart` (Create),
+    `apps/mobile/lib/data/repositories/training_repositories.dart` (Modify),
+    `apps/mobile/lib/data/repositories/portable_archive_repository.dart`
+    (Modify).
+*   **Proposed Changes**:
+    *   `app_version.dart`: `const perenniaAppVersion = '0.1.0+1';`, the value
+        moved from `PortableArchiveRepository.appVersion`.
+    *   `training_repositories.dart`: imports `../app_version.dart`.
+        `portable_archive_repository.dart` is a `part` of this library, so the
+        import goes here.
+    *   `portable_archive_repository.dart`:
+        `static const appVersion = perenniaAppVersion;`, so existing callers are
+        unchanged.
 
 ##### 18. `apps/mobile/lib/data/open_food_facts/open_food_facts_bundle_installer.dart` (Create)
 
 *   **Type / Scope**: Repository-layer service.
-*   **Proposed Changes**: `OpenFoodFactsBundleInstaller({required FoodReferenceDatabase database, required File databaseFile, BundleAssetSource? asset})`.
-    `BundleAssetSource` is an interface with `Future<Uint8List> load()`; the
-    default reads `assets/seeds/open_food_facts_bundle.ndjson.gz` with
-    `rootBundle.load`. `Future<void> ensureInstalled()` runs the steps in
-    [Installing the bundle on the device](#installing-the-bundle-on-the-device),
-    passing the bytes and the file path to `Isolate.run`, where it decodes and
-    calls `replaceBundle` on a `FoodReferenceDatabase.openInIsolate` connection
-    and closes it. `Stream<BundleStatus> get status` emits `installing`,
-    `ready` or `failed`; `BundleStatus` starts at `unknown`.
-    `Future<BundleHeader?> header()` returns the asset's header for About.
+*   **Proposed Changes**:
+    *   `abstract interface class BundleAssetSource { Future<Uint8List> load(); }`.
+        `RootBundleAssetSource` reads
+        `assets/seeds/open_food_facts_bundle.ndjson.gz` with `rootBundle.load`.
+    *   Constructor:
+
+        ```text
+        OpenFoodFactsBundleInstaller({
+          required FoodReferenceDatabase database,
+          required BundleAssetSource asset,
+          File? databaseFile,
+          ClientCrashReporter? crashReporter,
+        })
+        ```
+
+        With `databaseFile` set, the install runs in `Isolate.run`, on a
+        `FoodReferenceDatabase.openInIsolate(databaseFile)` connection that it
+        closes before returning. Without it (tests with an in-memory database),
+        the install runs `replaceBundle` on `database` directly.
+    *   `Future<void> ensureInstalled()` runs the steps in
+        [Installing the bundle on the device](#installing-the-bundle-on-the-device):
+        *   inside the isolate: decode the bytes, then call `replaceBundle`;
+        *   a call while an install runs returns the running install's future;
+        *   every failure sets `failed` and calls
+            `crashReporter?.captureException(error, stackTrace)`; nothing is
+            thrown.
+    *   `BundleStatus get currentStatus` and `Stream<BundleStatus> watchStatus()`,
+        which emits `currentStatus` first and then each change. `BundleStatus`
+        is the enum `unknown`, `installing`, `ready` and `failed`.
+    *   `Future<BundleHeader?> bundleHeader()` reads the asset's header, or
+        returns `null` if it cannot.
 
 ##### 19. `apps/mobile/lib/data/repositories/open_food_facts_repository.dart` (Create)
 
-*   **Type / Scope**: Repository with its own provider.
+*   **Type / Scope**: Repository: an interface, its Drift implementation, a
+    stub, and providers.
 *   **Proposed Changes**:
-    *   `openFoodFactsRepositoryProvider` builds
-        `OpenFoodFactsRepository(database: ref.watch(foodReferenceDatabaseProvider), client: OpenFoodFactsClient(httpClient: http.Client()), installer: …)`.
-    *   `Future<void> ensureBundleInstalled()`, `Stream<BundleStatus> get bundleStatus`,
-        `Future<BundleHeader?> bundleInfo()`, all delegating to the installer.
-    *   `Future<List<PlatformFoodRecord>> searchLocal(String query, {int limit = 50})`:
-        barcode-candidate matches first, then `searchProducts` with
-        `buildFoodSearchMatch`, without duplicates.
-    *   `Future<OnlineSearchResult> searchOnline(String query, {required bool allowOnline})`.
-        `OnlineSearchResult` has `status` (`ok`, `noResults`, `offline`,
-        `unavailable`, `disabled`) and `products` (`List<PlatformFoodRecord>`).
-        It stores nothing (see [One product, one row](#one-product-one-row)).
-    *   `Future<BarcodeLookupResult> lookupBarcode(String raw, {required bool allowOnline})`.
-        `BarcodeLookupResult` has `status` (`found`, `notFound`, `offline`,
-        `unavailable`, `disabled`, `notABarcode`) and `product`
-        (`PlatformFoodRecord?`). A live hit is stored with `keepProduct`.
-        `notABarcode` means the scanned or typed value has no barcode
-        candidates.
-    *   `Future<PlatformFoodRecord> saveOpenedProduct(PlatformFoodRecord record)`:
-        calls `keepProduct` for a live result the user opened, then returns the
-        stored row (which may be a newer stored copy).
-    *   `Future<void> resetDeviceData()`: `resetAll()`, then
-        `ensureBundleInstalled()`, so the full bundle is back and the device
-        cache is empty.
-    *   Records are built with `toPlatformFoodRecord`, so `brand` and
-        `sourceModifiedAt` are set.
+    *   `enum OnlineSearchStatus { ok, noResults, offline, unavailable, disabled }`
+        and
+        `enum BarcodeLookupOutcome { found, notFound, notABarcode, offline, unavailable, disabled }`.
+    *   `abstract interface class OpenFoodFactsRepository` with:
+        *   `Future<void> ensureBundleInstalled()`;
+        *   `Stream<BundleStatus> watchBundleStatus()`;
+        *   `Future<BundleHeader?> bundleHeader()`;
+        *   `Future<List<PlatformFoodRecord>> searchLocal(String query, {int limit = 50})`:
+            barcode-candidate matches first, then `searchProducts` with
+            `buildFoodSearchMatch`, without duplicates;
+        *   `Future<({OnlineSearchStatus status, List<PlatformFoodRecord> products})> searchOnline(String query, {required bool allowOnline})`,
+            which stores nothing;
+        *   `Future<({BarcodeLookupOutcome status, PlatformFoodRecord? product})> lookupBarcode(String raw, {required bool allowOnline})`:
+            a stored match is returned with `found` and nothing is sent; a live
+            hit is returned at once and kept in the background;
+        *   `Future<void> keepOpenedProduct(PlatformFoodRecord record)`, which
+            calls `keepProduct` with the record's fields and
+            `nutrientTextFromVector`;
+        *   `Future<void> resetDeviceData()`: waits for a running install, then
+            `resetAll()`, then `ensureBundleInstalled()`.
+    *   `DriftOpenFoodFactsRepository implements OpenFoodFactsRepository`:
+        *   the app constructor
+            `DriftOpenFoodFactsRepository({required Future<File> Function() databaseFile, required OpenFoodFactsClient client, ClientCrashReporter? crashReporter})`
+            resolves the file and opens `FoodReferenceDatabase.connect` lazily
+            on first use, and builds the installer with that file and
+            `RootBundleAssetSource`;
+        *   the test constructor
+            `DriftOpenFoodFactsRepository.forTesting({required FoodReferenceDatabase database, required OpenFoodFactsClient client, required BundleAssetSource asset})`
+            builds the installer with no `databaseFile`;
+        *   `Future<void> close()` closes the database.
+    *   `StubOpenFoodFactsRepository` (a `const` class): installs nothing, its
+        status stream emits `ready`, every search is empty, `searchOnline` and
+        `lookupBarcode` return `disabled`, and `bundleHeader()` returns `null`.
+    *   Providers:
+        *   `openFoodFactsRepositoryProvider = Provider<OpenFoodFactsRepository>`,
+            building `DriftOpenFoodFactsRepository` with `databaseFile`
+            returning `File(p.join((await getApplicationCacheDirectory()).path, 'food_reference.sqlite'))`,
+            `OpenFoodFactsClient(httpClient: http.Client())` and
+            `ref.read(clientCrashReporterProvider)`, and calling `close()` on
+            dispose;
+        *   `bundleStatusProvider = StreamProvider<BundleStatus>`, from
+            `watchBundleStatus()`;
+        *   `bundleHeaderProvider = FutureProvider<BundleHeader?>`, from
+            `bundleHeader()`.
 
 ##### 20. `apps/mobile/lib/data/repositories/training_repositories.dart` (Modify)
 
 *   **Type / Scope**: Repository aggregate.
-*   **Proposed Changes**: Remove the `OpenFoodFactsRepository` class, the
-    `openFoodFacts` field, the constructor parameters `openFoodFactsBaseUrl`,
-    `openFoodFactsHttpClient`, `openFoodFactsMaxCacheEntries` and
-    `openFoodFactsClock`, and `defaultOpenFoodFactsMaxCacheEntries`.
+*   **Proposed Changes**: Remove:
+    *   the `OpenFoodFactsRepository` class and the `openFoodFacts` field;
+    *   the constructor parameters `openFoodFactsBaseUrl`,
+        `openFoodFactsHttpClient`, `openFoodFactsMaxCacheEntries` and
+        `openFoodFactsClock`;
+    *   `defaultOpenFoodFactsMaxCacheEntries`;
+    *   every `_openFoodFacts*` helper, including `_openFoodFactsLookupKey`,
+        `_openFoodFactsBarcode` and `_openFoodFactsRecordFromCacheRow`.
 
-##### 21. `apps/mobile/lib/data/local/app_database.dart` and `app_database.g.dart` (Modify; the second regenerated)
+##### 21. `apps/mobile/lib/data/local/app_database.dart` and `apps/mobile/lib/data/local/app_database.g.dart` (Modify; `.g.dart` regenerated)
 
 *   **Type / Scope**: Drift schema.
-*   **Proposed Changes**: Delete the `OpenFoodFactsCache` table class; remove it
-    from the `@DriftDatabase` table list; delete `openFoodFactsCacheTable` and
-    its entry in `schemaTableNames`; remove the `from < 33` step that creates the
-    table; set `schemaVersion` to 61; add a `from < 61` step running
-    `DROP TABLE IF EXISTS open_food_facts_cache`, with a docstring saying why no
-    rows are copied.
+*   **Proposed Changes**:
+    *   Delete the `OpenFoodFactsCache` table class and remove it from the
+        `@DriftDatabase` table list.
+    *   Delete `openFoodFactsCacheTable` and its entry in `schemaTableNames`.
+    *   Remove the `from < 33` step that creates the table.
+    *   Set `schemaVersion` to 61, and add a `from < 61` step running
+        `DROP TABLE IF EXISTS open_food_facts_cache`, with a docstring saying why
+        no rows are copied.
 
-##### 22. `apps/mobile/lib/domain/nutrition/nutrition.dart` (Modify)
-
-*   **Type / Scope**: Domain model.
-*   **Proposed Changes**: `PlatformFoodRecord` gains `final String? brand` and
-    `final DateTime? sourceModifiedAt`, both optional and `null` by default.
-
-##### 23. `apps/mobile/lib/features/nutrition/repositories/add_food_repository.dart` (Modify)
+##### 22. `apps/mobile/lib/features/nutrition/repositories/add_food_repository.dart` (Modify)
 
 *   **Type / Scope**: Feature repository.
 *   **Proposed Changes**:
-    *   `FoodPickerItem` gains `brand` and `sourceModifiedAt`.
-    *   The provider passes `ref.watch(openFoodFactsRepositoryProvider)` and a
-        `Future<bool> Function()` that reads `onlineFoodLookups` from
-        `settingsControllerProvider`.
-    *   The `openFoodFacts` filter's `search` calls `searchLocal`.
-    *   New `searchOnline(query)`, `lookupBarcode(code)` and
-        `openOnlineResult(item)`, which read the setting and pass `allowOnline`.
+    *   `FoodPickerItem` gains `String? brand`, `DateTime? sourceModifiedAt`,
+        `int? scans` and `bool isLiveResult` (default `false`).
+    *   `AddFoodRepository` (the interface) gains:
+        *   `Future<bool> onlineLookupsEnabled()`;
+        *   `Future<({OnlineSearchStatus status, List<FoodPickerItem> items})> searchOnline(String query)`,
+            whose items have `isLiveResult: true`;
+        *   `Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(String raw)`;
+        *   `Future<void> keepOpenedProduct(FoodPickerItem item)`.
+    *   The implementation's constructor becomes:
 
-##### 24. `apps/mobile/lib/features/nutrition/controllers/add_food_controller.dart` (Modify)
+        ```text
+        RepositoryAddFoodRepository(
+          TrainingRepositories repositories, {
+          OpenFoodFactsRepository? openFoodFacts,
+          Future<bool> Function()? onlineLookupsEnabled,
+        })
+        ```
+
+        The existing one-argument calls keep compiling. With no `openFoodFacts`,
+        the Open Food Facts filter returns no items and the online methods
+        return `disabled`. With no `onlineLookupsEnabled`, lookups count as on.
+    *   The provider passes `ref.watch(openFoodFactsRepositoryProvider)`, and an
+        `onlineLookupsEnabled` that reads
+        `(await ref.read(settingsControllerProvider.future)).onlineFoodLookups`.
+    *   The `openFoodFacts` filter's `search` calls `searchLocal`. The new
+        methods pass the setting as `allowOnline`.
+
+##### 23. `apps/mobile/lib/features/nutrition/controllers/add_food_controller.dart` (Modify)
 
 *   **Type / Scope**: Riverpod controller.
 *   **Proposed Changes**:
-    *   `AddFoodPickerState` keeps `results` (the device's matches, for every
-        filter) and gains `onlineResults` (live results whose barcode is not in
-        `results`), `onlineStatus` and `bundleStatus`. `onlineStatus` is the
-        repository's `OnlineSearchResult` status plus `idle` and `loading`; no
-        separate enum is defined.
-    *   When live results arrive, a result whose barcode is in `results` and
-        whose `sourceModifiedAt` is later replaces that entry in `results`
-        (Goal 4). Nothing is stored until the user opens it.
-    *   `submitQuery` in the Open Food Facts filter: if the query has barcode
-        candidates and no stored match, calls `lookupBarcode`; otherwise calls
-        `searchOnline`. It sets `onlineStatus: loading` on the current
-        `AsyncData` state and never emits `AsyncLoading`. In other filters it is
-        unchanged.
-    *   `setQuery` keeps the 300 ms local search and clears `onlineResults` and
-        `onlineStatus` when the query changes.
-    *   Listens to `bundleStatus` and refreshes the local search when it becomes
-        `ready`.
-    *   `lookupBarcode` (scan): maps `BarcodeLookupResult` to
-        `BarcodeLookupStatus`: `found` opens the product; `notFound`,
-        `notABarcode` and `disabled` give `notFound` (with the "lookups off" line
-        for `disabled`); `offline` gives `needsNetwork`; `unavailable` gives the
-        new `unavailable` value.
+    *   **State.** `AddFoodPickerState` keeps `results` (the device's matches,
+        for every filter) and `barcodeLookupStatus`, and gains:
+        *   `List<FoodPickerItem> onlineResults`;
+        *   `OnlinePickerStatus onlineStatus`, a new enum in this file:
+            `idle`, `loading`, `ok`, `noResults`, `offline`, `unavailable`;
+        *   `bool onlineLookupsEnabled`;
+        *   `BundleStatus bundleStatus`.
+    *   **`BarcodeLookupStatus`** gains `unavailable` and `disabled`.
+    *   **`build`** reads `onlineLookupsEnabled()` once, and listens to
+        `settingsControllerProvider` (updating `onlineLookupsEnabled`) and to
+        `bundleStatusProvider` (updating `bundleStatus`, and re-running the local
+        search when it becomes `ready`).
+    *   **`setQuery`** keeps the 300 ms local search, and resets `onlineResults`
+        to empty and `onlineStatus` to `idle` when the query changes.
+    *   **`Future<FoodPickerItem?> submitQuery(String query)`** (it returned
+        `Future<void>`): cancels the pending debounce and runs the local search
+        at once. Then, in the Open Food Facts filter, it follows
+        [Submitting the query](#the-picker-the-scanner-and-the-log-portion-screen):
+        *   it returns the item to open: a stored candidate match, or a live
+            barcode hit;
+        *   it sets `barcodeLookupStatus` for a barcode miss;
+        *   it sets `onlineStatus` and `onlineResults` for a live search,
+            applying the Goal 4 replacement in `results`.
+
+        It sets `onlineStatus: loading` on the current `AsyncData` state and
+        never emits `AsyncLoading`. In other filters it behaves as before and
+        returns `null`.
+    *   **`lookupBarcode`** (scan) maps `BarcodeLookupOutcome` to
+        `BarcodeLookupStatus`:
+        *   `found` returns the item;
+        *   `notFound` and `notABarcode` give `notFound`;
+        *   `offline` gives `needsNetwork`;
+        *   `unavailable` gives `unavailable`;
+        *   `disabled` gives `disabled`.
+    *   **`void openItem(FoodPickerItem item)`**: when `item.isLiveResult` is
+        true, calls `unawaited(repository.keepOpenedProduct(item))`.
     *   The `brandedSearchNeedsNetwork` flag is removed.
 
-##### 25. `apps/mobile/lib/features/nutrition/widgets/add_food_picker.dart` (Modify)
+##### 24. `apps/mobile/lib/features/nutrition/widgets/add_food_picker.dart` (Modify)
 
 *   **Type / Scope**: Widget.
-*   **Proposed Changes**: The online search row, the "From Open Food Facts"
-    group and the status lines from
-    [The picker, the scanner and the log-portion screen](#the-picker-the-scanner-and-the-log-portion-screen),
-    each with a `Key` constant on `AddFoodPicker`. Result rows show the brand as a
-    secondary line. Opening an online result calls `openOnlineResult` before
-    the log-portion screen opens. Text and colours from `context.textStyles` and
-    `context.colors`; no new tokens. The two "needs network the first time"
-    messages are removed.
+*   **Proposed Changes**:
+    *   **Layout.** The groups, the online slot with its precedence, the bundle
+        line, the empty-query line and the barcode lines, as in
+        [The picker, the scanner and the log-portion screen](#the-picker-the-scanner-and-the-log-portion-screen).
+    *   **Keys** (on `AddFoodPicker`):
+        *   `onlineSearchRowKey`, `onlineGroupKey`, `onlineStatusLineKey`;
+        *   `bundleStatusLineKey`, `emptyQueryLineKey`, `barcodeStatusLineKey`.
+    *   **Rows.** Result rows show the brand as a secondary line.
+    *   **Opening.** `onSubmitted` awaits `submitQuery`, and opens the
+        log-portion screen for a returned item through the same path the scan
+        uses. Opening any item calls the controller's `openItem` first.
+    *   **Style.** Text and colours come from `context.textStyles` and
+        `context.colors`; no new tokens.
+    *   The two "needs network the first time" messages are removed.
 
-##### 26. `apps/mobile/lib/features/nutrition/widgets/nutrition_attribution.dart` (Modify)
-
-*   **Type / Scope**: Widget.
-*   **Proposed Changes**: `OpenFoodFactsAttributionNotice` gains optional `code`
-    and `changeDate`, and the compact and full forms described above. Add the
-    product-link, disclaimer and date keys to `NutritionAttributionKeys`, and a
-    DbCL URL constant.
-
-##### 27. `apps/mobile/lib/features/nutrition/widgets/log_portion_screen.dart` (Modify)
+##### 25. `apps/mobile/lib/features/nutrition/widgets/nutrition_attribution.dart` (Modify)
 
 *   **Type / Scope**: Widget.
-*   **Proposed Changes**: Under the name, the brand when present. Replace the
-    compact `OpenFoodFactsAttributionNotice` with the full form, passing the
-    food's id as `code` and `sourceModifiedAt` as `changeDate`, for every food
-    whose source is Open Food Facts.
+*   **Proposed Changes**:
+    *   `OpenFoodFactsAttributionNotice` gains optional `String? code` and
+        `DateTime? changeDate`, and the compact and full forms in
+        [The picker, the scanner and the log-portion screen](#the-picker-the-scanner-and-the-log-portion-screen).
+    *   `NutritionAttributionKeys` gains `openFoodFactsProductLink`,
+        `openFoodFactsDisclaimer` and `openFoodFactsChangeDate`.
+    *   Add `openFoodFactsDbclUrl = 'https://opendatacommons.org/licenses/dbcl/1-0/'`
+        next to the existing `openFoodFactsSourceUrl` and `openFoodFactsOdblUrl`.
 
-##### 28. `apps/mobile/lib/features/nutrition/widgets/nutrition_day_view.dart` (Modify)
+##### 26. `apps/mobile/lib/features/nutrition/widgets/log_portion_screen.dart` (Modify)
 
 *   **Type / Scope**: Widget.
-*   **Proposed Changes**: Show `FoodSourceBadge(source: openFoodFacts, showLicense: false)`
-    on a Food Entry row whose snapshot source is `openFoodFacts`, in the slot
-    imported entries use.
+*   **Proposed Changes**:
+    *   Under the name, show the brand when present.
+    *   Replace the compact `OpenFoodFactsAttributionNotice` with the full form
+        for every food whose source is `FoodSource.openFoodFacts`, passing the
+        food's id as `code` and `sourceModifiedAt` as `changeDate`.
 
-##### 29. `apps/mobile/lib/features/settings/repositories/settings_repository.dart` (Modify)
+##### 27. `apps/mobile/lib/features/nutrition/widgets/nutrition_day_view.dart` (Modify)
+
+*   **Type / Scope**: Widget.
+*   **Proposed Changes**:
+    *   The `showImportedBadge` condition becomes
+        `foodSource != null && (entry.isImported || foodSource == FoodSource.openFoodFacts)`.
+    *   Imported entries keep their current badge and
+        `NutritionDayView.importedEntryBadgeKey`.
+    *   An Open Food Facts entry that is not imported shows
+        `FoodSourceBadge(source: FoodSource.openFoodFacts, showLicense: false)`.
+        That widget carries its own key,
+        `NutritionAttributionKeys.foodSourceBadge(FoodSource.openFoodFacts)`.
+
+##### 28. `apps/mobile/lib/features/settings/repositories/settings_repository.dart` (Modify)
 
 *   **Type / Scope**: Settings model and controller.
-*   **Proposed Changes**: `AppSettings` gains `onlineFoodLookups` (default
-    `true`), read and written in `fromJson`, `toJson` and `copyWith`, and kept in
-    the device-level half by `SplitSettingsRepository` (never written to the
-    synced account row). `SettingsController` gains
-    `Future<void> setOnlineFoodLookups(bool enabled)`, following
-    `setThemePreference`.
+*   **Proposed Changes**:
+    *   `AppSettings` gains `final bool onlineFoodLookups` (constructor default
+        `true`), read and written in `fromJson`, `toJson` and `copyWith`, and
+        included in `==` and `hashCode`.
+    *   `SplitSettingsRepository` keeps it in the device-level half, which it
+        saves through `FileSettingsRepository`; it is never written to the
+        synced account row.
+    *   `SettingsController` gains `Future<void> setOnlineFoodLookups(bool enabled)`,
+        following `setThemePreference`.
+
+##### 29. `apps/mobile/lib/features/settings/widgets/food_data_settings_screen.dart` (Create)
+
+*   **Type / Scope**: Widget, a Settings sub-screen. The Settings hub holds no
+    inline controls.
+*   **Proposed Changes**: `FoodDataSettingsScreen` (a `ConsumerWidget`), built
+    like `PrivacySettingsScreen`:
+    *   `SettingsSubScreen(title: 'Food data')`, containing one `SwitchListTile`;
+    *   the switch has key `onlineFoodLookupsSwitchKey = Key('settings.foodData.onlineLookups')`,
+        title "Look up foods online", and subtitle "Sends your search text or
+        barcode to Open Food Facts. The offline food list works without it.";
+    *   it calls `setOnlineFoodLookups`.
 
 ##### 30. `apps/mobile/lib/features/settings/widgets/settings_screen.dart` (Modify)
 
-*   **Type / Scope**: Widget.
-*   **Proposed Changes**: A "Food data" section with one switch, "Look up foods
-    online", subtitle "Sends your search text or barcode to Open Food Facts. The
-    offline list works without it."
+*   **Type / Scope**: Widget, the Settings hub.
+*   **Proposed Changes**:
+    *   Add `export 'food_data_settings_screen.dart';` with the other exports.
+    *   Add `static const foodDataTileKey = Key('settings.hub.foodData');`.
+    *   In the "Data & privacy" group, after "Privacy & security", add a
+        `SettingsNavTile`:
+        *   key `foodDataTileKey`, icon `Icons.restaurant_outlined`;
+        *   title "Food data";
+        *   subtitle "Online lookups on" or "Online lookups off";
+        *   it opens `FoodDataSettingsScreen`.
 
 ##### 31. `apps/mobile/lib/features/settings/widgets/about_screen.dart` (Modify)
 
 *   **Type / Scope**: Widget.
-*   **Proposed Changes**: Replace the Open Food Facts paragraph with the text in
-    the Technical Plan, filled from `bundleInfo()`, followed by the source, ODbL
-    and DbCL links. Replace the offline paragraph so it no longer says Open Food
-    Facts needs the network once.
+*   **Proposed Changes**:
+    *   `AboutScreen` and `_NutritionCredits` become `ConsumerWidget`s.
+        `_NutritionCredits` reads `bundleHeaderProvider`.
+    *   Replace the Open Food Facts paragraph and the offline paragraph with the
+        texts in
+        [The picker, the scanner and the log-portion screen](#the-picker-the-scanner-and-the-log-portion-screen):
+        *   the parenthesis is left out while loading, on `null` and on error;
+        *   the paragraph is followed by the source, ODbL and DbCL links.
 
 ##### 32. `apps/mobile/lib/features/settings/widgets/data_management_screen.dart` (Modify)
 
 *   **Type / Scope**: Widget.
-*   **Proposed Changes**: The default Erase all data handler calls
-    `trainingRepositories.eraseAllData()` and then
-    `ref.read(openFoodFactsRepositoryProvider).resetDeviceData()`.
+*   **Proposed Changes**:
+    *   **Handler.** The default Erase all data handler calls
+        `trainingRepositories.eraseAllData()` and then
+        `ref.read(openFoodFactsRepositoryProvider).resetDeviceData()`.
+    *   **Dialog.** The confirmation dialog's text gains a final sentence: "Open
+        Food Facts products you opened or scanned are cleared from this device
+        too, and undo does not bring them back."
 
 ##### 33. `apps/mobile/lib/app.dart` (Modify)
 
 *   **Type / Scope**: App shell.
-*   **Proposed Changes**: In the existing first-frame callback in
-    `_PerenniaAppState.initState`, call
-    `unawaited(ref.read(openFoodFactsRepositoryProvider).ensureBundleInstalled())`.
+*   **Proposed Changes**:
+    *   In the existing first-frame callback in `_PerenniaAppState.initState`,
+        call `unawaited(ref.read(openFoodFactsRepositoryProvider).ensureBundleInstalled())`.
+    *   `PerenniaRoot` gains an optional `OpenFoodFactsRepository? openFoodFactsRepository`.
+        When it is set, it overrides `openFoodFactsRepositoryProvider`. When it
+        is not set and `homeRepository` is set (the app-shell harness), the
+        provider is overridden with `const StubOpenFoodFactsRepository()`. This
+        follows the existing Up-next and template-picker defaults.
 
 ##### 34. `apps/mobile/pubspec.yaml` (Modify)
 
 *   **Type / Scope**: Build configuration.
 *   **Proposed Changes**: Add `assets/seeds/open_food_facts_bundle.ndjson.gz` to
-    `flutter.assets`. The licence file is not bundled.
+    `flutter.assets`.
 
 ##### 35. `.github/workflows/ci.yml` and `tools/ci-local.mjs` (Modify)
 
@@ -1676,135 +1953,255 @@ in brackets where they differ: `mobile`, `golden` [`golden_vectors`], `contract`
 ##### 36. `CONTEXT.md` and `ARCHITECTURE.md` (Modify)
 
 *   **Type / Scope**: Vocabulary and documentation.
-*   **Proposed Changes**: CONTEXT.md gets the three changes in
-    [Vocabulary](#vocabulary). ARCHITECTURE.md's "The app" gains one paragraph:
-    reference data that can be rebuilt (the Open Food Facts bundle and the device
-    cache) lives in a separate database file in the cache directory, outside
-    sync and backups.
+*   **Proposed Changes**:
+    *   `CONTEXT.md` gets the three changes in [Vocabulary](#vocabulary).
+    *   `ARCHITECTURE.md` gains one paragraph in "The app": reference data that
+        can be rebuilt (the Open Food Facts bundle and the device cache) lives in
+        a separate database file in the cache directory, outside sync and
+        backups.
 
 ##### 37. App tests (Create and Modify)
 
-*   **Type / Scope**: Tests; repository tests run against real in-memory SQLite.
-*   **Proposed Changes**:
-    *   `test/data/food_reference_database_test.dart` (Create): FTS5 is
-        available; the match and order rules; `keepProduct` keeps the newer
-        values in both directions and always sets `origin = online`; an install
-        keeps a newer online row's values, replaces an older one's values, and
-        leaves both `online`; a reinstall deletes only `bundle` rows; a product
-        kept with `keepProduct` and then absent from a new bundle survives the
-        reinstall; `resetAll` followed by an install leaves the full bundle and
-        no `online` rows, including for a bundled product that had been kept;
-        a failure inside
-        `replaceBundle` leaves the previous state (CUJ 9); a read on a second
-        connection during an open install transaction returns the committed
-        state without waiting.
-    *   `test/data/open_food_facts_client_test.dart` (Create), with `MockClient`:
-        the exact User-Agent, URLs and parameters; v3.6 found and not-found
-        bodies; 404, 429, 503, timeout and malformed outcomes; the 11th search
-        and 16th product request in 60 seconds are not sent.
-    *   `test/data/open_food_facts_bundle_installer_test.dart` (Create): installs
-        from a small fixture bundle; skips when the hash matches; reinstalls when
-        it differs; reports `failed` on a corrupt file and on an unknown
-        `formatVersion`.
-    *   `test/data/open_food_facts_repository_test.dart` (Create): barcode
-        candidates come first in local search; live search stores nothing;
-        `saveOpenedProduct` and a live barcode hit store the product as
-        `online`; `resetDeviceData` leaves the full bundle and an empty device
-        cache; nothing is sent when `allowOnline` is
-        false.
-    *   `test/features/nutrition/add_food_repository_test.dart` (Modify): the
-        Open Food Facts filter uses local search; the setting is read and passed.
-    *   `test/features/nutrition/add_food_picker_test.dart` (Modify): no request
-        while typing; the online search row and the keyboard action each send
-        one; groups with no duplicate barcode; every status line; the device's
-        matches stay visible while an online search runs; `meetsGuideline` for
-        tap target size and text contrast on the new controls, in both themes.
-    *   `test/features/nutrition/log_portion_screen_test.dart` (Modify): brand,
-        product link, disclaimer and date for an Open Food Facts food; link and
-        disclaimer without date for a Recent item; none of them for USDA.
-    *   `test/features/nutrition/nutrition_day_view_test.dart` (Modify): the
-        badge without the licence label on Open Food Facts entries.
-    *   `test/features/settings/settings_screen_test.dart` (Modify): the switch,
-        its persistence in the device file, and that it is absent from the
-        synced account row.
-    *   `test/data/erase_all_data_test.dart` (Modify): drop the
-        `AppDatabase.openFoodFactsCacheTable` reference; the data management
-        screen's default handler also calls `resetDeviceData`.
-    *   `test/data/open_food_facts_cache_drop_migration_test.dart` (Create): a
-        version-60 database with rows in `open_food_facts_cache` opens at 61
-        without the table and with every other table intact.
-    *   `test/performance/performance_budgets_test.dart`,
-        `performance_budget_thresholds.dart` and `README.md` (Modify): a
-        41,000-row synthetic index; a two-word prefix search completes under
+*   **Type / Scope**: Tests. Repository tests run against real SQLite (in memory
+    unless stated otherwise).
+*   **New test files:**
+    *   `apps/mobile/test/data/food_reference_database_test.dart` (Create):
+        *   FTS5 is available; the match and order rules hold.
+        *   `keepProduct`: keeps the stored values when the incoming copy is
+            older, takes the incoming values when it is newer, and always sets
+            `origin = online`.
+        *   An install keeps a newer `online` row's values, replaces an older
+            one's values, and leaves both `online`.
+        *   A reinstall deletes only `bundle` rows. A kept product that is absent
+            from a new bundle survives the reinstall.
+        *   `resetAll` followed by an install leaves the full bundle and no
+            `online` rows, including for a bundled product that had been kept.
+        *   A failure inside `replaceBundle` rolls back to the previous state
+            (this simulates a kill, CUJ 9).
+        *   `AppDatabase.schemaTableNames` contains no Open Food Facts table.
+    *   `apps/mobile/test/data/food_reference_install_concurrency_test.dart`
+        (Create), on real files in a temporary directory, with
+        `beforeCommitForTesting` holding the install transaction open:
+        *   a read on the app's connection returns the committed state within
+            100 ms;
+        *   a Food Entry save on an `AppDatabase` file completes;
+        *   `keepProduct` on the app's connection completes after the install
+            commits.
+    *   `apps/mobile/test/data/open_food_facts_client_test.dart` (Create), with
+        `MockClient`:
+        *   the exact User-Agent, URLs and parameters;
+        *   v3.6 found and not-found bodies;
+        *   404, 429, 503, another non-2xx, timeout and malformed bodies, each
+            with its outcome and reason;
+        *   the 11th search and the 16th product request in 60 seconds are not
+            sent (`budgetExceeded`);
+        *   `openFoodFactsContactEmail` matches
+            `^[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+$`.
+    *   `apps/mobile/test/data/open_food_facts_bundle_installer_test.dart`
+        (Create):
+        *   installs from a small fixture bundle;
+        *   skips when the hash matches, and reinstalls when it differs;
+        *   reports `failed`, without throwing, on a corrupt file, on an unknown
+            `formatVersion` and when the asset source throws;
+        *   a second `ensureInstalled` during an install returns the same future;
+        *   a new status listener receives the current status first.
+    *   `apps/mobile/test/data/open_food_facts_repository_test.dart` (Create):
+        *   barcode candidates come first in local search;
+        *   live search stores nothing;
+        *   `keepOpenedProduct` and a live barcode hit store the product as
+            `online`;
+        *   `resetDeviceData` leaves the full bundle and an empty device cache;
+        *   nothing is sent when `allowOnline` is false.
+    *   `apps/mobile/test/data/open_food_facts_cache_drop_migration_test.dart`
+        (Create): a version-60 database with rows in `open_food_facts_cache`
+        opens at 61 without the table and with every other table intact.
+    *   `apps/mobile/test/features/settings/food_data_settings_screen_test.dart`
+        (Create): the switch reads and writes `onlineFoodLookups`, and
+        `meetsGuideline` passes for tap target size and text contrast in both
+        themes.
+*   **Existing tests to change:**
+    *   `apps/mobile/test/features/nutrition/add_food_repository_test.dart`
+        (Modify):
+        *   Delete the tests that cover the old cache, which this spec removes:
+            "looks up branded Open Food Facts names through search and caches
+            them", "Open Food Facts 404 misses write no cache row and do not
+            throw", "Open Food Facts non-2xx misses throw without poisoning the
+            cache and retry", "Open Food Facts product status zero is a
+            cache-free miss", "Open Food Facts branded search misses on empty or
+            unparseable products", "Open Food Facts malformed JSON throws and
+            writes no cache row", "Open Food Facts cache evicts least-recently-used
+            rows over its bound", and "Open Food Facts Food Entry snapshot stays
+            immutable after cache eviction and source change".
+        *   Their live-request behaviour is now covered by
+            `open_food_facts_client_test.dart` and
+            `open_food_facts_repository_test.dart`.
+        *   Add tests that the Open Food Facts filter calls `searchLocal`, and
+            that the setting is passed as `allowOnline`, using
+            `RepositoryAddFoodRepository(repositories, openFoodFacts: …, onlineLookupsEnabled: …)`.
+    *   `apps/mobile/test/features/nutrition/add_food_picker_test.dart` (Modify):
+        *   The five `AddFoodRepository` fakes implement the four new methods.
+        *   The barcode harness's product body gains `last_modified_t`, and its
+            requests target the v3.6 path.
+        *   New cases:
+            *   no request while typing;
+            *   the online search row and the keyboard's search action each send
+                one request;
+            *   groups with no duplicate barcode, and the Goal 4 replacement;
+            *   every bundle line and online-slot state, in the stated
+                precedence;
+            *   the empty-query line;
+            *   a typed barcode opens the log-portion screen;
+            *   the device's matches stay visible while a live request runs;
+            *   opening a live item calls `keepOpenedProduct`;
+            *   `meetsGuideline` for tap target size and text contrast on the new
+                controls, in both themes.
+    *   `apps/mobile/test/features/nutrition/log_portion_screen_test.dart`
+        (Modify):
+        *   brand, product link, disclaimer and date for an Open Food Facts
+            food;
+        *   link and disclaimer without a date for a Recent item;
+        *   none of them for USDA;
+        *   `meetsGuideline` for tap target size and text contrast on the
+            attribution block, in both themes.
+    *   `apps/mobile/test/features/nutrition/nutrition_day_view_test.dart`
+        (Modify):
+        *   its three `AddFoodRepository` fakes implement the new methods;
+        *   the test "barcode scan opens Log Portion …" stubs `lookupBarcode`
+            instead of `search`;
+        *   a new case shows the badge without the licence label on an Open
+            Food Facts entry.
+    *   `apps/mobile/test/features/nutrition/nutrition_repository_test.dart`
+        (Modify): the test "deletes Open Food Facts Food Entry as a tombstone
+        without cache tombstone" drops its cache-table insert and its assertions
+        about `open_food_facts_cache`. Its Food Entry tombstone assertions stay.
+    *   `apps/mobile/test/features/sync/sync_repository_test.dart` (Modify):
+        the test "syncs Open Food Facts Food Entry snapshots without
+        redistributing cache rows" drops its cache-table insert and the two
+        cache-table assertions. Its snapshot-sync assertions stay; the device
+        cache's absence from sync is asserted in
+        `food_reference_database_test.dart`.
+    *   Three migration tests change their expected `schemaVersion` from 60 to
+        61:
+        *   `apps/mobile/test/data/routine_plan_migration_test.dart`;
+        *   `apps/mobile/test/data/workout_template_migration_test.dart`;
+        *   `apps/mobile/test/data/workout_template_group_migration_test.dart`.
+    *   `apps/mobile/test/data/erase_all_data_test.dart` (Modify): remove the
+        `AppDatabase.openFoodFactsCacheTable` entry from `_keptTables`, with its
+        comment.
+    *   `apps/mobile/test/features/settings/split_settings_repository_test.dart`
+        (Modify): `onlineFoodLookups` is saved in the device file and never in
+        the synced account row.
+    *   `apps/mobile/test/features/settings/settings_screen_test.dart` (Modify,
+        where `DataManagementScreen` is already tested):
+        *   the hub shows the Food data tile with its subtitle and opens the
+            sub-screen;
+        *   the default Erase all data handler calls `resetDeviceData` after
+            `eraseAllData`;
+        *   the confirmation dialog shows the new sentence.
+    *   `apps/mobile/test/app_shell_test.dart` (Modify): no change is needed in
+        its call sites, because `PerenniaRoot` stubs the repository when
+        `homeRepository` is set. One new case asserts that pumping the app with
+        a real repository, whose cache directory cannot be resolved, shows no
+        error and leaves the status `failed`.
+    *   `apps/mobile/test/performance/performance_budgets_test.dart`,
+        `apps/mobile/test/performance/performance_budget_thresholds.dart` and
+        `apps/mobile/test/performance/README.md` (Modify): a 41,000-row
+        synthetic index; a two-word prefix search completes under
         `openFoodFactsLocalSearchBudget` (100 ms) on the host; the README gains
         its row.
-    *   A save-latency check (Modify, in the performance budgets file): with a
-        bundle install running, the existing set-save confirmation still appears
-        within one frame.
-    *   Existing tests that construct `TrainingRepositories` with the removed
-        Open Food Facts parameters (`add_food_picker_test.dart`,
-        `add_food_repository_test.dart`) are updated to override
-        `openFoodFactsRepositoryProvider` instead.
 
 #### Pull request 3: the server
 
 ##### 38. `apps/server/src/open-food-facts-bundle.ts` (Create)
 
 *   **Type / Scope**: TypeScript module.
-*   **Proposed Changes**: `getOpenFoodFactsBundle(): OpenFoodFactsBundle`, which
-    reads the file once, on first call, synchronously (`readFileSync`,
-    `gunzipSync`), from
-    `new URL("../../mobile/assets/seeds/open_food_facts_bundle.ndjson.gz", import.meta.url)`,
-    and caches the result for the life of the process. `OpenFoodFactsBundle` has
-    `header`, `byCode: Map<string, BundleProduct>` and `products: BundleProduct[]`
-    (with each product's normalized words precomputed). One search function,
-    `searchBundle(bundle, query, limit)`, with the rules in
-    [Agent surface](#agent-surface), using `barcodeCandidates` from file 8.
-    A read or parse failure throws `OpenFoodFactsBundleUnavailableError`.
+*   **Proposed Changes**:
+    *   `export function loadOpenFoodFactsBundle(file: URL): OpenFoodFactsBundle`
+        reads the file synchronously (`readFileSync`, `gunzipSync`) and parses
+        it. A read or parse failure throws `OpenFoodFactsBundleUnavailableError`.
+    *   `export function getOpenFoodFactsBundle(): OpenFoodFactsBundle` calls the
+        loader once, with
+        `new URL("../../mobile/assets/seeds/open_food_facts_bundle.ndjson.gz", import.meta.url)`,
+        and caches the result for the life of the process.
+    *   `export function setOpenFoodFactsBundleLoaderForTesting(loader: (() => OpenFoodFactsBundle) | null): void`
+        replaces the loader and clears the cache, for the 503 test.
+    *   `OpenFoodFactsBundle` has `header`, `byCode: Map<string, BundleProduct>`
+        and `products: BundleProduct[]`, with each product's normalized words
+        precomputed.
+    *   `export function searchBundle(bundle: OpenFoodFactsBundle, query: string | undefined, limit: number): BundleProduct[]`,
+        with the rules in [Agent surface](#agent-surface), using
+        `barcodeCandidates` from file 8. An undefined query returns `[]`.
+    *   `export const OPEN_FOOD_FACTS_DISCLAIMER`, the Goal 7 text.
 
 ##### 39. `apps/server/src/agent-foods.ts` (Modify)
 
 *   **Type / Scope**: Agent route definitions and handler logic.
 *   **Proposed Changes**:
     *   `AgentPlatformFoodSourceSchema` becomes `z.enum(["usda", "openFoodFacts"])`.
-    *   `AgentPlatformFoodSchema` gains `brand`, `sourceModifiedAt` and
-        `productUrl`; `AgentPlatformFoodAttributionSchema` gains `disclaimer`.
-    *   `AgentFoodPlatformSearchQuerySchema` is unchanged apart from the widened
-        `source` enum; its `search` description says it takes a name or a
-        barcode. The route's `responses` keep `503` for an unreadable bundle.
-    *   `searchAgentPlatformFoods({ search, source, limit })` stays synchronous.
-        The USDA branch is unchanged except for the new nullable fields; the
-        Open Food Facts branch calls `searchBundle`.
-    *   The route and MCP descriptions drop "not available in this slice", and
-        the comment block above the platform search is rewritten to describe the
+    *   `AgentPlatformFoodSchema` gains `brand`, `sourceModifiedAt` (ISO-8601,
+        UTC) and `productUrl`, all nullable.
+    *   `AgentPlatformFoodAttributionSchema` gains `disclaimer`, nullable.
+    *   The `search` parameter's description and the route summary change to
+        the texts in [Agent surface](#agent-surface).
+    *   The route's 503 response schema becomes
+        `z.union([AgentApiKeyUnavailableResponseSchema, AgentFoodsUnavailableResponseSchema])`.
+    *   `searchAgentPlatformFoods({ search, source = "usda", limit })` stays
+        synchronous, and `source` is optional, so the existing calls such as
+        `searchAgentPlatformFoods({ limit: 20 })` keep working.
+        *   The USDA branch is unchanged, except that the new fields are `null`.
+        *   The Open Food Facts branch calls `searchBundle` on
+            `getOpenFoodFactsBundle()`, and builds each food's `nutrientsPer100`
+            with `nutrientVectorStorage`.
+        *   It fills `attribution` from the bundle header: `source`,
+            `datasetVersion`, `sourceName`, `sourceUrl`, `licenseName` and
+            `attributionText`, with `disclaimer` set to
+            `OPEN_FOOD_FACTS_DISCLAIMER`.
+    *   The comment block above the platform search is rewritten to describe the
         bundle and the decision not to call Open Food Facts from the server.
 
 ##### 40. `apps/server/src/app.ts` and `apps/server/src/agent-mcp.ts` (Modify)
 
 *   **Type / Scope**: Server wiring.
-*   **Proposed Changes**: The REST handler for `agentFoodPlatformSearchRoute`
-    returns 503 with `AgentFoodsUnavailableResponseSchema` when
-    `OpenFoodFactsBundleUnavailableError` is thrown. The MCP tool `agent_search_platform_foods` does the same through
-    its existing error result, and its description says it covers USDA and the
-    Open Food Facts bundle. No new dependencies are injected; both call the same
-    function.
+*   **Proposed Changes**:
+    *   Both call sites of `searchAgentPlatformFoods` pass `source: query.source`
+        next to `search` and `limit`: the REST handler for
+        `agentFoodPlatformSearchRoute` in `app.ts`, and the
+        `agent_search_platform_foods` tool in `agent-mcp.ts`.
+    *   On `OpenFoodFactsBundleUnavailableError`:
+        *   the REST handler returns 503 with
+            `AgentFoodsUnavailableResponseSchema`
+            (`code: "agent_foods_unavailable"`, and the message in
+            [Agent surface](#agent-surface));
+        *   the MCP tool returns the same body through `errorResult`.
+    *   The tool's description says it covers USDA and the Open Food Facts
+        bundle. No new dependencies are injected.
 
 ##### 41. Server tests (Create and Modify)
 
 *   **Type / Scope**: Node tests.
 *   **Proposed Changes**:
-    *   `apps/server/test/open-food-facts-bundle.test.mjs` (Create): reads the
-        committed bundle; the header matches the app's asset test; a sample of
-        barcodes returns the same name, values, sizes, brand and change date as
-        their decoded lines; name search rules (prefixes, diacritics, 8-part
-        limit, barcode candidates first, order); and records the load time.
-    *   `apps/server/test/agent-foods.test.mjs` (Modify): `searchAgentPlatformFoods`
-        defaults to USDA with unchanged results; Open Food Facts by name and by
-        barcode through `search`; no `search`, or one with no word parts and no
-        barcode candidates, returns empty `foods`.
+    *   `apps/server/test/open-food-facts-bundle.test.mjs` (Create):
+        *   reads the committed bundle;
+        *   the header's `format` and `formatVersion` equal the values the app's
+            asset test checks;
+        *   for a sample of barcodes, the search returns the same name, values,
+            sizes, brand and change date as their decoded lines;
+        *   the name search rules: prefixes, diacritics, the 8-part limit,
+            barcode candidates first, and the order;
+        *   it prints the load time in the test output.
+    *   `apps/server/test/agent-foods.test.mjs` (Modify):
+        *   `searchAgentPlatformFoods({ limit: 20 })` still returns USDA with
+            unchanged values, plus the new null fields;
+        *   Open Food Facts by name and by barcode through `search`;
+        *   no `search`, or one with no word parts and no candidates, returns
+            empty `foods`;
+        *   the nutrient vector includes every id.
     *   `apps/server/test/agent-foods-routes.test.mjs` (Modify): the REST
-        responses, including 503; the MCP tool returns the same body as REST for
-        the same input.
+        responses for Open Food Facts, and a 503 when
+        `setOpenFoodFactsBundleLoaderForTesting` installs a loader that throws.
+    *   `apps/server/test/agent-mcp.test.mjs` (Modify):
+        `agent_search_platform_foods` returns the same body as REST for the same
+        input, including the error for an unreadable bundle.
 
 ##### 42. `Dockerfile` (Modify)
 
@@ -1822,20 +2219,23 @@ in brackets where they differ: `mobile`, `golden` [`golden_vectors`], `contract`
 ##### 44. Generated contract files (Modify, generated)
 
 *   **Type / Scope**: Generated by `corepack pnpm --filter @perennia/contract generate`.
-*   **Proposed Changes**: `packages/contract/openapi.json`,
-    `packages/contract/src/agent-client.ts`,
-    `apps/mobile/lib/api/perennia_api_client.dart`, and the generated table in
-    `agent-skills/perennia/references/api-operations.md`.
+*   **Proposed Changes**: Regenerates:
+    *   `packages/contract/openapi.json`;
+    *   `packages/contract/src/agent-client.ts`;
+    *   `apps/mobile/lib/api/perennia_api_client.dart`;
+    *   the agent command map, the generated table in
+        `agent-skills/perennia/references/api-operations.md`.
 
 ##### 45. `agent-skills/perennia/references/api-operations.md` and `agent-skills/perennia/SKILL.md` (Modify)
 
 *   **Type / Scope**: Agent documentation (hand-written parts).
-*   **Proposed Changes**: The "Food Library Reads and Writes" prose describes
-    `source=openFoodFacts`, that `search` takes a name or a barcode, that only
-    the bundle is searched, and the attribution and disclaimer to show.
-    `SKILL.md` gains an example next to the existing
-    `search-platform-foods --query search=chicken`:
-    `search-platform-foods --query source=openFoodFacts --query search=<code>`.
+*   **Proposed Changes**:
+    *   The "Food Library Reads and Writes" prose describes
+        `source=openFoodFacts`: that `search` takes a name or a barcode, that
+        only the bundle is searched, and the attribution and disclaimer to show.
+    *   `SKILL.md` gains an example next to the existing
+        `search-platform-foods --query search=chicken`:
+        `search-platform-foods --query source=openFoodFacts --query search=<code>`.
 
 ##### 46. `docs/designs/open-food-facts.md` and `docs/designs/SITEMAP.md` (Modify)
 
@@ -1845,35 +2245,49 @@ in brackets where they differ: `mobile`, `golden` [`golden_vectors`], `contract`
 
 ### Verification Plan
 
-*   **Gate:** `pnpm ci:local --changed` green for each pull request. The jobs
-    that must run and pass:
-    *   pull request 1: `mobile` (the mapping, asset and golden tests) and
-        `golden` [`golden_vectors`] (both runners execute the new fixture);
-    *   pull request 2: `mobile` (codegen diff checks for both databases,
-        `flutter analyze`, performance budgets, `flutter test`) and `golden`;
-    *   pull request 3: `js`, `contract` [`contract-drift`] (the drift check shows
-        the expected contract diff and nothing else), `golden`, and `sync`
-        [`sync-convergence`] (no change expected; it confirms Food Entry
-        snapshots with `openFoodFacts` still sync).
+*   **Gate:** `pnpm ci:local --changed` green for each pull request. These jobs
+    run, selected by the paths each pull request changes, and must pass:
+    *   **Pull request 1:**
+        *   `mobile`: the mapping, asset and golden tests;
+        *   `golden` [`golden_vectors`]: both runners execute the new fixture;
+        *   `js`, `contract` [`contract-drift`] and `sync`
+            [`sync-convergence`]: selected because `apps/server/**` changes, and
+            expected to pass with no other change.
+    *   **Pull request 2:**
+        *   `mobile`: the codegen diff checks for both databases,
+            `flutter analyze`, the performance budgets and `flutter test`;
+        *   `golden`: selected because `apps/mobile/test/domain/**` and
+            `apps/mobile/lib/domain/**` change.
+    *   **Pull request 3:**
+        *   `js`;
+        *   `contract`: the drift check shows the expected contract diff and
+            nothing else;
+        *   `golden`: selected because `apps/server/**` changes;
+        *   `sync`: no change expected; it confirms that Food Entry snapshots
+            with `openFoodFacts` still sync;
+        *   `mobile`: selected by the regenerated Dart API client.
 *   **Unit and repository tests:** as listed in files 11, 12, 37 and 41.
 *   **Golden vectors:** `m36-barcode-candidates.json`, run by Dart and
     TypeScript.
-*   **Kill and reopen:** the `replaceBundle` failure test (CUJ 9), and the
-    existing kill-and-reopen mid-workout scenario, which must stay green with
-    the installer running on start.
-*   **Accessibility:** `meetsGuideline` checks on the picker's new controls and
-    the log-portion attribution block, in both themes.
+*   **Kill and reopen:** the `replaceBundle` rollback test (it simulates CUJ 9),
+    and `food_reference_install_concurrency_test.dart` for reads and saves
+    during an install. The existing kill-and-reopen mid-workout tests are
+    repository-level and do not involve the installer; they must stay green.
+*   **Accessibility:** the `meetsGuideline` checks listed in file 37, for the
+    picker, the log-portion attribution block and the Food data screen, in both
+    themes.
 *   **By hand, before release:**
-    *   On the reference devices: install time of the real bundle (under 5
-        seconds on Android), local search latency (under 100 ms), app download
-        size increase (under 6 MB), and CUJs 1 to 6 in flight mode and online.
-    *   Against the Open Food Facts staging host
+    *   **On the reference devices:** install time of the real bundle (under 5
+        seconds on Android), local search latency (under 100 ms), the app
+        download size increase (under 6 MB), and each of CUJs 1 to 6 under the
+        network condition its Given states.
+    *   **Against the Open Food Facts staging host**
         (`https://world.openfoodfacts.net`, basic auth `off`/`off`, passed
-        through the client's `baseUrl`): one search, one found product, one
+        through the client's `baseUrl`): one search, one found product and one
         missing product.
-    *   An agent session running CUJ 7 through REST and through MCP, comparing
-        the returned record with that barcode's decoded line in the bundle of the
-        same dataset version.
+    *   **An agent session** running CUJ 7 through REST and through MCP,
+        comparing the returned record with that barcode's decoded line in the
+        bundle of the same dataset version.
 
 --------------------------------------------------------------------------------
 
