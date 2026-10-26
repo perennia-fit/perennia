@@ -73,6 +73,48 @@
       "expected": {"rejects": true}
     },
     {
+      "name": "rule-codec-rejects-a-time-at-25-00",
+      "function": "rule_codec",
+      "note": "File 5: a time that is not HH:MM in 00:00-23:59 does not decode, in either language.",
+      "input": {"json": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["25:00"]}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-rejects-a-time-without-a-two-digit-hour",
+      "function": "rule_codec",
+      "note": "File 5: 9:00 is not HH:MM.",
+      "input": {"json": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["9:00"]}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-rejects-an-impossible-anchor",
+      "function": "rule_codec",
+      "note": "File 5: an every-N anchor must be a real date.",
+      "input": {"json": {"v": 1, "kind": "untimed", "days": {"kind": "every_n_days", "n": 2, "anchor": "2026-02-30", "anchor_is_default": false}, "count": 1}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-rejects-a-fractional-count",
+      "function": "rule_codec",
+      "note": "File 5: a count is an integer.",
+      "input": {"json": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 2.5}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-reads-whole-numbers-written-as-floats",
+      "function": "rule_codec",
+      "note": "File 5: JSON cannot tell 2.0 from 2, so both languages read it as the integer.",
+      "input": {"json": {"v": 1.0, "kind": "untimed", "days": {"kind": "weekdays", "weekdays": [1.0, 3]}, "count": 2.0}},
+      "expected": {"v": 1, "kind": "untimed", "days": {"kind": "weekdays", "weekdays": [1, 3]}, "count": 2}
+    },
+    {
+      "name": "rule-codec-reads-an-anchor-in-year-50-as-written",
+      "function": "rule_codec",
+      "note": "File 5: a four-digit year is taken as written, never as 1950.",
+      "input": {"json": {"v": 1, "kind": "untimed", "days": {"kind": "every_n_days", "n": 2, "anchor": "0050-01-02", "anchor_is_default": false}, "count": 1}},
+      "expected": {"v": 1, "kind": "untimed", "days": {"kind": "every_n_days", "n": 2, "anchor": "0050-01-02", "anchor_is_default": false}, "count": 1}
+    },
+    {
       "name": "period-codec-cycle-and-pause",
       "function": "period_codec",
       "note": "Data shapes: a cycle with its anchor, and one inclusive Pause.",
@@ -108,6 +150,27 @@
       "function": "period_codec",
       "note": "File 5: the codecs reject any v other than 1.",
       "input": {"json": {"v": 2, "cycle": null, "pauses": []}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "period-codec-reads-a-missing-cycle-key-as-null",
+      "function": "period_codec",
+      "note": "Data shapes: a period without the cycle key reads as no cycle, in both languages.",
+      "input": {"json": {"v": 1, "pauses": [{"from": "2026-10-10", "to": "2026-10-16"}]}},
+      "expected": {"v": 1, "cycle": null, "pauses": [{"from": "2026-10-10", "to": "2026-10-16"}]}
+    },
+    {
+      "name": "period-codec-rejects-an-impossible-pause-date",
+      "function": "period_codec",
+      "note": "File 5: Pause dates must be real dates.",
+      "input": {"json": {"v": 1, "cycle": null, "pauses": [{"from": "2026-02-30", "to": "2026-03-02"}]}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "period-codec-rejects-an-impossible-cycle-anchor",
+      "function": "period_codec",
+      "note": "File 5: the cycle anchor must be a real date.",
+      "input": {"json": {"v": 1, "cycle": {"on_days": 21, "off_days": 7, "anchor": "2026-13-01", "anchor_is_default": false}, "pauses": []}},
       "expected": {"rejects": true}
     },
     {

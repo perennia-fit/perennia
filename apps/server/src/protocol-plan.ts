@@ -172,10 +172,14 @@ export type DueUnfilledDose = PlanAmount & {
 };
 
 // ---------------------------------------------------------------------------
-// Codecs. They check the JSON's shape and version, never its values: a time of
-// "25:00" decodes, and the shared validator rejects it (D7). Any `v` other
-// than 1 and any unknown `kind` is rejected, so a newer writer's rule is never
-// misread as an older one.
+// Codecs. Any `v` other than 1 and any unknown `kind` is rejected, so a newer
+// writer's rule is never misread as an older one. So are a value of the wrong
+// type, a date that is not a real `YYYY-MM-DD` date and a time that is not
+// `HH:MM` in 00:00-23:59, exactly as the Dart twin's decoders reject them; a
+// whole number reads as an integer however it was written (`2.0` is 2), as
+// JSON.parse already gives it. Range checks (how many times, how long a
+// cycle) are the shared validators' job (D7), which read the stored JSON
+// itself, so they can judge values these decoders would reject.
 // ---------------------------------------------------------------------------
 
 export class ProtocolPlanCodecError extends Error {
@@ -195,7 +199,7 @@ export function decodeScheduleRule(json: unknown): ScheduleRule {
         kind: "timed",
         days: decodeScheduleRuleDays(object.days),
         times: requireArray(object.times, "Schedule Rule times").map((time) =>
-          requireString(time, "Schedule Rule time")
+          requireLocalTime(time, "Schedule Rule time")
         )
       };
     case "untimed":
@@ -235,12 +239,16 @@ export function decodeProtocolPeriod(json: unknown): ProtocolPeriod | null {
   requireVersion1(object, "Protocol Period");
   return {
     v: 1,
-    cycle: object.cycle === null ? null : decodeProtocolCycle(object.cycle),
+    // A missing `cycle` key reads as null, as the Dart twin reads it.
+    cycle:
+      object.cycle === null || object.cycle === undefined
+        ? null
+        : decodeProtocolCycle(object.cycle),
     pauses: requireArray(object.pauses, "Protocol Period pauses").map((pause) => {
       const pauseObject = requireObject(pause, "Pause");
       return {
-        from: requireString(pauseObject.from, "Pause from"),
-        to: requireString(pauseObject.to, "Pause to")
+        from: requireLocalDate(pauseObject.from, "Pause from"),
+        to: requireLocalDate(pauseObject.to, "Pause to")
       };
     })
   };
@@ -275,7 +283,7 @@ function decodeScheduleRuleDays(json: unknown): ScheduleRuleDays {
       return {
         kind: "every_n_days",
         n: requireInteger(object.n, "Schedule Rule n"),
-        anchor: requireString(object.anchor, "Schedule Rule anchor"),
+        anchor: requireLocalDate(object.anchor, "Schedule Rule anchor"),
         anchor_is_default: requireBoolean(
           object.anchor_is_default,
           "Schedule Rule anchor_is_default"
@@ -309,7 +317,7 @@ function decodeProtocolCycle(json: unknown): ProtocolCycle {
   return {
     on_days: requireInteger(object.on_days, "Protocol cycle on_days"),
     off_days: requireInteger(object.off_days, "Protocol cycle off_days"),
-    anchor: requireString(object.anchor, "Protocol cycle anchor"),
+    anchor: requireLocalDate(object.anchor, "Protocol cycle anchor"),
     anchor_is_default: requireBoolean(
       object.anchor_is_default,
       "Protocol cycle anchor_is_default"
@@ -346,6 +354,22 @@ function requireString(json: unknown, what: string): string {
   return json;
 }
 
+function requireLocalDate(json: unknown, what: string): LocalDate {
+  const localDate = requireString(json, what);
+  if (!isValidLocalDate(localDate)) {
+    throw new ProtocolPlanCodecError(`${what} must be a real YYYY-MM-DD date.`);
+  }
+  return localDate;
+}
+
+function requireLocalTime(json: unknown, what: string): LocalTime {
+  const localTime = requireString(json, what);
+  if (!isPlanLocalTime(localTime)) {
+    throw new ProtocolPlanCodecError(`${what} must be HH:MM, from 00:00 to 23:59.`);
+  }
+  return localTime;
+}
+
 function requireInteger(json: unknown, what: string): number {
   if (typeof json !== "number" || !Number.isInteger(json)) {
     throw new ProtocolPlanCodecError(`${what} must be an integer.`);
@@ -364,8 +388,14 @@ function requireBoolean(json: unknown, what: string): boolean {
 // Local-date arithmetic on UTC epoch days.
 // ---------------------------------------------------------------------------
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Whether `value` is an `HH:MM` wall-clock time in 00:00-23:59. */
+export function isPlanLocalTime(value: string): boolean {
+  return LOCAL_TIME_PATTERN.test(value);
+}
 
 /**
  * The UTC epoch day of a `YYYY-MM-DD` date, or null when it is not a real
@@ -379,8 +409,11 @@ export function localDateEpochDay(localDate: string): number | null {
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const epochMs = Date.UTC(year, month - 1, day);
-  const roundTrip = new Date(epochMs);
+  // Not Date.UTC, which reads years 0-99 as 1900-1999; the Dart twin's
+  // DateTime.utc takes every four-digit year as written.
+  const roundTrip = new Date(0);
+  roundTrip.setUTCFullYear(year, month - 1, day);
+  const epochMs = roundTrip.getTime();
   if (
     roundTrip.getUTCFullYear() !== year ||
     roundTrip.getUTCMonth() !== month - 1 ||
@@ -395,7 +428,8 @@ export function isValidLocalDate(localDate: string): boolean {
   return localDateEpochDay(localDate) !== null;
 }
 
-function epochDay(localDate: LocalDate): number {
+/** The UTC epoch day of `localDate`; throws a RangeError for a non-date. */
+export function epochDay(localDate: LocalDate): number {
   const day = localDateEpochDay(localDate);
   if (day === null) {
     throw new RangeError(`Not a local date: ${localDate}.`);
@@ -418,8 +452,15 @@ function localDateIsoWeekday(localDate: LocalDate): number {
   return floorMod(epochDay(localDate) + 3, 7) + 1;
 }
 
-/** A modulo that is never negative, so dates before an anchor count too. */
+/**
+ * A modulo that is never negative, so dates before an anchor count too. A
+ * divisor below 1 (an every-0-days rule or an empty cycle that skipped
+ * validation) throws, as the Dart twin does, instead of planning on NaN.
+ */
 function floorMod(value: number, divisor: number): number {
+  if (!(divisor >= 1)) {
+    throw new RangeError(`A plan period must be at least 1 day, not ${divisor}.`);
+  }
   return ((value % divisor) + divisor) % divisor;
 }
 
@@ -627,7 +668,7 @@ const NOT_PLANNED_REASON_ORDER: readonly NotPlannedReason[] = [
   "outside"
 ];
 
-type Slot = DayStatusFill & { position: number };
+type Slot = DayStatusFill & { position: number; minutes: number | null };
 
 /**
  * One Day Status per Compound and date in `planDays`, up to and including
@@ -700,7 +741,8 @@ function dayStatusFor(
         plannedLocalTime: planned.localTime,
         ...planAmount(planned),
         doseId: null,
-        position
+        position,
+        minutes: planned.localTime === null ? null : minutesOfDay(planned.localTime)
       }))
     )
     .sort(compareSlots);
@@ -722,18 +764,18 @@ function dayStatusFor(
     let target: Slot | null = null;
     let targetDistance = Number.POSITIVE_INFINITY;
     for (const slot of slots) {
-      if (slot.doseId !== null || slot.plannedLocalTime === null) {
+      if (slot.doseId !== null || slot.minutes === null) {
         continue;
       }
       // Slots are in slot order, so a strict `<` keeps the earlier on a tie.
-      const distance = Math.abs(minutesOfDay(slot.plannedLocalTime) - doseMinutes);
+      const distance = Math.abs(slot.minutes - doseMinutes);
       if (distance < targetDistance) {
         target = slot;
         targetDistance = distance;
       }
     }
     target ??=
-      slots.find((slot) => slot.doseId === null && slot.plannedLocalTime === null) ?? null;
+      slots.find((slot) => slot.doseId === null && slot.minutes === null) ?? null;
     if (target === null) {
       extraCount += 1;
     } else {
@@ -743,7 +785,7 @@ function dayStatusFor(
 
   const plannedCount = slots.length;
   const loggedCount = slots.filter((slot) => slot.doseId !== null).length;
-  const fills = slots.map(({ position: _position, ...fill }) => fill);
+  const fills = slots.map(({ position: _position, minutes: _minutes, ...fill }) => fill);
   const counts = { plannedCount, loggedCount, extraCount, fills };
 
   if (plannedCount > 0) {
@@ -776,21 +818,28 @@ function dayStatusFor(
 }
 
 function compareSlots(left: Slot, right: Slot): number {
-  if (left.plannedLocalTime !== right.plannedLocalTime) {
-    if (left.plannedLocalTime === null) {
+  if (left.minutes !== right.minutes) {
+    if (left.minutes === null) {
       return 1;
     }
-    if (right.plannedLocalTime === null) {
+    if (right.minutes === null) {
       return -1;
     }
-    return compareIds(left.plannedLocalTime, right.plannedLocalTime);
+    return left.minutes - right.minutes;
   }
   return compareIds(left.protocolId, right.protocolId) || left.position - right.position;
 }
 
+/**
+ * Minutes after local midnight for an `HH:MM` time. Anything else throws a
+ * RangeError, as the Dart twin's `planLocalTimeMinutes` throws, so the twins
+ * fail alike rather than matching on NaN or comparing "9:05" as a string.
+ */
 function minutesOfDay(localTime: LocalTime): number {
-  const [hours, minutes] = localTime.split(":");
-  return Number(hours) * 60 + Number(minutes);
+  if (!isPlanLocalTime(localTime)) {
+    throw new RangeError(`Not an HH:MM local time: ${localTime}.`);
+  }
+  return Number(localTime.slice(0, 2)) * 60 + Number(localTime.slice(3));
 }
 
 function groupKey(compoundId: string, localDate: LocalDate): string {
@@ -823,6 +872,7 @@ export function dueUnfilled(
   today: LocalDate,
   nowLocalTime: LocalTime
 ): DueUnfilledDose[] {
+  const now = minutesOfDay(nowLocalTime);
   const due: DueUnfilledDose[] = [];
   const todays = dayStatuses
     .filter((dayStatus) => dayStatus.localDate === today)
@@ -832,7 +882,7 @@ export function dueUnfilled(
     for (const fill of fills) {
       if (
         fill.doseId === null &&
-        (fill.plannedLocalTime === null || fill.plannedLocalTime <= nowLocalTime)
+        (fill.plannedLocalTime === null || minutesOfDay(fill.plannedLocalTime) <= now)
       ) {
         due.push({
           compoundId: dayStatus.compoundId,

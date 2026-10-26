@@ -15,9 +15,11 @@
 /// the core's own values use the Agent API's camelCase. A decoder throws a
 /// [FormatException] for any `v` other than 1, any unknown `kind`, and any
 /// value of the wrong type, a date that is not a real `YYYY-MM-DD` date, or a
-/// time that is not `HH:MM` in 00:00-23:59. Range checks (how many times, how
-/// long a cycle) are validation's job (`protocol_plan_validation.dart`), not
-/// the decoder's.
+/// time that is not `HH:MM` in 00:00-23:59, exactly as the TypeScript twin's
+/// decoders do. A whole number reads as an integer however it was written
+/// (`2.0` is 2), because TypeScript's JSON.parse cannot tell them apart.
+/// Range checks (how many times, how long a cycle) are validation's job
+/// (`protocol_plan_validation.dart`), not the decoder's.
 library;
 
 import 'protocols.dart';
@@ -111,8 +113,13 @@ class EveryNDaysScheduleDays extends ScheduleDays {
   /// A date before the anchor counts backwards from it: Dart's `%` is never
   /// negative for a positive divisor, so day −3 of an every-3-days rule is
   /// planned just like day 3.
+  ///
+  /// An [n] below 1, which validation rejects, throws a [RangeError] here
+  /// rather than planning on a meaningless modulo, as the TypeScript twin
+  /// does.
   @override
-  bool includes(ProtocolDayDate date) => date.daysBetween(anchor) % n == 0;
+  bool includes(ProtocolDayDate date) =>
+      date.daysBetween(anchor) % _planPeriod(n) == 0;
 
   @override
   Map<String, Object?> toJson() => <String, Object?>{
@@ -237,7 +244,7 @@ class ProtocolCycle {
   /// Whether [date] falls in an on-period. A Pause never shifts this: the
   /// anchor stays where it is (CUJ 5).
   bool isOn(ProtocolDayDate date) {
-    return date.daysBetween(anchor) % (onDays + offDays) < onDays;
+    return date.daysBetween(anchor) % _planPeriod(onDays + offDays) < onDays;
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -352,7 +359,7 @@ class ScheduleVersion {
         'id': id,
         'effectiveFrom': effectiveFrom.storageValue,
         'rule': rule.toJson(),
-        ..._amountJson(amountValue, amountEntered, unit, route),
+        ...planAmountJson(amountValue, amountEntered, unit, route),
       };
 }
 
@@ -489,7 +496,7 @@ class PlannedDose {
 
   Map<String, Object?> toJson() => <String, Object?>{
         'localTime': localTime,
-        ..._amountJson(amountValue, amountEntered, unit, route),
+        ...planAmountJson(amountValue, amountEntered, unit, route),
       };
 }
 
@@ -653,7 +660,7 @@ class PlanSlotFill {
         'slot': slot,
         'protocolId': protocolId,
         'plannedLocalTime': plannedLocalTime,
-        ..._amountJson(amountValue, amountEntered, unit, route),
+        ...planAmountJson(amountValue, amountEntered, unit, route),
         'doseId': doseId,
       };
 }
@@ -713,7 +720,9 @@ class DayStatus {
       };
 }
 
-Map<String, Object?> _amountJson(
+/// The planned amount's wire keys, shared by every type that carries one
+/// (versions, planned doses, slot fills and "Log all planned" rows).
+Map<String, Object?> planAmountJson(
   double? amountValue,
   String? amountEntered,
   DoseUnit? unit,
@@ -727,9 +736,17 @@ Map<String, Object?> _amountJson(
   };
 }
 
+/// [period] when it is at least 1 day; a modulo by anything less throws.
+int _planPeriod(int period) {
+  if (period < 1) {
+    throw RangeError.value(period, 'period', 'A plan period is at least 1 day');
+  }
+  return period;
+}
+
 void _requireVersion(Map<String, Object?> map) {
   final version = map['v'];
-  if (version is! int || version != protocolPlanJsonVersion) {
+  if (_wholeNumber(version) != protocolPlanJsonVersion) {
     throw FormatException('Unsupported plan JSON version.', version);
   }
 }
@@ -780,10 +797,23 @@ bool _bool(Object? value, String field) {
 }
 
 int _int(Object? value, String field) {
+  final whole = _wholeNumber(value);
+  if (whole != null) {
+    return whole;
+  }
+  throw FormatException('Expected a $field integer.', value);
+}
+
+/// [value] as an integer when it is a finite whole number, an `int` or a
+/// `double` such as 2.0, else null.
+int? _wholeNumber(Object? value) {
   if (value is int) {
     return value;
   }
-  throw FormatException('Expected a $field integer.', value);
+  if (value is double && value.isFinite && value == value.truncateToDouble()) {
+    return value.toInt();
+  }
+  return null;
 }
 
 double? _nullableDouble(Object? value, String field) {
@@ -822,28 +852,20 @@ List<String> _timeList(Object? value) {
   return _list(value, 'times').map((item) => _time(item, 'time')).toList();
 }
 
-DoseUnit? _nullableUnit(Object? value) {
-  if (value == null) {
-    return null;
-  }
-  final name = _string(value, 'unit');
-  for (final unit in DoseUnit.values) {
-    if (unit.name == name) {
-      return unit;
-    }
-  }
-  throw FormatException('Dose unit is not in the curated registry.', name);
-}
+DoseUnit? _nullableUnit(Object? value) => value == null
+    ? null
+    : _byWireName<DoseUnit>(
+        DoseUnit.values,
+        (unit) => unit.name,
+        _string(value, 'unit'),
+        'Dose unit',
+      );
 
-DoseRoute? _nullableRoute(Object? value) {
-  if (value == null) {
-    return null;
-  }
-  final name = _string(value, 'route');
-  for (final route in DoseRoute.values) {
-    if (route.name == name) {
-      return route;
-    }
-  }
-  throw FormatException('Dose route is not in the curated registry.', name);
-}
+DoseRoute? _nullableRoute(Object? value) => value == null
+    ? null
+    : _byWireName<DoseRoute>(
+        DoseRoute.values,
+        (route) => route.name,
+        _string(value, 'route'),
+        'Dose route',
+      );

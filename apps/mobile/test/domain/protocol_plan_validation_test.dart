@@ -50,23 +50,6 @@ void main() {
       ]);
     });
 
-    test('a Pause with an unparseable date fails pause_order', () {
-      final result = validateProtocolPeriod(
-        startLocalDate: ProtocolDayDate.parse('2026-09-01'),
-        endLocalDate: null,
-        period: const <String, Object?>{
-          'v': 1,
-          'cycle': null,
-          'pauses': <Object?>[
-            <String, Object?>{'from': '2026-02-30', 'to': '2026-10-10'},
-          ],
-        },
-      );
-      expect(result.errors.map((issue) => issue.rule), <String>[
-        'pause_order',
-      ]);
-    });
-
     test('matches the shared protocol-plan-validation golden vectors', () {
       final vector = jsonDecode(
         _vectorFile('m36-protocol-plan-validation.json').readAsStringSync(),

@@ -21,7 +21,7 @@ import {
 } from "./agent-validation.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
-import { localDateEpochDay } from "./protocol-plan.js";
+import { MS_PER_DAY, epochDay } from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import {
   COMPOUNDS_SYNC_ENTITY,
@@ -1718,15 +1718,13 @@ export function effectBoundsFromLocalDates(
   endLocalDate: string | null | undefined,
   timezoneOffsetMinutes: number
 ): { startDate: Date; endDate: Date | null } {
-  const localMidnight = (localDate: string, addDays: number) => {
-    const epochDay = localDateEpochDay(localDate);
-    if (epochDay === null) {
-      throw new RangeError(`Not a local date: ${localDate}.`);
-    }
-    return new Date(
-      (epochDay + addDays) * 24 * 60 * 60 * 1000 - timezoneOffsetMinutes * 60 * 1000
-    );
-  };
+  // The Dart twin takes an int, so a fractional or non-finite offset is a
+  // caller bug here too.
+  if (!Number.isInteger(timezoneOffsetMinutes)) {
+    throw new RangeError(`Not a whole-minute UTC offset: ${timezoneOffsetMinutes}.`);
+  }
+  const localMidnight = (localDate: string, addDays: number) =>
+    new Date((epochDay(localDate) + addDays) * MS_PER_DAY - timezoneOffsetMinutes * 60_000);
   return {
     startDate: localMidnight(startLocalDate, 0),
     endDate:

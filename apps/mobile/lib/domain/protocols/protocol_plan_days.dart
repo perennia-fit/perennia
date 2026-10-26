@@ -14,6 +14,8 @@
 /// [endDateForDoseCount] is Dart only, because no Agent operation uses it.
 library;
 
+import 'dart:math';
+
 import 'protocol_plan.dart';
 import 'protocols.dart';
 
@@ -37,16 +39,16 @@ List<PlanDay> planDays(
 ) {
   final sortedProtocols = protocols.toList()
     ..sort((a, b) => a.protocolId.compareTo(b.protocolId));
+  final compoundIdsByProtocol = [
+    for (final protocol in sortedProtocols)
+      protocol.members.map((member) => member.compoundId).toSet().toList()
+        ..sort(),
+  ];
   final days = <PlanDay>[];
   for (var date = from; date.compareTo(to) <= 0; date = date.addDays(1)) {
-    for (final protocol in sortedProtocols) {
-      final compoundIds = protocol.members
-          .map((member) => member.compoundId)
-          .toSet()
-          .toList()
-        ..sort();
-      for (final compoundId in compoundIds) {
-        days.add(_planDay(protocol, compoundId, date));
+    for (var index = 0; index < sortedProtocols.length; index += 1) {
+      for (final compoundId in compoundIdsByProtocol[index]) {
+        days.add(_planDay(sortedProtocols[index], compoundId, date));
       }
     }
   }
@@ -393,10 +395,7 @@ class DueUnfilledDose {
         'compoundId': compoundId,
         'slot': slot,
         'protocolId': protocolId,
-        'amountValue': amountValue,
-        'amountEntered': amountEntered,
-        'unit': unit?.name,
-        'route': route?.name,
+        ...planAmountJson(amountValue, amountEntered, unit, route),
       };
 }
 
@@ -448,8 +447,9 @@ const int maxDoseCountForEndDate = 1000;
 /// 08:00 and 20:00 reaches 20 doses on day 10. The Protocol's end date sets
 /// nothing here; this computes it.
 ///
-/// Returns null ("unavailable") for an `as_needed` or `unscheduled` rule, and
-/// for a rule whose days never fall on an on-cycle day. Throws a
+/// Returns null ("unavailable") for an `as_needed` or `unscheduled` rule, for
+/// a rule whose days never fall on an on-cycle day, and when the dose would
+/// fall after 9999-12-31, the last date a `YYYY-MM-DD` value holds. Throws a
 /// [RangeError] when [doseCount] is outside 1-1000.
 ProtocolDayDate? endDateForDoseCount({
   required ProtocolDayDate startLocalDate,
@@ -471,65 +471,89 @@ ProtocolDayDate? endDateForDoseCount({
   if (days == null || perDay <= 0) {
     return null;
   }
-
-  int dosesOn(ProtocolDayDate date) {
-    if (period != null && period.isPaused(date)) {
-      return 0;
-    }
-    final cycle = period?.cycle;
-    if (cycle != null && !cycle.isOn(date)) {
-      return 0;
-    }
-    return days.includes(date) ? perDay : 0;
-  }
-
-  // Walk day by day through the Pauses. After the last one, which day plans
-  // what repeats every `repeatDays`, so whole repeats are skipped at once
-  // instead of walked (an every-365-days rule and a long cycle could
-  // otherwise take millions of steps).
-  var remaining = doseCount;
-  var date = startLocalDate;
-  final pauses = period?.pauses ?? const <ProtocolPause>[];
-  final lastPauseEnd = pauses.isEmpty
-      ? null
-      : pauses
-          .map((pause) => pause.to)
-          .reduce((a, b) => a.compareTo(b) >= 0 ? a : b);
-  if (lastPauseEnd != null) {
-    while (date.compareTo(lastPauseEnd) <= 0) {
-      remaining -= dosesOn(date);
-      if (remaining <= 0) {
-        return date;
-      }
-      date = date.addDays(1);
-    }
-  }
-
   final cycle = period?.cycle;
-  final repeatDays = _lcm(
-    switch (days) {
-      DailyScheduleDays() => 1,
-      WeekdayScheduleDays() => 7,
-      EveryNDaysScheduleDays() => days.n,
-    },
-    cycle == null ? 1 : cycle.onDays + cycle.offDays,
-  );
+  final rulePeriod = switch (days) {
+    DailyScheduleDays() => 1,
+    WeekdayScheduleDays() => 7,
+    EveryNDaysScheduleDays() => days.n,
+  };
+  final cycleLength = cycle == null ? 1 : cycle.onDays + cycle.offDays;
+  if (rulePeriod < 1 || cycleLength < 1) {
+    throw RangeError('A plan period is at least 1 day.');
+  }
+
+  // Days are counted as offsets from the start. Ignoring Pauses, which day
+  // plans what repeats every `repeatDays`, so whole repeats are skipped
+  // rather than walked, and only the rule's own days are visited: every N
+  // days for an every-N rule, else every day. An every-365-days rule on a
+  // long cycle repeats only every few million days, yet visits a few
+  // thousand rule days per repeat.
+  final repeatDays = _lcm(rulePeriod, cycleLength);
+  final stride = days is EveryNDaysScheduleDays ? days.n : 1;
+  final anchorOffset = days is EveryNDaysScheduleDays
+      ? days.anchor.daysBetween(startLocalDate)
+      : 0;
+  int firstRuleDay(int day) => day + (anchorOffset - day) % stride;
+  bool plansOn(int day) {
+    final date = startLocalDate.addDays(day);
+    return days.includes(date) && (cycle == null || cycle.isOn(date));
+  }
+
   var perRepeat = 0;
-  for (var offset = 0; offset < repeatDays; offset += 1) {
-    perRepeat += dosesOn(date.addDays(offset));
+  for (var day = firstRuleDay(0); day < repeatDays; day += stride) {
+    if (plansOn(day)) {
+      perRepeat += perDay;
+    }
   }
   if (perRepeat == 0) {
     return null;
   }
-  final wholeRepeats = (remaining - 1) ~/ perRepeat;
-  date = date.addDays(wholeRepeats * repeatDays);
-  remaining -= wholeRepeats * perRepeat;
+
+  // Walk the gaps between Pauses: step over each Pause at once, skip whole
+  // repeats inside a gap, then visit the rule's days to the gap's end.
+  final lastDay = const ProtocolDayDate(year: 9999, month: 12, day: 31)
+      .daysBetween(startLocalDate);
+  final pauses = [
+    for (final pause in period?.pauses ?? const <ProtocolPause>[])
+      (
+        from: pause.from.daysBetween(startLocalDate),
+        to: pause.to.daysBetween(startLocalDate),
+      ),
+  ]..sort((a, b) => a.from.compareTo(b.from));
+  var remaining = doseCount;
+  var day = 0;
+  var nextPause = 0;
   while (true) {
-    remaining -= dosesOn(date);
-    if (remaining <= 0) {
-      return date;
+    var gapEnd = lastDay;
+    while (nextPause < pauses.length) {
+      final pause = pauses[nextPause];
+      if (pause.from > day) {
+        gapEnd = min(lastDay, pause.from - 1);
+        break;
+      }
+      day = max(day, pause.to + 1);
+      nextPause += 1;
     }
-    date = date.addDays(1);
+    if (day > lastDay) {
+      return null;
+    }
+    final repeats = min(
+      (remaining - 1) ~/ perRepeat,
+      (gapEnd - day + 1) ~/ repeatDays,
+    );
+    day += repeats * repeatDays;
+    remaining -= repeats * perRepeat;
+    for (var ruleDay = firstRuleDay(day);
+        ruleDay <= gapEnd;
+        ruleDay += stride) {
+      if (plansOn(ruleDay)) {
+        remaining -= perDay;
+        if (remaining <= 0) {
+          return startLocalDate.addDays(ruleDay);
+        }
+      }
+    }
+    day = gapEnd + 1;
   }
 }
 

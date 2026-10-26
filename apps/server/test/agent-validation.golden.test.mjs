@@ -7,8 +7,6 @@ import {
   PLAN_VALIDATION_LIMITS,
   PROTOCOL_PLAN_VALIDATION_LIMITS,
   SETTINGS_VALIDATION_LIMITS,
-  decodeProtocolPeriod,
-  decodeScheduleRule,
   validateAgentDose,
   validateAgentFoodEntry,
   validateAgentNutritionGoalTargets,
@@ -193,12 +191,13 @@ function validatePlanVectorCase(vectorCase) {
   throw new Error(`Unknown plan validator: ${String(vectorCase.validator)}.`);
 }
 
-// Rules and periods reach the validators decoded, as stored and Agent-written
-// values do; the codecs check shape, the validators check values.
+// Rules and periods reach the validators as stored JSON, as they reach the
+// Dart twin, so a value the codecs would reject (a time of "9:00", a count of
+// 2.5) is still judged and reported under its check id.
 function validateProtocolPlanVectorCase(vectorCase) {
   const { input } = vectorCase;
   if (vectorCase.validator === "schedule_rule") {
-    return validateAgentScheduleRule(decodeScheduleRule(input.rule), {
+    return validateAgentScheduleRule(input.rule, {
       amountValue: input.amountValue,
       amountEntered: input.amountEntered,
       unit: input.unit,
@@ -209,7 +208,7 @@ function validateProtocolPlanVectorCase(vectorCase) {
     return validateAgentProtocolPeriod({
       startLocalDate: input.startLocalDate,
       endLocalDate: input.endLocalDate,
-      period: decodeProtocolPeriod(input.period)
+      period: input.period
     });
   }
   throw new Error(`Unknown protocol plan validator: ${String(vectorCase.validator)}.`);

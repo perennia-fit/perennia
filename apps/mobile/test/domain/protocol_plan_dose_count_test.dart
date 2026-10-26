@@ -213,6 +213,83 @@ void main() {
       expect(endDate('2026-09-01', rule, 5, period: period), isNull);
     });
 
+    test('a rule that is never on is unavailable however far a Pause reaches',
+        () {
+      // On Tuesdays only (anchored on Tuesday 2026-01-06), but the rule plans
+      // Mondays; the Pause near the last date must not be walked day by day.
+      final period = ProtocolPeriod(
+        cycle: ProtocolCycle(
+          onDays: 1,
+          offDays: 6,
+          anchor: date('2026-01-06'),
+          anchorIsDefault: false,
+        ),
+        pauses: [
+          ProtocolPause(from: date('9999-12-30'), to: date('9999-12-31')),
+        ],
+      );
+      final rule = timed(['09:00'], days: WeekdayScheduleDays(const [1]));
+      expect(endDate('2026-01-01', rule, 20, period: period), isNull);
+    });
+
+    test('an every-365-days rule on a decade-long cycle skips its off years',
+        () {
+      // 3650 on / 3649 off repeats with every 365 days only every 2,664,135
+      // days. Doses 1-10 fall in the first on-period (day 0 to 3285), and
+      // doses 11-20 in the second (day 7300 to 10585). Checked by brute force.
+      final period = ProtocolPeriod(
+        cycle: ProtocolCycle(
+          onDays: 3650,
+          offDays: 3649,
+          anchor: date('2026-01-01'),
+          anchorIsDefault: true,
+        ),
+      );
+      final rule = timed(
+        ['09:00'],
+        days: EveryNDaysScheduleDays(
+          n: 365,
+          anchor: date('2026-01-01'),
+          anchorIsDefault: true,
+        ),
+      );
+      expect(
+        endDate('2026-01-01', rule, 11, period: period),
+        date('2045-12-27'),
+      );
+      expect(
+        endDate('2026-01-01', rule, 20, period: period),
+        date('2054-12-25'),
+      );
+      expect(
+        endDate('2026-01-01', rule, 1000, period: period),
+        date('4013-09-06'),
+      );
+    });
+
+    test('a dose after 9999-12-31 is unavailable', () {
+      // One dose every 3650 days: the 1000th would fall near year 12000.
+      final period = ProtocolPeriod(
+        cycle: ProtocolCycle(
+          onDays: 1,
+          offDays: 3649,
+          anchor: date('2026-01-01'),
+          anchorIsDefault: true,
+        ),
+      );
+      final rule = timed(
+        ['09:00'],
+        days: EveryNDaysScheduleDays(
+          n: 365,
+          anchor: date('2026-01-01'),
+          anchorIsDefault: true,
+        ),
+      );
+      expect(
+          endDate('2026-01-01', rule, 2, period: period), date('2035-12-30'));
+      expect(endDate('2026-01-01', rule, 1000, period: period), isNull);
+    });
+
     test('a doseCount outside 1-1000 is rejected', () {
       expect(
         () => endDate('2026-10-26', timed(['21:00']), 0),
