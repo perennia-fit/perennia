@@ -1,7 +1,7 @@
 # Protocol Schedules and Reminders
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review
+*   **Status:** Approved
 *   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review)
 
 --------------------------------------------------------------------------------
