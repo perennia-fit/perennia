@@ -179,9 +179,8 @@ names used in this spec and in code only.
 *   **A per-Dose "skip today" record.** A planned dose that wasn't logged reads
     "Not logged".
 *   **CSV export of Protocols data.** The exclusion stays as it is.
-*   **Cancelling reminders on other devices through Sync Nudge.** The server
-    already sends Sync Nudges, but the device side that receives them isn't
-    wired up. See Alternative O.
+*   **Cancelling reminders on other devices through Sync Nudge** (Alternative
+    O).
 *   **A cycle-aware Effect view.** In v1, the Effect view counts off-cycle and
     paused days as "during" a Protocol, and says so on screen (D6).
 *   **Exact Android alarms.** v1 uses inexact delivery (D5).
@@ -337,7 +336,7 @@ lives → D4; the notification stack → D5.
    │ Schedule Versions (per member)       │──┼▶   TS:   apps/server/src/         │
    │   effectiveFrom, rule, amount        │  ││                                  │
    │ Dose                                 │──┘│ planDays(protocols, from, to)    │
-   │   localDate, timezoneOffsetMinutes        │   │ dayStatuses(planDays, doses,     │
+   │   localDate, timezoneOffsetMinutes   │   │ dayStatuses(planDays, doses,     │
    └──────────────────────────────────────┘   │             today)               │
                                               │ dueUnfilled(dayStatuses, now)    │
                                               └───────────┬──────────────────────┘
@@ -370,20 +369,38 @@ own id. No version is ever edited in place.
     offline on the same day. Then the one with the largest id wins. Ids are
     UUIDv7, which sort by creation time, so that is the latest edit, and every
     device and the server agree.
-*   **When a version starts.** The first version of a member applies from the
-    Protocol's start date, so a Protocol created today with a start date in the
-    past plans those past days. Every later edit applies from the day it is
-    made. An edit takes effect that same day (CUJ 6).
-*   **Removing a Protocol Member** archives the member row, as today, by the
-    app or by an Agent. That archive is the one record of the removal. Days
-    before its local archive date still compare against the plan that applied
-    then. Days from it read "Not planned" with the reason `removed`.
-*   **Re-adding a Compound** creates a new member row, as today. Within a
-    Protocol, the core pools the versions of every member row with the same
-    Compound, so the history continues.
-*   **Archived Protocols** keep their versions. Past days still count an
-    archived Protocol and its archived members up to the local date they were
-    archived.
+*   **When a version starts.**
+    *   A member created together with its Protocol, or while the Protocol's
+        start is still in the future, gets a first version dated from the
+        Protocol's start. So a Protocol created today with a start date in the
+        past plans those past days.
+    *   A member added to a Protocol that has already started gets a first
+        version dated today. So adding creatine to a months-old "Daily"
+        Protocol doesn't turn its past days into "Not logged".
+    *   Every later edit is dated `max(today, the latest existing
+        effectiveFrom for that member)`, so an edit can never land behind an
+        existing version and be hidden by it.
+    *   An edit takes effect that same day (CUJ 6).
+*   **Moving the start date** re-dates any version that was dated from the
+    old start to the new one. Versions dated from an edit keep their dates.
+    So no date inside the bounds is left without a version.
+*   **Removing a Protocol Member** archives the member row, as today. That
+    archive is the one record of the removal. The archive stores its local
+    date, `archived_on`, frozen when it is written, as a Dose freezes its
+    `localDate`. So no reader converts a timestamp, and travel never moves it.
+    *   The archive day itself is still planned, the same as ending a Protocol
+        early: a Dose logged that morning still counts.
+    *   From the next day on, the member reads "Not planned" with the reason
+        `removed`.
+*   **Re-adding a Compound** creates a new member row, as today, with a first
+    version dated today. Each member row covers the dates from its first
+    version through its `archived_on`. Within a Protocol, the core takes, for
+    each date, the member row of that Compound that covers it. So a removal
+    and a later re-add read as one continuous history with a gap of "removed"
+    days.
+*   **Archived Protocols** keep their versions and freeze an `archived_on`
+    the same way. Past days still count an archived Protocol up to and
+    including that date.
 
 Versioning matters because a Schedule edit changes what was planned, and so
 changes past Day Statuses. Changing daily to Monday, Wednesday and Friday would
@@ -427,10 +444,10 @@ the Activity Log, as for any row. See Risks.
     Doses; this is accepted and listed in Risks. On Agent Dose writes,
     `timezoneOffsetMinutes` is optional. When it is absent and `timezone` is a
     valid IANA zone name such as `America/Sao_Paulo`, the server derives it from
-    `tookAt`. The server already handles IANA zones in two places
-    (`localDateInTimezone` in `agent-plan-materialize.ts`, and the formatter
-    in `agent-workout-batch-write.ts`). Phase 2 moves that handling into one
-    shared helper used by all three, rather than copying it a third time.
+    `tookAt`. The server already has two copies of a `localDateInTimezone`
+    helper (in `agent-plan-materialize.ts` and `agent-workout-batch-write.ts`).
+    Phase 2 moves them into one shared helper used by all three callers,
+    rather than copying it a third time.
     Otherwise it stays null.
 *   **Bounds into Effect.** The Effect view's math is unchanged: it works on
     instants, with half-open windows. A new pure function in both languages,
@@ -461,8 +478,7 @@ new typed columns, plus one JSON column each for the period and the rule. No
 new synced entity type is added.
 
 **Protocol plans entered before this change are cleared once, and re-entered.**
-Nothing has shipped. The only data in that shape is developer and generated
-test data, and converting it would need permanent compatibility code for users
+Nothing has shipped. The only data in that shape is developer data, and converting it would need permanent compatibility code for users
 who don't exist (Alternative P).
 
 *   **What is cleared.** The device's Drift migration and a server migration
@@ -475,11 +491,13 @@ who don't exist (Alternative P).
 *   **Older archives.** A portable archive written before the change imports
     its Compounds and Doses, and skips its Protocol plan rows.
 *   **Activity Log.** An entry recorded before the change for one of the four
-    tables can't be reverted: reverting would write a row in the old shape.
-    The revert path refuses it, with a message.
-*   **Re-entering.** The developer test-data generator gains the motivating
-    stack as three Protocols (Phase 3), so plans for development are one
-    command away.
+    tables can't be reverted. Undo already refuses an entry whose row no
+    longer exists (the `missing` conflict in the app, `skipped_missing` on the
+    server), so no new guard is needed.
+*   **Re-entering.** The developer test-data generator today creates no
+    Compounds, Protocols or Doses. It gains the motivating stack, with its
+    Compounds and four weeks of Doses, in the same phase as the clear
+    (Phase 2), so plans for development are one command away.
 
 There is no read-time conversion and there are no legacy columns. Every
 Protocol has local-date bounds, and every Schedule Version has a rule and an
@@ -526,7 +544,9 @@ How a date is decided for one Protocol and Protocol Member, in order:
 1.  outside the Protocol's bounds → `outside`;
 2.  paused → `paused`;
 3.  in a cycle's off-period → `off_cycle`;
-4.  the Protocol Member was archived on or before the date → `removed`;
+4.  the Protocol was archived before the date, or no member row of the
+    Compound covers the date (it was removed earlier, or not yet added) →
+    `removed`;
 5.  otherwise the member's Schedule Version for that date decides:
     *   `as_needed` → `as_needed`;
     *   a rule whose days exclude the date → `not_scheduled_today`;
@@ -550,11 +570,10 @@ How a date is decided for one Protocol and Protocol Member, in order:
     permission and a Play policy declaration, so they are a follow-up. The
     plugin's receivers are registered for boot and app updates.
 *   **One notification per planned time.** Every planned dose due at that
-    minute shares it. A reminder's id is the negative of (1 + the 32-bit FNV-1a
-    hash of `"protocolReminder:<date>T<time>"`, masked to 30 bits). Ids are
-    deterministic, so re-running the reconciler replaces rather than
-    duplicates. They are negative, and the timer's ids are non-negative, so the
-    two never collide.
+    minute shares it. Each reminder's id is derived from its date and time
+    (scheme in file 41), so re-running the reconciler replaces rather than
+    duplicates. Reminder ids are negative, and the timer's ids are
+    non-negative, so the two never collide.
 *   **Text is always generic:** title "Supplements", body "Planned for
     9:00 AM". This holds whether or not the lock is on, so turning the lock on
     later can't leave named reminders queued. Android notifications are
@@ -587,7 +606,10 @@ How a date is decided for one Protocol and Protocol Member, in order:
     pending, what fired and what was tapped is never synced and never written
     to the Activity Log.
 *   **Permission** is requested when the user first turns reminders on for a
-    Protocol, never at onboarding (CUJ 10). On a device where any Protocol has
+    Protocol, never at onboarding (CUJ 10). Reminders reuse the rest timer's
+    existing request, `TimerBackgroundScheduler.requestPermissionIfNeeded()`,
+    and its `TimerBackgroundPermissionStatus`: both ask for the same system
+    notification permission, so there is one permission path, not two. On a device where any Protocol has
     reminders on and the device switch is on, but permission was never granted,
     the Protocol Day view shows a banner that requests it (CUJ 12).
 *   **Tap:** the payload carries only `{kind: "protocolReminder", localDate}`.
@@ -693,8 +715,8 @@ amounts.
 
 *   **Naming.** Agent fields are camelCase, like the rest of the Agent API:
     `startLocalDate`, `endLocalDate`, `period`, `remindersEnabled`,
-    `effectiveFrom`, `rule`, `timezoneOffsetMinutes`. Snake_case stays only in Drift
-    columns and sync payloads.
+    `effectiveFrom`, `rule`, `timezoneOffsetMinutes`, `archivedOn`, `today`.
+    Snake_case stays only in Drift columns and sync payloads.
 *   **Same release as the app.**
     *   Protocol and Schedule reads and writes carry the new fields, validated
         by the shared two-tier module (D7).
@@ -702,11 +724,16 @@ amounts.
         includes it is rejected.
     *   Agent Schedule writes carry `today`, the user's local date, as the Day
         Status read does. The server assigns `effectiveFrom` exactly as the
-        app does: the Protocol's start for a member's first version, otherwise
-        `today`. A write can't set `effectiveFrom` itself, can't reuse an
-        existing version id, and can't archive a version, so versions are
-        insert-only for Agents as they are for the app. Removing a Compound
-        from a Protocol is the existing member archive.
+        app does (D1). A write can't set `effectiveFrom` itself, can't reuse
+        an existing version id, and can't archive a version, so versions are
+        insert-only for Agents as they are for the app.
+    *   Agent archives of a Protocol Member or a Protocol also carry `today`.
+        The server stamps `deletedAt` with the current time, ignoring any
+        supplied value, and sets `archivedOn` to `today`. So an Agent can't
+        backdate a removal, just as the app can't.
+    *   `today` must be within one day of the server's UTC date, which every
+        real timezone satisfies; otherwise the write is rejected. This keeps
+        an Agent from writing something a person using the app could not.
     *   Dose writes gain an optional `timezoneOffsetMinutes` (D2).
     *   The Effect read gains an optional `timezoneOffsetMinutes` (D2).
 *   **Later stage.** Two new reads, mirrored as MCP tools:
@@ -733,15 +760,22 @@ amounts.
 
 ### D7. Validation
 
-Plan values join the shared two-tier validation module. Dart adds
-`apps/mobile/lib/domain/protocols/protocol_plan_validation.dart`, following the
-existing plan-validation precedent
-(`apps/mobile/lib/domain/training/plan_validation.dart`). TypeScript extends
-`apps/server/src/agent-validation.ts`, where that precedent's twin also lives.
-Results use the Dose validator's issue shape (`DoseValidationIssue` in Dart,
-`AgentDoseValidationIssueSchema` in TypeScript): errors and warnings whose
-`rule` field is the stable id of the check below. The same golden vectors run
-in Dart and TypeScript.
+Plan values join the shared two-tier validation module.
+
+*   **Where the checks live.** Dart adds
+    `apps/mobile/lib/domain/protocols/protocol_plan_validation.dart`, following
+    the file layout of `apps/mobile/lib/domain/training/plan_validation.dart`.
+    TypeScript extends `apps/server/src/agent-validation.ts`, where that file's
+    twin also lives.
+*   **Limits.** The numeric limits below live in a `ProtocolPlanValidationLimits`
+    class in Dart and a `PROTOCOL_PLAN_VALIDATION_LIMITS` constant in
+    TypeScript. The vector file carries a matching `limits` block, and both
+    runners assert it, as the precedent's runners do.
+*   **Result type.** Results use the Dose validator's issue type, because it
+    is the Protocols domain's own: `DoseValidationIssue` in Dart and
+    `AgentDoseValidationIssueSchema` in TypeScript. That gives errors and
+    warnings whose `rule` field is the stable id of a check below.
+*   **Vectors.** The same golden vectors run in Dart and TypeScript.
 
 | Check id | Field | Condition | Tier |
 | :------- | :---- | :-------- | :--- |
@@ -762,8 +796,8 @@ in Dart and TypeScript.
 
 Two checks sit outside the shared module, because only one side has what they
 need. The "N doses" helper rejects N outside 1-1000; it is Dart only. Agent
-Schedule writes must carry a valid `today`; that is the server's write path
-(D6).
+writes that carry `today` must have it within one day of the server's UTC
+date; that is the server's write path (D6).
 
 ## Alternatives Considered
 
@@ -950,7 +984,7 @@ Schedule writes must carry a valid `today`; that is the server's write path
     Old frequencies such as "twice daily" have no times, so converted plans
     would still need editing.
 *   **Reason for Rejection**: Nothing has shipped, so the only rows in the old
-    shape are developer and generated data. Clearing them once costs a
+    shape are developer data. Clearing them once costs a
     re-entry, which the test-data generator makes one command. Converting them
     costs code kept for users who don't exist.
 
@@ -1061,9 +1095,14 @@ Schedule writes must carry a valid `today`; that is the server's write path
 These fix problems that exist independently of this feature. Each lands as its
 own pull request.
 
+Separately, and not a prerequisite: today an Agent can write a Schedule
+frequency such as "daily" that makes the app throw when it reads the Schedule.
+Until Phase 2 retires `frequency`, a small independent fix closes this. The
+app's reader stops throwing on an unknown frequency, and the Agent API rejects
+one. No golden vectors, since Phase 2 deletes the field.
+
 | # | Fix | Done when | Status |
 | :- | :-- | :-------- | :----- |
-| P1 | Agent Schedule writes are validated against the app's registries. An independent fix for a live crash, not a prerequisite: today a frequency such as "daily" makes the app throw when it reads the Schedule. Phase 2 retires `frequency` and clears these rows, so P1 matters only until Phase 2 lands. | The Agent API rejects a frequency, unit or route outside the app's registries, or a missing amount; golden vectors cover it in both languages. | Pending |
 | P2 | Sync pull skips entity types it doesn't recognize, and sets aside malformed rows. | A pull with an unknown entity type, or a malformed known row, skips it, saves the cursor and continues. | Done ([perennia-fit/perennia#34](https://github.com/perennia-fit/perennia/pull/34), [#38](https://github.com/perennia-fit/perennia/pull/38)) |
 | P3 | The Effect window agrees across languages. | `m29-effect-window.json` runs in both suites, and both pass. | Done ([perennia-fit/perennia#36](https://github.com/perennia-fit/perennia/pull/36)) |
 | P4 | CI runs every golden vector in both languages. | A change to `packages/golden-vectors/**` runs both suites. | Done ([perennia-fit/perennia#37](https://github.com/perennia-fit/perennia/pull/37), [#39](https://github.com/perennia-fit/perennia/pull/39)) |
@@ -1085,6 +1124,10 @@ usable. File paths start from the repository root.
 | `end_local_date` | `YYYY-MM-DD`, nullable | Inclusive; replaces the `end_date` instant. Null = ongoing |
 | `period` | JSON, nullable | `{"v":1,"cycle":null \| {"on_days":int,"off_days":int,"anchor":"YYYY-MM-DD"},"pauses":[{"from":"YYYY-MM-DD","to":"YYYY-MM-DD"}]}`. Null = no cycle, no Pauses |
 | `reminders_enabled` | bool, default false | Synced plan data: "remind me about this Protocol" |
+| `archived_on` | `YYYY-MM-DD`, nullable | The local date of the archive, frozen when `deleted_at` is set (D1) |
+
+**`protocol_compounds` row** (a Protocol Member) adds `archived_on`
+(`YYYY-MM-DD`, nullable), frozen the same way.
 
 **`schedules` row = one Schedule Version:**
 
@@ -1109,9 +1152,12 @@ DAYS = {"kind":"daily"}
 logged before this change, and on Agent writes that give neither an offset nor
 an IANA zone).
 
-**Version rules** (D1): every edit inserts a row; a member's first version
-applies from the Protocol's start date, and later edits from today; removing a
-Protocol Member archives the member row; versions are never deleted.
+**Version rules** (D1): every edit inserts a row. A member's first version is
+dated from the Protocol's start when the member is created with the Protocol or
+before its start, and from today otherwise. Later edits are dated `max(today,
+the latest effectiveFrom for that member)`. Moving the start re-dates versions
+that were dated from the old start. Removing a Protocol Member archives the
+member row and freezes its `archived_on`. Versions are never deleted.
 
 ### Shared core API (pure; Dart and TypeScript mirror each other)
 
@@ -1123,9 +1169,10 @@ In Dart, `LocalDate` is the existing `ProtocolDayDate`
 planDays(protocols: PlanProtocol[], from: LocalDate, to: LocalDate) -> PlanDay[]
   PlanProtocol = {protocolId, startLocalDate, endLocalDate?, period?,
                   archivedOn?: LocalDate,
-                  members: [{compoundId, archivedOn?: LocalDate,
+                  members: [{memberId, compoundId, archivedOn?: LocalDate,
                              versions: [{id, effectiveFrom, rule, amount?, unit?, route?}]}]}
-                 (members with the same compoundId are pooled)
+                 (a member row covers its first effectiveFrom through archivedOn;
+                  for each date, the row of that Compound covering it applies)
   PlanDay      = {protocolId, compoundId, localDate,
                   state: "planned" | "not_scheduled_today" | "as_needed" |
                          "removed" | "outside" | "paused" | "off_cycle",
@@ -1150,9 +1197,9 @@ endDateForDoseCount(startLocalDate, rule, period?, count) -> LocalDate | unavail
   (Dart only; D6)
 ```
 
-Callers convert archive timestamps to local dates before calling. No function
-parses an instant or a timezone, except `effectBoundsFromLocalDates`, which
-applies the offset it is given.
+Archive dates arrive already frozen as local dates (`archived_on`). No
+function parses an instant or a timezone, except `effectBoundsFromLocalDates`,
+which applies the offset it is given.
 
 ### Target Files to Create/Modify
 
@@ -1179,8 +1226,9 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
         anchor before the start; a backdated Protocol start; overlapping
         Protocols for one Compound;
     *   **versions and members:** two versions on the same date (the id
-        tie-break); a removed and re-added member; an archived Protocol's past
-        days;
+        tie-break); a Compound added mid-course; a removed and re-added
+        member; a member removed today (still planned today); an archived
+        Protocol's past days, including the archive date;
     *   **statuses:** each `notPlannedReason`.
 
     Top-level `schemaVersion: 1`.
@@ -1188,8 +1236,9 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
 ##### 1a. `packages/golden-vectors/vectors/m36-protocol-plan-validation.json` (Create)
 
 *   **Type / Scope**: Golden vectors, `domain: "protocol-plan-validation"`.
-*   **Proposed Changes**: Every D7 check in the table, passing and failing.
-    Top-level `schemaVersion: 1`.
+*   **Proposed Changes**: Every D7 check in the table, passing and failing,
+    and a top-level `limits` block equal to D7's limits. Top-level
+    `schemaVersion: 1`.
 
 ##### 2. `packages/golden-vectors/vectors/m36-protocol-plan.schema.json` and `m36-protocol-plan-validation.schema.json` (Create)
 
@@ -1221,11 +1270,10 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
 
 ##### 6. `apps/mobile/lib/domain/protocols/protocol_plan_validation.dart` (Create)
 
-*   **Proposed Changes**: `validateScheduleRule` and `validateProtocolPeriod`,
-    implementing the D7 table and returning the Dose validator's issue shape.
-    It follows `apps/mobile/lib/domain/training/plan_validation.dart`, the
-    existing precedent for plan validation with a TypeScript twin in
-    `agent-validation.ts`.
+*   **Proposed Changes**: `validateScheduleRule`, `validateProtocolPeriod` and
+    a `ProtocolPlanValidationLimits` class, implementing the D7 table and
+    returning `DoseValidationIssue` errors and warnings. It follows the layout
+    of `apps/mobile/lib/domain/training/plan_validation.dart`.
 
 ##### 7. `apps/mobile/lib/domain/effect/effect.dart` (Modify)
 
@@ -1235,8 +1283,9 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
 ##### 8. `apps/mobile/test/domain/protocol_plan_golden_test.dart` and `apps/mobile/test/domain/protocol_plan_validation_test.dart` (Create)
 
 *   **Proposed Changes**: The first runs every case in file 1 against files 4,
-    5 and 7. The second runs every case in file 1a against file 6. Each asserts
-    its schema-version constant equals its file's.
+    5 and 7. The second runs every case in file 1a against file 6, and asserts
+    the file's `limits` block equals `ProtocolPlanValidationLimits`. Each
+    asserts its schema-version constant equals its file's.
 
 ##### 8a. `apps/mobile/test/domain/golden_vector_ownership_test.dart` (Modify)
 
@@ -1257,8 +1306,9 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
 
 ##### 11. `apps/server/src/agent-validation.ts` (Modify)
 
-*   **Proposed Changes**: Adds the D7 checks next to `validateAgentDose`, with
-    the same issue shape.
+*   **Proposed Changes**: Adds the D7 checks and a
+    `PROTOCOL_PLAN_VALIDATION_LIMITS` constant next to `validateAgentDose`,
+    with the same issue shape.
 
 ##### 12. `apps/server/src/agent-protocols.ts` (Modify, Phase 1 part)
 
@@ -1270,8 +1320,9 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
 *   **Proposed Changes**:
     *   The new runner runs every case in file 1 against files 10 and 12.
     *   `agent-validation.golden.test.mjs` runs file 1a's cases against file
-        11, and adds `protocol-plan` to `DOMAINS_OWNED_ELSEWHERE`, owned by the
-        new runner.
+        11, asserts its `limits` block equals
+        `PROTOCOL_PLAN_VALIDATION_LIMITS`, and adds `protocol-plan` to
+        `DOMAINS_OWNED_ELSEWHERE`, owned by the new runner.
 
 ##### 14. `apps/server/package.json`, `.github/workflows/ci.yml`, `tools/ci-local.mjs` (Modify)
 
@@ -1294,6 +1345,7 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
     *   Rebuild `protocols` and `schedules` with Drift's `TableMigration` to
         the shapes above. `start_date`, `end_date` and `frequency` are
         dropped.
+    *   Add `protocol_compounds.archived_on`.
     *   Add `doses.timezone_offset_minutes`.
     *   Add an index on `schedules (protocol_compound_id, effective_from)`.
     *   Mark nothing as pending sync. After the rebuild,
@@ -1330,8 +1382,12 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
         *   New `logDoses(List<DoseSnapshotDraft>)` runs one transaction and
             one Batch over the existing private `_logDose`.
     *   **Schedules:** the Schedule reconcile path inserts a version row on
-        every edit, and no longer updates the active Schedule in place.
-        Removing a Protocol Member archives the member row only.
+        every edit, dated by the D1 rules, and no longer updates the active
+        Schedule in place. Moving a Protocol's start re-dates the versions that
+        were dated from the old start.
+    *   **Archives:** archiving a Protocol Member or a Protocol sets
+        `deleted_at` and freezes `archived_on` as the device's local date at
+        that moment.
     *   **Protocols:**
         *   Create and edit write local-date bounds, `period` and
             `reminders_enabled`, validated by file 6.
@@ -1342,14 +1398,6 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
         schedules and doses carry the new fields. An incoming row without
         them is treated as malformed, and the existing quarantine of malformed
         rows sets it aside.
-
-##### 18a. `apps/mobile/lib/features/activity/repositories/activity_feed_repository.dart` and `apps/server/src/agent-activity.ts` (Modify)
-
-*   **Proposed Changes**: Reverting an Activity Log entry for `protocols`,
-    `protocol_compounds`, `schedules` or `protocol_target_outcomes` is refused
-    when its before-image lacks the new shape (no `start_local_date` on a
-    Protocol, no `rule` on a Schedule). The refusal says the entry predates
-    the change (D3).
 
 ##### 19. `apps/mobile/lib/features/protocols/widgets/protocol_screen.dart` (Modify, Phase 2 part)
 
@@ -1367,22 +1415,9 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
         of time pickers), or an untimed count, or "As needed".
     *   **Validation:** rejects and warnings from file 6 show inline, as Dose
         validation does.
-    *   **Strings:** the editor's strings go into
+    *   **Strings:** the editor's strings, and file 28b's Effect notice, go into
         `apps/mobile/lib/l10n/app_en.arb`, and the generated
         `app_localizations*.dart` is regenerated.
-
-##### 20. `apps/mobile/lib/data/repositories/protocol_plan_repository.dart` (Create)
-
-*   **Type / Scope**: Repository reads, laid out like
-    `apps/mobile/lib/data/repositories/routine_up_next_repository.dart`.
-*   **Proposed Changes**: Streams that build `PlanProtocol`s and `PlanDose`s
-    from Drift and run the core:
-    *   `watchPlannedDay(localDate)`;
-    *   `watchConsistency(compoundId, from, to)`;
-    *   `reminderInputs(from, to)` for the reminder reconciler.
-
-    Archived Protocols and members are included, with `archivedOn` set to the
-    local date of `deleted_at` in the device zone.
 
 ##### 21. `apps/mobile/lib/features/sync/repositories/sync_repository.dart` (Modify)
 
@@ -1414,7 +1449,14 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
 *   **Proposed Changes**:
     *   **Protocol and Schedule fields** follow D6's contract changes:
         camelCase; `frequency` rejected; Schedule writes carry `today` and
-        the server assigns `effectiveFrom`; versions are insert-only.
+        the server assigns `effectiveFrom` by the D1 rules; versions are
+        insert-only.
+    *   **Archives:** member and Protocol archives carry `today`. The server
+        stamps `deletedAt` itself, ignoring a supplied value (today it stores
+        it as sent, ~519, ~566, ~1416, ~1430), and sets `archivedOn` to
+        `today`.
+    *   **`today`** on any write is rejected when it is more than one day from
+        the server's UTC date.
     *   **Validation:** every write runs file 11's checks.
     *   **Reads** return the new shape.
     *   **Doses:**
@@ -1429,10 +1471,15 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
 
 ##### 24a. `apps/server/src/timezone.ts` (Create), `apps/server/src/agent-plan-materialize.ts` and `apps/server/src/agent-workout-batch-write.ts` (Modify)
 
-*   **Proposed Changes**: Moves `localDateInTimezone` and the IANA-zone
-    formatter into one module, adds `offsetMinutesInTimezone(instant, zone)`
-    built on the same formatter, and has both existing callers import it. No
-    behavior change for them.
+*   **Proposed Changes**: Moves the two existing `localDateInTimezone`
+    helpers into one module and adds `offsetMinutesInTimezone(instant,
+    zone)` built on the same formatter.
+    *   The shared helper returns `null` for an unknown zone, as the
+        `agent-plan-materialize.ts` copy does today.
+    *   `agent-workout-batch-write.ts` keeps its fallback to the UTC date at
+        its own call site.
+
+    So neither existing caller changes behavior.
 
 ##### 25. `apps/server/test/observability.test.mjs` (Modify)
 
@@ -1471,8 +1518,11 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
     (Modify):
     *   every edit inserts a version, including two edits on the same day;
     *   the first version's date equals the Protocol's start;
-    *   removing a Protocol Member archives it, and days after read `removed`;
-    *   re-adding the member continues its history;
+    *   a Compound added mid-course plans from today, not from the start;
+    *   moving the start re-dates the first version;
+    *   removing a Protocol Member archives it and freezes `archived_on`; that
+        day is still planned and the next reads `removed`;
+    *   re-adding the member continues its history after a gap;
     *   `logDoses` is all-or-nothing;
     *   `timezoneOffsetMinutes` is written;
     *   an incoming row in the old shape is quarantined;
@@ -1482,33 +1532,54 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
     messages; ≥ 48 dp targets.
 *   `apps/mobile/test/data/portable_archive_repository_test.dart` (Modify): a
     schema-60 archive imports its Compounds and Doses and skips its plan rows.
-*   `apps/mobile/test/features/activity/activity_feed_repository_test.dart` and
-    `apps/server/test/agent-activity.test.mjs` (Modify): reverting a
-    pre-change plan entry is refused.
 *   `apps/server/test/agent-protocols.test.mjs` (Modify):
     *   D7 rejects and warnings;
     *   `frequency` rejected;
-    *   `effectiveFrom` assigned from `today`, and a supplied `effectiveFrom`,
-        a reused version id or a version archive rejected;
+    *   `effectiveFrom` assigned by the D1 rules from `today`, and a supplied
+        `effectiveFrom`, a reused version id or a version archive rejected;
+    *   an archive's `deletedAt` stamped by the server, and `archivedOn` set
+        from `today`;
+    *   a `today` more than one day from the server's UTC date rejected;
     *   Dose offset derivation;
     *   the Effect read with and without `timezoneOffsetMinutes`.
+*   `apps/mobile/test/features/protocols/effect_screen_test.dart` (Modify): the
+    notice shows only for a cycle or Pauses.
 *   `apps/server/test/sync-convergence.test.mjs` (Modify): two devices write
     same-day versions offline and converge to the larger id, and a version-1
     request is rejected.
 
-#### Phase 3: the Planned list
+##### 28a. `apps/mobile/tool/test_data/test_data_generator.dart` and `apps/mobile/test/tool/test_data_generator_test.dart` (Modify)
 
-##### 29. `apps/mobile/tool/test_data/test_data_generator.dart` and `apps/mobile/test/tool/test_data_generator_test.dart` (Modify)
-
-*   **Proposed Changes**: The generator adds the motivating stack as three
-    Protocols, written through the app's repositories like the rest of its
-    data:
+*   **Proposed Changes**: A new `includeProtocols` option, following the
+    generator's existing `includeBodyWeight` and `includeNutrition` options.
+    It creates the Compounds and the motivating stack as three Protocols,
+    written through the app's repositories like the rest of its data:
     *   "Daily": TRT and AgeMate at 09:00, creatine at 17:00;
     *   "Skin": GHK-Cu at 21:00, on a 60/30 cycle anchored 60 days back;
     *   "Shoulder": BPC-157 at 21:00, ending in 10 days.
 
-    It also adds four weeks of Doses with some days left unlogged. Its test
-    asserts the three Protocols and the Doses exist.
+    It adds Doses over the generator's existing `weeks` and `endDate` range,
+    with some days left unlogged, and reports their counts in
+    `TestDataSummary`. Its test asserts the Compounds, Protocols and Doses
+    exist.
+
+##### 28b. `apps/mobile/lib/features/protocols/widgets/effect_screen.dart` (Modify)
+
+*   **Proposed Changes**: For a Protocol with a cycle or Pauses, shows
+    "Off-cycle and paused days are counted as during."
+
+#### Phase 3: the Planned list
+
+##### 20. `apps/mobile/lib/data/repositories/protocol_plan_repository.dart` (Create)
+
+*   **Type / Scope**: Repository reads, a `part of 'training_repositories.dart'`
+    laid out like `routine_up_next_repository.dart`. File 18 gains the
+    matching `part 'protocol_plan_repository.dart';` directive.
+*   **Proposed Changes**: Builds `PlanProtocol`s and `PlanDose`s from Drift
+    and runs the core. Archived Protocols and members are included with their
+    frozen `archived_on`. Phase 3 adds `watchPlannedDay(localDate)`. Phase 4
+    adds `watchConsistency(compoundId, from, to)` (file 37), and Phase 5 adds
+    `reminderInputs(from, to)` (file 41), each with its first consumer.
 
 ##### 30. `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart` (Modify)
 
@@ -1522,17 +1593,11 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
     takes the rows from `dueUnfilled` and calls `ProtocolsRepository.logDoses`
     once. Each Dose is tagged with its row's Protocol and timed now.
 
-##### 32. `apps/mobile/lib/features/protocols/widgets/effect_screen.dart` (Modify)
-
-*   **Proposed Changes**: For a Protocol with a cycle or Pauses, shows
-    "Off-cycle and paused days are counted as during."
-
 ##### 33. `apps/mobile/lib/l10n/app_en.arb` and generated `app_localizations*.dart` (Modify/Regenerate)
 
 *   **Proposed Changes**: Strings for:
     *   the Planned list's three row labels;
-    *   the seven Day Status labels and four not-planned reasons;
-    *   the Effect notice.
+    *   the seven Day Status labels and four not-planned reasons.
 
     No string uses a word D6 bans.
 
@@ -1552,8 +1617,6 @@ another TypeScript runner owns, `DOMAINS_OWNED_ELSEWHERE` in
 *   `apps/mobile/test/features/protocols/protocol_plan_reopen_test.dart`
     (Create): the app is killed during "Log all planned". After reopening, the
     Batch is either fully applied or absent, and the Planned list matches.
-*   `apps/mobile/test/features/protocols/effect_screen_test.dart` (Modify): the
-    notice shows only for a cycle or Pauses.
 
 #### Phase 4: the Consistency view
 
