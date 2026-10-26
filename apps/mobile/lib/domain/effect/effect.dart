@@ -25,7 +25,7 @@
 /// dose-response work without formal phases/titration steps (§1.4, §12).
 library;
 
-import '../protocols/protocols.dart' show DoseRecord;
+import '../protocols/protocols.dart' show DoseRecord, ProtocolDayDate;
 
 /// Which of the three segments an `Effect` window splits into (PROTOCOLS.md
 /// §4): the period immediately BEFORE a course, the course itself (DURING),
@@ -126,6 +126,43 @@ EffectWindow effectWindowForProtocol({
   required DateTime now,
 }) {
   return EffectWindow(duringStart: startDate, duringEnd: endDate, now: now);
+}
+
+/// A Protocol's local-date bounds as the instants [effectWindowForProtocol]
+/// takes (D2): [startDate] is local midnight at the start of the first day,
+/// and [endDate] is local midnight at the start of the day after the
+/// inclusive last day, or null for an ongoing Protocol. So DURING stays
+/// half-open and covers whole local days.
+class EffectBounds {
+  const EffectBounds({required this.startDate, required this.endDate});
+
+  final DateTime startDate;
+  final DateTime? endDate;
+}
+
+/// Converts a Protocol's inclusive local-date bounds into Effect's instants
+/// (D2), using [timezoneOffsetMinutes], the UTC offset of the local zone
+/// (−180 for UTC−3, 540 for UTC+9). Each bound is that date's midnight in
+/// UTC minus the offset, the same conversion as the local-time anchors in
+/// `apps/server/src/metric-reading-normalization.ts`. The app passes the
+/// device's current offset; the Effect math itself is unchanged. The
+/// returned instants are UTC. Mirrored by `effectBoundsFromLocalDates` in
+/// `apps/server/src/agent-protocols.ts` and pinned by
+/// `packages/golden-vectors/vectors/m36-protocol-plan.json`.
+EffectBounds effectBoundsFromLocalDates({
+  required ProtocolDayDate startLocalDate,
+  required ProtocolDayDate? endLocalDate,
+  required int timezoneOffsetMinutes,
+}) {
+  DateTime localMidnight(ProtocolDayDate date) =>
+      DateTime.utc(date.year, date.month, date.day)
+          .subtract(Duration(minutes: timezoneOffsetMinutes));
+
+  return EffectBounds(
+    startDate: localMidnight(startLocalDate),
+    endDate:
+        endLocalDate == null ? null : localMidnight(endLocalDate.addDays(1)),
+  );
 }
 
 /// The `Effect` window for an ad-hoc `Compound` (no `Protocol`, so no declared

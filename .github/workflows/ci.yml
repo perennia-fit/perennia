@@ -64,6 +64,8 @@ jobs:
               - 'apps/server/test/nutrition-analytics.golden.test.mjs'
               - 'apps/server/src/agent-protocols.ts'
               - 'apps/server/test/effect-window.golden.test.mjs'
+              - 'apps/server/src/protocol-plan.ts'
+              - 'apps/server/test/protocol-plan.golden.test.mjs'
               - 'apps/server/package.json'
               - '.node-version'
               - 'apps/mobile/lib/domain/**'

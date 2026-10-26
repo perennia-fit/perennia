@@ -21,6 +21,7 @@ import {
 } from "./agent-validation.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
+import { localDateEpochDay } from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import {
   COMPOUNDS_SYNC_ENTITY,
@@ -1696,6 +1697,42 @@ export function deriveEffectWindow(
     duringEndOrNow,
     beforeStart: new Date(duringStart.getTime() - duringLengthMs),
     afterEnd: new Date(duringEndOrNow.getTime() + duringLengthMs)
+  };
+}
+
+/**
+ * Turns a Protocol's inclusive local-date bounds into the instants
+ * `deriveEffectWindow` takes (docs/designs/protocol-schedules-and-reminders.md,
+ * D2). Start is local midnight of the start date; end is local midnight of the
+ * day after the inclusive end date, because Effect's windows are half-open. A
+ * null end is an ongoing Protocol, which Effect runs until now. Local midnight
+ * is the UTC midnight of that date minus `timezoneOffsetMinutes` (UTC-3 is
+ * -180), the same conversion as the local-time anchors in
+ * metric-reading-normalization.ts. The offset is the caller's: the app passes
+ * the device's current one, and the Agent Effect read defaults to 0 (UTC).
+ * `packages/golden-vectors/vectors/m36-protocol-plan.json` pins it against the
+ * app's twin in apps/mobile/lib/domain/effect/effect.dart.
+ */
+export function effectBoundsFromLocalDates(
+  startLocalDate: string,
+  endLocalDate: string | null | undefined,
+  timezoneOffsetMinutes: number
+): { startDate: Date; endDate: Date | null } {
+  const localMidnight = (localDate: string, addDays: number) => {
+    const epochDay = localDateEpochDay(localDate);
+    if (epochDay === null) {
+      throw new RangeError(`Not a local date: ${localDate}.`);
+    }
+    return new Date(
+      (epochDay + addDays) * 24 * 60 * 60 * 1000 - timezoneOffsetMinutes * 60 * 1000
+    );
+  };
+  return {
+    startDate: localMidnight(startLocalDate, 0),
+    endDate:
+      endLocalDate === null || endLocalDate === undefined
+        ? null
+        : localMidnight(endLocalDate, 1)
   };
 }
 

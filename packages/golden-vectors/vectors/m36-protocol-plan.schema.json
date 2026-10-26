@@ -1,0 +1,370 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m36-protocol-plan.schema.json",
+  "title": "M36 Protocol Plan core golden vector",
+  "description": "Language-neutral parity cases for the Protocol Plan core. Each case names one function and gives its arguments by parameter name in `input` and its return value in `expected`. rule_codec and period_codec decode the stored JSON in `input.json`; `expected` is the decoded value written back in the same JSON shape, or {\"rejects\": true}. plan_days decides one state per Protocol, Compound and date (D4): outside, paused, off_cycle, removed, then the Schedule Version that applies (latest effectiveFrom on or before the date, the larger id on a tie; the covering member row, the larger memberId on a tie). day_statuses fills slots by nearest time (D6) and returns one Day Status per Compound and date up to today. due_unfilled picks today's unfilled slots timed at or before now, or untimed. effect_bounds turns inclusive local-date bounds into Effect's half-open instants using the given UTC offset. Outputs are ordered: PlanDay by localDate, protocolId, compoundId; DayStatus by localDate, compoundId; fills by slot; due_unfilled rows in DayStatus order, then by slot. Cases contain no IANA zones; a UTC offset appears only as an input of effect_bounds cases.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m36-protocol-plan"},
+    "domain": {"const": "protocol-plan"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m36-protocol-plan.schema.json"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "localDate": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "nullableLocalDate": {"oneOf": [{"$ref": "#/$defs/localDate"}, {"type": "null"}]},
+    "localTime": {"type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"},
+    "nullableLocalTime": {"oneOf": [{"$ref": "#/$defs/localTime"}, {"type": "null"}]},
+    "instant": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"},
+    "id": {"type": "string", "minLength": 1},
+    "nullableNumber": {"type": ["number", "null"]},
+    "nullableString": {"type": ["string", "null"]},
+    "days": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {"kind": {"const": "daily"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "weekdays"],
+          "properties": {
+            "kind": {"const": "weekdays"},
+            "weekdays": {"type": "array", "minItems": 1, "maxItems": 7, "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 7}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "n", "anchor", "anchor_is_default"],
+          "properties": {
+            "kind": {"const": "every_n_days"},
+            "n": {"type": "integer", "minimum": 2, "maximum": 365},
+            "anchor": {"$ref": "#/$defs/localDate"},
+            "anchor_is_default": {"type": "boolean"}
+          }
+        }
+      ]
+    },
+    "rule": {
+      "description": "A Schedule Rule as stored (rule JSON, version 1).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["v", "kind", "days", "times"],
+          "properties": {
+            "v": {"const": 1},
+            "kind": {"const": "timed"},
+            "days": {"$ref": "#/$defs/days"},
+            "times": {"type": "array", "minItems": 1, "maxItems": 12, "uniqueItems": true, "items": {"$ref": "#/$defs/localTime"}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["v", "kind", "days", "count"],
+          "properties": {
+            "v": {"const": 1},
+            "kind": {"const": "untimed"},
+            "days": {"$ref": "#/$defs/days"},
+            "count": {"type": "integer", "minimum": 1, "maximum": 12}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["v", "kind"],
+          "properties": {"v": {"const": 1}, "kind": {"enum": ["as_needed", "unscheduled"]}}
+        }
+      ]
+    },
+    "period": {
+      "description": "A Protocol Period as stored (period JSON, version 1), or null for no cycle and no Pause.",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["v", "cycle", "pauses"],
+          "properties": {
+            "v": {"const": 1},
+            "cycle": {
+              "oneOf": [
+                {"type": "null"},
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["on_days", "off_days", "anchor", "anchor_is_default"],
+                  "properties": {
+                    "on_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+                    "off_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+                    "anchor": {"$ref": "#/$defs/localDate"},
+                    "anchor_is_default": {"type": "boolean"}
+                  }
+                }
+              ]
+            },
+            "pauses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["from", "to"],
+                "properties": {"from": {"$ref": "#/$defs/localDate"}, "to": {"$ref": "#/$defs/localDate"}}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "rejects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rejects"],
+      "properties": {"rejects": {"const": true}}
+    },
+    "nullableAmount": {
+      "type": "object",
+      "required": ["amountValue", "amountEntered", "unit", "route"],
+      "properties": {
+        "amountValue": {"$ref": "#/$defs/nullableNumber"},
+        "amountEntered": {"$ref": "#/$defs/nullableString"},
+        "unit": {"$ref": "#/$defs/nullableString"},
+        "route": {"$ref": "#/$defs/nullableString"}
+      }
+    },
+    "amount": {
+      "type": "object",
+      "required": ["amountValue", "amountEntered", "unit", "route"],
+      "properties": {
+        "amountValue": {"type": "number"},
+        "amountEntered": {"type": "string"},
+        "unit": {"type": "string"},
+        "route": {"type": "string"}
+      }
+    },
+    "version": {
+      "allOf": [{"$ref": "#/$defs/nullableAmount"}],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["id", "effectiveFrom", "rule"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "effectiveFrom": {"$ref": "#/$defs/localDate"},
+        "rule": {"$ref": "#/$defs/rule"}
+      }
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memberId", "compoundId", "archivedOn", "versions"],
+      "properties": {
+        "memberId": {"$ref": "#/$defs/id"},
+        "compoundId": {"$ref": "#/$defs/id"},
+        "archivedOn": {"$ref": "#/$defs/nullableLocalDate"},
+        "versions": {"type": "array", "items": {"$ref": "#/$defs/version"}}
+      }
+    },
+    "planProtocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolId", "startLocalDate", "endLocalDate", "period", "archivedOn", "remindersEnabled", "members"],
+      "properties": {
+        "protocolId": {"$ref": "#/$defs/id"},
+        "startLocalDate": {"$ref": "#/$defs/localDate"},
+        "endLocalDate": {"$ref": "#/$defs/nullableLocalDate"},
+        "period": {"$ref": "#/$defs/period"},
+        "archivedOn": {"$ref": "#/$defs/nullableLocalDate"},
+        "remindersEnabled": {"type": "boolean"},
+        "members": {"type": "array", "items": {"$ref": "#/$defs/member"}}
+      }
+    },
+    "plannedDose": {
+      "allOf": [{"$ref": "#/$defs/amount"}],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["localTime"],
+      "properties": {"localTime": {"$ref": "#/$defs/nullableLocalTime"}}
+    },
+    "planDay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolId", "compoundId", "localDate", "state", "planned"],
+      "properties": {
+        "protocolId": {"$ref": "#/$defs/id"},
+        "compoundId": {"$ref": "#/$defs/id"},
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "state": {"enum": ["planned", "not_scheduled_today", "as_needed", "no_schedule", "removed", "outside", "paused", "off_cycle"]},
+        "planned": {"type": "array", "items": {"$ref": "#/$defs/plannedDose"}}
+      },
+      "if": {"properties": {"state": {"const": "planned"}}},
+      "then": {"properties": {"planned": {"type": "array", "minItems": 1}}},
+      "else": {"properties": {"planned": {"type": "array", "maxItems": 0}}}
+    },
+    "planDose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doseId", "compoundId", "localDate", "localTime", "sequence"],
+      "properties": {
+        "doseId": {"$ref": "#/$defs/id"},
+        "compoundId": {"$ref": "#/$defs/id"},
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "localTime": {"$ref": "#/$defs/localTime"},
+        "sequence": {"type": "integer", "minimum": 0}
+      }
+    },
+    "fill": {
+      "allOf": [{"$ref": "#/$defs/amount"}],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["slot", "protocolId", "plannedLocalTime", "doseId"],
+      "properties": {
+        "slot": {"type": "integer", "minimum": 0},
+        "protocolId": {"$ref": "#/$defs/id"},
+        "plannedLocalTime": {"$ref": "#/$defs/nullableLocalTime"},
+        "doseId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}
+      }
+    },
+    "dayStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compoundId", "localDate", "status", "plannedCount", "loggedCount", "extraCount", "fills"],
+      "properties": {
+        "compoundId": {"$ref": "#/$defs/id"},
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "status": {"enum": ["not_planned", "paused", "off_cycle", "pending", "logged", "partly_logged", "not_logged"]},
+        "notPlannedReason": {"enum": ["not_scheduled_today", "as_needed", "no_schedule", "removed", "outside"]},
+        "plannedCount": {"type": "integer", "minimum": 0},
+        "loggedCount": {"type": "integer", "minimum": 0},
+        "extraCount": {"type": "integer", "minimum": 0},
+        "fills": {"type": "array", "items": {"$ref": "#/$defs/fill"}}
+      },
+      "if": {"properties": {"status": {"const": "not_planned"}}},
+      "then": {"required": ["notPlannedReason"]},
+      "else": {"not": {"required": ["notPlannedReason"]}}
+    },
+    "dueRow": {
+      "allOf": [{"$ref": "#/$defs/amount"}],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["compoundId", "slot", "protocolId"],
+      "properties": {
+        "compoundId": {"$ref": "#/$defs/id"},
+        "slot": {"type": "integer", "minimum": 0},
+        "protocolId": {"$ref": "#/$defs/id"}
+      }
+    },
+    "caseHeader": {
+      "type": "object",
+      "required": ["name", "function", "input", "expected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "note": {"type": "string", "description": "Why the case exists and which rule it pins. Runners ignore it."}
+      }
+    },
+    "case": {
+      "type": "object",
+      "allOf": [{"$ref": "#/$defs/caseHeader"}],
+      "unevaluatedProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "function": {"const": "rule_codec"},
+            "input": {"type": "object", "additionalProperties": false, "required": ["json"], "properties": {"json": true}},
+            "expected": {"oneOf": [{"$ref": "#/$defs/rule"}, {"$ref": "#/$defs/rejects"}]}
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "period_codec"},
+            "input": {"type": "object", "additionalProperties": false, "required": ["json"], "properties": {"json": true}},
+            "expected": {"oneOf": [{"$ref": "#/$defs/period"}, {"$ref": "#/$defs/rejects"}]}
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "plan_days"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["protocols", "from", "to"],
+              "properties": {
+                "protocols": {"type": "array", "items": {"$ref": "#/$defs/planProtocol"}},
+                "from": {"$ref": "#/$defs/localDate"},
+                "to": {"$ref": "#/$defs/localDate"}
+              }
+            },
+            "expected": {"type": "array", "items": {"$ref": "#/$defs/planDay"}}
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "day_statuses"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["planDays", "doses", "today"],
+              "properties": {
+                "planDays": {"type": "array", "items": {"$ref": "#/$defs/planDay"}},
+                "doses": {"type": "array", "items": {"$ref": "#/$defs/planDose"}},
+                "today": {"$ref": "#/$defs/localDate"}
+              }
+            },
+            "expected": {"type": "array", "items": {"$ref": "#/$defs/dayStatus"}}
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "due_unfilled"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["dayStatuses", "today", "nowLocalTime"],
+              "properties": {
+                "dayStatuses": {"type": "array", "items": {"$ref": "#/$defs/dayStatus"}},
+                "today": {"$ref": "#/$defs/localDate"},
+                "nowLocalTime": {"$ref": "#/$defs/localTime"}
+              }
+            },
+            "expected": {"type": "array", "items": {"$ref": "#/$defs/dueRow"}}
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "effect_bounds"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["startLocalDate", "endLocalDate", "timezoneOffsetMinutes"],
+              "properties": {
+                "startLocalDate": {"$ref": "#/$defs/localDate"},
+                "endLocalDate": {"$ref": "#/$defs/nullableLocalDate"},
+                "timezoneOffsetMinutes": {"type": "integer", "minimum": -840, "maximum": 840}
+              }
+            },
+            "expected": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["startDate", "endDate"],
+              "properties": {
+                "startDate": {"$ref": "#/$defs/instant"},
+                "endDate": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}]}
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,721 @@
+{
+  "name": "m36-protocol-plan-validation",
+  "domain": "protocol-plan-validation",
+  "schemaVersion": 1,
+  "schema": "m36-protocol-plan-validation.schema.json",
+  "limits": {
+    "maxTimesPerDay": 12,
+    "maxUntimedCount": 12,
+    "minEveryNDays": 2,
+    "maxEveryNDays": 365,
+    "maxCycleLengthDays": 3650,
+    "warnTimesPerDay": 6
+  },
+  "cases": [
+    {
+      "name": "timed-daily-rule-is-valid",
+      "validator": "schedule_rule",
+      "note": "D7: an ordinary timed rule with its amount, unit and route.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "untimed-weekdays-rule-is-valid",
+      "validator": "schedule_rule",
+      "note": "D7: an untimed count on chosen weekdays.",
+      "input": {
+        "rule": {"v": 1, "kind": "untimed", "days": {"kind": "weekdays", "weekdays": [1, 3, 5]}, "count": 2},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "every-n-days-rule-is-valid",
+      "validator": "schedule_rule",
+      "note": "D7: every N days with a valid anchor.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "every_n_days", "n": 3, "anchor": "2026-09-01", "anchor_is_default": true},
+          "times": ["08:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "as-needed-rule-needs-no-amount",
+      "validator": "schedule_rule",
+      "note": "D7 amount_required: only timed and untimed rules need an amount.",
+      "input": {"rule": {"v": 1, "kind": "as_needed"}, "amountValue": null, "amountEntered": null, "unit": null, "route": null},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "unscheduled-rule-needs-no-amount",
+      "validator": "schedule_rule",
+      "note": "D7 amount_required: only timed and untimed rules need an amount.",
+      "input": {"rule": {"v": 1, "kind": "unscheduled"}, "amountValue": null, "amountEntered": null, "unit": null, "route": null},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "times-at-the-day-boundaries-are-valid",
+      "validator": "schedule_rule",
+      "note": "D7 times_format: 00:00 and 23:59 are the first and last valid times.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["00:00", "23:59"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "time-without-two-digit-hour-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 times_format: each time is HH:MM.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["9:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["times_format"]}
+    },
+    {
+      "name": "time-at-24-00-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 times_format: hours run 00-23.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["24:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["times_format"]}
+    },
+    {
+      "name": "time-at-minute-60-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 times_format: minutes run 00-59.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["23:60"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["times_format"]}
+    },
+    {
+      "name": "no-times-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 times_count: a timed rule has 1 to 12 times.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": []},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["times_count"]}
+    },
+    {
+      "name": "six-times-is-valid-without-a-warning",
+      "validator": "schedule_rule",
+      "note": "D7 times_many: the warning starts above 6 times a day.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "seven-times-soft-warns",
+      "validator": "schedule_rule",
+      "note": "D7 times_many: more than 6 times a day warns.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "daily"},
+          "times": ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": ["times_many"], "errorRules": []}
+    },
+    {
+      "name": "twelve-times-is-valid-but-warns",
+      "validator": "schedule_rule",
+      "note": "D7 times_count: 12 is the maximum; times_many still warns.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "daily"},
+          "times": ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "07:00", "08:00", "09:00", "10:00", "11:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": ["times_many"], "errorRules": []}
+    },
+    {
+      "name": "thirteen-times-rejects-and-warns",
+      "validator": "schedule_rule",
+      "note": "D7 times_count: more than 12 times rejects; times_many is an independent check and still warns.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "daily"},
+          "times": ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": ["times_many"], "errorRules": ["times_count"]}
+    },
+    {
+      "name": "duplicate-times-reject",
+      "validator": "schedule_rule",
+      "note": "D7 times_distinct: no duplicate times.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00", "09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["times_distinct"]}
+    },
+    {
+      "name": "untimed-count-of-one-is-valid",
+      "validator": "schedule_rule",
+      "note": "D7 untimed_count: 1 is the minimum.",
+      "input": {
+        "rule": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 1},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "untimed-count-of-twelve-is-valid",
+      "validator": "schedule_rule",
+      "note": "D7 untimed_count: 12 is the maximum.",
+      "input": {
+        "rule": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 12},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "untimed-count-of-zero-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 untimed_count: 1 to 12.",
+      "input": {
+        "rule": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 0},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["untimed_count"]}
+    },
+    {
+      "name": "untimed-count-of-thirteen-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 untimed_count: 1 to 12.",
+      "input": {
+        "rule": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 13},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["untimed_count"]}
+    },
+    {
+      "name": "all-seven-weekdays-are-valid",
+      "validator": "schedule_rule",
+      "note": "D7 weekdays_valid: ISO weekdays 1-7.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "weekdays", "weekdays": [1, 2, 3, 4, 5, 6, 7]}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "empty-weekdays-reject",
+      "validator": "schedule_rule",
+      "note": "D7 weekdays_valid: non-empty.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "weekdays", "weekdays": []}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["weekdays_valid"]}
+    },
+    {
+      "name": "weekday-zero-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 weekdays_valid: each is 1-7.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "weekdays", "weekdays": [0]}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["weekdays_valid"]}
+    },
+    {
+      "name": "weekday-eight-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 weekdays_valid: each is 1-7.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "weekdays", "weekdays": [8]}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["weekdays_valid"]}
+    },
+    {
+      "name": "duplicate-weekdays-reject",
+      "validator": "schedule_rule",
+      "note": "D7 weekdays_valid: no duplicates.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "weekdays", "weekdays": [1, 1]}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["weekdays_valid"]}
+    },
+    {
+      "name": "every-2-days-is-valid",
+      "validator": "schedule_rule",
+      "note": "D7 every_n_range: 2 is the minimum.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "every_n_days", "n": 2, "anchor": "2026-09-01", "anchor_is_default": true},
+          "times": ["09:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "every-365-days-is-valid",
+      "validator": "schedule_rule",
+      "note": "D7 every_n_range: 365 is the maximum.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "every_n_days", "n": 365, "anchor": "2026-09-01", "anchor_is_default": true},
+          "times": ["09:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "every-1-day-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 every_n_range: 2 to 365 (every day is the daily kind).",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "every_n_days", "n": 1, "anchor": "2026-09-01", "anchor_is_default": true},
+          "times": ["09:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["every_n_range"]}
+    },
+    {
+      "name": "every-366-days-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 every_n_range: 2 to 365.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "every_n_days", "n": 366, "anchor": "2026-09-01", "anchor_is_default": true},
+          "times": ["09:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["every_n_range"]}
+    },
+    {
+      "name": "every-n-days-anchor-on-an-impossible-date-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 anchor_date: the anchor is a valid date.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "every_n_days", "n": 3, "anchor": "2026-02-30", "anchor_is_default": true},
+          "times": ["09:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["anchor_date"]}
+    },
+    {
+      "name": "every-n-days-anchor-in-another-format-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 anchor_date: the anchor is a valid YYYY-MM-DD date.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "every_n_days", "n": 3, "anchor": "2026/09/01", "anchor_is_default": true},
+          "times": ["09:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["anchor_date"]}
+    },
+    {
+      "name": "timed-rule-without-amountValue-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_required: a timed rule needs all of amountValue, amountEntered, unit and route; amountValue is null.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+        "amountValue": null,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_required"]}
+    },
+    {
+      "name": "timed-rule-without-amountEntered-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_required: a timed rule needs all of amountValue, amountEntered, unit and route; amountEntered is null.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": null,
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_required"]}
+    },
+    {
+      "name": "timed-rule-without-unit-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_required: a timed rule needs all of amountValue, amountEntered, unit and route; unit is null.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": null,
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_required"]}
+    },
+    {
+      "name": "timed-rule-without-route-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_required: a timed rule needs all of amountValue, amountEntered, unit and route; route is null.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": null
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_required"]}
+    },
+    {
+      "name": "untimed-rule-without-unit-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_required: an untimed rule needs an amount too.",
+      "input": {
+        "rule": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 1},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": null,
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_required"]}
+    },
+    {
+      "name": "ongoing-protocol-without-a-period-is-valid",
+      "validator": "protocol_period",
+      "note": "D4: ongoing, no end date, no cycle and no Pause.",
+      "input": {"startLocalDate": "2026-09-01", "endLocalDate": null, "period": null},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "until-protocol-is-valid",
+      "validator": "protocol_period",
+      "note": "D4: until an end date after the start.",
+      "input": {"startLocalDate": "2026-10-26", "endLocalDate": "2026-11-14", "period": null},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "cycle-with-a-pause-is-valid",
+      "validator": "protocol_period",
+      "note": "D4: the CUJ 3 and CUJ 5 period.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {
+          "v": 1,
+          "cycle": {"on_days": 60, "off_days": 30, "anchor": "2026-09-01", "anchor_is_default": true},
+          "pauses": [{"from": "2026-10-10", "to": "2026-10-16"}]
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "empty-object-period-is-valid",
+      "validator": "protocol_period",
+      "note": "Data shapes: the no-cycle, no-Pause object form is accepted.",
+      "input": {"startLocalDate": "2026-09-01", "endLocalDate": null, "period": {"v": 1, "cycle": null, "pauses": []}},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "end-on-the-start-date-is-valid",
+      "validator": "protocol_period",
+      "note": "D7 bounds_order: the end is inclusive, so end = start is one day.",
+      "input": {"startLocalDate": "2026-10-26", "endLocalDate": "2026-10-26", "period": null},
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "end-before-the-start-rejects",
+      "validator": "protocol_period",
+      "note": "D7 bounds_order: the end is not before the start.",
+      "input": {"startLocalDate": "2026-10-26", "endLocalDate": "2026-10-25", "period": null},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["bounds_order"]}
+    },
+    {
+      "name": "one-day-on-one-day-off-is-valid",
+      "validator": "protocol_period",
+      "note": "D7 cycle_lengths: 1 is the minimum.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": {"on_days": 1, "off_days": 1, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "cycle-lengths-of-3650-days-are-valid",
+      "validator": "protocol_period",
+      "note": "D7 cycle_lengths: 3650 is the maximum.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": {"on_days": 3650, "off_days": 3650, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "zero-on-days-rejects",
+      "validator": "protocol_period",
+      "note": "D7 cycle_lengths: on length 1 to 3650.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": {"on_days": 0, "off_days": 30, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["cycle_lengths"]}
+    },
+    {
+      "name": "zero-off-days-rejects",
+      "validator": "protocol_period",
+      "note": "D7 cycle_lengths: off length 1 to 3650.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": {"on_days": 60, "off_days": 0, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["cycle_lengths"]}
+    },
+    {
+      "name": "on-days-above-3650-rejects",
+      "validator": "protocol_period",
+      "note": "D7 cycle_lengths: on length 1 to 3650.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": {"on_days": 3651, "off_days": 30, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["cycle_lengths"]}
+    },
+    {
+      "name": "cycle-anchor-before-the-start-is-valid",
+      "validator": "protocol_period",
+      "note": "D4, D7 anchor_date: an anchor may sit before the start.",
+      "input": {
+        "startLocalDate": "2026-10-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": {"on_days": 21, "off_days": 7, "anchor": "2026-09-20", "anchor_is_default": false}, "pauses": []}
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "cycle-anchor-with-month-13-rejects",
+      "validator": "protocol_period",
+      "note": "D7 anchor_date: the cycle anchor is a valid date.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": {"on_days": 60, "off_days": 30, "anchor": "2026-13-01", "anchor_is_default": false}, "pauses": []}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["anchor_date"]}
+    },
+    {
+      "name": "one-day-pause-is-valid",
+      "validator": "protocol_period",
+      "note": "D7 pause_order: from = to is a one-day Pause.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": null, "pauses": [{"from": "2026-10-10", "to": "2026-10-10"}]}
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "pause-ending-before-it-starts-rejects",
+      "validator": "protocol_period",
+      "note": "D7 pause_order: each Pause has from <= to.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": null, "pauses": [{"from": "2026-10-16", "to": "2026-10-10"}]}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["pause_order"]}
+    },
+    {
+      "name": "pause-on-the-first-and-last-days-is-valid",
+      "validator": "protocol_period",
+      "note": "D7 pause_bounds: a Pause may start on the start and end on the end date.",
+      "input": {
+        "startLocalDate": "2026-10-01",
+        "endLocalDate": "2026-10-31",
+        "period": {"v": 1, "cycle": null, "pauses": [{"from": "2026-10-01", "to": "2026-10-31"}]}
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "pause-starting-before-the-start-rejects",
+      "validator": "protocol_period",
+      "note": "D7 pause_bounds: the whole Pause is within the Protocol's bounds.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {"v": 1, "cycle": null, "pauses": [{"from": "2026-08-30", "to": "2026-09-02"}]}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["pause_bounds"]}
+    },
+    {
+      "name": "pause-ending-after-the-end-rejects",
+      "validator": "protocol_period",
+      "note": "D7 pause_bounds: the whole Pause is within the Protocol's bounds.",
+      "input": {
+        "startLocalDate": "2026-10-01",
+        "endLocalDate": "2026-10-31",
+        "period": {"v": 1, "cycle": null, "pauses": [{"from": "2026-10-25", "to": "2026-11-02"}]}
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["pause_bounds"]}
+    },
+    {
+      "name": "adjacent-pauses-are-valid",
+      "validator": "protocol_period",
+      "note": "D7 pause_overlap: Pauses are inclusive, so 10-16 and 10-17 do not overlap.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {
+          "v": 1,
+          "cycle": null,
+          "pauses": [{"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-17", "to": "2026-10-20"}]
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "pauses-sharing-a-day-reject",
+      "validator": "protocol_period",
+      "note": "D7 pause_overlap: inclusive Pauses that share 2026-10-16 overlap.",
+      "input": {
+        "startLocalDate": "2026-09-01",
+        "endLocalDate": null,
+        "period": {
+          "v": 1,
+          "cycle": null,
+          "pauses": [{"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-16", "to": "2026-10-20"}]
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["pause_overlap"]}
+    }
+  ]
+}

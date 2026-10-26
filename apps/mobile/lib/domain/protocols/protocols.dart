@@ -72,10 +72,31 @@ class ProtocolDayDate implements Comparable<ProtocolDayDate> {
 
   DateTime toLocalDateTime() => DateTime(year, month, day);
 
+  /// This date as UTC midnight: the calendar arithmetic below runs here, never
+  /// on a local [DateTime]. A local day is 23 or 25 hours long on a
+  /// daylight-saving change, so adding 24-hour [Duration]s to local midnight
+  /// repeats a date in autumn and skips one in spring (and in a zone whose
+  /// change falls at midnight, local midnight itself may not exist). UTC has
+  /// no such days, so every date is exactly one day apart from the next.
+  DateTime _utcMidnight() => DateTime.utc(year, month, day);
+
+  /// The date [days] calendar days after this one (before it, when negative).
+  /// Computed in UTC, so it never depends on the device's timezone.
   ProtocolDayDate addDays(int days) {
-    final next = toLocalDateTime().add(Duration(days: days));
-    return ProtocolDayDate.fromDateTime(next);
+    final next = DateTime.utc(year, month, day + days);
+    return ProtocolDayDate(year: next.year, month: next.month, day: next.day);
   }
+
+  /// The number of calendar days from [other] to this date: positive when
+  /// this date is later, zero on the same date. The same UTC arithmetic as
+  /// [addDays], so `other.addDays(daysBetween(other)) == this`.
+  int daysBetween(ProtocolDayDate other) {
+    return _utcMidnight().difference(other._utcMidnight()).inDays;
+  }
+
+  /// The ISO 8601 weekday of this date: 1 is Monday and 7 is Sunday, as a
+  /// Schedule Rule's chosen weekdays store it.
+  int get isoWeekday => _utcMidnight().weekday;
 
   @override
   int compareTo(ProtocolDayDate other) {

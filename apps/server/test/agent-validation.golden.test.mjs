@@ -5,12 +5,17 @@ import test from "node:test";
 import {
   DOSE_VALIDATION_LIMITS,
   PLAN_VALIDATION_LIMITS,
+  PROTOCOL_PLAN_VALIDATION_LIMITS,
   SETTINGS_VALIDATION_LIMITS,
+  decodeProtocolPeriod,
+  decodeScheduleRule,
   validateAgentDose,
   validateAgentFoodEntry,
   validateAgentNutritionGoalTargets,
   validateAgentPrescription,
+  validateAgentProtocolPeriod,
   validateAgentRoutineCadence,
+  validateAgentScheduleRule,
   validateAgentSet,
   validateAgentSettings,
   validateAgentTemplateGroup
@@ -28,7 +33,8 @@ const VALIDATORS_BY_DOMAIN = new Map([
     (vectorCase) => validateAgentNutritionGoalTargets(vectorCase.input)
   ],
   ["plan-validation", (vectorCase) => validatePlanVectorCase(vectorCase)],
-  ["settings-validation", (vectorCase) => validateAgentSettings(vectorCase.input)]
+  ["settings-validation", (vectorCase) => validateAgentSettings(vectorCase.input)],
+  ["protocol-plan-validation", (vectorCase) => validateProtocolPlanVectorCase(vectorCase)]
 ]);
 
 // Every other domain under packages/golden-vectors, with who checks it. Every
@@ -43,6 +49,7 @@ const DOMAINS_OWNED_ELSEWHERE = new Set([
   "template-materialize", // agent-plan-materialize.test.mjs (needs Postgres)
   "routine-up-next", // agent-plan-reads.test.mjs (needs Postgres)
   "effect-window", // effect-window.golden.test.mjs
+  "protocol-plan", // protocol-plan.golden.test.mjs
   // Dart only: Body Tracker measurements have no server implementation, so
   // these vectors pin the app against its own spec.
   "measurement-validation",
@@ -77,6 +84,13 @@ test("server validation matches the shared golden vectors", async () => {
       assert.deepEqual(
         vector.limits,
         PLAN_VALIDATION_LIMITS,
+        `${filename} limits`
+      );
+    }
+    if (vector.domain === "protocol-plan-validation") {
+      assert.deepEqual(
+        vector.limits,
+        PROTOCOL_PLAN_VALIDATION_LIMITS,
         `${filename} limits`
       );
     }
@@ -177,4 +191,26 @@ function validatePlanVectorCase(vectorCase) {
     return validateAgentRoutineCadence(vectorCase.input);
   }
   throw new Error(`Unknown plan validator: ${String(vectorCase.validator)}.`);
+}
+
+// Rules and periods reach the validators decoded, as stored and Agent-written
+// values do; the codecs check shape, the validators check values.
+function validateProtocolPlanVectorCase(vectorCase) {
+  const { input } = vectorCase;
+  if (vectorCase.validator === "schedule_rule") {
+    return validateAgentScheduleRule(decodeScheduleRule(input.rule), {
+      amountValue: input.amountValue,
+      amountEntered: input.amountEntered,
+      unit: input.unit,
+      route: input.route
+    });
+  }
+  if (vectorCase.validator === "protocol_period") {
+    return validateAgentProtocolPeriod({
+      startLocalDate: input.startLocalDate,
+      endLocalDate: input.endLocalDate,
+      period: decodeProtocolPeriod(input.period)
+    });
+  }
+  throw new Error(`Unknown protocol plan validator: ${String(vectorCase.validator)}.`);
 }
