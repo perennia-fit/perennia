@@ -23,6 +23,7 @@ const Map<String, String> _dartRunnerByDomain = <String, String>{
   'reading-normalization': 'test/domain/metric_reading_normalization_test.dart',
   'dose-validation': 'test/domain/dose_validation_test.dart',
   'effect-window': 'test/domain/effect_window_golden_test.dart',
+  'barcode-candidates': 'test/domain/barcode_candidates_golden_test.dart',
   'plan-validation': 'test/domain/plan_validation_test.dart',
   'workout-capture': 'test/domain/workout_capture_golden_test.dart',
   'plan-divergence': 'test/domain/template_divergence_golden_test.dart',

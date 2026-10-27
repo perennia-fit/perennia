@@ -132,15 +132,17 @@ enum NutrientId {
   final NutrientUnit defaultUnit;
 
   static NutrientId byStorageKey(String storageKey) {
-    return NutrientId.values.firstWhere(
-      (id) => id.storageKey == storageKey,
-      orElse: () => throw ArgumentError.value(
-        storageKey,
-        'storageKey',
-        'Unknown Nutrient id.',
-      ),
-    );
+    return _byStorageKey[storageKey] ??
+        (throw ArgumentError.value(
+          storageKey,
+          'storageKey',
+          'Unknown Nutrient id.',
+        ));
   }
+
+  static final _byStorageKey = <String, NutrientId>{
+    for (final id in NutrientId.values) id.storageKey: id,
+  };
 }
 
 enum NutrientDisplayTier {
@@ -304,7 +306,7 @@ class NutrientAmount {
     final scaled = value! * factor;
     return NutrientAmount.complete(
       value: scaled,
-      entered: _formatDerivedValue(scaled),
+      entered: formatNutrientEntered(scaled),
       unit: unit,
     );
   }
@@ -728,7 +730,7 @@ NutrientAmount _deriveRecipeNutrientPer100({
   final per100 = total / totalBaseQuantity * 100;
   return NutrientAmount.complete(
     value: per100,
-    entered: _formatDerivedValue(per100),
+    entered: formatNutrientEntered(per100),
     unit: id.defaultUnit,
   );
 }
@@ -907,6 +909,9 @@ class PlatformFoodRecord {
     this.servingLabel,
     this.servingSize,
     this.packageSize,
+    this.brand,
+    this.sourceModifiedAt,
+    this.scans,
   });
 
   final String id;
@@ -917,6 +922,15 @@ class PlatformFoodRecord {
   final String? servingLabel;
   final double? servingSize;
   final double? packageSize;
+
+  /// The product's first listed brand, where the source records one.
+  final String? brand;
+
+  /// When the source last changed this product (UTC), where it records one.
+  final DateTime? sourceModifiedAt;
+
+  /// The source's scan count, used only to rank search results.
+  final int? scans;
 
   List<PortionUnit> get availablePortionUnits {
     return availablePortionUnitsForFood(
@@ -1700,8 +1714,8 @@ double _resolveBaseQuantity(
 }) {
   return switch (portion.unit) {
     PortionUnit.gram || PortionUnit.milliliter => portion.value,
-    PortionUnit.ounce => portion.value * 28.349523125,
-    PortionUnit.fluidOunce => portion.value * 29.5735295625,
+    PortionUnit.ounce => portion.value * gramsPerOunce,
+    PortionUnit.fluidOunce => portion.value * millilitresPerFluidOunce,
     PortionUnit.serving => portion.value *
         _requiredPortionSize(
           servingSize,
@@ -1722,12 +1736,32 @@ double _requiredPortionSize(double? value, PortionUnit unit) {
   throw StateError('Portion unit ${unit.name} is not available.');
 }
 
-String _formatDerivedValue(double value) {
+/// Formats a derived nutrient value as its `entered` text: six decimal places,
+/// with trailing zeros and a trailing point removed. The Open Food Facts
+/// mapping uses the same rule, so a bundled product and the same product
+/// fetched live produce the same text.
+///
+/// From 1e21 up, `toStringAsFixed` writes exponential notation (`1e+30`),
+/// whose trailing zeros are digits of the exponent, so it is returned as is.
+/// A value that rounds to zero is written `0`, never `-0`.
+String formatNutrientEntered(double value) {
   final fixed = value.toStringAsFixed(6);
-  return fixed
-      .replaceFirst(RegExp(r'0+$'), '')
-      .replaceFirst(RegExp(r'\.$'), '');
+  if (fixed.contains('e')) {
+    return fixed;
+  }
+  final trimmed =
+      fixed.replaceFirst(_trailingZeros, '').replaceFirst(_trailingPoint, '');
+  return trimmed == '-0' ? '0' : trimmed;
 }
+
+final _trailingZeros = RegExp(r'0+$');
+final _trailingPoint = RegExp(r'\.$');
+
+/// Grams in an avoirdupois ounce.
+const gramsPerOunce = 28.349523125;
+
+/// Millilitres in a US fluid ounce.
+const millilitresPerFluidOunce = 29.5735295625;
 
 String _requiredString(Map<String, Object?> json, String key) {
   final value = json[key];

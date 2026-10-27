@@ -1,0 +1,22 @@
+{
+  "name": "m36-barcode-candidates",
+  "domain": "barcode-candidates",
+  "description": "Barcodes to try for a scanned or typed code (docs/designs/open-food-facts.md, Search and barcode rules). Whitespace and hyphens are removed; the result must be 6 to 18 digits. A 12-digit code is also tried with a leading 0; a 13-digit code starting with 0 is also tried without it.",
+  "cases": [
+    { "name": "six-digits-lower-boundary", "input": "123456", "expected": ["123456"] },
+    { "name": "eighteen-digits-upper-boundary", "input": "123456789012345678", "expected": ["123456789012345678"] },
+    { "name": "five-digits-not-a-barcode", "input": "12345", "expected": [] },
+    { "name": "nineteen-digits-not-a-barcode", "input": "1234567890123456789", "expected": [] },
+    { "name": "eight-digit-ean-8", "input": "00001816", "expected": ["00001816"] },
+    { "name": "twelve-digit-upc-a-adds-leading-zero", "input": "818290014313", "expected": ["818290014313", "0818290014313"] },
+    { "name": "thirteen-digits-not-starting-with-zero", "input": "9300633603427", "expected": ["9300633603427"] },
+    { "name": "thirteen-digits-starting-with-zero-drops-it", "input": "0818290014313", "expected": ["0818290014313", "818290014313"] },
+    { "name": "spaces-inside-a-code", "input": " 9 300633 603427 ", "expected": ["9300633603427"] },
+    { "name": "tab-inside-a-code", "input": "9300633\t603427", "expected": ["9300633603427"] },
+    { "name": "newline-inside-a-code", "input": "9300633603427\n", "expected": ["9300633603427"] },
+    { "name": "hyphens-inside-a-code", "input": "0-818290-01431-3", "expected": ["0818290014313", "818290014313"] },
+    { "name": "letters-not-a-barcode", "input": "93006336O3427", "expected": [] },
+    { "name": "product-name-not-a-barcode", "input": "greek yogurt", "expected": [] },
+    { "name": "empty-string", "input": "", "expected": [] }
+  ]
+}

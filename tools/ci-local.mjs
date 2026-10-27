@@ -174,6 +174,8 @@ const JOBS = {
       'apps/server/test/nutrition-analytics.golden.test.mjs',
       'apps/server/src/agent-protocols.ts',
       'apps/server/test/effect-window.golden.test.mjs',
+      'apps/server/src/barcode-candidates.ts',
+      'apps/server/test/barcode-candidates.golden.test.mjs',
       'apps/server/package.json', '.node-version',
       'apps/mobile/lib/domain/**', 'apps/mobile/lib/features/body_tracker/**',
       'apps/mobile/test/domain/**', 'apps/mobile/test/features/body_tracker/**',
