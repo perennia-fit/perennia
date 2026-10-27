@@ -182,7 +182,6 @@ const _keptTables = <String>{
   AppDatabase.deferredSyncChangesTable,
   AppDatabase.quarantinedSyncChangesTable,
   AppDatabase.monitoringSeriesCacheTable,
-  AppDatabase.openFoodFactsCacheTable,
 };
 
 Future<Set<String>> _liveIds(

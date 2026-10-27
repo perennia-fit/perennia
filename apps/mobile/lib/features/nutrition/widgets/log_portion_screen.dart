@@ -20,6 +20,7 @@ class LogPortionScreen extends ConsumerStatefulWidget {
   });
 
   static const amountFieldKey = Key('nutrition.logPortion.amount');
+  static const brandKey = Key('nutrition.logPortion.brand');
   static const decrementButtonKey = Key('nutrition.logPortion.decrement');
   static const incrementButtonKey = Key('nutrition.logPortion.increment');
   static const saveButtonKey = Key('nutrition.logPortion.save');
@@ -95,6 +96,16 @@ class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
           shrinkWrap: true,
           children: [
             Text(widget.food.name, style: context.textStyles.h1),
+            if (widget.food.brand case final brand?) ...[
+              const SizedBox(height: 4),
+              Text(
+                brand,
+                key: LogPortionScreen.brandKey,
+                style: context.textStyles.body.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ],
             const SizedBox(height: AppDimens.dense),
             Wrap(
               spacing: AppDimens.dense,
@@ -163,7 +174,10 @@ class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
             ),
             if (widget.food.foodSource == FoodSource.openFoodFacts) ...[
               const SizedBox(height: AppDimens.base),
-              const OpenFoodFactsAttributionNotice(compact: true),
+              OpenFoodFactsAttributionNotice(
+                code: widget.food.id,
+                changeDate: widget.food.sourceModifiedAt,
+              ),
             ],
           ],
         ),

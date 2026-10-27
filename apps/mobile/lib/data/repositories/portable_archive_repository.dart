@@ -4,7 +4,7 @@ class PortableArchiveRepository {
   PortableArchiveRepository._(this._repositories);
 
   static const archiveFormatVersion = 1;
-  static const appVersion = '0.1.0+1';
+  static const appVersion = perenniaAppVersion;
   static const importActor = 'portable_archive_import';
   static const manifestFileName = 'manifest.json';
   static const encryptedManifestFileName = 'encrypted_manifest.json';

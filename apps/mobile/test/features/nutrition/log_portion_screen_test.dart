@@ -231,6 +231,96 @@ void main() {
   });
 
   testWidgets(
+      'an Open Food Facts food shows its brand, product link, disclaimer and '
+      'change date', (tester) async {
+    // Tall enough that the whole attribution block is on screen.
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _pumpLogPortion(tester, food: _openFoodFactsFood());
+
+    expect(
+      tester.widget<Text>(find.byKey(LogPortionScreen.brandKey)).data,
+      'Ferrero',
+    );
+    expect(
+      find.byKey(NutritionAttributionKeys.openFoodFactsProductLink),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(NutritionAttributionKeys.openFoodFactsDisclaimer),
+          )
+          .data,
+      'Values come from Open Food Facts contributors and may be incomplete '
+      'or wrong. Check the label. Not for medical use.',
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(NutritionAttributionKeys.openFoodFactsChangeDate),
+          )
+          .data,
+      'Open Food Facts data from Oct 20, 2026',
+    );
+
+    await tester.tap(
+      find.byKey(NutritionAttributionKeys.openFoodFactsProductLink),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<SelectableText>(find.byType(SelectableText)).data,
+      'https://world.openfoodfacts.org/product/3017620422003',
+    );
+  });
+
+  testWidgets(
+      'a Recent Open Food Facts food gets the link and disclaimer, no date',
+      (tester) async {
+    await _pumpLogPortion(
+      tester,
+      food: FoodPickerItem(
+        id: '3017620422003',
+        name: 'Hazelnut cocoa spread',
+        filter: AddFoodPickerFilter.recent,
+        foodSource: FoodSource.openFoodFacts,
+        nutrientsPer100: _openFoodFactsFood().nutrientsPer100,
+        isLiquid: false,
+      ),
+    );
+
+    expect(
+      find.byKey(NutritionAttributionKeys.openFoodFactsProductLink),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(NutritionAttributionKeys.openFoodFactsDisclaimer),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(NutritionAttributionKeys.openFoodFactsChangeDate),
+      findsNothing,
+    );
+    expect(find.byKey(LogPortionScreen.brandKey), findsNothing);
+  });
+
+  testWidgets('a USDA food shows no Open Food Facts attribution',
+      (tester) async {
+    await _pumpLogPortion(tester, food: _solidFood());
+
+    for (final key in <Key>[
+      NutritionAttributionKeys.openFoodFactsNotice,
+      NutritionAttributionKeys.openFoodFactsProductLink,
+      NutritionAttributionKeys.openFoodFactsDisclaimer,
+      NutritionAttributionKeys.openFoodFactsChangeDate,
+      LogPortionScreen.brandKey,
+    ]) {
+      expect(find.byKey(key), findsNothing, reason: '$key');
+    }
+  });
+
+  testWidgets(
       'hard-reject keeps Log Portion open, shows validation, and saves nothing',
       (tester) async {
     final database = AppDatabase.inMemory();
@@ -423,6 +513,8 @@ FoodPickerItem _openFoodFactsFood() {
     servingLabel: 'serving',
     servingSize: 15,
     packageSize: 400,
+    brand: 'Ferrero',
+    sourceModifiedAt: DateTime(2026, 10, 20, 12),
   );
 }
 

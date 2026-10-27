@@ -243,21 +243,6 @@ void main() {
       ),
       actor: 'tester',
     );
-    await database.into(database.openFoodFactsCache).insert(
-          OpenFoodFactsCacheCompanion.insert(
-            lookupKey: 'barcode:3017620422003',
-            foodId: '3017620422003',
-            name: 'Original branded bar',
-            nutrientValuesJson: _offNutrientsPer100().toJsonString(),
-            isLiquid: const Value<bool>(false),
-            servingLabel: const Value<String?>('serving'),
-            servingSize: const Value<double?>(45),
-            packageSize: const Value<double?>(60),
-            fetchedAt: updatedAt,
-            lastAccessedAt: updatedAt,
-          ),
-        );
-
     final pushRequests = <http.Request>[];
     final pushRepository = SyncRepository(
       database: database,
@@ -310,10 +295,6 @@ void main() {
     expect(
       pushedBodies.map((body) => body['entity']),
       <String>[AppDatabase.mealsTable, AppDatabase.foodEntriesTable],
-    );
-    expect(
-      pushedBodies.map((body) => body['entity']),
-      isNot(contains(AppDatabase.openFoodFactsCacheTable)),
     );
     expect(foodPayload['food_source'], FoodSource.openFoodFacts.name);
     expect(foodPayload['food_id'], '3017620422003');
@@ -379,8 +360,6 @@ void main() {
     expect(pulledEntry.resolvedNutrients[NutrientId.energy].value, 112.5);
     expect(storedEntry.syncDeviceId, 'device-a');
     expect(storedEntry.syncPreviouslySynced, isTrue);
-    expect(await targetDatabase.select(targetDatabase.openFoodFactsCache).get(),
-        isEmpty);
     expect(await targetDatabase.select(targetDatabase.foods).get(), isEmpty);
     expect(await targetDatabase.select(targetDatabase.metrics).get(), isEmpty);
     expect(await targetDatabase.select(targetDatabase.metricReadings).get(),

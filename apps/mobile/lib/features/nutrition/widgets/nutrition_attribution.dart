@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../domain/nutrition/nutrition.dart';
+import '../../../domain/nutrition/open_food_facts.dart';
 import '../../../theme/theme.dart';
 
 const openFoodFactsSourceUrl = 'https://world.openfoodfacts.org/';
 const openFoodFactsOdblUrl = 'https://opendatacommons.org/licenses/odbl/1-0/';
+const openFoodFactsDbclUrl = 'https://opendatacommons.org/licenses/dbcl/1-0/';
 const usdaFoodDataCentralUrl = 'https://fdc.nal.usda.gov/';
 const usdaCc0Url = 'https://creativecommons.org/publicdomain/zero/1.0/';
 
@@ -17,6 +20,14 @@ class NutritionAttributionKeys {
       Key('nutrition.attribution.openFoodFacts.source');
   static const openFoodFactsOdblLink =
       Key('nutrition.attribution.openFoodFacts.odbl');
+  static const openFoodFactsDbclLink =
+      Key('nutrition.attribution.openFoodFacts.dbcl');
+  static const openFoodFactsProductLink =
+      Key('nutrition.attribution.openFoodFacts.product');
+  static const openFoodFactsDisclaimer =
+      Key('nutrition.attribution.openFoodFacts.disclaimer');
+  static const openFoodFactsChangeDate =
+      Key('nutrition.attribution.openFoodFacts.changeDate');
   static const usdaSourceLink = Key('nutrition.attribution.usda.source');
   static const usdaCc0Link = Key('nutrition.attribution.usda.cc0');
 
@@ -100,13 +111,25 @@ class FoodSourceBadge extends StatelessWidget {
   }
 }
 
+/// The Open Food Facts attribution, with the source and ODbL links in both
+/// forms. The compact form (the picker) is one sentence; the full form (the
+/// log-portion screen) adds the product link when [code] is set, the
+/// disclaimer, and the change date when [changeDate] is set.
 class OpenFoodFactsAttributionNotice extends StatelessWidget {
   const OpenFoodFactsAttributionNotice({
     super.key,
     this.compact = false,
+    this.code,
+    this.changeDate,
   });
 
   final bool compact;
+
+  /// The product's barcode, for its Open Food Facts page.
+  final String? code;
+
+  /// When Open Food Facts last changed the product.
+  final DateTime? changeDate;
 
   @override
   Widget build(BuildContext context) {
@@ -128,7 +151,7 @@ class OpenFoodFactsAttributionNotice extends StatelessWidget {
             children: [
               Text(
                 compact
-                    ? 'Open Food Facts branded data is live-query and cached on this device.'
+                    ? 'Open Food Facts data, from its contributors. Check the label.'
                     : 'Open Food Facts branded and barcode data is provided by Open Food Facts.',
                 style: context.textStyles.caption.copyWith(
                   color: context.colors.textSecondary,
@@ -138,19 +161,46 @@ class OpenFoodFactsAttributionNotice extends StatelessWidget {
               Wrap(
                 spacing: AppDimens.dense,
                 runSpacing: AppDimens.dense,
-                children: const [
-                  AttributionLinkButton(
+                children: [
+                  const AttributionLinkButton(
                     key: NutritionAttributionKeys.openFoodFactsSourceLink,
                     label: 'Open Food Facts source',
                     url: openFoodFactsSourceUrl,
                   ),
-                  AttributionLinkButton(
+                  const AttributionLinkButton(
                     key: NutritionAttributionKeys.openFoodFactsOdblLink,
                     label: 'ODbL',
                     url: openFoodFactsOdblUrl,
                   ),
+                  if (!compact && code != null)
+                    AttributionLinkButton(
+                      key: NutritionAttributionKeys.openFoodFactsProductLink,
+                      label: 'View on Open Food Facts',
+                      url: openFoodFactsProductUrl(code!),
+                    ),
                 ],
               ),
+              if (!compact) ...[
+                const SizedBox(height: AppDimens.dense),
+                Text(
+                  openFoodFactsDisclaimer,
+                  key: NutritionAttributionKeys.openFoodFactsDisclaimer,
+                  style: context.textStyles.caption.copyWith(
+                    color: context.colors.textSecondary,
+                  ),
+                ),
+                if (changeDate case final date?) ...[
+                  const SizedBox(height: AppDimens.dense),
+                  Text(
+                    'Open Food Facts data from '
+                    '${DateFormat.yMMMd(Localizations.localeOf(context).toLanguageTag()).format(date.toLocal())}',
+                    key: NutritionAttributionKeys.openFoodFactsChangeDate,
+                    style: context.textStyles.caption.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
             ],
           ),
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart'
     show DuplicateMealTypeNameException;
 import 'package:perennia/domain/nutrition/nutrition.dart';
@@ -9,7 +10,9 @@ import 'package:perennia/features/nutrition/repositories/add_food_repository.dar
 import 'package:perennia/features/nutrition/widgets/add_food_picker.dart';
 import 'package:perennia/features/nutrition/widgets/barcode_scanner.dart';
 import 'package:perennia/features/nutrition/widgets/log_portion_screen.dart';
+import 'package:perennia/features/nutrition/widgets/nutrition_attribution.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
+import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/theme/theme.dart';
 
 void main() {
@@ -175,6 +178,45 @@ void main() {
   });
 
   testWidgets(
+      'an Open Food Facts entry shows its source badge without the licence',
+      (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          nutritionDayControllerProvider.overrideWith(
+            () => _FakeNutritionDayController(_nutritionDayWithOpenFoodFactsEntry()),
+          ),
+          mealTypeListProvider.overrideWith(
+            (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const NutritionDayView(),
+        ),
+      ),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(NutritionDayView.mealCardKey('meal-breakfast')),
+    );
+
+    final badge = find.byKey(
+      NutritionAttributionKeys.foodSourceBadge(FoodSource.openFoodFacts),
+    );
+    expect(badge, findsOneWidget);
+    expect(
+      find.descendant(of: badge, matching: find.text('Open Food Facts')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('ODbL'), findsNothing);
+    expect(
+      find.byKey(NutritionDayView.importedEntryBadgeKey('entry-off')),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
       'imported-entry day view meets accessibility guidelines in both themes',
       (tester) async {
     for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
@@ -264,6 +306,12 @@ void main() {
       ProviderScope(
         overrides: [
           nutritionDayControllerProvider.overrideWith(() => controller),
+          settingsRepositoryProvider.overrideWith(
+            (ref) => InMemorySettingsRepository(),
+          ),
+          openFoodFactsRepositoryProvider.overrideWith(
+            (ref) => const StubOpenFoodFactsRepository(),
+          ),
           addFoodRepositoryProvider.overrideWith(
             (ref) => const _EmptyAddFoodRepository(),
           ),
@@ -586,6 +634,12 @@ void main() {
       ProviderScope(
         overrides: [
           nutritionDayControllerProvider.overrideWith(() => controller),
+          settingsRepositoryProvider.overrideWith(
+            (ref) => InMemorySettingsRepository(),
+          ),
+          openFoodFactsRepositoryProvider.overrideWith(
+            (ref) => const StubOpenFoodFactsRepository(),
+          ),
           addFoodRepositoryProvider.overrideWith(
             (ref) => _SingleFoodRepository(_pickerFood()),
           ),
@@ -661,6 +715,12 @@ void main() {
       ProviderScope(
         overrides: [
           nutritionDayControllerProvider.overrideWith(() => controller),
+          settingsRepositoryProvider.overrideWith(
+            (ref) => InMemorySettingsRepository(),
+          ),
+          openFoodFactsRepositoryProvider.overrideWith(
+            (ref) => const StubOpenFoodFactsRepository(),
+          ),
           addFoodRepositoryProvider.overrideWith(
             (ref) => _BarcodeFoodRepository(_openFoodFactsBar()),
           ),
@@ -831,7 +891,7 @@ class _FakeNutritionDayController extends NutritionDayController {
   }
 }
 
-class _EmptyAddFoodRepository implements AddFoodRepository {
+class _EmptyAddFoodRepository with _NoOnlineLookups implements AddFoodRepository {
   const _EmptyAddFoodRepository();
 
   @override
@@ -844,7 +904,7 @@ class _EmptyAddFoodRepository implements AddFoodRepository {
   }
 }
 
-class _SingleFoodRepository implements AddFoodRepository {
+class _SingleFoodRepository with _NoOnlineLookups implements AddFoodRepository {
   const _SingleFoodRepository(this.food);
 
   final FoodPickerItem food;
@@ -862,7 +922,7 @@ class _SingleFoodRepository implements AddFoodRepository {
   }
 }
 
-class _BarcodeFoodRepository implements AddFoodRepository {
+class _BarcodeFoodRepository with _NoOnlineLookups implements AddFoodRepository {
   const _BarcodeFoodRepository(this.food);
 
   final FoodPickerItem food;
@@ -873,12 +933,39 @@ class _BarcodeFoodRepository implements AddFoodRepository {
     required String query,
     int limit = 50,
   }) async {
-    if (filter == AddFoodPickerFilter.openFoodFacts &&
-        query == '3017620422003') {
-      return <FoodPickerItem>[food];
-    }
     return const <FoodPickerItem>[];
   }
+
+  @override
+  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
+    String raw,
+  ) async {
+    return raw == '3017620422003'
+        ? (status: BarcodeLookupOutcome.found, item: food)
+        : (status: BarcodeLookupOutcome.notFound, item: null);
+  }
+}
+
+/// The online methods for fakes that do not exercise them.
+mixin _NoOnlineLookups implements AddFoodRepository {
+  @override
+  Future<bool> onlineLookupsEnabled() async => true;
+
+  @override
+  Future<({OnlineSearchStatus status, List<FoodPickerItem> items})>
+      searchOnline(String query) async {
+    return (status: OnlineSearchStatus.noResults, items: <FoodPickerItem>[]);
+  }
+
+  @override
+  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
+    String raw,
+  ) async {
+    return (status: BarcodeLookupOutcome.notFound, item: null);
+  }
+
+  @override
+  Future<void> keepOpenedProduct(FoodPickerItem item) async {}
 }
 
 class _FakeBarcodeScanner implements BarcodeScanner {
@@ -1225,6 +1312,35 @@ NutritionDayRecord _nutritionDayWithImportedEntry() {
                 message: 'Portion is unusually large.',
               ),
             ],
+            updatedAt: DateTime.utc(2026, 6, 26, 8),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+NutritionDayRecord _nutritionDayWithOpenFoodFactsEntry() {
+  const localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
+  final imported = _nutritionDayWithImportedEntry().meals.single;
+  final template = imported.entries.single;
+  return NutritionDayRecord(
+    localDate: localDate,
+    meals: [
+      NutritionDayMealRecord(
+        meal: imported.meal,
+        entries: [
+          FoodEntryRecord(
+            id: 'entry-off',
+            mealId: 'meal-breakfast',
+            kind: FoodEntryKind.food,
+            position: 0,
+            name: 'Weet-Bix',
+            nutrients: template.nutrients,
+            portion: template.portion,
+            foodId: '9300652010411',
+            foodSource: FoodSource.openFoodFacts,
+            isLiquid: false,
             updatedAt: DateTime.utc(2026, 6, 26, 8),
           ),
         ],

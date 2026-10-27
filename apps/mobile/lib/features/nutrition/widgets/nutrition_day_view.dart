@@ -1075,7 +1075,10 @@ class _FoodEntryLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final energy = entry.resolvedNutrients[NutrientId.energy];
     final foodSource = entry.foodSource;
-    final showImportedBadge = entry.isImported && foodSource != null;
+    // Imported entries and Open Food Facts entries show their source; an Open
+    // Food Facts entry carries the attribution its data requires.
+    final showImportedBadge = foodSource != null &&
+        (entry.isImported || foodSource == FoodSource.openFoodFacts);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppDimens.dense / 2),
@@ -1113,7 +1116,12 @@ class _FoodEntryLine extends StatelessWidget {
               runSpacing: AppDimens.dense / 2,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                if (showImportedBadge)
+                if (showImportedBadge && !entry.isImported)
+                  const FoodSourceBadge(
+                    source: FoodSource.openFoodFacts,
+                    showLicense: false,
+                  )
+                else if (showImportedBadge)
                   KeyedSubtree(
                     key: NutritionDayView.importedEntryBadgeKey(entry.id),
                     // Imported entries are read-only observations; the badge

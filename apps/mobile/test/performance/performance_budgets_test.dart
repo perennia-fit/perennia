@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/local/food_reference_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/nutrition/open_food_facts.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/analytics/repositories/exercise_overview_repository.dart';
@@ -31,6 +33,45 @@ void main() {
   });
 
   group('M5 performance budgets', () {
+    test('Open Food Facts device search over 41k products stays under 100 ms',
+        () async {
+      final database = FoodReferenceDatabase.memory();
+      addTearDown(database.close);
+      await database.replaceBundle(
+        _syntheticOpenFoodFactsLines(openFoodFactsLocalSearchRowCount),
+        BundleHeader(
+          format: bundleFormat,
+          formatVersion: bundleFormatVersion,
+          datasetVersion: '2026-10-26',
+          contentHash: 'synthetic',
+          sourceName: 'Open Food Facts',
+          sourceUrl: 'https://world.openfoodfacts.org/',
+          licenseName: 'Open Database License (ODbL) 1.0',
+          licenseUrl: 'https://opendatacommons.org/licenses/odbl/1-0/',
+          contentsLicenseUrl: 'https://opendatacommons.org/licenses/dbcl/1-0/',
+          attributionText: 'Contains information from Open Food Facts.',
+          countries: const <String>['au'],
+          perCountryLimit: 10000,
+          productCount: openFoodFactsLocalSearchRowCount,
+        ),
+      );
+
+      final stopwatch = Stopwatch()..start();
+      final rows = await database.searchProducts(
+        buildFoodSearchMatch('greek yo')!,
+        50,
+      );
+      stopwatch.stop();
+
+      expect(rows, hasLength(50));
+      expect(
+        stopwatch.elapsed,
+        lessThan(openFoodFactsLocalSearchBudget),
+        reason: 'A two-word prefix search must return within the typing '
+            'budget.',
+      );
+    });
+
     test('Exercise Overview aggregates 50k-set fixture under 300 ms', () {
       final fixture = buildLargeExerciseOverviewHistoryFixture();
       final stopwatch = Stopwatch()..start();
@@ -221,4 +262,41 @@ Future<void> _waitForFinder(WidgetTester tester, Finder finder) async {
   }
 
   fail('Timed out waiting for $finder.');
+}
+
+/// Product lines with realistic names and brands; one in ten is a Greek
+/// yoghurt, so a common prefix query has many matches to rank.
+List<String> _syntheticOpenFoodFactsLines(int count) {
+  const adjectives = <String>[
+    'Greek', 'Organic', 'Light', 'Classic', 'Crunchy', 'Smooth', 'Wholegrain',
+    'Roasted', 'Spicy', 'Original',
+  ];
+  const foods = <String>[
+    'yogurt', 'oats', 'peanut butter', 'crackers', 'muesli', 'chips', 'bread',
+    'cheese', 'juice', 'cereal', 'noodles', 'soup',
+  ];
+  const brands = <String>[
+    'Chobani', 'Sanitarium', 'Arnotts', 'Kelloggs', 'Coles', 'Woolworths',
+    'Tesco', 'Kirkland', 'Heinz', 'Uncle Tobys',
+  ];
+  return [
+    for (var i = 0; i < count; i += 1)
+      encodeBundleProductLine(
+        MappedOpenFoodFactsProduct(
+          code: (9300000000000 + i).toString(),
+          name: i % 10 == 0
+              ? 'Greek yogurt ${foods[i % foods.length]} $i'
+              : '${adjectives[i % adjectives.length]} '
+                  '${foods[(i ~/ 3) % foods.length]} $i',
+          brand: brands[(i ~/ 7) % brands.length],
+          isLiquid: false,
+          servingLabel: null,
+          servingSize: null,
+          packageSize: null,
+          nutrientText: const {},
+          modifiedAt: DateTime.utc(2026, 1, 1),
+          scans: i % 500,
+        ),
+      ),
+  ];
 }

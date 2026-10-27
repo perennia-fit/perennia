@@ -1,11 +1,9 @@
-import 'dart:convert';
-
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/nutrition/open_food_facts.dart';
 import 'package:perennia/data/seeds/usda_food_seed.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
 
@@ -459,573 +457,129 @@ void main() {
       );
     });
 
-    test(
-        'looks up Open Food Facts barcode misses over the network then hits local unsynced cache',
-        () async {
-      final requests = <http.Request>[];
-      final httpClient = MockClient((request) async {
-        requests.add(request);
-        return http.Response(
-          jsonEncode(_offProductResponse(
-            code: '3017620422003',
-            name: 'Hazelnut cocoa spread',
-            servingQuantity: 15,
-            servingQuantityUnit: 'g',
-            packageQuantity: 400,
-            packageQuantityUnit: 'g',
-            nutriments: <String, Object?>{
-              'energy-kcal_100g': 539,
-              'proteins_100g': 6.3,
-              'carbohydrates_100g': 0,
-              'fat_100g': 30.9,
-              'sugars_100g': 56.3,
-            },
-          )),
-          200,
-          headers: const {'content-type': 'application/json'},
-        );
-      });
-      repositories = TrainingRepositories(
-        database,
-        usdaFoodSeedSource: const _FakeUsdaFoodSeedSource(),
-        openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-        openFoodFactsHttpClient: httpClient,
+    test('the Open Food Facts filter searches the device list', () async {
+      final openFoodFacts = _RecordingOpenFoodFactsRepository(
+        local: <PlatformFoodRecord>[_offRecord('9300633603427', 'Weet-Bix')],
       );
-      addFoodRepository = RepositoryAddFoodRepository(repositories);
-
-      final firstLookup = await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '3017620422003',
-      );
-      final secondLookup = await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '3017620422003',
+      final repository = RepositoryAddFoodRepository(
+        repositories,
+        openFoodFacts: openFoodFacts,
       );
 
-      expect(requests, hasLength(1));
-      expect(
-        requests.single.url.path,
-        '/api/v2/product/3017620422003.json',
+      final items = await repository.search(
+        filter: AddFoodPickerFilter.openFoodFacts,
+        query: 'weet',
       );
-      expect(requests.single.url.queryParameters, contains('fields'));
-      expect(firstLookup, hasLength(1));
-      expect(secondLookup, hasLength(1));
-      expect(secondLookup.single.id, '3017620422003');
-      expect(secondLookup.single.name, 'Hazelnut cocoa spread');
-      expect(secondLookup.single.filter, AddFoodPickerFilter.openFoodFacts);
-      expect(secondLookup.single.foodSource, FoodSource.openFoodFacts);
-      expect(secondLookup.single.isLiquid, isFalse);
-      expect(secondLookup.single.servingLabel, 'serving');
-      expect(secondLookup.single.servingSize, 15);
-      expect(secondLookup.single.packageSize, 400);
-      expect(
-        secondLookup.single.nutrientsPer100[NutrientId.energy].value,
-        539,
-      );
-      expect(
-        secondLookup.single.nutrientsPer100[NutrientId.carbohydrate].status,
-        NutrientValueStatus.complete,
-      );
-      expect(
-        secondLookup.single.nutrientsPer100[NutrientId.carbohydrate].value,
-        0,
-      );
-      expect(
-        secondLookup.single.nutrientsPer100[NutrientId.fiber].status,
-        NutrientValueStatus.unknown,
-      );
-      expect(await database.select(database.openFoodFactsCache).get(),
-          hasLength(1));
-      expect(await database.select(database.foods).get(), isEmpty);
-      expect(await database.select(database.activityLog).get(), isEmpty);
-      expect(
-        AppDatabase.tableNames,
-        isNot(contains(AppDatabase.openFoodFactsCacheTable)),
-      );
-      expect(
-        AppDatabase.schemaTableNames,
-        contains(AppDatabase.openFoodFactsCacheTable),
-      );
+
+      expect(openFoodFacts.localQueries, <String>['weet']);
+      expect(items.single.id, '9300633603427');
+      expect(items.single.brand, 'Sanitarium');
+      expect(items.single.isLiveResult, isFalse);
     });
 
-    test(
-        'looks up branded Open Food Facts names through search and caches them',
+    test('passes the online setting to Open Food Facts as allowOnline',
         () async {
-      final requests = <http.Request>[];
-      final httpClient = MockClient((request) async {
-        requests.add(request);
-        return http.Response(
-          jsonEncode(<String, Object?>{
-            'products': <Object?>[
-              _offProduct(
-                code: 'branded-cereal-1',
-                name: 'Branded cereal',
-                servingQuantity: 30,
-                servingQuantityUnit: 'g',
-                packageQuantity: 500,
-                packageQuantityUnit: 'g',
-                nutriments: <String, Object?>{
-                  'energy-kcal_100g': 380,
-                  'proteins_100g': 8,
-                  'carbohydrates_100g': 72,
-                  'fat_100g': 4,
-                },
-              ),
-            ],
-          }),
-          200,
-          headers: const {'content-type': 'application/json'},
+      for (final enabled in <bool>[true, false]) {
+        final openFoodFacts = _RecordingOpenFoodFactsRepository();
+        final repository = RepositoryAddFoodRepository(
+          repositories,
+          openFoodFacts: openFoodFacts,
+          onlineLookupsEnabled: () async => enabled,
         );
-      });
-      repositories = TrainingRepositories(
-        database,
-        usdaFoodSeedSource: const _FakeUsdaFoodSeedSource(),
-        openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-        openFoodFactsHttpClient: httpClient,
-      );
-      addFoodRepository = RepositoryAddFoodRepository(repositories);
 
-      final firstLookup = await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: 'branded cereal',
-      );
-      final secondLookup = await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: 'branded cereal',
-      );
+        final online = await repository.searchOnline('weet bix');
+        await repository.lookupBarcode('9300633603427');
 
-      expect(requests, hasLength(1));
-      expect(requests.single.url.path, '/cgi/search.pl');
-      expect(
-          requests.single.url.queryParameters,
-          containsPair(
-            'search_terms',
-            'branded cereal',
-          ));
-      expect(firstLookup.single.name, 'Branded cereal');
-      expect(firstLookup.single.foodSource, FoodSource.openFoodFacts);
-      expect(secondLookup.single.id, firstLookup.single.id);
-      expect(await database.select(database.openFoodFactsCache).get(),
-          hasLength(1));
+        expect(openFoodFacts.allowOnline, <bool>[enabled, enabled]);
+        expect(online.items.every((item) => item.isLiveResult), isTrue);
+      }
     });
 
-    test('Open Food Facts 404 misses write no cache row and do not throw',
+    test('without an Open Food Facts repository the filter finds nothing',
         () async {
-      final requests = <http.Request>[];
-      final httpClient = MockClient((request) async {
-        requests.add(request);
-        return http.Response('not found', 404);
-      });
-      repositories = TrainingRepositories(
-        database,
-        usdaFoodSeedSource: const _FakeUsdaFoodSeedSource(),
-        openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-        openFoodFactsHttpClient: httpClient,
-      );
-      addFoodRepository = RepositoryAddFoodRepository(repositories);
-
-      final results = await addFoodRepository.search(
+      final items = await addFoodRepository.search(
         filter: AddFoodPickerFilter.openFoodFacts,
-        query: '3017620422003',
+        query: 'weet',
       );
+      final online = await addFoodRepository.searchOnline('weet');
+      final barcode = await addFoodRepository.lookupBarcode('9300633603427');
 
-      expect(results, isEmpty);
-      expect(requests, hasLength(1));
-      expect(await database.select(database.openFoodFactsCache).get(), isEmpty);
-    });
-
-    test(
-        'Open Food Facts non-2xx misses throw without poisoning the cache and retry',
-        () async {
-      var requestCount = 0;
-      final httpClient = MockClient((request) async {
-        requestCount += 1;
-        if (requestCount == 1) {
-          return http.Response('temporarily down', 500);
-        }
-        return http.Response(
-          jsonEncode(_offProductResponse(
-            code: '3017620422003',
-            name: 'Recovered branded food',
-            servingQuantity: 100,
-            servingQuantityUnit: 'g',
-            packageQuantity: 100,
-            packageQuantityUnit: 'g',
-            nutriments: <String, Object?>{
-              'energy-kcal_100g': 210,
-              'proteins_100g': 7,
-              'carbohydrates_100g': 20,
-              'fat_100g': 10,
-            },
-          )),
-          200,
-          headers: const {'content-type': 'application/json'},
-        );
-      });
-      repositories = TrainingRepositories(
-        database,
-        usdaFoodSeedSource: const _FakeUsdaFoodSeedSource(),
-        openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-        openFoodFactsHttpClient: httpClient,
-      );
-      addFoodRepository = RepositoryAddFoodRepository(repositories);
-
-      await expectLater(
-        addFoodRepository.search(
-          filter: AddFoodPickerFilter.openFoodFacts,
-          query: '3017620422003',
-        ),
-        throwsA(isA<http.ClientException>()),
-      );
-      expect(await database.select(database.openFoodFactsCache).get(), isEmpty);
-
-      final retryResults = await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '3017620422003',
-      );
-
-      expect(requestCount, 2);
-      expect(retryResults.single.name, 'Recovered branded food');
-      expect(await database.select(database.openFoodFactsCache).get(),
-          hasLength(1));
-    });
-
-    test('Open Food Facts product status zero is a cache-free miss', () async {
-      final httpClient = MockClient((_) async {
-        return http.Response(
-          jsonEncode(<String, Object?>{
-            'status': 0,
-            'status_verbose': 'product not found',
-          }),
-          200,
-          headers: const {'content-type': 'application/json'},
-        );
-      });
-      repositories = TrainingRepositories(
-        database,
-        usdaFoodSeedSource: const _FakeUsdaFoodSeedSource(),
-        openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-        openFoodFactsHttpClient: httpClient,
-      );
-      addFoodRepository = RepositoryAddFoodRepository(repositories);
-
-      final results = await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '3017620422003',
-      );
-
-      expect(results, isEmpty);
-      expect(await database.select(database.openFoodFactsCache).get(), isEmpty);
-    });
-
-    test(
-        'Open Food Facts branded search misses on empty or unparseable products',
-        () async {
-      var requestCount = 0;
-      final httpClient = MockClient((_) async {
-        requestCount += 1;
-        final products = requestCount == 1
-            ? const <Object?>[]
-            : <Object?>[
-                <String, Object?>{
-                  'code': 'missing-name',
-                  'nutriments': <String, Object?>{
-                    'energy-kcal_100g': 120,
-                  },
-                },
-              ];
-        return http.Response(
-          jsonEncode(<String, Object?>{'products': products}),
-          200,
-          headers: const {'content-type': 'application/json'},
-        );
-      });
-      repositories = TrainingRepositories(
-        database,
-        usdaFoodSeedSource: const _FakeUsdaFoodSeedSource(),
-        openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-        openFoodFactsHttpClient: httpClient,
-      );
-      addFoodRepository = RepositoryAddFoodRepository(repositories);
-
-      final emptyResults = await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: 'empty branded search',
-      );
-      final unparseableResults = await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: 'unparseable branded search',
-      );
-
-      expect(emptyResults, isEmpty);
-      expect(unparseableResults, isEmpty);
-      expect(await database.select(database.openFoodFactsCache).get(), isEmpty);
-    });
-
-    test('Open Food Facts malformed JSON throws and writes no cache row',
-        () async {
-      final httpClient = MockClient((_) async {
-        return http.Response(
-          jsonEncode(<Object?>['not', 'an', 'object']),
-          200,
-          headers: const {'content-type': 'application/json'},
-        );
-      });
-      repositories = TrainingRepositories(
-        database,
-        usdaFoodSeedSource: const _FakeUsdaFoodSeedSource(),
-        openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-        openFoodFactsHttpClient: httpClient,
-      );
-      addFoodRepository = RepositoryAddFoodRepository(repositories);
-
-      await expectLater(
-        addFoodRepository.search(
-          filter: AddFoodPickerFilter.openFoodFacts,
-          query: '3017620422003',
-        ),
-        throwsA(isA<FormatException>()),
-      );
-      expect(await database.select(database.openFoodFactsCache).get(), isEmpty);
-    });
-
-    test('Open Food Facts cache evicts least-recently-used rows over its bound',
-        () async {
-      final requests = <http.Request>[];
-      var now = DateTime.utc(2026, 6, 27, 12);
-      final httpClient = MockClient((request) async {
-        requests.add(request);
-        final code = request.url.pathSegments
-            .lastWhere((segment) => segment.endsWith('.json'))
-            .replaceFirst('.json', '');
-        return http.Response(
-          jsonEncode(_offProductResponse(
-            code: code,
-            name: 'Cached food $code',
-            servingQuantity: 100,
-            servingQuantityUnit: 'g',
-            packageQuantity: 100,
-            packageQuantityUnit: 'g',
-            nutriments: <String, Object?>{
-              'energy-kcal_100g': 100,
-              'proteins_100g': 1,
-              'carbohydrates_100g': 2,
-              'fat_100g': 3,
-            },
-          )),
-          200,
-          headers: const {'content-type': 'application/json'},
-        );
-      });
-      repositories = TrainingRepositories(
-        database,
-        usdaFoodSeedSource: const _FakeUsdaFoodSeedSource(),
-        openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-        openFoodFactsHttpClient: httpClient,
-        openFoodFactsMaxCacheEntries: 1,
-        openFoodFactsClock: () => now,
-      );
-      addFoodRepository = RepositoryAddFoodRepository(repositories);
-
-      await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '11111111',
-      );
-      now = now.add(const Duration(minutes: 1));
-      await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '22222222',
-      );
-      now = now.add(const Duration(minutes: 1));
-      await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '11111111',
-      );
-
-      final cacheRows =
-          await database.select(database.openFoodFactsCache).get();
-      expect(cacheRows, hasLength(1));
-      expect(cacheRows.single.foodId, '11111111');
-      expect(requests.map((request) => request.url.path), <String>[
-        '/api/v2/product/11111111.json',
-        '/api/v2/product/22222222.json',
-        '/api/v2/product/11111111.json',
-      ]);
-    });
-
-    test(
-        'Open Food Facts Food Entry snapshot stays immutable after cache eviction and source change',
-        () async {
-      final requestsByCode = <String, int>{};
-      var now = DateTime.utc(2026, 6, 27, 12);
-      final httpClient = MockClient((request) async {
-        final code = request.url.pathSegments
-            .lastWhere((segment) => segment.endsWith('.json'))
-            .replaceFirst('.json', '');
-        requestsByCode[code] = (requestsByCode[code] ?? 0) + 1;
-        final requestCount = requestsByCode[code]!;
-        if (code == '3017620422003' && requestCount == 1) {
-          return http.Response(
-            jsonEncode(_offProductResponse(
-              code: code,
-              name: 'Original branded bar',
-              servingQuantity: 45,
-              servingQuantityUnit: 'g',
-              packageQuantity: 60,
-              packageQuantityUnit: 'g',
-              nutriments: <String, Object?>{
-                'energy-kcal_100g': 250,
-                'proteins_100g': 8,
-                'carbohydrates_100g': 28,
-                'fat_100g': 11,
-              },
-            )),
-            200,
-            headers: const {'content-type': 'application/json'},
-          );
-        }
-        return http.Response(
-          jsonEncode(_offProductResponse(
-            code: code,
-            name: code == '3017620422003'
-                ? 'Corrected branded bar'
-                : 'Evicting branded food',
-            servingQuantity: code == '3017620422003' ? 50 : 100,
-            servingQuantityUnit: 'g',
-            packageQuantity: code == '3017620422003' ? 70 : 100,
-            packageQuantityUnit: 'g',
-            nutriments: <String, Object?>{
-              'energy-kcal_100g': code == '3017620422003' ? 300 : 100,
-              'proteins_100g': code == '3017620422003' ? 12 : 1,
-              'carbohydrates_100g': code == '3017620422003' ? 30 : 2,
-              'fat_100g': code == '3017620422003' ? 14 : 3,
-            },
-          )),
-          200,
-          headers: const {'content-type': 'application/json'},
-        );
-      });
-      repositories = TrainingRepositories(
-        database,
-        usdaFoodSeedSource: const _FakeUsdaFoodSeedSource(),
-        openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-        openFoodFactsHttpClient: httpClient,
-        openFoodFactsMaxCacheEntries: 1,
-        openFoodFactsClock: () => now,
-      );
-      addFoodRepository = RepositoryAddFoodRepository(repositories);
-      final firstLookup = (await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '3017620422003',
-      ))
-          .single;
-      final mealId = await repositories.nutrition.createMeal(
-        MealDraft(
-          mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 15),
-          timezone: 'Australia/Brisbane',
-          localDate: const NutritionDayDate(year: 2026, month: 6, day: 26),
-        ),
-      );
-      final result = await repositories.nutrition.logFoodEntrySnapshot(
-        entry: FoodEntrySnapshotDraft(
-          mealId: mealId,
-          foodId: firstLookup.id,
-          name: firstLookup.name,
-          foodSource: firstLookup.foodSource,
-          nutrientsPer100: firstLookup.nutrientsPer100,
-          isLiquid: firstLookup.isLiquid,
-          servingLabel: firstLookup.servingLabel,
-          servingSize: firstLookup.servingSize,
-          packageSize: firstLookup.packageSize,
-          portion: Portion(
-            value: 1,
-            entered: '1',
-            unit: PortionUnit.serving,
-          ),
-        ),
-      );
-
-      expect(requestsByCode['3017620422003'], 1);
-      now = now.add(const Duration(minutes: 1));
-      await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '22222222',
-      );
-      now = now.add(const Duration(minutes: 1));
-      final correctedLookup = (await addFoodRepository.search(
-        filter: AddFoodPickerFilter.openFoodFacts,
-        query: '3017620422003',
-      ))
-          .single;
-      final entry = (await repositories.nutrition.getFoodEntryById(
-        result.foodEntryId,
-      ))!;
-      final foodEntryLogs = (await database.select(database.activityLog).get())
-          .where((log) => log.entityTable == AppDatabase.foodEntriesTable)
-          .toList(growable: false);
-
-      expect(requestsByCode['3017620422003'], 2);
-      expect(correctedLookup.name, 'Corrected branded bar');
-      expect(correctedLookup.nutrientsPer100[NutrientId.energy].value, 300);
-      expect(entry.name, 'Original branded bar');
-      expect(entry.foodId, '3017620422003');
-      expect(entry.foodSource, FoodSource.openFoodFacts);
-      expect(entry.nutrients[NutrientId.energy].value, 250);
-      expect(entry.nutrients[NutrientId.protein].value, 8);
-      expect(entry.isLiquid, isFalse);
-      expect(entry.servingLabel, 'serving');
-      expect(entry.servingSize, 45);
-      expect(entry.packageSize, 60);
-      expect(entry.portion?.value, 1);
-      expect(entry.portion?.entered, '1');
-      expect(entry.portion?.unit, PortionUnit.serving);
-      expect(foodEntryLogs.single.actor, 'app');
+      expect(items, isEmpty);
+      expect(online.status, OnlineSearchStatus.disabled);
+      expect(barcode.status, BarcodeLookupOutcome.disabled);
     });
   });
 }
 
-Map<String, Object?> _offProductResponse({
-  required String code,
-  required String name,
-  required double servingQuantity,
-  required String servingQuantityUnit,
-  required double packageQuantity,
-  required String packageQuantityUnit,
-  required Map<String, Object?> nutriments,
-}) {
-  return <String, Object?>{
-    'status': 1,
-    'product': _offProduct(
-      code: code,
-      name: name,
-      servingQuantity: servingQuantity,
-      servingQuantityUnit: servingQuantityUnit,
-      packageQuantity: packageQuantity,
-      packageQuantityUnit: packageQuantityUnit,
-      nutriments: nutriments,
-    ),
-  };
+PlatformFoodRecord _offRecord(String code, String name) {
+  return PlatformFoodRecord(
+    id: code,
+    name: name,
+    foodSource: FoodSource.openFoodFacts,
+    nutrientsPer100: NutrientVector.full(<NutrientId, NutrientAmount>{
+      NutrientId.energy: NutrientAmount.complete(
+        value: 352,
+        entered: '352',
+        unit: NutrientUnit.kilocalorie,
+      ),
+    }),
+    isLiquid: false,
+    brand: 'Sanitarium',
+    sourceModifiedAt: DateTime.utc(2026, 10, 1),
+    scans: 40,
+  );
 }
 
-Map<String, Object?> _offProduct({
-  required String code,
-  required String name,
-  required double servingQuantity,
-  required String servingQuantityUnit,
-  required double packageQuantity,
-  required String packageQuantityUnit,
-  required Map<String, Object?> nutriments,
-}) {
-  return <String, Object?>{
-    'code': code,
-    'product_name': name,
-    'serving_quantity': servingQuantity,
-    'serving_quantity_unit': servingQuantityUnit,
-    'product_quantity': packageQuantity,
-    'product_quantity_unit': packageQuantityUnit,
-    'nutriments': nutriments,
-  };
+/// Records what the add-food repository asks of Open Food Facts.
+class _RecordingOpenFoodFactsRepository implements OpenFoodFactsRepository {
+  _RecordingOpenFoodFactsRepository({
+    this.local = const <PlatformFoodRecord>[],
+  });
+
+  final List<PlatformFoodRecord> local;
+  final localQueries = <String>[];
+  final allowOnline = <bool>[];
+
+  @override
+  Future<List<PlatformFoodRecord>> searchLocal(
+    String query, {
+    int limit = 50,
+  }) async {
+    localQueries.add(query);
+    return local;
+  }
+
+  @override
+  Future<({OnlineSearchStatus status, List<PlatformFoodRecord> products})>
+      searchOnline(String query, {required bool allowOnline}) async {
+    this.allowOnline.add(allowOnline);
+    return (
+      status: OnlineSearchStatus.ok,
+      products: <PlatformFoodRecord>[_offRecord('9300633603427', 'Weet-Bix')],
+    );
+  }
+
+  @override
+  Future<({BarcodeLookupOutcome status, PlatformFoodRecord? product})>
+      lookupBarcode(String raw, {required bool allowOnline}) async {
+    this.allowOnline.add(allowOnline);
+    return (status: BarcodeLookupOutcome.notFound, product: null);
+  }
+
+  @override
+  Future<void> keepOpenedProduct(PlatformFoodRecord record) async {}
+
+  @override
+  Future<void> ensureBundleInstalled() async {}
+
+  @override
+  Stream<BundleStatus> watchBundleStatus() => Stream.value(BundleStatus.ready);
+
+  @override
+  Future<BundleHeader?> bundleHeader() async => null;
+
+  @override
+  Future<void> resetDeviceData() async {}
 }
 
 class _FakeUsdaFoodSeedSource implements UsdaFoodSeedSource {

@@ -6,9 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:perennia/app.dart';
 import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
+import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/platform_exercise_seed.dart';
 import 'package:perennia/domain/training/training_day.dart';
@@ -76,6 +80,43 @@ void main() {
     final context = tester.element(find.byType(HomeScreen));
     expect(Theme.of(context).colorScheme.primary, DesignTokens.primary);
     expect(context.colors.save, DesignTokens.save);
+  });
+
+  testWidgets(
+      'an Open Food Facts install that cannot find its cache directory fails '
+      'quietly', (tester) async {
+    final requests = <http.Request>[];
+    final openFoodFacts = DriftOpenFoodFactsRepository(
+      databaseFile: () async => throw MissingPluginException('path_provider'),
+      client: OpenFoodFactsClient(
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          return http.Response('', 500);
+        }),
+      ),
+    );
+
+    await tester.pumpWidget(
+      PerenniaRoot(
+        upNextFeatureRepository: const StubUpNextFeatureRepository(),
+        extraOverrides: [_homeNutritionDayOverride()],
+        exerciseCatalogRepository: const StubExerciseCatalogRepository(),
+        homeRepository: StubHomeRepository(),
+        openFoodFactsRepository: openFoodFacts,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    final status = await tester.runAsync(
+      () => openFoodFacts.watchBundleStatus().first,
+    );
+    expect(status, BundleStatus.failed);
+    expect(requests, isEmpty, reason: 'installing sends nothing');
+    // The reference database never opened, so there is nothing to close;
+    // open_food_facts_repository_test.dart closes this same case.
   });
 
   testWidgets('root navigation separates Today, Progress, and Library', (

@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/repositories/open_food_facts_repository.dart';
 import '../../../domain/nutrition/nutrition.dart';
+import '../../../domain/nutrition/open_food_facts.dart';
 import '../../../theme/theme.dart';
 import '../controllers/add_food_controller.dart';
 import '../repositories/add_food_repository.dart';
@@ -30,8 +32,15 @@ class AddFoodPicker extends ConsumerWidget {
   static const quickAddButtonKey = Key('nutrition.addFood.quickAdd');
   static const scanBarcodeButtonKey = Key('nutrition.addFood.scanBarcode');
   static const barcodeStatusKey = Key('nutrition.addFood.barcodeStatus');
-  static const brandedSearchStatusKey =
-      Key('nutrition.addFood.brandedSearchStatus');
+
+  /// The one line under a barcode miss (offline, unavailable or lookups off).
+  static const barcodeStatusLineKey =
+      Key('nutrition.addFood.barcodeStatusLine');
+  static const onlineSearchRowKey = Key('nutrition.addFood.onlineSearch');
+  static const onlineGroupKey = Key('nutrition.addFood.onlineGroup');
+  static const onlineStatusLineKey = Key('nutrition.addFood.onlineStatusLine');
+  static const bundleStatusLineKey = Key('nutrition.addFood.bundleStatusLine');
+  static const emptyQueryLineKey = Key('nutrition.addFood.emptyQueryLine');
   static const barcodeQuickAddButtonKey =
       Key('nutrition.addFood.barcodeQuickAdd');
   static const lookupUsdaButtonKey = Key('nutrition.addFood.lookupUsda');
@@ -102,11 +111,7 @@ class AddFoodPicker extends ConsumerWidget {
               );
             },
             onSubmitted: (value) {
-              unawaited(
-                ref
-                    .read(addFoodPickerControllerProvider.notifier)
-                    .submitQuery(value),
-              );
+              unawaited(_submit(context, ref, value));
             },
           ),
           const SizedBox(height: AppDimens.base),
@@ -148,8 +153,7 @@ class AddFoodPicker extends ConsumerWidget {
           ),
           state.maybeWhen(
             data: (value) =>
-                value.barcodeLookupStatus == BarcodeLookupStatus.idle &&
-                        !value.brandedSearchNeedsNetwork
+                value.barcodeLookupStatus == BarcodeLookupStatus.idle
                     ? const SizedBox.shrink()
                     : const SizedBox(height: AppDimens.base),
             orElse: () => const SizedBox.shrink(),
@@ -158,7 +162,11 @@ class AddFoodPicker extends ConsumerWidget {
             child: state.when(
               data: (value) => _FoodResults(
                 state: value,
-                onFoodSelected: onFoodSelected,
+                onOpen:
+                    onFoodSelected == null ? null : (item) => _open(ref, item),
+                onSearchOnline: () {
+                  unawaited(_submit(context, ref, value.query));
+                },
               ),
               loading: () => const SizedBox.expand(),
               error: (_, __) => Center(
@@ -204,10 +212,34 @@ class AddFoodPicker extends ConsumerWidget {
     final food = await ref
         .read(addFoodPickerControllerProvider.notifier)
         .lookupBarcode(barcode);
-    if (!context.mounted || food == null || onFoodSelected == null) {
+    if (!context.mounted || food == null) {
       return;
     }
-    onFoodSelected!(food);
+    _open(ref, food);
+  }
+
+  /// The keyboard's search action and the online search row. A typed barcode
+  /// that is found opens the log-portion screen through the scan's path.
+  Future<void> _submit(
+      BuildContext context, WidgetRef ref, String query) async {
+    final food = await ref
+        .read(addFoodPickerControllerProvider.notifier)
+        .submitQuery(query);
+    if (!context.mounted || food == null) {
+      return;
+    }
+    _open(ref, food);
+  }
+
+  /// Every opened item goes through the controller first, which stores a live
+  /// copy in the background.
+  void _open(WidgetRef ref, FoodPickerItem item) {
+    final onSelected = onFoodSelected;
+    if (onSelected == null) {
+      return;
+    }
+    ref.read(addFoodPickerControllerProvider.notifier).openItem(item);
+    onSelected(item);
   }
 }
 
@@ -245,39 +277,159 @@ class _FoodSourceChips extends ConsumerWidget {
 class _FoodResults extends StatelessWidget {
   const _FoodResults({
     required this.state,
-    required this.onFoodSelected,
+    required this.onOpen,
+    required this.onSearchOnline,
   });
 
   final AddFoodPickerState state;
-  final ValueChanged<FoodPickerItem>? onFoodSelected;
+  final ValueChanged<FoodPickerItem>? onOpen;
+  final VoidCallback onSearchOnline;
 
   @override
   Widget build(BuildContext context) {
-    if (state.results.isEmpty) {
-      return Align(
-        alignment: Alignment.topLeft,
-        child: Text(
-          'No foods found',
-          style: context.textStyles.body.copyWith(
-            color: context.colors.textSecondary,
-          ),
+    if (state.filter != AddFoodPickerFilter.openFoodFacts) {
+      if (state.results.isEmpty) {
+        return const Align(
+          alignment: Alignment.topLeft,
+          child: _StatusLine(text: 'No foods found'),
+        );
+      }
+      return ListView.separated(
+        itemCount: state.results.length,
+        separatorBuilder: (_, __) => Divider(
+          height: 1,
+          color: context.colors.divider,
+        ),
+        itemBuilder: (context, index) => _FoodResultRow(
+          item: state.results[index],
+          onOpen: onOpen,
         ),
       );
     }
 
-    return ListView.separated(
-      itemCount: state.results.length,
-      separatorBuilder: (_, __) => Divider(
-        height: 1,
-        color: context.colors.divider,
+    // The Open Food Facts filter, top to bottom: the bundle line, the
+    // device's matches, the online slot, and the live-only results.
+    final bundleLine = switch (state.bundleStatus) {
+      BundleStatus.installing => 'Preparing the offline food list.',
+      BundleStatus.failed => 'The offline food list could not be prepared. '
+          'It will try again next time the app opens.',
+      BundleStatus.unknown || BundleStatus.ready => null,
+    };
+    final hasSearchParts = buildFoodSearchMatch(state.query) != null ||
+        barcodeCandidates(state.query).isNotEmpty;
+
+    return ListView(
+      children: [
+        if (bundleLine != null)
+          _StatusLine(key: AddFoodPicker.bundleStatusLineKey, text: bundleLine),
+        if (!hasSearchParts)
+          const _StatusLine(
+            key: AddFoodPicker.emptyQueryLineKey,
+            text: 'Type a product or brand name.',
+          )
+        else ...[
+          for (final item in state.results) ...[
+            _FoodResultRow(item: item, onOpen: onOpen),
+            Divider(height: 1, color: context.colors.divider),
+          ],
+          _OnlineSlot(state: state, onSearchOnline: onSearchOnline),
+          if (state.onlineResults.isNotEmpty)
+            Column(
+              key: AddFoodPicker.onlineGroupKey,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(
+                    top: AppDimens.base,
+                    bottom: AppDimens.dense,
+                  ),
+                  child: Text(
+                    'From Open Food Facts',
+                    style: context.textStyles.label.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
+                for (final item in state.onlineResults) ...[
+                  _FoodResultRow(item: item, onOpen: onOpen),
+                  Divider(height: 1, color: context.colors.divider),
+                ],
+              ],
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Exactly one of: the lookups-off line, the online search row (with a
+/// progress indicator while a live request runs), the last live request's
+/// offline, unavailable or no-results line, or the online search row.
+class _OnlineSlot extends StatelessWidget {
+  const _OnlineSlot({required this.state, required this.onSearchOnline});
+
+  final AddFoodPickerState state;
+  final VoidCallback onSearchOnline;
+
+  @override
+  Widget build(BuildContext context) {
+    final line = !state.onlineLookupsEnabled
+        ? 'Online lookups are off. Turn them on in Settings > Food data.'
+        : switch (state.onlineStatus) {
+            OnlinePickerStatus.offline =>
+              "You're offline. Showing foods on this device.",
+            OnlinePickerStatus.unavailable =>
+              'Open Food Facts is unavailable. Try again in a minute.',
+            OnlinePickerStatus.noResults => 'No matches on Open Food Facts.',
+            OnlinePickerStatus.idle ||
+            OnlinePickerStatus.loading ||
+            OnlinePickerStatus.ok =>
+              null,
+          };
+    if (line != null) {
+      return _StatusLine(key: AddFoodPicker.onlineStatusLineKey, text: line);
+    }
+    final loading = state.onlineStatus == OnlinePickerStatus.loading;
+    return ListTile(
+      key: AddFoodPicker.onlineSearchRowKey,
+      minTileHeight: AppDimens.touchTarget,
+      contentPadding: EdgeInsets.zero,
+      leading: loading
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: Padding(
+                padding: EdgeInsets.all(3),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : Icon(Icons.search, color: context.colors.textPrimary),
+      title: Text(
+        'Search Open Food Facts for "${state.query.trim()}"',
+        style: context.textStyles.body.copyWith(
+          color: context.colors.textPrimary,
+        ),
       ),
-      itemBuilder: (context, index) {
-        final item = state.results[index];
-        return _FoodResultRow(
-          item: item,
-          onFoodSelected: onFoodSelected,
-        );
-      },
+      onTap: loading ? null : onSearchOnline,
+    );
+  }
+}
+
+class _StatusLine extends StatelessWidget {
+  const _StatusLine({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.dense),
+      child: Text(
+        text,
+        style: context.textStyles.body.copyWith(
+          color: context.colors.textSecondary,
+        ),
+      ),
     );
   }
 }
@@ -332,6 +484,16 @@ class _LookupBoundaryBanner extends StatelessWidget {
                     message,
                     style: context.textStyles.body,
                   ),
+                  if (status.line case final line?) ...[
+                    const SizedBox(height: AppDimens.dense),
+                    Text(
+                      line,
+                      key: AddFoodPicker.barcodeStatusLineKey,
+                      style: context.textStyles.body.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  ],
                   if (!status.isLoading) ...[
                     const SizedBox(height: AppDimens.dense),
                     Wrap(
@@ -375,35 +537,35 @@ class _LookupBoundaryBanner extends StatelessWidget {
   }
 
   _LookupStatus? _lookupStatus() {
-    if (state.barcodeLookupStatus == BarcodeLookupStatus.loading) {
-      return const _LookupStatus(
-        key: AddFoodPicker.barcodeStatusKey,
-        isLoading: true,
-        message: 'Looking up barcode in Open Food Facts',
-      );
-    }
-    if (state.barcodeLookupStatus == BarcodeLookupStatus.notFound) {
-      return const _LookupStatus(
-        key: AddFoodPicker.barcodeStatusKey,
-        message:
-            'Barcode not found. USDA foods stay fully offline, or use Quick add.',
-      );
-    }
-    if (state.barcodeLookupStatus == BarcodeLookupStatus.needsNetwork) {
-      return const _LookupStatus(
-        key: AddFoodPicker.barcodeStatusKey,
-        message:
-            'Open Food Facts barcode lookup needs network the first time. USDA foods stay fully offline, or use Quick add.',
-      );
-    }
-    if (state.brandedSearchNeedsNetwork) {
-      return const _LookupStatus(
-        key: AddFoodPicker.brandedSearchStatusKey,
-        message:
-            'Open Food Facts branded search needs network the first time. USDA foods stay fully offline, or use Quick add.',
-      );
-    }
-    return null;
+    const notFound = 'Barcode not found. USDA foods stay fully offline, or use '
+        'Quick add.';
+    return switch (state.barcodeLookupStatus) {
+      BarcodeLookupStatus.idle => null,
+      BarcodeLookupStatus.loading => const _LookupStatus(
+          key: AddFoodPicker.barcodeStatusKey,
+          isLoading: true,
+          message: 'Looking up barcode in Open Food Facts',
+        ),
+      BarcodeLookupStatus.notFound => const _LookupStatus(
+          key: AddFoodPicker.barcodeStatusKey,
+          message: notFound,
+        ),
+      BarcodeLookupStatus.needsNetwork => const _LookupStatus(
+          key: AddFoodPicker.barcodeStatusKey,
+          message: notFound,
+          line: "You're offline. Showing foods on this device.",
+        ),
+      BarcodeLookupStatus.unavailable => const _LookupStatus(
+          key: AddFoodPicker.barcodeStatusKey,
+          message: notFound,
+          line: 'Open Food Facts is unavailable. Try again in a minute.',
+        ),
+      BarcodeLookupStatus.disabled => const _LookupStatus(
+          key: AddFoodPicker.barcodeStatusKey,
+          message: notFound,
+          line: 'Online lookups are off. Turn them on in Settings > Food data.',
+        ),
+    };
   }
 }
 
@@ -411,22 +573,26 @@ class _LookupStatus {
   const _LookupStatus({
     required this.key,
     required this.message,
+    this.line,
     this.isLoading = false,
   });
 
   final Key key;
   final String message;
+
+  /// The one line under the not-found state, when the miss has a cause.
+  final String? line;
   final bool isLoading;
 }
 
 class _FoodResultRow extends StatelessWidget {
   const _FoodResultRow({
     required this.item,
-    required this.onFoodSelected,
+    required this.onOpen,
   });
 
   final FoodPickerItem item;
-  final ValueChanged<FoodPickerItem>? onFoodSelected;
+  final ValueChanged<FoodPickerItem>? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -444,31 +610,46 @@ class _FoodResultRow extends StatelessWidget {
       ),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 6),
-        child: Wrap(
-          spacing: AppDimens.dense,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FoodSourceBadge(
-              source: item.foodSource,
-              showLicense: item.foodSource == FoodSource.openFoodFacts,
-            ),
-            Text(
-              _energyLabel(item),
-              style: context.textStyles.label.copyWith(
-                color: context.colors.textSecondary,
+            if (item.brand case final brand?)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  brand,
+                  style: context.textStyles.label.copyWith(
+                    color: context.colors.textSecondary,
+                  ),
+                ),
               ),
+            Wrap(
+              spacing: AppDimens.dense,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                FoodSourceBadge(
+                  source: item.foodSource,
+                  showLicense: item.foodSource == FoodSource.openFoodFacts,
+                ),
+                Text(
+                  _energyLabel(item),
+                  style: context.textStyles.label.copyWith(
+                    color: context.colors.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
-      trailing: onFoodSelected == null
+      trailing: onOpen == null
           ? null
           : Icon(
               Icons.chevron_right,
               color: context.colors.textSecondary,
             ),
-      onTap: onFoodSelected == null ? null : () => onFoodSelected!(item),
+      onTap: onOpen == null ? null : () => onOpen!(item),
     );
   }
 }

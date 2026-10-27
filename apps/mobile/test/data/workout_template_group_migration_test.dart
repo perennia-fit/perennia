@@ -31,7 +31,7 @@ void main() {
 
     final database = AppDatabase.openFile(file);
     await database.customSelect('SELECT 1').get();
-    expect(database.schemaVersion, 60);
+    expect(database.schemaVersion, 61);
     expect(
       (await database
           .customSelect(
@@ -207,7 +207,7 @@ void main() {
     addTearDown(database.close);
     await database.customSelect('SELECT 1').get();
 
-    expect(database.schemaVersion, 60);
+    expect(database.schemaVersion, 61);
     expect(
       await _indexNames(database, AppDatabase.activityLogTable),
       contains('activity_log_pending_sync_index'),
@@ -237,7 +237,7 @@ void main() {
     final fresh = AppDatabase.inMemory();
     addTearDown(fresh.close);
 
-    expect(database.schemaVersion, 60);
+    expect(database.schemaVersion, 61);
     expect(
       await _columnNames(database, AppDatabase.deferredSyncChangesTable),
       await _columnNames(fresh, AppDatabase.deferredSyncChangesTable),
@@ -275,7 +275,7 @@ void main() {
     final fresh = AppDatabase.inMemory();
     addTearDown(fresh.close);
 
-    expect(database.schemaVersion, 60);
+    expect(database.schemaVersion, 61);
     expect(
       await _columnNames(database, AppDatabase.quarantinedSyncChangesTable),
       await _columnNames(fresh, AppDatabase.quarantinedSyncChangesTable),

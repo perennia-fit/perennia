@@ -48,3 +48,4 @@ flutter:
     - assets/seeds/platform_exercises.json
     - assets/seeds/platform_exercises.LICENSE.md
     - assets/seeds/usda_foods.json
+    - assets/seeds/open_food_facts_bundle.ndjson.gz
