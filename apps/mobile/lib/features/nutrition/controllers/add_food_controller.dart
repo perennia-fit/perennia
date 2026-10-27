@@ -96,7 +96,6 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
   Timer? _searchDebounceTimer;
   var _searchGeneration = 0;
   bool _onlineLookupsEnabled = true;
-  BundleStatus _bundleStatus = BundleStatus.unknown;
 
   @override
   Future<AddFoodPickerState> build() async {
@@ -114,12 +113,11 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
         return current.copyWith(onlineLookupsEnabled: enabled);
       });
     });
-    ref.listen(bundleStatusProvider, (_, next) {
+    ref.listen(bundleStatusProvider, (previous, next) {
       final status = next.asData?.value;
-      if (status == null || status == _bundleStatus) {
+      if (status == null || status == previous?.asData?.value) {
         return;
       }
-      _bundleStatus = status;
       _updateCurrent((current) => current.copyWith(bundleStatus: status));
       // The install writes on another connection, so stream queries here do
       // not see it: search again once the bundle is ready.
@@ -178,17 +176,15 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     _updateCurrent(
       (current) => current.copyWith(onlineStatus: OnlinePickerStatus.loading),
     );
-    final ({OnlineSearchStatus status, List<FoodPickerItem> items}) result;
+    ({OnlineSearchStatus status, List<FoodPickerItem> items}) result;
     try {
       result = await ref.read(addFoodRepositoryProvider).searchOnline(query);
     } on Object {
-      if (generation == _searchGeneration) {
-        _updateCurrent(
-          (current) =>
-              current.copyWith(onlineStatus: OnlinePickerStatus.unavailable),
-        );
-      }
-      return;
+      // An unexpected failure reads as unavailable.
+      result = (
+        status: OnlineSearchStatus.unavailable,
+        items: const <FoodPickerItem>[],
+      );
     }
     if (generation != _searchGeneration) {
       return;
@@ -269,16 +265,14 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
         barcode: normalizedBarcode,
       ),
     );
-    var result = (status: BarcodeLookupOutcome.unavailable, item: null) as ({
-      BarcodeLookupOutcome status,
-      FoodPickerItem? item
-    });
+    ({BarcodeLookupOutcome status, FoodPickerItem? item}) result;
     try {
       result = await ref
           .read(addFoodRepositoryProvider)
           .lookupBarcode(normalizedBarcode);
     } on Object {
-      // An unexpected failure reads as unavailable; the not-found state stays.
+      // An unexpected failure reads as unavailable.
+      result = (status: BarcodeLookupOutcome.unavailable, item: null);
     }
     if (generation != _searchGeneration) {
       return null;
@@ -353,8 +347,12 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
       filter: filter,
       results: results,
       onlineLookupsEnabled: _onlineLookupsEnabled,
-      bundleStatus: _bundleStatus,
+      bundleStatus: _bundleStatus(),
     );
+  }
+
+  BundleStatus _bundleStatus() {
+    return ref.read(bundleStatusProvider).asData?.value ?? BundleStatus.unknown;
   }
 
   AddFoodPickerState _currentState() {
@@ -367,7 +365,7 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
       filter: _filter,
       results: const <FoodPickerItem>[],
       onlineLookupsEnabled: _onlineLookupsEnabled,
-      bundleStatus: _bundleStatus,
+      bundleStatus: _bundleStatus(),
     );
   }
 

@@ -15,6 +15,8 @@ import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/theme/theme.dart';
 
+import 'add_food_repository_fakes.dart';
+
 void main() {
   testWidgets('renders unknown macro totals as dash instead of zero', (
     tester,
@@ -891,7 +893,7 @@ class _FakeNutritionDayController extends NutritionDayController {
   }
 }
 
-class _EmptyAddFoodRepository with _NoOnlineLookups implements AddFoodRepository {
+class _EmptyAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   const _EmptyAddFoodRepository();
 
   @override
@@ -904,7 +906,7 @@ class _EmptyAddFoodRepository with _NoOnlineLookups implements AddFoodRepository
   }
 }
 
-class _SingleFoodRepository with _NoOnlineLookups implements AddFoodRepository {
+class _SingleFoodRepository with NoOnlineLookups implements AddFoodRepository {
   const _SingleFoodRepository(this.food);
 
   final FoodPickerItem food;
@@ -922,7 +924,7 @@ class _SingleFoodRepository with _NoOnlineLookups implements AddFoodRepository {
   }
 }
 
-class _BarcodeFoodRepository with _NoOnlineLookups implements AddFoodRepository {
+class _BarcodeFoodRepository with NoOnlineLookups implements AddFoodRepository {
   const _BarcodeFoodRepository(this.food);
 
   final FoodPickerItem food;
@@ -946,27 +948,6 @@ class _BarcodeFoodRepository with _NoOnlineLookups implements AddFoodRepository 
   }
 }
 
-/// The online methods for fakes that do not exercise them.
-mixin _NoOnlineLookups implements AddFoodRepository {
-  @override
-  Future<bool> onlineLookupsEnabled() async => true;
-
-  @override
-  Future<({OnlineSearchStatus status, List<FoodPickerItem> items})>
-      searchOnline(String query) async {
-    return (status: OnlineSearchStatus.noResults, items: <FoodPickerItem>[]);
-  }
-
-  @override
-  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
-    String raw,
-  ) async {
-    return (status: BarcodeLookupOutcome.notFound, item: null);
-  }
-
-  @override
-  Future<void> keepOpenedProduct(FoodPickerItem item) async {}
-}
 
 class _FakeBarcodeScanner implements BarcodeScanner {
   const _FakeBarcodeScanner(this.result);

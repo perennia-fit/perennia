@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/material.dart';
@@ -10,7 +9,6 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/local/food_reference_database.dart';
-import 'package:perennia/data/open_food_facts/open_food_facts_bundle_installer.dart';
 import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
@@ -22,6 +20,9 @@ import 'package:perennia/features/nutrition/widgets/nutrition_attribution.dart';
 import 'package:perennia/features/nutrition/widgets/quick_entry_dialog.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/theme/theme.dart';
+
+import '../../data/open_food_facts_fixtures.dart';
+import 'add_food_repository_fakes.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -468,7 +469,7 @@ void main() {
     final repositories = TrainingRepositories(database);
     final openFoodFacts = DriftOpenFoodFactsRepository.forTesting(
       database: referenceDatabase,
-      asset: const _NoBundleAsset(),
+      asset: const ThrowingBundleAsset(), // never installed here
       client: OpenFoodFactsClient(
         baseUrl: Uri.parse('https://off.test/'),
         httpClient: MockClient((request) async {
@@ -1166,7 +1167,7 @@ class _BarcodeAddFoodHarnessState extends State<_BarcodeAddFoodHarness> {
   }
 }
 
-class _StubAddFoodRepository with _NoOnlineLookups implements AddFoodRepository {
+class _StubAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   _StubAddFoodRepository();
 
   @override
@@ -1188,7 +1189,7 @@ class _StubAddFoodRepository with _NoOnlineLookups implements AddFoodRepository 
   }
 }
 
-class _TrackingAddFoodRepository with _NoOnlineLookups implements AddFoodRepository {
+class _TrackingAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   final calls = <_SearchCall>[];
 
   @override
@@ -1211,7 +1212,7 @@ class _TrackingAddFoodRepository with _NoOnlineLookups implements AddFoodReposit
   }
 }
 
-class _DeferredAddFoodRepository with _NoOnlineLookups implements AddFoodRepository {
+class _DeferredAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   final calls = <_SearchCall>[];
   final _pending = <_SearchCall, Completer<List<FoodPickerItem>>>{};
 
@@ -1279,7 +1280,7 @@ class _SearchCall {
   String toString() => 'search(${filter.name}, $query)';
 }
 
-class _EmptyAddFoodRepository with _NoOnlineLookups implements AddFoodRepository {
+class _EmptyAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   const _EmptyAddFoodRepository();
 
   @override
@@ -1293,7 +1294,7 @@ class _EmptyAddFoodRepository with _NoOnlineLookups implements AddFoodRepository
 }
 
 class _OfflineOpenFoodFactsRepository
-    with _NoOnlineLookups
+    with NoOnlineLookups
     implements AddFoodRepository {
   const _OfflineOpenFoodFactsRepository();
 
@@ -1314,27 +1315,6 @@ class _OfflineOpenFoodFactsRepository
   }
 }
 
-/// The online methods for fakes that do not exercise them.
-mixin _NoOnlineLookups implements AddFoodRepository {
-  @override
-  Future<bool> onlineLookupsEnabled() async => true;
-
-  @override
-  Future<({OnlineSearchStatus status, List<FoodPickerItem> items})>
-      searchOnline(String query) async {
-    return (status: OnlineSearchStatus.noResults, items: <FoodPickerItem>[]);
-  }
-
-  @override
-  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
-    String raw,
-  ) async {
-    return (status: BarcodeLookupOutcome.notFound, item: null);
-  }
-
-  @override
-  Future<void> keepOpenedProduct(FoodPickerItem item) async {}
-}
 
 /// The Open Food Facts filter with a scripted live search and barcode lookup,
 /// recording every online call.
@@ -1397,14 +1377,6 @@ class _OnlineAddFoodRepository implements AddFoodRepository {
   Future<void> keepOpenedProduct(FoodPickerItem item) async {
     kept.add(item);
   }
-}
-
-/// A bundle asset the barcode test never installs.
-class _NoBundleAsset implements BundleAssetSource {
-  const _NoBundleAsset();
-
-  @override
-  Future<Uint8List> load() async => Uint8List(0);
 }
 
 FoodPickerItem _offItem(

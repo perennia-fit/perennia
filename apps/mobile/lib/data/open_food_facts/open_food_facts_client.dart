@@ -30,7 +30,7 @@ class OpenFoodFactsClient {
     Uri? baseUrl,
     DateTime Function()? clock,
   })  : _httpClient = httpClient,
-        _baseUrl = baseUrl ?? Uri.parse('https://world.openfoodfacts.org/'),
+        _baseUrl = baseUrl ?? Uri.parse(openFoodFactsBaseUrl),
         _searchBudget = RequestBudget(capacity: 10, clock: clock),
         _productBudget = RequestBudget(capacity: 15, clock: clock);
 

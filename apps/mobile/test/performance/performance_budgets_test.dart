@@ -16,6 +16,7 @@ import 'package:perennia/features/training/widgets/training_screen.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
+import '../data/open_food_facts_fixtures.dart';
 import 'performance_budget_fixtures.dart';
 import 'performance_budget_thresholds.dart';
 
@@ -39,19 +40,8 @@ void main() {
       addTearDown(database.close);
       await database.replaceBundle(
         _syntheticOpenFoodFactsLines(openFoodFactsLocalSearchRowCount),
-        BundleHeader(
-          format: bundleFormat,
-          formatVersion: bundleFormatVersion,
-          datasetVersion: '2026-10-26',
+        bundleHeader(
           contentHash: 'synthetic',
-          sourceName: 'Open Food Facts',
-          sourceUrl: 'https://world.openfoodfacts.org/',
-          licenseName: 'Open Database License (ODbL) 1.0',
-          licenseUrl: 'https://opendatacommons.org/licenses/odbl/1-0/',
-          contentsLicenseUrl: 'https://opendatacommons.org/licenses/dbcl/1-0/',
-          attributionText: 'Contains information from Open Food Facts.',
-          countries: const <String>['au'],
-          perCountryLimit: 10000,
           productCount: openFoodFactsLocalSearchRowCount,
         ),
       );
@@ -282,19 +272,13 @@ List<String> _syntheticOpenFoodFactsLines(int count) {
   return [
     for (var i = 0; i < count; i += 1)
       encodeBundleProductLine(
-        MappedOpenFoodFactsProduct(
-          code: (9300000000000 + i).toString(),
-          name: i % 10 == 0
+        offProduct(
+          (9300000000000 + i).toString(),
+          i % 10 == 0
               ? 'Greek yogurt ${foods[i % foods.length]} $i'
               : '${adjectives[i % adjectives.length]} '
                   '${foods[(i ~/ 3) % foods.length]} $i',
           brand: brands[(i ~/ 7) % brands.length],
-          isLiquid: false,
-          servingLabel: null,
-          servingSize: null,
-          packageSize: null,
-          nutrientText: const {},
-          modifiedAt: DateTime.utc(2026, 1, 1),
           scans: i % 500,
         ),
       ),

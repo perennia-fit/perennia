@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -94,15 +93,24 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
   final BundleAssetSource _asset;
 
   Future<_Opened>? _opened;
-  BundleStatus _status = BundleStatus.unknown;
-  // Synchronous for the same reason as the installer's: the current status
-  // must never lag a change that has already happened.
+
+  /// The status is the installer's own; before it exists the repository only
+  /// knows whether opening failed (for example, no cache directory).
+  OpenFoodFactsBundleInstaller? _installer;
+  bool _openFailed = false;
+
+  // Synchronous, so a change is relayed as it happens and a listener added
+  // later starts from the right status.
   final StreamController<BundleStatus> _statusChanges =
       StreamController<BundleStatus>.broadcast(sync: true);
   StreamSubscription<BundleStatus>? _installerStatus;
 
-  /// Opens the database and its installer once. A failure (for example, no
-  /// cache directory) sets the status to `failed`, and later calls see `null`.
+  BundleStatus get _status => _openFailed
+      ? BundleStatus.failed
+      : _installer?.currentStatus ?? BundleStatus.unknown;
+
+  /// Opens the database and its installer once. A failure sets the status to
+  /// `failed`, and later calls see `null`.
   Future<_Opened?> _open() async {
     try {
       return await (_opened ??= () async {
@@ -110,26 +118,27 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
         return _attach(FoodReferenceDatabase.connect(file), file);
       }());
     } on Object catch (error, stackTrace) {
-      _setStatus(BundleStatus.failed);
-      _report(error, stackTrace);
+      if (!_openFailed) {
+        _openFailed = true;
+        _announce(BundleStatus.failed);
+        unawaited(reportQuietly(_crashReporter, error, stackTrace));
+      }
       return null;
     }
   }
 
   _Opened _attach(FoodReferenceDatabase database, File? file) {
-    final installer = OpenFoodFactsBundleInstaller(
+    final installer = _installer = OpenFoodFactsBundleInstaller(
       database: database,
       asset: _asset,
       databaseFile: file,
       crashReporter: _crashReporter,
     );
-    _status = installer.currentStatus;
-    _installerStatus = installer.statusChanges.listen(_setStatus);
+    _installerStatus = installer.statusChanges.listen(_announce);
     return _Opened(database, installer);
   }
 
-  void _setStatus(BundleStatus status) {
-    _status = status;
+  void _announce(BundleStatus status) {
     if (!_statusChanges.isClosed) {
       _statusChanges.add(status);
     }
@@ -142,27 +151,13 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
 
   @override
   Stream<BundleStatus> watchBundleStatus() {
-    return Stream<BundleStatus>.multi((controller) {
-      controller.add(_status);
-      final subscription = _statusChanges.stream.listen(
-        controller.add,
-        onDone: controller.close,
-      );
-      controller.onCancel = subscription.cancel;
-    });
+    return currentThenChanges(() => _status, _statusChanges.stream);
   }
 
   @override
   Future<BundleHeader?> bundleHeader() async {
-    final opened = await _open();
-    if (opened != null) {
-      return opened.installer.bundleHeader();
-    }
-    try {
-      return readBundleHeader(await _asset.load());
-    } on Object {
-      return null;
-    }
+    return (await _open())?.installer.bundleHeader() ??
+        readBundleHeaderOrNull(_asset);
   }
 
   @override
@@ -183,7 +178,7 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
     final seen = <String>{};
     return [
       for (final row in [...byCode, ...matched])
-        if (seen.add(row.code)) _recordFromRow(row),
+        if (seen.add(row.code)) toPlatformFoodRecord(productFromRow(row)),
     ].take(limit).toList();
   }
 
@@ -193,27 +188,25 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
     if (!allowOnline) {
       return (
         status: OnlineSearchStatus.disabled,
-        products: const <PlatformFoodRecord>[]
+        products: const <PlatformFoodRecord>[],
       );
     }
-    return switch (await _client.search(query)) {
-      OpenFoodFactsResults(:final products) when products.isNotEmpty => (
-          status: OnlineSearchStatus.ok,
-          products: products.map(toPlatformFoodRecord).toList(),
-        ),
-      OpenFoodFactsResults() || OpenFoodFactsNotFound() => (
-          status: OnlineSearchStatus.noResults,
-          products: const <PlatformFoodRecord>[],
-        ),
-      OpenFoodFactsOffline() => (
-          status: OnlineSearchStatus.offline,
-          products: const <PlatformFoodRecord>[],
-        ),
-      OpenFoodFactsUnavailable() => (
-          status: OnlineSearchStatus.unavailable,
-          products: const <PlatformFoodRecord>[],
-        ),
-    };
+    final outcome = await _client.search(query);
+    final products = outcome is OpenFoodFactsResults
+        ? outcome.products.map(toPlatformFoodRecord).toList()
+        : const <PlatformFoodRecord>[];
+    return (
+      status: switch (outcome) {
+        OpenFoodFactsResults() when products.isNotEmpty =>
+          OnlineSearchStatus.ok,
+        OpenFoodFactsResults() ||
+        OpenFoodFactsNotFound() =>
+          OnlineSearchStatus.noResults,
+        OpenFoodFactsOffline() => OnlineSearchStatus.offline,
+        OpenFoodFactsUnavailable() => OnlineSearchStatus.unavailable,
+      },
+      products: products,
+    );
   }
 
   @override
@@ -230,7 +223,7 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
     if (stored.isNotEmpty) {
       return (
         status: BarcodeLookupOutcome.found,
-        product: _recordFromRow(stored.first)
+        product: toPlatformFoodRecord(productFromRow(stored.first)),
       );
     }
     if (!allowOnline) {
@@ -256,19 +249,20 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
   @override
   Future<void> keepOpenedProduct(PlatformFoodRecord record) {
     return _keep(
-      OpenFoodFactsProductsCompanion.insert(
-        code: record.id,
-        name: record.name,
-        brand: Value(record.brand),
-        isLiquid: record.isLiquid,
-        servingLabel: Value(record.servingLabel),
-        servingSize: Value(record.servingSize),
-        packageSize: Value(record.packageSize),
-        nutrientsJson:
-            encodeNutrientsJson(nutrientTextFromVector(record.nutrientsPer100)),
-        modifiedAt:
-            (record.sourceModifiedAt?.millisecondsSinceEpoch ?? 0) ~/ 1000,
-        scans: Value(record.scans),
+      productCompanion(
+        MappedOpenFoodFactsProduct(
+          code: record.id,
+          name: record.name,
+          brand: record.brand,
+          isLiquid: record.isLiquid,
+          servingLabel: record.servingLabel,
+          servingSize: record.servingSize,
+          packageSize: record.packageSize,
+          nutrientText: nutrientTextFromVector(record.nutrientsPer100),
+          modifiedAt: record.sourceModifiedAt ??
+              DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+          scans: record.scans,
+        ),
         origin: originOnline,
       ),
     );
@@ -280,7 +274,7 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
     try {
       await (await _open())?.database.keepProduct(row);
     } on Object catch (error, stackTrace) {
-      _report(error, stackTrace);
+      unawaited(reportQuietly(_crashReporter, error, stackTrace));
     }
   }
 
@@ -293,16 +287,6 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
     await opened.installer.ensureInstalled();
     await opened.database.resetAll();
     await opened.installer.ensureInstalled();
-  }
-
-  void _report(Object error, StackTrace stackTrace) {
-    unawaited(() async {
-      try {
-        await _crashReporter?.captureException(error, stackTrace);
-      } on Object {
-        // Best effort only.
-      }
-    }());
   }
 
   Future<void> close() async {
@@ -320,26 +304,6 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
       await opened.installer.close();
       await opened.database.close();
     }
-  }
-
-  static PlatformFoodRecord _recordFromRow(OpenFoodFactsProductRow row) {
-    return toPlatformFoodRecord(
-      MappedOpenFoodFactsProduct(
-        code: row.code,
-        name: row.name,
-        brand: row.brand,
-        isLiquid: row.isLiquid,
-        servingLabel: row.servingLabel,
-        servingSize: row.servingSize,
-        packageSize: row.packageSize,
-        nutrientText: decodeNutrientsJson(row.nutrientsJson),
-        modifiedAt: DateTime.fromMillisecondsSinceEpoch(
-          row.modifiedAt * 1000,
-          isUtc: true,
-        ),
-        scans: row.scans,
-      ),
-    );
   }
 }
 

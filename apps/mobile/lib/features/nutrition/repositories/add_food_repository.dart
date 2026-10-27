@@ -130,11 +130,11 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     this._repositories, {
     OpenFoodFactsRepository? openFoodFacts,
     Future<bool> Function()? onlineLookupsEnabled,
-  })  : _openFoodFacts = openFoodFacts,
+  })  : _openFoodFacts = openFoodFacts ?? const StubOpenFoodFactsRepository(),
         _onlineLookupsEnabled = onlineLookupsEnabled;
 
   final TrainingRepositories _repositories;
-  final OpenFoodFactsRepository? _openFoodFacts;
+  final OpenFoodFactsRepository _openFoodFacts;
   final Future<bool> Function()? _onlineLookupsEnabled;
 
   @override
@@ -145,14 +145,7 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
   @override
   Future<({OnlineSearchStatus status, List<FoodPickerItem> items})>
       searchOnline(String query) async {
-    final openFoodFacts = _openFoodFacts;
-    if (openFoodFacts == null) {
-      return (
-        status: OnlineSearchStatus.disabled,
-        items: const <FoodPickerItem>[]
-      );
-    }
-    final result = await openFoodFacts.searchOnline(
+    final result = await _openFoodFacts.searchOnline(
       query,
       allowOnline: await onlineLookupsEnabled(),
     );
@@ -169,11 +162,7 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
   Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
     String raw,
   ) async {
-    final openFoodFacts = _openFoodFacts;
-    if (openFoodFacts == null) {
-      return (status: BarcodeLookupOutcome.disabled, item: null);
-    }
-    final result = await openFoodFacts.lookupBarcode(
+    final result = await _openFoodFacts.lookupBarcode(
       raw,
       allowOnline: await onlineLookupsEnabled(),
     );
@@ -186,7 +175,7 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
 
   @override
   Future<void> keepOpenedProduct(FoodPickerItem item) async {
-    await _openFoodFacts?.keepOpenedProduct(
+    await _openFoodFacts.keepOpenedProduct(
       PlatformFoodRecord(
         id: item.id,
         name: item.name,
@@ -336,8 +325,7 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     String query, {
     required int limit,
   }) async {
-    final foods = await _openFoodFacts?.searchLocal(query, limit: limit) ??
-        const <PlatformFoodRecord>[];
+    final foods = await _openFoodFacts.searchLocal(query, limit: limit);
     return [for (final food in foods) await _openFoodFactsItem(food)];
   }
 

@@ -13,6 +13,13 @@ import 'barcode_scanner.dart';
 import 'nutrition_attribution.dart';
 import 'quick_entry_dialog.dart';
 
+// The causes a barcode miss and the online slot share.
+const _offlineLine = "You're offline. Showing foods on this device.";
+const _unavailableLine =
+    'Open Food Facts is unavailable. Try again in a minute.';
+const _lookupsOffLine =
+    'Online lookups are off. Turn them on in Settings > Food data.';
+
 const _visibleFoodPickerFilters = <AddFoodPickerFilter>[
   AddFoodPickerFilter.recent,
   AddFoodPickerFilter.user,
@@ -209,22 +216,30 @@ class AddFoodPicker extends ConsumerWidget {
     if (!context.mounted || barcode == null || barcode.trim().isEmpty) {
       return;
     }
-    final food = await ref
-        .read(addFoodPickerControllerProvider.notifier)
-        .lookupBarcode(barcode);
-    if (!context.mounted || food == null) {
-      return;
-    }
-    _open(ref, food);
+    await _openFound(
+      context,
+      ref,
+      ref.read(addFoodPickerControllerProvider.notifier).lookupBarcode(barcode),
+    );
   }
 
   /// The keyboard's search action and the online search row. A typed barcode
   /// that is found opens the log-portion screen through the scan's path.
-  Future<void> _submit(
-      BuildContext context, WidgetRef ref, String query) async {
-    final food = await ref
-        .read(addFoodPickerControllerProvider.notifier)
-        .submitQuery(query);
+  Future<void> _submit(BuildContext context, WidgetRef ref, String query) {
+    return _openFound(
+      context,
+      ref,
+      ref.read(addFoodPickerControllerProvider.notifier).submitQuery(query),
+    );
+  }
+
+  /// Opens the item a scan or a submit found, if the picker is still shown.
+  Future<void> _openFound(
+    BuildContext context,
+    WidgetRef ref,
+    Future<FoodPickerItem?> lookup,
+  ) async {
+    final food = await lookup;
     if (!context.mounted || food == null) {
       return;
     }
@@ -374,12 +389,10 @@ class _OnlineSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final line = !state.onlineLookupsEnabled
-        ? 'Online lookups are off. Turn them on in Settings > Food data.'
+        ? _lookupsOffLine
         : switch (state.onlineStatus) {
-            OnlinePickerStatus.offline =>
-              "You're offline. Showing foods on this device.",
-            OnlinePickerStatus.unavailable =>
-              'Open Food Facts is unavailable. Try again in a minute.',
+            OnlinePickerStatus.offline => _offlineLine,
+            OnlinePickerStatus.unavailable => _unavailableLine,
             OnlinePickerStatus.noResults => 'No matches on Open Food Facts.',
             OnlinePickerStatus.idle ||
             OnlinePickerStatus.loading ||
@@ -537,35 +550,29 @@ class _LookupBoundaryBanner extends StatelessWidget {
   }
 
   _LookupStatus? _lookupStatus() {
-    const notFound = 'Barcode not found. USDA foods stay fully offline, or use '
-        'Quick add.';
-    return switch (state.barcodeLookupStatus) {
-      BarcodeLookupStatus.idle => null,
-      BarcodeLookupStatus.loading => const _LookupStatus(
-          key: AddFoodPicker.barcodeStatusKey,
-          isLoading: true,
-          message: 'Looking up barcode in Open Food Facts',
-        ),
-      BarcodeLookupStatus.notFound => const _LookupStatus(
-          key: AddFoodPicker.barcodeStatusKey,
-          message: notFound,
-        ),
-      BarcodeLookupStatus.needsNetwork => const _LookupStatus(
-          key: AddFoodPicker.barcodeStatusKey,
-          message: notFound,
-          line: "You're offline. Showing foods on this device.",
-        ),
-      BarcodeLookupStatus.unavailable => const _LookupStatus(
-          key: AddFoodPicker.barcodeStatusKey,
-          message: notFound,
-          line: 'Open Food Facts is unavailable. Try again in a minute.',
-        ),
-      BarcodeLookupStatus.disabled => const _LookupStatus(
-          key: AddFoodPicker.barcodeStatusKey,
-          message: notFound,
-          line: 'Online lookups are off. Turn them on in Settings > Food data.',
-        ),
-    };
+    final status = state.barcodeLookupStatus;
+    if (status == BarcodeLookupStatus.idle) {
+      return null;
+    }
+    if (status == BarcodeLookupStatus.loading) {
+      return const _LookupStatus(
+        key: AddFoodPicker.barcodeStatusKey,
+        isLoading: true,
+        message: 'Looking up barcode in Open Food Facts',
+      );
+    }
+    // Every miss shows the not-found state, with one line for its cause.
+    return _LookupStatus(
+      key: AddFoodPicker.barcodeStatusKey,
+      message: 'Barcode not found. USDA foods stay fully offline, or use '
+          'Quick add.',
+      line: switch (status) {
+        BarcodeLookupStatus.needsNetwork => _offlineLine,
+        BarcodeLookupStatus.unavailable => _unavailableLine,
+        BarcodeLookupStatus.disabled => _lookupsOffLine,
+        _ => null,
+      },
+    );
   }
 }
 

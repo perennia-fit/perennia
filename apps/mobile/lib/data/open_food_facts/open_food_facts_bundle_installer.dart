@@ -9,9 +9,6 @@ import '../../domain/nutrition/open_food_facts.dart';
 import '../../features/settings/services/client_crash_reporting.dart';
 import '../local/food_reference_database.dart';
 
-const openFoodFactsBundleAssetPath =
-    'assets/seeds/open_food_facts_bundle.ndjson.gz';
-
 /// Where the installer reads the bundle's bytes; tests pass a fixture.
 abstract interface class BundleAssetSource {
   Future<Uint8List> load();
@@ -61,6 +58,7 @@ class OpenFoodFactsBundleInstaller {
       StreamController<BundleStatus>.broadcast(sync: true);
   BundleStatus _status = BundleStatus.unknown;
   Future<void>? _running;
+  BundleHeader? _header;
 
   BundleStatus get currentStatus => _status;
 
@@ -70,14 +68,7 @@ class OpenFoodFactsBundleInstaller {
 
   /// The current status first, then each change.
   Stream<BundleStatus> watchStatus() {
-    return Stream<BundleStatus>.multi((controller) {
-      controller.add(_status);
-      final subscription = _changes.stream.listen(
-        controller.add,
-        onDone: controller.close,
-      );
-      controller.onCancel = subscription.cancel;
-    });
+    return currentThenChanges(() => _status, _changes.stream);
   }
 
   /// Installs the bundle if needed. A call while an install runs returns that
@@ -86,19 +77,16 @@ class OpenFoodFactsBundleInstaller {
     return _running ??= _install().whenComplete(() => _running = null);
   }
 
-  /// The asset's header, or `null` when it cannot be read.
+  /// The asset's header, or `null` when it cannot be read. Read once: an
+  /// install that already read it shares it.
   Future<BundleHeader?> bundleHeader() async {
-    try {
-      return readBundleHeader(await _asset.load());
-    } on Object {
-      return null;
-    }
+    return _header ??= await readBundleHeaderOrNull(_asset);
   }
 
   Future<void> _install() async {
     try {
       final bytes = await _asset.load();
-      final header = readBundleHeader(bytes);
+      final header = _header = readBundleHeader(bytes);
       if (header.format != bundleFormat ||
           header.formatVersion != bundleFormatVersion) {
         throw FormatException(
@@ -121,15 +109,7 @@ class OpenFoodFactsBundleInstaller {
       _setStatus(BundleStatus.ready);
     } on Object catch (error, stackTrace) {
       _setStatus(BundleStatus.failed);
-      unawaited(_reportFailure(error, stackTrace));
-    }
-  }
-
-  Future<void> _reportFailure(Object error, StackTrace stackTrace) async {
-    try {
-      await _crashReporter?.captureException(error, stackTrace);
-    } on Object {
-      // Reporting is best effort; the status already says the install failed.
+      unawaited(reportQuietly(_crashReporter, error, stackTrace));
     }
   }
 
@@ -160,6 +140,9 @@ Future<void> _installInIsolate(
   final database = FoodReferenceDatabase.openInIsolate(File(path));
   try {
     await database.replaceBundle(bundleProductLines(bytes), header);
+    // One big transaction leaves the WAL file at its peak size; give the
+    // space back.
+    await database.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
   } finally {
     await database.close();
   }
@@ -185,10 +168,32 @@ BundleHeader readBundleHeader(Uint8List bytes) {
   throw const FormatException('The bundle has no header line.');
 }
 
-/// The product lines: every line after the header, without newlines.
-List<String> bundleProductLines(Uint8List bytes) {
-  final lines = const LineSplitter().convert(utf8.decode(gzip.decode(bytes)));
-  return lines.length <= 1 ? const <String>[] : lines.sublist(1);
+/// The header, or `null` when the asset cannot be read or has none.
+Future<BundleHeader?> readBundleHeaderOrNull(BundleAssetSource asset) async {
+  try {
+    return readBundleHeader(await asset.load());
+  } on Object {
+    return null;
+  }
+}
+
+/// The product lines: every line after the header, without newlines, split
+/// lazily so no second list of 41,000 strings is built.
+Iterable<String> bundleProductLines(Uint8List bytes) {
+  return LineSplitter.split(utf8.decode(gzip.decode(bytes))).skip(1);
+}
+
+/// [current] first, then every event of [changes]: what a new status listener
+/// needs.
+Stream<T> currentThenChanges<T>(T Function() current, Stream<T> changes) {
+  return Stream<T>.multi((controller) {
+    controller.add(current());
+    final subscription = changes.listen(
+      controller.add,
+      onDone: controller.close,
+    );
+    controller.onCancel = subscription.cancel;
+  });
 }
 
 class _ByteCollector implements Sink<List<int>> {

@@ -14,7 +14,6 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
-import 'package:perennia/domain/nutrition/open_food_facts.dart';
 import 'package:perennia/features/activity/widgets/activity_feed_screen.dart';
 import 'package:perennia/features/agent_keys/repositories/agent_api_key_repository.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
@@ -1854,7 +1853,7 @@ Future<void> _pumpSettings(
 /// Records when Erase all data resets the reference database, and whether the
 /// erase had already happened.
 class _ResetRecordingOpenFoodFactsRepository
-    implements OpenFoodFactsRepository {
+    extends StubOpenFoodFactsRepository {
   _ResetRecordingOpenFoodFactsRepository({required this.mealStillLive});
 
   final Future<bool> Function() mealStillLive;
@@ -1866,35 +1865,6 @@ class _ResetRecordingOpenFoodFactsRepository
     resets += 1;
     mealLiveAtReset = await mealStillLive();
   }
-
-  @override
-  Future<void> ensureBundleInstalled() async {}
-
-  @override
-  Stream<BundleStatus> watchBundleStatus() => Stream.value(BundleStatus.ready);
-
-  @override
-  Future<BundleHeader?> bundleHeader() async => null;
-
-  @override
-  Future<List<PlatformFoodRecord>> searchLocal(
-    String query, {
-    int limit = 50,
-  }) async =>
-      const <PlatformFoodRecord>[];
-
-  @override
-  Future<({OnlineSearchStatus status, List<PlatformFoodRecord> products})>
-      searchOnline(String query, {required bool allowOnline}) async =>
-          (status: OnlineSearchStatus.disabled, products: <PlatformFoodRecord>[]);
-
-  @override
-  Future<({BarcodeLookupOutcome status, PlatformFoodRecord? product})>
-      lookupBarcode(String raw, {required bool allowOnline}) async =>
-          (status: BarcodeLookupOutcome.disabled, product: null);
-
-  @override
-  Future<void> keepOpenedProduct(PlatformFoodRecord record) async {}
 }
 
 class _StubSyncStatusController extends SyncStatusController {

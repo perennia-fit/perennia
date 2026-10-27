@@ -186,7 +186,10 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
   Future<void> keepProduct(OpenFoodFactsProductsCompanion row) {
     final companion = row.copyWith(origin: const Value(originOnline));
     return transaction(() async {
-      await _upsertNewer(companion);
+      await into(openFoodFactsProducts).insert(
+        companion,
+        onConflict: _replaceWhenNewer(),
+      );
       await (update(openFoodFactsProducts)
             ..where((table) => table.code.equals(companion.code.value)))
           .write(
@@ -210,16 +213,24 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
       await (delete(openFoodFactsProducts)
             ..where((table) => table.origin.equals(originBundle)))
           .go();
-      await batch((batch) {
-        for (final line in productLines) {
-          final product = decodeBundleProductLine(line);
-          batch.customStatement(
-              _upsertNewerSql,
-              _upsertVariables(
-                productCompanion(product, origin: originBundle),
-              ));
-        }
-      });
+      // Batches of a few thousand rows keep memory flat during the install.
+      final lines = productLines.iterator;
+      var more = lines.moveNext();
+      while (more) {
+        await batch((batch) {
+          for (var count = 0; more && count < _installBatchSize; count += 1) {
+            batch.insert(
+              openFoodFactsProducts,
+              productCompanion(
+                decodeBundleProductLine(lines.current),
+                origin: originBundle,
+              ),
+              onConflict: _replaceWhenNewer(),
+            );
+            more = lines.moveNext();
+          }
+        });
+      }
       await setMeta(bundleContentHashKey, header.contentHash);
       await beforeCommitForTesting?.call();
     });
@@ -249,43 +260,28 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
     );
   }
 
-  Future<void> _upsertNewer(OpenFoodFactsProductsCompanion row) {
-    return customStatement(_upsertNewerSql, _upsertVariables(row));
-  }
+  static const _installBatchSize = 2000;
 
-  /// Inserts a product, or replaces an existing row's values (never its
-  /// `origin`) when the incoming copy is newer.
-  static const _upsertNewerSql = '''
-    INSERT INTO $productsTable (
-      code, name, brand, is_liquid, serving_label, serving_size, package_size,
-      nutrients_json, modified_at, scans, origin
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(code) DO UPDATE SET
-      name = excluded.name,
-      brand = excluded.brand,
-      is_liquid = excluded.is_liquid,
-      serving_label = excluded.serving_label,
-      serving_size = excluded.serving_size,
-      package_size = excluded.package_size,
-      nutrients_json = excluded.nutrients_json,
-      modified_at = excluded.modified_at,
-      scans = excluded.scans
-    WHERE excluded.modified_at > $productsTable.modified_at''';
-
-  static List<Object?> _upsertVariables(OpenFoodFactsProductsCompanion row) {
-    return <Object?>[
-      row.code.value,
-      row.name.value,
-      row.brand.present ? row.brand.value : null,
-      row.isLiquid.value ? 1 : 0,
-      row.servingLabel.present ? row.servingLabel.value : null,
-      row.servingSize.present ? row.servingSize.value : null,
-      row.packageSize.present ? row.packageSize.value : null,
-      row.nutrientsJson.value,
-      row.modifiedAt.value,
-      row.scans.present ? row.scans.value : null,
-      row.origin.value,
-    ];
+  /// On a code that is already stored, take the incoming copy's values (never
+  /// its `origin`) only when it is newer.
+  DoUpdate<$OpenFoodFactsProductsTable, OpenFoodFactsProductRow>
+      _replaceWhenNewer() {
+    return DoUpdate.withExcluded(
+      (old, excluded) => OpenFoodFactsProductsCompanion.custom(
+        name: excluded.name,
+        brand: excluded.brand,
+        isLiquid: excluded.isLiquid,
+        servingLabel: excluded.servingLabel,
+        servingSize: excluded.servingSize,
+        packageSize: excluded.packageSize,
+        nutrientsJson: excluded.nutrientsJson,
+        modifiedAt: excluded.modifiedAt,
+        scans: excluded.scans,
+      ),
+      target: [openFoodFactsProducts.code],
+      where: (old, excluded) =>
+          excluded.modifiedAt.isBiggerThan(old.modifiedAt),
+    );
   }
 }
 
@@ -309,19 +305,31 @@ OpenFoodFactsProductsCompanion productCompanion(
   );
 }
 
-/// The compact nutrient form stored in `nutrients_json`, the same object a
+/// A stored row as the mapped product it was written from.
+MappedOpenFoodFactsProduct productFromRow(OpenFoodFactsProductRow row) {
+  return MappedOpenFoodFactsProduct(
+    code: row.code,
+    name: row.name,
+    brand: row.brand,
+    isLiquid: row.isLiquid,
+    servingLabel: row.servingLabel,
+    servingSize: row.servingSize,
+    packageSize: row.packageSize,
+    nutrientText: decodeNutrientsJson(row.nutrientsJson),
+    modifiedAt: DateTime.fromMillisecondsSinceEpoch(
+      row.modifiedAt * 1000,
+      isUtc: true,
+    ),
+    scans: row.scans,
+  );
+}
+
+/// The compact nutrient form stored in `nutrients_json`: the same object a
 /// bundle product line carries.
 String encodeNutrientsJson(Map<NutrientId, String> text) {
-  return jsonEncode(<String, String>{
-    for (final id in NutrientId.values)
-      if (text[id] case final entered?) id.storageKey: entered,
-  });
+  return jsonEncode(nutrientTextToJson(text));
 }
 
 Map<NutrientId, String> decodeNutrientsJson(String json) {
-  final decoded = jsonDecode(json) as Map<String, Object?>;
-  return <NutrientId, String>{
-    for (final MapEntry(:key, :value) in decoded.entries)
-      NutrientId.byStorageKey(key): value! as String,
-  };
+  return nutrientTextFromJson(jsonDecode(json) as Map<String, Object?>);
 }

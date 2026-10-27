@@ -5,7 +5,7 @@ import '../../../domain/nutrition/nutrition.dart';
 import '../../../domain/nutrition/open_food_facts.dart';
 import '../../../theme/theme.dart';
 
-const openFoodFactsSourceUrl = 'https://world.openfoodfacts.org/';
+const openFoodFactsSourceUrl = openFoodFactsBaseUrl;
 const openFoodFactsOdblUrl = 'https://opendatacommons.org/licenses/odbl/1-0/';
 const openFoodFactsDbclUrl = 'https://opendatacommons.org/licenses/dbcl/1-0/';
 const usdaFoodDataCentralUrl = 'https://fdc.nal.usda.gov/';

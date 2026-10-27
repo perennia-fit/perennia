@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
-import 'package:perennia/domain/nutrition/open_food_facts.dart';
 import 'package:perennia/data/seeds/usda_food_seed.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
 
@@ -531,7 +530,7 @@ PlatformFoodRecord _offRecord(String code, String name) {
 }
 
 /// Records what the add-food repository asks of Open Food Facts.
-class _RecordingOpenFoodFactsRepository implements OpenFoodFactsRepository {
+class _RecordingOpenFoodFactsRepository extends StubOpenFoodFactsRepository {
   _RecordingOpenFoodFactsRepository({
     this.local = const <PlatformFoodRecord>[],
   });
@@ -565,21 +564,6 @@ class _RecordingOpenFoodFactsRepository implements OpenFoodFactsRepository {
     this.allowOnline.add(allowOnline);
     return (status: BarcodeLookupOutcome.notFound, product: null);
   }
-
-  @override
-  Future<void> keepOpenedProduct(PlatformFoodRecord record) async {}
-
-  @override
-  Future<void> ensureBundleInstalled() async {}
-
-  @override
-  Stream<BundleStatus> watchBundleStatus() => Stream.value(BundleStatus.ready);
-
-  @override
-  Future<BundleHeader?> bundleHeader() async => null;
-
-  @override
-  Future<void> resetDeviceData() async {}
 }
 
 class _FakeUsdaFoodSeedSource implements UsdaFoodSeedSource {
