@@ -6,7 +6,12 @@ import 'package:intl/intl.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/protocols/protocol_plan_days.dart'
-    show endDateForDoseCount, maxDoseCountForEndDate, minDoseCountForEndDate;
+    show
+        endDateForDoseCount,
+        maxDoseCountForEndDate,
+        minDoseCountForEndDate,
+        protocolCycleFromStart,
+        scheduleDaysFromStart;
 import '../../../domain/protocols/protocol_plan_validation.dart'
     show validateProtocolPeriod, validateScheduleRule;
 import '../../../l10n/l10n.dart';
@@ -409,6 +414,9 @@ class _ScheduleFieldState {
     var everyN = ProtocolPlanValidationLimits.minEveryNDays;
     var anchor = protocolStart;
     var anchorIsDefault = true;
+    // A default anchor is the Protocol's start, whatever date it stores
+    // (D4): the core plans from the start, so the editor shows it.
+    days = scheduleDaysFromStart(days, protocolStart);
     switch (days) {
       case DailyScheduleDays():
         daysChoice = ProtocolScheduleDaysChoice.daily;
@@ -642,7 +650,10 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
         TextEditingController(text: cycle == null ? '' : '${cycle.onDays}');
     _cycleOffController =
         TextEditingController(text: cycle == null ? '' : '${cycle.offDays}');
-    _cycleAnchor = cycle?.anchor ?? _startDate;
+    // A default anchor is the start, whatever date it stores (D4): the core
+    // plans from the start, so the editor shows it.
+    _cycleAnchor =
+        protocolCycleFromStart(cycle, _startDate)?.anchor ?? _startDate;
     _cycleAnchorIsDefault = cycle?.anchorIsDefault ?? true;
     _pauses.addAll(protocol?.period?.pauses ?? const <ProtocolPause>[]);
 

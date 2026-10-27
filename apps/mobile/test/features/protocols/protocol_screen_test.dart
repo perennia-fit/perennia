@@ -967,6 +967,77 @@ void main() {
       expect(cycle.anchorIsDefault, isFalse);
     });
 
+    testWidgets(
+        'a default anchor whose stored date is an old start shows the '
+        'current start', (tester) async {
+      // D4: a default anchor is read as the start, whatever date it stores.
+      // After a start move from 2026-09-01 to 2026-09-05, nothing rewrote
+      // the stored anchors, so they still hold the old start.
+      const oldStart = ProtocolDayDate(year: 2026, month: 9, day: 1);
+      const start = ProtocolDayDate(year: 2026, month: 9, day: 5);
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          start: start,
+          period: ProtocolPeriod(
+            cycle: ProtocolCycle(
+              onDays: 3,
+              offDays: 2,
+              anchor: oldStart,
+              anchorIsDefault: true,
+            ),
+          ),
+          members: <ProtocolMemberRecord>[
+            ProtocolMemberRecord(
+              id: 'member-1',
+              compoundId: 'compound-creatine',
+              position: 0,
+              currentVersion: _version(
+                effectiveFrom: oldStart,
+                rule: TimedScheduleRule(
+                  days: EveryNDaysScheduleDays(
+                    n: 3,
+                    anchor: oldStart,
+                    anchorIsDefault: true,
+                  ),
+                  times: const <String>['09:00'],
+                ),
+              ),
+            ),
+          ],
+        ),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      expect(
+        find.text('Sep 5, 2026 (the start date)', skipOffstage: false),
+        findsNWidgets(2),
+      );
+      // The old start shows only as the date the version applies from.
+      expect(
+        find.text('Sep 1, 2026 (the start date)', skipOffstage: false),
+        findsNothing,
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final draft = controller.editedDrafts.single;
+      final cycle = draft.period!.cycle!;
+      expect(cycle.anchor, start);
+      expect(cycle.anchorIsDefault, isTrue);
+      final days = (draft.schedulesByCompoundId['compound-creatine']!.rule
+              as TimedScheduleRule)
+          .days as EveryNDaysScheduleDays;
+      expect(days.anchor, start);
+      expect(days.anchorIsDefault, isTrue);
+    });
+
     testWidgets('the "N doses" helper turns 20 doses into an end date (CUJ 4)',
         (tester) async {
       final controller = _FakeProtocolListController();

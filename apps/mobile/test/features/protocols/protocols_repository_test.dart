@@ -3135,6 +3135,63 @@ void main() {
     });
 
     test(
+        'a period whose default cycle anchor stores another date (an Agent '
+        'write) still saves as unchanged: the anchor reads as the start (D4)',
+        () async {
+      final creatineId = await createCompoundId('Creatine');
+      ProtocolDraft unchanged() => draft(
+            <String>[creatineId],
+            period: ProtocolPeriod(
+              cycle: ProtocolCycle(
+                onDays: 60,
+                offDays: 30,
+                anchor: start,
+                anchorIsDefault: true,
+              ),
+            ),
+            schedules: <String, ScheduleDraft?>{
+              creatineId: timed(<String>['09:00']),
+            },
+          );
+      final created = await repositories.protocols.createProtocol(
+        unchanged(),
+        today: today,
+      );
+      // An Agent stored a default anchor dated before the start; it is
+      // never read, since a default anchor plans from the start.
+      await (database.update(database.protocols)
+            ..where((row) => row.id.equals(created.protocolId)))
+          .write(
+        const ProtocolsCompanion(
+          period: Value<String?>(
+            '{"v":1,"cycle":{"on_days":60,"off_days":30,'
+            '"anchor":"2026-06-01","anchor_is_default":true},"pauses":[]}',
+          ),
+        ),
+      );
+      final protocolBefore = await (database.select(database.protocols)
+            ..where((row) => row.id.equals(created.protocolId)))
+          .getSingle();
+
+      final batchId = await repositories.protocols.editProtocol(
+        created.protocolId,
+        unchanged(),
+        today: tomorrow,
+      );
+
+      final protocolAfter = await (database.select(database.protocols)
+            ..where((row) => row.id.equals(created.protocolId)))
+          .getSingle();
+      expect(protocolAfter.updatedAt, protocolBefore.updatedAt);
+      expect(protocolAfter.period, protocolBefore.period);
+      expect(
+        (await repositories.activityLog.listEntries())
+            .where((entry) => entry.batchId == batchId),
+        isEmpty,
+      );
+    });
+
+    test(
         'a member added mid-course plans from today; one added before the '
         'start plans from the start', () async {
       final creatineId = await createCompoundId('Creatine');
@@ -3410,9 +3467,49 @@ void main() {
       expect(magnesium.route, isNull);
     });
 
+    test('moving the start later inserts no version', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final created = await repositories.protocols.createProtocol(
+        draft(
+          <String>[creatineId],
+          schedules: <String, ScheduleDraft?>{
+            creatineId: timed(<String>['09:00']),
+          },
+        ),
+        today: today,
+      );
+      final originals = await versionRows();
+
+      // D1: the version that applies on the new start is already the latest
+      // one dated on or before it, and the days before it read `outside`.
+      const newStart = ProtocolDayDate(year: 2026, month: 7, day: 10);
+      await repositories.protocols.editProtocol(
+        created.protocolId,
+        draft(
+          <String>[creatineId],
+          startLocalDate: newStart,
+          schedules: <String, ScheduleDraft?>{
+            creatineId: timed(<String>['09:00']),
+          },
+        ),
+        today: today,
+      );
+
+      final rows = await versionRows();
+      expect(rows.map((row) => row.id), originals.map((row) => row.id));
+      expect(rows.single.effectiveFrom, start.storageValue);
+      final protocol = (await repositories.protocols.listProtocols()).single;
+      expect(protocol.startLocalDate, newStart);
+      expect(
+        (await memberOf(created.protocolId, creatineId)).currentVersion!.id,
+        rows.single.id,
+      );
+    });
+
     test(
-        'moving the start later inserts a re-dated copy of the version that '
-        'applied then, moving default anchors only', () async {
+        'after a later start move, an unchanged save of a member whose '
+        'current version has a default every-N anchor inserts nothing',
+        () async {
       final creatineId = await createCompoundId('Creatine');
       final vitaminDId = await createCompoundId('Vitamin D');
       const userAnchor = ProtocolDayDate(year: 2026, month: 6, day: 2);
@@ -3451,6 +3548,41 @@ void main() {
       final originals = await versionRows();
 
       const newStart = ProtocolDayDate(year: 2026, month: 7, day: 10);
+      ProtocolDraft moved() => draft(
+            <String>[creatineId, vitaminDId],
+            startLocalDate: newStart,
+            period: period,
+            schedules: <String, ScheduleDraft?>{
+              creatineId: everyThreeDays,
+              vitaminDId: everyTwoDays,
+            },
+          );
+      await repositories.protocols.editProtocol(
+        created.protocolId,
+        moved(),
+        today: today,
+      );
+      // A second unchanged save, as the editor sends one, still inserts
+      // nothing: the stored default anchor (the old start) is never read.
+      await repositories.protocols.editProtocol(
+        created.protocolId,
+        moved(),
+        today: today,
+      );
+
+      final rows = await versionRows();
+      expect(rows.map((row) => row.id), originals.map((row) => row.id));
+      // The version was never edited: its default anchor still stores the
+      // old start, which the core reads as the new start (D4).
+      final creatineRow =
+          (await versionRows(memberId: (await memberRow(creatineId)).id))
+              .single;
+      final storedDays = (jsonDecode(creatineRow.rule)
+          as Map<String, Object?>)['days']! as Map<String, Object?>;
+      expect(storedDays['anchor'], start.storageValue);
+      expect(storedDays['anchor_is_default'], isTrue);
+
+      // A changed save still inserts a version.
       await repositories.protocols.editProtocol(
         created.protocolId,
         draft(
@@ -3459,51 +3591,19 @@ void main() {
           period: period,
           schedules: <String, ScheduleDraft?>{
             creatineId: everyThreeDays,
-            vitaminDId: everyTwoDays,
+            vitaminDId: timed(
+              <String>['20:00'],
+              days: EveryNDaysScheduleDays(
+                n: 2,
+                anchor: userAnchor,
+                anchorIsDefault: false,
+              ),
+            ),
           },
         ),
         today: today,
       );
-
-      final creatineRows =
-          await versionRows(memberId: (await memberRow(creatineId)).id);
-      expect(creatineRows, hasLength(2));
-      expect(
-        creatineRows.first.id,
-        originals
-            .singleWhere(
-              (row) =>
-                  row.protocolCompoundId ==
-                  creatineRows.first.protocolCompoundId,
-            )
-            .id,
-      );
-      expect(creatineRows.first.effectiveFrom, start.storageValue);
-      expect(creatineRows.last.effectiveFrom, newStart.storageValue);
-      // The default anchor moved with the start in the copy...
-      final movedDays = (jsonDecode(creatineRows.last.rule)
-          as Map<String, Object?>)['days']! as Map<String, Object?>;
-      expect(movedDays['anchor'], newStart.storageValue);
-      expect(movedDays['anchor_is_default'], isTrue);
-      // ...and the original version was never edited.
-      final originalDays = (jsonDecode(creatineRows.first.rule)
-          as Map<String, Object?>)['days']! as Map<String, Object?>;
-      expect(originalDays['anchor'], start.storageValue);
-
-      final vitaminDRows =
-          await versionRows(memberId: (await memberRow(vitaminDId)).id);
-      expect(vitaminDRows, hasLength(2));
-      expect(vitaminDRows.last.effectiveFrom, newStart.storageValue);
-      // An anchor the user set stays where it is.
-      final keptDays = (jsonDecode(vitaminDRows.last.rule)
-          as Map<String, Object?>)['days']! as Map<String, Object?>;
-      expect(keptDays['anchor'], userAnchor.storageValue);
-
-      // The unchanged draft compares equal to the copy: nothing more.
-      expect(await versionRows(), hasLength(4));
-      final protocol = (await repositories.protocols.listProtocols()).single;
-      expect(protocol.startLocalDate, newStart);
-      expect(protocol.period!.cycle!.anchor, newStart);
+      expect(await versionRows(), hasLength(originals.length + 1));
     });
 
     test(
@@ -3555,6 +3655,83 @@ void main() {
       expect(rows.last.effectiveFrom, today.storageValue);
       final member = await memberOf(created.protocolId, creatineId);
       expect(member.currentVersion!.id, rows.last.id);
+    });
+
+    test(
+        'moving the start earlier copies a member planned from the old start, '
+        'an archived one and one the same save removes, but not a member '
+        'added mid-course or one with no versions', () async {
+      final planned = await createCompoundId('Creatine');
+      final archived = await createCompoundId('Magnesium');
+      final removedNow = await createCompoundId('Zinc');
+      final midCourse = await createCompoundId('Vitamin D');
+      final unscheduled = await createCompoundId('Fish oil');
+      final created = await repositories.protocols.createProtocol(
+        draft(
+          <String>[planned, archived, removedNow, unscheduled],
+          schedules: <String, ScheduleDraft?>{
+            planned: timed(<String>['09:00']),
+            archived: timed(<String>['12:00']),
+            removedNow: timed(<String>['18:00']),
+          },
+        ),
+        today: today,
+      );
+      // Remove one member and add another mid-course, the start unchanged.
+      await repositories.protocols.editProtocol(
+        created.protocolId,
+        draft(
+          <String>[planned, removedNow, unscheduled, midCourse],
+          schedules: <String, ScheduleDraft?>{
+            planned: timed(<String>['09:00']),
+            removedNow: timed(<String>['18:00']),
+            midCourse: timed(<String>['21:00']),
+          },
+        ),
+        today: today,
+      );
+
+      // Move the start earlier, removing another member in the same save.
+      const newStart = ProtocolDayDate(year: 2026, month: 6, day: 15);
+      await repositories.protocols.editProtocol(
+        created.protocolId,
+        draft(
+          <String>[planned, unscheduled, midCourse],
+          startLocalDate: newStart,
+          schedules: <String, ScheduleDraft?>{
+            planned: timed(<String>['09:00']),
+            midCourse: timed(<String>['21:00']),
+          },
+        ),
+        today: today,
+      );
+
+      Future<List<String>> datesOf(String compoundId) async => [
+            for (final row in await versionRows(
+              memberId: (await memberRow(compoundId)).id,
+            ))
+              row.effectiveFrom,
+          ];
+
+      final copied = <String>[newStart.storageValue, start.storageValue];
+      expect(await datesOf(planned), copied);
+      expect(await datesOf(archived), copied);
+      expect(await datesOf(removedNow), copied);
+      // A copy is of the earliest version, with its rule and amount.
+      final removedRows =
+          await versionRows(memberId: (await memberRow(removedNow)).id);
+      expect(
+        (jsonDecode(removedRows.first.rule) as Map<String, Object?>)['times'],
+        <Object?>['18:00'],
+      );
+      expect(removedRows.first.doseAmountEntered, '5');
+      // The member this save removed is archived after its copy.
+      final removedMember = await memberRow(removedNow);
+      expect(removedMember.deletedAt, isNotNull);
+      expect(removedMember.archivedOn, today.storageValue);
+      // Added mid-course: keeps its own first date. No versions: no copy.
+      expect(await datesOf(midCourse), <String>[today.storageValue]);
+      expect(await datesOf(unscheduled), isEmpty);
     });
 
     test(

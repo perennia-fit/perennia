@@ -178,7 +178,9 @@ test("prepareAgentProtocolBatchWrite builds protocol + members + Schedule Versio
   assert.equal("start_date" in protocol, false);
   assert.equal(prepared.members[0].payload.protocol_id, "p1");
   const schedule = prepared.schedules[0].payload;
-  assert.deepEqual(schedule.rule, timedDailyRule(["09:00"]));
+  // Stored as JSON text in the codec's encoding (Data shapes), as the app
+  // stores it.
+  assert.equal(schedule.rule, JSON.stringify(timedDailyRule(["09:00"])));
   assert.equal("frequency" in schedule, false);
   // The store dates the version from stored data (D1).
   assert.equal(schedule.effective_from, null);
@@ -1966,8 +1968,8 @@ test(
       assert.equal(created.status, 200);
       const first = await storedVersion(firstVersionId);
       assert.equal(first.payload.effective_from, start);
-      assert.deepEqual(first.payload.rule.times, ["09:00", "21:00"]);
-      assert.deepEqual(first.payload.rule.days.weekdays, [1, 3, 5]);
+      assert.deepEqual(storedJson(first.payload.rule).times, ["09:00", "21:00"]);
+      assert.deepEqual(storedJson(first.payload.rule).days.weekdays, [1, 3, 5]);
       assert.equal("frequency" in first.payload, false);
 
       // Two edits the same day insert two versions, both from today. A
@@ -2028,7 +2030,7 @@ test(
         ["schedule_version_exists"]
       );
       assert.equal(
-        (await storedVersion(firstVersionId)).payload.rule.times.join(","),
+        storedJson((await storedVersion(firstVersionId)).payload.rule).times.join(","),
         "09:00,21:00"
       );
       const corrected = await write({ schedules: [] }, retryKey);
@@ -2115,7 +2117,7 @@ test(
 );
 
 test(
-  "moving a Protocol's start inserts re-dated version copies and moves anchors left at their default",
+  "moving a Protocol's start later inserts nothing, and moving it earlier copies each member's earliest version",
   { skip },
   async () => {
     await applyMigrations(databaseUrl);
@@ -2141,7 +2143,7 @@ test(
       days: { kind: "every_n_days", n: 3, anchor, anchor_is_default: anchorIsDefault },
       times: ["21:00"]
     });
-    const write = (startLocalDate, extra = {}) =>
+    const write = (startLocalDate, extra = {}, cycleAnchor = startLocalDate) =>
       post(app, "/agent/protocols/batch-write", {
         idempotencyKey: `start-move-${randomUUID()}`,
         today,
@@ -2152,7 +2154,7 @@ test(
             startLocalDate,
             period: {
               v: 1,
-              cycle: { on_days: 60, off_days: 30, anchor: startLocalDate, anchor_is_default: true },
+              cycle: { on_days: 60, off_days: 30, anchor: cycleAnchor, anchor_is_default: true },
               pauses: []
             },
             members,
@@ -2194,38 +2196,45 @@ test(
         200
       );
 
-      // Later: a copy of the version that applied on the new start.
+      const anchors = async (memberId) =>
+        (await versionsOf(memberId)).map((version) => [
+          version.effective_from,
+          storedJson(version.rule).days.anchor
+        ]);
+
+      // Later: nothing is inserted. The version that applies on the new
+      // start is already the latest one dated on or before it, and a default
+      // anchor is read as the start, so it needs no rewriting (D1, D4).
       const laterStart = addDays(today, -10);
       assert.equal((await write(laterStart)).status, 200);
-      // Earlier: a copy of the earliest version.
-      const earlierStart = addDays(today, -40);
-      assert.equal((await write(earlierStart)).status, 200);
+      assert.deepEqual(await anchors(defaultAnchorMember), [[start, start]]);
+      assert.deepEqual(await anchors(setAnchorMember), [[start, setAnchor]]);
 
-      const defaultVersions = await versionsOf(defaultAnchorMember);
-      assert.deepEqual(
-        defaultVersions.map((version) => [version.effective_from, version.rule.days.anchor]),
-        [
-          [earlierStart, earlierStart],
-          [start, start],
-          [laterStart, laterStart]
-        ]
-      );
-      const setVersions = await versionsOf(setAnchorMember);
-      assert.deepEqual(
-        setVersions.map((version) => [version.effective_from, version.rule.days.anchor]),
-        [
-          [earlierStart, setAnchor],
-          [start, setAnchor],
-          [laterStart, setAnchor]
-        ]
-      );
-      for (const version of [...defaultVersions, ...setVersions]) {
+      // Earlier: a copy of each member's earliest version, dated from the new
+      // start. The copy stores the new start in a default anchor, as the
+      // app's writes do; an anchor the Agent set stays. The write re-sends
+      // the period's default cycle anchor at the old start, as a read of the
+      // Protocol returns it, and the new start is stored there.
+      const earlierStart = addDays(today, -40);
+      assert.equal((await write(earlierStart, {}, laterStart)).status, 200);
+      assert.deepEqual(await anchors(defaultAnchorMember), [
+        [earlierStart, earlierStart],
+        [start, start]
+      ]);
+      assert.deepEqual(await anchors(setAnchorMember), [
+        [earlierStart, setAnchor],
+        [start, setAnchor]
+      ]);
+      for (const version of [
+        ...(await versionsOf(defaultAnchorMember)),
+        ...(await versionsOf(setAnchorMember))
+      ]) {
         assert.equal(version.dose_amount_entered, "5");
       }
 
       const [stored] = await database.sql`select payload from protocols where id = ${protocolId}`;
       assert.equal(stored.payload.start_local_date, earlierStart);
-      assert.equal(stored.payload.period.cycle.anchor, earlierStart);
+      assert.equal(storedJson(stored.payload.period).cycle.anchor, earlierStart);
     } finally {
       await database.close();
     }
@@ -2318,7 +2327,9 @@ test(
       );
 
       // A Protocol starting ahead: moving the start later while editing a
-      // member. The edit lands on the new start and is what plans there.
+      // member. Nothing is copied, so the edit is dated by D1 from the latest
+      // stored version (the old start, still ahead of today) and wins it by
+      // id, so it is what plans from the new start.
       const aheadId = createUuidV7();
       const member = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
       const aheadStart = addDays(today, 5);
@@ -2363,13 +2374,459 @@ test(
       );
       const aheadVersions = await versionsOf(member.id);
       assert.deepEqual(
-        aheadVersions.map((version) => [version.effective_from, version.rule.times.join(",")]),
+        aheadVersions.map((version) => [
+          version.effective_from,
+          storedJson(version.rule).times.join(",")
+        ]),
         [
           [aheadStart, "09:00"],
-          [laterStart, "07:00"]
+          [aheadStart, "07:00"]
         ]
       );
       assert.equal(aheadVersions[1].id, editId);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "moving the start earlier copies the members planned from the old start, archived ones and ones the same write archives, but not a member added mid-course or one with no versions",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-start-move-members-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const start = addDays(today, -30);
+    const protocolId = createUuidV7();
+    const member = (position) => ({ id: createUuidV7(), compoundId: createUuidV7(), position });
+    const planned = member(0);
+    const archived = member(1);
+    const removedNow = member(2);
+    const unscheduled = member(3);
+    const midCourse = member(4);
+    const schedule = (memberRow, times) => ({
+      id: createUuidV7(),
+      protocolCompoundId: memberRow.id,
+      rule: timedDailyRule(times),
+      ...creatineAmount
+    });
+    const write = (startLocalDate, members, schedules = []) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `start-move-members-${randomUUID()}`,
+        today,
+        protocols: [{ id: protocolId, name: "Daily", startLocalDate, members, schedules }]
+      });
+    const datesOf = async (memberRow) =>
+      (
+        await database.sql`
+          select payload from schedules
+          where user_id = ${userId}
+            and payload->>'protocol_compound_id' = ${memberRow.id}
+          order by payload->>'effective_from', id
+        `
+      ).map((row) => row.payload.effective_from);
+
+    try {
+      await insertUser(database, userId);
+      assert.equal(
+        (
+          await write(start, [planned, archived, removedNow, unscheduled], [
+            schedule(planned, ["09:00"]),
+            schedule(archived, ["12:00"]),
+            schedule(removedNow, ["18:00"])
+          ])
+        ).status,
+        200
+      );
+      // Archive one member and add another mid-course, the start unchanged.
+      assert.equal(
+        (
+          await write(
+            start,
+            [planned, { ...archived, archived: true }, removedNow, unscheduled, midCourse],
+            [schedule(midCourse, ["21:00"])]
+          )
+        ).status,
+        200
+      );
+
+      // Move the start earlier, archiving another member in the same write.
+      // The member archived before is left out of the write: a stored member
+      // of the Protocol gets its copy whether or not the write lists it, as
+      // the app copies from every member row it stores.
+      const earlierStart = addDays(today, -45);
+      assert.equal(
+        (
+          await write(earlierStart, [
+            planned,
+            { ...removedNow, archived: true },
+            unscheduled,
+            midCourse
+          ])
+        ).status,
+        200
+      );
+
+      assert.deepEqual(await datesOf(planned), [earlierStart, start]);
+      assert.deepEqual(await datesOf(archived), [earlierStart, start]);
+      assert.deepEqual(await datesOf(removedNow), [earlierStart, start]);
+      // A member added mid-course keeps its own first date, and one with no
+      // versions already covers every date.
+      assert.deepEqual(await datesOf(midCourse), [today]);
+      assert.deepEqual(await datesOf(unscheduled), []);
+
+      // The copy is of the earliest version, and the member this write
+      // archived is archived after its copy.
+      const [removedCopy] = await database.sql`
+        select payload from schedules
+        where user_id = ${userId}
+          and payload->>'protocol_compound_id' = ${removedNow.id}
+          and payload->>'effective_from' = ${earlierStart}
+      `;
+      assert.deepEqual(storedJson(removedCopy.payload.rule).times, ["18:00"]);
+      assert.equal(removedCopy.payload.dose_amount_entered, "5");
+      const [removedMember] = await database.sql`
+        select deleted_at, payload from protocol_compounds where id = ${removedNow.id}
+      `;
+      assert.notEqual(removedMember.deleted_at, null);
+      assert.equal(removedMember.payload.archived_on, today);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "an archived Protocol is read-only, an archived member is re-sent but never restored, and an equal Schedule is still inserted",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-archived-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const start = addDays(today, -30);
+    const protocolId = createUuidV7();
+    const kept = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
+    const removed = { id: createUuidV7(), compoundId: createUuidV7(), position: 1 };
+    const protocol = { id: protocolId, name: "Daily", startLocalDate: start };
+    const write = (fields, writeToday = today) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `archived-${randomUUID()}`,
+        today: writeToday,
+        protocols: [{ ...protocol, ...fields }]
+      });
+    const rulesOf = async (body) => (await body.json()).errors.map((issue) => issue.rule);
+    const versionsOf = async (memberId) =>
+      database.sql`
+        select id, payload from schedules
+        where user_id = ${userId}
+          and payload->>'protocol_compound_id' = ${memberId}
+        order by payload->>'effective_from', id
+      `;
+    const memberStamp = async (memberId) =>
+      (
+        await database.sql`
+          select deleted_at, payload from protocol_compounds where id = ${memberId}
+        `
+      )[0];
+
+    try {
+      await insertUser(database, userId);
+      const firstVersionId = createUuidV7();
+      assert.equal(
+        (
+          await write({
+            members: [kept, removed],
+            schedules: [
+              {
+                id: firstVersionId,
+                protocolCompoundId: kept.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ]
+          })
+        ).status,
+        200
+      );
+
+      // D6: an Agent Schedule is an explicit edit, so one equal to the
+      // current version is inserted under the id the Agent chose.
+      const equalVersionId = createUuidV7();
+      assert.equal(
+        (
+          await write({
+            members: [kept, removed],
+            schedules: [
+              {
+                id: equalVersionId,
+                protocolCompoundId: kept.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ]
+          })
+        ).status,
+        200
+      );
+      const keptVersions = await versionsOf(kept.id);
+      assert.deepEqual(
+        keptVersions.map((row) => [row.id, row.payload.effective_from]),
+        [
+          [firstVersionId, start],
+          [equalVersionId, today]
+        ]
+      );
+      assert.equal(keptVersions[1].payload.rule, keptVersions[0].payload.rule);
+
+      // Archive a member, then re-send it archived: accepted, and its first
+      // stamp is kept, even under a later today.
+      assert.equal(
+        (await write({ members: [kept, { ...removed, archived: true }] })).status,
+        200
+      );
+      const firstStamp = await memberStamp(removed.id);
+      assert.equal(firstStamp.payload.archived_on, today);
+      const resent = await write(
+        { members: [kept, { ...removed, archived: true }] },
+        addDays(today, 1)
+      );
+      assert.equal(resent.status, 200);
+      const keptStamp = await memberStamp(removed.id);
+      assert.equal(
+        new Date(keptStamp.deleted_at).getTime(),
+        new Date(firstStamp.deleted_at).getTime()
+      );
+      assert.equal(keptStamp.payload.archived_on, today);
+      // archived: false on it is never a restore.
+      const restored = await write({ members: [kept, { ...removed, archived: false }] });
+      assert.equal(restored.status, 422);
+      assert.deepEqual(await rulesOf(restored), ["archived_row_not_restorable"]);
+
+      // Archive the Protocol: from then on any write naming it is refused,
+      // whatever it sends, and the stored row is unchanged.
+      assert.equal(
+        (await write({ archived: true, members: [kept, { ...removed, archived: true }] })).status,
+        200
+      );
+      const [archivedProtocol] = await database.sql`
+        select deleted_at, payload from protocols where id = ${protocolId}
+      `;
+      assert.equal(archivedProtocol.payload.archived_on, today);
+      for (const fields of [
+        { archived: true },
+        { archived: true, members: [kept, { ...removed, archived: true }] },
+        { name: "Renamed" },
+        {
+          members: [kept],
+          schedules: [
+            {
+              id: createUuidV7(),
+              protocolCompoundId: kept.id,
+              rule: timedDailyRule(["10:00"]),
+              ...creatineAmount
+            }
+          ]
+        }
+      ]) {
+        const refused = await write(fields);
+        assert.equal(refused.status, 422, JSON.stringify(fields));
+        assert.deepEqual(await rulesOf(refused), ["protocol_archived"], JSON.stringify(fields));
+      }
+      const [unchanged] = await database.sql`
+        select deleted_at, payload from protocols where id = ${protocolId}
+      `;
+      assert.equal(unchanged.payload.name, "Daily");
+      assert.equal(
+        new Date(unchanged.deleted_at).getTime(),
+        new Date(archivedProtocol.deleted_at).getTime()
+      );
+      assert.equal((await versionsOf(kept.id)).length, 2);
+
+      // A Protocol tombstoned by undo (deleted_at with no archived_on) never
+      // existed: a write naming it is refused whatever it sends, a re-sent
+      // archived: true included, so it can't be edited or have its start
+      // moved, and no version is inserted for its members.
+      const undoneId = createUuidV7();
+      const undoneMember = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
+      const writeUndone = (fields) =>
+        post(app, "/agent/protocols/batch-write", {
+          idempotencyKey: `archived-undone-${randomUUID()}`,
+          today,
+          protocols: [{ id: undoneId, name: "Undone", startLocalDate: start, ...fields }]
+        });
+      assert.equal(
+        (
+          await writeUndone({
+            members: [undoneMember],
+            schedules: [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: undoneMember.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ]
+          })
+        ).status,
+        200
+      );
+      await database.sql`
+        update protocols
+        set deleted_at = now(),
+            payload = payload || jsonb_build_object('deleted_at', now(), 'archived_on', null)
+        where id = ${undoneId}
+      `;
+      for (const fields of [
+        { archived: true },
+        { archived: true, startLocalDate: addDays(start, -10), members: [undoneMember] },
+        { archived: true, name: "Renamed" },
+        { name: "Renamed" }
+      ]) {
+        const refused = await writeUndone(fields);
+        assert.equal(refused.status, 422, JSON.stringify(fields));
+        assert.deepEqual(
+          await rulesOf(refused),
+          ["archived_row_not_restorable"],
+          JSON.stringify(fields)
+        );
+      }
+      const [undone] = await database.sql`
+        select payload from protocols where id = ${undoneId}
+      `;
+      assert.equal(undone.payload.name, "Undone");
+      assert.equal(undone.payload.start_local_date, start);
+      assert.equal(undone.payload.archived_on, null);
+      assert.equal((await versionsOf(undoneMember.id)).length, 1);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "rule and period are stored as JSON text, and a row stored as an object still reads and copies",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-json-text-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const start = addDays(today, -30);
+    const protocolId = createUuidV7();
+    const memberId = createUuidV7();
+    const versionId = createUuidV7();
+    const period = {
+      v: 1,
+      cycle: { on_days: 60, off_days: 30, anchor: start, anchor_is_default: true },
+      pauses: []
+    };
+    const rule = {
+      v: 1,
+      kind: "timed",
+      days: { kind: "weekdays", weekdays: [1, 3, 5] },
+      times: ["09:00", "21:00"]
+    };
+    const write = (startLocalDate, schedules = []) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `json-text-${randomUUID()}`,
+        today,
+        protocols: [
+          {
+            id: protocolId,
+            name: "Skin",
+            startLocalDate,
+            // Always the period as first written: its default cycle anchor
+            // stays at the first start, and a start move stores the new one.
+            period,
+            members: [{ id: memberId, compoundId: createUuidV7(), position: 0 }],
+            schedules
+          }
+        ]
+      });
+    const readMember = async () => {
+      const read = await app.request("/agent/protocols", { headers: authHeaders() });
+      assert.equal(read.status, 200);
+      const readProtocol = (await read.json()).protocols.find(
+        (candidate) => candidate.id === protocolId
+      );
+      return {
+        protocol: readProtocol,
+        member: readProtocol.members.find((candidate) => candidate.id === memberId)
+      };
+    };
+
+    try {
+      await insertUser(database, userId);
+      assert.equal(
+        (
+          await write(start, [
+            { id: versionId, protocolCompoundId: memberId, rule, ...creatineAmount }
+          ])
+        ).status,
+        200
+      );
+
+      // Both are the codec's encoding, as JSON text, as the app stores them.
+      const [storedVersion] = await database.sql`
+        select payload from schedules where id = ${versionId}
+      `;
+      assert.equal(storedVersion.payload.rule, JSON.stringify(rule));
+      const [storedProtocol] = await database.sql`
+        select payload from protocols where id = ${protocolId}
+      `;
+      assert.equal(storedProtocol.payload.period, JSON.stringify(period));
+
+      // A row an earlier Agent write stored as an object still reads.
+      await database.sql`
+        update schedules
+        set payload = jsonb_set(payload, '{rule}', (payload->>'rule')::jsonb)
+        where id = ${versionId}
+      `;
+      await database.sql`
+        update protocols
+        set payload = jsonb_set(payload, '{period}', (payload->>'period')::jsonb)
+        where id = ${protocolId}
+      `;
+      const [objectVersion] = await database.sql`
+        select payload from schedules where id = ${versionId}
+      `;
+      assert.equal(typeof objectVersion.payload.rule, "object");
+      const objectRead = await readMember();
+      assert.deepEqual(objectRead.protocol.period, period);
+      assert.deepEqual(objectRead.member.currentVersion.rule, rule);
+
+      // A start move copies from the object row and writes the copy as text.
+      const earlierStart = addDays(today, -40);
+      assert.equal((await write(earlierStart)).status, 200);
+      const [copy] = await database.sql`
+        select payload from schedules
+        where user_id = ${userId}
+          and payload->>'protocol_compound_id' = ${memberId}
+          and id <> ${versionId}
+      `;
+      assert.equal(copy.payload.effective_from, earlierStart);
+      assert.deepEqual(storedJson(copy.payload.rule), rule);
+      const copiedRead = await readMember();
+      assert.deepEqual(
+        copiedRead.member.versions.map((version) => version.effectiveFrom),
+        [earlierStart, start]
+      );
+      assert.deepEqual(copiedRead.protocol.period.cycle.anchor, earlierStart);
     } finally {
       await database.close();
     }
@@ -2393,6 +2850,12 @@ function addDays(localDate, days) {
   const date = new Date(`${localDate}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+/** A stored `rule` or `period`: JSON text, the form every writer stores. */
+function storedJson(value) {
+  assert.equal(typeof value, "string");
+  return JSON.parse(value);
 }
 
 function timedDailyRule(times) {
