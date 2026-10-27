@@ -1,4 +1,9 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
+import 'package:drift/native.dart' show SqliteException;
+// ignore: experimental_member_use
+import 'package:drift/remote.dart' show DriftRemoteException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/local/food_reference_database.dart';
@@ -216,6 +221,39 @@ void main() {
         NutrientId.saturatedFat: '15.6',
       });
     });
+  });
+
+  test('isSqliteBusy sees SQLITE_BUSY directly and through the remote wrapper',
+      () async {
+    expect(
+      isSqliteBusy(
+        SqliteException(extendedResultCode: 5, message: 'database is locked'),
+      ),
+      isTrue,
+    );
+    expect(
+      isSqliteBusy(
+        SqliteException(extendedResultCode: 1, message: 'no such table'),
+      ),
+      isFalse,
+    );
+    expect(isSqliteBusy(StateError('other')), isFalse);
+
+    // A real error from a background connection arrives wrapped.
+    final directory = await Directory.systemTemp.createTemp('busy_');
+    addTearDown(() => directory.delete(recursive: true));
+    final background = FoodReferenceDatabase.connect(
+      File('${directory.path}/r.sqlite'),
+    );
+    addTearDown(background.close);
+    Object? caught;
+    try {
+      await background.customStatement('SELECT * FROM no_such_table');
+    } on Object catch (error) {
+      caught = error;
+    }
+    expect(caught, isA<DriftRemoteException>());
+    expect(isSqliteBusy(caught!), isFalse, reason: 'not a busy error');
   });
 
   test('the user database has no Open Food Facts table', () {

@@ -3,6 +3,10 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+// DriftRemoteException is how drift delivers an error from a background
+// connection; isSqliteBusy needs its type to see the SQLite code inside.
+// ignore: experimental_member_use
+import 'package:drift/remote.dart' show DriftRemoteException;
 
 import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/open_food_facts.dart';
@@ -194,9 +198,8 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
     while (true) {
       try {
         return await _keepOnce(row);
-      } on SqliteException catch (error) {
-        if (error.resultCode != _sqliteBusy ||
-            DateTime.now().isAfter(deadline)) {
+      } on Object catch (error) {
+        if (!isSqliteBusy(error) || DateTime.now().isAfter(deadline)) {
           rethrow;
         }
         await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -205,7 +208,6 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
   }
 
   static const _busyWindow = Duration(seconds: 5);
-  static const _sqliteBusy = 5;
 
   Future<void> _keepOnce(OpenFoodFactsProductsCompanion row) {
     final companion = row.copyWith(origin: const Value(originOnline));
@@ -357,3 +359,13 @@ String encodeNutrientsJson(Map<NutrientId, String> text) {
 Map<NutrientId, String> decodeNutrientsJson(String json) {
   return nutrientTextFromJson(jsonDecode(json) as Map<String, Object?>);
 }
+
+/// Whether [error] is SQLite's SQLITE_BUSY ("database is locked"). On the
+/// app's background connection it arrives wrapped in a
+/// [DriftRemoteException], whose message is the cause's, so check both.
+bool isSqliteBusy(Object error) {
+  final cause = error is DriftRemoteException ? error.remoteCause : error;
+  return cause is SqliteException && cause.resultCode == _sqliteBusy;
+}
+
+const _sqliteBusy = 5;
