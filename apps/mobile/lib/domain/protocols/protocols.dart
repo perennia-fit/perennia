@@ -59,6 +59,10 @@ class ProtocolDayDate implements Comparable<ProtocolDayDate> {
 
   static final _storagePattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
 
+  /// The last date a `YYYY-MM-DD` value holds.
+  static const ProtocolDayDate max =
+      ProtocolDayDate(year: 9999, month: 12, day: 31);
+
   final int year;
   final int month;
   final int day;
@@ -72,14 +76,43 @@ class ProtocolDayDate implements Comparable<ProtocolDayDate> {
 
   DateTime toLocalDateTime() => DateTime(year, month, day);
 
+  /// This date as UTC midnight: the calendar arithmetic below runs here, never
+  /// on a local [DateTime]. A local day is 23 or 25 hours long on a
+  /// daylight-saving change, so adding 24-hour [Duration]s to local midnight
+  /// repeats a date in autumn and skips one in spring (and in a zone whose
+  /// change falls at midnight, local midnight itself may not exist). UTC has
+  /// no such days, so every date is exactly one day apart from the next.
+  DateTime utcMidnight() => DateTime.utc(year, month, day);
+
+  /// The date [days] calendar days after this one (before it, when negative).
+  /// Computed in UTC, so it never depends on the device's timezone.
   ProtocolDayDate addDays(int days) {
-    final next = toLocalDateTime().add(Duration(days: days));
-    return ProtocolDayDate.fromDateTime(next);
+    final next = DateTime.utc(year, month, day + days);
+    return ProtocolDayDate(year: next.year, month: next.month, day: next.day);
   }
 
+  /// The number of calendar days from [other] to this date: positive when
+  /// this date is later, zero on the same date. The same UTC arithmetic as
+  /// [addDays], so `other.addDays(daysBetween(other)) == this`.
+  int daysBetween(ProtocolDayDate other) {
+    return utcMidnight().difference(other.utcMidnight()).inDays;
+  }
+
+  /// The ISO 8601 weekday of this date: 1 is Monday and 7 is Sunday, as a
+  /// Schedule Rule's chosen weekdays store it.
+  int get isoWeekday => utcMidnight().weekday;
+
+  /// Calendar order, compared field by field: the plan core compares dates
+  /// on every planned day, so this never builds a string.
   @override
   int compareTo(ProtocolDayDate other) {
-    return storageValue.compareTo(other.storageValue);
+    if (year != other.year) {
+      return year.compareTo(other.year);
+    }
+    if (month != other.month) {
+      return month.compareTo(other.month);
+    }
+    return day.compareTo(other.day);
   }
 
   @override

@@ -174,6 +174,8 @@ const JOBS = {
       'apps/server/test/nutrition-analytics.golden.test.mjs',
       'apps/server/src/agent-protocols.ts',
       'apps/server/test/effect-window.golden.test.mjs',
+      'apps/server/src/protocol-plan.ts',
+      'apps/server/test/protocol-plan.golden.test.mjs',
       'apps/server/src/barcode-candidates.ts',
       'apps/server/test/barcode-candidates.golden.test.mjs',
       'apps/server/package.json', '.node-version',

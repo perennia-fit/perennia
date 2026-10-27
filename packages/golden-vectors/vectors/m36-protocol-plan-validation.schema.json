@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m36-protocol-plan-validation.schema.json",
+  "title": "M36 Protocol plan validation golden vector",
+  "description": "Language-neutral parity cases for the two-tier Protocol plan validators (D7). A schedule_rule case passes `rule` (the stored Schedule Rule JSON) and the Schedule Version's amountValue, amountEntered, unit and route to validateScheduleRule; a protocol_period case passes startLocalDate, endLocalDate and period (the stored Protocol Period JSON, or null) to validateProtocolPeriod. `expected` lists the stable check ids of the hard-reject errors and soft warnings, in the order the validator reports them; `accepted` is true when there is no error. Inputs deliberately carry out-of-range values, so the rule and period shapes here constrain types and kinds only. The `limits` block must equal ProtocolPlanValidationLimits (Dart) and PROTOCOL_PLAN_VALIDATION_LIMITS (TypeScript).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "limits", "cases"],
+  "properties": {
+    "name": {"const": "m36-protocol-plan-validation"},
+    "domain": {"const": "protocol-plan-validation"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m36-protocol-plan-validation.schema.json"},
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxTimesPerDay", "maxUntimedCount", "minEveryNDays", "maxEveryNDays", "maxCycleLengthDays", "warnTimesPerDay"],
+      "properties": {
+        "maxTimesPerDay": {"const": 12},
+        "maxUntimedCount": {"const": 12},
+        "minEveryNDays": {"const": 2},
+        "maxEveryNDays": {"const": 365},
+        "maxCycleLengthDays": {"const": 3650},
+        "warnTimesPerDay": {"const": 6}
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "checkId": {
+      "enum": [
+        "times_format",
+        "times_count",
+        "times_distinct",
+        "untimed_count",
+        "weekdays_valid",
+        "every_n_range",
+        "anchor_date",
+        "amount_required",
+        "cycle_lengths",
+        "bounds_order",
+        "pause_order",
+        "pause_bounds",
+        "pause_overlap",
+        "times_many"
+      ]
+    },
+    "dateString": {"type": "string"},
+    "days": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {"kind": {"const": "daily"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "weekdays"],
+          "properties": {"kind": {"const": "weekdays"}, "weekdays": {"type": "array", "items": {"type": "number"}}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "n", "anchor", "anchor_is_default"],
+          "properties": {
+            "kind": {"const": "every_n_days"},
+            "n": {"type": "integer"},
+            "anchor": {"$ref": "#/$defs/dateString"},
+            "anchor_is_default": {"type": "boolean"}
+          }
+        }
+      ]
+    },
+    "rule": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["v", "kind", "days", "times"],
+          "properties": {
+            "v": {"const": 1},
+            "kind": {"const": "timed"},
+            "days": {"$ref": "#/$defs/days"},
+            "times": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["v", "kind", "days", "count"],
+          "properties": {
+            "v": {"const": 1},
+            "kind": {"const": "untimed"},
+            "days": {"$ref": "#/$defs/days"},
+            "count": {"type": "number"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["v", "kind"],
+          "properties": {"v": {"const": 1}, "kind": {"enum": ["as_needed", "unscheduled"]}}
+        }
+      ]
+    },
+    "period": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["v", "cycle", "pauses"],
+          "properties": {
+            "v": {"const": 1},
+            "cycle": {
+              "oneOf": [
+                {"type": "null"},
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["on_days", "off_days", "anchor", "anchor_is_default"],
+                  "properties": {
+                    "on_days": {"type": "integer"},
+                    "off_days": {"type": "integer"},
+                    "anchor": {"$ref": "#/$defs/dateString"},
+                    "anchor_is_default": {"type": "boolean"}
+                  }
+                }
+              ]
+            },
+            "pauses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["from", "to"],
+                "properties": {"from": {"$ref": "#/$defs/dateString"}, "to": {"$ref": "#/$defs/dateString"}}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted", "errorRules", "warningRules"],
+      "properties": {
+        "accepted": {"type": "boolean"},
+        "errorRules": {"type": "array", "items": {"$ref": "#/$defs/checkId"}},
+        "warningRules": {"type": "array", "items": {"$ref": "#/$defs/checkId"}}
+      },
+      "if": {"properties": {"accepted": {"const": true}}},
+      "then": {"properties": {"errorRules": {"type": "array", "maxItems": 0}}},
+      "else": {"properties": {"errorRules": {"type": "array", "minItems": 1}}}
+    },
+    "case": {
+      "type": "object",
+      "required": ["name", "validator", "input", "expected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "note": {"type": "string", "description": "Why the case exists and which check it pins. Runners ignore it."},
+        "expected": {"$ref": "#/$defs/expected"}
+      },
+      "unevaluatedProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "validator": {"const": "schedule_rule"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["rule", "amountValue", "amountEntered", "unit", "route"],
+              "properties": {
+                "rule": {"$ref": "#/$defs/rule"},
+                "amountValue": {"type": ["number", "null"]},
+                "amountEntered": {"type": ["string", "null"]},
+                "unit": {"type": ["string", "null"]},
+                "route": {"type": ["string", "null"]}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "validator": {"const": "protocol_period"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["startLocalDate", "endLocalDate", "period"],
+              "properties": {
+                "startLocalDate": {"$ref": "#/$defs/dateString"},
+                "endLocalDate": {"type": ["string", "null"]},
+                "period": {"$ref": "#/$defs/period"}
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
