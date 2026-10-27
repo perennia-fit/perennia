@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -235,7 +239,7 @@ async function push(serverApp, user, deviceId, entity, changes) {
       authorization: `Bearer ${user.sessionToken}`,
       "content-type": "application/json"
     },
-    body: JSON.stringify({ protocolVersion: 1, deviceId, entity, changes })
+    body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, deviceId, entity, changes })
   });
   assert.equal(response.status, 200, await response.clone().text());
   return response.json();

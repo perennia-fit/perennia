@@ -199,9 +199,10 @@ export type DueUnfilledDose = PlanAmount & {
  * The plan validators' limits, and the decoders' ceilings. Kept in lockstep
  * with the Dart `ProtocolPlanValidationLimits` and the validation vector's
  * `limits` block. Times and untimed counts start at 1, and cycle lengths at 1
- * day; `warnTimesPerDay` is the soft-warn boundary (exclusive). Defined here,
- * not in agent-validation.ts (which re-exports it), because that module
- * imports this one.
+ * day; `warnTimesPerDay` is the soft-warn boundary (exclusive). `maxPauses`
+ * is the `pause_count` limit, a validation limit only: no decoder enforces
+ * it, as in the Dart twin. Defined here, not in agent-validation.ts (which
+ * re-exports it), because that module imports this one.
  */
 export const PROTOCOL_PLAN_VALIDATION_LIMITS = {
   maxTimesPerDay: 12,
@@ -209,7 +210,8 @@ export const PROTOCOL_PLAN_VALIDATION_LIMITS = {
   minEveryNDays: 2,
   maxEveryNDays: 365,
   maxCycleLengthDays: 3650,
-  warnTimesPerDay: 6
+  warnTimesPerDay: 6,
+  maxPauses: 100
 } as const;
 
 export class ProtocolPlanCodecError extends Error {
@@ -570,6 +572,8 @@ type MemberRow = {
 
 /** One Schedule Version, with its rule decoded and its amount and every-N anchor worked out once. */
 type VersionPlan = {
+  /** `version.effectiveFrom`, lifted so `applyingScheduleVersion` reads it. */
+  effectiveFrom: LocalDate;
   version: PlanScheduleVersion;
   amount: Required<PlanAmount>;
   /** The every-N-days anchor as an epoch day; 0 for any other days. */
@@ -609,6 +613,7 @@ function memberRow(member: PlanMember): MemberRow {
     .map((stored) => {
       const rule = decodeScheduleRule(stored.rule);
       return {
+        effectiveFrom: stored.effectiveFrom,
         version: { ...stored, rule },
         amount: planAmount(stored),
         anchorDay:
@@ -619,11 +624,7 @@ function memberRow(member: PlanMember): MemberRow {
             : 0
       };
     })
-    .sort(
-      (left, right) =>
-        compareIds(left.version.effectiveFrom, right.version.effectiveFrom) ||
-        compareIds(left.version.id, right.version.id)
-    );
+    .sort((left, right) => compareScheduleVersions(left.version, right.version));
   return { memberId: member.memberId, archivedOn: member.archivedOn ?? null, versions };
 }
 
@@ -670,7 +671,7 @@ function planDayFor(
     return unplanned("removed");
   }
 
-  const applying = applyingVersion(row.versions, localDate);
+  const applying = applyingScheduleVersion(row.versions, localDate);
   if (applying === null || applying.version.rule.kind === "unscheduled") {
     return unplanned("no_schedule");
   }
@@ -717,18 +718,30 @@ function coveringRow(rows: readonly MemberRow[], localDate: LocalDate): MemberRo
 }
 
 /**
- * The version with the latest `effectiveFrom` on or before `localDate`; on a
- * shared date the larger id (UUIDv7, so the latest edit) wins, on every device
- * and the server alike (D1). In version order, that is the last one on or
- * before `localDate`.
+ * D1's version order: `effectiveFrom`, then id. On a shared date the larger id
+ * (UUIDv7, so the latest edit) comes last, on every device and the server
+ * alike. Every writer and reader that picks a version sorts with this.
  */
-function applyingVersion(
-  versions: readonly VersionPlan[],
+export function compareScheduleVersions(
+  left: { effectiveFrom: string; id: string },
+  right: { effectiveFrom: string; id: string }
+): number {
+  return compareIds(left.effectiveFrom, right.effectiveFrom) || compareIds(left.id, right.id);
+}
+
+/**
+ * The version that applies on `localDate` (D1): the latest `effectiveFrom` on
+ * or before it, then the larger id. `sorted` must be in
+ * `compareScheduleVersions` order, so that is the last one on or before
+ * `localDate`. Null when none applies yet.
+ */
+export function applyingScheduleVersion<T extends { effectiveFrom: string }>(
+  sorted: readonly T[],
   localDate: LocalDate
-): VersionPlan | null {
-  for (let index = versions.length - 1; index >= 0; index -= 1) {
-    const candidate = versions[index]!;
-    if (candidate.version.effectiveFrom <= localDate) {
+): T | null {
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    const candidate = sorted[index]!;
+    if (candidate.effectiveFrom <= localDate) {
       return candidate;
     }
   }
@@ -756,7 +769,7 @@ function planAmount(amount: PlanAmount): Required<PlanAmount> {
 }
 
 /** Appends `item` to the group `key` names in `groups`, starting it if new. */
-function pushToGroup<T>(groups: Map<string, T[]>, key: string, item: T): void {
+export function pushToGroup<T>(groups: Map<string, T[]>, key: string, item: T): void {
   const group = groups.get(key);
   if (group === undefined) {
     groups.set(key, [item]);

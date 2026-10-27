@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -123,7 +127,7 @@ async function pullAll(app, sessionToken) {
         authorization: `Bearer ${sessionToken}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({ protocolVersion: 1, cursor, limit: 100 })
+      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit: 100 })
     });
     assert.equal(response.status, 200);
     const window = await response.json();

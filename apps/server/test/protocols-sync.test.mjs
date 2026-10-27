@@ -4,7 +4,11 @@ import test from "node:test";
 
 import { eq } from "drizzle-orm";
 
-import { createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -53,6 +57,13 @@ test(
       assert.equal(pushCompound.status, 200);
       assert.deepEqual((await pushCompound.json()).accepted, [compoundId]);
 
+      // A Dose logged before offsets were frozen has no
+      // `timezone_offset_minutes` key; it is still a well-formed Dose.
+      const legacyDoseId = randomUUID();
+      const { timezone_offset_minutes: _omitted, ...legacyDose } = dosePayload(
+        legacyDoseId,
+        updatedAt
+      );
       const pushDose = await syncPush(serverApp.app, userA.sessionToken, {
         deviceId: "device-a",
         entity: "doses",
@@ -62,11 +73,17 @@ test(
             payload: dosePayload(doseId, updatedAt),
             updatedAt,
             deletedAt: null
+          },
+          {
+            id: legacyDoseId,
+            payload: legacyDose,
+            updatedAt,
+            deletedAt: null
           }
         ]
       });
       assert.equal(pushDose.status, 200);
-      assert.deepEqual((await pushDose.json()).accepted, [doseId]);
+      assert.deepEqual((await pushDose.json()).accepted, [doseId, legacyDoseId]);
 
       // TENANT ISOLATION: user B cannot overwrite user A's rows keyed by the
       // same client PK. The push reports accepted (idempotent no-op) but the
@@ -110,7 +127,13 @@ test(
       assert.equal(pulledDose.payload.compound_name, "Vitamin D");
       assert.equal(pulledDose.payload.compound_strength, "1000 IU/capsule");
       assert.equal(pulledDose.payload.provenance, "manual");
+      assert.equal(pulledDose.payload.timezone_offset_minutes, 60);
       assert.equal(pulledDose.deletedAt, null);
+      const pulledLegacyDose = pulled.find(
+        (change) => change.entity === "doses" && change.id === legacyDoseId
+      );
+      assert.ok(pulledLegacyDose, "a Dose without an offset should round-trip");
+      assert.equal("timezone_offset_minutes" in pulledLegacyDose.payload, false);
 
       // User B pulls and sees NEITHER row — strict per-user scoping on read.
       const userBPulled = await pullAll(serverApp.app, userB.sessionToken);
@@ -219,7 +242,8 @@ function dosePayload(id, updatedAt) {
     unit: "capsule",
     route: "oral",
     took_at: updatedAt,
-    timezone: "UTC",
+    timezone: "Europe/Lisbon",
+    timezone_offset_minutes: 60,
     local_date: "2026-06-30",
     provenance: "manual",
     updated_at: updatedAt,
@@ -234,7 +258,7 @@ async function syncPush(app, sessionToken, body) {
       authorization: `Bearer ${sessionToken}`,
       "content-type": "application/json"
     },
-    body: JSON.stringify({ protocolVersion: 1, ...body })
+    body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, ...body })
   });
 }
 
@@ -248,7 +272,7 @@ async function pullAll(app, sessionToken) {
         authorization: `Bearer ${sessionToken}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({ protocolVersion: 1, cursor, limit: 100 })
+      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit: 100 })
     });
     assert.equal(response.status, 200);
     const window = await response.json();

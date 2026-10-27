@@ -1757,7 +1757,8 @@ export type AgentProtocolPeriodValidationInput = {
 };
 
 /// Validates one Schedule Version: its stored `rule` JSON and the planned
-/// amount a `timed` or `untimed` rule requires. Like the Dart twin, it reads
+/// amount a `timed` or `untimed` rule requires and an `as_needed` or
+/// `unscheduled` rule must not carry. Like the Dart twin, it reads
 /// the stored JSON rather than a decoded rule, so it can judge values a
 /// decoder rejects (a time of "9:00", an anchor of "2026-02-30", a count of
 /// 2.5). The JSON's `v` and `kind`s are the codec's to reject; this assumes a
@@ -1770,7 +1771,20 @@ export function validateAgentScheduleRule(
   const warnings: AgentDoseValidationIssue[] = [];
   const limits = PROTOCOL_PLAN_VALIDATION_LIMITS;
   if (rule.kind !== "timed" && rule.kind !== "untimed") {
-    // `as_needed` and `unscheduled` plan nothing, so carry nothing to judge.
+    // `as_needed` and `unscheduled` plan nothing, so the stored shape keeps
+    // their amount fields null (`amount_absent`): an amount here is one
+    // nothing would ever read.
+    const carried = [amount.amountValue, amount.amountEntered, amount.unit, amount.route];
+    if (carried.some((value) => value !== null && value !== undefined)) {
+      errors.push(
+        doseIssue({
+          field: "amount",
+          rule: "amount_absent",
+          message: "An as-needed or unscheduled rule carries no amount, unit or route.",
+          limit: "absent"
+        })
+      );
+    }
     return { errors, warnings };
   }
 
@@ -1919,6 +1933,21 @@ export function validateAgentProtocolPeriod(
         limit: "startLocalDate"
       })
     );
+  }
+
+  // pause_count bounds the list before anything walks or sorts it; an
+  // over-long list reports only that, and the other Pause checks don't run.
+  const maxPauses = PROTOCOL_PLAN_VALIDATION_LIMITS.maxPauses;
+  if (pauses.length > maxPauses) {
+    errors.push(
+      doseIssue({
+        field: "period.pauses",
+        rule: "pause_count",
+        message: `A Protocol holds at most ${maxPauses} Pauses.`,
+        limit: maxPauses
+      })
+    );
+    return { errors, warnings: [] };
   }
 
   // A Pause whose dates are not real dates cannot be ordered, so it fails

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:perennia/domain/protocols/protocol_plan.dart';
 import 'package:perennia/domain/protocols/protocols.dart';
 
 void main() {
@@ -243,7 +244,7 @@ void main() {
       return ProtocolRecord(
         id: 'p1',
         name: 'Lean bulk',
-        startDate: DateTime.utc(2026, 7, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
         members: members,
         updatedAt: DateTime.utc(2026, 7, 1),
         deletedAt: deletedAt,
@@ -283,7 +284,10 @@ void main() {
           ProtocolMemberRecord(id: 'm2', compoundId: 'c2', position: 1),
         ],
       );
-      expect(protocol.members.every((m) => m.schedule == null), isTrue);
+      expect(
+        protocol.members.every((m) => m.currentVersion == null),
+        isTrue,
+      );
     });
 
     test('list-backed Protocol read models are immutable snapshots', () {
@@ -303,7 +307,7 @@ void main() {
       final protocol = ProtocolRecord(
         id: 'p1',
         name: 'Lean bulk',
-        startDate: DateTime.utc(2026, 7, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
         members: members,
         targetOutcomes: targetOutcomes,
         updatedAt: DateTime.utc(2026, 7, 1),
@@ -341,67 +345,90 @@ void main() {
     });
   });
 
-  // the curated `ScheduleFrequency` registry (PROTOCOLS.md §1.4) —
-  // never free-text, mirroring DoseUnit/DoseRoute.
-  group('curated Schedule frequency registry (never free-text)', () {
-    test('every member has an exhaustive label', () {
-      for (final frequency in ScheduleFrequency.values) {
-        expect(scheduleFrequencyLabel(frequency), isNotEmpty);
-      }
-    });
-
-    test('a registry name round-trips to the same enum member', () {
-      for (final frequency in ScheduleFrequency.values) {
-        expect(scheduleFrequencyFromName(frequency.name), frequency);
-      }
-    });
-
-    test('a free-text frequency outside the registry is rejected', () {
-      expect(
-        () => scheduleFrequencyFromName('every-full-moon'),
-        throwsA(isA<ArgumentError>()),
+  // A Schedule Version: one stored state of a member's `Schedule`, with the
+  // local date it applies from. Purely prescriptive; dose-response is always
+  // derived from the ACTUAL logged Doses, never the Schedule.
+  group('ScheduleRecord (one Schedule Version)', () {
+    test('carries its rule, effective date and planned dose + route', () {
+      final rule = TimedScheduleRule(
+        days: const DailyScheduleDays(),
+        times: const <String>['09:00'],
       );
-    });
-  });
-
-  // `Schedule` — the Prescription analog (PROTOCOLS.md §1.4): an
-  // OPTIONAL planned dose · frequency · route attached to a Protocol's member
-  // Compound. Purely prescriptive; dose-response is always derived from the
-  // ACTUAL logged Doses, never the Schedule.
-  group('ScheduleRecord (optional plan-only template, PROTOCOLS.md §1.4)', () {
-    ScheduleRecord scheduleWith({DateTime? deletedAt}) {
-      return ScheduleRecord(
+      final schedule = ScheduleRecord(
         id: 's1',
         protocolCompoundId: 'member-1',
+        effectiveFrom: const ProtocolDayDate(year: 2026, month: 7, day: 1),
+        rule: rule,
         doseAmountValue: 5,
         doseAmountEntered: '5',
         doseUnit: DoseUnit.gram,
-        frequency: ScheduleFrequency.onceDaily,
         route: DoseRoute.oral,
         updatedAt: DateTime.utc(2026, 7, 1),
-        deletedAt: deletedAt,
       );
-    }
-
-    test('carries the planned dose + frequency + route', () {
-      final schedule = scheduleWith();
+      expect(schedule.rule, same(rule));
+      expect(
+        schedule.effectiveFrom,
+        const ProtocolDayDate(year: 2026, month: 7, day: 1),
+      );
       expect(schedule.doseAmountValue, 5);
-      expect(schedule.doseAmountEntered, '5');
       expect(schedule.doseUnit, DoseUnit.gram);
-      expect(schedule.frequency, ScheduleFrequency.onceDaily);
       expect(schedule.route, DoseRoute.oral);
-    });
-
-    test('renders a human-facing planned dose label', () {
-      final schedule = scheduleWith();
       expect(schedule.doseLabel, '5 g');
     });
 
-    test('isArchived reflects the deletedAt tombstone', () {
-      expect(scheduleWith().isArchived, isFalse);
+    test('an as-needed version carries no amount and no label', () {
+      final schedule = ScheduleRecord(
+        id: 's1',
+        protocolCompoundId: 'member-1',
+        effectiveFrom: const ProtocolDayDate(year: 2026, month: 7, day: 1),
+        rule: const AsNeededScheduleRule(),
+        updatedAt: DateTime.utc(2026, 7, 1),
+      );
+      expect(schedule.doseAmountValue, isNull);
+      expect(schedule.doseUnit, isNull);
+      expect(schedule.route, isNull);
+      expect(schedule.doseLabel, isNull);
+    });
+  });
+
+  group('DoseRecord.localTime', () {
+    DoseRecord doseAt(DateTime tookAt, {int? timezoneOffsetMinutes}) {
+      return DoseRecord(
+        id: 'dose-1',
+        compoundName: 'Creatine',
+        amountValue: 5,
+        amountEntered: '5',
+        unit: DoseUnit.gram,
+        route: DoseRoute.oral,
+        tookAt: tookAt,
+        timezone: 'BRT',
+        localDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
+        provenance: DoseProvenance.manual,
+        updatedAt: tookAt,
+        timezoneOffsetMinutes: timezoneOffsetMinutes,
+      );
+    }
+
+    test('reads the instant at its frozen UTC offset, whatever the device', () {
+      final dose = doseAt(
+        DateTime.utc(2026, 7, 1, 12, 5),
+        timezoneOffsetMinutes: -180,
+      );
+      expect(dose.localTime, '09:05');
       expect(
-        scheduleWith(deletedAt: DateTime.utc(2026, 8, 1)).isArchived,
-        isTrue,
+        doseAt(DateTime.utc(2026, 7, 1, 0, 30), timezoneOffsetMinutes: 540)
+            .localTime,
+        '09:30',
+      );
+    });
+
+    test('a Dose with no frozen offset reads in the device zone', () {
+      final tookAt = DateTime.utc(2026, 7, 1, 12, 5);
+      final local = tookAt.toLocal();
+      String two(int value) => value.toString().padLeft(2, '0');
+      expect(
+        doseAt(tookAt).localTime,
+        '${two(local.hour)}:${two(local.minute)}',
       );
     });
   });

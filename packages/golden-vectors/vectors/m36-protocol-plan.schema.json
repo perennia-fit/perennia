@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "m36-protocol-plan.schema.json",
   "title": "M36 Protocol Plan core golden vector",
-  "description": "Language-neutral parity cases for the Protocol Plan core. Each case names one function and gives its arguments by parameter name in `input` and its return value in `expected`. rule_codec and period_codec decode the stored JSON in `input.json`; `expected` is the decoded value written back in the same JSON shape, or {\"rejects\": true}. plan_days decides one state per Protocol, Compound and date (D4): outside, paused, off_cycle, removed, then the Schedule Version that applies (latest effectiveFrom on or before the date, the larger id on a tie; the covering member row, the larger memberId on a tie). day_statuses fills slots by nearest time (D6) and returns one Day Status per Compound and date up to today. due_unfilled picks today's unfilled slots timed at or before now, or untimed. effect_bounds turns inclusive local-date bounds into Effect's half-open instants using the given UTC offset. Outputs are ordered: PlanDay by localDate, protocolId, compoundId; DayStatus by localDate, compoundId; fills by slot; due_unfilled rows in DayStatus order, then by slot. Cases contain no IANA zones; a UTC offset appears only as an input of effect_bounds cases.",
+  "description": "Language-neutral parity cases for the Protocol Plan core. Each case names one function and gives its arguments by parameter name in `input` and its return value in `expected`. rule_codec and period_codec decode the stored JSON in `input.json`; `expected` is the decoded value written back in the same JSON shape, or {\"rejects\": true}. plan_days decides one state per Protocol, Compound and date (D4): outside, paused, off_cycle, removed, then the Schedule Version that applies (latest effectiveFrom on or before the date, the larger id on a tie; the covering member row, the larger memberId on a tie). day_statuses fills slots by nearest time (D6) and returns one Day Status per Compound and date up to today. due_unfilled picks today's unfilled slots timed at or before now, or untimed. effect_bounds turns inclusive local-date bounds into Effect's half-open instants using the given UTC offset, or {\"rejects\": true} for an offset outside -720 to +840 (D2). Outputs are ordered: PlanDay by localDate, protocolId, compoundId; DayStatus by localDate, compoundId; fills by slot; due_unfilled rows in DayStatus order, then by slot. Cases contain no IANA zones; a UTC offset appears only as an input of effect_bounds cases.",
   "type": "object",
   "additionalProperties": false,
   "required": ["name", "domain", "schemaVersion", "schema", "cases"],
@@ -107,8 +107,8 @@
                   "additionalProperties": false,
                   "required": ["on_days", "off_days", "anchor", "anchor_is_default"],
                   "properties": {
-                    "on_days": {"type": "integer", "minimum": 1, "maximum": 3650},
-                    "off_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+                    "on_days": {"type": "integer", "minimum": 0, "maximum": 3650},
+                    "off_days": {"type": "integer", "minimum": 0, "maximum": 3650},
                     "anchor": {"$ref": "#/$defs/localDate"},
                     "anchor_is_default": {"type": "boolean"}
                   }
@@ -350,17 +350,25 @@
               "properties": {
                 "startLocalDate": {"$ref": "#/$defs/localDate"},
                 "endLocalDate": {"$ref": "#/$defs/nullableLocalDate"},
-                "timezoneOffsetMinutes": {"type": "integer", "minimum": -840, "maximum": 840}
+                "timezoneOffsetMinutes": {
+                  "type": "integer",
+                  "description": "Deliberately unbounded, so a case can carry an offset outside -720 to +840 and expect {\"rejects\": true}."
+                }
               }
             },
             "expected": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["startDate", "endDate"],
-              "properties": {
-                "startDate": {"$ref": "#/$defs/instant"},
-                "endDate": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}]}
-              }
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["startDate", "endDate"],
+                  "properties": {
+                    "startDate": {"$ref": "#/$defs/instant"},
+                    "endDate": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}]}
+                  }
+                },
+                {"$ref": "#/$defs/rejects"}
+              ]
             }
           }
         }

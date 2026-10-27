@@ -2309,4 +2309,270 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get focusManagerSaveFailed => 'Could not save the focus. Try again.';
+
+  @override
+  String get protocolEditorNewTitle => 'New Protocol';
+
+  @override
+  String get protocolEditorEditTitle => 'Edit Protocol';
+
+  @override
+  String get protocolEditorNameLabel => 'Name';
+
+  @override
+  String get protocolEditorStartDateLabel => 'Start date';
+
+  @override
+  String get protocolEditorPeriodHeading => 'Period';
+
+  @override
+  String get protocolEditorUntilLabel => 'Until an end date';
+
+  @override
+  String get protocolEditorOngoing => 'Ongoing, with no end date';
+
+  @override
+  String get protocolEditorEndDateLabel => 'End date';
+
+  @override
+  String get protocolEditorDoseCountButton =>
+      'Set the end date from a number of doses';
+
+  @override
+  String get protocolEditorDoseCountTitle => 'End after a number of doses';
+
+  @override
+  String get protocolEditorDoseCountMemberLabel => 'Count the doses of';
+
+  @override
+  String get protocolEditorDoseCountLabel => 'Number of doses';
+
+  @override
+  String protocolEditorDoseCountResult(String date) {
+    return 'Ends $date';
+  }
+
+  @override
+  String get protocolEditorDoseCountUnavailable =>
+      'Unavailable for this Schedule';
+
+  @override
+  String protocolEditorDoseCountRange(int min, int max) {
+    return 'Enter a number from $min to $max';
+  }
+
+  @override
+  String get protocolEditorDoseCountApply => 'Set end date';
+
+  @override
+  String get protocolEditorCancel => 'Cancel';
+
+  @override
+  String get protocolEditorCycleLabel => 'Cycle';
+
+  @override
+  String get protocolEditorCycleSubtitle => 'Days on, then days off, repeating';
+
+  @override
+  String get protocolEditorCycleOnDaysLabel => 'Days on';
+
+  @override
+  String get protocolEditorCycleOffDaysLabel => 'Days off';
+
+  @override
+  String get protocolEditorCycleAnchorLabel => 'Cycle counted from';
+
+  @override
+  String protocolEditorAnchorIsStart(String date) {
+    return '$date (the start date)';
+  }
+
+  @override
+  String get protocolEditorPausesHeading => 'Pauses';
+
+  @override
+  String get protocolEditorPausesEmpty => 'No Pauses';
+
+  @override
+  String get protocolEditorAddPause => 'Add a Pause';
+
+  @override
+  String get protocolEditorRemovePause => 'Remove Pause';
+
+  @override
+  String protocolEditorDateRange(String from, String to) {
+    return '$from – $to';
+  }
+
+  @override
+  String get protocolEditorCompoundsHeading => 'Compounds';
+
+  @override
+  String get protocolEditorSchedulesHeading => 'Schedules';
+
+  @override
+  String protocolEditorScheduleTitle(String compound) {
+    return '$compound Schedule';
+  }
+
+  @override
+  String protocolEditorScheduleCurrentVersion(String date) {
+    return 'Current Schedule applies from $date';
+  }
+
+  @override
+  String get protocolEditorRuleTimed => 'At set times';
+
+  @override
+  String get protocolEditorRuleUntimed => 'Any time';
+
+  @override
+  String get protocolEditorRuleAsNeeded => 'As needed';
+
+  @override
+  String get protocolEditorRuleNone => 'No schedule';
+
+  @override
+  String get protocolEditorDaysDaily => 'Every day';
+
+  @override
+  String get protocolEditorDaysWeekdays => 'Weekdays';
+
+  @override
+  String get protocolEditorDaysEveryN => 'Every N days';
+
+  @override
+  String get protocolEditorEveryNLabel => 'Every how many days';
+
+  @override
+  String get protocolEditorEveryNAnchorLabel => 'Counted from';
+
+  @override
+  String get protocolEditorTimesHeading => 'Times';
+
+  @override
+  String get protocolEditorAddTime => 'Add a time';
+
+  @override
+  String protocolEditorRemoveTime(String time) {
+    return 'Remove $time';
+  }
+
+  @override
+  String get protocolEditorUntimedCountLabel => 'Doses a day';
+
+  @override
+  String get protocolEditorPlannedAmountLabel => 'Planned amount';
+
+  @override
+  String get protocolEditorUnitLabel => 'Unit';
+
+  @override
+  String get protocolEditorRouteLabel => 'Route';
+
+  @override
+  String get protocolEditorTargetOutcomesHeading =>
+      'Target outcomes (optional)';
+
+  @override
+  String get protocolEditorTargetOutcomesHelp =>
+      'Which Metrics or performance to correlate — seeds the later Effect view; no analysis happens here.';
+
+  @override
+  String get protocolEditorPerformance => 'Performance';
+
+  @override
+  String get protocolEditorSave => 'Save';
+
+  @override
+  String get protocolEditorArchive => 'Archive';
+
+  @override
+  String get protocolEditorNameRequired => 'Name is required.';
+
+  @override
+  String get protocolEditorCompoundRequired =>
+      'A Protocol requires at least one Compound.';
+
+  @override
+  String get protocolEditorFixIssues => 'Fix the marked fields to save.';
+
+  @override
+  String protocolEditorSaveFailed(String error) {
+    return 'Could not save the Protocol: $error';
+  }
+
+  @override
+  String get protocolEditorCompoundFallback => 'Compound';
+
+  @override
+  String get protocolPlanIssueTimesFormat =>
+      'Each time must be HH:MM, from 00:00 to 23:59.';
+
+  @override
+  String protocolPlanIssueTimesCount(int max) {
+    return 'Plan 1 to $max times a day.';
+  }
+
+  @override
+  String get protocolPlanIssueTimesDistinct =>
+      'The same time is planned twice.';
+
+  @override
+  String protocolPlanIssueUntimedCount(int max) {
+    return 'Plan 1 to $max doses a day.';
+  }
+
+  @override
+  String get protocolPlanIssueWeekdaysValid => 'Choose at least one weekday.';
+
+  @override
+  String protocolPlanIssueEveryNRange(int min, int max) {
+    return 'Every N days takes a number from $min to $max.';
+  }
+
+  @override
+  String get protocolPlanIssueAnchorDate => 'Choose a real date to count from.';
+
+  @override
+  String get protocolPlanIssueAmountRequired =>
+      'Enter a planned amount, unit and route that a Dose could log.';
+
+  @override
+  String get protocolPlanIssueAmountAbsent =>
+      'As needed and No schedule carry no amount, unit or route.';
+
+  @override
+  String protocolPlanIssueCycleLengths(int max) {
+    return 'A cycle is 1 to $max days on and 1 to $max days off.';
+  }
+
+  @override
+  String get protocolPlanIssueBoundsOrder =>
+      'The end date can\'t be before the start date.';
+
+  @override
+  String protocolPlanIssuePauseCount(int max) {
+    return 'A Protocol holds at most $max Pauses.';
+  }
+
+  @override
+  String get protocolPlanIssuePauseOrder =>
+      'A Pause can\'t end before it starts.';
+
+  @override
+  String get protocolPlanIssuePauseBounds =>
+      'Each Pause must fall within the Protocol\'s dates.';
+
+  @override
+  String get protocolPlanIssuePauseOverlap => 'Two Pauses can\'t overlap.';
+
+  @override
+  String protocolPlanIssueTimesMany(int count) {
+    return 'More than $count times a day is unusual. Check the times before saving.';
+  }
+
+  @override
+  String get effectPlanBreaksCountedAsDuring =>
+      'Off-cycle and paused days are counted as during.';
 }

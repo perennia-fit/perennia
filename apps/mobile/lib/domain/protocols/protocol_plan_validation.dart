@@ -12,9 +12,10 @@
 /// `apps/server/src/agent-validation.ts`; both consume the shared
 /// `m36-protocol-plan-validation.json` golden vector.
 ///
-/// Hard-reject checks: `times_format`, `times_count`, `times_distinct`,
-/// `untimed_count`, `weekdays_valid`, `every_n_range`, `anchor_date`,
-/// `amount_required`, `cycle_lengths`, `bounds_order`, `pause_order`,
+/// Hard-reject checks, in the order they are reported: `times_format`,
+/// `times_count`, `times_distinct`, `untimed_count`, `weekdays_valid`,
+/// `every_n_range`, `anchor_date`, `amount_required`, `amount_absent`,
+/// `cycle_lengths`, `bounds_order`, `pause_count`, `pause_order`,
 /// `pause_bounds`, `pause_overlap`. Soft-warn check: `times_many`.
 library;
 
@@ -27,7 +28,8 @@ import 'protocols.dart';
 export 'protocol_plan.dart' show ProtocolPlanValidationLimits;
 
 /// Validates one Schedule Version: its stored [rule] JSON, and the planned
-/// amount, unit and route that a `timed` or `untimed` rule requires.
+/// amount, unit and route that a `timed` or `untimed` rule requires and an
+/// `as_needed` or `unscheduled` rule must not carry.
 /// [amountValue] is the amount's numeric projection (a `num` or numeric
 /// `String`); [unit] and [route] are raw registry names.
 DoseValidationResult validateScheduleRule(
@@ -41,8 +43,27 @@ DoseValidationResult validateScheduleRule(
   final warnings = <DoseValidationIssue>[];
   final kind = rule['kind'];
   if (kind != 'timed' && kind != 'untimed') {
-    // `as_needed` and `unscheduled` plan nothing, so carry nothing to judge.
-    return DoseValidationResult(errors: errors, warnings: warnings);
+    // `as_needed` and `unscheduled` plan nothing, so the stored shape keeps
+    // their amount fields null (`amount_absent`): an amount here is one
+    // nothing would ever read.
+    if (amountValue != null ||
+        amountEntered != null ||
+        unit != null ||
+        route != null) {
+      errors.add(
+        const DoseValidationIssue(
+          field: 'amount',
+          rule: 'amount_absent',
+          message: 'An as-needed or unscheduled rule carries no amount, unit '
+              'or route.',
+          limit: 'absent',
+        ),
+      );
+    }
+    return DoseValidationResult(
+      errors: List<DoseValidationIssue>.unmodifiable(errors),
+      warnings: List<DoseValidationIssue>.unmodifiable(warnings),
+    );
   }
 
   if (kind == 'timed') {
@@ -244,6 +265,24 @@ DoseValidationResult validateProtocolPeriod({
         message: 'A Protocol cannot end before it starts.',
         limit: 'startLocalDate',
       ),
+    );
+  }
+
+  // `pause_count` bounds the list before anything walks or sorts it; an
+  // over-long list reports only that, and the other Pause checks don't run.
+  if (pauses.length > ProtocolPlanValidationLimits.maxPauses) {
+    errors.add(
+      const DoseValidationIssue(
+        field: 'period.pauses',
+        rule: 'pause_count',
+        message: 'A Protocol holds at most '
+            '${ProtocolPlanValidationLimits.maxPauses} Pauses.',
+        limit: ProtocolPlanValidationLimits.maxPauses,
+      ),
+    );
+    return DoseValidationResult(
+      errors: List<DoseValidationIssue>.unmodifiable(errors),
+      warnings: const <DoseValidationIssue>[],
     );
   }
 

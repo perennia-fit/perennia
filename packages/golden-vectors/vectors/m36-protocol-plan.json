@@ -192,6 +192,13 @@
       "expected": {"rejects": true}
     },
     {
+      "name": "rule-codec-keeps-unsorted-times-in-stored-order",
+      "function": "rule_codec",
+      "note": "D7 order of times and weekdays: writers sort, but the codec accepts any order and encodes the times as stored.",
+      "input": {"json": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["21:00", "09:00"]}},
+      "expected": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["21:00", "09:00"]}
+    },
+    {
       "name": "period-codec-cycle-and-pause",
       "function": "period_codec",
       "note": "Data shapes: a cycle with its anchor, and one inclusive Pause.",
@@ -2093,6 +2100,49 @@
       ]
     },
     {
+      "name": "day-statuses-ignore-a-dose-with-no-plan-day",
+      "function": "day_statuses",
+      "note": "D6 Doses with no PlanDay: compound-y has no PlanDay on 2026-10-20, so its Dose yields no Day Status and is not an extra anywhere; compound-x's status and extraCount are unchanged.",
+      "input": {
+        "planDays": [
+          {
+            "protocolId": "protocol-once",
+            "compoundId": "compound-x",
+            "localDate": "2026-10-20",
+            "state": "planned",
+            "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+          }
+        ],
+        "doses": [
+          {"doseId": "dose-x-1", "compoundId": "compound-x", "localDate": "2026-10-20", "localTime": "09:00", "sequence": 0},
+          {"doseId": "dose-y-1", "compoundId": "compound-y", "localDate": "2026-10-20", "localTime": "09:05", "sequence": 0}
+        ],
+        "today": "2026-10-21"
+      },
+      "expected": [
+        {
+          "compoundId": "compound-x",
+          "localDate": "2026-10-20",
+          "status": "logged",
+          "plannedCount": 1,
+          "loggedCount": 1,
+          "extraCount": 0,
+          "fills": [
+            {
+              "slot": 0,
+              "protocolId": "protocol-once",
+              "plannedLocalTime": "09:00",
+              "amountValue": 10,
+              "amountEntered": "10",
+              "unit": "milligram",
+              "route": "oral",
+              "doseId": "dose-x-1"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "status-today-partly-logged-reads-pending",
       "function": "day_statuses",
       "note": "D6: today with 0 < logged < planned reads pending, never partly_logged.",
@@ -2327,6 +2377,124 @@
           "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
         },
         {"protocolId": "protocol-cycle", "compoundId": "compound-x", "localDate": "2026-10-11", "state": "off_cycle", "planned": []}
+      ]
+    },
+    {
+      "name": "every-n-days-anchor-after-the-start-plans-backwards",
+      "function": "plan_days",
+      "note": "D4: an anchor fixes a phase, not a first day. Every 3 days anchored 2026-10-05, after the 2026-10-01 start: the floor modulo counts backwards, so 2026-10-02 (3 days before) is planned along with 2026-10-05.",
+      "input": {
+        "protocols": [
+          {
+            "protocolId": "protocol-every",
+            "startLocalDate": "2026-10-01",
+            "endLocalDate": null,
+            "period": null,
+            "archivedOn": null,
+            "remindersEnabled": false,
+            "members": [
+              {
+                "memberId": "member-x",
+                "compoundId": "compound-x",
+                "archivedOn": null,
+                "versions": [
+                  {
+                    "id": "ver-x-1",
+                    "effectiveFrom": "2026-10-01",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "every_n_days", "n": 3, "anchor": "2026-10-05", "anchor_is_default": false}, "times": ["08:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "from": "2026-10-01",
+        "to": "2026-10-05"
+      },
+      "expected": [
+        {"protocolId": "protocol-every", "compoundId": "compound-x", "localDate": "2026-10-01", "state": "not_scheduled_today", "planned": []},
+        {
+          "protocolId": "protocol-every",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-02",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-every", "compoundId": "compound-x", "localDate": "2026-10-03", "state": "not_scheduled_today", "planned": []},
+        {"protocolId": "protocol-every", "compoundId": "compound-x", "localDate": "2026-10-04", "state": "not_scheduled_today", "planned": []},
+        {
+          "protocolId": "protocol-every",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-05",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        }
+      ]
+    },
+    {
+      "name": "cycle-anchor-after-the-start-counts-backwards",
+      "function": "plan_days",
+      "note": "D4: 3 on and 2 off anchored 2026-10-05, after the 2026-10-01 start. (date - anchor) floor-mod 5 is 1, 2, 3, 4, 0 for 2026-10-01 to 2026-10-05, so the first two days are on, the next two off_cycle, and 2026-10-05 on.",
+      "input": {
+        "protocols": [
+          {
+            "protocolId": "protocol-cycle",
+            "startLocalDate": "2026-10-01",
+            "endLocalDate": null,
+            "period": {"v": 1, "cycle": {"on_days": 3, "off_days": 2, "anchor": "2026-10-05", "anchor_is_default": false}, "pauses": []},
+            "archivedOn": null,
+            "remindersEnabled": false,
+            "members": [
+              {
+                "memberId": "member-x",
+                "compoundId": "compound-x",
+                "archivedOn": null,
+                "versions": [
+                  {
+                    "id": "ver-x-1",
+                    "effectiveFrom": "2026-10-01",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["08:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "from": "2026-10-01",
+        "to": "2026-10-05"
+      },
+      "expected": [
+        {
+          "protocolId": "protocol-cycle",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-01",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-cycle",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-02",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-cycle", "compoundId": "compound-x", "localDate": "2026-10-03", "state": "off_cycle", "planned": []},
+        {"protocolId": "protocol-cycle", "compoundId": "compound-x", "localDate": "2026-10-04", "state": "off_cycle", "planned": []},
+        {
+          "protocolId": "protocol-cycle",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-05",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        }
       ]
     },
     {
@@ -4024,6 +4192,34 @@
       "note": "D2: a non-whole-hour offset; UTC+5:30 midnight on 2026-03-01 is 18:30Z on 2026-02-28.",
       "input": {"startLocalDate": "2026-03-01", "endLocalDate": "2026-03-31", "timezoneOffsetMinutes": 330},
       "expected": {"startDate": "2026-02-28T18:30:00.000Z", "endDate": "2026-03-31T18:30:00.000Z"}
+    },
+    {
+      "name": "effect-bounds-offset-minus-720",
+      "function": "effect_bounds",
+      "note": "D2 offset range: -720 (UTC-12:00) is the lowest offset; local midnight is 12:00Z the same day.",
+      "input": {"startLocalDate": "2026-09-01", "endLocalDate": "2026-11-14", "timezoneOffsetMinutes": -720},
+      "expected": {"startDate": "2026-09-01T12:00:00.000Z", "endDate": "2026-11-15T12:00:00.000Z"}
+    },
+    {
+      "name": "effect-bounds-offset-plus-840",
+      "function": "effect_bounds",
+      "note": "D2 offset range: +840 (UTC+14:00) is the highest offset; local midnight is 10:00Z the day before.",
+      "input": {"startLocalDate": "2026-09-01", "endLocalDate": "2026-11-14", "timezoneOffsetMinutes": 840},
+      "expected": {"startDate": "2026-08-31T10:00:00.000Z", "endDate": "2026-11-14T10:00:00.000Z"}
+    },
+    {
+      "name": "effect-bounds-rejects-offset-minus-721",
+      "function": "effect_bounds",
+      "note": "D2 offset range: one minute below -720 is no real zone, so the function throws a RangeError.",
+      "input": {"startLocalDate": "2026-09-01", "endLocalDate": "2026-11-14", "timezoneOffsetMinutes": -721},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "effect-bounds-rejects-offset-plus-841",
+      "function": "effect_bounds",
+      "note": "D2 offset range: one minute above +840 is no real zone, so the function throws a RangeError.",
+      "input": {"startLocalDate": "2026-09-01", "endLocalDate": "2026-11-14", "timezoneOffsetMinutes": 841},
+      "expected": {"rejects": true}
     }
   ]
 }

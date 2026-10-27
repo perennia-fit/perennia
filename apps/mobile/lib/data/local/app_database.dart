@@ -786,10 +786,16 @@ class Doses extends Table {
   TextColumn get route => text()();
 
   // UTC instant + captured timezone + frozen local date (YYYY-MM-DD).
+  // `timezone` is a display label only (an abbreviation such as "BRT" can't
+  // be converted back); `timezoneOffsetMinutes` is the UTC offset frozen at
+  // log time, which with `tookAt` gives the Dose's local clock time for
+  // good. It is null on a Dose logged before the offset existed: readers
+  // then work its local time out in the device's current zone.
   DateTimeColumn get tookAt => dateTime()();
   TextColumn get timezone => text()();
   TextColumn get localDate =>
       text().withDefault(const Constant('1970-01-01'))();
+  IntColumn get timezoneOffsetMinutes => integer().nullable()();
 
   // Provenance stamp (manual/integration/agent), as elsewhere (PROTOCOLS.md §7).
   TextColumn get provenance => text().withDefault(const Constant('manual'))();
@@ -815,19 +821,31 @@ class Doses extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
-// A `Protocol` (CONTEXT.md): the Routine analog — a named, time-bounded plan
-// associating one or more `Compound`s (a multi-Compound Protocol is a
-// "stack", PROTOCOLS.md §1.4). A **mutable plan**: creating or editing it
-// never reads or writes a logged `Dose`. Archives via `deleted_at`, never
-// cascades (PROTOCOLS.md §7). `end_date` nullable means an open-ended
-// (ongoing) course. Syncs as an ordinary opaque-payload LWW row (
-// PROTOCOLS.md §7) — `syncDeviceId`/`syncPreviouslySynced` mirror `Compounds`.
+// A `Protocol` (CONTEXT.md): a named course associating one or more
+// `Compound`s (a multi-Compound Protocol is a "stack"). A **mutable plan**:
+// creating or editing it never reads or writes a logged `Dose`. Archives via
+// `deleted_at`, never cascades.
+//
+// Its bounds are local dates (`YYYY-MM-DD`), the end inclusive and null for
+// an ongoing course: a UTC instant has no stable calendar day, so a cycle
+// anchored by one would start a day early on a device reading it in UTC.
+// `period` is the Protocol Period's stored JSON (its on/off cycle and its
+// Pauses), null when it has neither. `reminders_enabled` is synced plan data
+// ("remind me about this Protocol"). `archived_on` is the device's local
+// date when `deleted_at` was set, frozen then so no reader converts a
+// timestamp and travel never moves it; a row tombstoned by undo has
+// `deleted_at` but no `archived_on`.
 @DataClassName('ProtocolRow')
 class Protocols extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
-  DateTimeColumn get startDate => dateTime()();
-  DateTimeColumn get endDate => dateTime().nullable()();
+  TextColumn get startLocalDate => text()();
+  TextColumn get endLocalDate => text().nullable()();
+  TextColumn get period => text().nullable()();
+  BoolColumn get remindersEnabled => boolean().withDefault(
+        const Constant(false),
+      )();
+  TextColumn get archivedOn => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -858,6 +876,11 @@ class ProtocolCompounds extends Table {
   TextColumn get protocolId => text().references(Protocols, #id)();
   TextColumn get compoundId => text().references(Compounds, #id)();
   IntColumn get position => integer()();
+
+  // The local date this member was removed (archived), frozen when
+  // `deleted_at` is set, as `Protocols.archivedOn` is. A member row covers
+  // the dates from its first Schedule Version through this date.
+  TextColumn get archivedOn => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -869,36 +892,41 @@ class ProtocolCompounds extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
-// A `Schedule` (CONTEXT.md, PROTOCOLS.md §1.4): the `Prescription` analog —
-// an OPTIONAL planned dose · frequency · route for one member `Compound` of a
-// `Protocol` (a `ProtocolCompound` row). A LIVE reference (a Drift FK, like
-// `ProtocolCompounds.compoundId`) — a Schedule is part of the mutable plan,
-// never a logged event, so it is never a self-describing snapshot. Purely
-// prescriptive: dose-response analysis is ALWAYS derived from the actual
-// logged `Dose`s, never a Schedule. Archives via `deleted_at`, never
-// cascades to a logged `Dose` (PROTOCOLS.md §7).
+// One Schedule Version (CONTEXT.md `Schedule Version`): one stored state of
+// a Protocol Member's `Schedule`, applying from the local date
+// `effective_from`. Versions are insert-only: every changed save inserts a
+// row, and none is ever edited in place, so a Schedule edit never rewrites
+// how past days read. For a date, the version with the latest
+// `effective_from` on or before it applies, the larger id on a tie (UUIDv7
+// ids sort by creation time). `deleted_at` is set only when undo tombstones
+// the row it inserted, and readers ignore such a row.
+//
+// `rule` is the Schedule Rule's stored JSON. The planned amount, unit and
+// route are present for a `timed` or `untimed` rule and null for
+// `as_needed` and `unscheduled` (the shared validator's `amount_required`
+// and `amount_absent`). A LIVE reference to its member row (a Drift FK) — a
+// Schedule is plan data, never a self-describing logged event — and it never
+// touches a logged `Dose`.
 @DataClassName('ScheduleRow')
 @TableIndex(
-  name: 'schedules_protocol_compound_id_index',
-  columns: {#protocolCompoundId},
+  name: 'schedules_protocol_compound_effective_from_index',
+  columns: {#protocolCompoundId, #effectiveFrom},
 )
 class Schedules extends Table {
   TextColumn get id => text()();
   TextColumn get protocolCompoundId =>
       text().references(ProtocolCompounds, #id)();
+  TextColumn get effectiveFrom => text()();
+  TextColumn get rule => text()();
 
   // The planned dose amount, mirroring Doses' values-as-entered triplet
-  // (numeric projection + entered string, source of truth) + curated unit
-  // (PROTOCOLS.md §1.3).
-  RealColumn get doseAmountValue => real()();
-  TextColumn get doseAmountEntered => text()();
-  TextColumn get doseUnit => text()();
-
-  // The curated frequency registry name — never free-text.
-  TextColumn get frequency => text()();
+  // (numeric projection + entered string, source of truth) + curated unit.
+  RealColumn get doseAmountValue => real().nullable()();
+  TextColumn get doseAmountEntered => text().nullable()();
+  TextColumn get doseUnit => text().nullable()();
 
   // The curated route registry name, same registry as `Doses.route`.
-  TextColumn get route => text()();
+  TextColumn get route => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -1301,7 +1329,7 @@ class AppDatabase extends _$AppDatabase {
   ];
 
   @override
-  int get schemaVersion => 60;
+  int get schemaVersion => 61;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1566,9 +1594,10 @@ class AppDatabase extends _$AppDatabase {
             await migrator.createTable(protocolCompounds);
           }
           if (from < 42) {
-            // the OPTIONAL `Schedule` per member Compound of a
-            // Protocol (PROTOCOLS.md §1.4) — planned dose · frequency · route.
-            // Purely prescriptive plan data; never touches a logged Dose.
+            // the `Schedule` of each Protocol Member, created here in the
+            // current shape: one row per Schedule Version (a dated rule and
+            // its planned amount). Purely prescriptive plan data; never
+            // touches a logged Dose.
             await migrator.createTable(schedules);
           }
           if (from < 43) {
@@ -1988,6 +2017,9 @@ class AppDatabase extends _$AppDatabase {
             await migrator.createTable(quarantinedSyncChanges);
             await migrator.createIndex(quarantinedSyncChangesEntityIndex);
           }
+          if (from < 61) {
+            await _clearProtocolPlans(migrator);
+          }
         },
         beforeOpen: (_) async => customStatement('PRAGMA foreign_keys = ON'),
       );
@@ -2116,6 +2148,79 @@ class AppDatabase extends _$AppDatabase {
           ),
         ),
       );
+    }
+  }
+
+  /// The v61 cutover to the Protocol plan shape (Schedule Versions, local-date
+  /// bounds, the Protocol Period). Nothing has shipped, so the only plans in
+  /// the old shape are developer data: they are cleared once and re-entered
+  /// (the test-data generator recreates them) rather than converted, which
+  /// would keep a converter and legacy columns for users who don't exist.
+  ///
+  /// Compounds and Doses are untouched: a Dose keeps its Protocol tag and
+  /// name snapshot, so it still renders and still counts. Nothing is marked
+  /// pending sync, so the clear pushes nothing; the server clears its own
+  /// copy in a migration of its own. Activity Log, deferred and quarantined
+  /// rows for the four tables go first, so an old image can never be pushed,
+  /// replayed or applied later. Guards cover the intentionally partial
+  /// historical migration fixtures.
+  Future<void> _clearProtocolPlans(Migrator migrator) async {
+    const planTables = <String>[
+      protocolTargetOutcomesTable,
+      schedulesTable,
+      protocolCompoundsTable,
+      protocolsTable,
+    ];
+    final quotedPlanTables = planTables.map((table) => "'$table'").join(', ');
+    for (final bookkeepingTable in <String>[
+      activityLogTable,
+      deferredSyncChangesTable,
+      quarantinedSyncChangesTable,
+    ]) {
+      if (await _tableExists(bookkeepingTable)) {
+        await customStatement(
+          'DELETE FROM $bookkeepingTable '
+          'WHERE entity_table IN ($quotedPlanTables)',
+        );
+      }
+    }
+
+    // Children before parents, so the clear stays valid even when
+    // foreign-key enforcement is on.
+    for (final table in planTables) {
+      if (await _tableExists(table)) {
+        await customStatement('DELETE FROM $table');
+      }
+    }
+
+    // `start_date`, `end_date` and `frequency` are gone; the new columns
+    // have no value an old row could supply. The tables are empty, so they
+    // are rebuilt in the new shape rather than altered.
+    for (final table in <TableInfo<Table, Object?>>[schedules, protocols]) {
+      if (await _tableExists(table.actualTableName)) {
+        await migrator.deleteTable(table.actualTableName);
+      }
+    }
+    await migrator.createTable(protocols);
+    await migrator.createTable(schedules);
+    // Drift's createTable() does not install @TableIndex declarations.
+    await migrator.createIndex(schedulesProtocolCompoundEffectiveFromIndex);
+
+    // Upgrades from below 37 and 41 created these tables above in the
+    // current shape already.
+    if (await _tableExists(doses.actualTableName) &&
+        !await _columnExists(
+          doses.actualTableName,
+          doses.timezoneOffsetMinutes.name,
+        )) {
+      await migrator.addColumn(doses, doses.timezoneOffsetMinutes);
+    }
+    if (await _tableExists(protocolCompounds.actualTableName) &&
+        !await _columnExists(
+          protocolCompounds.actualTableName,
+          protocolCompounds.archivedOn.name,
+        )) {
+      await migrator.addColumn(protocolCompounds, protocolCompounds.archivedOn);
     }
   }
 

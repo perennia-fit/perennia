@@ -184,14 +184,12 @@ class _MemberRow {
   /// `effectiveFrom` on or before it, and on a shared date the larger id,
   /// which is the latest edit because ids are UUIDv7. In version order, that
   /// is the last one on or before [date].
-  _VersionPlan? applyingVersion(ProtocolDayDate date) {
-    for (var index = _versions.length - 1; index >= 0; index -= 1) {
-      if (_versions[index].version.effectiveFrom.compareTo(date) <= 0) {
-        return _versions[index];
-      }
-    }
-    return null;
-  }
+  _VersionPlan? applyingVersion(ProtocolDayDate date) =>
+      applyingScheduleVersion(
+        _versions,
+        date,
+        effectiveFrom: (plan) => plan.version.effectiveFrom,
+      );
 }
 
 /// One Schedule Version and the planned doses it plans on each of its days,
@@ -216,10 +214,8 @@ class _VersionPlan {
           const <String?>[],
       };
 
-  static int compare(_VersionPlan a, _VersionPlan b) {
-    final byDate = a.version.effectiveFrom.compareTo(b.version.effectiveFrom);
-    return byDate != 0 ? byDate : a.version.id.compareTo(b.version.id);
-  }
+  static int compare(_VersionPlan a, _VersionPlan b) =>
+      compareScheduleVersions(a.version, b.version);
 }
 
 /// One Day Status per Compound and date in [planDays], for dates up to and

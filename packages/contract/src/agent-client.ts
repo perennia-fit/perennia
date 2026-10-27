@@ -208,6 +208,7 @@ export type AgentDoseBatchWriteDose = {
   "route": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "tookAt": string;
   "timezone": string;
+  "timezoneOffsetMinutes"?: number;
   "localDate": string;
   "protocolId"?: string | null;
   "protocolName"?: string | null;
@@ -236,7 +237,7 @@ export type AgentDoseBatchWriteResult = {
   "warnings": Array<AgentDoseValidationIssue>;
 };
 
-export type AgentDoseField = "id" | "compoundId" | "compoundName" | "compoundStrength" | "amountValue" | "amountEntered" | "unit" | "route" | "tookAt" | "timezone" | "localDate" | "provenance" | "protocolId" | "protocolName" | "updatedAt" | "deletedAt";
+export type AgentDoseField = "id" | "compoundId" | "compoundName" | "compoundStrength" | "amountValue" | "amountEntered" | "unit" | "route" | "tookAt" | "timezone" | "timezoneOffsetMinutes" | "localDate" | "provenance" | "protocolId" | "protocolName" | "updatedAt" | "deletedAt";
 
 export type AgentDoseListItem = {
   "id": string;
@@ -249,6 +250,7 @@ export type AgentDoseListItem = {
   "route"?: "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "tookAt"?: string;
   "timezone"?: string;
+  "timezoneOffsetMinutes"?: number | null;
   "localDate"?: string;
   "provenance"?: string;
   "protocolId"?: string | null;
@@ -1497,12 +1499,14 @@ export type AgentProteinCohort = {
 export type AgentProtocol = {
   "id": string;
   "name": string;
-  "startDate": string | null;
-  "endDate": string | null;
+  "startLocalDate": string | null;
+  "endLocalDate": string | null;
+  "period": AgentProtocolPeriod;
+  "remindersEnabled": boolean;
+  "archivedOn": string | null;
   "updatedAt": string;
   "deletedAt": string | null;
   "members": Array<AgentProtocolMember>;
-  "schedules": Array<AgentProtocolSchedule>;
   "targetOutcomes": Array<AgentProtocolTargetOutcome>;
 };
 
@@ -1511,16 +1515,18 @@ export type AgentProtocolBatchWriteMember = {
   "compoundId": string;
   "position"?: number;
   "updatedAt"?: string;
-  "deletedAt"?: string | null;
+  "archived"?: boolean;
 };
 
 export type AgentProtocolBatchWriteProtocol = {
   "id": AgentProtocolsClientRowId & unknown;
   "name": string;
-  "startDate"?: string | null;
-  "endDate"?: string | null;
+  "startLocalDate": string;
+  "endLocalDate"?: string | null;
+  "period"?: AgentProtocolPeriod;
+  "remindersEnabled"?: boolean;
   "updatedAt"?: string;
-  "deletedAt"?: string | null;
+  "archived"?: boolean;
   "members"?: Array<AgentProtocolBatchWriteMember>;
   "schedules"?: Array<AgentProtocolBatchWriteSchedule>;
   "targetOutcomes"?: Array<AgentProtocolBatchWriteTargetOutcome>;
@@ -1528,6 +1534,7 @@ export type AgentProtocolBatchWriteProtocol = {
 
 export type AgentProtocolBatchWriteRequest = {
   "idempotencyKey": string;
+  "today": string;
   "protocols": Array<AgentProtocolBatchWriteProtocol>;
 };
 
@@ -1538,18 +1545,18 @@ export type AgentProtocolBatchWriteResponse = {
   "batchId": string;
   "serverClock": string;
   "protocols": Array<AgentProtocolsEntityBatchWriteResult>;
+  "warnings": Array<AgentProtocolsBatchWriteIssue>;
 };
 
 export type AgentProtocolBatchWriteSchedule = {
   "id": AgentProtocolsClientRowId & unknown;
   "protocolCompoundId": string;
+  "rule": AgentScheduleRule;
   "doseAmountValue"?: number | null;
   "doseAmountEntered"?: string | null;
   "doseUnit"?: "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
-  "frequency": string;
   "route"?: "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "updatedAt"?: string;
-  "deletedAt"?: string | null;
 };
 
 export type AgentProtocolBatchWriteTargetOutcome = {
@@ -1571,20 +1578,37 @@ export type AgentProtocolMember = {
   "id": string;
   "compoundId": string;
   "position": number;
+  "archivedOn": string | null;
+  "versions": Array<AgentProtocolScheduleVersion>;
+  "currentVersion": AgentProtocolScheduleVersion & Record<string, unknown> | null;
   "updatedAt": string;
   "deletedAt": string | null;
 };
 
-export type AgentProtocolSchedule = {
+export type AgentProtocolPeriod = {
+  "v": 1;
+  "cycle"?: {
+  "on_days": number;
+  "off_days": number;
+  "anchor": string;
+  "anchor_is_default": boolean;
+} | null;
+  "pauses": Array<{
+  "from": string;
+  "to": string;
+}>;
+} | null;
+
+export type AgentProtocolScheduleVersion = {
   "id": string;
   "protocolCompoundId": string;
+  "effectiveFrom": string;
+  "rule": AgentScheduleRule;
   "doseAmountValue": number | null;
   "doseAmountEntered": string | null;
   "doseUnit": "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
-  "frequency": string;
   "route": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "updatedAt": string;
-  "deletedAt": string | null;
 };
 
 export type AgentProtocolTargetOutcome = {
@@ -1593,6 +1617,14 @@ export type AgentProtocolTargetOutcome = {
   "outcomeKind": string;
   "updatedAt": string;
   "deletedAt": string | null;
+};
+
+export type AgentProtocolsBatchWriteIssue = {
+  "field": string;
+  "rule": string;
+  "message": string;
+  "itemIndex": number;
+  "entityId": string | null;
 };
 
 export type AgentProtocolsClientRowId = string | string;
@@ -1666,6 +1698,8 @@ export type AgentRoutineListResponse = {
   "nextCursor": string | null;
   "totalMatched": number;
 };
+
+export type AgentScheduleRule = unknown;
 
 export type AgentSetDimensionId = "load" | "reps" | "duration" | "distance";
 
@@ -2194,6 +2228,7 @@ export type ReadAgentEffectWindowInput = {
   "metricKey"?: string;
   "from": string;
   "to": string;
+  "timezoneOffsetMinutes"?: number | null;
 };
 
 export type ResolveAgentExerciseNameInput = {
@@ -2700,7 +2735,7 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/protocols/effect-window",
       expectedStatus: 200,
-      query: { "compoundId": input.compoundId, "protocolId": input.protocolId, "metricId": input.metricId, "metricKey": input.metricKey, "from": input.from, "to": input.to },
+      query: { "compoundId": input.compoundId, "protocolId": input.protocolId, "metricId": input.metricId, "metricKey": input.metricKey, "from": input.from, "to": input.to, "timezoneOffsetMinutes": input.timezoneOffsetMinutes },
       signal: options.signal
     });
   }

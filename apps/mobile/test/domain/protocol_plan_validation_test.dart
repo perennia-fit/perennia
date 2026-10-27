@@ -66,6 +66,7 @@ void main() {
           'maxEveryNDays': ProtocolPlanValidationLimits.maxEveryNDays,
           'maxCycleLengthDays': ProtocolPlanValidationLimits.maxCycleLengthDays,
           'warnTimesPerDay': ProtocolPlanValidationLimits.warnTimesPerDay,
+          'maxPauses': ProtocolPlanValidationLimits.maxPauses,
         },
       );
 

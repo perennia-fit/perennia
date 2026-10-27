@@ -4,10 +4,17 @@ import test from "node:test";
 
 import { inArray } from "drizzle-orm";
 
-import { createApp, createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createApp,
+  createMigratedServerApp,
+  createUuidV7,
+  planDays,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
-const protocolVersion = 1;
+const protocolVersion = SYNC_PROTOCOL_VERSION;
 const entity = "logged_sets";
 const scenarioSeed = 0x5eed2026;
 
@@ -391,6 +398,166 @@ test(
             typeof entry.afterImage?.revision === "string"
         )
       );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "two offline devices insert same-day Schedule Versions; both reach every replica and every replica applies the larger id",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = ["a", "b", "c"].map(
+        (name) =>
+          new PlanTreeReplica({
+            name: `Protocol Replica ${name.toUpperCase()}`,
+            deviceId: `device-${name}`,
+            server,
+            entityOrder: protocolPlanEntityOrder
+          })
+      );
+      const [replicaA, replicaB, replicaC] = replicas;
+      const updatedAt = "2026-10-01T08:00:00.000Z";
+      const compoundId = createUuidV7(new Date(updatedAt));
+      const protocolId = createUuidV7(new Date(updatedAt));
+      const memberId = createUuidV7(new Date(updatedAt));
+      const baselineVersion = protocolPlanRow("schedules", createUuidV7(new Date(updatedAt)), updatedAt, {
+        protocol_compound_id: memberId,
+        effective_from: "2026-09-01",
+        rule: timedDailyRule(["09:00"]),
+        ...creatineAmount
+      });
+      for (const row of [
+        protocolPlanRow("compounds", compoundId, updatedAt, {
+          name: "Creatine",
+          default_unit: "gram",
+          default_route: "oral",
+          strength: null
+        }),
+        protocolPlanRow("protocols", protocolId, updatedAt, {
+          name: "Daily",
+          start_local_date: "2026-09-01",
+          end_local_date: null,
+          // As the app pushes it: JSON text, here a Pause before the edits.
+          period: JSON.stringify({
+            v: 1,
+            cycle: null,
+            pauses: [{ from: "2026-09-10", to: "2026-09-12" }]
+          }),
+          reminders_enabled: true,
+          archived_on: null
+        }),
+        protocolPlanRow("protocol_compounds", memberId, updatedAt, {
+          protocol_id: protocolId,
+          compound_id: compoundId,
+          position: 0,
+          archived_on: null
+        }),
+        baselineVersion
+      ]) {
+        replicaA.stageChange(row.entity, {
+          id: row.id,
+          payload: row.payload,
+          updatedAt,
+          deletedAt: null
+        });
+      }
+      await settlePlanReplicas(replicas);
+
+      // Both devices edit the same member offline on the same day. Each edit
+      // is a new version row with its own id, so neither overwrites the
+      // other: last-writer-wins never has to choose between them.
+      const editedAt = "2026-10-19T06:30:00.000Z";
+      const versionA = protocolPlanRow("schedules", createUuidV7(new Date(editedAt)), editedAt, {
+        protocol_compound_id: memberId,
+        effective_from: "2026-10-19",
+        rule: timedDailyRule(["07:00"]),
+        ...creatineAmount
+      });
+      // The app pushes `rule` as JSON text; an Agent write stores an object.
+      // Both forms sync, and every reader plans them the same.
+      const versionB = protocolPlanRow("schedules", createUuidV7(new Date(editedAt)), editedAt, {
+        protocol_compound_id: memberId,
+        effective_from: "2026-10-19",
+        rule: JSON.stringify(timedDailyRule(["21:00"])),
+        ...creatineAmount
+      });
+      for (const [replica, version] of [
+        [replicaA, versionA],
+        [replicaB, versionB]
+      ]) {
+        replica.stageChange(version.entity, {
+          id: version.id,
+          payload: version.payload,
+          updatedAt: editedAt,
+          deletedAt: null
+        });
+      }
+      await replicaB.pushPending();
+      await replicaA.pushPending();
+      await settlePlanReplicas(replicas);
+
+      const winner = versionA.id > versionB.id ? versionA : versionB;
+      for (const replica of replicas) {
+        for (const version of [baselineVersion, versionA, versionB]) {
+          assert.notEqual(
+            replica.row("schedules", version.id),
+            undefined,
+            `${replica.name} is missing Schedule Version ${version.id}`
+          );
+        }
+        const [day] = planDays([planProtocolFrom(replica, protocolId)], "2026-10-19", "2026-10-19");
+        assert.equal(day.state, "planned", replica.name);
+        assert.deepEqual(
+          day.planned.map((dose) => dose.localTime),
+          storedJson(winner.payload.rule).times,
+          `${replica.name} applies the larger version id`
+        );
+        assert.equal(
+          typeof replica.row("schedules", versionB.id).payload.rule,
+          "string",
+          `${replica.name} receives the app's rule as it was pushed`
+        );
+        const [paused] = planDays([planProtocolFrom(replica, protocolId)], "2026-09-11", "2026-09-11");
+        assert.equal(paused.state, "paused", `${replica.name} reads the period pushed as text`);
+        const [before] = planDays([planProtocolFrom(replica, protocolId)], "2026-10-18", "2026-10-18");
+        assert.deepEqual(
+          before.planned.map((dose) => dose.localTime),
+          ["09:00"],
+          `${replica.name} keeps the earlier version for earlier days`
+        );
+      }
+      assert.equal(
+        replicaC.stateSignatureFor(protocolPlanEntityOrder),
+        replicaA.stateSignatureFor(protocolPlanEntityOrder)
+      );
+
+      // A version-1 client would push incomplete plan rows and erase the
+      // fields it doesn't know, so sync protocol 2 refuses it outright.
+      for (const path of ["/sync/push", "/sync/pull"]) {
+        const response = await server.app.request(path, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${server.sessionToken}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify(
+            path === "/sync/push"
+              ? {
+                  protocolVersion: 1,
+                  deviceId: "device-v1",
+                  entity: "schedules",
+                  changes: []
+                }
+              : { protocolVersion: 1, cursor: null, limit: 10 }
+          )
+        });
+        assert.equal(response.status, 400, `${path} accepted protocol version 1`);
+      }
     } finally {
       await server.close();
     }
@@ -1033,6 +1200,22 @@ class PlanTreeReplica extends SyncReplicaHarness {
     this.stageChange(row.entity, change);
   }
 
+  stateSignatureFor(entityNames) {
+    return JSON.stringify(
+      [...this.rows.values()]
+        .filter((row) => entityNames.includes(row.entity))
+        .map((row) => ({
+          entity: row.entity,
+          id: row.id,
+          deletedAt: row.deletedAt,
+          payload: canonicalize(row.payload)
+        }))
+        .sort((left, right) =>
+          `${left.entity}:${left.id}`.localeCompare(`${right.entity}:${right.id}`)
+        )
+    );
+  }
+
   stateSignature() {
     return JSON.stringify(
       [...this.rows.values()]
@@ -1514,6 +1697,69 @@ function loggedSetPayload({ id, repsEntered, updatedAt, deletedAt, writeId }) {
     client_write_id: writeId,
     updated_at: updatedAt,
     deleted_at: deletedAt
+  };
+}
+
+// The Protocol plan entities, parents first.
+const protocolPlanEntityOrder = [
+  "compounds",
+  "protocols",
+  "protocol_compounds",
+  "schedules"
+];
+
+const creatineAmount = {
+  dose_amount_value: 5,
+  dose_amount_entered: "5",
+  dose_unit: "gram",
+  route: "oral"
+};
+
+function timedDailyRule(times) {
+  return { v: 1, kind: "timed", days: { kind: "daily" }, times };
+}
+
+function protocolPlanRow(entityName, id, updatedAt, fields) {
+  return { entity: entityName, id, payload: planImage(id, updatedAt, fields) };
+}
+
+/** A synced `rule` or `period`: JSON text from the app, an object from an Agent write. */
+function storedJson(value) {
+  return typeof value === "string" ? JSON.parse(value) : value;
+}
+
+/** One Protocol as the shared plan core reads it, from a replica's rows. */
+function planProtocolFrom(replica, protocolId) {
+  const rows = (entityName) =>
+    [...replica.rows.values()].filter(
+      (row) => row.entity === entityName && row.deletedAt === null
+    );
+  const protocol = replica.row("protocols", protocolId).payload;
+  return {
+    protocolId,
+    startLocalDate: protocol.start_local_date,
+    endLocalDate: protocol.end_local_date,
+    period: storedJson(protocol.period),
+    archivedOn: protocol.archived_on,
+    remindersEnabled: protocol.reminders_enabled,
+    members: rows("protocol_compounds")
+      .filter((member) => member.payload.protocol_id === protocolId)
+      .map((member) => ({
+        memberId: member.id,
+        compoundId: member.payload.compound_id,
+        archivedOn: member.payload.archived_on,
+        versions: rows("schedules")
+          .filter((version) => version.payload.protocol_compound_id === member.id)
+          .map((version) => ({
+            id: version.id,
+            effectiveFrom: version.payload.effective_from,
+            rule: storedJson(version.payload.rule),
+            amountValue: version.payload.dose_amount_value,
+            amountEntered: version.payload.dose_amount_entered,
+            unit: version.payload.dose_unit,
+            route: version.payload.route
+          }))
+      }))
   };
 }
 

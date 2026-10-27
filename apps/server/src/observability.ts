@@ -381,5 +381,9 @@ const TRAINING_DATA_KEYS = new Set([
   "schedule",
   "schedules",
   "effectwindow",
-  "tookat"
+  "tookat",
+  // An Agent Protocol batch write carries the user's local date as a
+  // top-level `today` (docs/designs/protocol-schedules-and-reminders.md, D6),
+  // outside the `protocols` key that covers the plan's own fields.
+  "today"
 ]);

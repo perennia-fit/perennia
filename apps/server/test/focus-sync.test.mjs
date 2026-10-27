@@ -10,7 +10,8 @@ import {
   createInMemoryAgentCatalogStore,
   createMigratedServerApp,
   mergeAgentFocuses,
-  schema
+  schema,
+  SYNC_PROTOCOL_VERSION
 } from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -846,7 +847,7 @@ function syncPush(app, sessionToken, body) {
       authorization: `Bearer ${sessionToken}`,
       "content-type": "application/json"
     },
-    body: JSON.stringify({ protocolVersion: 1, ...body })
+    body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, ...body })
   });
 }
 
@@ -895,7 +896,7 @@ async function pullAll(app, sessionToken, mode = "delta") {
         authorization: `Bearer ${sessionToken}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({ protocolVersion: 1, cursor, limit: 100, mode })
+      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit: 100, mode })
     });
     assert.equal(response.status, 200);
     const window = await response.json();

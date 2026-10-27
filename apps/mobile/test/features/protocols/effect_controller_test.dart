@@ -141,14 +141,14 @@ void main() {
     final watched = await repositories.protocols.createProtocol(
       ProtocolDraft(
         name: 'Lean bulk',
-        startDate: DateTime.utc(2026, 7, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
         compoundIds: <String>[creatineId],
       ),
     );
     final unrelated = await repositories.protocols.createProtocol(
       ProtocolDraft(
         name: 'Recovery',
-        startDate: DateTime.utc(2026, 7, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
         compoundIds: <String>[magnesiumId],
       ),
     );
@@ -183,7 +183,7 @@ void main() {
         );
     await _waitFor(
       () => computations.whereType<EffectComputation>().any((computation) =>
-          computation.window.duringStart.toUtc() == DateTime.utc(2026, 7, 1)),
+          computation.window.duringStart.toUtc() == _localMidnight(2026, 7, 1)),
     );
     final initialComputationCount =
         computations.whereType<EffectComputation>().length;
@@ -192,14 +192,14 @@ void main() {
       unrelated.protocolId,
       ProtocolDraft(
         name: 'Recovery',
-        startDate: DateTime.utc(2026, 7, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
         compoundIds: <String>[magnesiumId],
         schedulesByCompoundId: <String, ScheduleDraft?>{
-          magnesiumId: const ScheduleDraft(
+          magnesiumId: ScheduleDraft(
+            rule: _onceDaily,
             doseAmountValue: 400,
             doseAmountEntered: '400',
             doseUnit: DoseUnit.milligram,
-            frequency: ScheduleFrequency.onceDaily,
             route: DoseRoute.oral,
           ),
         },
@@ -216,14 +216,14 @@ void main() {
       watched.protocolId,
       ProtocolDraft(
         name: 'Lean bulk',
-        startDate: DateTime.utc(2026, 7, 2),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 2),
         compoundIds: <String>[creatineId],
       ),
     );
 
     await _waitFor(
       () => computations.whereType<EffectComputation>().any((computation) =>
-          computation.window.duringStart.toUtc() == DateTime.utc(2026, 7, 2)),
+          computation.window.duringStart.toUtc() == _localMidnight(2026, 7, 2)),
     );
   });
 }
@@ -266,4 +266,19 @@ Future<void> _waitFor(bool Function() condition) async {
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
   fail('Timed out waiting for condition.');
+}
+
+/// One untimed dose a day: the nearest Schedule Rule to "once daily".
+final _onceDaily = UntimedScheduleRule(
+  days: const DailyScheduleDays(),
+  count: 1,
+);
+
+/// The instant a Protocol's local-date bound starts at: that date's local
+/// midnight at the device's current UTC offset, as the Effect window
+/// converts it.
+DateTime _localMidnight(int year, int month, int day) {
+  return DateTime.utc(year, month, day).subtract(
+    Duration(minutes: DateTime.now().timeZoneOffset.inMinutes),
+  );
 }

@@ -4,7 +4,11 @@ import test from "node:test";
 
 import { eq } from "drizzle-orm";
 
-import { createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl && process.env.CI === "true") {
@@ -103,7 +107,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 1
         })
@@ -265,7 +269,7 @@ function push(app, token, body) {
       authorization: `Bearer ${token}`,
       "content-type": "application/json"
     },
-    body: JSON.stringify({ protocolVersion: 1, ...body })
+    body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, ...body })
   });
 }
 
@@ -279,7 +283,7 @@ async function pullAll(app, token) {
         authorization: `Bearer ${token}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({ protocolVersion: 1, cursor, limit: 100 })
+      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit: 100 })
     });
     assert.equal(response.status, 200);
     const window = await response.json();

@@ -14,14 +14,15 @@
     "limits": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["maxTimesPerDay", "maxUntimedCount", "minEveryNDays", "maxEveryNDays", "maxCycleLengthDays", "warnTimesPerDay"],
+      "required": ["maxTimesPerDay", "maxUntimedCount", "minEveryNDays", "maxEveryNDays", "maxCycleLengthDays", "warnTimesPerDay", "maxPauses"],
       "properties": {
         "maxTimesPerDay": {"const": 12},
         "maxUntimedCount": {"const": 12},
         "minEveryNDays": {"const": 2},
         "maxEveryNDays": {"const": 365},
         "maxCycleLengthDays": {"const": 3650},
-        "warnTimesPerDay": {"const": 6}
+        "warnTimesPerDay": {"const": 6},
+        "maxPauses": {"const": 100}
       }
     },
     "cases": {
@@ -41,8 +42,10 @@
         "every_n_range",
         "anchor_date",
         "amount_required",
+        "amount_absent",
         "cycle_lengths",
         "bounds_order",
+        "pause_count",
         "pause_order",
         "pause_bounds",
         "pause_overlap",

@@ -34,6 +34,7 @@ import {
   pushLoggedSetsInTransaction,
   type SyncPushChange
 } from "./sync.js";
+import { localDateInTimezone } from "./timezone.js";
 
 export const AGENT_WORKOUT_BATCH_WRITE_MAX_SETS = 100;
 
@@ -456,7 +457,7 @@ export function createDrizzleAgentWorkoutBatchWriteStore(
           id: resolvedWorkout.id,
           started_at: resolvedWorkout.startedAt,
           timezone: resolvedWorkout.timezone,
-          local_date: localDateInTimezone(
+          local_date: workoutLocalDate(
             resolvedWorkout.startedAt,
             resolvedWorkout.timezone
           ),
@@ -626,18 +627,13 @@ function workoutFromPreparedSets(
   });
 }
 
-function localDateInTimezone(startedAt: string, timezone: string) {
+/**
+ * The Workout's local date in its IANA timezone, or its UTC date when the
+ * zone is not one Intl knows (the shared helper returns null for that).
+ */
+function workoutLocalDate(startedAt: string, timezone: string) {
   const date = new Date(startedAt);
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }).format(date);
-  } catch {
-    return date.toISOString().slice(0, 10);
-  }
+  return localDateInTimezone(date, timezone) ?? date.toISOString().slice(0, 10);
 }
 
 async function writeWorkoutExercises({

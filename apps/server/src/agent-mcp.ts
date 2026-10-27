@@ -2268,7 +2268,7 @@ export function createAgentMcpServer({
     {
       title: "List Agent Protocols",
       description:
-        "List a bounded page of the caller's Protocols with their member Compounds, Schedules, and target outcomes through the same REST read path. All plan data — never derived analytics.",
+        "List a bounded page of the caller's Protocols with their local-date bounds, Protocol Period, Protocol Members (every Schedule Version and the current one), and target outcomes through the same REST read path. All plan data — never derived analytics.",
       inputSchema: AgentMcpProtocolListInputSchema,
       outputSchema: AgentProtocolListResponseSchema
     },
@@ -2468,7 +2468,7 @@ export function createAgentMcpServer({
     {
       title: "Batch Write Agent Protocols",
       description:
-        "Apply an agent Protocol plan batch (protocols + members + schedules + target outcomes) through the same Activity Log and sync-nudge path as REST. Archive supported. Plan writes never touch logged Doses (no cascade). Idempotent by idempotency key.",
+        "Apply an agent Protocol plan batch (protocols + members + Schedule Versions + target outcomes) through the same shared plan validators, Activity Log, and sync-nudge path as REST. Carries the user's local date as today, which dates new Schedule Versions and archives as the app does; versions are insert-only. Archive with archived: true. Plan writes never touch logged Doses (no cascade). Idempotent by idempotency key.",
       inputSchema: AgentMcpProtocolBatchWriteInputSchema,
       outputSchema: AgentProtocolBatchWriteResponseSchema
     },
@@ -2645,7 +2645,7 @@ async function writeProtocolBatchToolResult({
         code: "agent_protocols_batch_write_failed",
         message: "Batch contains one or more hard validation failures.",
         errors: prepared.errors,
-        warnings: []
+        warnings: prepared.warnings
       })
     );
   }
@@ -2655,6 +2655,7 @@ async function writeProtocolBatchToolResult({
     batchId: request.idempotencyKey,
     requestFingerprint: agentProtocolsBatchRequestFingerprint(request),
     deviceId: sourceDeviceId,
+    today: prepared.today,
     protocols: prepared.protocols,
     members: prepared.members,
     schedules: prepared.schedules,
@@ -2683,7 +2684,8 @@ async function writeProtocolBatchToolResult({
         accepted: writeResult.accepted,
         duplicate: writeResult.duplicate,
         results: prepared.responseProtocols
-      })
+      }),
+      warnings: prepared.warnings
     })
   );
 }

@@ -1,5 +1,7 @@
-/// Structural validation for authoring a Protocol: name, date window,
-/// Compound membership, and target outcomes.
+/// Structural validation for authoring a Protocol: name, Compound
+/// membership, and target outcomes. Its bounds and Period are judged by the
+/// shared plan validator, `validateProtocolPeriod` in
+/// `protocol_plan_validation.dart`.
 ///
 /// Every check hard-rejects with an [ArgumentError]. This is separate from the
 /// shared two-tier Dose validator, which guards logged amounts.
@@ -8,7 +10,7 @@ library;
 import 'protocols.dart';
 
 /// Hard-rejects an empty/blank name (structural validation — not the shared
-/// Dose two-tier validator, which guards logging amounts, PROTOCOLS.md §6).
+/// Dose two-tier validator, which guards logging amounts).
 String validateProtocolName(String name) {
   final trimmed = name.trim();
   if (trimmed.isEmpty) {
@@ -17,20 +19,8 @@ String validateProtocolName(String name) {
   return trimmed;
 }
 
-/// Hard-rejects an end date before the start date. A null [endDate] means
-/// an open-ended (ongoing) course — always valid.
-void validateProtocolWindow(DateTime startDate, DateTime? endDate) {
-  if (endDate != null && endDate.isBefore(startDate)) {
-    throw ArgumentError.value(
-      endDate,
-      'endDate',
-      'Protocol end date must not be before its start date.',
-    );
-  }
-}
-
 /// Hard-rejects an empty or duplicated membership list. A Protocol
-/// associates ONE OR MORE Compounds (PROTOCOLS.md §1.4); a repeated
+/// associates ONE OR MORE Compounds; a repeated
 /// Compound id is never a meaningful stack member.
 List<String> validateProtocolMembership(List<String> compoundIds) {
   if (compoundIds.isEmpty) {
@@ -55,7 +45,7 @@ List<String> validateProtocolMembership(List<String> compoundIds) {
 /// `metric` outcome requires a non-blank [ProtocolTargetOutcomeDraft.metricId],
 /// and no two outcomes may declare the SAME thing twice (the same Metric
 /// twice, or `performance` twice). An EMPTY list is always valid — a
-/// Protocol MAY declare target outcomes, never must (PROTOCOLS.md §1.4).
+/// Protocol MAY declare target outcomes, never must.
 List<ProtocolTargetOutcomeDraft> validateProtocolTargetOutcomes(
   List<ProtocolTargetOutcomeDraft> outcomes,
 ) {

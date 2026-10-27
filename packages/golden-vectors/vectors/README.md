@@ -22,7 +22,10 @@ round count and any larger inferred value would multiply the logged Sets.
 in both languages: the Schedule Rule and Protocol Period codecs, `planDays`,
 `dayStatuses`, `dueUnfilled` and `effectBoundsFromLocalDates`. Each case names
 its `function`, gives that function's arguments by parameter name in `input`,
-and its return value in `expected`. `m36-protocol-plan-validation.json`
+and its return value in `expected`. A codec case that must fail, and an
+`effect_bounds` case whose offset is outside −720 to +840 minutes, expect
+`{"rejects": true}`: the runners map a codec error, or the `RangeError` the
+offset guard throws, to it. `m36-protocol-plan-validation.json`
 (domain `protocol-plan-validation`) pins `validateScheduleRule` and
 `validateProtocolPeriod`, dispatched on each case's `validator`, and carries a
 `limits` block that both runners assert against their limits constants. The
