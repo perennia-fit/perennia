@@ -418,7 +418,9 @@ class _ScheduleFieldState {
       case EveryNDaysScheduleDays():
         daysChoice = ProtocolScheduleDaysChoice.everyNDays;
         everyN = days.n;
-        anchor = days.anchor;
+        // A default anchor is the Protocol's start, whatever date it stores
+        // (D4): the core plans from the start, so the editor shows it.
+        anchor = days.anchorIsDefault ? protocolStart : days.anchor;
         anchorIsDefault = days.anchorIsDefault;
     }
 
@@ -642,7 +644,10 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
         TextEditingController(text: cycle == null ? '' : '${cycle.onDays}');
     _cycleOffController =
         TextEditingController(text: cycle == null ? '' : '${cycle.offDays}');
-    _cycleAnchor = cycle?.anchor ?? _startDate;
+    // A default anchor is the start, whatever date it stores (D4): the core
+    // plans from the start, so the editor shows it.
+    _cycleAnchor =
+        cycle == null || cycle.anchorIsDefault ? _startDate : cycle.anchor;
     _cycleAnchorIsDefault = cycle?.anchorIsDefault ?? true;
     _pauses.addAll(protocol?.period?.pauses ?? const <ProtocolPause>[]);
 

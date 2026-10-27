@@ -32,6 +32,11 @@ import 'protocols.dart';
 /// 5. the member's Schedule Version for the date: none, or `unscheduled` →
 ///    `no_schedule`; `as_needed` → `as_needed`; days that exclude the date
 ///    → `not_scheduled_today`; otherwise `planned`.
+///
+/// An every-N or cycle anchor stored with `anchorIsDefault` is read as the
+/// Protocol's `startLocalDate`, whatever date it stores (D4), so moving the
+/// start moves it on every version without a write; an anchor the user set
+/// is read as stored.
 List<PlanDay> planDays(
   Iterable<PlanProtocol> protocols,
   ProtocolDayDate from,
@@ -77,7 +82,7 @@ PlanDay _planDay(
   if (period != null && period.isPaused(date)) {
     return state(PlanDayState.paused);
   }
-  final cycle = period?.cycle;
+  final cycle = plan.cycle;
   if (cycle != null && !cycle.isOn(date)) {
     return state(PlanDayState.offCycle);
   }
@@ -94,35 +99,61 @@ PlanDay _planDay(
   if (version == null) {
     return state(PlanDayState.noSchedule);
   }
-  final rule = version.version.rule;
-  final ScheduleDays days;
-  switch (rule) {
+  final days = version.days;
+  switch (version.version.rule) {
     case UnscheduledScheduleRule():
       return state(PlanDayState.noSchedule);
     case AsNeededScheduleRule():
       return state(PlanDayState.asNeeded);
-    case TimedScheduleRule():
-      days = rule.days;
-    case UntimedScheduleRule():
-      days = rule.days;
+    case TimedScheduleRule() || UntimedScheduleRule():
+      break;
   }
-  if (!days.includes(date)) {
+  if (days == null || !days.includes(date)) {
     return state(PlanDayState.notScheduledToday);
   }
   return state(PlanDayState.planned, version.planned);
 }
 
+/// [days] as planned (D4): an every-N anchor left at its default reads as
+/// [start], whatever date it stores; an anchor the user set reads as stored.
+ScheduleDays _daysFromStart(ScheduleDays days, ProtocolDayDate start) =>
+    switch (days) {
+      EveryNDaysScheduleDays(:final n, anchorIsDefault: true)
+          when days.anchor != start =>
+        EveryNDaysScheduleDays(n: n, anchor: start, anchorIsDefault: true),
+      _ => days,
+    };
+
+/// [cycle] as planned (D4): an anchor left at its default reads as [start],
+/// whatever date it stores; an anchor the user set reads as stored.
+ProtocolCycle? _cycleFromStart(ProtocolCycle? cycle, ProtocolDayDate start) {
+  if (cycle == null || !cycle.anchorIsDefault || cycle.anchor == start) {
+    return cycle;
+  }
+  return ProtocolCycle(
+    onDays: cycle.onDays,
+    offDays: cycle.offDays,
+    anchor: start,
+    anchorIsDefault: true,
+  );
+}
+
 /// One Protocol as [planDays] reads it on every date, worked out once per
-/// call: its Compound ids in order, and each Compound's member rows.
+/// call: its cycle with a default anchor read as the start (D4), its
+/// Compound ids in order, and each Compound's member rows.
 class _ProtocolPlan {
-  _ProtocolPlan._(this.protocol, this.compoundIds, this._rowsByCompound);
+  _ProtocolPlan._(this.protocol, this.compoundIds, this._rowsByCompound)
+      : cycle = _cycleFromStart(
+          protocol.period?.cycle,
+          protocol.startLocalDate,
+        );
 
   factory _ProtocolPlan(PlanProtocol protocol) {
     final rowsByCompound = <String, List<_MemberRow>>{};
     for (final member in protocol.members) {
       rowsByCompound
           .putIfAbsent(member.compoundId, () => [])
-          .add(_MemberRow(member));
+          .add(_MemberRow(member, protocol.startLocalDate));
     }
     for (final rows in rowsByCompound.values) {
       rows.sort((a, b) => b.memberId.compareTo(a.memberId));
@@ -135,6 +166,7 @@ class _ProtocolPlan {
   }
 
   final PlanProtocol protocol;
+  final ProtocolCycle? cycle;
   final List<String> compoundIds;
 
   /// Each Compound's rows, the larger member id first.
@@ -157,11 +189,11 @@ class _ProtocolPlan {
 /// One member row, with its versions in `effectiveFrom` order, then id
 /// order, and each version's planned doses built once.
 class _MemberRow {
-  _MemberRow(PlanMember member)
+  _MemberRow(PlanMember member, ProtocolDayDate start)
       : memberId = member.memberId,
         archivedOn = member.archivedOn,
         _versions = [
-          for (final version in member.versions) _VersionPlan(version),
+          for (final version in member.versions) _VersionPlan(version, start),
         ]..sort(_VersionPlan.compare);
 
   final String memberId;
@@ -192,11 +224,19 @@ class _MemberRow {
       );
 }
 
-/// One Schedule Version and the planned doses it plans on each of its days,
-/// shared by every date it plans (empty for a rule that plans nothing).
+/// One Schedule Version, its days with a default anchor read as the
+/// Protocol's start (D4), and the planned doses it plans on each of its
+/// days, shared by every date it plans (empty for a rule that plans
+/// nothing).
 class _VersionPlan {
-  _VersionPlan(this.version)
-      : planned = List<PlannedDose>.unmodifiable(
+  _VersionPlan(this.version, ProtocolDayDate start)
+      : days = switch (version.rule) {
+          TimedScheduleRule(:final days) ||
+          UntimedScheduleRule(:final days) =>
+            _daysFromStart(days, start),
+          AsNeededScheduleRule() || UnscheduledScheduleRule() => null,
+        },
+        planned = List<PlannedDose>.unmodifiable(
           _plannedTimes(version.rule).map(
             (localTime) =>
                 PlannedDose(localTime: localTime, amount: version.amount),
@@ -204,6 +244,9 @@ class _VersionPlan {
         );
 
   final ScheduleVersion version;
+
+  /// The days the rule plans on; null for a rule that has none.
+  final ScheduleDays? days;
   final List<PlannedDose> planned;
 
   static List<String?> _plannedTimes(ScheduleRule rule) => switch (rule) {
@@ -456,6 +499,9 @@ const int maxDoseCountForEndDate = 1000;
 /// 08:00 and 20:00 reaches 20 doses on day 10. The Protocol's end date sets
 /// nothing here; this computes it.
 ///
+/// An every-N or cycle anchor stored with `anchorIsDefault` counts from
+/// [startLocalDate], whatever date it stores, as in [planDays] (D4).
+///
 /// Returns null ("unavailable") for an `as_needed` or `unscheduled` rule, for
 /// a rule whose days never fall on an on-cycle day, and when the dose would
 /// fall after 9999-12-31, the last date a `YYYY-MM-DD` value holds. Throws a
@@ -472,15 +518,16 @@ ProtocolDayDate? endDateForDoseCount({
     maxDoseCountForEndDate,
     'doseCount',
   );
-  final (days, perDay) = switch (rule) {
+  final (storedDays, perDay) = switch (rule) {
     TimedScheduleRule() => (rule.days, rule.times.length),
     UntimedScheduleRule() => (rule.days, rule.count),
     AsNeededScheduleRule() || UnscheduledScheduleRule() => (null, 0),
   };
-  if (days == null) {
+  if (storedDays == null) {
     return null;
   }
-  final cycle = period?.cycle;
+  final days = _daysFromStart(storedDays, startLocalDate);
+  final cycle = _cycleFromStart(period?.cycle, startLocalDate);
   final cycleLength = cycle == null ? 1 : cycle.onDays + cycle.offDays;
 
   // Days are counted as offsets from the start. Ignoring Pauses, which day

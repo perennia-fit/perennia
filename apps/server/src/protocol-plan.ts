@@ -521,7 +521,9 @@ function floorMod(value: number, divisor: number): number {
 /**
  * What each Protocol planned for each of its Compounds on every date from
  * `from` through `to`, inclusive. One PlanDay per Protocol, Compound and
- * date, ordered by date, then Protocol id, then Compound id.
+ * date, ordered by date, then Protocol id, then Compound id. An every-N or
+ * cycle anchor stored with `anchor_is_default: true` is read as the
+ * Protocol's `startLocalDate` (D4); one the user set is read as stored.
  */
 export function planDays(
   protocols: readonly PlanProtocol[],
@@ -576,14 +578,20 @@ type VersionPlan = {
   effectiveFrom: LocalDate;
   version: PlanScheduleVersion;
   amount: Required<PlanAmount>;
-  /** The every-N-days anchor as an epoch day; 0 for any other days. */
+  /**
+   * The every-N-days anchor as an epoch day (the Protocol's start for a
+   * default anchor, D4); 0 for any other days.
+   */
   anchorDay: number;
 };
 
 function protocolPlan(protocol: PlanProtocol): ProtocolPlan {
+  // A default anchor is read as the Protocol's start, whatever date it
+  // stores (D4), so a start move moves it on every version without a write.
+  const startDay = epochDay(protocol.startLocalDate);
   const rowsByCompound = new Map<string, MemberRow[]>();
   for (const member of protocol.members) {
-    pushToGroup(rowsByCompound, member.compoundId, memberRow(member));
+    pushToGroup(rowsByCompound, member.compoundId, memberRow(member, startDay));
   }
   for (const rows of rowsByCompound.values()) {
     rows.sort((left, right) => compareIds(right.memberId, left.memberId));
@@ -599,7 +607,7 @@ function protocolPlan(protocol: PlanProtocol): ProtocolPlan {
       cycle === null
         ? null
         : {
-            anchorDay: epochDay(cycle.anchor),
+            anchorDay: cycle.anchor_is_default ? startDay : epochDay(cycle.anchor),
             length: cycle.on_days + cycle.off_days,
             onDays: cycle.on_days
           },
@@ -608,7 +616,7 @@ function protocolPlan(protocol: PlanProtocol): ProtocolPlan {
   };
 }
 
-function memberRow(member: PlanMember): MemberRow {
+function memberRow(member: PlanMember, startDay: number): MemberRow {
   const versions = member.versions
     .map((stored) => {
       const rule = decodeScheduleRule(stored.rule);
@@ -620,7 +628,9 @@ function memberRow(member: PlanMember): MemberRow {
           rule.kind !== "as_needed" &&
           rule.kind !== "unscheduled" &&
           rule.days.kind === "every_n_days"
-            ? epochDay(rule.days.anchor)
+            ? rule.days.anchor_is_default
+              ? startDay
+              : epochDay(rule.days.anchor)
             : 0
       };
     })

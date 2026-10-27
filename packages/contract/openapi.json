@@ -9107,7 +9107,7 @@
           },
           "startLocalDate": {
             "type": "string",
-            "description": "Local date (YYYY-MM-DD) the Protocol starts. Moving it inserts re-dated copies of the members' Schedule Versions, and moves anchors left at their default.",
+            "description": "Local date (YYYY-MM-DD) the Protocol starts. Moving it earlier inserts, for each member planned from the old start (archived ones included), a copy of its earliest Schedule Version dated from the new start; a member added after the old start keeps its own first date. Moving it later inserts nothing. Every-N and cycle anchors left at their default (anchor_is_default: true) are read as this date, so they follow the start without a write.",
             "example": "2026-10-26"
           },
           "endLocalDate": {

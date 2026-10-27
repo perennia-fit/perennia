@@ -6814,7 +6814,6 @@ class ProtocolsRepository {
     if (previousStart != start) {
       await _redateVersionsForStartMove(
         protocolId,
-        keptCompoundIds: compoundIds.toSet(),
         previousStart: previousStart,
         start: start,
         context: context,
@@ -7061,7 +7060,7 @@ class ProtocolsRepository {
       effectiveFrom = firstVersionFrom;
     } else {
       final current = _currentScheduleRow(versions)!;
-      if (_sameScheduleVersion(current, next)) {
+      if (_sameScheduleVersion(current, next, protocolStart: protocolStart)) {
         return;
       }
       final latest = ProtocolDayDate.parse(current.effectiveFrom);
@@ -7076,52 +7075,76 @@ class ProtocolsRepository {
     );
   }
 
-  /// Moving a Protocol's start inserts re-dated Schedule Version copies, so
-  /// versions are still never edited (D1). For each member that stays:
+  /// Moving a Protocol's start EARLIER inserts re-dated Schedule Version
+  /// copies, so versions are still never edited (D1); moving it later
+  /// inserts nothing, because the version that applies on the new start is
+  /// already the latest one dated on or before it, and the dates before the
+  /// new start read `outside`.
   ///
-  /// - **later**: a copy of the version that applied on the new start, dated
-  ///   from it, so the most recent edit keeps winning by id;
-  /// - **earlier**: a copy of the member's earliest version (the one in
-  ///   effect on its first date), dated from the new start, so no date inside
-  ///   the bounds is left without a version.
+  /// On an earlier move, every member row of the Protocol whose earliest
+  /// version is dated on or before [previousStart] and after [start] gets a
+  /// copy of that version (the one in effect on its first date), dated from
+  /// [start], so it plans the new days. That includes archived members,
+  /// which were part of the course from its start and still cover those
+  /// days up to their `archived_on`, and so a member this same save removes:
+  /// this runs before the save's member changes, from the rows and versions
+  /// stored before it. It excludes:
   ///
-  /// An every-N anchor left at its default moves to the new start in the
-  /// copy; an anchor the user set stays. A member with no versions gets no
-  /// copy, and neither does one with no version on or before the new start
-  /// when it moves later (it was added after that date).
+  /// - rows tombstoned by undo (`deleted_at` without `archived_on`), which
+  ///   never existed;
+  /// - members with no versions, which already cover every date;
+  /// - members whose earliest version is after [previousStart]: a Compound
+  ///   added mid-course keeps its own first date, so the days before it was
+  ///   added don't turn into "Not logged".
+  ///
+  /// A copy is dated before every version its member has, and the save's
+  /// own edits on or after the latest, so a copy never shares a date with an
+  /// edit ("No ties"). A default anchor needs no rewriting, since it is read
+  /// as the start (D4); the copy still stores [start] there, as every app
+  /// write stores the start of the save.
   Future<void> _redateVersionsForStartMove(
     String protocolId, {
-    required Set<String> keptCompoundIds,
     required ProtocolDayDate previousStart,
     required ProtocolDayDate start,
     required WriteContext context,
   }) async {
-    final members = await _activeProtocolCompoundQuery(
-      protocolId: protocolId,
-    ).get();
-    final movedLater = start.compareTo(previousStart) > 0;
+    if (start.compareTo(previousStart) >= 0) {
+      return;
+    }
+    final members = await (_database.select(_database.protocolCompounds)
+          ..where(
+            (row) =>
+                row.protocolId.equals(protocolId) &
+                (row.deletedAt.isNull() | row.archivedOn.isNotNull()),
+          )
+          ..orderBy([
+            (row) => OrderingTerm.asc(row.position),
+            (row) => OrderingTerm.asc(row.id),
+          ]))
+        .get();
+    if (members.isEmpty) {
+      return;
+    }
+    final versionsByMember = <String, List<ScheduleRow>>{};
+    for (final row in await _activeScheduleQuery(
+      protocolCompoundIds: members.map((member) => member.id).toSet(),
+    ).get()) {
+      versionsByMember.putIfAbsent(row.protocolCompoundId, () => []).add(row);
+    }
     for (final member in members) {
-      if (!keptCompoundIds.contains(member.compoundId)) {
+      // Versions come in D1's order, so the first is the earliest.
+      final versions = versionsByMember[member.id];
+      if (versions == null || versions.isEmpty) {
         continue;
       }
-      final versions = await _activeScheduleQuery(
-        protocolCompoundId: member.id,
-      ).get();
-      if (versions.isEmpty) {
+      final firstDate = ProtocolDayDate.parse(versions.first.effectiveFrom);
+      if (firstDate.compareTo(previousStart) > 0 ||
+          firstDate.compareTo(start) <= 0) {
         continue;
       }
-      // Versions come in D1's order, so the earliest is the one in effect on
-      // the first row's date.
-      final source = _scheduleRowInEffectOn(
-        versions,
-        movedLater
-            ? start
-            : ProtocolDayDate.parse(versions.first.effectiveFrom),
+      final copy = _scheduleVersionFromRow(
+        _scheduleRowInEffectOn(versions, firstDate)!,
       );
-      if (source == null) {
-        continue;
-      }
-      final copy = _scheduleVersionFromRow(source);
       await _insertScheduleVersion(
         member.id,
         effectiveFrom: start,
@@ -7264,9 +7287,25 @@ class ProtocolsRepository {
   /// stored text: a version an Agent wrote reaches the device from the
   /// server's jsonb with its keys in another order, and must still read as
   /// unchanged (D1: a save that changes nothing inserts nothing).
-  bool _sameScheduleVersion(ScheduleRow row, _StoredScheduleVersion version) {
-    return _canonicalRuleColumn(row.rule) ==
-            jsonEncode(version.rule.toJson()) &&
+  ///
+  /// The stored date of a default every-N anchor is ignored: it is never
+  /// read, because a default anchor plans from the Protocol's start (D4).
+  /// Both sides read it as [protocolStart], so after a start move, which
+  /// writes nothing on a later move, an unchanged save still inserts
+  /// nothing.
+  bool _sameScheduleVersion(
+    ScheduleRow row,
+    _StoredScheduleVersion version, {
+    required ProtocolDayDate protocolStart,
+  }) {
+    String comparable(ScheduleRule rule) => jsonEncode(
+          _mapRule(
+            rule,
+            days: (days) => _daysWithDefaultAnchorAt(days, protocolStart),
+          ).toJson(),
+        );
+    return comparable(ScheduleRule.fromJson(jsonDecode(row.rule))) ==
+            comparable(version.rule) &&
         row.doseAmountValue == version.amount.amountValue &&
         row.doseAmountEntered == version.amount.amountEntered &&
         row.doseUnit == version.amount.unit?.name &&
@@ -15690,13 +15729,9 @@ ScheduleRow? _scheduleRowInEffectOn(
       effectiveFrom: (row) => ProtocolDayDate.parse(row.effectiveFrom),
     );
 
-/// A stored `rule` column re-encoded in the codec's key order, so two
-/// columns that hold the same rule compare equal however they were written.
-String _canonicalRuleColumn(String column) =>
-    jsonEncode(ScheduleRule.fromJson(jsonDecode(column)).toJson());
-
-/// A stored `period` column re-encoded in the codec's key order (see
-/// [_canonicalRuleColumn]); null stays null.
+/// A stored `period` column re-encoded in the codec's key order, so two
+/// columns that hold the same period compare equal however they were
+/// written; null stays null.
 String? _canonicalPeriodColumn(String? column) {
   final period = _protocolPeriodFromColumn(column);
   return period == null ? null : jsonEncode(period.toJson());

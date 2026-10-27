@@ -34,6 +34,7 @@ import {
   decodeProtocolPeriod,
   decodeScheduleRule,
   encodeProtocolPeriod,
+  encodeScheduleRule,
   epochDay,
   isJsonObject,
   isValidLocalDate,
@@ -757,7 +758,7 @@ export const AgentProtocolBatchWriteProtocolSchema = z
     name: z.string().trim().min(1),
     startLocalDate: LocalDateSchema.openapi({
       description:
-        "Local date (YYYY-MM-DD) the Protocol starts. Moving it inserts re-dated copies of the members' Schedule Versions, and moves anchors left at their default."
+        "Local date (YYYY-MM-DD) the Protocol starts. Moving it earlier inserts, for each member planned from the old start (archived ones included), a copy of its earliest Schedule Version dated from the new start; a member added after the old start keeps its own first date. Moving it later inserts nothing. Every-N and cycle anchors left at their default (anchor_is_default: true) are read as this date, so they follow the start without a write."
     }),
     endLocalDate: LocalDateSchema.nullable().default(null).openapi({
       description: "Inclusive local end date (YYYY-MM-DD); null is ongoing."
@@ -1579,9 +1580,11 @@ export function prepareAgentCompoundBatchWrite({
  * The Agent Protocol write's pure half (docs/designs/protocol-schedules-and-
  * reminders.md, D6 and D7): it checks the request's `today` against the
  * server clock, runs every Protocol Period and Schedule Rule through the shared
- * two-tier validators, and builds the synced row payloads. Everything that
- * needs stored data (dating Schedule Versions, refusing a reused version id,
- * sorting, re-dated copies on a start move, archive stamps) is the store's
+ * two-tier validators, and builds the synced row payloads, with each `rule`
+ * (its times and weekdays sorted, D7) and `period` stored as JSON text in the
+ * codec's encoding (Data shapes). Everything that needs stored data (dating
+ * Schedule Versions, refusing a reused version id or an archived Protocol,
+ * re-dated copies on a start move, archive stamps) is the store's
  * `writeProtocolBatch`, inside its transaction, so REST and MCP share it.
  */
 export function prepareAgentProtocolBatchWrite({
@@ -1658,7 +1661,7 @@ export function prepareAgentProtocolBatchWrite({
     const period =
       periodValidation.errors.length > 0
         ? null
-        : encodePlanJson(() => storedPeriod(protocol.period), {
+        : encodePlanJson(() => storedPeriodText(protocol.period), {
             itemIndex,
             entityId: protocol.id,
             field: `protocols[${itemIndex}].period`,
@@ -1755,13 +1758,21 @@ export function prepareAgentProtocolBatchWrite({
       const rule =
         ruleValidation.errors.length > 0
           ? null
-          : encodePlanJson(() => decodeScheduleRule(scheduleRow.rule), {
-              itemIndex,
-              entityId: scheduleRow.id,
-              field: `${field}.rule`,
-              rule: "rule_format",
-              errors
-            });
+          : encodePlanJson(
+              // Stored as JSON text in the codec's encoding (Data shapes),
+              // with its times and weekdays sorted, as writers store them (D7).
+              () =>
+                JSON.stringify(
+                  encodeScheduleRule(decodeScheduleRule(sortedRule(scheduleRow.rule)))
+                ),
+              {
+                itemIndex,
+                entityId: scheduleRow.id,
+                field: `${field}.rule`,
+                rule: "rule_format",
+                errors
+              }
+            );
       const scheduleUpdatedAt = scheduleRow.updatedAt ?? nowIso;
       schedules.push({
         id: scheduleRow.id,
@@ -1844,16 +1855,17 @@ export function prepareAgentProtocolBatchWrite({
 const AGENT_TODAY_MAX_SKEW_DAYS = 1;
 
 /**
- * The stored period: null when there is no cycle and no Pause, as the app
- * writes it (readers accept both forms).
+ * The stored period, as JSON text in the codec's encoding (Data shapes), the
+ * form every writer stores: null when there is no cycle and no Pause, as the
+ * app writes it (readers accept both forms, and a decoded object too).
  */
-function storedPeriod(
+function storedPeriodText(
   period: z.infer<typeof AgentProtocolPeriodSchema> | null
-): Record<string, unknown> | null {
+): string | null {
   const decoded = decodeProtocolPeriod(period);
   return decoded === null || (decoded.cycle === null && decoded.pauses.length === 0)
     ? null
-    : encodeProtocolPeriod(decoded);
+    : JSON.stringify(encodeProtocolPeriod(decoded));
 }
 
 /**
@@ -3017,8 +3029,28 @@ async function finalizeProtocolPlanRows(
     versions.sort(compareScheduleVersions);
   }
 
+  // An archived Protocol is read-only, as it is in the app's editor (D1,
+  // D6): a write that names one is refused whatever it sends, a re-sent
+  // `archived: true` included. A row tombstoned by undo never existed, so it
+  // isn't "archived" here; it keeps the restore refusal below.
+  const archivedProtocolIds = new Set<string>();
+  for (const row of protocols) {
+    const stored = storedProtocols.get(row.id);
+    if (stored !== undefined && stored.deletedAt !== null && !isUndoTombstone(stored)) {
+      archivedProtocolIds.add(row.id);
+      issues.push(
+        entityIssue(row.itemIndex, row.id, {
+          field: row.field,
+          rule: "protocol_archived",
+          message:
+            "This Protocol is archived, and an archived Protocol is read-only. Create a new Protocol instead."
+        })
+      );
+    }
+  }
+
   for (const [rows, stored] of [
-    [protocols, storedProtocols],
+    [protocols.filter((row) => !archivedProtocolIds.has(row.id)), storedProtocols],
     [members, storedMembers]
   ] as const) {
     for (const row of rows) {
@@ -3029,24 +3061,39 @@ async function finalizeProtocolPlanRows(
     }
   }
 
-  // D1: moving the start inserts, for each member, a re-dated copy (never an
-  // edit): of the version that applied on the new start when it moves later,
-  // and of the earliest version when it moves earlier, so no date inside the
-  // bounds is left without one. Anchors left at their default move with it.
-  // As in the app, the copies are made first and only from what was stored
-  // before this request: a member this request adds is dated by its own
-  // first-version rule (a member added to a started Protocol plans from
-  // today, never its past days), and this request's edits are dated after the
-  // copies, so they keep winning.
-  const startMoveCopies = new Map<string, PreparedRow>();
+  // D1: moving the start earlier inserts re-dated copies (never an edit);
+  // moving it later inserts nothing, because the version that applies on the
+  // new start is already the latest one dated on or before it. On an earlier
+  // move, every member row of the Protocol whose earliest version is dated on
+  // or before the old start and after the new one gets a copy of that version
+  // (the one in effect on its first date), dated from the new start: archived
+  // members too, which still cover those days up to their archived_on, and so
+  // a member this request archives. Rows tombstoned by undo never existed,
+  // members with no versions already cover every date, and a member added
+  // after the old start keeps its own first date. As in the app, the copies
+  // come only from what was stored before this request, and this request's
+  // edits are dated after them: a copy is dated before every version its
+  // member has and an edit on or after the latest, so the two never share a
+  // date ("No ties"). Default anchors are read as the start (D4), so they
+  // need no rewriting; a copy and the period still store the new start there,
+  // as the app's writes do.
+  const startMoveCopies: PreparedRow[] = [];
   for (const protocol of protocols) {
     const stored = storedProtocols.get(protocol.id);
     const oldStart = stored?.payload.start_local_date;
     const newStart = String(protocol.payload.start_local_date);
-    if (typeof oldStart !== "string" || !isValidLocalDate(oldStart) || oldStart === newStart) {
+    if (
+      archivedProtocolIds.has(protocol.id) ||
+      typeof oldStart !== "string" ||
+      !isValidLocalDate(oldStart) ||
+      oldStart === newStart
+    ) {
       continue;
     }
     protocol.payload.period = withPeriodDefaultAnchorMoved(protocol.payload.period, newStart);
+    if (newStart > oldStart) {
+      continue;
+    }
 
     const protocolMemberIds = [...storedMembers.values()]
       .filter((member) => member.payload.protocol_id === protocol.id && !isUndoTombstone(member))
@@ -3055,15 +3102,14 @@ async function finalizeProtocolPlanRows(
     for (const memberId of protocolMemberIds) {
       const versions = versionsByMember.get(memberId) ?? [];
       const earliest = versions[0];
-      const source =
-        newStart > oldStart
-          ? applyingScheduleVersion(versions, newStart)
-          : earliest === undefined
-            ? null
-            : applyingScheduleVersion(versions, earliest.effectiveFrom);
-      if (source === null || source.effectiveFrom === newStart) {
+      if (
+        earliest === undefined ||
+        earliest.effectiveFrom > oldStart ||
+        earliest.effectiveFrom <= newStart
+      ) {
         continue;
       }
+      const source = applyingScheduleVersion(versions, earliest.effectiveFrom)!;
       const id = createUuidV7(serverClock);
       const payload = {
         ...source.payload,
@@ -3073,7 +3119,7 @@ async function finalizeProtocolPlanRows(
         updated_at: nowIso,
         deleted_at: null
       };
-      startMoveCopies.set(memberId, {
+      startMoveCopies.push({
         id,
         itemIndex: protocol.itemIndex,
         field: `protocols[${protocol.itemIndex}].schedules`,
@@ -3124,18 +3170,10 @@ async function finalizeProtocolPlanRows(
       effectiveFrom = latest.effectiveFrom > today ? latest.effectiveFrom : today;
     }
     row.payload.effective_from = effectiveFrom;
-    row.payload.rule = sortedRule(row.payload.rule);
-    // An edit dated on its member's start-move copy replaces that copy: in the
-    // app the edit is inserted after the copy and wins by id, but an Agent's
-    // id was minted before the server's copy, so keeping both would let the
-    // copy win. Dropping it plans exactly what the app plans.
-    if (startMoveCopies.get(memberId)?.payload.effective_from === effectiveFrom) {
-      startMoveCopies.delete(memberId);
-    }
     insertVersion(versions, { id: row.id, effectiveFrom, payload: row.payload });
     versionsByMember.set(memberId, versions);
   }
-  schedules.push(...startMoveCopies.values());
+  schedules.push(...startMoveCopies);
 
   return issues;
 }
@@ -3186,7 +3224,10 @@ function insertVersion(versions: PlanVersionRow[], version: PlanVersionRow) {
   versions.sort(compareScheduleVersions);
 }
 
-/** Writers store `times` and `weekdays` sorted (D7); the codecs accept any order. */
+/**
+ * Writers store `times` and `weekdays` sorted (D7); the codecs accept any
+ * order. Runs on the request's rule object, before it is encoded.
+ */
 function sortedRule(rule: unknown): unknown {
   if (!isJsonObject(rule)) {
     return rule;
@@ -3231,8 +3272,10 @@ function withPeriodDefaultAnchorMoved(stored: unknown, newStart: string): unknow
 }
 
 /**
- * Applies `map` to a stored JSON object, keeping how it was stored: a device
- * may sync the rule or period as JSON text, and a copy keeps that form.
+ * Applies `map` to a stored JSON object and returns it as JSON text, the form
+ * every writer stores (Data shapes). Agent writes made before that rule
+ * stored the object itself; a copy of such a row is written as text too. A
+ * value that holds no JSON object is returned as stored.
  */
 function mapStoredJson(
   stored: unknown,
@@ -3242,8 +3285,7 @@ function mapStoredJson(
   if (object === null) {
     return stored;
   }
-  const mapped = map(object);
-  return typeof stored === "string" ? JSON.stringify(mapped) : mapped;
+  return JSON.stringify(map(object));
 }
 
 /** A stored JSON object, whether synced as an object or as JSON text; else null. */

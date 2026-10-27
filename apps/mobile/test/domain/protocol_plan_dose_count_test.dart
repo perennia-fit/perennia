@@ -90,6 +90,49 @@ void main() {
       );
     });
 
+    test(
+        'an every-N rule whose default anchor stores another date counts '
+        'from the start', () {
+      // D4: a default anchor reads as the start, whatever date it stores.
+      // Every 3 days from the start 2026-10-02 plans 10-02, 10-05 and 10-08.
+      // Counted from the stored 2026-09-30, the third dose would be 10-09.
+      expect(
+        endDate(
+          '2026-10-02',
+          timed(
+            ['08:00'],
+            days: EveryNDaysScheduleDays(
+              n: 3,
+              anchor: date('2026-09-30'),
+              anchorIsDefault: true,
+            ),
+          ),
+          3,
+        ),
+        date('2026-10-08'),
+      );
+      // A default cycle anchor reads as the start too: 3 on / 2 off from
+      // 2026-09-05 plans 09-05..07 and 09-10, so the 4th dose is 09-10.
+      // Counted from the stored 2026-09-01, 09-05 would be an off day and
+      // the 4th dose 09-11.
+      expect(
+        endDate(
+          '2026-09-05',
+          timed(['21:00']),
+          4,
+          period: ProtocolPeriod(
+            cycle: ProtocolCycle(
+              onDays: 3,
+              offDays: 2,
+              anchor: date('2026-09-01'),
+              anchorIsDefault: true,
+            ),
+          ),
+        ),
+        date('2026-09-10'),
+      );
+    });
+
     test('off-cycle days are skipped', () {
       // 3 on / 2 off from the start: doses on 09-01..03, 09-06..08, 09-11.
       final period = ProtocolPeriod(

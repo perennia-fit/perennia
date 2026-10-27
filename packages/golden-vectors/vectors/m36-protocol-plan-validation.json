@@ -589,6 +589,13 @@
       "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_absent"]}
     },
     {
+      "name": "as-needed-rule-with-a-blank-amount-entered-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_absent: absent means null or missing. A blank amountEntered (spaces) is a value, so an as_needed rule that carries it rejects, though amount_required would read the same blank as missing.",
+      "input": {"rule": {"v": 1, "kind": "as_needed"}, "amountValue": null, "amountEntered": "  ", "unit": null, "route": null},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_absent"]}
+    },
+    {
       "name": "unscheduled-rule-with-a-unit-rejects",
       "validator": "schedule_rule",
       "note": "D7 amount_absent: any one of the four amount fields non-null rejects; here only the unit is set.",

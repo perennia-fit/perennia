@@ -2920,6 +2920,539 @@
       ]
     },
     {
+      "name": "default-every-n-anchor-reads-the-start",
+      "function": "plan_days",
+      "note": "D4: a default every-N anchor is read as the Protocol's start, whatever date it stores. Every 2 days from the start 2026-09-04 plans 2026-09-04 and 2026-09-06. Counted from the stored 2026-09-01, 2026-09-04 would be day 3 and not planned.",
+      "input": {
+        "protocols": [
+          {
+            "protocolId": "protocol-default-every",
+            "startLocalDate": "2026-09-04",
+            "endLocalDate": null,
+            "period": null,
+            "archivedOn": null,
+            "remindersEnabled": false,
+            "members": [
+              {
+                "memberId": "member-x",
+                "compoundId": "compound-x",
+                "archivedOn": null,
+                "versions": [
+                  {
+                    "id": "ver-x-1",
+                    "effectiveFrom": "2026-09-04",
+                    "rule": {
+                      "v": 1,
+                      "kind": "timed",
+                      "days": {"kind": "every_n_days", "n": 2, "anchor": "2026-09-01", "anchor_is_default": true},
+                      "times": ["08:00"]
+                    },
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "from": "2026-09-04",
+        "to": "2026-09-06"
+      },
+      "expected": [
+        {
+          "protocolId": "protocol-default-every",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-04",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-default-every",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-05",
+          "state": "not_scheduled_today",
+          "planned": []
+        },
+        {
+          "protocolId": "protocol-default-every",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-06",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        }
+      ]
+    },
+    {
+      "name": "default-anchor-on-a-later-version-follows-the-start",
+      "function": "plan_days",
+      "note": "D1, D4: every version reads a default anchor as the start, not only the first. The start 2026-09-04 is after both versions' stored dates. ver-x-2, every 2 days from 2026-09-10 with a default anchor stored as 2026-09-01, counts from 2026-09-04: 2026-09-10 is day 6 (planned) and 2026-09-11 day 7. Counted from the stored date, it would be the other way round.",
+      "input": {
+        "protocols": [
+          {
+            "protocolId": "protocol-default-later",
+            "startLocalDate": "2026-09-04",
+            "endLocalDate": null,
+            "period": null,
+            "archivedOn": null,
+            "remindersEnabled": false,
+            "members": [
+              {
+                "memberId": "member-x",
+                "compoundId": "compound-x",
+                "archivedOn": null,
+                "versions": [
+                  {
+                    "id": "ver-x-1",
+                    "effectiveFrom": "2026-09-01",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  },
+                  {
+                    "id": "ver-x-2",
+                    "effectiveFrom": "2026-09-10",
+                    "rule": {
+                      "v": 1,
+                      "kind": "timed",
+                      "days": {"kind": "every_n_days", "n": 2, "anchor": "2026-09-01", "anchor_is_default": true},
+                      "times": ["08:00"]
+                    },
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "from": "2026-09-09",
+        "to": "2026-09-11"
+      },
+      "expected": [
+        {
+          "protocolId": "protocol-default-later",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-09",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-default-later",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-10",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-default-later",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-11",
+          "state": "not_scheduled_today",
+          "planned": []
+        }
+      ]
+    },
+    {
+      "name": "default-cycle-anchor-reads-the-start",
+      "function": "plan_days",
+      "note": "D4: a default cycle anchor is read as the Protocol's start. 3 on and 2 off from the start 2026-09-05: 2026-09-05 is cycle day 0 (on), 2026-09-08 and 2026-09-09 are off, and 2026-09-10 starts the next cycle. Counted from the stored 2026-09-01, 2026-09-05 would be day 4, off.",
+      "input": {
+        "protocols": [
+          {
+            "protocolId": "protocol-default-cycle",
+            "startLocalDate": "2026-09-05",
+            "endLocalDate": null,
+            "period": {"v": 1, "cycle": {"on_days": 3, "off_days": 2, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []},
+            "archivedOn": null,
+            "remindersEnabled": false,
+            "members": [
+              {
+                "memberId": "member-x",
+                "compoundId": "compound-x",
+                "archivedOn": null,
+                "versions": [
+                  {
+                    "id": "ver-x-1",
+                    "effectiveFrom": "2026-09-01",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["08:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "from": "2026-09-05",
+        "to": "2026-09-10"
+      },
+      "expected": [
+        {
+          "protocolId": "protocol-default-cycle",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-05",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-default-cycle",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-06",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-default-cycle",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-07",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-default-cycle", "compoundId": "compound-x", "localDate": "2026-09-08", "state": "off_cycle", "planned": []},
+        {"protocolId": "protocol-default-cycle", "compoundId": "compound-x", "localDate": "2026-09-09", "state": "off_cycle", "planned": []},
+        {
+          "protocolId": "protocol-default-cycle",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-10",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        }
+      ]
+    },
+    {
+      "name": "start-moved-later-needs-no-copy",
+      "function": "plan_days",
+      "note": "D1: moving the start later inserts nothing. These are the versions of start-moved-later-past-an-edit without its copy: on the new start 2026-09-12 the latest version dated on or before it is already ver-x-2, so the PlanDays are the same.",
+      "input": {
+        "protocols": [
+          {
+            "protocolId": "protocol-later",
+            "startLocalDate": "2026-09-12",
+            "endLocalDate": null,
+            "period": null,
+            "archivedOn": null,
+            "remindersEnabled": false,
+            "members": [
+              {
+                "memberId": "member-x",
+                "compoundId": "compound-x",
+                "archivedOn": null,
+                "versions": [
+                  {
+                    "id": "ver-x-1",
+                    "effectiveFrom": "2026-09-01",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  },
+                  {
+                    "id": "ver-x-2",
+                    "effectiveFrom": "2026-09-10",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["08:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "from": "2026-09-10",
+        "to": "2026-09-13"
+      },
+      "expected": [
+        {"protocolId": "protocol-later", "compoundId": "compound-x", "localDate": "2026-09-10", "state": "outside", "planned": []},
+        {"protocolId": "protocol-later", "compoundId": "compound-x", "localDate": "2026-09-11", "state": "outside", "planned": []},
+        {
+          "protocolId": "protocol-later",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-12",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-later",
+          "compoundId": "compound-x",
+          "localDate": "2026-09-13",
+          "state": "planned",
+          "planned": [{"localTime": "08:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        }
+      ]
+    },
+    {
+      "name": "start-moved-earlier-keeps-a-mid-course-member-to-its-first-date",
+      "function": "plan_days",
+      "note": "D1: the start moved from 2026-10-10 to 2026-10-05. Member A was planned from the old start, so it has a copy of its earliest version dated 2026-10-05 and plans the new days. Member B was added mid-course on 2026-10-12 and gets no copy: it reads removed from 2026-10-05 to 2026-10-11, not Not logged, and is planned from 2026-10-12.",
+      "input": {
+        "protocols": [
+          {
+            "protocolId": "protocol-earlier",
+            "startLocalDate": "2026-10-05",
+            "endLocalDate": null,
+            "period": null,
+            "archivedOn": null,
+            "remindersEnabled": false,
+            "members": [
+              {
+                "memberId": "member-a",
+                "compoundId": "compound-a",
+                "archivedOn": null,
+                "versions": [
+                  {
+                    "id": "ver-a-1",
+                    "effectiveFrom": "2026-10-10",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  },
+                  {
+                    "id": "ver-a-2",
+                    "effectiveFrom": "2026-10-05",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  }
+                ]
+              },
+              {
+                "memberId": "member-b",
+                "compoundId": "compound-b",
+                "archivedOn": null,
+                "versions": [
+                  {
+                    "id": "ver-b-1",
+                    "effectiveFrom": "2026-10-12",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["21:00"]},
+                    "amountValue": 5,
+                    "amountEntered": "5",
+                    "unit": "gram",
+                    "route": "oral"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "from": "2026-10-05",
+        "to": "2026-10-12"
+      },
+      "expected": [
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-a",
+          "localDate": "2026-10-05",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-earlier", "compoundId": "compound-b", "localDate": "2026-10-05", "state": "removed", "planned": []},
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-a",
+          "localDate": "2026-10-06",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-earlier", "compoundId": "compound-b", "localDate": "2026-10-06", "state": "removed", "planned": []},
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-a",
+          "localDate": "2026-10-07",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-earlier", "compoundId": "compound-b", "localDate": "2026-10-07", "state": "removed", "planned": []},
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-a",
+          "localDate": "2026-10-08",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-earlier", "compoundId": "compound-b", "localDate": "2026-10-08", "state": "removed", "planned": []},
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-a",
+          "localDate": "2026-10-09",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-earlier", "compoundId": "compound-b", "localDate": "2026-10-09", "state": "removed", "planned": []},
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-a",
+          "localDate": "2026-10-10",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-earlier", "compoundId": "compound-b", "localDate": "2026-10-10", "state": "removed", "planned": []},
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-a",
+          "localDate": "2026-10-11",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-earlier", "compoundId": "compound-b", "localDate": "2026-10-11", "state": "removed", "planned": []},
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-a",
+          "localDate": "2026-10-12",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-b",
+          "localDate": "2026-10-12",
+          "state": "planned",
+          "planned": [{"localTime": "21:00", "amountValue": 5, "amountEntered": "5", "unit": "gram", "route": "oral"}]
+        }
+      ]
+    },
+    {
+      "name": "start-moved-earlier-extends-an-archived-member",
+      "function": "plan_days",
+      "note": "D1: an archived member was part of the course from its start, so moving the start earlier copies it too. Planned from the old start 2026-10-10 and archived on 2026-10-15, with a copy dated from the new start 2026-10-05, it is planned from 2026-10-05 through its archive day 2026-10-15 and reads removed after.",
+      "input": {
+        "protocols": [
+          {
+            "protocolId": "protocol-earlier",
+            "startLocalDate": "2026-10-05",
+            "endLocalDate": null,
+            "period": null,
+            "archivedOn": null,
+            "remindersEnabled": false,
+            "members": [
+              {
+                "memberId": "member-x",
+                "compoundId": "compound-x",
+                "archivedOn": "2026-10-15",
+                "versions": [
+                  {
+                    "id": "ver-x-1",
+                    "effectiveFrom": "2026-10-10",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  },
+                  {
+                    "id": "ver-x-2",
+                    "effectiveFrom": "2026-10-05",
+                    "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+                    "amountValue": 10,
+                    "amountEntered": "10",
+                    "unit": "milligram",
+                    "route": "oral"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "from": "2026-10-04",
+        "to": "2026-10-16"
+      },
+      "expected": [
+        {"protocolId": "protocol-earlier", "compoundId": "compound-x", "localDate": "2026-10-04", "state": "outside", "planned": []},
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-05",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-06",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-07",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-08",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-09",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-10",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-11",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-12",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-13",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-14",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {
+          "protocolId": "protocol-earlier",
+          "compoundId": "compound-x",
+          "localDate": "2026-10-15",
+          "state": "planned",
+          "planned": [{"localTime": "09:00", "amountValue": 10, "amountEntered": "10", "unit": "milligram", "route": "oral"}]
+        },
+        {"protocolId": "protocol-earlier", "compoundId": "compound-x", "localDate": "2026-10-16", "state": "removed", "planned": []}
+      ]
+    },
+    {
       "name": "overlapping-protocols-for-one-compound",
       "function": "plan_days",
       "note": "D4: one Compound in two Protocols gets one PlanDay per Protocol; protocol-bulk ends 2026-10-31.",
