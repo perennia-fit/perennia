@@ -28,7 +28,6 @@ final class PlannedRow {
     required this.plannedLocalTime,
     required this.amount,
     required this.status,
-    this.doseId,
   });
 
   final String protocolId;
@@ -44,9 +43,6 @@ final class PlannedRow {
   /// The planned amount, unit and route.
   final PlanAmount amount;
   final PlannedRowStatus status;
-
-  /// The Dose that fills the slot, or null when it is unfilled.
-  final String? doseId;
 }
 
 /// One Protocol's rows on the Planned list, in display order.
@@ -72,22 +68,35 @@ final class PlannedDay {
   PlannedDay({
     required this.localDate,
     required this.today,
+    required this.day,
     required Iterable<PlanDay> planDays,
     required Iterable<DayStatus> dayStatuses,
+    required Iterable<DayStatus> rowStatuses,
     required Map<String, CompoundRecord> compounds,
     required Map<String, ProtocolOptionRecord> protocols,
   })  : planDays = List<PlanDay>.unmodifiable(planDays),
         dayStatuses = List<DayStatus>.unmodifiable(dayStatuses),
+        _rowStatuses = List<DayStatus>.unmodifiable(rowStatuses),
         compounds = Map<String, CompoundRecord>.unmodifiable(compounds),
         protocols = Map<String, ProtocolOptionRecord>.unmodifiable(protocols);
 
   final ProtocolDayDate localDate;
+
+  /// The day's logged Doses, read in the same emission the Day Statuses were
+  /// matched against, so the log and the Planned list never disagree.
+  final ProtocolDayRecord day;
 
   /// The device's local date when this was read; it decides Pending against
   /// Not logged, and whether the day has Day Statuses at all.
   final ProtocolDayDate today;
   final List<PlanDay> planDays;
   final List<DayStatus> dayStatuses;
+
+  /// The statuses the rows are read from: [dayStatuses] on today or a past
+  /// day. A future day has none, so its slots come from the same matching
+  /// run over its PlanDays with no Doses, which keeps one numbering of slots
+  /// for every day; no status is read from them.
+  final List<DayStatus> _rowStatuses;
 
   /// Every Compound a Protocol on this day plans, archived ones included, by
   /// id. A Dose logged from a row snapshots its name and strength from here.
@@ -97,7 +106,6 @@ final class PlannedDay {
   final Map<String, ProtocolOptionRecord> protocols;
 
   bool get isToday => localDate == today;
-  bool get isPast => localDate.compareTo(today) < 0;
   bool get isFuture => localDate.compareTo(today) > 0;
 
   /// The Planned list's rows, grouped under their slot's Protocol. Empty
@@ -106,21 +114,14 @@ final class PlannedDay {
   /// Groups are ordered by Protocol name, then id. Within a group, rows are
   /// ordered by planned time (untimed last), then Compound name, then
   /// Compound id, then slot.
-  ///
-  /// A future day has no Day Statuses, so its slots are numbered by running
-  /// the same matching over its PlanDays with no Doses. That keeps one
-  /// numbering of slots for every day, rather than a second ordering here.
   late final List<PlannedRowGroup> groups = _groups();
 
   /// Whether any slot is planned on the day.
   bool get hasPlanned => groups.isNotEmpty;
 
   List<PlannedRowGroup> _groups() {
-    final statuses = isFuture
-        ? plan_core.dayStatuses(planDays, const <PlanDose>[], localDate)
-        : dayStatuses;
     final rowsByProtocol = <String, List<PlannedRow>>{};
-    for (final status in statuses) {
+    for (final status in _rowStatuses) {
       if (status.localDate != localDate) {
         continue;
       }
@@ -132,7 +133,6 @@ final class PlannedDay {
                 slot: fill.slot,
                 plannedLocalTime: fill.plannedLocalTime,
                 amount: fill.amount,
-                doseId: fill.doseId,
                 status: _rowStatus(fill),
               ),
             );
@@ -200,9 +200,10 @@ final class PlannedDay {
 /// Read-only local repository deriving the Planned list from the plan rows
 /// and the day's Doses (D6), the way [RoutineUpNextRepository] derives Up
 /// next: nothing is stored, so there is nothing here to write, batch or
-/// Activity-Log. Two Drift watches (the plan; the day's Doses) are combined
-/// and re-derived through the shared core (`planDays`, `dayStatuses`) on
-/// every emission from either.
+/// Activity-Log. Two Drift watches (the plan; the day's Doses, read through
+/// `ProtocolsRepository.watchProtocolDay`, the same watch the day's log
+/// shows) are combined and re-derived through the shared core (`planDays`,
+/// `dayStatuses`) on every emission from either.
 ///
 /// It builds `PlanProtocol`s and `PlanDose`s from Drift. Rows tombstoned by
 /// undo are left out, and archived Protocols and Protocol Members are kept
@@ -217,17 +218,21 @@ final class ProtocolPlanRepository {
 
   /// The Planned list for [localDate]: its PlanDays, its Day Statuses (none
   /// when the date is after [today]), and the Compounds and Protocols its
-  /// rows name. [today] is the device's local date, read now when omitted.
+  /// rows name, with the day's logged Doses they were matched against.
+  /// [today] is the caller's local date (its clock), never read here.
   /// Re-emits whenever a Protocol, Protocol Member, Schedule Version,
-  /// Compound or Dose changes, so the list invalidates mechanically.
+  /// Compound or Dose changes, so the list invalidates mechanically. It does
+  /// not re-emit when midnight passes: the caller re-reads with a new
+  /// [today].
   Stream<PlannedDay> watchPlannedDay(
     ProtocolDayDate localDate, {
-    ProtocolDayDate? today,
+    required ProtocolDayDate today,
   }) {
     return _combineLatest2(
       _planQuery().watch().map(_planFromJoinedRows),
-      _doseQuery(localDate).watch().map(_planDosesFromRows),
-      (plan, doses) => _plannedDay(localDate, today, plan, doses),
+      _repositories.protocols.watchProtocolDay(localDate),
+      (_PlanRows plan, ProtocolDayRecord day) =>
+          _plannedDay(localDate, today, plan, day),
     );
   }
 
@@ -236,29 +241,33 @@ final class ProtocolPlanRepository {
   /// snapshot.
   Future<PlannedDay> plannedDay(
     ProtocolDayDate localDate, {
-    ProtocolDayDate? today,
+    required ProtocolDayDate today,
   }) async {
     final plan = _planFromJoinedRows(await _planQuery().get());
-    final doses = _planDosesFromRows(await _doseQuery(localDate).get());
-    return _plannedDay(localDate, today, plan, doses);
+    final day = await _repositories.protocols.protocolDay(localDate);
+    return _plannedDay(localDate, today, plan, day);
   }
 
   PlannedDay _plannedDay(
     ProtocolDayDate localDate,
-    ProtocolDayDate? today,
+    ProtocolDayDate today,
     _PlanRows plan,
-    List<PlanDose> doses,
+    ProtocolDayRecord day,
   ) {
-    final resolvedToday = today ?? ProtocolDayDate.fromDateTime(DateTime.now());
     final days = planDays(plan.protocols, localDate, localDate);
-    final statuses = localDate.compareTo(resolvedToday) > 0
+    final isFuture = localDate.compareTo(today) > 0;
+    final statuses = isFuture
         ? const <DayStatus>[]
-        : dayStatuses(days, doses, resolvedToday);
+        : dayStatuses(days, _planDoses(day.doses), today);
     return PlannedDay(
       localDate: localDate,
-      today: resolvedToday,
+      today: today,
+      day: day,
       planDays: days,
       dayStatuses: statuses,
+      rowStatuses: isFuture
+          ? dayStatuses(days, const <PlanDose>[], localDate)
+          : statuses,
       compounds: plan.compounds,
       protocols: plan.protocolOptions,
     );
@@ -339,9 +348,9 @@ final class ProtocolPlanRepository {
                   memberId: member.id,
                   compoundId: member.compoundId,
                   archivedOn: _nullableProtocolDay(member.archivedOn),
-                  versions: List<ScheduleVersion>.of(
-                    versionsByMember[member.id]!,
-                  )..sort(compareScheduleVersions),
+                  // Already in `compareScheduleVersions` order: the query
+                  // orders each member's rows by `effective_from`, then id.
+                  versions: versionsByMember[member.id]!,
                 ),
               ),
         ),
@@ -357,20 +366,8 @@ final class ProtocolPlanRepository {
   /// The day's Doses as matching reads them (D6 step 2): every Dose not
   /// archived, tagged or not, of a catalogue Compound, numbered by local
   /// time and then id. A Dose logged without a Compound can fill no slot.
-  SimpleSelectStatement<$DosesTable, DoseRow> _doseQuery(
-    ProtocolDayDate localDate,
-  ) {
-    return _database.select(_database.doses)
-      ..where(
-        (row) =>
-            row.deletedAt.isNull() &
-            row.localDate.equals(localDate.storageValue) &
-            row.compoundId.isNotNull(),
-      );
-  }
-
-  List<PlanDose> _planDosesFromRows(List<DoseRow> rows) {
-    final records = rows.map(_repositories.protocols._doseFromRow).toList()
+  List<PlanDose> _planDoses(Iterable<DoseRecord> doses) {
+    final records = doses.where((dose) => dose.compoundId != null).toList()
       ..sort((a, b) {
         final byTime = a.localTime.compareTo(b.localTime);
         return byTime != 0 ? byTime : a.id.compareTo(b.id);
@@ -393,18 +390,12 @@ final class ProtocolPlanRepository {
   }
 
   ScheduleVersion _scheduleVersionFromRow(ScheduleRow row) {
-    final unit = row.doseUnit;
-    final route = row.route;
+    final record = _repositories.protocols._scheduleRecordFromRow(row);
     return ScheduleVersion(
-      id: row.id,
-      effectiveFrom: ProtocolDayDate.parse(row.effectiveFrom),
-      rule: ScheduleRule.fromJson(jsonDecode(row.rule)),
-      amount: PlanAmount(
-        amountValue: row.doseAmountValue,
-        amountEntered: row.doseAmountEntered,
-        unit: unit == null ? null : doseUnitFromName(unit),
-        route: route == null ? null : doseRouteFromName(route),
-      ),
+      id: record.id,
+      effectiveFrom: record.effectiveFrom,
+      rule: record.rule,
+      amount: record.amount,
     );
   }
 }

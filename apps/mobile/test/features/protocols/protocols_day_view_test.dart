@@ -599,7 +599,111 @@ void main() {
         expect(closed, isTrue);
       },
     );
+
+    testWidgets(
+      'a double tap on "Log all planned" logs the due rows once',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+        );
+
+        // Two taps before any frame: both reach the button's handler.
+        await tester.tap(find.byKey(ProtocolsDayView.logAllPlannedButtonKey));
+        await tester.tap(find.byKey(ProtocolsDayView.logAllPlannedButtonKey));
+        await _pumpUntilFound(tester, find.text('Logged'));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final doses = await database.select(database.doses).get();
+        expect(doses.map((dose) => dose.compoundName).toList()..sort(),
+            <String>['AgeMate', 'TRT']);
+        expect(find.text('Logged'), findsNWidgets(2));
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'when local midnight passes, the day the view opened on reads as past: '
+      'Not logged, with no bulk action',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        var now = _cuj1Now;
+        await _pumpLiveView(tester, repositories, () => now);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+        );
+        expect(find.text('Pending'), findsNWidgets(3));
+
+        now = DateTime(2026, 10, 28, 8);
+        await tester.pump(const Duration(minutes: 1));
+        await _pumpUntilFound(tester, find.text('Not logged'));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(find.text('Not logged'), findsNWidgets(3));
+        expect(find.text('Pending'), findsNothing);
+        expect(
+            find.byKey(ProtocolsDayView.logAllPlannedButtonKey), findsNothing);
+
+        await _closeLive(tester, database);
+      },
+    );
   });
+}
+
+/// Seeds the CUJ 1 stack in the test's own zone, with frames pumped until it
+/// lands, so the database's queue and stream timers all run on fake time.
+Future<void> _seedOnFakeTime(
+  WidgetTester tester,
+  TrainingRepositories repositories,
+) async {
+  var seeded = false;
+  unawaited(_seedDailyStack(repositories).then((_) => seeded = true));
+  for (var frame = 0; frame < 100 && !seeded; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  expect(seeded, isTrue);
+}
+
+/// The Protocol Day view over a real repository and [clock].
+Future<void> _pumpLiveView(
+  WidgetTester tester,
+  TrainingRepositories repositories,
+  DateTime Function() clock,
+) {
+  return tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        trainingRepositoriesProvider.overrideWith((ref) => repositories),
+        protocolsClockProvider.overrideWithValue(clock),
+      ],
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: AppTheme.light(),
+        home: const ProtocolsDayView(),
+      ),
+    ),
+  );
+}
+
+/// Unmounts, then closes the database on fake time: Drift's close waits for
+/// its stream-cache timers, which only frames can fire.
+Future<void> _closeLive(WidgetTester tester, AppDatabase database) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  var closed = false;
+  unawaited(database.close().then((_) => closed = true));
+  for (var frame = 0; frame < 100 && !closed; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  expect(closed, isTrue);
 }
 
 Future<void> _pumpView(
@@ -844,13 +948,17 @@ PlannedDay _plannedDay(
   List<PlanProtocol>? protocols,
 }) {
   final days = planDays(protocols ?? _protocols(), localDate, localDate);
+  final isFuture = localDate.compareTo(_today) > 0;
+  final statuses =
+      isFuture ? const <DayStatus>[] : dayStatuses(days, doses, _today);
   return PlannedDay(
     localDate: localDate,
     today: _today,
+    day: _emptyDay(localDate),
     planDays: days,
-    dayStatuses: localDate.compareTo(_today) > 0
-        ? const <DayStatus>[]
-        : dayStatuses(days, doses, _today),
+    dayStatuses: statuses,
+    rowStatuses:
+        isFuture ? dayStatuses(days, const <PlanDose>[], localDate) : statuses,
     compounds: <String, CompoundRecord>{
       for (final (id, name, unit) in <(String, String, DoseUnit)>[
         ('c-trt', 'TRT', DoseUnit.milliliter),

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
@@ -121,17 +119,40 @@ final protocolDayControllerProvider =
 /// The derived `Protocol Day` for the selected date, with its Planned list
 /// (D6). Nothing here is stored or synced — the day-view is computed on read.
 class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
+  /// The local date this build read as today. Day Statuses, row labels and
+  /// "Log all planned" all depend on it, so [refreshIfDayChanged] rebuilds
+  /// when the clock has moved past it.
+  ProtocolDayDate? _today;
+
+  /// The "Log all planned" call in flight, shared by any tap made before it
+  /// finishes, so a double tap cannot log the same due doses twice.
+  Future<List<LogDoseResult>>? _logAllPlannedInFlight;
+
   @override
   Stream<ProtocolDayState> build() {
-    final repository = ref.watch(protocolsRepositoryProvider);
     final planRepository = ref.watch(protocolPlanRepositoryProvider);
     final selectedDate = ref.watch(selectedProtocolDayProvider);
-    final today =
+    final today = _today =
         ProtocolDayDate.fromDateTime(ref.read(protocolsClockProvider)());
-    return _combineLatest(
-      repository.watchProtocolDay(selectedDate),
-      planRepository.watchPlannedDay(selectedDate, today: today),
-    );
+    // One stream carries the day's Doses and the Planned list matched
+    // against them, so the log and the rows always come from one read.
+    return planRepository.watchPlannedDay(selectedDate, today: today).map(
+          (planned) => ProtocolDayState(day: planned.day, plannedDay: planned),
+        );
+  }
+
+  /// Rebuilds the day when the local date has moved past the one this build
+  /// read as today (local midnight, or a resume on a later day). Without it
+  /// the view would keep labelling yesterday as today: "Pending" rows and a
+  /// "Log all planned" button on a past day. The selected Protocol Day is
+  /// left as it is.
+  void refreshIfDayChanged() {
+    final today = _today;
+    final now =
+        ProtocolDayDate.fromDateTime(ref.read(protocolsClockProvider)());
+    if (today != null && now != today) {
+      ref.invalidateSelf();
+    }
   }
 
   /// "Log all planned" (D6): logs every due unfilled planned dose of today,
@@ -143,8 +164,16 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   ///
   /// Reads today's plan afresh rather than the rendered state, so it acts on
   /// what is stored at the moment of the tap, whatever day is selected.
-  /// Returns the logged results, empty when nothing was due.
-  Future<List<LogDoseResult>> logAllPlanned() async {
+  /// Returns the logged results, empty when nothing was due. A call made
+  /// while another is in flight shares it rather than reading the plan
+  /// again before the first one's Batch is written.
+  Future<List<LogDoseResult>> logAllPlanned() {
+    return _logAllPlannedInFlight ??= _logAllPlanned().whenComplete(() {
+      _logAllPlannedInFlight = null;
+    });
+  }
+
+  Future<List<LogDoseResult>> _logAllPlanned() async {
     final now = ref.read(protocolsClockProvider)();
     final today = ProtocolDayDate.fromDateTime(now);
     final plannedDay = await ref
@@ -266,51 +295,6 @@ DoseSnapshotDraft _plannedDoseDraft(
     protocol: plannedDay.protocols[row.protocolId] ??
         (throw StateError('Planned dose has no Protocol ${row.protocolId}.')),
   );
-}
-
-/// Combines the day's Doses with its Planned list, emitting once both have
-/// produced a value. Both are Drift watches, live for the subscription.
-Stream<ProtocolDayState> _combineLatest(
-  Stream<ProtocolDayRecord> days,
-  Stream<PlannedDay> plannedDays,
-) {
-  late final StreamController<ProtocolDayState> controller;
-  StreamSubscription<ProtocolDayRecord>? daySubscription;
-  StreamSubscription<PlannedDay>? plannedSubscription;
-  ProtocolDayRecord? latestDay;
-  PlannedDay? latestPlanned;
-
-  void emitIfReady() {
-    final day = latestDay;
-    final planned = latestPlanned;
-    if (day != null && planned != null) {
-      controller.add(ProtocolDayState(day: day, plannedDay: planned));
-    }
-  }
-
-  controller = StreamController<ProtocolDayState>(
-    onListen: () {
-      daySubscription = days.listen(
-        (value) {
-          latestDay = value;
-          emitIfReady();
-        },
-        onError: controller.addError,
-      );
-      plannedSubscription = plannedDays.listen(
-        (value) {
-          latestPlanned = value;
-          emitIfReady();
-        },
-        onError: controller.addError,
-      );
-    },
-    onCancel: () async {
-      await daySubscription?.cancel();
-      await plannedSubscription?.cancel();
-    },
-  );
-  return controller.stream;
 }
 
 class ProtocolDayState {

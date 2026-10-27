@@ -20,10 +20,6 @@ import '../../domain/protocols/dose_validation.dart';
 import '../../domain/protocols/protocol_plan.dart';
 import '../../domain/protocols/protocol_plan_days.dart'
     show dayStatuses, planDays, protocolCycleFromStart, scheduleDaysFromStart;
-// Prefixed as well, for the one reader whose own field is named
-// `dayStatuses` (`PlannedDay`).
-import '../../domain/protocols/protocol_plan_days.dart' as plan_core
-    show dayStatuses;
 import '../../domain/protocols/protocol_plan_validation.dart';
 import '../../domain/protocols/protocol_validation.dart';
 import '../../domain/protocols/protocols.dart';

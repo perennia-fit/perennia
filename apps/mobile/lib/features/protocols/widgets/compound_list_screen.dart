@@ -333,20 +333,14 @@ class _CompoundRow extends ConsumerWidget {
     if (!context.mounted) {
       return;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-        ),
-        // The sheet logs on the selected Protocol Day, so a past day
-        // defaults to 12:00 on that date and today to now (D6).
-        child: LogDoseSheet(
-          compound: compound,
-          lastDose: lastDose,
-          initialDate: protocolDay,
-        ),
+    // The sheet logs on the selected Protocol Day, so a past day defaults to
+    // 12:00 on that date and today to now (D6).
+    await showLogDoseSheet(
+      context,
+      LogDoseSheet(
+        compound: compound,
+        lastDose: lastDose,
+        initialDate: protocolDay,
       ),
     );
   }

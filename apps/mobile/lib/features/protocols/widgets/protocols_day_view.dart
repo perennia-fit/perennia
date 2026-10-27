@@ -49,9 +49,21 @@ class ProtocolsDayView extends ConsumerStatefulWidget {
 }
 
 class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
+  /// Checks once a minute whether local midnight has passed, so "today" (its
+  /// row labels and "Log all planned") never sticks to yesterday.
+  Timer? _dayBoundaryTimer;
+
+  /// Checks on resume as well: a suspended app's timers may not run on time.
+  AppLifecycleListener? _lifecycleListener;
+
   @override
   void initState() {
     super.initState();
+    _dayBoundaryTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _refreshIfDayChanged(),
+    );
+    _lifecycleListener = AppLifecycleListener(onResume: _refreshIfDayChanged);
     // Idempotently load the OTC seed library so the picker has neutral starter
     // Compounds on a first run (PROTOCOLS.md §3). Local-first: this never blocks
     // the logging path, and re-running is a no-op (stable ids).
@@ -63,6 +75,20 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
         ref.read(protocolDayControllerProvider.notifier).ensureOtcLibrarySeeded(),
       );
     });
+  }
+
+  @override
+  void dispose() {
+    _dayBoundaryTimer?.cancel();
+    _lifecycleListener?.dispose();
+    super.dispose();
+  }
+
+  void _refreshIfDayChanged() {
+    if (!mounted) {
+      return;
+    }
+    ref.read(protocolDayControllerProvider.notifier).refreshIfDayChanged();
   }
 
   @override
@@ -213,15 +239,39 @@ class _ProtocolDayBody extends StatelessWidget {
 ///   the log sheet on that date. There is no bulk action.
 /// * A future day: rows show their times and amounts only, with no label
 ///   and no log action.
-class _PlannedList extends ConsumerWidget {
+class _PlannedList extends ConsumerStatefulWidget {
   const _PlannedList({required this.plannedDay});
 
   final PlannedDay plannedDay;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PlannedList> createState() => _PlannedListState();
+}
+
+class _PlannedListState extends ConsumerState<_PlannedList> {
+  /// True while "Log all planned" is writing. The button is disabled until
+  /// the call finishes, so a second tap cannot log the same doses again.
+  bool _loggingAll = false;
+
+  Future<void> _logAllPlanned() async {
+    if (_loggingAll) {
+      return;
+    }
+    setState(() => _loggingAll = true);
+    try {
+      await ref.read(protocolDayControllerProvider.notifier).logAllPlanned();
+    } finally {
+      if (mounted) {
+        setState(() => _loggingAll = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final colors = context.colors;
     final l10n = context.l10n;
+    final plannedDay = widget.plannedDay;
     final groups = plannedDay.groups;
     final anyPending = groups.any(
       (group) => group.rows.any(
@@ -257,11 +307,8 @@ class _PlannedList extends ConsumerWidget {
                     style: FilledButton.styleFrom(
                       backgroundColor: colors.save,
                     ),
-                    onPressed: () => unawaited(
-                      ref
-                          .read(protocolDayControllerProvider.notifier)
-                          .logAllPlanned(),
-                    ),
+                    onPressed:
+                        _loggingAll ? null : () => unawaited(_logAllPlanned()),
                     child: Text(l10n.plannedListLogAll),
                   ),
                 ),
@@ -318,7 +365,6 @@ class _PlannedRowTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.colors;
     final l10n = context.l10n;
     final compound = plannedDay.compounds[row.compoundId];
     final plannedTime = row.plannedLocalTime;
@@ -339,57 +385,30 @@ class _PlannedRowTile extends ConsumerWidget {
     // row is missing, which no validated plan holds.
     final canLog = !plannedDay.isFuture && compound != null;
 
-    final content = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppDimens.dense / 2),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    compound?.name ?? row.compoundId,
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    detail,
-                    style: TextStyle(color: colors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            if (row.status != PlannedRowStatus.none)
-              _PlannedRowLabel(status: row.status),
-          ],
-        ),
-      ),
-    );
-
-    if (!canLog) {
-      return KeyedSubtree(
-        key: ProtocolsDayView.plannedRowKey(
-          row.protocolId,
-          row.compoundId,
-          row.slot,
-        ),
-        child: content,
-      );
-    }
     return InkWell(
       key: ProtocolsDayView.plannedRowKey(
         row.protocolId,
         row.compoundId,
         row.slot,
       ),
-      onTap: () => unawaited(_openLogSheet(context, compound)),
-      child: content,
+      onTap: canLog ? () => unawaited(_openLogSheet(context, compound)) : null,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppDimens.dense / 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: _DayRowText(
+                  title: compound?.name ?? row.compoundId,
+                  detail: detail,
+                ),
+              ),
+              _PlannedRowLabel(status: row.status),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -402,27 +421,23 @@ class _PlannedRowTile extends ConsumerWidget {
     CompoundRecord compound,
   ) async {
     final plannedTime = row.plannedLocalTime;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-        ),
-        child: LogDoseSheet(
-          compound: compound,
-          initialDate: plannedDay.localDate,
-          initialTime: plannedTime == null ? null : _timeOfDay(plannedTime),
-          plannedAmount: row.amount,
-          plannedRoute: row.amount.route,
-          protocol: protocol,
-        ),
+    await showLogDoseSheet(
+      context,
+      LogDoseSheet(
+        compound: compound,
+        initialDate: plannedDay.localDate,
+        initialTime: plannedTime == null ? null : _timeOfDay(plannedTime),
+        plannedAmount: row.amount,
+        plannedRoute: row.amount.route,
+        protocol: protocol,
       ),
     );
   }
 }
 
 /// The one label of a Planned list row, as a word with an icon echoing it.
+/// A future day's rows ([PlannedRowStatus.none]) have no label at all (D6),
+/// so this is the one place that decides whether a label shows.
 class _PlannedRowLabel extends StatelessWidget {
   const _PlannedRowLabel({required this.status});
 
@@ -432,6 +447,9 @@ class _PlannedRowLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final l10n = context.l10n;
+    if (status == PlannedRowStatus.none) {
+      return const SizedBox.shrink();
+    }
     final (IconData icon, Color iconColor, String label) = switch (status) {
       PlannedRowStatus.logged => (
           Icons.check_circle,
@@ -448,11 +466,7 @@ class _PlannedRowLabel extends StatelessWidget {
           colors.textSecondary,
           l10n.plannedListRowNotLogged,
         ),
-      PlannedRowStatus.none => (
-          Icons.circle_outlined,
-          colors.textSecondary,
-          ''
-        ),
+      PlannedRowStatus.none => throw StateError('A future row has no label.'),
     };
 
     return Row(
@@ -549,7 +563,6 @@ class _DoseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     final timeLabel = DateFormat.jm().format(dose.tookAt.toLocal());
     // Every part of the detail line reads from the Dose's OWN snapshot — the
     // amount, the route (always paired with text; color is never the sole
@@ -577,41 +590,63 @@ class _DoseRow extends StatelessWidget {
         onTap: () => unawaited(_openDoseEditor(context)),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: AppDimens.dense),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                dose.compoundName,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                detail,
-                style: TextStyle(color: colors.textSecondary),
-              ),
-            ],
-          ),
+          child: _DayRowText(title: dose.compoundName, detail: detail),
         ),
       ),
     );
   }
 
-  Future<void> _openDoseEditor(BuildContext context) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+  Future<void> _openDoseEditor(BuildContext context) {
+    return showLogDoseSheet(context, LogDoseSheet.edit(dose: dose));
+  }
+}
+
+/// The two lines of a Protocol Day row: the Compound's name in bold, and its
+/// detail line below. Shared by the Planned list's rows and the logged Doses,
+/// so the same Compound reads the same in both.
+class _DayRowText extends StatelessWidget {
+  const _DayRowText({required this.title, required this.detail});
+
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        child: LogDoseSheet.edit(dose: dose),
-      ),
+        const SizedBox(height: 2),
+        Text(
+          detail,
+          style: TextStyle(color: colors.textSecondary),
+        ),
+      ],
     );
   }
+}
+
+/// Shows [sheet] the one way every caller does: a scroll-controlled bottom
+/// sheet lifted above the keyboard.
+Future<void> showLogDoseSheet(BuildContext context, LogDoseSheet sheet) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+      ),
+      child: sheet,
+    ),
+  );
 }
 
 /// The Track-tab analog for logging a `Dose` against a KNOWN `Compound`
