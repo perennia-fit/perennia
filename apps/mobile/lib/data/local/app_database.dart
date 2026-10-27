@@ -211,27 +211,6 @@ class FoodEntries extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
-@DataClassName('OpenFoodFactsCacheRow')
-@TableIndex(
-  name: 'open_food_facts_cache_last_accessed_at_index',
-  columns: {#lastAccessedAt},
-)
-class OpenFoodFactsCache extends Table {
-  TextColumn get lookupKey => text()();
-  TextColumn get foodId => text()();
-  TextColumn get name => text()();
-  TextColumn get nutrientValuesJson => text()();
-  BoolColumn get isLiquid => boolean().withDefault(const Constant(false))();
-  TextColumn get servingLabel => text().nullable()();
-  RealColumn get servingSize => real().nullable()();
-  RealColumn get packageSize => real().nullable()();
-  DateTimeColumn get fetchedAt => dateTime()();
-  DateTimeColumn get lastAccessedAt => dateTime()();
-
-  @override
-  Set<Column<Object>> get primaryKey => {lookupKey};
-}
-
 @DataClassName('NutritionGoalRow')
 @TableIndex(name: 'nutrition_goals_nutrient_id_index', columns: {#nutrientId})
 class NutritionGoals extends Table {
@@ -1180,7 +1159,6 @@ class RoutineEntries extends Table {
     Foods,
     FoodEntries,
     NutritionGoals,
-    OpenFoodFactsCache,
     WorkoutExercises,
     ExerciseGroups,
     ExerciseGroupMembers,
@@ -1246,7 +1224,6 @@ class AppDatabase extends _$AppDatabase {
   static const foodsTable = 'foods';
   static const foodEntriesTable = 'food_entries';
   static const nutritionGoalsTable = 'nutrition_goals';
-  static const openFoodFactsCacheTable = 'open_food_facts_cache';
   static const workoutExercisesTable = 'workout_exercises';
   static const exerciseGroupsTable = 'exercise_groups';
   static const exerciseGroupMembersTable = 'exercise_group_members';
@@ -1321,7 +1298,6 @@ class AppDatabase extends _$AppDatabase {
   static const schemaTableNames = <String>[
     ...tableNames,
     monitoringSeriesCacheTable,
-    openFoodFactsCacheTable,
     integrationDataClassConsentsTable,
     syncStatesTable,
     deferredSyncChangesTable,
@@ -1329,7 +1305,7 @@ class AppDatabase extends _$AppDatabase {
   ];
 
   @override
-  int get schemaVersion => 61;
+  int get schemaVersion => 62;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1459,9 +1435,6 @@ class AppDatabase extends _$AppDatabase {
           if (from >= 30 && from < 32) {
             await migrator.addColumn(foods, foods.recipeIngredientsJson);
             await migrator.addColumn(foods, foods.recipeServingCount);
-          }
-          if (from < 33) {
-            await migrator.createTable(openFoodFactsCache);
           }
           if (from < 34) {
             await migrator.createTable(nutritionGoals);
@@ -2019,6 +1992,14 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 61) {
             await _clearProtocolPlans(migrator);
+          }
+          if (from < 62) {
+            // The Open Food Facts cache moved to FoodReferenceDatabase, a
+            // separate file of rebuildable reference data. Its rows are not
+            // copied: the app was unreleased, so no user held a cache worth
+            // keeping, and Food Entries and the Recent list never depended
+            // on it (docs/designs/open-food-facts.md).
+            await customStatement('DROP TABLE IF EXISTS open_food_facts_cache');
           }
         },
         beforeOpen: (_) async => customStatement('PRAGMA foreign_keys = ON'),

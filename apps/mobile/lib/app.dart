@@ -24,6 +24,7 @@ import 'features/routine_plans/widgets/routine_plan_list_screen.dart';
 import 'features/template_picker/repositories/template_picker_feature_repository.dart';
 import 'features/up_next/repositories/up_next_feature_repository.dart';
 import 'app_navigation.dart';
+import 'data/repositories/open_food_facts_repository.dart';
 import 'data/repositories/training_repositories.dart';
 import 'features/settings/repositories/settings_repository.dart';
 import 'features/settings/services/client_crash_reporting.dart';
@@ -49,6 +50,7 @@ class PerenniaRoot extends StatelessWidget {
     this.routinePlanRepository,
     this.workoutTemplateRepository,
     this.settingsRepository,
+    this.openFoodFactsRepository,
     this.extraOverrides = const <Override>[],
   });
 
@@ -60,6 +62,7 @@ class PerenniaRoot extends StatelessWidget {
   final RoutinePlanFeatureRepository? routinePlanRepository;
   final WorkoutTemplateFeatureRepository? workoutTemplateRepository;
   final SettingsRepository? settingsRepository;
+  final OpenFoodFactsRepository? openFoodFactsRepository;
   final List<Override> extraOverrides;
 
   @override
@@ -99,6 +102,17 @@ class PerenniaRoot extends StatelessWidget {
           // it.
           templatePickerFeatureRepositoryProvider.overrideWith(
             (ref) => const StubTemplatePickerFeatureRepository(),
+          ),
+        if (openFoodFactsRepository != null)
+          openFoodFactsRepositoryProvider.overrideWith(
+            (ref) => openFoodFactsRepository!,
+          )
+        else if (homeRepository != null)
+          // Same rationale again: the app installs the Open Food Facts bundle
+          // after the first frame, which needs a cache directory and an
+          // asset a harness does not have.
+          openFoodFactsRepositoryProvider.overrideWith(
+            (ref) => const StubOpenFoodFactsRepository(),
           ),
         if (homeRepository != null)
           // Same rationale again: the start sheet reads the Focuses.
@@ -147,6 +161,11 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
             .checkForStaleWorkoutsOnOpen(),
       );
       ref.read(syncCoordinatorProvider).requestSync(SyncTrigger.appLaunch);
+      // Installs or refreshes the offline Open Food Facts list on another
+      // isolate; it never throws and sends nothing.
+      unawaited(
+        ref.read(openFoodFactsRepositoryProvider).ensureBundleInstalled(),
+      );
       final router = ref.read(timerNotificationRouterProvider) ??
           TimerNotificationRouter(
             navigatorKey: rootNavigatorKey,

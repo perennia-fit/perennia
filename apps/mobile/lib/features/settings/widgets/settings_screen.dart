@@ -13,6 +13,7 @@ import 'about_screen.dart';
 import 'agent_api_screen.dart';
 import 'backup_settings_screen.dart';
 import 'data_management_screen.dart';
+import 'food_data_settings_screen.dart';
 import 'garmin_integration_screen.dart';
 import 'general_settings_screen.dart';
 import 'integrations_screen.dart';
@@ -25,6 +26,7 @@ export 'about_screen.dart';
 export 'agent_api_screen.dart';
 export 'backup_settings_screen.dart';
 export 'data_management_screen.dart';
+export 'food_data_settings_screen.dart';
 export 'garmin_integration_screen.dart';
 export 'general_settings_screen.dart';
 export 'integrations_screen.dart';
@@ -56,6 +58,7 @@ class SettingsScreen extends ConsumerWidget {
   static const backupTileKey = Key('settings.hub.backup');
   static const dataManagementTileKey = Key('settings.hub.dataManagement');
   static const privacyTileKey = Key('settings.hub.privacy');
+  static const foodDataTileKey = Key('settings.hub.foodData');
   static const activityLogTileKey = Key('settings.hub.activityLog');
   static const aboutTileKey = Key('settings.hub.about');
 
@@ -239,6 +242,15 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: 'Crash reporting '
                       '${settings.crashReportingEnabled ? 'on' : 'off'}',
                   onTap: () => _push(context, const PrivacySettingsScreen()),
+                ),
+                SettingsNavTile(
+                  key: foodDataTileKey,
+                  icon: Icons.restaurant_outlined,
+                  title: 'Food data',
+                  subtitle: settings.onlineFoodLookups
+                      ? 'Online lookups on'
+                      : 'Online lookups off',
+                  onTap: () => _push(context, const FoodDataSettingsScreen()),
                 ),
                 SettingsNavTile(
                   key: activityLogTileKey,

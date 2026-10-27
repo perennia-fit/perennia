@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
@@ -1792,21 +1792,6 @@ void main() {
         entry: _offSnapshotDraft(mealId),
         actor: 'tester',
       );
-      await database.into(database.openFoodFactsCache).insert(
-            OpenFoodFactsCacheCompanion.insert(
-              lookupKey: 'barcode:3017620422003',
-              foodId: '3017620422003',
-              name: 'Original branded bar',
-              nutrientValuesJson: _offNutrientsPer100().toJsonString(),
-              isLiquid: const Value<bool>(false),
-              servingLabel: const Value<String?>('serving'),
-              servingSize: const Value<double?>(45),
-              packageSize: const Value<double?>(60),
-              fetchedAt: startedAt,
-              lastAccessedAt: startedAt,
-            ),
-          );
-
       final deleteBatchId = await repositories.nutrition.deleteFoodEntry(
         logged.foodEntryId,
         actor: 'tester',
@@ -1815,28 +1800,18 @@ void main() {
       final deletedRow = await (database.select(database.foodEntries)
             ..where((row) => row.id.equals(logged.foodEntryId)))
           .getSingle();
-      final cacheRows =
-          await database.select(database.openFoodFactsCache).get();
       final deleteLogs = (await repositories.activityLog.listEntries())
           .where((entry) => entry.batchId == deleteBatchId)
           .toList(growable: false);
 
       expect(deletedRow.deletedAt, isNotNull);
       expect(deletedRow.foodSource, FoodSource.openFoodFacts.name);
-      expect(cacheRows, hasLength(1));
-      expect(cacheRows.single.foodId, '3017620422003');
       expect(deleteLogs, hasLength(1));
       expect(deleteLogs.single.entityTable, AppDatabase.foodEntriesTable);
       expect(deleteLogs.single.beforeImage?['food_source'],
           FoodSource.openFoodFacts.name);
       expect(deleteLogs.single.beforeImage?['deleted_at'], isNull);
       expect(deleteLogs.single.afterImage?['deleted_at'], isNotNull);
-      expect(
-        (await repositories.activityLog.listEntries()).map(
-          (entry) => entry.entityTable,
-        ),
-        isNot(contains(AppDatabase.openFoodFactsCacheTable)),
-      );
     });
 
     test('Food Entry snapshot survives Food edits and archive', () async {

@@ -9,6 +9,7 @@ Each budget constant is defined next to the test that enforces it.
 | --- | --- | --- |
 | Exercise Overview large history | `performance_budgets_test.dart` builds and seeds a 50k-set fixture, then asserts the overview aggregate completes below `exerciseOverviewAggregateBudget`. | < 300 ms |
 | Set save feedback | A widget test taps Save set and expects `TrainingScreen.saveSetConfirmationKey` after one `setSaveConfirmationFrameBudget` pump. The confirmation is shown before the save path awaits local persistence or timer work; no network client is on this path. | 1 frame / 16 ms |
+| Open Food Facts device search | `performance_budgets_test.dart` installs a 41,000-product synthetic bundle into an in-memory `FoodReferenceDatabase`, then asserts that a two-word prefix search (`greek yo`, 50 results) through the FTS5 index completes below `openFoodFactsLocalSearchBudget` on the host. | < 100 ms |
 | Cold start Home data path | The harness starts the stopwatch, asks real `RepositoryHomeRepository` to load the first training-day summary from an in-memory Drift database, real `TrainingRepositories`, platform starter seed, and first Home query, then asserts that the summary contains the data Home needs to render an interactive empty state. The recorded host baseline is `recordedColdStartHomeInteractiveBaseline` (`420 ms`, recorded 2026-06-21) against the Android target. True widget-root and mid-range Android process-spawn timing are not yet measured here. | < 2 s |
 
 CI runs this file explicitly through the `Performance budgets` step in

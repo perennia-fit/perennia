@@ -1,9 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/repositories/open_food_facts_repository.dart';
 import '../../../data/repositories/training_repositories.dart';
+import '../../settings/repositories/settings_repository.dart';
+
+export '../../../data/repositories/open_food_facts_repository.dart'
+    show BarcodeLookupOutcome, OnlineSearchStatus;
 
 final addFoodRepositoryProvider = Provider<AddFoodRepository>((ref) {
-  return RepositoryAddFoodRepository(ref.watch(trainingRepositoriesProvider));
+  return RepositoryAddFoodRepository(
+    ref.watch(trainingRepositoriesProvider),
+    openFoodFacts: ref.watch(openFoodFactsRepositoryProvider),
+    onlineLookupsEnabled: () async =>
+        (await ref.read(settingsControllerProvider.future)).onlineFoodLookups,
+  );
 });
 
 enum AddFoodPickerFilter {
@@ -35,6 +45,10 @@ class FoodPickerItem {
     this.packageSize,
     this.lastPortion,
     this.lastLoggedAt,
+    this.brand,
+    this.sourceModifiedAt,
+    this.scans,
+    this.isLiveResult = false,
   });
 
   final String id;
@@ -48,6 +62,19 @@ class FoodPickerItem {
   final double? packageSize;
   final Portion? lastPortion;
   final DateTime? lastLoggedAt;
+
+  /// The product's first brand, for Open Food Facts foods.
+  final String? brand;
+
+  /// When the source last changed the product, for Open Food Facts foods.
+  final DateTime? sourceModifiedAt;
+
+  /// The source's scan count, used only to rank.
+  final int? scans;
+
+  /// A live Open Food Facts copy that is not stored on the device; opening it
+  /// stores it.
+  final bool isLiveResult;
 
   String get foodSourceLabel {
     return switch (foodSource) {
@@ -78,12 +105,91 @@ abstract interface class AddFoodRepository {
     required String query,
     int limit = 50,
   });
+
+  /// The device setting "Look up foods online".
+  Future<bool> onlineLookupsEnabled();
+
+  /// One live Open Food Facts search; its items have `isLiveResult: true`.
+  Future<({OnlineSearchStatus status, List<FoodPickerItem> items})>
+      searchOnline(String query);
+
+  /// A scanned or typed barcode: a stored product, else one live request.
+  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
+    String raw,
+  );
+
+  /// Stores a live Open Food Facts product the user opened.
+  Future<void> keepOpenedProduct(FoodPickerItem item);
 }
 
 class RepositoryAddFoodRepository implements AddFoodRepository {
-  const RepositoryAddFoodRepository(this._repositories);
+  /// With no [openFoodFacts], the Open Food Facts filter finds nothing and the
+  /// online methods return `disabled`. With no [onlineLookupsEnabled], online
+  /// lookups count as on.
+  const RepositoryAddFoodRepository(
+    this._repositories, {
+    OpenFoodFactsRepository? openFoodFacts,
+    Future<bool> Function()? onlineLookupsEnabled,
+  })  : _openFoodFacts = openFoodFacts ?? const StubOpenFoodFactsRepository(),
+        _onlineLookupsEnabled = onlineLookupsEnabled;
 
   final TrainingRepositories _repositories;
+  final OpenFoodFactsRepository _openFoodFacts;
+  final Future<bool> Function()? _onlineLookupsEnabled;
+
+  @override
+  Future<bool> onlineLookupsEnabled() async {
+    return await _onlineLookupsEnabled?.call() ?? true;
+  }
+
+  @override
+  Future<({OnlineSearchStatus status, List<FoodPickerItem> items})>
+      searchOnline(String query) async {
+    final result = await _openFoodFacts.searchOnline(
+      query,
+      allowOnline: await onlineLookupsEnabled(),
+    );
+    return (
+      status: result.status,
+      items: await _openFoodFactsItems(result.products, isLiveResult: true),
+    );
+  }
+
+  @override
+  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
+    String raw,
+  ) async {
+    final result = await _openFoodFacts.lookupBarcode(
+      raw,
+      allowOnline: await onlineLookupsEnabled(),
+    );
+    final product = result.product;
+    return (
+      status: result.status,
+      item: product == null
+          ? null
+          : (await _openFoodFactsItems(<PlatformFoodRecord>[product])).single,
+    );
+  }
+
+  @override
+  Future<void> keepOpenedProduct(FoodPickerItem item) async {
+    await _openFoodFacts.keepOpenedProduct(
+      PlatformFoodRecord(
+        id: item.id,
+        name: item.name,
+        foodSource: item.foodSource,
+        nutrientsPer100: item.nutrientsPer100,
+        isLiquid: item.isLiquid,
+        servingLabel: item.servingLabel,
+        servingSize: item.servingSize,
+        packageSize: item.packageSize,
+        brand: item.brand,
+        sourceModifiedAt: item.sourceModifiedAt,
+        scans: item.scans,
+      ),
+    );
+  }
 
   @override
   Future<List<FoodPickerItem>> search({
@@ -218,30 +324,50 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     String query, {
     required int limit,
   }) async {
-    final foods = await _repositories.openFoodFacts.search(
-      query,
-      limit: limit,
+    final foods = await _openFoodFacts.searchLocal(query, limit: limit);
+    return _openFoodFactsItems(foods);
+  }
+
+  /// Picker items for Open Food Facts records, with their Last Portions read
+  /// in one query rather than one per row.
+  Future<List<FoodPickerItem>> _openFoodFactsItems(
+    List<PlatformFoodRecord> foods, {
+    bool isLiveResult = false,
+  }) async {
+    final lastPortions = await _repositories.nutrition.lastPortionsForFoods(
+      foodIds: [for (final food in foods) food.id],
+      foodSource: FoodSource.openFoodFacts,
     );
-    final items = <FoodPickerItem>[];
-    for (final food in foods) {
-      items.add(
-        FoodPickerItem(
-          id: food.id,
-          name: food.name,
-          filter: AddFoodPickerFilter.openFoodFacts,
-          foodSource: food.foodSource,
-          nutrientsPer100: food.nutrientsPer100,
-          isLiquid: food.isLiquid,
-          servingLabel: food.servingLabel,
-          servingSize: food.servingSize,
-          packageSize: food.packageSize,
-          lastPortion: await _repositories.nutrition.lastPortionForFood(
-            foodId: food.id,
-            foodSource: food.foodSource,
-          ),
+    return [
+      for (final food in foods)
+        _openFoodFactsItem(
+          food,
+          lastPortion: lastPortions[food.id],
+          isLiveResult: isLiveResult,
         ),
-      );
-    }
-    return items;
+    ];
+  }
+
+  FoodPickerItem _openFoodFactsItem(
+    PlatformFoodRecord food, {
+    required Portion? lastPortion,
+    required bool isLiveResult,
+  }) {
+    return FoodPickerItem(
+      id: food.id,
+      name: food.name,
+      filter: AddFoodPickerFilter.openFoodFacts,
+      foodSource: food.foodSource,
+      nutrientsPer100: food.nutrientsPer100,
+      isLiquid: food.isLiquid,
+      servingLabel: food.servingLabel,
+      servingSize: food.servingSize,
+      packageSize: food.packageSize,
+      lastPortion: lastPortion,
+      brand: food.brand,
+      sourceModifiedAt: food.sourceModifiedAt,
+      scans: food.scans,
+      isLiveResult: isLiveResult,
+    );
   }
 }

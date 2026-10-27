@@ -4,7 +4,9 @@ Glossary of canonical terms. Definitions only — no implementation details.
 
 ## Local-only Mode
 Operating state in which the user has no account. All data lives exclusively on the
-device and nothing is transmitted anywhere.
+device and nothing is transmitted anywhere. The one exception is a reference lookup
+the user starts, such as an online food search, which sends only the search text or
+barcode and can be turned off.
 
 ## Synced Mode
 Operating state after sign-in. The user's training data is replicated between their
@@ -246,7 +248,14 @@ commercial provider, or an imported source such as another app's export); an
 unrecognized import records a generic *Imported* origin, preserving the specific
 provider. Externally-sourced Foods are read-only; a User Food is editable; customizing
 a read-only Food forks a copy into the user's own User Food. Distinct from Provenance,
-which records who performed a log action, not where the food data came from.
+which records who performed a log action, not where the food data came from. An Open
+Food Facts Food comes from the bundle shipped with the app or from a live lookup; the
+copy Open Food Facts changed most recently is the one used.
+
+## Platform Food
+A read-only Food whose facts come from an external Food Source (USDA or Open Food
+Facts), either shipped with the app or fetched from the source; the food-domain analog
+of the Platform Library. Customizing one forks a User Food.
 
 ## User Food
 A user's own created or customized Food, owned and editable by the user. The

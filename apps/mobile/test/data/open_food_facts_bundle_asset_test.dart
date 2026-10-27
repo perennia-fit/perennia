@@ -9,7 +9,7 @@ import 'package:perennia/domain/nutrition/open_food_facts.dart';
 /// (docs/designs/open-food-facts.md, "The bundle file"). The builder has no
 /// separate verify mode, so this is what keeps a hand-edited or truncated
 /// bundle from merging.
-const _bundlePath = 'assets/seeds/open_food_facts_bundle.ndjson.gz';
+const _bundlePath = openFoodFactsBundleAssetPath;
 
 /// 6 MB, as the builder's `sizeBudgetBytes`.
 const _sizeBudgetBytes = 6 * 1024 * 1024;
