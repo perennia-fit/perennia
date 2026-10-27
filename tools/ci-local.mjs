@@ -106,7 +106,12 @@ function have(tool) {
 //   'skip'-> nothing to do locally (e.g. tool missing)
 
 const JS_PATHS = [
-  'apps/server/**', 'tools/generate-wger-platform-exercises.mjs',
+  // The server tests read the Open Food Facts bundle, and check the Nutrient
+  // ids and the bundle format against the two Dart files.
+  'apps/server/**', 'apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz',
+  'apps/mobile/lib/domain/nutrition/nutrition.dart',
+  'apps/mobile/lib/domain/nutrition/open_food_facts.dart',
+  'tools/generate-wger-platform-exercises.mjs',
   'tools/platform-exercise-cleanup.mjs',
   'packages/contract/**', 'packages/golden-vectors/**',
   'sidecars/**', '.node-version', 'package.json', 'pnpm-workspace.yaml',

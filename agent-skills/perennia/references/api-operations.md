@@ -396,11 +396,33 @@ library (User Foods and Recipes) with `search`/`includeArchived`/`limit`/
 `cursor`/`fields`. Platform reference data is never in this list.
 
 `search-platform-foods` (`GET /agent/foods/platform-search`) searches the
-bundled USDA Platform Food dataset — the SAME offline, CC0 catalog the app
-ships — with `search`/`limit`. The response includes an
-`attribution` object; surface it wherever the result is shown, mirroring the
-in-app USDA courtesy attribution. Open Food Facts (branded/barcode)
-is not available through this operation.
+Platform Food reference data the app ships, with `source`/`search`/`limit`.
+Nothing is fetched from an external service.
+
+- `source=usda` (the default) searches the bundled USDA dataset, a CC0
+  catalog of generic foods.
+- `source=openFoodFacts` searches the Open Food Facts bundle: branded,
+  packaged products from Australia, the United States, the United Kingdom,
+  Canada and New Zealand. `search` takes a name or a barcode, as the app's
+  search box does; a barcode is matched with and without a leading `0`, and
+  name words match word prefixes of the product's name or brand. Only the
+  bundle is searched: a product that is not in it is not found, and omitting
+  `search` returns no foods. Each food carries its `brand`, the date Open Food
+  Facts last changed it (`sourceModifiedAt`) and its Open Food Facts page
+  (`productUrl`); `id` is the barcode. Its `nutrientsPer100` lists every
+  Nutrient; one the bundle does not report is
+  `{ status: "unknown", value: null, entered: null }`. To log the food with
+  `log-meal` (`POST /agent/meals/batch-write`, `foodSource: "openFoodFacts"`,
+  `foodId` set to the barcode), send `nutrientsPer100` as the entry's
+  `nutrients` with each unknown amount sent as `{ status: "unknown", unit }`,
+  without `value` and `entered` (the write rejects `null` there), along with
+  `name`, `isLiquid` and the serving and package sizes.
+
+The response includes an `attribution` object. Surface its
+`attributionText` and licence wherever the result is shown; for Open Food
+Facts the data is under the Open Database License (ODbL), and also show
+`attribution.disclaimer` (Open Food Facts values come from its contributors
+and may be wrong) and, where a single product is shown, its `productUrl`.
 
 `manage-foods` (`POST /agent/foods/batch-write`) creates, edits, or archives
 User Foods and Recipes. A Recipe is a Food whose `recipeIngredients` carries a

@@ -5683,7 +5683,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "The USDA seed id, or the Open Food Facts barcode as stored in the bundle."
           },
           "name": {
             "type": "string",
@@ -5722,6 +5723,30 @@
               "null"
             ],
             "exclusiveMinimum": 0
+          },
+          "brand": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The product's brand; null when unknown, and for USDA."
+          },
+          "sourceModifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "When Open Food Facts last changed the product's data (ISO-8601, UTC); null for USDA."
+          },
+          "productUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The product's Open Food Facts page, where its data can be checked and corrected; null for USDA."
           }
         },
         "required": [
@@ -5732,13 +5757,17 @@
           "isLiquid",
           "servingLabel",
           "servingSize",
-          "packageSize"
+          "packageSize",
+          "brand",
+          "sourceModifiedAt",
+          "productUrl"
         ]
       },
       "AgentPlatformFoodSource": {
         "type": "string",
         "enum": [
-          "usda"
+          "usda",
+          "openFoodFacts"
         ]
       },
       "AgentPlatformFoodAttribution": {
@@ -5766,6 +5795,14 @@
           "attributionText": {
             "type": "string",
             "minLength": 1
+          },
+          "disclaimer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The accuracy disclaimer to show with Open Food Facts foods; null for USDA."
           }
         },
         "required": [
@@ -5774,9 +5811,10 @@
           "sourceName",
           "sourceUrl",
           "licenseName",
-          "attributionText"
+          "attributionText",
+          "disclaimer"
         ],
-        "description": "Required attribution for the source dataset. USDA is CC0/public domain; courtesy attribution is still surfaced here."
+        "description": "Required attribution for the source dataset; show it, and the disclaimer when present, wherever the results are shown. Open Food Facts is ODbL, and the attribution text says where the licensed copy is; USDA is CC0/public domain, with courtesy attribution."
       },
       "AgentFoodBatchWriteResponse": {
         "type": "object",
@@ -18780,8 +18818,8 @@
         "tags": [
           "Agent Catalog"
         ],
-        "summary": "Search the bundled USDA Platform Food reference dataset.",
-        "description": "Serves the SAME bundled USDA FoodData Central seed the app ships, so an agent and the app resolve identical generic-food nutrient facts offline of any external network call. CC0/public domain; courtesy attribution is still included in the response. Open Food Facts (branded/barcode) is not available through this operation in this slice.",
+        "summary": "Search the bundled USDA and Open Food Facts Platform Food reference data.",
+        "description": "Serves the SAME bundled reference data the app ships, so an agent and the app resolve identical records without any external network call: the USDA FoodData Central seed (`source=usda`, the default, CC0) or the Open Food Facts bundle (`source=openFoodFacts`, ODbL), searched by name or barcode. The server never calls Open Food Facts. The response carries the attribution to show, and for Open Food Facts the accuracy disclaimer.",
         "security": [
           {
             "bearerAuth": []
@@ -18792,10 +18830,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "description": "Optional case-insensitive name filter. Omit to list the bundled catalog."
+              "description": "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode. Omit to list the bundled USDA catalog; with `source=openFoodFacts`, omitting it returns no foods."
             },
             "required": false,
-            "description": "Optional case-insensitive name filter. Omit to list the bundled catalog.",
+            "description": "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode. Omit to list the bundled USDA catalog; with `source=openFoodFacts`, omitting it returns no foods.",
             "name": "search",
             "in": "query"
           },
@@ -18806,12 +18844,12 @@
                   "$ref": "#/components/schemas/AgentPlatformFoodSource"
                 },
                 {
-                  "description": "Platform Food source. Only usda is available in this slice — the bundled, offline CC0 dataset."
+                  "description": "Platform Food source: usda (the default), the bundled CC0 USDA dataset; or openFoodFacts, the Open Food Facts products bundled with the app (ODbL). Both are offline; the server never calls Open Food Facts."
                 }
               ]
             },
             "required": false,
-            "description": "Platform Food source. Only usda is available in this slice — the bundled, offline CC0 dataset.",
+            "description": "Platform Food source: usda (the default), the bundled CC0 USDA dataset; or openFoodFacts, the Open Food Facts products bundled with the app (ODbL). Both are offline; the server never calls Open Food Facts.",
             "name": "source",
             "in": "query"
           },
@@ -18895,11 +18933,18 @@
             }
           },
           "503": {
-            "description": "Agent API key storage is not configured.",
+            "description": "Agent API key storage is not configured, or the Open Food Facts bundle is not available on this server.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentFoodsUnavailableResponse"
+                    }
+                  ]
                 }
               }
             }

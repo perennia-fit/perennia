@@ -1,9 +1,11 @@
 # Open Food Facts Integration
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved (2026-10-26)
-*   **Date:** 2026-10-27 (amended after the first bundle build: where nutrient
-    values are read from; revised after Goldfish review 2026-10-26; first draft
+*   **Status:** Current (2026-10-27)
+*   **Date:** 2026-10-27 (amended while implementing the server: the decisions
+    recorded under [Agent surface](#agent-surface) and the corrected contract
+    and CI notes; amended after the first bundle build: where nutrient values
+    are read from; revised after Goldfish review 2026-10-26; first draft
     2026-10-25)
 
 --------------------------------------------------------------------------------
@@ -321,7 +323,10 @@ fallback for energy (see [Future Improvements](#future-improvements)).
     `GET /agent/foods/platform-search?source=openFoodFacts&search=<code>` (or
     the MCP tool `agent_search_platform_foods` with the same input), then logs
     the result with the existing meal batch-write operation
-    (`POST /agent/meals/batch-write`, command `log-meal`).
+    (`POST /agent/meals/batch-write`, command `log-meal`), sending the food's
+    `nutrientsPer100` as the entry's `nutrients` with the `null` `value` and
+    `entered` of each unknown amount left out (see
+    [Agent surface](#agent-surface)).
 *   **Then**: for a bundled product, the first food in the response is the
     record in that barcode's line of the bundle, plus an attribution object with
     the licence, the disclaimer, the dataset version and the repository location
@@ -1089,9 +1094,11 @@ Search on the server, over the bundle only:
 1.  If `search` has barcode candidates, the products whose codes match come
     first, in candidate order.
 2.  Then name matches: names, brands and the query are normalized the same way
-    (Unicode NFKD, combining marks removed, lower-cased, split on non-letters
-    and non-digits). A product matches when every query part, up to 8, is a
-    prefix of some word in its name or brand. Order: `scans` descending, then
+    (lower-cased, then Unicode NFKD with combining marks removed, split on
+    non-letters and non-digits; lower-casing first keeps a capital such as
+    "İ", whose lower case carries a mark, from splitting its word). A
+    product matches when every query part, up to 8, is a prefix of some word
+    in its name or brand. Order: `scans` descending, then
     `code` ascending.
 3.  Duplicates are removed, then `limit` applies (default 20, maximum 50, the
     existing constants).
@@ -1103,12 +1110,22 @@ an app with the same dataset version decodes identically.
 Response:
 
 *   Each food gains `brand`, `sourceModifiedAt` (ISO-8601, UTC) and
-    `productUrl`, all nullable and `null` for USDA. `nutrientsPer100` has the
-    same shape as for USDA: every Nutrient id is present, built with the
-    existing `nutrientVectorStorage` in `agent-foods.ts`. A nutrient the bundle
+    `productUrl`, all nullable and `null` for USDA. For Open Food Facts,
+    `id` is the barcode, `productUrl` is
+    `https://world.openfoodfacts.org/product/<code>` (the app's link), and
+    `nutrientsPer100` has every Nutrient id, built with the existing
+    `nutrientVectorStorage` in `agent-foods.ts`. A nutrient the bundle
     reports is `complete`, with `entered` and `value` read from its text; any
     other is `{ status: "unknown", value: null, entered: null }` with its
-    default unit.
+    default unit. (USDA foods keep the seed's vector as it is, which lists only
+    the Nutrients the seed has; that branch does not change.) The meal
+    batch-write takes an unknown amount without `value` and `entered`
+    (`AgentNutrientAmountSchema` rejects `null` there), and it resolves a Food
+    from the library only for `foodSource: "user"`, so an agent logging an
+    Open Food Facts food sends this vector as the entry's `nutrients` with each
+    unknown amount reduced to `{ status: "unknown", unit }`. The agent
+    documentation (file 45) states this; the read shape and the shared
+    validation schema do not change.
 *   `attribution.source` accepts `openFoodFacts`. `attribution` gains
     `disclaimer` (the Goal 7 text for Open Food Facts, `null` for USDA). For Open
     Food Facts, `datasetVersion`, `sourceName`, `sourceUrl`, `licenseName` and
@@ -1119,7 +1136,11 @@ The route summary becomes "Search the bundled USDA and Open Food Facts Platform
 Food reference data." The `search` parameter's description becomes
 "Case-insensitive name filter; with `source=openFoodFacts`, a name or a barcode.
 Omit to list the bundled USDA catalog; with `source=openFoodFacts`, omitting it
-returns no foods."
+returns no foods." The route description, the `source` parameter's description
+and the `attribution` description, which said Open Food Facts was not
+available, are rewritten to describe both sources and that the server never
+calls Open Food Facts; the new fields carry descriptions of their own, and the
+existing `id` field gains one (the barcode, for Open Food Facts).
 
 On the server, a new module `apps/server/src/open-food-facts-bundle.ts` reads the
 bundle once, on the first Open Food Facts request, synchronously: gunzip, split,
@@ -1128,6 +1149,36 @@ blocks the Node event loop, and so every request in flight on that process, for
 an estimated few hundred milliseconds, once per process (recorded as a risk).
 `searchAgentPlatformFoods` stays synchronous. The
 barcode candidate rule lives in `apps/server/src/barcode-candidates.ts`.
+
+Decisions made while implementing this module:
+
+*   **The load checks the file, and any failure makes the bundle
+    unavailable.** Besides gzip and JSON, the load rejects a header whose
+    `format` or `formatVersion` is not the one the app writes, a product count
+    that differs from the header's `productCount`, a repeated code, a field of
+    the wrong type, a size that is not positive, a nutrient id that is not a
+    Nutrient id (the app's decoder throws on one, where the server would
+    otherwise drop it), a `modifiedAt` outside the date range (above 8.64e12
+    seconds, where `toISOString` throws and the app's `DateTime` rejects it),
+    and nutrient text that is not
+    plain decimal text (an optional sign, digits, an optional fraction and
+    exponent), which `Number()` and Dart's `double.parse` read as the same
+    number; `Number()` alone would also take `0x10`. Negative values stay
+    accepted, as the app accepts them too. A server
+    that cannot trust the file answers 503 rather than serving part of it. It
+    does not recheck `contentHash`; the app's asset test does.
+*   **A failed load is cached too.** The file is part of the deployed image and
+    does not change while the process runs, so retrying on each request would
+    block the event loop again for the same result. A redeploy or restart
+    clears it. `getOpenFoodFactsBundle` turns any loader error into
+    `OpenFoodFactsBundleUnavailableError`, so a test loader can throw anything.
+*   **The name-search order is precomputed.** `products` is sorted once, at
+    load, by `scans` descending then `code` ascending, so a search is one pass
+    that stops at `limit`.
+*   The error's message is the 503 message, so the REST route and the MCP tool
+    read it from the error instead of repeating it. Both log the error, with
+    its cause, before answering 503, so an image without the file is visible
+    in the logs.
 
 The module resolves `../../mobile/assets/seeds/open_food_facts_bundle.ndjson.gz`
 relative to its own directory, which is `apps/server/src` in development and
@@ -1140,9 +1191,12 @@ keeps one copy (see [Alternative O](#alternative-o-copy-the-bundle-into-the-serv
 
 The MCP tool takes the same input and returns the same output. The contract
 diff shows the widened enum, the new response fields, the 503 union and the new
-descriptions in
-`packages/contract/openapi.json`, `agent-client.ts`, the Dart API client and the
-agent command map. Widening an enum in a response is
+descriptions in `packages/contract/openapi.json`, and the widened enum and new
+fields in `agent-client.ts`. The Dart API client
+(`apps/mobile/lib/api/perennia_api_client.dart`) and the agent command map are
+regenerated but do not change: the Dart client covers only the operations the
+app calls, and the command map lists operation names and paths, which stay the
+same. Widening an enum in a response is
 additive, but a client that treats the `source` enum as closed can reject an
 `openFoodFacts` value; before 1.0 this is accepted, and the contract diff makes
 it visible in review.
@@ -2352,6 +2406,10 @@ Conventions in this plan:
         with the rules in [Agent surface](#agent-surface), using
         `barcodeCandidates` from file 8. An undefined query returns `[]`.
     *   `export const OPEN_FOOD_FACTS_DISCLAIMER`, the Goal 7 text.
+    *   The load rejects a nutrient key that is not a Nutrient id, using
+        `isNutrientId`, a small export added to `apps/server/src/agent-validation.ts`
+        on top of its existing `NutrientIdSchema` (importing the id list from
+        `agent-foods.ts` would be circular).
 
 ##### 39. `apps/server/src/agent-foods.ts` (Modify)
 
@@ -2416,12 +2474,20 @@ Conventions in this plan:
         *   no `search`, or one with no word parts and no candidates, returns
             empty `foods`;
         *   the nutrient vector includes every id.
+    *   `apps/server/test/open-food-facts-bundle.test.mjs` also checks that the
+        load rejects a nutrient id that is not a Nutrient id and a `modifiedAt`
+        outside the date range.
     *   `apps/server/test/agent-foods-routes.test.mjs` (Modify): the REST
-        responses for Open Food Facts, and a 503 when
-        `setOpenFoodFactsBundleLoaderForTesting` installs a loader that throws.
+        responses for Open Food Facts; a 503 when
+        `setOpenFoodFactsBundleLoaderForTesting` installs a loader that throws,
+        with the logged payload carrying the cause's message; and CUJ 7: a
+        bundled food from the search, its unknown amounts sent without `value`
+        and `entered`, logs through `POST /agent/meals/batch-write` with
+        `foodSource: "openFoodFacts"`.
     *   `apps/server/test/agent-mcp.test.mjs` (Modify):
         `agent_search_platform_foods` returns the same body as REST for the same
-        input, including the error for an unreadable bundle.
+        input, including the error for an unreadable bundle, whose cause is
+        logged.
 
 ##### 42. `Dockerfile` (Modify)
 
@@ -2433,18 +2499,23 @@ Conventions in this plan:
 ##### 43. `.github/workflows/ci.yml` and `tools/ci-local.mjs` (Modify)
 
 *   **Type / Scope**: CI configuration, changed together.
-*   **Proposed Changes**: Add `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz`
-    to the `js` job's paths (`JS_PATHS`), because the server tests read it.
+*   **Proposed Changes**: Add `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz`,
+    `apps/mobile/lib/domain/nutrition/nutrition.dart` and
+    `apps/mobile/lib/domain/nutrition/open_food_facts.dart` to the `js` job's
+    paths (`JS_PATHS`), because the server tests read the bundle and check the
+    Nutrient ids and the bundle format against those Dart files.
 
 ##### 44. Generated contract files (Modify, generated)
 
 *   **Type / Scope**: Generated by `corepack pnpm --filter @perennia/contract generate`.
 *   **Proposed Changes**: Regenerates:
-    *   `packages/contract/openapi.json`;
-    *   `packages/contract/src/agent-client.ts`;
-    *   `apps/mobile/lib/api/perennia_api_client.dart`;
+    *   `packages/contract/openapi.json` (changes);
+    *   `packages/contract/src/agent-client.ts` (changes);
+    *   `apps/mobile/lib/api/perennia_api_client.dart` (no change: it does not
+        cover this operation);
     *   the agent command map, the generated table in
-        `agent-skills/perennia/references/api-operations.md`.
+        `agent-skills/perennia/references/api-operations.md` (no change: the
+        operation's name and path stay the same).
 
 ##### 45. `agent-skills/perennia/references/api-operations.md` and `agent-skills/perennia/SKILL.md` (Modify)
 
@@ -2453,6 +2524,11 @@ Conventions in this plan:
     *   The "Food Library Reads and Writes" prose describes
         `source=openFoodFacts`: that `search` takes a name or a barcode, that
         only the bundle is searched, and the attribution and disclaimer to show.
+    *   The same prose says how to log a returned food with `log-meal`
+        (`POST /agent/meals/batch-write`, `foodSource: "openFoodFacts"`,
+        `foodId` set to the barcode): send `nutrientsPer100` as `nutrients`,
+        with each unknown amount sent as `{ status: "unknown", unit }`, without
+        `value` and `entered`.
     *   `SKILL.md` gains an example next to the existing
         `search-platform-foods --query search=chicken`:
         `search-platform-foods --query source=openFoodFacts --query search=<code>`.
@@ -2482,10 +2558,12 @@ Conventions in this plan:
         *   `js`;
         *   `contract`: the drift check shows the expected contract diff and
             nothing else;
-        *   `golden`: selected because `apps/server/**` changes;
+        *   `golden`: selected because `.github/workflows/ci.yml` changes (its
+            filter names individual server files, not `apps/server/**`);
         *   `sync`: no change expected; it confirms that Food Entry snapshots
             with `openFoodFacts` still sync;
-        *   `mobile`: selected by the regenerated Dart API client.
+        *   `mobile`: selected because `.github/workflows/ci.yml` changes; the
+            regenerated Dart API client does not change.
 *   **Unit and repository tests:** as listed in files 11, 12, 37 and 41.
 *   **Golden vectors:** `m36-barcode-candidates.json`, run by Dart and
     TypeScript.

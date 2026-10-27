@@ -95,6 +95,7 @@ import {
   type AgentFoodBatchWriteStore,
   type AgentFoodCatalogStore
 } from "./agent-foods.js";
+import { OpenFoodFactsBundleUnavailableError } from "./open-food-facts-bundle.js";
 import {
   AgentMetricBatchWriteErrorResponseSchema,
   AgentMetricBatchWriteRequestSchema,
@@ -1531,7 +1532,7 @@ export function createAgentMcpServer({
     {
       title: "Search Agent Platform Foods",
       description:
-        "Search the bundled USDA Platform Food reference dataset through the same path as REST — the SAME offline CC0 catalog the app ships, so an agent and the app resolve identical generic-food nutrient facts. Open Food Facts (branded/barcode) is not available through this tool in this slice.",
+        "Search the bundled USDA and Open Food Facts Platform Food reference data through the same path as REST — the SAME offline data the app ships, so an agent and the app resolve identical records. source=usda (the default) is the CC0 USDA catalog; source=openFoodFacts searches the Open Food Facts bundle by name or barcode. The server never calls Open Food Facts. Show the returned attribution, and its disclaimer when present, with the results.",
       inputSchema: AgentMcpFoodPlatformSearchInputSchema,
       outputSchema: AgentFoodPlatformSearchResponseSchema
     },
@@ -1548,11 +1549,29 @@ export function createAgentMcpServer({
       }
 
       const query = AgentFoodPlatformSearchQuerySchema.parse(input.query ?? {});
-      return successResult(
-        AgentFoodPlatformSearchResponseSchema.parse(
-          searchAgentPlatformFoods({ search: query.search, limit: query.limit })
-        )
-      );
+      let result;
+      try {
+        result = searchAgentPlatformFoods({
+          search: query.search,
+          source: query.source,
+          limit: query.limit
+        });
+      } catch (error) {
+        if (error instanceof OpenFoodFactsBundleUnavailableError) {
+          logger.error?.(
+            { error, cause: error.cause },
+            "open food facts bundle unavailable"
+          );
+          return errorResult(
+            AgentFoodsUnavailableResponseSchema.parse({
+              code: "agent_foods_unavailable",
+              message: error.message
+            })
+          );
+        }
+        throw error;
+      }
+      return successResult(AgentFoodPlatformSearchResponseSchema.parse(result));
     }
   );
 

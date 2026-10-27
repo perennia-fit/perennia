@@ -91,6 +91,7 @@ import {
   type AgentFoodBatchWriteStore,
   type AgentFoodCatalogStore
 } from "./agent-foods.js";
+import { OpenFoodFactsBundleUnavailableError } from "./open-food-facts-bundle.js";
 import {
   agentCompoundBatchWriteRoute,
   agentCompoundListRoute,
@@ -2693,10 +2694,29 @@ export function createApp(options: CreateAppOptions = {}) {
     }
 
     const query = context.req.valid("query");
-    const result = searchAgentPlatformFoods({
-      search: query.search,
-      limit: query.limit
-    });
+    let result;
+    try {
+      result = searchAgentPlatformFoods({
+        search: query.search,
+        source: query.source,
+        limit: query.limit
+      });
+    } catch (error) {
+      if (error instanceof OpenFoodFactsBundleUnavailableError) {
+        logger.error?.(
+          { error, cause: error.cause },
+          "open food facts bundle unavailable"
+        );
+        return context.json(
+          AgentFoodsUnavailableResponseSchema.parse({
+            code: "agent_foods_unavailable",
+            message: error.message
+          }),
+          503
+        );
+      }
+      throw error;
+    }
 
     return context.json(
       AgentFoodPlatformSearchResponseSchema.parse(result),

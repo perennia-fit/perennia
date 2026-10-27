@@ -889,6 +889,11 @@ function validateAtwater(
   }
 }
 
+/** Whether `id` is one of the fixed Nutrient ids (CONTEXT.md, Nutrient). */
+export function isNutrientId(id: string): boolean {
+  return NutrientIdSchema.safeParse(id).success;
+}
+
 function parseNutrientId(nutrient: string) {
   const parsed = NutrientIdSchema.safeParse(nutrient);
   return parsed.success ? parsed.data : null;

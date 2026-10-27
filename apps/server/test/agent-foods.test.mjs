@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import test from "node:test";
 
 import {
@@ -7,6 +9,10 @@ import {
   searchAgentPlatformFoods,
   toAgentFood
 } from "../src/index.ts";
+import {
+  USDA_FOOD_SEED_FOODS,
+  USDA_FOOD_SEED_METADATA
+} from "../src/data/usda-food-seed.generated.ts";
 
 test("prepareAgentFoodBatchWrite snapshots a plain User Food, storing the full nutrient vector with unknowns explicit", () => {
   const result = prepareAgentFoodBatchWrite({
@@ -607,3 +613,146 @@ test("searchAgentPlatformFoods returns an empty page for an unmatched query, nev
   });
   assert.deepEqual(result.foods, []);
 });
+
+test("searchAgentPlatformFoods({ limit: 20 }) still returns USDA, unchanged, with the new fields null", () => {
+  const result = searchAgentPlatformFoods({ limit: 20 });
+
+  assert.deepEqual(
+    result.foods,
+    USDA_FOOD_SEED_FOODS.map((food) => ({
+      id: food.id,
+      name: food.name,
+      foodSource: "usda",
+      nutrientsPer100: food.nutrientsPer100,
+      isLiquid: food.isLiquid,
+      servingLabel: food.servingLabel,
+      servingSize: food.servingSize,
+      packageSize: food.packageSize,
+      brand: null,
+      sourceModifiedAt: null,
+      productUrl: null
+    }))
+  );
+  assert.deepEqual(result.attribution, {
+    source: "usda",
+    ...USDA_FOOD_SEED_METADATA,
+    disclaimer: null
+  });
+});
+
+test("searchAgentPlatformFoods finds Open Food Facts products by barcode, as their bundle lines say", () => {
+  const { header, lines } = committedBundle();
+  const line = lines.find((candidate) => candidate.brand !== null && candidate.servingSize !== null);
+
+  const result = searchAgentPlatformFoods({
+    source: "openFoodFacts",
+    search: line.code,
+    limit: 20
+  });
+
+  const [food] = result.foods;
+  assert.equal(food.id, line.code);
+  assert.equal(food.name, line.name);
+  assert.equal(food.foodSource, "openFoodFacts");
+  assert.equal(food.brand, line.brand);
+  assert.equal(food.isLiquid, line.isLiquid);
+  assert.equal(food.servingLabel, line.servingLabel);
+  assert.equal(food.servingSize, line.servingSize);
+  assert.equal(food.packageSize, line.packageSize);
+  assert.equal(food.sourceModifiedAt, new Date(line.modifiedAt * 1000).toISOString());
+  assert.equal(food.productUrl, `https://world.openfoodfacts.org/product/${line.code}`);
+  for (const [id, entered] of Object.entries(line.nutrients)) {
+    assert.deepEqual(food.nutrientsPer100[id], {
+      status: "complete",
+      value: Number(entered),
+      entered,
+      unit: NUTRIENT_DEFAULT_UNITS[id]
+    });
+  }
+
+  assert.deepEqual(result.attribution, {
+    source: "openFoodFacts",
+    datasetVersion: header.datasetVersion,
+    sourceName: header.sourceName,
+    sourceUrl: header.sourceUrl,
+    licenseName: header.licenseName,
+    attributionText: header.attributionText,
+    disclaimer:
+      "Values come from Open Food Facts contributors and may be incomplete or wrong. Check the label. Not for medical use."
+  });
+});
+
+test("searchAgentPlatformFoods finds Open Food Facts products by name, bounded by the limit", () => {
+  const result = searchAgentPlatformFoods({
+    source: "openFoodFacts",
+    search: "greek yogurt",
+    limit: 5
+  });
+
+  assert.equal(result.foods.length, 5);
+  assert.equal(result.limit, 5);
+  for (const food of result.foods) {
+    assert.equal(food.foodSource, "openFoodFacts");
+    const words = `${food.name} ${food.brand ?? ""}`.toLowerCase();
+    assert.match(words, /\bgreek/);
+    assert.match(words, /\byog/);
+  }
+});
+
+test("searchAgentPlatformFoods returns no Open Food Facts foods without a usable search", () => {
+  for (const search of [undefined, "!!! ---"]) {
+    const result = searchAgentPlatformFoods({ source: "openFoodFacts", search, limit: 20 });
+    assert.deepEqual(result.foods, []);
+    assert.equal(result.attribution.source, "openFoodFacts");
+  }
+});
+
+test("an Open Food Facts food's nutrient vector has every Nutrient id, unknown where the bundle has none", () => {
+  const { lines } = committedBundle();
+  const line = lines.find((candidate) => !("water" in candidate.nutrients));
+  const [food] = searchAgentPlatformFoods({
+    source: "openFoodFacts",
+    search: line.code,
+    limit: 1
+  }).foods;
+
+  assert.deepEqual(Object.keys(food.nutrientsPer100).sort(), Object.keys(NUTRIENT_DEFAULT_UNITS).sort());
+  for (const [id, amount] of Object.entries(food.nutrientsPer100)) {
+    assert.equal(amount.unit, NUTRIENT_DEFAULT_UNITS[id], id);
+    if (!(id in line.nutrients)) {
+      assert.deepEqual(amount, { status: "unknown", value: null, entered: null, unit: amount.unit });
+    }
+  }
+});
+
+// Every Nutrient id with its default unit, read from the app's NutrientId
+// enum, so the server's vector cannot drift from the app's.
+const NUTRIENT_DEFAULT_UNITS = Object.fromEntries(
+  [
+    ...readFileSync(
+      new URL("../../mobile/lib/domain/nutrition/nutrition.dart", import.meta.url),
+      "utf8"
+    )
+      .split("enum NutrientId {")[1]
+      .split(";")[0]
+      .matchAll(/\w+\('([a-z0-9_]+)', NutrientUnit\.(\w+)\)/g)
+  ].map(([, id, unit]) => [id, unit])
+);
+
+function committedBundle() {
+  const [headerLine, ...productLines] = gunzipSync(
+    readFileSync(
+      new URL(
+        "../../mobile/assets/seeds/open_food_facts_bundle.ndjson.gz",
+        import.meta.url
+      )
+    )
+  )
+    .toString("utf8")
+    .split("\n")
+    .filter((line) => line.length > 0);
+  return {
+    header: JSON.parse(headerLine),
+    lines: productLines.map((line) => JSON.parse(line))
+  };
+}
