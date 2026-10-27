@@ -230,10 +230,10 @@ same barcode with different numbers.
 
 ## Open Questions
 
-*   **The contact email in the User-Agent.** Open Food Facts asks for
-    `AppName/Version (ContactEmail)`. The value is one constant,
-    `openFoodFactsContactEmail` (see file 16), and it must be a project address,
-    not a personal one. The maintainer supplies it before pull request 2 merges.
+*   **The contact email in the User-Agent** (resolved). Open Food Facts asks
+    for `AppName/Version (ContactEmail)`. The value is one constant,
+    `openFoodFactsContactEmail` (see file 16), set to the project address
+    `contact@perennia.fit`. Forks change it.
 
 Two questions are deferred, not blocking: the legal check above, and a kilojoule
 fallback for energy (see [Future Improvements](#future-improvements)).
@@ -802,7 +802,7 @@ writes made on the isolate's connection, so the picker searches again when the
 status becomes `ready`.
 
 The old cache table `open_food_facts_cache` in `AppDatabase` is dropped in
-schema version 61. Its rows are not copied: the app has not been released, so no
+schema version 62 (version 61 went to the Protocol Schedules change). Its rows are not copied: the app has not been released, so no
 user holds a cache worth keeping, and Food Entries and the Recent list do not
 depend on it.
 
@@ -1424,8 +1424,8 @@ it visible in review.
 *   The app is unreleased, so there is no staged rollout.
 *   Rolling back the app code is a revert. `food_reference.sqlite` is a cache; an
     older build ignores it, or drops and recreates it by its schema-version rule.
-*   The `AppDatabase` change in version 61 only drops a cache table. A rolled-back
-    build that expects version 60 cannot open a version 61 database, as with any
+*   The `AppDatabase` change in version 62 only drops a cache table. A rolled-back
+    build that expects version 61 cannot open a version 62 database, as with any
     Drift schema bump; on a debug device, reinstall.
 *   The agent operation change is additive. Old clients that omit `source` keep
     getting USDA results with the same fields, plus new nullable fields.
@@ -1831,12 +1831,11 @@ Conventions in this plan:
     *   `RequestBudget` (same file): a sliding 60-second window with a capacity,
         and `bool tryAcquire()`. One budget for search (capacity 10), one for
         products (capacity 15).
-    *   `const openFoodFactsContactEmail = '<supplied by the maintainer>';` and
+    *   `const openFoodFactsContactEmail = 'contact@perennia.fit';` and
         `String perenniaUserAgent()`, returning
         `Perennia/${perenniaAppVersion.split('+').first} ($openFoodFactsContactEmail)`.
-        A test in file 37 fails while the constant is not an email address, so
-        pull request 2 cannot merge until the maintainer sets it (see
-        [Open Questions](#open-questions)).
+        A test in file 37 fails while the constant is not an email address
+        (see [Open Questions](#open-questions)).
 
 ##### 17. App version constant (Create; Modify; Modify)
 
@@ -1959,7 +1958,7 @@ Conventions in this plan:
         `@DriftDatabase` table list.
     *   Delete `openFoodFactsCacheTable` and its entry in `schemaTableNames`.
     *   Remove the `from < 33` step that creates the table.
-    *   Set `schemaVersion` to 61, and add a `from < 61` step running
+    *   Set `schemaVersion` to 62, and add a `from < 62` step running
         `DROP TABLE IF EXISTS open_food_facts_cache`, with a docstring saying why
         no rows are copied.
 
@@ -2236,8 +2235,8 @@ Conventions in this plan:
         *   `resetDeviceData` leaves the full bundle and an empty device cache;
         *   nothing is sent when `allowOnline` is false.
     *   `apps/mobile/test/data/open_food_facts_cache_drop_migration_test.dart`
-        (Create): a version-60 database with rows in `open_food_facts_cache`
-        opens at 61 without the table and with every other table intact.
+        (Create): a version-61 database with rows in `open_food_facts_cache`
+        opens at 62 without the table and with every other table intact.
     *   `apps/mobile/test/features/settings/food_data_settings_screen_test.dart`
         (Create): the switch reads and writes `onlineFoodLookups`, and
         `meetsGuideline` passes for tap target size and text contrast in both
@@ -2303,11 +2302,9 @@ Conventions in this plan:
         cache-table assertions. Its snapshot-sync assertions stay; the device
         cache's absence from sync is asserted in
         `food_reference_database_test.dart`.
-    *   Three migration tests change their expected `schemaVersion` from 60 to
-        61:
-        *   `apps/mobile/test/data/routine_plan_migration_test.dart`;
-        *   `apps/mobile/test/data/workout_template_migration_test.dart`;
-        *   `apps/mobile/test/data/workout_template_group_migration_test.dart`.
+    *   `apps/mobile/test/data/protocol_plan_migration_test.dart` (Modify): its
+        pinned current version becomes 62. The routine-plan and workout-template
+        migration tests read the current version, so they need no change.
     *   `apps/mobile/test/data/erase_all_data_test.dart` (Modify): remove the
         `AppDatabase.openFoodFactsCacheTable` entry from `_keptTables`, with its
         comment.

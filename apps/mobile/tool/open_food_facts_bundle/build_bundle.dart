@@ -40,7 +40,7 @@ const perCountryLimit = 10000;
 /// bytes). `test/data/open_food_facts_bundle_asset_test.dart` checks the same.
 const sizeBudgetBytes = 6 * 1024 * 1024;
 
-const outputPath = 'assets/seeds/open_food_facts_bundle.ndjson.gz';
+const outputPath = openFoodFactsBundleAssetPath;
 
 const _coreNutrients = <NutrientId>[
   NutrientId.energy,
@@ -153,7 +153,7 @@ Future<void> main(List<String> args) async {
     datasetVersion: options.datasetVersion,
     contentHash: _hex(hash.bytes),
     sourceName: 'Open Food Facts',
-    sourceUrl: 'https://world.openfoodfacts.org/',
+    sourceUrl: openFoodFactsBaseUrl,
     licenseName: 'Open Database License (ODbL) 1.0',
     licenseUrl: 'https://opendatacommons.org/licenses/odbl/1-0/',
     contentsLicenseUrl: 'https://opendatacommons.org/licenses/dbcl/1-0/',

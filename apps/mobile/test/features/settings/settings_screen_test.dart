@@ -12,6 +12,7 @@ import 'package:http/testing.dart';
 import 'package:perennia/api/perennia_api_client.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/activity/widgets/activity_feed_screen.dart';
 import 'package:perennia/features/agent_keys/repositories/agent_api_key_repository.dart';
@@ -152,21 +153,20 @@ void main() {
       expect(find.byKey(SettingsScreen.nutritionCreditsKey), findsOneWidget);
       expect(find.text('Nutrition data'), findsOneWidget);
       expect(find.textContaining('Open Food Facts'), findsAtLeastNWidgets(1));
-      expect(find.textContaining('ODbL'), findsOneWidget);
+      expect(find.textContaining('ODbL'), findsAtLeastNWidgets(1));
       expect(
         find.textContaining('USDA FoodData Central'),
         findsAtLeastNWidgets(1),
       );
       expect(find.textContaining('CC0'), findsAtLeastNWidgets(1));
       expect(
-        find.textContaining('USDA logging works fully offline'),
+        find.textContaining(
+          'USDA foods and the offline Open Food Facts list work with no '
+          'network',
+        ),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('Open Food Facts branded/barcode lookups need '
-            'network once'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('need network once'), findsNothing);
       expect(
           find.textContaining('Quick Entry stays available'), findsOneWidget);
     });
@@ -1336,6 +1336,7 @@ void main() {
         SettingsScreen.backupTileKey: BackupSettingsScreen,
         SettingsScreen.dataManagementTileKey: DataManagementScreen,
         SettingsScreen.privacyTileKey: PrivacySettingsScreen,
+        SettingsScreen.foodDataTileKey: FoodDataSettingsScreen,
         SettingsScreen.aboutTileKey: AboutScreen,
       };
 
@@ -1345,6 +1346,106 @@ void main() {
         await tester.pageBack();
         await tester.pumpAndSettle();
       }
+    });
+
+    testWidgets('the Food data tile shows the online lookups setting', (
+      tester,
+    ) async {
+      final settingsRepository = InMemorySettingsRepository();
+      await _pumpSettings(tester, settingsRepository: settingsRepository);
+      await tester.scrollUntilVisible(
+        find.byKey(SettingsScreen.foodDataTileKey),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      expect(
+        find.descendant(
+          of: find.byKey(SettingsScreen.foodDataTileKey),
+          matching: find.text('Online lookups on'),
+        ),
+        findsOneWidget,
+      );
+
+      await _openHubScreen(tester, SettingsScreen.foodDataTileKey);
+      await tester.tap(
+        find.byKey(FoodDataSettingsScreen.onlineFoodLookupsSwitchKey),
+      );
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(SettingsScreen.foodDataTileKey),
+          matching: find.text('Online lookups off'),
+        ),
+        findsOneWidget,
+      );
+      expect((await settingsRepository.load()).onlineFoodLookups, isFalse);
+    });
+
+    testWidgets(
+        'the default Erase all data handler resets Open Food Facts after the '
+        'erase', (tester) async {
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final repositories = TrainingRepositories(database);
+      final mealId = await repositories.nutrition.createMeal(
+        MealDraft(
+          mealType: 'Breakfast',
+          startedAt: DateTime.utc(2026, 10, 27, 7),
+          timezone: 'Australia/Brisbane',
+          localDate: const NutritionDayDate(year: 2026, month: 10, day: 27),
+        ),
+      );
+      final openFoodFacts = _ResetRecordingOpenFoodFactsRepository(
+        mealStillLive: () async =>
+            (await repositories.nutrition.getMealById(mealId))?.deletedAt ==
+            null,
+      );
+
+      await _pumpSettings(
+        tester,
+        trainingRepositories: repositories,
+        openFoodFactsRepository: openFoodFacts,
+      );
+      await _openHubScreen(tester, SettingsScreen.dataManagementTileKey);
+      await tester.scrollUntilVisible(
+        find.byKey(SettingsScreen.eraseAllDataButtonKey),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester
+          .ensureVisible(find.byKey(SettingsScreen.eraseAllDataButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(SettingsScreen.eraseAllDataButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining(
+          'Open Food Facts products you opened or scanned are cleared from '
+          'this device too, and undo does not bring them back.',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(SettingsScreen.confirmEraseAllDataButtonKey));
+      await tester.pump();
+      // The erase does real database work, so let real time pass.
+      await tester.runAsync(() async {
+        for (var i = 0; i < 100 && openFoodFacts.resets == 0; i += 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      await tester.pumpAndSettle();
+
+      expect(openFoodFacts.resets, 1);
+      expect(
+        openFoodFacts.mealLiveAtReset,
+        isFalse,
+        reason: 'the erase runs first',
+      );
     });
 
     testWidgets('Activity Log is a Data and privacy destination', (
@@ -1485,6 +1586,8 @@ void main() {
           findsNothing,
         );
 
+        await tester.ensureVisible(find.byKey(SettingsScreen.supplementsTileKey));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(SettingsScreen.supplementsTileKey));
         await tester.pumpAndSettle();
 
@@ -1656,6 +1759,7 @@ Future<void> _pumpSettings(
   List<Override> extraOverrides = const <Override>[],
   SettingsSyncNow? settingsSyncNow,
   String syncDeviceId = 'device-a',
+  OpenFoodFactsRepository? openFoodFactsRepository,
 }) async {
   final resolvedSyncStatus =
       syncStatus ?? SyncStatusState.initial(DateTime.utc(2026, 6, 22, 12));
@@ -1727,6 +1831,12 @@ Future<void> _pumpSettings(
         protocolsLockStoreProvider.overrideWith(
           (ref) => protocolsLockStore ?? _InMemoryProtocolsLockStore(),
         ),
+        // The About screen reads the bundle header; Erase all data resets
+        // the reference database.
+        openFoodFactsRepositoryProvider.overrideWith(
+          (ref) =>
+              openFoodFactsRepository ?? const StubOpenFoodFactsRepository(),
+        ),
         ...extraOverrides,
       ],
       child: MaterialApp(
@@ -1738,6 +1848,23 @@ Future<void> _pumpSettings(
     ),
   );
   await tester.pump();
+}
+
+/// Records when Erase all data resets the reference database, and whether the
+/// erase had already happened.
+class _ResetRecordingOpenFoodFactsRepository
+    extends StubOpenFoodFactsRepository {
+  _ResetRecordingOpenFoodFactsRepository({required this.mealStillLive});
+
+  final Future<bool> Function() mealStillLive;
+  int resets = 0;
+  bool? mealLiveAtReset;
+
+  @override
+  Future<void> resetDeviceData() async {
+    resets += 1;
+    mealLiveAtReset = await mealStillLive();
+  }
 }
 
 class _StubSyncStatusController extends SyncStatusController {

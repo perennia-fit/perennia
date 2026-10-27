@@ -7,7 +7,6 @@ import 'package:archive/archive.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
 import '../../domain/analytics/exercise_analytics.dart';
 import '../../domain/body_tracker/measurement_validation.dart';
@@ -37,6 +36,7 @@ import '../../domain/training/training_dimensions.dart';
 import '../../domain/training/training_records.dart';
 import '../../domain/training/workout_capture.dart';
 import '../../domain/training/workout_share_summary.dart';
+import '../app_version.dart';
 import '../infra/activity_log_writer.dart';
 import '../infra/id_factory.dart';
 import '../infra/write_context.dart';
@@ -117,8 +117,6 @@ final trainingRepositoriesProvider = Provider<TrainingRepositories>((ref) {
   return TrainingRepositories(ref.watch(appDatabaseProvider));
 });
 
-const defaultOpenFoodFactsMaxCacheEntries = 5000;
-
 class TrainingRepositories {
   TrainingRepositories(
     this.database, {
@@ -126,10 +124,6 @@ class TrainingRepositories {
     PlatformExerciseSeedSource? platformSeedSource,
     UsdaFoodSeedSource? usdaFoodSeedSource,
     OtcCompoundSeedSource? otcCompoundSeedSource,
-    Uri? openFoodFactsBaseUrl,
-    http.Client? openFoodFactsHttpClient,
-    int openFoodFactsMaxCacheEntries = defaultOpenFoodFactsMaxCacheEntries,
-    DateTime Function()? openFoodFactsClock,
   }) : uuidGenerator = uuidGenerator ?? UuidV7Generator() {
     activityLog = ActivityLogRepository._(this);
     catalog = CatalogRepository._(
@@ -150,14 +144,6 @@ class TrainingRepositories {
     sets = LoggedSetRepository._(this);
     platformFoods = PlatformFoodRepository._(
       usdaFoodSeedSource ?? const AssetUsdaFoodSeedSource(),
-    );
-    openFoodFacts = OpenFoodFactsRepository._(
-      this,
-      baseUrl:
-          openFoodFactsBaseUrl ?? Uri.parse('https://world.openfoodfacts.org/'),
-      httpClient: openFoodFactsHttpClient ?? http.Client(),
-      maxCacheEntries: openFoodFactsMaxCacheEntries,
-      clock: openFoodFactsClock,
     );
     nutrition = NutritionRepository._(this);
     accountSettings = AccountSettingsRepository._(this);
@@ -198,7 +184,6 @@ class TrainingRepositories {
   late final TemplateDivergenceRepository templateDivergence;
   late final LoggedSetRepository sets;
   late final PlatformFoodRepository platformFoods;
-  late final OpenFoodFactsRepository openFoodFacts;
   late final NutritionRepository nutrition;
   late final AccountSettingsRepository accountSettings;
   late final ProtocolsRepository protocols;
@@ -2689,194 +2674,6 @@ class PlatformFoodRepository {
   }
 }
 
-class OpenFoodFactsRepository {
-  OpenFoodFactsRepository._(
-    this._repositories, {
-    required Uri baseUrl,
-    required http.Client httpClient,
-    required int maxCacheEntries,
-    DateTime Function()? clock,
-  })  : _baseUrl = baseUrl,
-        _httpClient = httpClient,
-        _maxCacheEntries = maxCacheEntries,
-        _clock = clock ?? DateTime.now;
-
-  final TrainingRepositories _repositories;
-  final Uri _baseUrl;
-  final http.Client _httpClient;
-  final int _maxCacheEntries;
-  final DateTime Function() _clock;
-
-  AppDatabase get _database => _repositories.database;
-
-  Future<List<PlatformFoodRecord>> search(
-    String query, {
-    int limit = 50,
-  }) async {
-    if (limit <= 0) {
-      return const <PlatformFoodRecord>[];
-    }
-    final food = await lookup(query, limit: limit);
-    return food == null
-        ? const <PlatformFoodRecord>[]
-        : <PlatformFoodRecord>[food];
-  }
-
-  Future<PlatformFoodRecord?> lookup(
-    String query, {
-    int limit = 50,
-  }) async {
-    final normalizedQuery = query.trim();
-    if (normalizedQuery.isEmpty || limit <= 0) {
-      return null;
-    }
-
-    final lookupKey = _openFoodFactsLookupKey(normalizedQuery);
-    final cached = await _cachedLookup(lookupKey);
-    if (cached != null) {
-      final accessedAt = _clock().toUtc();
-      await (_database.update(_database.openFoodFactsCache)
-            ..where((row) => row.lookupKey.equals(lookupKey)))
-          .write(
-        OpenFoodFactsCacheCompanion(
-          lastAccessedAt: Value<DateTime>(accessedAt),
-        ),
-      );
-      return _openFoodFactsRecordFromCacheRow(cached);
-    }
-
-    final fetched = await _fetchOpenFoodFacts(normalizedQuery, limit: limit);
-    if (fetched == null) {
-      return null;
-    }
-
-    final timestamp = _clock().toUtc();
-    await _database.into(_database.openFoodFactsCache).insertOnConflictUpdate(
-          OpenFoodFactsCacheCompanion.insert(
-            lookupKey: lookupKey,
-            foodId: fetched.id,
-            name: fetched.name,
-            nutrientValuesJson: fetched.nutrientsPer100.toJsonString(),
-            isLiquid: Value<bool>(fetched.isLiquid),
-            servingLabel: Value<String?>(fetched.servingLabel),
-            servingSize: Value<double?>(fetched.servingSize),
-            packageSize: Value<double?>(fetched.packageSize),
-            fetchedAt: timestamp,
-            lastAccessedAt: timestamp,
-          ),
-        );
-    await _enforceCacheLimit();
-
-    return fetched;
-  }
-
-  Future<OpenFoodFactsCacheRow?> _cachedLookup(String lookupKey) {
-    return (_database.select(_database.openFoodFactsCache)
-          ..where((row) => row.lookupKey.equals(lookupKey)))
-        .getSingleOrNull();
-  }
-
-  Future<PlatformFoodRecord?> _fetchOpenFoodFacts(
-    String query, {
-    required int limit,
-  }) async {
-    final barcode = _openFoodFactsBarcode(query);
-    final uri = barcode == null
-        ? _baseUrl.resolve('/cgi/search.pl').replace(
-            queryParameters: <String, String>{
-              'search_terms': query,
-              'search_simple': '1',
-              'action': 'process',
-              'json': '1',
-              'page_size': limit.toString(),
-              'fields':
-                  'code,product_name,generic_name,nutriments,serving_quantity,serving_quantity_unit,serving_size,product_quantity,product_quantity_unit,quantity,categories_tags',
-            },
-          )
-        : _baseUrl.resolve('/api/v2/product/$barcode.json').replace(
-            queryParameters: const <String, String>{
-              'fields':
-                  'code,product_name,generic_name,nutriments,serving_quantity,serving_quantity_unit,serving_size,product_quantity,product_quantity_unit,quantity,categories_tags',
-            },
-          );
-    final response = await _httpClient.get(
-      uri,
-      headers: const <String, String>{'accept': 'application/json'},
-    );
-    if (response.statusCode == 404) {
-      return null;
-    }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw http.ClientException(
-        'Open Food Facts lookup failed with HTTP ${response.statusCode}.',
-        uri,
-      );
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map) {
-      throw FormatException('Expected Open Food Facts JSON object.');
-    }
-    final body = Map<String, Object?>.from(decoded);
-
-    if (barcode != null) {
-      if (body['status'] == 0) {
-        return null;
-      }
-      final product = body['product'];
-      if (product is! Map) {
-        return null;
-      }
-      return _openFoodFactsRecordFromProduct(
-        Map<String, Object?>.from(product),
-        fallbackCode: barcode,
-      );
-    }
-
-    final products = body['products'];
-    if (products is! List<Object?>) {
-      return null;
-    }
-    for (final product in products) {
-      if (product is! Map) {
-        continue;
-      }
-      final record = _openFoodFactsRecordFromProduct(
-        Map<String, Object?>.from(product),
-      );
-      if (record != null) {
-        return record;
-      }
-    }
-    return null;
-  }
-
-  Future<void> _enforceCacheLimit() async {
-    if (_maxCacheEntries < 0) {
-      throw ArgumentError.value(
-        _maxCacheEntries,
-        'openFoodFactsMaxCacheEntries',
-        'Open Food Facts cache size must be non-negative.',
-      );
-    }
-    final query = _database.select(_database.openFoodFactsCache)
-      ..orderBy([
-        (row) => OrderingTerm.asc(row.lastAccessedAt),
-        (row) => OrderingTerm.asc(row.lookupKey),
-      ]);
-    final rows = await query.get();
-    final overflow = rows.length - _maxCacheEntries;
-    if (overflow <= 0) {
-      return;
-    }
-
-    final evictedKeys =
-        rows.take(overflow).map((row) => row.lookupKey).toList(growable: false);
-    await (_database.delete(_database.openFoodFactsCache)
-          ..where((row) => row.lookupKey.isIn(evictedKeys)))
-        .go();
-  }
-}
-
 class NutritionRepository {
   const NutritionRepository._(this._repositories);
 
@@ -4040,6 +3837,40 @@ class NutritionRepository {
     final row = await query.getSingleOrNull();
     final portionJson = row?.portionJson;
     return portionJson == null ? null : Portion.fromJsonString(portionJson);
+  }
+
+  /// The Last Portion of each of [foodIds] from [foodSource], in one query;
+  /// a food never logged with a Portion is absent.
+  Future<Map<String, Portion>> lastPortionsForFoods({
+    required List<String> foodIds,
+    required FoodSource foodSource,
+  }) async {
+    if (foodIds.isEmpty) {
+      return const <String, Portion>{};
+    }
+    final rows = await (_database.select(_database.foodEntries)
+          ..where(
+            (row) =>
+                row.deletedAt.isNull() &
+                row.entryKind.equals(FoodEntryKind.food.name) &
+                row.foodId.isIn(foodIds) &
+                row.foodSource.equals(foodSource.name) &
+                row.portionJson.isNotNull(),
+          )
+          ..orderBy([
+            (row) => OrderingTerm.desc(row.updatedAt),
+            (row) => OrderingTerm.desc(row.id),
+          ]))
+        .get();
+    final portions = <String, Portion>{};
+    for (final row in rows) {
+      final foodId = row.foodId;
+      final portionJson = row.portionJson;
+      if (foodId != null && portionJson != null) {
+        portions.putIfAbsent(foodId, () => Portion.fromJsonString(portionJson));
+      }
+    }
+    return portions;
   }
 
   Future<NutritionDayRecord> nutritionDay(NutritionDayDate localDate) async {
@@ -14829,277 +14660,6 @@ UserFoodRecord _userFoodFromRow(FoodRow row) {
     updatedAt: row.updatedAt.toUtc(),
     deletedAt: row.deletedAt?.toUtc(),
   );
-}
-
-PlatformFoodRecord _openFoodFactsRecordFromCacheRow(
-  OpenFoodFactsCacheRow row,
-) {
-  return PlatformFoodRecord(
-    id: row.foodId,
-    name: row.name,
-    foodSource: FoodSource.openFoodFacts,
-    nutrientsPer100: NutrientVector.fromJsonString(row.nutrientValuesJson),
-    isLiquid: row.isLiquid,
-    servingLabel: row.servingLabel,
-    servingSize: row.servingSize,
-    packageSize: row.packageSize,
-  );
-}
-
-PlatformFoodRecord? _openFoodFactsRecordFromProduct(
-  Map<String, Object?> product, {
-  String? fallbackCode,
-}) {
-  final code = _openFoodFactsString(product['code']) ?? fallbackCode;
-  final name = _firstOpenFoodFactsString(
-    product,
-    const <String>['product_name', 'product_name_en', 'generic_name'],
-  );
-  if (code == null || code.trim().isEmpty || name == null) {
-    return null;
-  }
-
-  final serving = _openFoodFactsQuantity(
-    value: product['serving_quantity'],
-    unit: product['serving_quantity_unit'],
-    fallbackText: product['serving_size'],
-  );
-  final package = _openFoodFactsQuantity(
-    value: product['product_quantity'],
-    unit: product['product_quantity_unit'],
-    fallbackText: product['quantity'],
-  );
-
-  return PlatformFoodRecord(
-    id: code.trim(),
-    name: name.trim(),
-    foodSource: FoodSource.openFoodFacts,
-    nutrientsPer100: _openFoodFactsNutrientVector(product['nutriments']),
-    isLiquid: serving?.isLiquid ?? package?.isLiquid ?? false,
-    servingLabel: serving == null ? null : 'serving',
-    servingSize: serving?.baseQuantity,
-    packageSize: package?.baseQuantity,
-  );
-}
-
-NutrientVector _openFoodFactsNutrientVector(Object? value) {
-  if (value is! Map) {
-    return NutrientVector.full(const <NutrientId, NutrientAmount>{});
-  }
-  final nutriments = Map<String, Object?>.from(value);
-  final amounts = <NutrientId, NutrientAmount>{};
-
-  void add(
-    NutrientId id,
-    List<String> keys, {
-    double multiplier = 1,
-  }) {
-    final sourceValue = _firstOpenFoodFactsNumber(nutriments, keys);
-    if (sourceValue == null || sourceValue < 0) {
-      return;
-    }
-    final normalizedValue = sourceValue * multiplier;
-    amounts[id] = NutrientAmount.complete(
-      value: normalizedValue,
-      entered: _formatOpenFoodFactsNumber(normalizedValue),
-      unit: id.defaultUnit,
-    );
-  }
-
-  add(NutrientId.energy, const <String>[
-    'energy-kcal_100g',
-    'energy-kcal_value',
-  ]);
-  add(NutrientId.protein, const <String>['proteins_100g']);
-  add(NutrientId.carbohydrate, const <String>['carbohydrates_100g']);
-  add(NutrientId.sugar, const <String>['sugars_100g']);
-  add(NutrientId.fat, const <String>['fat_100g']);
-  add(NutrientId.saturatedFat, const <String>['saturated-fat_100g']);
-  add(NutrientId.monounsaturatedFat, const <String>[
-    'monounsaturated-fat_100g',
-    'mono-unsaturated-fat_100g',
-  ]);
-  add(NutrientId.polyunsaturatedFat, const <String>[
-    'polyunsaturated-fat_100g',
-    'poly-unsaturated-fat_100g',
-  ]);
-  add(NutrientId.fiber, const <String>['fiber_100g', 'fibers_100g']);
-  add(NutrientId.sodium, const <String>['sodium_100g'], multiplier: 1000);
-  add(
-    NutrientId.cholesterol,
-    const <String>['cholesterol_100g'],
-    multiplier: 1000,
-  );
-  add(NutrientId.caffeine, const <String>['caffeine_100g'], multiplier: 1000);
-
-  return NutrientVector.full(amounts);
-}
-
-String _openFoodFactsLookupKey(String query) {
-  final barcode = _openFoodFactsBarcode(query);
-  if (barcode != null) {
-    return 'barcode:$barcode';
-  }
-  final normalized = query.trim().toLowerCase().replaceAll(
-        RegExp(r'\s+'),
-        ' ',
-      );
-  return 'search:$normalized';
-}
-
-String? _openFoodFactsBarcode(String query) {
-  final compact = query.trim().replaceAll(RegExp(r'[\s-]'), '');
-  if (RegExp(r'^\d{6,18}$').hasMatch(compact)) {
-    return compact;
-  }
-  return null;
-}
-
-String? _firstOpenFoodFactsString(
-  Map<String, Object?> values,
-  List<String> keys,
-) {
-  for (final key in keys) {
-    final value = _openFoodFactsString(values[key]);
-    if (value != null) {
-      return value;
-    }
-  }
-  return null;
-}
-
-String? _openFoodFactsString(Object? value) {
-  if (value is String && value.trim().isNotEmpty) {
-    return value.trim();
-  }
-  return null;
-}
-
-double? _firstOpenFoodFactsNumber(
-  Map<String, Object?> values,
-  List<String> keys,
-) {
-  for (final key in keys) {
-    final value = _openFoodFactsNumber(values[key]);
-    if (value != null) {
-      return value;
-    }
-  }
-  return null;
-}
-
-double? _openFoodFactsNumber(Object? value) {
-  if (value is num && value.isFinite) {
-    return value.toDouble();
-  }
-  if (value is String) {
-    final normalized = value.trim().replaceAll(',', '.');
-    final parsed = double.tryParse(normalized);
-    if (parsed != null && parsed.isFinite) {
-      return parsed;
-    }
-  }
-  return null;
-}
-
-String _formatOpenFoodFactsNumber(double value) {
-  final fixed = value.toStringAsFixed(6);
-  return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
-}
-
-_OpenFoodFactsQuantity? _openFoodFactsQuantity({
-  required Object? value,
-  required Object? unit,
-  required Object? fallbackText,
-}) {
-  final parsedValue = _openFoodFactsNumber(value);
-  final parsedUnit = _openFoodFactsString(unit);
-  if (parsedValue != null && parsedUnit != null) {
-    final quantity = _openFoodFactsQuantityFromValue(
-      parsedValue,
-      parsedUnit,
-    );
-    if (quantity != null) {
-      return quantity;
-    }
-  }
-
-  final text = _openFoodFactsString(fallbackText);
-  if (text == null) {
-    return null;
-  }
-  final match = RegExp(r'(-?\d+(?:[\.,]\d+)?)\s*([A-Za-z ]+)').firstMatch(
-    text,
-  );
-  if (match == null) {
-    return null;
-  }
-  final fallbackValue = _openFoodFactsNumber(match.group(1));
-  final fallbackUnit = match.group(2);
-  if (fallbackValue == null || fallbackUnit == null) {
-    return null;
-  }
-  return _openFoodFactsQuantityFromValue(fallbackValue, fallbackUnit);
-}
-
-_OpenFoodFactsQuantity? _openFoodFactsQuantityFromValue(
-  double value,
-  String unit,
-) {
-  if (!value.isFinite || value <= 0) {
-    return null;
-  }
-  final normalizedUnit = unit
-      .trim()
-      .toLowerCase()
-      .replaceAll('.', '')
-      .replaceAll(RegExp(r'\s+'), ' ');
-  return switch (normalizedUnit) {
-    'g' || 'gram' || 'grams' => _OpenFoodFactsQuantity(
-        baseQuantity: value,
-        isLiquid: false,
-      ),
-    'kg' || 'kilogram' || 'kilograms' => _OpenFoodFactsQuantity(
-        baseQuantity: value * 1000,
-        isLiquid: false,
-      ),
-    'oz' || 'ounce' || 'ounces' => _OpenFoodFactsQuantity(
-        baseQuantity: value * 28.349523125,
-        isLiquid: false,
-      ),
-    'ml' ||
-    'milliliter' ||
-    'milliliters' ||
-    'millilitre' ||
-    'millilitres' =>
-      _OpenFoodFactsQuantity(
-        baseQuantity: value,
-        isLiquid: true,
-      ),
-    'l' || 'liter' || 'liters' || 'litre' || 'litres' => _OpenFoodFactsQuantity(
-        baseQuantity: value * 1000,
-        isLiquid: true,
-      ),
-    'fl oz' ||
-    'floz' ||
-    'fluid ounce' ||
-    'fluid ounces' =>
-      _OpenFoodFactsQuantity(
-        baseQuantity: value * 29.5735295625,
-        isLiquid: true,
-      ),
-    _ => null,
-  };
-}
-
-class _OpenFoodFactsQuantity {
-  const _OpenFoodFactsQuantity({
-    required this.baseQuantity,
-    required this.isLiquid,
-  });
-
-  final double baseQuantity;
-  final bool isLiquid;
 }
 
 MealTypeRecord _mealTypeFromRow(MealTypeRow row) {

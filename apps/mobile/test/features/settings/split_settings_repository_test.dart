@@ -122,6 +122,28 @@ void main() {
       expect(reloaded.crashReportingEnabled, isTrue);
     });
 
+    test('online food lookups stay in the device file, never the synced row',
+        () async {
+      final deviceStore = InMemorySettingsRepository();
+      final split = SplitSettingsRepository(
+        deviceStore: deviceStore,
+        accountSettings: repositories.accountSettings,
+      );
+      await split.load();
+
+      await split.save(const AppSettings(onlineFoodLookups: false));
+
+      expect((await deviceStore.load()).onlineFoodLookups, isFalse);
+      expect((await split.load()).onlineFoodLookups, isFalse);
+      final row = (await database.select(database.userSettings).get()).single;
+      expect(row.toJson().keys, isNot(contains('onlineFoodLookups')));
+      expect(
+        AppSettings.defaults.toAccountSettings(),
+        const AppSettings(onlineFoodLookups: false).toAccountSettings(),
+        reason: 'the account half does not carry the setting',
+      );
+    });
+
     test('the synced row is the source of truth for account fields on load',
         () async {
       await settings.load(); // create the row at defaults

@@ -9,6 +9,20 @@ final clientCrashReporterProvider = Provider<ClientCrashReporter>((ref) {
   );
 });
 
+/// Reports [error] if a reporter is set, and never throws: for failures the
+/// app already handles, where reporting is best effort.
+Future<void> reportQuietly(
+  ClientCrashReporter? reporter,
+  Object error,
+  StackTrace stackTrace,
+) async {
+  try {
+    await reporter?.captureException(error, stackTrace);
+  } on Object {
+    // Best effort only.
+  }
+}
+
 abstract interface class ClientCrashReporter {
   Future<void> setEnabled(bool enabled);
 

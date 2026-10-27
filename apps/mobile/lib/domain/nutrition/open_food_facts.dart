@@ -265,7 +265,33 @@ const openFoodFactsDisclaimer =
 
 /// The product's own page, where a user can check and correct its data.
 String openFoodFactsProductUrl(String code) =>
-    'https://world.openfoodfacts.org/product/${Uri.encodeComponent(code)}';
+    '${openFoodFactsBaseUrl}product/${Uri.encodeComponent(code)}';
+
+/// Open Food Facts' site and API host.
+const openFoodFactsBaseUrl = 'https://world.openfoodfacts.org/';
+
+/// The shipped bundle, relative to `apps/mobile`: the builder writes it, the
+/// app installs it, and the asset test checks it.
+const openFoodFactsBundleAssetPath =
+    'assets/seeds/open_food_facts_bundle.ndjson.gz';
+
+/// The compact nutrient form: Nutrient storage key → entered text, in
+/// [NutrientId] order. A bundle product line and a stored device row both
+/// carry it.
+Map<String, String> nutrientTextToJson(Map<NutrientId, String> text) {
+  return <String, String>{
+    for (final id in NutrientId.values)
+      if (text[id] case final entered?) id.storageKey: entered,
+  };
+}
+
+/// The inverse of [nutrientTextToJson]; an unknown key is an error.
+Map<NutrientId, String> nutrientTextFromJson(Map<String, Object?> json) {
+  return <NutrientId, String>{
+    for (final MapEntry(:key, :value) in json.entries)
+      NutrientId.byStorageKey(key): value! as String,
+  };
+}
 
 // The bundle format. See docs/designs/open-food-facts.md, "The bundle file".
 
@@ -288,10 +314,7 @@ String encodeBundleProductLine(MappedOpenFoodFactsProduct product) {
     'servingLabel': product.servingLabel,
     'servingSize': _compactNumber(product.servingSize),
     'packageSize': _compactNumber(product.packageSize),
-    'nutrients': <String, String>{
-      for (final id in NutrientId.values)
-        if (product.nutrientText[id] case final text?) id.storageKey: text,
-    },
+    'nutrients': nutrientTextToJson(product.nutrientText),
     'modifiedAt': product.modifiedAt.millisecondsSinceEpoch ~/ 1000,
     'scans': scans,
   });
@@ -314,10 +337,7 @@ MappedOpenFoodFactsProduct decodeBundleProductLine(String line) {
     servingLabel: json['servingLabel'] as String?,
     servingSize: (json['servingSize'] as num?)?.toDouble(),
     packageSize: (json['packageSize'] as num?)?.toDouble(),
-    nutrientText: <NutrientId, String>{
-      for (final MapEntry(:key, :value) in nutrients.entries)
-        NutrientId.byStorageKey(key): value! as String,
-    },
+    nutrientText: nutrientTextFromJson(nutrients),
     modifiedAt: DateTime.fromMillisecondsSinceEpoch(
       (json['modifiedAt']! as int) * 1000,
       isUtc: true,

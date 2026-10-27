@@ -146,6 +146,12 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     });
   }
 
+  Future<void> setOnlineFoodLookups(bool enabled) {
+    return _update((settings) {
+      return settings.copyWith(onlineFoodLookups: enabled);
+    });
+  }
+
   Future<void> setUnitSystem(UnitSystem unitSystem) {
     return _update((settings) {
       return settings.copyWith(unitSystem: unitSystem);
@@ -267,6 +273,7 @@ class AppSettings {
     this.autoBackupLastRunAt,
     this.autoBackupLastSuccessfulRunAt,
     this.autoBackupLastStatus = AutoBackupStatus.idle,
+    this.onlineFoodLookups = true,
   }) : assert(defaultWeightIncrement > 0);
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -325,6 +332,9 @@ class AppSettings {
         json['autoBackupLastStatus'],
         AutoBackupStatus.idle,
       ),
+      onlineFoodLookups: json['onlineFoodLookups'] is bool
+          ? json['onlineFoodLookups']! as bool
+          : true,
     );
   }
 
@@ -352,6 +362,11 @@ class AppSettings {
   final DateTime? autoBackupLastRunAt;
   final DateTime? autoBackupLastSuccessfulRunAt;
   final AutoBackupStatus autoBackupLastStatus;
+
+  /// Device-level (never synced): whether the add-food picker may send the
+  /// user's search text or barcode to Open Food Facts. The offline food list
+  /// works either way.
+  final bool onlineFoodLookups;
 
   bool get autoBackupNeedsFolderGrant =>
       autoBackupEnabled &&
@@ -395,6 +410,7 @@ class AppSettings {
       'autoBackupLastSuccessfulRunAt':
           autoBackupLastSuccessfulRunAt?.toUtc().toIso8601String(),
       'autoBackupLastStatus': autoBackupLastStatus.name,
+      'onlineFoodLookups': onlineFoodLookups,
     };
   }
 
@@ -417,6 +433,7 @@ class AppSettings {
     Object? autoBackupLastRunAt = _copyWithSentinel,
     Object? autoBackupLastSuccessfulRunAt = _copyWithSentinel,
     AutoBackupStatus? autoBackupLastStatus,
+    bool? onlineFoodLookups,
   }) {
     return AppSettings(
       themePreference: themePreference ?? this.themePreference,
@@ -453,6 +470,7 @@ class AppSettings {
               ? this.autoBackupLastSuccessfulRunAt
               : autoBackupLastSuccessfulRunAt as DateTime?,
       autoBackupLastStatus: autoBackupLastStatus ?? this.autoBackupLastStatus,
+      onlineFoodLookups: onlineFoodLookups ?? this.onlineFoodLookups,
     );
   }
 
@@ -529,7 +547,8 @@ class AppSettings {
             autoBackupLastRunAt == other.autoBackupLastRunAt &&
             autoBackupLastSuccessfulRunAt ==
                 other.autoBackupLastSuccessfulRunAt &&
-            autoBackupLastStatus == other.autoBackupLastStatus;
+            autoBackupLastStatus == other.autoBackupLastStatus &&
+            onlineFoodLookups == other.onlineFoodLookups;
   }
 
   @override
@@ -552,6 +571,7 @@ class AppSettings {
         autoBackupLastRunAt,
         autoBackupLastSuccessfulRunAt,
         autoBackupLastStatus,
+        onlineFoodLookups,
       );
 }
 

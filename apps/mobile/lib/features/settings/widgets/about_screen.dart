@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/repositories/open_food_facts_repository.dart';
+import '../../../domain/nutrition/open_food_facts.dart';
 import '../../../theme/theme.dart';
 import '../../nutrition/widgets/nutrition_attribution.dart';
 import 'settings_shared.dart';
@@ -10,14 +13,16 @@ const _ccBySa4Url = 'https://creativecommons.org/licenses/by-sa/4.0/';
 
 /// Settings → About: bundled-data attributions and license obligations
 /// (CC-BY-SA, ODbL) — read-once content with a permanent, predictable home.
-class AboutScreen extends StatelessWidget {
+class AboutScreen extends ConsumerWidget {
   const AboutScreen({super.key});
 
   static const exerciseCreditsKey = Key('settings.exerciseCredits');
   static const nutritionCreditsKey = Key('settings.nutritionCredits');
+  static const openFoodFactsParagraphKey =
+      Key('settings.nutritionCredits.openFoodFacts');
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return const SettingsSubScreen(
       title: 'About',
       children: [
@@ -83,11 +88,31 @@ class _ExerciseCredits extends StatelessWidget {
   }
 }
 
-class _NutritionCredits extends StatelessWidget {
+class _NutritionCredits extends ConsumerWidget {
   const _NutritionCredits();
 
+  /// The dataset parenthesis is left out while the header loads, and when it
+  /// cannot be read.
+  static String openFoodFactsParagraph(BundleHeader? header) {
+    final dataset = header == null
+        ? ''
+        : ' (dataset version ${header.datasetVersion}, '
+            '${header.productCount} products)';
+    return 'Branded foods come from Open Food Facts, a database built by its '
+        'contributors, made available under the Open Database License (ODbL) '
+        '1.0. This app includes a list of common products from Australia, the '
+        'United States, the United Kingdom, Canada and New Zealand$dataset. '
+        'The list and its licence file are in the Perennia repository under '
+        'apps/mobile/assets/seeds/, and the tool that builds it is '
+        'apps/mobile/tool/open_food_facts_bundle/build_bundle.dart. '
+        '$openFoodFactsDisclaimer Searching online sends your search text or '
+        'barcode to Open Food Facts; you can turn this off under Settings > '
+        'Food data.';
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final header = ref.watch(bundleHeaderProvider).value;
     return Semantics(
       container: true,
       label: 'Nutrition data credits',
@@ -98,7 +123,8 @@ class _NutritionCredits extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Open Food Facts branded and barcode data is queried live and cached on this device. Attribution: Open Food Facts.',
+              openFoodFactsParagraph(header),
+              key: AboutScreen.openFoodFactsParagraphKey,
               style: context.textStyles.body,
             ),
             const SizedBox(height: AppDimens.dense),
@@ -115,6 +141,11 @@ class _NutritionCredits extends StatelessWidget {
                   key: NutritionAttributionKeys.openFoodFactsOdblLink,
                   label: 'ODbL',
                   url: openFoodFactsOdblUrl,
+                ),
+                AttributionLinkButton(
+                  key: NutritionAttributionKeys.openFoodFactsDbclLink,
+                  label: 'DbCL',
+                  url: openFoodFactsDbclUrl,
                 ),
               ],
             ),
@@ -142,7 +173,10 @@ class _NutritionCredits extends StatelessWidget {
             ),
             const SizedBox(height: AppDimens.base),
             Text(
-              'USDA logging works fully offline. Open Food Facts branded/barcode lookups need network once, then use this device cache. Quick Entry stays available.',
+              'USDA foods and the offline Open Food Facts list work with no '
+              'network. Searching Open Food Facts online needs a connection, '
+              'and products you open or scan stay on this device. Quick Entry '
+              'stays available.',
               style: context.textStyles.body.copyWith(
                 color: context.colors.textSecondary,
               ),

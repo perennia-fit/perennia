@@ -8,6 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/local/food_reference_database.dart';
+import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
+import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
 import 'package:perennia/features/nutrition/widgets/add_food_picker.dart';
@@ -15,7 +18,11 @@ import 'package:perennia/features/nutrition/widgets/barcode_scanner.dart';
 import 'package:perennia/features/nutrition/widgets/log_portion_screen.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_attribution.dart';
 import 'package:perennia/features/nutrition/widgets/quick_entry_dialog.dart';
+import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/theme/theme.dart';
+
+import '../../data/open_food_facts_fixtures.dart';
+import 'add_food_repository_fakes.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -457,33 +464,43 @@ void main() {
     final requests = <http.Request>[];
     final database = AppDatabase.inMemory();
     addTearDown(database.close);
-    final repositories = TrainingRepositories(
-      database,
-      openFoodFactsBaseUrl: Uri.parse('https://off.test/'),
-      openFoodFactsHttpClient: MockClient((request) async {
-        requests.add(request);
-        return http.Response(
-          jsonEncode(<String, Object?>{
-            'status': 1,
-            'product': <String, Object?>{
+    final referenceDatabase = FoodReferenceDatabase.memory();
+    addTearDown(referenceDatabase.close);
+    final repositories = TrainingRepositories(database);
+    final openFoodFacts = DriftOpenFoodFactsRepository.forTesting(
+      database: referenceDatabase,
+      asset: const ThrowingBundleAsset(), // never installed here
+      client: OpenFoodFactsClient(
+        baseUrl: Uri.parse('https://off.test/'),
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          return http.Response(
+            jsonEncode(<String, Object?>{
               'code': '3017620422003',
-              'product_name': 'Hazelnut cocoa spread',
-              'serving_quantity': 15,
-              'serving_quantity_unit': 'g',
-              'product_quantity': 400,
-              'product_quantity_unit': 'g',
-              'nutriments': <String, Object?>{
-                'energy-kcal_100g': 539,
-                'proteins_100g': 6.3,
-                'carbohydrates_100g': 56.3,
-                'fat_100g': 30.9,
+              'status': 'success',
+              'result': <String, Object?>{'id': 'product_found'},
+              'product': <String, Object?>{
+                'code': '3017620422003',
+                'product_name': 'Hazelnut cocoa spread',
+                'brands': 'Nutella',
+                'last_modified_t': 1760000000,
+                'serving_quantity': 15,
+                'serving_quantity_unit': 'g',
+                'product_quantity': 400,
+                'product_quantity_unit': 'g',
+                'nutriments': <String, Object?>{
+                  'energy-kcal_100g': 539,
+                  'proteins_100g': 6.3,
+                  'carbohydrates_100g': 56.3,
+                  'fat_100g': 30.9,
+                },
               },
-            },
-          }),
-          200,
-          headers: const {'content-type': 'application/json'},
-        );
-      }),
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
     );
     final mealId = await repositories.nutrition.createMeal(
       MealDraft(
@@ -499,6 +516,7 @@ void main() {
       tester,
       meal: meal,
       repositories: repositories,
+      openFoodFacts: openFoodFacts,
       barcodeScanner: const _FakeBarcodeScanner('3017620422003'),
     );
     await _pumpUntilFound(tester, find.text('No foods found'));
@@ -524,7 +542,14 @@ void main() {
     );
 
     expect(requests, hasLength(1));
-    expect(requests.single.url.path, '/api/v2/product/3017620422003.json');
+    expect(requests.single.url.path, '/api/v3.6/product/3017620422003.json');
+    // The live hit is kept on the device, so the next scan sends nothing.
+    expect(
+      (await referenceDatabase.productsByCodes(<String>['3017620422003']))
+          .single
+          .origin,
+      originOnline,
+    );
     expect(entries, hasLength(1));
     expect(entries.single.kind, FoodEntryKind.food);
     expect(entries.single.name, 'Hazelnut cocoa spread');
@@ -559,9 +584,10 @@ void main() {
 
     expect(find.byKey(AddFoodPicker.barcodeStatusKey), findsOneWidget);
     expect(
-      find.textContaining('needs network the first time'),
-      findsOneWidget,
+      tester.widget<Text>(find.byKey(AddFoodPicker.barcodeStatusLineKey)).data,
+      "You're offline. Showing foods on this device.",
     );
+    expect(find.textContaining('needs network'), findsNothing);
     expect(
         find.textContaining('USDA foods stay fully offline'), findsOneWidget);
     expect(find.byKey(AddFoodPicker.lookupUsdaButtonKey), findsOneWidget);
@@ -573,46 +599,345 @@ void main() {
     expect(find.byKey(QuickEntryDialog.nameFieldKey), findsOneWidget);
   });
 
-  testWidgets('offline Open Food Facts search shows honest needs-network state',
+  testWidgets('an offline online search keeps the device matches on screen',
       (tester) async {
-    await _pumpPicker(
-      tester,
-      repository: const _OfflineOpenFoodFactsRepository(),
+    final repository = _OnlineAddFoodRepository(
+      online: (status: OnlineSearchStatus.offline, items: <FoodPickerItem>[]),
     );
-    await _pumpUntilFound(tester, find.text('No foods found'));
+    await _pumpOpenFoodFactsFilter(tester, repository: repository);
 
-    await tester.tap(
-      find.byKey(
-        AddFoodPicker.filterChipKey(AddFoodPickerFilter.openFoodFacts),
-      ),
-    );
-    await tester.enterText(
-      find.byKey(AddFoodPicker.searchFieldKey),
-      'branded bar',
-    );
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'hazel');
+    await _pumpSearchDebounce(tester);
+    await tester.tap(find.byKey(AddFoodPicker.onlineSearchRowKey));
+    await tester.pumpAndSettle();
+
+    expect(repository.onlineQueries, <String>['hazel']);
+    expect(_onlineLine(tester), "You're offline. Showing foods on this device.");
+    expect(find.text('Hazelnut cocoa spread'), findsOneWidget);
+    expect(find.textContaining('needs network'), findsNothing);
+  });
+
+  testWidgets('typing searches the device and sends nothing online',
+      (tester) async {
+    final repository = _OnlineAddFoodRepository();
+    await _pumpOpenFoodFactsFilter(tester, repository: repository);
+
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'haz');
+    await _pumpSearchDebounce(tester);
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'hazel');
     await _pumpSearchDebounce(tester);
 
-    expect(find.byKey(AddFoodPicker.brandedSearchStatusKey), findsOneWidget);
+    expect(repository.onlineQueries, isEmpty);
+    expect(find.text('Hazelnut cocoa spread'), findsOneWidget);
     expect(
-      find.textContaining('Open Food Facts branded search needs network'),
+      find.text('Search Open Food Facts for "hazel"'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the online search row and the search action each send one',
+      (tester) async {
+    final repository = _OnlineAddFoodRepository();
+    await _pumpOpenFoodFactsFilter(tester, repository: repository);
+
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'hazel');
+    await _pumpSearchDebounce(tester);
+    await tester.tap(find.byKey(AddFoodPicker.onlineSearchRowKey));
+    await tester.pumpAndSettle();
+    expect(repository.onlineQueries, <String>['hazel']);
+
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'cocoa');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(repository.onlineQueries, <String>['hazel', 'cocoa']);
+  });
+
+  testWidgets(
+      'live results join the device matches without duplicate barcodes',
+      (tester) async {
+    final newerStored = _offItem(
+      '3017620422003',
+      'Hazelnut cocoa spread (new recipe)',
+      changedAt: DateTime.utc(2026, 10, 20),
+      live: true,
+    );
+    final repository = _OnlineAddFoodRepository(
+      local: <FoodPickerItem>[
+        _offItem(
+          '3017620422003',
+          'Hazelnut cocoa spread',
+          changedAt: DateTime.utc(2026, 1, 1),
+        ),
+      ],
+      online: (
+        status: OnlineSearchStatus.ok,
+        items: <FoodPickerItem>[
+          newerStored,
+          _offItem('8000500310427', 'Hazelnut wafers', live: true),
+        ],
+      ),
+    );
+    await _pumpOpenFoodFactsFilter(tester, repository: repository);
+
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'hazel');
+    await _pumpSearchDebounce(tester);
+    await tester.tap(find.byKey(AddFoodPicker.onlineSearchRowKey));
+    await tester.pumpAndSettle();
+
+    // Goal 4: the newer live copy takes the stored match's place.
+    expect(find.text('Hazelnut cocoa spread (new recipe)'), findsOneWidget);
+    expect(find.text('Hazelnut cocoa spread'), findsNothing);
+    final group = find.byKey(AddFoodPicker.onlineGroupKey);
+    expect(group, findsOneWidget);
+    expect(
+      find.descendant(of: group, matching: find.text('Hazelnut wafers')),
       findsOneWidget,
     );
     expect(
-        find.textContaining('USDA foods stay fully offline'), findsOneWidget);
-    expect(find.byKey(AddFoodPicker.lookupUsdaButtonKey), findsOneWidget);
-    expect(find.byKey(AddFoodPicker.barcodeQuickAddButtonKey), findsOneWidget);
+      find.descendant(
+        of: group,
+        matching: find.text('Hazelnut cocoa spread (new recipe)'),
+      ),
+      findsNothing,
+    );
+  });
 
-    await tester.tap(find.byKey(AddFoodPicker.lookupUsdaButtonKey));
+  testWidgets('the bundle line shows while installing and after a failure',
+      (tester) async {
+    for (final (status, line) in <(BundleStatus, String?)>[
+      (BundleStatus.unknown, null),
+      (BundleStatus.installing, 'Preparing the offline food list.'),
+      (BundleStatus.ready, null),
+      (
+        BundleStatus.failed,
+        'The offline food list could not be prepared. It will try again next '
+            'time the app opens.',
+      ),
+    ]) {
+      await _pumpOpenFoodFactsFilter(
+        tester,
+        repository: _OnlineAddFoodRepository(),
+        bundleStatus: status,
+      );
+      final finder = find.byKey(AddFoodPicker.bundleStatusLineKey);
+      if (line == null) {
+        expect(finder, findsNothing, reason: status.name);
+      } else {
+        expect(tester.widget<Text>(find.descendant(
+          of: finder,
+          matching: find.byType(Text),
+        )).data, line, reason: status.name);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('the online slot shows one state, in precedence order',
+      (tester) async {
+    for (final (enabled, status, line) in <(bool, OnlineSearchStatus, String?)>[
+      (
+        false,
+        OnlineSearchStatus.ok,
+        'Online lookups are off. Turn them on in Settings > Food data.',
+      ),
+      (true, OnlineSearchStatus.offline,
+          "You're offline. Showing foods on this device."),
+      (true, OnlineSearchStatus.unavailable,
+          'Open Food Facts is unavailable. Try again in a minute.'),
+      (true, OnlineSearchStatus.noResults, 'No matches on Open Food Facts.'),
+      (true, OnlineSearchStatus.ok, null),
+    ]) {
+      final repository = _OnlineAddFoodRepository(
+        enabled: enabled,
+        online: (status: status, items: <FoodPickerItem>[]),
+      );
+      await _pumpOpenFoodFactsFilter(tester, repository: repository);
+      await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'hazel');
+      await _pumpSearchDebounce(tester);
+      if (enabled) {
+        await tester.tap(find.byKey(AddFoodPicker.onlineSearchRowKey));
+        await tester.pumpAndSettle();
+      }
+
+      final reason = '$enabled ${status.name}';
+      if (line == null) {
+        expect(find.byKey(AddFoodPicker.onlineStatusLineKey), findsNothing,
+            reason: reason);
+        expect(find.byKey(AddFoodPicker.onlineSearchRowKey), findsOneWidget,
+            reason: reason);
+      } else {
+        expect(_onlineLine(tester), line, reason: reason);
+        expect(find.byKey(AddFoodPicker.onlineSearchRowKey), findsNothing,
+            reason: reason);
+      }
+      // Changing the query clears the last live request's state.
+      if (enabled && line != null) {
+        await tester.enterText(
+            find.byKey(AddFoodPicker.searchFieldKey), 'hazelnut');
+        await tester.pump();
+        expect(find.byKey(AddFoodPicker.onlineSearchRowKey), findsOneWidget,
+            reason: '$reason cleared');
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('the device matches stay visible while a live search runs',
+      (tester) async {
+    final pending = Completer<
+        ({OnlineSearchStatus status, List<FoodPickerItem> items})>();
+    final repository = _OnlineAddFoodRepository(pendingOnline: pending);
+    await _pumpOpenFoodFactsFilter(tester, repository: repository);
+
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'hazel');
+    await _pumpSearchDebounce(tester);
+    await tester.tap(find.byKey(AddFoodPicker.onlineSearchRowKey));
+    await tester.pump();
+
+    expect(find.text('Hazelnut cocoa spread'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(AddFoodPicker.onlineSearchRowKey),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+
+    pending.complete(
+      (status: OnlineSearchStatus.noResults, items: <FoodPickerItem>[]),
+    );
+    await tester.pumpAndSettle();
+    expect(_onlineLine(tester), 'No matches on Open Food Facts.');
+  });
+
+  testWidgets('an empty query asks for a product or brand name',
+      (tester) async {
+    await _pumpOpenFoodFactsFilter(
+      tester,
+      repository: _OnlineAddFoodRepository(),
+    );
+
+    expect(find.byKey(AddFoodPicker.emptyQueryLineKey), findsOneWidget);
+    expect(find.text('Type a product or brand name.'), findsOneWidget);
+    expect(find.byKey(AddFoodPicker.onlineSearchRowKey), findsNothing);
+
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), '*:-');
+    await _pumpSearchDebounce(tester);
+    expect(find.byKey(AddFoodPicker.emptyQueryLineKey), findsOneWidget);
+  });
+
+  testWidgets('a submitted barcode opens the product', (tester) async {
+    final selected = <FoodPickerItem>[];
+    final repository = _OnlineAddFoodRepository(
+      barcode: (
+        status: BarcodeLookupOutcome.found,
+        item: _offItem('3017620422003', 'Hazelnut cocoa spread'),
+      ),
+    );
+    await _pumpOpenFoodFactsFilter(
+      tester,
+      repository: repository,
+      onFoodSelected: selected.add,
+    );
+
+    await tester.enterText(
+      find.byKey(AddFoodPicker.searchFieldKey),
+      '3017620422003',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
 
-    expect(
-      tester
-          .widget<ChoiceChip>(
-            find.byKey(AddFoodPicker.filterChipKey(AddFoodPickerFilter.usda)),
-          )
-          .selected,
-      isTrue,
+    expect(repository.barcodes, <String>['3017620422003']);
+    expect(repository.onlineQueries, isEmpty);
+    expect(selected.single.id, '3017620422003');
+  });
+
+  testWidgets('a submitted barcode that is not found shows the miss line',
+      (tester) async {
+    final repository = _OnlineAddFoodRepository(
+      barcode: (status: BarcodeLookupOutcome.disabled, item: null),
     );
+    await _pumpOpenFoodFactsFilter(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(AddFoodPicker.searchFieldKey),
+      '3017620422003',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(AddFoodPicker.barcodeStatusKey), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(AddFoodPicker.barcodeStatusLineKey)).data,
+      'Online lookups are off. Turn them on in Settings > Food data.',
+    );
+  });
+
+  testWidgets('opening a live item keeps it on the device', (tester) async {
+    final selected = <FoodPickerItem>[];
+    final repository = _OnlineAddFoodRepository(
+      online: (
+        status: OnlineSearchStatus.ok,
+        items: <FoodPickerItem>[
+          _offItem('8000500310427', 'Hazelnut wafers', live: true),
+        ],
+      ),
+    );
+    await _pumpOpenFoodFactsFilter(
+      tester,
+      repository: repository,
+      onFoodSelected: selected.add,
+    );
+
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'hazel');
+    await _pumpSearchDebounce(tester);
+    await tester.tap(find.byKey(AddFoodPicker.onlineSearchRowKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hazelnut wafers'));
+    await tester.pumpAndSettle();
+
+    expect(repository.kept.single.id, '8000500310427');
+    expect(selected.single.id, '8000500310427');
+
+    // A stored item is not kept again.
+    await tester.tap(find.text('Hazelnut cocoa spread'));
+    await tester.pumpAndSettle();
+    expect(repository.kept, hasLength(1));
+  });
+
+  testWidgets(
+      'the Open Food Facts controls meet accessibility guidelines in both '
+      'themes', (tester) async {
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      final semantics = tester.ensureSemantics();
+      final repository = _OnlineAddFoodRepository(
+        online: (
+          status: OnlineSearchStatus.ok,
+          items: <FoodPickerItem>[
+            _offItem('8000500310427', 'Hazelnut wafers', live: true),
+          ],
+        ),
+      );
+      await _pumpOpenFoodFactsFilter(
+        tester,
+        repository: repository,
+        theme: theme,
+        bundleStatus: BundleStatus.installing,
+      );
+      await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'hazel');
+      await _pumpSearchDebounce(tester);
+      await tester.tap(find.byKey(AddFoodPicker.onlineSearchRowKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(AddFoodPicker.onlineGroupKey), findsOneWidget);
+      expect(find.byKey(AddFoodPicker.onlineSearchRowKey), findsOneWidget);
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
   });
 
   testWidgets('Add Food picker meets accessibility guidelines in both themes',
@@ -653,10 +978,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(AddFoodPicker.barcodeStatusKey), findsOneWidget);
-      expect(
-        find.textContaining('needs network the first time'),
-        findsOneWidget,
-      );
+      expect(find.byKey(AddFoodPicker.barcodeStatusLineKey), findsOneWidget);
       expect(
         find.byKey(AddFoodPicker.barcodeQuickAddButtonKey),
         findsOneWidget,
@@ -679,6 +1001,7 @@ Future<void> _pumpPicker(
   required AddFoodRepository repository,
   BarcodeScanner? barcodeScanner,
   ValueChanged<FoodPickerItem>? onFoodSelected,
+  BundleStatus bundleStatus = BundleStatus.ready,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -686,6 +1009,15 @@ Future<void> _pumpPicker(
         if (repositories != null)
           trainingRepositoriesProvider.overrideWith((ref) => repositories),
         addFoodRepositoryProvider.overrideWith((ref) => repository),
+        openFoodFactsRepositoryProvider.overrideWith(
+          (ref) => const StubOpenFoodFactsRepository(),
+        ),
+        settingsRepositoryProvider.overrideWith(
+          (ref) => InMemorySettingsRepository(),
+        ),
+        bundleStatusProvider.overrideWith(
+          (ref) => Stream<BundleStatus>.value(bundleStatus),
+        ),
         if (barcodeScanner != null)
           barcodeScannerProvider.overrideWith((ref) => barcodeScanner),
       ],
@@ -708,12 +1040,23 @@ Future<void> _pumpBarcodeHarness(
   WidgetTester tester, {
   required MealRecord meal,
   required TrainingRepositories repositories,
+  required OpenFoodFactsRepository openFoodFacts,
   required BarcodeScanner barcodeScanner,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         trainingRepositoriesProvider.overrideWith((ref) => repositories),
+        openFoodFactsRepositoryProvider.overrideWith((ref) => openFoodFacts),
+        settingsRepositoryProvider.overrideWith(
+          (ref) => InMemorySettingsRepository(),
+        ),
+        addFoodRepositoryProvider.overrideWith(
+          (ref) => RepositoryAddFoodRepository(
+            repositories,
+            openFoodFacts: openFoodFacts,
+          ),
+        ),
         barcodeScannerProvider.overrideWith((ref) => barcodeScanner),
       ],
       child: MaterialApp(
@@ -729,6 +1072,39 @@ Future<void> _pumpBarcodeHarness(
       ),
     ),
   );
+}
+
+/// The picker with the Open Food Facts filter selected.
+Future<void> _pumpOpenFoodFactsFilter(
+  WidgetTester tester, {
+  required AddFoodRepository repository,
+  ThemeData? theme,
+  BundleStatus bundleStatus = BundleStatus.ready,
+  ValueChanged<FoodPickerItem>? onFoodSelected,
+}) async {
+  await _pumpPicker(
+    tester,
+    theme: theme,
+    repository: repository,
+    bundleStatus: bundleStatus,
+    onFoodSelected: onFoodSelected,
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(AddFoodPicker.filterChipKey(AddFoodPickerFilter.openFoodFacts)),
+  );
+  await tester.pumpAndSettle();
+}
+
+String? _onlineLine(WidgetTester tester) {
+  return tester
+      .widget<Text>(
+        find.descendant(
+          of: find.byKey(AddFoodPicker.onlineStatusLineKey),
+          matching: find.byType(Text),
+        ),
+      )
+      .data;
 }
 
 Future<void> _pumpUntilFound(
@@ -791,7 +1167,7 @@ class _BarcodeAddFoodHarnessState extends State<_BarcodeAddFoodHarness> {
   }
 }
 
-class _StubAddFoodRepository implements AddFoodRepository {
+class _StubAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   _StubAddFoodRepository();
 
   @override
@@ -813,7 +1189,7 @@ class _StubAddFoodRepository implements AddFoodRepository {
   }
 }
 
-class _TrackingAddFoodRepository implements AddFoodRepository {
+class _TrackingAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   final calls = <_SearchCall>[];
 
   @override
@@ -836,7 +1212,7 @@ class _TrackingAddFoodRepository implements AddFoodRepository {
   }
 }
 
-class _DeferredAddFoodRepository implements AddFoodRepository {
+class _DeferredAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   final calls = <_SearchCall>[];
   final _pending = <_SearchCall, Completer<List<FoodPickerItem>>>{};
 
@@ -854,6 +1230,21 @@ class _DeferredAddFoodRepository implements AddFoodRepository {
     final completer = Completer<List<FoodPickerItem>>();
     _pending[call] = completer;
     return completer.future;
+  }
+
+  /// A scan is deferred like a search, recorded as an Open Food Facts call.
+  @override
+  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
+    String raw,
+  ) async {
+    final call = _SearchCall(AddFoodPickerFilter.openFoodFacts, raw);
+    calls.add(call);
+    final completer = Completer<List<FoodPickerItem>>();
+    _pending[call] = completer;
+    final results = await completer.future;
+    return results.isEmpty
+        ? (status: BarcodeLookupOutcome.notFound, item: null)
+        : (status: BarcodeLookupOutcome.found, item: results.first);
   }
 
   void complete(
@@ -889,7 +1280,7 @@ class _SearchCall {
   String toString() => 'search(${filter.name}, $query)';
 }
 
-class _EmptyAddFoodRepository implements AddFoodRepository {
+class _EmptyAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
   const _EmptyAddFoodRepository();
 
   @override
@@ -902,7 +1293,9 @@ class _EmptyAddFoodRepository implements AddFoodRepository {
   }
 }
 
-class _OfflineOpenFoodFactsRepository implements AddFoodRepository {
+class _OfflineOpenFoodFactsRepository
+    with NoOnlineLookups
+    implements AddFoodRepository {
   const _OfflineOpenFoodFactsRepository();
 
   @override
@@ -911,11 +1304,98 @@ class _OfflineOpenFoodFactsRepository implements AddFoodRepository {
     required String query,
     int limit = 50,
   }) async {
-    if (filter == AddFoodPickerFilter.openFoodFacts) {
-      throw Exception('offline');
-    }
     return const <FoodPickerItem>[];
   }
+
+  @override
+  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
+    String raw,
+  ) async {
+    return (status: BarcodeLookupOutcome.offline, item: null);
+  }
+}
+
+
+/// The Open Food Facts filter with a scripted live search and barcode lookup,
+/// recording every online call.
+class _OnlineAddFoodRepository implements AddFoodRepository {
+  _OnlineAddFoodRepository({
+    List<FoodPickerItem>? local,
+    this.enabled = true,
+    this.online = (
+      status: OnlineSearchStatus.noResults,
+      items: const <FoodPickerItem>[],
+    ),
+    this.pendingOnline,
+    this.barcode = (status: BarcodeLookupOutcome.notFound, item: null),
+  }) : local = local ?? _openFoodFacts;
+
+  final List<FoodPickerItem> local;
+  final bool enabled;
+  final ({OnlineSearchStatus status, List<FoodPickerItem> items}) online;
+  final Completer<({OnlineSearchStatus status, List<FoodPickerItem> items})>?
+      pendingOnline;
+  final ({BarcodeLookupOutcome status, FoodPickerItem? item}) barcode;
+
+  final onlineQueries = <String>[];
+  final barcodes = <String>[];
+  final kept = <FoodPickerItem>[];
+
+  @override
+  Future<List<FoodPickerItem>> search({
+    required AddFoodPickerFilter filter,
+    required String query,
+    int limit = 50,
+  }) async {
+    if (filter != AddFoodPickerFilter.openFoodFacts) {
+      return const <FoodPickerItem>[];
+    }
+    return local
+        .where((item) => _foodNameMatchesQuery(item.name, query))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<bool> onlineLookupsEnabled() async => enabled;
+
+  @override
+  Future<({OnlineSearchStatus status, List<FoodPickerItem> items})>
+      searchOnline(String query) {
+    onlineQueries.add(query);
+    return pendingOnline?.future ?? Future.value(online);
+  }
+
+  @override
+  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
+    String raw,
+  ) async {
+    barcodes.add(raw);
+    return barcode;
+  }
+
+  @override
+  Future<void> keepOpenedProduct(FoodPickerItem item) async {
+    kept.add(item);
+  }
+}
+
+FoodPickerItem _offItem(
+  String code,
+  String name, {
+  DateTime? changedAt,
+  bool live = false,
+}) {
+  return FoodPickerItem(
+    id: code,
+    name: name,
+    filter: AddFoodPickerFilter.openFoodFacts,
+    foodSource: FoodSource.openFoodFacts,
+    nutrientsPer100: _nutrients(energy: 500, protein: 6),
+    isLiquid: false,
+    brand: 'Ferrero',
+    sourceModifiedAt: changedAt ?? DateTime.utc(2026, 6, 1),
+    isLiveResult: live,
+  );
 }
 
 class _FakeBarcodeScanner implements BarcodeScanner {
