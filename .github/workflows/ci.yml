@@ -84,6 +84,8 @@ jobs:
               - '.github/workflows/ci.yml'
             js:
               - 'apps/server/**'
+              # The server tests read the Open Food Facts bundle.
+              - 'apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz'
               - 'tools/generate-wger-platform-exercises.mjs'
               - 'tools/platform-exercise-cleanup.mjs'
               - 'packages/contract/**'

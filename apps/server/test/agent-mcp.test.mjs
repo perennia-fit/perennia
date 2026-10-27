@@ -23,6 +23,10 @@ import {
   createInMemoryAgentCatalogStore,
   schema
 } from "../src/index.ts";
+import {
+  OpenFoodFactsBundleUnavailableError,
+  setOpenFoodFactsBundleLoaderForTesting
+} from "../src/open-food-facts-bundle.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -440,6 +444,67 @@ test("agent MCP nutrition tool list mirrors the nutrition REST route set", () =>
     "agent_get_training_day_nutrition"
   ];
   assert.equal(nutritionToolNames.length, nutritionRoutePaths.length);
+});
+
+test("agent MCP search-platform-foods returns the same Open Food Facts body as REST, including the unavailable error", async () => {
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: createAgentKeyStore("user-1")
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: createAgentKeyStore("user-1"),
+      logger: { info() {}, error() {} }
+    })
+  );
+
+  try {
+    const restByName = await getAgent(
+      app,
+      "/agent/foods/platform-search?source=openFoodFacts&search=greek%20yog&limit=5"
+    );
+    assert.equal(restByName.status, 200);
+    const restNameBody = await restByName.json();
+    const mcpByName = await callTool(client, "agent_search_platform_foods", {
+      apiKey: "prn_agent_secret",
+      query: { source: "openFoodFacts", search: "greek yog", limit: 5 }
+    });
+    assertToolSucceeded(mcpByName);
+    assert.equal(restNameBody.foods.length, 5);
+    assert.deepEqual(mcpByName.structuredContent, restNameBody);
+
+    const code = restNameBody.foods[0].id;
+    const restByBarcode = await getAgent(
+      app,
+      `/agent/foods/platform-search?source=openFoodFacts&search=${code}`
+    );
+    const mcpByBarcode = await callTool(client, "agent_search_platform_foods", {
+      apiKey: "prn_agent_secret",
+      query: { source: "openFoodFacts", search: code }
+    });
+    assertToolSucceeded(mcpByBarcode);
+    assert.deepEqual(mcpByBarcode.structuredContent, await restByBarcode.json());
+    assert.equal(mcpByBarcode.structuredContent.foods[0].id, code);
+
+    setOpenFoodFactsBundleLoaderForTesting(() => {
+      throw new OpenFoodFactsBundleUnavailableError(new Error("ENOENT"));
+    });
+    const restUnavailable = await getAgent(
+      app,
+      "/agent/foods/platform-search?source=openFoodFacts&search=milk"
+    );
+    assert.equal(restUnavailable.status, 503);
+    const mcpUnavailable = await callTool(client, "agent_search_platform_foods", {
+      apiKey: "prn_agent_secret",
+      query: { source: "openFoodFacts", search: "milk" }
+    });
+    assert.equal(mcpUnavailable.isError, true);
+    assert.deepEqual(mcpUnavailable.structuredContent, await restUnavailable.json());
+    assert.equal(mcpUnavailable.structuredContent.code, "agent_foods_unavailable");
+  } finally {
+    setOpenFoodFactsBundleLoaderForTesting(null);
+    await close();
+  }
 });
 
 test("agent MCP validate-dose accepts a valid dose and echoes limits, like REST", async () => {

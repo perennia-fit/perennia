@@ -11,6 +11,10 @@ import {
   createDrizzleAgentMealBatchWriteStore,
   schema
 } from "../src/index.ts";
+import {
+  OpenFoodFactsBundleUnavailableError,
+  setOpenFoodFactsBundleLoaderForTesting
+} from "../src/open-food-facts-bundle.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -167,6 +171,73 @@ test("GET /agent/foods/platform-search returns the bundled USDA catalog with att
   );
   assert.equal(body.attribution.source, "usda");
   assert.ok(body.attribution.attributionText.length > 0);
+});
+
+test("GET /agent/foods/platform-search?source=openFoodFacts searches the bundle by name and by barcode", async () => {
+  const app = createAgentFoodsApp({});
+
+  const byName = await getAgent(
+    app,
+    "/agent/foods/platform-search?source=openFoodFacts&search=coca%20cola&limit=3"
+  );
+  assert.equal(byName.status, 200);
+  const nameBody = await byName.json();
+  assert.equal(nameBody.foods.length, 3);
+  assert.equal(nameBody.limit, 3);
+  assert.ok(nameBody.foods.every((food) => food.foodSource === "openFoodFacts"));
+  assert.equal(nameBody.attribution.source, "openFoodFacts");
+  assert.equal(nameBody.attribution.sourceName, "Open Food Facts");
+  assert.match(nameBody.attribution.licenseName, /ODbL/);
+  assert.match(nameBody.attribution.disclaimer, /Not for medical use/);
+
+  const code = nameBody.foods[0].id;
+  const byBarcode = await getAgent(
+    app,
+    `/agent/foods/platform-search?source=openFoodFacts&search=${code}`
+  );
+  assert.equal(byBarcode.status, 200);
+  const barcodeBody = await byBarcode.json();
+  assert.deepEqual(barcodeBody.foods[0], nameBody.foods[0]);
+  assert.equal(
+    barcodeBody.foods[0].productUrl,
+    `https://world.openfoodfacts.org/product/${code}`
+  );
+
+  const withoutSearch = await getAgent(
+    app,
+    "/agent/foods/platform-search?source=openFoodFacts"
+  );
+  assert.equal(withoutSearch.status, 200);
+  assert.deepEqual((await withoutSearch.json()).foods, []);
+
+  const unknownSource = await getAgent(
+    app,
+    "/agent/foods/platform-search?source=nutritionix"
+  );
+  assert.equal(unknownSource.status, 400);
+});
+
+test("GET /agent/foods/platform-search?source=openFoodFacts is 503 when the bundle cannot be read, and USDA still works", async () => {
+  const app = createAgentFoodsApp({});
+  setOpenFoodFactsBundleLoaderForTesting(() => {
+    throw new OpenFoodFactsBundleUnavailableError(new Error("ENOENT"));
+  });
+  try {
+    const response = await getAgent(
+      app,
+      "/agent/foods/platform-search?source=openFoodFacts&search=milk"
+    );
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      code: "agent_foods_unavailable",
+      message: "The Open Food Facts bundle is not available on this server."
+    });
+
+    const usda = await getAgent(app, "/agent/foods/platform-search?search=chicken");
+    assert.equal(usda.status, 200);
+  } finally {
+    setOpenFoodFactsBundleLoaderForTesting(null);
+  }
 });
 
 test(

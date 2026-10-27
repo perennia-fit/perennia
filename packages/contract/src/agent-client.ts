@@ -1475,6 +1475,9 @@ export type AgentPlatformFood = {
   "servingLabel": string | null;
   "servingSize": number | null;
   "packageSize": number | null;
+  "brand": string | null;
+  "sourceModifiedAt": string | null;
+  "productUrl": string | null;
 };
 
 export type AgentPlatformFoodAttribution = {
@@ -1484,9 +1487,10 @@ export type AgentPlatformFoodAttribution = {
   "sourceUrl": string;
   "licenseName": string;
   "attributionText": string;
+  "disclaimer": string | null;
 };
 
-export type AgentPlatformFoodSource = "usda";
+export type AgentPlatformFoodSource = "usda" | "openFoodFacts";
 
 export type AgentProteinCohort = {
   "dayCount": number;
