@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
+import 'package:perennia/features/sync/repositories/sync_repository.dart'
+    show syncProtocolVersion;
 import 'package:perennia/features/sync/services/sync_coordinator.dart';
 import 'package:perennia/features/sync/services/sync_nudge_handler.dart';
 
@@ -23,7 +25,7 @@ void main() {
     final result = await handler.handleSilentPush(
       data: const <String, Object?>{
         'type': 'sync_nudge',
-        'protocolVersion': '1',
+        'protocolVersion': '$syncProtocolVersion',
         'reason': 'sync_push',
       },
       session: _session(),
@@ -56,7 +58,7 @@ void main() {
     final signedOut = await handler.handleSilentPush(
       data: const <String, Object?>{
         'type': 'sync_nudge',
-        'protocolVersion': 1,
+        'protocolVersion': syncProtocolVersion,
       },
       session: null,
       deviceId: 'device-a',

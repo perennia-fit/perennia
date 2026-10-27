@@ -397,14 +397,14 @@ Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
   await repositories.protocols.createProtocol(
     ProtocolDraft(
       name: 'Lean bulk',
-      startDate: DateTime.utc(2026, 6, 1),
+      startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
       compoundIds: <String>[compound.compoundId],
       schedulesByCompoundId: <String, ScheduleDraft?>{
-        compound.compoundId: const ScheduleDraft(
+        compound.compoundId: ScheduleDraft(
+          rule: _onceDaily,
           doseAmountValue: 5,
           doseAmountEntered: '5',
           doseUnit: DoseUnit.gram,
-          frequency: ScheduleFrequency.onceDaily,
           route: DoseRoute.oral,
         ),
       },
@@ -507,3 +507,9 @@ Future<void> _seedPlanTree(
         ),
       );
 }
+
+/// One untimed dose a day: the nearest Schedule Rule to "once daily".
+final _onceDaily = UntimedScheduleRule(
+  days: const DailyScheduleDays(),
+  count: 1,
+);

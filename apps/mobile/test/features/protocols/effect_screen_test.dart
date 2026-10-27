@@ -8,6 +8,7 @@ import 'package:perennia/features/protocols/controllers/protocol_controller.dart
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/widgets/effect_screen.dart';
 import 'package:perennia/features/protocols/widgets/effect_timeline_chart.dart';
+import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
 /// the `Effect` view's window/outcome picker + minimal
@@ -44,8 +45,7 @@ void main() {
 
   testWidgets(
       'picking a Protocol seeds its declared target outcomes and renders '
-      'before/during/after deltas from the canned computation',
-      (tester) async {
+      'before/during/after deltas from the canned computation', (tester) async {
     final metric = _metric('metric-1', 'Body Weight');
     final compound = _compound('compound-1', 'Creatine');
     final protocol = _protocolWithTargetOutcomes(
@@ -501,6 +501,113 @@ void main() {
     await _disposeCleanly(tester);
   });
 
+  group('the off-cycle and paused days notice', () {
+    final noticeText = find.text(
+      'Off-cycle and paused days are counted as during.',
+    );
+
+    Future<void> pickSource(WidgetTester tester, Key chipKey) async {
+      await _pumpUntilFound(tester, find.byKey(chipKey));
+      await tester.tap(find.byKey(chipKey));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    for (final (label, period) in <(String, ProtocolPeriod)>[
+      (
+        'a cycle',
+        ProtocolPeriod(
+          cycle: ProtocolCycle(
+            onDays: 60,
+            offDays: 30,
+            anchor: const ProtocolDayDate(year: 2026, month: 1, day: 15),
+            anchorIsDefault: true,
+          ),
+        ),
+      ),
+      (
+        'a Pause',
+        ProtocolPeriod(
+          pauses: const <ProtocolPause>[
+            ProtocolPause(
+              from: ProtocolDayDate(year: 2026, month: 1, day: 20),
+              to: ProtocolDayDate(year: 2026, month: 1, day: 22),
+            ),
+          ],
+        ),
+      ),
+    ]) {
+      testWidgets('shows under the disclaimer for a Protocol with $label',
+          (tester) async {
+        final metric = _metric('metric-1', 'Body Weight');
+        final protocol = _withPeriod(
+          _protocolWithTargetOutcomes(
+            id: 'protocol-1',
+            name: 'Skin',
+            metricId: metric.id,
+          ),
+          period,
+        );
+
+        await _pumpEffectScreen(
+          tester,
+          protocols: <ProtocolRecord>[protocol],
+          compounds: const <CompoundRecord>[],
+          metrics: <MetricRecord>[metric],
+          computations: <EffectWindowSource, EffectComputation>{
+            EffectWindowSource.protocol(protocol.id):
+                _computationWithDeltas(metricId: metric.id),
+          },
+        );
+        expect(noticeText, findsNothing);
+        await pickSource(tester, EffectScreen.protocolChipKey(protocol.id));
+
+        expect(find.byKey(EffectScreen.planBreaksNoticeKey), findsOneWidget);
+        expect(noticeText, findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byKey(EffectScreen.planBreaksNoticeKey)).dy,
+          greaterThan(
+            tester.getTopLeft(find.byKey(EffectScreen.disclaimerKey)).dy,
+          ),
+        );
+
+        await _disposeCleanly(tester);
+      });
+    }
+
+    testWidgets(
+        'stays hidden for a Protocol with neither, and for a Compound window',
+        (tester) async {
+      final metric = _metric('metric-1', 'Body Weight');
+      final compound = _compound('compound-1', 'Creatine');
+      final protocol = _protocolWithTargetOutcomes(
+        id: 'protocol-1',
+        name: 'Lean bulk',
+        metricId: metric.id,
+      );
+
+      await _pumpEffectScreen(
+        tester,
+        protocols: <ProtocolRecord>[protocol],
+        compounds: <CompoundRecord>[compound],
+        metrics: <MetricRecord>[metric],
+        computations: <EffectWindowSource, EffectComputation>{
+          EffectWindowSource.protocol(protocol.id):
+              _computationWithDeltas(metricId: metric.id),
+        },
+      );
+      await pickSource(tester, EffectScreen.protocolChipKey(protocol.id));
+      expect(find.byKey(EffectScreen.windowSummaryKey), findsOneWidget);
+      expect(noticeText, findsNothing);
+
+      await pickSource(tester, EffectScreen.compoundChipKey(compound.id));
+      expect(noticeText, findsNothing);
+
+      await _disposeCleanly(tester);
+    });
+  });
+
   testWidgets('Effect view meets accessibility guidelines in both themes',
       (tester) async {
     for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
@@ -597,8 +704,8 @@ ProtocolRecord _protocolWithTargetOutcomes({
   return ProtocolRecord(
     id: id,
     name: name,
-    startDate: DateTime.utc(2026, 1, 15),
-    endDate: DateTime.utc(2026, 2, 14),
+    startLocalDate: const ProtocolDayDate(year: 2026, month: 1, day: 15),
+    endLocalDate: const ProtocolDayDate(year: 2026, month: 2, day: 14),
     members: const <ProtocolMemberRecord>[],
     updatedAt: DateTime.utc(2026, 6, 30),
     targetOutcomes: <ProtocolTargetOutcomeRecord>[
@@ -614,6 +721,20 @@ ProtocolRecord _protocolWithTargetOutcomes({
         position: 1,
       ),
     ],
+  );
+}
+
+/// [protocol] with [period] set: a cycle or Pauses.
+ProtocolRecord _withPeriod(ProtocolRecord protocol, ProtocolPeriod period) {
+  return ProtocolRecord(
+    id: protocol.id,
+    name: protocol.name,
+    startLocalDate: protocol.startLocalDate,
+    endLocalDate: protocol.endLocalDate,
+    period: period,
+    members: protocol.members,
+    updatedAt: protocol.updatedAt,
+    targetOutcomes: protocol.targetOutcomes,
   );
 }
 
@@ -759,6 +880,11 @@ Future<void> _pumpEffectScreen(
             metrics.map(_metricOptionFromMetric).toList(growable: false),
           ),
         ),
+        // The scoped Protocol detail the screen reads for the Period notice.
+        for (final protocol in protocols)
+          protocolDetailProvider(protocol.id).overrideWith(
+            (ref) => Stream<ProtocolRecord?>.value(protocol),
+          ),
         // effectSelectionControllerProvider is left REAL — it is pure
         // in-memory selection state (no storage), so exercising it directly
         // is what proves a chip tap really drives selection -> recompute.
@@ -773,6 +899,8 @@ Future<void> _pumpEffectScreen(
       ],
       child: MaterialApp(
         theme: theme ?? AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: const EffectScreen(),
       ),
     ),

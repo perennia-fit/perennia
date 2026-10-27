@@ -62,6 +62,11 @@ class ProtocolPlanValidationLimits {
 
   /// More times than this in a day is more often a typo than a plan.
   static const int warnTimesPerDay = 6;
+
+  /// The most Pauses a Protocol Period may hold (D7 `pause_count`). Far
+  /// beyond any real plan; it keeps a write's size and the overlap sort
+  /// small. A validation limit only: the decoders don't enforce it.
+  static const int maxPauses = 100;
 }
 
 final RegExp _localTimePattern = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');

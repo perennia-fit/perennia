@@ -1206,5 +1206,187 @@
       }
     }
   },
-  "focusManagerSaveFailed": "Could not save the focus. Try again."
+  "focusManagerSaveFailed": "Could not save the focus. Try again.",
+  "protocolEditorNewTitle": "New Protocol",
+  "protocolEditorEditTitle": "Edit Protocol",
+  "protocolEditorNameLabel": "Name",
+  "protocolEditorStartDateLabel": "Start date",
+  "protocolEditorPeriodHeading": "Period",
+  "protocolEditorUntilLabel": "Until an end date",
+  "protocolEditorOngoing": "Ongoing, with no end date",
+  "protocolEditorEndDateLabel": "End date",
+  "protocolEditorDoseCountButton": "Set the end date from a number of doses",
+  "protocolEditorDoseCountTitle": "End after a number of doses",
+  "protocolEditorDoseCountMemberLabel": "Count the doses of",
+  "protocolEditorDoseCountLabel": "Number of doses",
+  "protocolEditorDoseCountResult": "Ends {date}",
+  "@protocolEditorDoseCountResult": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorDoseCountUnavailable": "Unavailable for this Schedule",
+  "protocolEditorDoseCountRange": "Enter a number from {min} to {max}",
+  "@protocolEditorDoseCountRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolEditorDoseCountApply": "Set end date",
+  "protocolEditorCancel": "Cancel",
+  "protocolEditorCycleLabel": "Cycle",
+  "protocolEditorCycleSubtitle": "Days on, then days off, repeating",
+  "protocolEditorCycleOnDaysLabel": "Days on",
+  "protocolEditorCycleOffDaysLabel": "Days off",
+  "protocolEditorCycleAnchorLabel": "Cycle counted from",
+  "protocolEditorAnchorIsStart": "{date} (the start date)",
+  "@protocolEditorAnchorIsStart": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPausesHeading": "Pauses",
+  "protocolEditorPausesEmpty": "No Pauses",
+  "protocolEditorAddPause": "Add a Pause",
+  "protocolEditorRemovePause": "Remove Pause",
+  "protocolEditorDateRange": "{from} – {to}",
+  "@protocolEditorDateRange": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorCompoundsHeading": "Compounds",
+  "protocolEditorSchedulesHeading": "Schedules",
+  "protocolEditorScheduleTitle": "{compound} Schedule",
+  "@protocolEditorScheduleTitle": {
+    "placeholders": {
+      "compound": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorScheduleCurrentVersion": "Current Schedule applies from {date}",
+  "@protocolEditorScheduleCurrentVersion": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorRuleTimed": "At set times",
+  "protocolEditorRuleUntimed": "Any time",
+  "protocolEditorRuleAsNeeded": "As needed",
+  "protocolEditorRuleNone": "No schedule",
+  "protocolEditorDaysDaily": "Every day",
+  "protocolEditorDaysWeekdays": "Weekdays",
+  "protocolEditorDaysEveryN": "Every N days",
+  "protocolEditorEveryNLabel": "Every how many days",
+  "protocolEditorEveryNAnchorLabel": "Counted from",
+  "protocolEditorTimesHeading": "Times",
+  "protocolEditorAddTime": "Add a time",
+  "protocolEditorRemoveTime": "Remove {time}",
+  "@protocolEditorRemoveTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorUntimedCountLabel": "Doses a day",
+  "protocolEditorPlannedAmountLabel": "Planned amount",
+  "protocolEditorUnitLabel": "Unit",
+  "protocolEditorRouteLabel": "Route",
+  "protocolEditorTargetOutcomesHeading": "Target outcomes (optional)",
+  "protocolEditorTargetOutcomesHelp": "Which Metrics or performance to correlate — seeds the later Effect view; no analysis happens here.",
+  "protocolEditorPerformance": "Performance",
+  "protocolEditorSave": "Save",
+  "protocolEditorArchive": "Archive",
+  "protocolEditorNameRequired": "Name is required.",
+  "protocolEditorCompoundRequired": "A Protocol requires at least one Compound.",
+  "protocolEditorFixIssues": "Fix the marked fields to save.",
+  "protocolEditorSaveFailed": "Could not save the Protocol: {error}",
+  "@protocolEditorSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorCompoundFallback": "Compound",
+  "protocolPlanIssueTimesFormat": "Each time must be HH:MM, from 00:00 to 23:59.",
+  "protocolPlanIssueTimesCount": "Plan 1 to {max} times a day.",
+  "@protocolPlanIssueTimesCount": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssueTimesDistinct": "The same time is planned twice.",
+  "protocolPlanIssueUntimedCount": "Plan 1 to {max} doses a day.",
+  "@protocolPlanIssueUntimedCount": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssueWeekdaysValid": "Choose at least one weekday.",
+  "protocolPlanIssueEveryNRange": "Every N days takes a number from {min} to {max}.",
+  "@protocolPlanIssueEveryNRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssueAnchorDate": "Choose a real date to count from.",
+  "protocolPlanIssueAmountRequired": "Enter a planned amount, unit and route that a Dose could log.",
+  "protocolPlanIssueAmountAbsent": "As needed and No schedule carry no amount, unit or route.",
+  "protocolPlanIssueCycleLengths": "A cycle is 1 to {max} days on and 1 to {max} days off.",
+  "@protocolPlanIssueCycleLengths": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssueBoundsOrder": "The end date can't be before the start date.",
+  "protocolPlanIssuePauseCount": "A Protocol holds at most {max} Pauses.",
+  "@protocolPlanIssuePauseCount": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolPlanIssuePauseOrder": "A Pause can't end before it starts.",
+  "protocolPlanIssuePauseBounds": "Each Pause must fall within the Protocol's dates.",
+  "protocolPlanIssuePauseOverlap": "Two Pauses can't overlap.",
+  "protocolPlanIssueTimesMany": "More than {count} times a day is unusual. Check the times before saving.",
+  "@protocolPlanIssueTimesMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "effectPlanBreaksCountedAsDuring": "Off-cycle and paused days are counted as during."
 }

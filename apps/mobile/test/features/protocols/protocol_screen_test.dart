@@ -5,6 +5,7 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/widgets/protocol_screen.dart';
+import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
 void main() {
@@ -70,9 +71,7 @@ void main() {
     );
     expect(nameField.controller?.text, 'Lean bulk');
     expect(
-      find.byKey(
-        ProtocolFormScreen.scheduleToggleKey('compound-creatine'),
-      ),
+      find.byKey(ProtocolFormScreen.scheduleEditorKey('compound-creatine')),
       findsOneWidget,
     );
   });
@@ -92,10 +91,12 @@ void main() {
       find.byKey(ProtocolFormScreen.nameFieldKey),
       'Lean bulk',
     );
-    await tester.tap(
+    await _tap(
+      tester,
       find.byKey(ProtocolFormScreen.compoundChipKey('compound-creatine')),
     );
-    await tester.tap(
+    await _tap(
+      tester,
       find.byKey(ProtocolFormScreen.compoundChipKey('compound-vitamin-d')),
     );
     await tester.pumpAndSettle();
@@ -112,7 +113,7 @@ void main() {
       unorderedEquals(<String>['compound-creatine', 'compound-vitamin-d']),
     );
     // No end date picked: an open-ended (ongoing) course by default.
-    expect(draft.endDate, isNull);
+    expect(draft.endLocalDate, isNull);
   });
 
   testWidgets('creating a Protocol requires at least one Compound',
@@ -148,7 +149,8 @@ void main() {
     expect(find.text('Lean bulk'), findsOneWidget);
     // Editing the window never touches a logged Dose — this screen only
     // reads/writes the Protocol row + its membership (PROTOCOLS.md §1.4).
-    await tester.tap(
+    await _tap(
+      tester,
       find.byKey(ProtocolFormScreen.compoundChipKey('compound-vitamin-d')),
     );
     await tester.pumpAndSettle();
@@ -183,186 +185,1058 @@ void main() {
     expect(controller.archivedProtocolIds, <String>['protocol-1']);
   });
 
-  testWidgets(
-      'a Compound\'s Schedule fields are hidden until it is picked, and '
-      'appear once selected', (tester) async {
-    final controller = _FakeProtocolListController();
-    await _pumpFormScreen(tester, controller, compounds: _compounds());
-    await _pumpUntilFound(tester, find.byKey(ProtocolFormScreen.nameFieldKey));
+  group('Schedule editor', () {
+    testWidgets(
+        'a picked Compound gets a Schedule editor that starts at "No '
+        'schedule", with no amount fields', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(tester, controller, compounds: _compounds());
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
 
-    expect(
-      find.byKey(
-        ProtocolFormScreen.scheduleToggleKey('compound-creatine'),
-      ),
-      findsNothing,
-    );
+      expect(
+        find.byKey(ProtocolFormScreen.scheduleEditorKey('compound-creatine')),
+        findsNothing,
+      );
 
-    await tester.tap(
-      find.byKey(ProtocolFormScreen.compoundChipKey('compound-creatine')),
-    );
-    await tester.pumpAndSettle();
+      await _tap(
+        tester,
+        find.byKey(ProtocolFormScreen.compoundChipKey('compound-creatine')),
+      );
 
-    expect(
-      find.byKey(
-        ProtocolFormScreen.scheduleToggleKey('compound-creatine'),
-      ),
-      findsOneWidget,
-    );
-    // Off by default — a Protocol/Compound with no Schedule is still valid
-    // (PROTOCOLS.md §1.4).
-    expect(
-      find.byKey(
+      expect(
+        find.byKey(ProtocolFormScreen.scheduleEditorKey('compound-creatine')),
+        findsOneWidget,
+      );
+      expect(
+        _ruleChip(tester, 'compound-creatine', ProtocolScheduleRuleChoice.none)
+            .selected,
+        isTrue,
+      );
+      expect(
+        find.byKey(
+          ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+        'creating a Protocol with a Compound left at "No schedule" saves a '
+        'null Schedule, an ongoing course and no Period', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(tester, controller, compounds: _compounds());
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await tester.enterText(
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+        'Lean bulk',
+      );
+      await _tap(
+        tester,
+        find.byKey(ProtocolFormScreen.compoundChipKey('compound-creatine')),
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final draft = controller.createdDrafts.single;
+      expect(draft.schedulesByCompoundId['compound-creatine'], isNull);
+      expect(draft.endLocalDate, isNull);
+      expect(draft.period, isNull);
+      expect(draft.remindersEnabled, isFalse);
+    });
+
+    testWidgets(
+        'a timed Schedule saves its daily times and the planned amount, with '
+        'the Compound\'s default unit and route', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(tester, controller, compounds: _compounds());
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await tester.enterText(
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+        'Daily',
+      );
+      await _tap(
+        tester,
+        find.byKey(ProtocolFormScreen.compoundChipKey('compound-creatine')),
+      );
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleRuleChipKey(
+            'compound-creatine',
+            ProtocolScheduleRuleChoice.timed,
+          ),
+        ),
+      );
+      // A new timed Schedule starts every day, with one time to edit.
+      expect(
+        _daysChip(
+          tester,
+          'compound-creatine',
+          ProtocolScheduleDaysChoice.daily,
+        ).selected,
+        isTrue,
+      );
+      expect(find.text('9:00 AM'), findsOneWidget);
+
+      await _enterText(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
+        ),
+        '5',
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final schedule = controller
+          .createdDrafts.single.schedulesByCompoundId['compound-creatine']!;
+      final rule = schedule.rule as TimedScheduleRule;
+      expect(rule.days, isA<DailyScheduleDays>());
+      expect(rule.times, <String>['09:00']);
+      expect(schedule.doseAmountEntered, '5');
+      expect(schedule.doseAmountValue, 5);
+      expect(schedule.doseUnit, DoseUnit.gram);
+      expect(schedule.route, DoseRoute.oral);
+    });
+
+    testWidgets(
+        'adding and removing times keeps the list sorted, as it is stored',
+        (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _leanBulkStackWithSchedule(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await _tap(
+        tester,
+        find.byKey(ProtocolFormScreen.scheduleAddTimeKey('compound-creatine')),
+      );
+      // The picker suggests an hour after the last time.
+      await _tap(tester, find.text('OK'));
+      expect(find.text('9:00 AM'), findsOneWidget);
+      expect(find.text('10:00 AM'), findsOneWidget);
+
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleRemoveTimeKey('compound-creatine', 0),
+        ),
+      );
+      expect(find.text('9:00 AM'), findsNothing);
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final rule = controller
+          .editedDrafts
+          .single
+          .schedulesByCompoundId['compound-creatine']!
+          .rule as TimedScheduleRule;
+      expect(rule.times, <String>['10:00']);
+    });
+
+    testWidgets(
+        'an untimed Schedule on chosen weekdays saves the weekdays sorted and '
+        'its count', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        // Starts Wednesday 2026-07-01.
+        protocol: _leanBulkStack(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleRuleChipKey(
+            'compound-creatine',
+            ProtocolScheduleRuleChoice.untimed,
+          ),
+        ),
+      );
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleDaysChipKey(
+            'compound-creatine',
+            ProtocolScheduleDaysChoice.weekdays,
+          ),
+        ),
+      );
+      // The start's weekday is offered first.
+      expect(_weekdayChip(tester, 'compound-creatine', 3).selected, isTrue);
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleWeekdayChipKey('compound-creatine', 5),
+        ),
+      );
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleWeekdayChipKey('compound-creatine', 1),
+        ),
+      );
+      await _enterText(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleCountFieldKey('compound-creatine'),
+        ),
+        '2',
+      );
+      await _enterText(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
+        ),
+        '3',
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final rule = controller
+          .editedDrafts
+          .single
+          .schedulesByCompoundId['compound-creatine']!
+          .rule as UntimedScheduleRule;
+      expect(rule.count, 2);
+      expect((rule.days as WeekdayScheduleDays).weekdays, <int>[1, 3, 5]);
+      // A member with no Schedule yet takes its Compound's defaults.
+      final schedule = controller
+          .editedDrafts.single.schedulesByCompoundId['compound-creatine']!;
+      expect(schedule.doseUnit, DoseUnit.gram);
+      expect(schedule.route, DoseRoute.oral);
+    });
+
+    testWidgets(
+        'every N days counts from the start by default, and a start move '
+        'carries a default anchor with it', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _leanBulkStackWithSchedule(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleDaysChipKey(
+            'compound-creatine',
+            ProtocolScheduleDaysChoice.everyNDays,
+          ),
+        ),
+      );
+      await _enterText(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleEveryNFieldKey('compound-creatine'),
+        ),
+        '3',
+      );
+      expect(find.text('Jul 1, 2026 (the start date)'), findsOneWidget);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.startDateFieldKey));
+      await _tap(tester, find.text('15'));
+      await _tap(tester, find.text('OK'));
+      expect(find.text('Jul 15, 2026 (the start date)'), findsOneWidget);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final draft = controller.editedDrafts.single;
+      expect(
+        draft.startLocalDate,
+        const ProtocolDayDate(year: 2026, month: 7, day: 15),
+      );
+      final days = (draft.schedulesByCompoundId['compound-creatine']!.rule
+              as TimedScheduleRule)
+          .days as EveryNDaysScheduleDays;
+      expect(days.n, 3);
+      expect(days.anchor, const ProtocolDayDate(year: 2026, month: 7, day: 15));
+      expect(days.anchorIsDefault, isTrue);
+    });
+
+    testWidgets('"As needed" clears the amount, unit and route, and saves none',
+        (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _leanBulkStackWithSchedule(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      final amountField = find.byKey(
         ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
-      ),
-      findsNothing,
-    );
+      );
+      expect(amountField, findsOneWidget);
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleRuleChipKey(
+            'compound-creatine',
+            ProtocolScheduleRuleChoice.asNeeded,
+          ),
+        ),
+      );
+      expect(amountField, findsNothing);
+
+      // Back to times: the old amount is gone, not silently kept.
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleRuleChipKey(
+            'compound-creatine',
+            ProtocolScheduleRuleChoice.timed,
+          ),
+        ),
+      );
+      expect(tester.widget<TextField>(amountField).controller?.text, isEmpty);
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleRuleChipKey(
+            'compound-creatine',
+            ProtocolScheduleRuleChoice.asNeeded,
+          ),
+        ),
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final schedule = controller
+          .editedDrafts.single.schedulesByCompoundId['compound-creatine']!;
+      expect(schedule.rule, isA<AsNeededScheduleRule>());
+      expect(schedule.doseAmountValue, isNull);
+      expect(schedule.doseAmountEntered, isNull);
+      expect(schedule.doseUnit, isNull);
+      expect(schedule.route, isNull);
+    });
+
+    testWidgets(
+        '"No schedule" on a member that had one saves a null Schedule — the '
+        'repository records the clearing as a new version', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _leanBulkStackWithSchedule(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleRuleChipKey(
+            'compound-creatine',
+            ProtocolScheduleRuleChoice.none,
+          ),
+        ),
+      );
+      expect(
+        find.byKey(
+          ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
+        ),
+        findsNothing,
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      expect(
+        controller
+            .editedDrafts.single.schedulesByCompoundId['compound-creatine'],
+        isNull,
+      );
+    });
+
+    testWidgets(
+        'editing a Protocol pre-fills a member\'s current Schedule Version, '
+        'and an untouched save sends it back unchanged', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _leanBulkStackWithSchedule(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      expect(
+        _ruleChip(
+          tester,
+          'compound-creatine',
+          ProtocolScheduleRuleChoice.timed,
+        ).selected,
+        isTrue,
+      );
+      expect(find.text('9:00 AM'), findsOneWidget);
+      expect(find.text('5'), findsOneWidget);
+      expect(
+        find.byKey(
+          ProtocolFormScreen.scheduleCurrentVersionKey('compound-creatine'),
+        ),
+        findsOneWidget,
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final draft = controller.editedDrafts.single;
+      final schedule = draft.schedulesByCompoundId['compound-creatine']!;
+      expect(schedule.doseAmountEntered, '5');
+      expect(schedule.doseUnit, DoseUnit.gram);
+      expect(schedule.rule.toJson(), _creatineVersion().rule.toJson());
+      // A member with no Schedule stays without one.
+      expect(draft.schedulesByCompoundId['compound-vitamin-d'], isNull);
+    });
+
+    testWidgets(
+        'the editor shows the current version, not the one in effect today, '
+        'for a Protocol whose start is in the future', (tester) async {
+      final controller = _FakeProtocolListController();
+      const start = ProtocolDayDate(year: 2099, month: 1, day: 1);
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          start: start,
+          members: <ProtocolMemberRecord>[
+            ProtocolMemberRecord(
+              id: 'member-1',
+              compoundId: 'compound-creatine',
+              position: 0,
+              currentVersion: _version(
+                effectiveFrom: start,
+                rule: UntimedScheduleRule(
+                  days: const DailyScheduleDays(),
+                  count: 2,
+                ),
+              ),
+            ),
+          ],
+        ),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      expect(
+        _ruleChip(
+          tester,
+          'compound-creatine',
+          ProtocolScheduleRuleChoice.untimed,
+        ).selected,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(
+                ProtocolFormScreen.scheduleCountFieldKey('compound-creatine'),
+              ),
+            )
+            .controller
+            ?.text,
+        '2',
+      );
+      expect(
+        find.text('Current Schedule applies from Jan 1, 2099'),
+        findsOneWidget,
+      );
+    });
   });
 
-  testWidgets(
-      'creating a Protocol: adding an optional Schedule for a picked '
-      'Compound saves planned dose · frequency · route', (tester) async {
-    final controller = _FakeProtocolListController();
-    await _pumpFormScreen(tester, controller, compounds: _compounds());
-    await _pumpUntilFound(tester, find.byKey(ProtocolFormScreen.nameFieldKey));
+  group('validation', () {
+    testWidgets(
+        'a timed Schedule with no amount, and every N of 1, show inline '
+        'rejects and block the save', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _leanBulkStack(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
 
-    await tester.enterText(
-      find.byKey(ProtocolFormScreen.nameFieldKey),
-      'Lean bulk',
-    );
-    await tester.tap(
-      find.byKey(ProtocolFormScreen.compoundChipKey('compound-creatine')),
-    );
-    await tester.pumpAndSettle();
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleRuleChipKey(
+            'compound-creatine',
+            ProtocolScheduleRuleChoice.timed,
+          ),
+        ),
+      );
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleDaysChipKey(
+            'compound-creatine',
+            ProtocolScheduleDaysChoice.everyNDays,
+          ),
+        ),
+      );
+      await _enterText(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleEveryNFieldKey('compound-creatine'),
+        ),
+        '1',
+      );
+      // Rejects wait for a save attempt, so a half-filled Schedule doesn't
+      // open with errors.
+      expect(
+        find.byKey(
+          ProtocolFormScreen.scheduleIssueKey(
+            'compound-creatine',
+            'amount_required',
+          ),
+        ),
+        findsNothing,
+      );
 
-    await tester.ensureVisible(
-      find.byKey(ProtocolFormScreen.scheduleToggleKey('compound-creatine')),
-    );
-    await tester.tap(
-      find.byKey(
-        ProtocolFormScreen.scheduleToggleKey('compound-creatine'),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
 
-    await tester.ensureVisible(
-      find.byKey(
-        ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
-      ),
-    );
-    await tester.enterText(
-      find.byKey(
-        ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
-      ),
-      '5',
-    );
-    await tester.ensureVisible(find.byKey(ProtocolFormScreen.saveButtonKey));
-    await tester.tap(find.byKey(ProtocolFormScreen.saveButtonKey));
-    await tester.pumpAndSettle();
+      expect(controller.editedDrafts, isEmpty);
+      expect(
+        find.byKey(
+          ProtocolFormScreen.scheduleIssueKey(
+            'compound-creatine',
+            'every_n_range',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          ProtocolFormScreen.scheduleIssueKey(
+            'compound-creatine',
+            'amount_required',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Every N days takes a number from 2 to 365.'),
+          findsOneWidget);
+      expect(find.byKey(ProtocolFormScreen.errorTextKey), findsOneWidget);
 
-    expect(controller.createdDrafts, hasLength(1));
-    final draft = controller.createdDrafts.single;
-    final schedule = draft.schedulesByCompoundId['compound-creatine'];
-    expect(schedule, isNotNull);
-    expect(schedule!.doseAmountEntered, '5');
-    expect(schedule.doseAmountValue, 5);
-    // Sensible curated defaults when the user does not touch the dropdowns.
-    expect(schedule.doseUnit, DoseUnit.gram);
-    expect(schedule.frequency, ScheduleFrequency.onceDaily);
-    expect(schedule.route, DoseRoute.oral);
+      // Fixing both lets the save through.
+      await _enterText(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleEveryNFieldKey('compound-creatine'),
+        ),
+        '2',
+      );
+      await _enterText(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
+        ),
+        '5',
+      );
+      expect(
+        find.byKey(
+          ProtocolFormScreen.scheduleIssueKey(
+            'compound-creatine',
+            'amount_required',
+          ),
+        ),
+        findsNothing,
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+      expect(controller.editedDrafts, hasLength(1));
+    });
+
+    testWidgets(
+        'more than six times a day shows a warning at once, and still saves',
+        (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          members: <ProtocolMemberRecord>[
+            ProtocolMemberRecord(
+              id: 'member-1',
+              compoundId: 'compound-creatine',
+              position: 0,
+              currentVersion: _version(
+                rule: TimedScheduleRule(
+                  days: const DailyScheduleDays(),
+                  times: const <String>[
+                    '06:00',
+                    '08:00',
+                    '10:00',
+                    '12:00',
+                    '14:00',
+                    '16:00',
+                    '18:00',
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      expect(
+        find.byKey(
+          ProtocolFormScreen.scheduleIssueKey(
+              'compound-creatine', 'times_many'),
+        ),
+        findsOneWidget,
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+      expect(controller.editedDrafts, hasLength(1));
+    });
+
+    testWidgets(
+        'an end before the start, a cycle with no lengths and a Pause outside '
+        'the dates show their rejects under the Period', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          start: const ProtocolDayDate(year: 2026, month: 9, day: 1),
+          end: const ProtocolDayDate(year: 2026, month: 8, day: 31),
+          period: ProtocolPeriod(
+            pauses: const <ProtocolPause>[
+              ProtocolPause(
+                from: ProtocolDayDate(year: 2026, month: 8, day: 1),
+                to: ProtocolDayDate(year: 2026, month: 8, day: 5),
+              ),
+            ],
+          ),
+          members: const <ProtocolMemberRecord>[
+            ProtocolMemberRecord(
+              id: 'member-1',
+              compoundId: 'compound-creatine',
+              position: 0,
+            ),
+          ],
+        ),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.cycleToggleKey));
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      expect(controller.editedDrafts, isEmpty);
+      for (final rule in <String>[
+        'cycle_lengths',
+        'bounds_order',
+        'pause_bounds',
+      ]) {
+        expect(
+          find.byKey(ProtocolFormScreen.periodIssueKey(rule)),
+          findsOneWidget,
+          reason: rule,
+        );
+      }
+    });
   });
 
-  testWidgets(
-      'creating a Protocol with a Compound but NO Schedule toggled on saves '
-      'a null Schedule for it — a Protocol with no Schedules is still valid',
-      (tester) async {
-    final controller = _FakeProtocolListController();
-    await _pumpFormScreen(tester, controller, compounds: _compounds());
-    await _pumpUntilFound(tester, find.byKey(ProtocolFormScreen.nameFieldKey));
+  group('Period', () {
+    testWidgets(
+        'a cycle saves its lengths, with the anchor defaulting to the start',
+        (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _leanBulkStack(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
 
-    await tester.enterText(
-      find.byKey(ProtocolFormScreen.nameFieldKey),
-      'Lean bulk',
-    );
-    await tester.tap(
-      find.byKey(ProtocolFormScreen.compoundChipKey('compound-creatine')),
-    );
-    await tester.pumpAndSettle();
+      await _tap(tester, find.byKey(ProtocolFormScreen.cycleToggleKey));
+      await _enterText(
+        tester,
+        find.byKey(ProtocolFormScreen.cycleOnDaysFieldKey),
+        '60',
+      );
+      await _enterText(
+        tester,
+        find.byKey(ProtocolFormScreen.cycleOffDaysFieldKey),
+        '30',
+      );
+      expect(find.text('Jul 1, 2026 (the start date)'), findsOneWidget);
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
 
-    await tester.ensureVisible(find.byKey(ProtocolFormScreen.saveButtonKey));
-    await tester.tap(find.byKey(ProtocolFormScreen.saveButtonKey));
-    await tester.pumpAndSettle();
+      final cycle = controller.editedDrafts.single.period!.cycle!;
+      expect(cycle.onDays, 60);
+      expect(cycle.offDays, 30);
+      expect(cycle.anchor, const ProtocolDayDate(year: 2026, month: 7, day: 1));
+      expect(cycle.anchorIsDefault, isTrue);
+    });
 
-    expect(controller.createdDrafts, hasLength(1));
-    expect(
-      controller
-          .createdDrafts.single.schedulesByCompoundId['compound-creatine'],
-      isNull,
-    );
-  });
+    testWidgets('a cycle anchor the user picks stays when the start moves',
+        (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          start: const ProtocolDayDate(year: 2026, month: 9, day: 1),
+          period: ProtocolPeriod(
+            cycle: ProtocolCycle(
+              onDays: 60,
+              offDays: 30,
+              anchor: const ProtocolDayDate(year: 2026, month: 9, day: 1),
+              anchorIsDefault: true,
+            ),
+          ),
+        ),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
 
-  testWidgets('editing a Protocol pre-fills an existing member\'s Schedule',
-      (tester) async {
-    final controller = _FakeProtocolListController();
-    await _pumpFormScreen(
-      tester,
-      controller,
-      protocol: _leanBulkStackWithSchedule(),
-      compounds: _compounds(),
-    );
-    await _pumpUntilFound(tester, find.byKey(ProtocolFormScreen.nameFieldKey));
+      await _tap(tester, find.byKey(ProtocolFormScreen.cycleAnchorFieldKey));
+      await _tap(tester, find.text('10'));
+      await _tap(tester, find.text('OK'));
+      expect(find.text('Sep 10, 2026'), findsOneWidget);
 
-    // The Schedule toggle for the scheduled member starts ON and its planned
-    // dose is pre-filled.
-    final toggle = tester.widget<SwitchListTile>(
-      find.byKey(
-        ProtocolFormScreen.scheduleToggleKey('compound-creatine'),
-      ),
-    );
-    expect(toggle.value, isTrue);
-    expect(find.text('5'), findsOneWidget);
+      await _tap(tester, find.byKey(ProtocolFormScreen.startDateFieldKey));
+      await _tap(tester, find.text('5'));
+      await _tap(tester, find.text('OK'));
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
 
-    await tester.ensureVisible(find.byKey(ProtocolFormScreen.saveButtonKey));
-    await tester.tap(find.byKey(ProtocolFormScreen.saveButtonKey));
-    await tester.pumpAndSettle();
+      final draft = controller.editedDrafts.single;
+      expect(
+        draft.startLocalDate,
+        const ProtocolDayDate(year: 2026, month: 9, day: 5),
+      );
+      final cycle = draft.period!.cycle!;
+      expect(
+          cycle.anchor, const ProtocolDayDate(year: 2026, month: 9, day: 10));
+      expect(cycle.anchorIsDefault, isFalse);
+    });
 
-    final draft = controller.editedDrafts.single;
-    final schedule = draft.schedulesByCompoundId['compound-creatine'];
-    expect(schedule, isNotNull);
-    expect(schedule!.doseAmountEntered, '5');
-    expect(schedule.frequency, ScheduleFrequency.onceDaily);
-  });
+    testWidgets('the "N doses" helper turns 20 doses into an end date (CUJ 4)',
+        (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _shoulderCourse(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
 
-  testWidgets(
-      'editing a Protocol: turning a Compound\'s Schedule toggle off removes '
-      'it — editing a Schedule never touches a logged Dose', (tester) async {
-    final controller = _FakeProtocolListController();
-    await _pumpFormScreen(
-      tester,
-      controller,
-      protocol: _leanBulkStackWithSchedule(),
-      compounds: _compounds(),
-    );
-    await _pumpUntilFound(tester, find.byKey(ProtocolFormScreen.nameFieldKey));
+      expect(find.byKey(ProtocolFormScreen.endDateFieldKey), findsNothing);
+      await _tap(tester, find.byKey(ProtocolFormScreen.doseCountHelperKey));
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(ProtocolFormScreen.doseCountApplyKey),
+            )
+            .onPressed,
+        isNull,
+      );
+      await _enterText(
+        tester,
+        find.byKey(ProtocolFormScreen.doseCountFieldKey),
+        '20',
+      );
+      expect(find.text('Ends Nov 14, 2026'), findsOneWidget);
+      await _tap(tester, find.byKey(ProtocolFormScreen.doseCountApplyKey));
 
-    await tester.ensureVisible(
-      find.byKey(ProtocolFormScreen.scheduleToggleKey('compound-creatine')),
-    );
-    await tester.tap(
-      find.byKey(
-        ProtocolFormScreen.scheduleToggleKey('compound-creatine'),
-      ),
-    );
-    await tester.pumpAndSettle();
+      expect(find.byKey(ProtocolFormScreen.endDateFieldKey), findsOneWidget);
+      expect(find.text('Nov 14, 2026'), findsOneWidget);
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
 
-    await tester.ensureVisible(find.byKey(ProtocolFormScreen.saveButtonKey));
-    await tester.tap(find.byKey(ProtocolFormScreen.saveButtonKey));
-    await tester.pumpAndSettle();
+      expect(
+        controller.editedDrafts.single.endLocalDate,
+        const ProtocolDayDate(year: 2026, month: 11, day: 14),
+      );
+    });
 
-    final draft = controller.editedDrafts.single;
-    expect(
-      draft.schedulesByCompoundId['compound-creatine'],
-      isNull,
-    );
+    testWidgets(
+        'the "N doses" helper reads "Unavailable" for an as-needed member, '
+        'and for a count out of range asks for 1 to 1000', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _shoulderCourse(),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await _tap(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleRuleChipKey(
+            'compound-bpc',
+            ProtocolScheduleRuleChoice.asNeeded,
+          ),
+        ),
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.doseCountHelperKey));
+      await _enterText(
+        tester,
+        find.byKey(ProtocolFormScreen.doseCountFieldKey),
+        '1001',
+      );
+      expect(find.text('Enter a number from 1 to 1000'), findsOneWidget);
+      await _enterText(
+        tester,
+        find.byKey(ProtocolFormScreen.doseCountFieldKey),
+        '20',
+      );
+      expect(find.text('Unavailable for this Schedule'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(ProtocolFormScreen.doseCountApplyKey),
+            )
+            .onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('the "N doses" helper skips paused days', (tester) async {
+      final controller = _FakeProtocolListController();
+      final course = _shoulderCourse();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          name: course.name,
+          start: course.startLocalDate,
+          members: course.members,
+          period: ProtocolPeriod(
+            pauses: const <ProtocolPause>[
+              ProtocolPause(
+                from: ProtocolDayDate(year: 2026, month: 10, day: 28),
+                to: ProtocolDayDate(year: 2026, month: 10, day: 30),
+              ),
+            ],
+          ),
+        ),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.doseCountHelperKey));
+      await _enterText(
+        tester,
+        find.byKey(ProtocolFormScreen.doseCountFieldKey),
+        '20',
+      );
+      // Three paused days push the 20th dose three days later.
+      expect(find.text('Ends Nov 17, 2026'), findsOneWidget);
+    });
+
+    testWidgets('a Pause can be removed, and one can be added', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          start: const ProtocolDayDate(year: 2026, month: 9, day: 1),
+          period: ProtocolPeriod(
+            pauses: const <ProtocolPause>[
+              ProtocolPause(
+                from: ProtocolDayDate(year: 2026, month: 10, day: 10),
+                to: ProtocolDayDate(year: 2026, month: 10, day: 16),
+              ),
+            ],
+          ),
+        ),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      expect(find.text('Oct 10, 2026 – Oct 16, 2026'), findsOneWidget);
+      await _tap(tester, find.byKey(ProtocolFormScreen.removePauseKey(0)));
+      expect(find.byKey(ProtocolFormScreen.pauseRowKey(0)), findsNothing);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.addPauseKey));
+      await _tap(tester, find.byTooltip('Switch to input'));
+      final rangeFields = find.descendant(
+        of: find.byType(DateRangePickerDialog),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(rangeFields.at(0), '11/02/2026');
+      await tester.enterText(rangeFields.at(1), '11/04/2026');
+      await _tap(tester, find.text('OK'));
+      expect(find.text('Nov 2, 2026 – Nov 4, 2026'), findsOneWidget);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final period = controller.editedDrafts.single.period!;
+      expect(period.cycle, isNull);
+      expect(period.pauses, hasLength(1));
+      expect(
+        period.pauses.single.from,
+        const ProtocolDayDate(year: 2026, month: 11, day: 2),
+      );
+      expect(
+        period.pauses.single.to,
+        const ProtocolDayDate(year: 2026, month: 11, day: 4),
+      );
+    });
+
+    testWidgets('tapping a Pause edits its dates', (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          start: const ProtocolDayDate(year: 2026, month: 9, day: 1),
+          period: ProtocolPeriod(
+            pauses: const <ProtocolPause>[
+              ProtocolPause(
+                from: ProtocolDayDate(year: 2026, month: 10, day: 10),
+                to: ProtocolDayDate(year: 2026, month: 10, day: 16),
+              ),
+            ],
+          ),
+        ),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.pauseRowKey(0)));
+      await _tap(tester, find.byTooltip('Switch to input'));
+      final rangeFields = find.descendant(
+        of: find.byType(DateRangePickerDialog),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(rangeFields.at(1), '10/12/2026');
+      await _tap(tester, find.text('OK'));
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final pause = controller.editedDrafts.single.period!.pauses.single;
+      expect(pause.from, const ProtocolDayDate(year: 2026, month: 10, day: 10));
+      expect(pause.to, const ProtocolDayDate(year: 2026, month: 10, day: 12));
+    });
+
+    testWidgets('removing the only Pause, with no cycle, saves no Period',
+        (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          start: const ProtocolDayDate(year: 2026, month: 9, day: 1),
+          period: ProtocolPeriod(
+            pauses: const <ProtocolPause>[
+              ProtocolPause(
+                from: ProtocolDayDate(year: 2026, month: 10, day: 10),
+                to: ProtocolDayDate(year: 2026, month: 10, day: 16),
+              ),
+            ],
+          ),
+        ),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.removePauseKey(0)));
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      expect(controller.editedDrafts.single.period, isNull);
+    });
+
+    testWidgets(
+        'turning "Until" on sets an end date, and the reminders flag is kept',
+        (tester) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(remindersEnabled: true),
+        compounds: _compounds(),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      expect(find.text('Ongoing, with no end date'), findsOneWidget);
+      await _tap(tester, find.byKey(ProtocolFormScreen.untilToggleKey));
+      expect(find.byKey(ProtocolFormScreen.endDateFieldKey), findsOneWidget);
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      final draft = controller.editedDrafts.single;
+      expect(draft.endLocalDate, draft.startLocalDate);
+      expect(draft.remindersEnabled, isTrue);
+    });
   });
 
   testWidgets(
@@ -406,15 +1280,18 @@ void main() {
       find.byKey(ProtocolFormScreen.nameFieldKey),
       'Lean bulk',
     );
-    await tester.tap(
+    await _tap(
+      tester,
       find.byKey(ProtocolFormScreen.compoundChipKey('compound-creatine')),
     );
-    await tester.tap(
+    await _tap(
+      tester,
       find.byKey(
         ProtocolFormScreen.targetOutcomeMetricChipKey('metric-weight'),
       ),
     );
-    await tester.tap(
+    await _tap(
+      tester,
       find.byKey(ProtocolFormScreen.targetOutcomePerformanceChipKey),
     );
     await tester.pumpAndSettle();
@@ -451,7 +1328,8 @@ void main() {
       find.byKey(ProtocolFormScreen.nameFieldKey),
       'Lean bulk',
     );
-    await tester.tap(
+    await _tap(
+      tester,
       find.byKey(ProtocolFormScreen.compoundChipKey('compound-creatine')),
     );
     await tester.pumpAndSettle();
@@ -529,10 +1407,11 @@ void main() {
         tester,
         _FakeProtocolListController(),
         theme: theme,
-        // A member WITH a Schedule so its toggle + fields are exercised by
-        // the guideline checks too, plus a selected target outcome
-        // so its chip is exercised too.
-        protocol: _leanBulkStackWithSchedule(),
+        // A member WITH a timed Schedule, a cycle and a Pause, so the rule,
+        // time, Period and Pause controls are exercised by the guideline
+        // checks too, plus a selected target outcome so its chip is
+        // exercised too.
+        protocol: _accessibilityFixture(),
         compounds: _compounds(),
         metrics: _metrics(),
       );
@@ -588,6 +1467,8 @@ Future<void> _pumpListScreen(
       ],
       child: MaterialApp(
         theme: theme ?? AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: const ProtocolListScreen(),
       ),
     ),
@@ -621,6 +1502,8 @@ Future<void> _pumpFormScreen(
       ],
       child: MaterialApp(
         theme: theme ?? AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ProtocolFormScreen(protocol: protocol),
       ),
     ),
@@ -641,6 +1524,55 @@ Future<void> _pumpUntilFound(
   fail('Could not find $finder.');
 }
 
+/// Scrolls [finder] to the middle of its scroll view, so a tap lands inside
+/// the screen however long the form grows. Settles first: text just entered
+/// schedules a scroll that keeps its caret on screen, which would otherwise
+/// undo this one.
+Future<void> _reveal(WidgetTester tester, Finder finder) async {
+  await tester.pumpAndSettle();
+  await Scrollable.ensureVisible(finder.evaluate().single, alignment: 0.5);
+  await tester.pumpAndSettle();
+}
+
+/// Scrolls [finder] into view, taps it and settles.
+Future<void> _tap(WidgetTester tester, Finder finder) async {
+  await _reveal(tester, finder);
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _enterText(WidgetTester tester, Finder finder, String text) async {
+  await _reveal(tester, finder);
+  await tester.enterText(finder, text);
+  await tester.pumpAndSettle();
+}
+
+ChoiceChip _ruleChip(
+  WidgetTester tester,
+  String compoundId,
+  ProtocolScheduleRuleChoice choice,
+) {
+  return tester.widget<ChoiceChip>(
+    find.byKey(ProtocolFormScreen.scheduleRuleChipKey(compoundId, choice)),
+  );
+}
+
+ChoiceChip _daysChip(
+  WidgetTester tester,
+  String compoundId,
+  ProtocolScheduleDaysChoice choice,
+) {
+  return tester.widget<ChoiceChip>(
+    find.byKey(ProtocolFormScreen.scheduleDaysChipKey(compoundId, choice)),
+  );
+}
+
+FilterChip _weekdayChip(WidgetTester tester, String compoundId, int weekday) {
+  return tester.widget<FilterChip>(
+    find.byKey(ProtocolFormScreen.scheduleWeekdayChipKey(compoundId, weekday)),
+  );
+}
+
 List<CompoundRecord> _compounds() {
   return <CompoundRecord>[
     CompoundRecord(
@@ -648,6 +1580,13 @@ List<CompoundRecord> _compounds() {
       name: 'Creatine',
       defaultUnit: DoseUnit.gram,
       defaultRoute: DoseRoute.oral,
+      updatedAt: DateTime.utc(2026, 6, 30),
+    ),
+    CompoundRecord(
+      id: 'compound-bpc',
+      name: 'BPC-157',
+      defaultUnit: DoseUnit.microgram,
+      defaultRoute: DoseRoute.subcutaneous,
       updatedAt: DateTime.utc(2026, 6, 30),
     ),
     CompoundRecord(
@@ -665,8 +1604,7 @@ ProtocolRecord _leanBulkStack() {
   return ProtocolRecord(
     id: 'protocol-1',
     name: 'Lean bulk',
-    startDate: DateTime.utc(2026, 7, 1),
-    endDate: null,
+    startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
     updatedAt: DateTime.utc(2026, 7, 1),
     members: const <ProtocolMemberRecord>[
       ProtocolMemberRecord(
@@ -683,36 +1621,146 @@ ProtocolRecord _leanBulkStack() {
   );
 }
 
-/// The same stack as [_leanBulkStack], but the Creatine member carries an
-/// optional `Schedule` — the pre-fill fixture for edit-screen tests.
+/// The same stack as [_leanBulkStack], but the Creatine member carries a
+/// Schedule Version (daily at 09:00, 5 g oral): the pre-fill fixture for
+/// edit-screen tests.
 ProtocolRecord _leanBulkStackWithSchedule() {
   final stack = _leanBulkStack();
   return ProtocolRecord(
     id: stack.id,
     name: stack.name,
-    startDate: stack.startDate,
-    endDate: stack.endDate,
+    startLocalDate: stack.startLocalDate,
+    endLocalDate: stack.endLocalDate,
     updatedAt: stack.updatedAt,
     members: <ProtocolMemberRecord>[
       ProtocolMemberRecord(
         id: 'member-1',
         compoundId: 'compound-creatine',
         position: 0,
-        schedule: ScheduleRecord(
-          id: 'schedule-1',
-          protocolCompoundId: 'member-1',
-          doseAmountValue: 5,
-          doseAmountEntered: '5',
-          doseUnit: DoseUnit.gram,
-          frequency: ScheduleFrequency.onceDaily,
-          route: DoseRoute.oral,
-          updatedAt: DateTime.utc(2026, 7, 1),
-        ),
+        currentVersion: _creatineVersion(),
+        versionInEffectToday: _creatineVersion(),
       ),
       const ProtocolMemberRecord(
         id: 'member-2',
         compoundId: 'compound-vitamin-d',
         position: 1,
+      ),
+    ],
+  );
+}
+
+ScheduleRecord _creatineVersion() {
+  return _version(
+    rule: TimedScheduleRule(
+      days: const DailyScheduleDays(),
+      times: const <String>['09:00'],
+    ),
+  );
+}
+
+ScheduleRecord _version({
+  required ScheduleRule rule,
+  ProtocolDayDate effectiveFrom =
+      const ProtocolDayDate(year: 2026, month: 7, day: 1),
+  String amountEntered = '5',
+  DoseUnit unit = DoseUnit.gram,
+  DoseRoute route = DoseRoute.oral,
+}) {
+  return ScheduleRecord(
+    id: 'schedule-1',
+    protocolCompoundId: 'member-1',
+    effectiveFrom: effectiveFrom,
+    rule: rule,
+    doseAmountValue: double.parse(amountEntered),
+    doseAmountEntered: amountEntered,
+    doseUnit: unit,
+    route: route,
+    updatedAt: DateTime.utc(2026, 7, 1),
+  );
+}
+
+/// A one-member Protocol for the Period and validation tests.
+ProtocolRecord _protocol({
+  String name = 'Skin',
+  ProtocolDayDate start = const ProtocolDayDate(year: 2026, month: 7, day: 1),
+  ProtocolDayDate? end,
+  ProtocolPeriod? period,
+  bool remindersEnabled = false,
+  List<ProtocolMemberRecord> members = const <ProtocolMemberRecord>[
+    ProtocolMemberRecord(
+      id: 'member-1',
+      compoundId: 'compound-creatine',
+      position: 0,
+    ),
+  ],
+}) {
+  return ProtocolRecord(
+    id: 'protocol-1',
+    name: name,
+    startLocalDate: start,
+    endLocalDate: end,
+    period: period,
+    remindersEnabled: remindersEnabled,
+    updatedAt: DateTime.utc(2026, 7, 1),
+    members: members,
+  );
+}
+
+/// CUJ 4: BPC-157 at 21:00 daily from 2026-10-26, with no end yet.
+ProtocolRecord _shoulderCourse() {
+  const start = ProtocolDayDate(year: 2026, month: 10, day: 26);
+  return _protocol(
+    name: 'Shoulder',
+    start: start,
+    members: <ProtocolMemberRecord>[
+      ProtocolMemberRecord(
+        id: 'member-1',
+        compoundId: 'compound-bpc',
+        position: 0,
+        currentVersion: _version(
+          effectiveFrom: start,
+          rule: TimedScheduleRule(
+            days: const DailyScheduleDays(),
+            times: const <String>['21:00'],
+          ),
+          amountEntered: '250',
+          unit: DoseUnit.microgram,
+          route: DoseRoute.subcutaneous,
+        ),
+      ),
+    ],
+  );
+}
+
+ProtocolRecord _accessibilityFixture() {
+  final stack = _leanBulkStackWithSchedule();
+  return ProtocolRecord(
+    id: stack.id,
+    name: stack.name,
+    startLocalDate: stack.startLocalDate,
+    endLocalDate: const ProtocolDayDate(year: 2026, month: 12, day: 31),
+    period: ProtocolPeriod(
+      cycle: ProtocolCycle(
+        onDays: 60,
+        offDays: 30,
+        anchor: stack.startLocalDate,
+        anchorIsDefault: true,
+      ),
+      pauses: const <ProtocolPause>[
+        ProtocolPause(
+          from: ProtocolDayDate(year: 2026, month: 8, day: 10),
+          to: ProtocolDayDate(year: 2026, month: 8, day: 16),
+        ),
+      ],
+    ),
+    updatedAt: stack.updatedAt,
+    members: stack.members,
+    targetOutcomes: const <ProtocolTargetOutcomeRecord>[
+      ProtocolTargetOutcomeRecord(
+        id: 'outcome-1',
+        kind: ProtocolOutcomeKind.metric,
+        metricId: 'metric-weight',
+        position: 0,
       ),
     ],
   );
@@ -756,8 +1804,8 @@ ProtocolRecord _leanBulkStackWithTargetOutcomes() {
   return ProtocolRecord(
     id: stack.id,
     name: stack.name,
-    startDate: stack.startDate,
-    endDate: stack.endDate,
+    startLocalDate: stack.startLocalDate,
+    endLocalDate: stack.endLocalDate,
     updatedAt: stack.updatedAt,
     members: stack.members,
     targetOutcomes: const <ProtocolTargetOutcomeRecord>[
@@ -826,8 +1874,8 @@ ProtocolSummaryRecord _protocolSummaryFromProtocol(ProtocolRecord protocol) {
   return ProtocolSummaryRecord(
     id: protocol.id,
     name: protocol.name,
-    startDate: protocol.startDate,
-    endDate: protocol.endDate,
+    startLocalDate: protocol.startLocalDate,
+    endLocalDate: protocol.endLocalDate,
     compoundIds: protocol.members
         .map((member) => member.compoundId)
         .toList(growable: false),

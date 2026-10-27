@@ -4,7 +4,11 @@ import test, { after, before } from "node:test";
 
 import { and, eq } from "drizzle-orm";
 
-import { createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl && process.env.CI === "true") {
@@ -362,7 +366,7 @@ async function pullPages(app, token, { mode, limit }) {
         authorization: `Bearer ${token}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({ protocolVersion: 1, cursor, limit, mode })
+      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit, mode })
     });
     assert.equal(response.status, 200, await response.clone().text());
     const window = await response.json();

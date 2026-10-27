@@ -38,31 +38,33 @@ void main() {
 
     test(
         'windowForProtocol derives DURING from the Protocol\'s own '
-        'start/end dates', () async {
+        'local-date bounds, as local midnights at the device offset', () async {
       final creatineId = await _createCompoundId(repositories, 'Creatine');
       final created = await repositories.protocols.createProtocol(
         ProtocolDraft(
           name: 'Lean bulk',
-          startDate: DateTime.utc(2026, 1, 15),
-          endDate: DateTime.utc(2026, 2, 14),
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 1, day: 15),
+          // Inclusive: DURING ends at the start of 2026-02-14.
+          endLocalDate: const ProtocolDayDate(year: 2026, month: 2, day: 13),
           compoundIds: <String>[creatineId],
         ),
       );
       final protocol = (await repositories.protocols.listProtocols())
           .firstWhere((p) => p.id == created.protocolId);
 
-      final window = repositories.effect.windowForProtocol(
-        protocol,
-        now: DateTime.utc(2026, 3, 16),
-      );
+      final now = DateTime.utc(2026, 3, 16);
+      final window = repositories.effect.windowForProtocol(protocol, now: now);
 
-      // Drift returns DateTimes in local time; compare the instant, not the
-      // tagged zone (the same UTC moment was stored).
-      expect(window.duringStart.toUtc(), DateTime.utc(2026, 1, 15));
-      expect(window.duringEnd!.toUtc(), DateTime.utc(2026, 2, 14));
+      // Each bound is that date's local midnight, at the device's offset
+      // when the window is computed.
+      final offset = now.toLocal().timeZoneOffset;
+      DateTime localMidnight(int year, int month, int day) =>
+          DateTime.utc(year, month, day).subtract(offset);
+      expect(window.duringStart.toUtc(), localMidnight(2026, 1, 15));
+      expect(window.duringEnd!.toUtc(), localMidnight(2026, 2, 14));
       expect(window.isOngoing, isFalse);
-      expect(window.beforeStart.toUtc(), DateTime.utc(2025, 12, 16));
-      expect(window.afterEnd.toUtc(), DateTime.utc(2026, 3, 16));
+      expect(window.beforeStart.toUtc(), localMidnight(2025, 12, 16));
+      expect(window.afterEnd.toUtc(), localMidnight(2026, 3, 16));
     });
 
     test(
@@ -72,7 +74,7 @@ void main() {
       final created = await repositories.protocols.createProtocol(
         ProtocolDraft(
           name: 'Off-season stack',
-          startDate: DateTime.utc(2026, 6, 1),
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
           compoundIds: <String>[creatineId],
         ),
       );
@@ -481,8 +483,8 @@ void main() {
       final created = await repositories.protocols.createProtocol(
         ProtocolDraft(
           name: 'Lean bulk',
-          startDate: DateTime.utc(2026, 1, 15),
-          endDate: DateTime.utc(2026, 2, 14),
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 1, day: 15),
+          endLocalDate: const ProtocolDayDate(year: 2026, month: 2, day: 14),
           compoundIds: <String>[creatineId],
         ),
       );
@@ -539,8 +541,8 @@ void main() {
       final created = await repositories.protocols.createProtocol(
         ProtocolDraft(
           name: 'Lean bulk',
-          startDate: DateTime.utc(2026, 1, 15),
-          endDate: DateTime.utc(2026, 2, 14),
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 1, day: 15),
+          endLocalDate: const ProtocolDayDate(year: 2026, month: 2, day: 14),
           compoundIds: <String>[creatineId],
         ),
       );

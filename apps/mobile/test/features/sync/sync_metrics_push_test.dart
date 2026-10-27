@@ -74,7 +74,7 @@ void main() {
     await repositories.protocols.createProtocol(
       ProtocolDraft(
         name: 'Cut',
-        startDate: DateTime.utc(2026, 6, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
         compoundIds: <String>[compound.compoundId],
         targetOutcomes: <ProtocolTargetOutcomeDraft>[
           ProtocolTargetOutcomeDraft.metric(bodyWeightId),
@@ -272,7 +272,7 @@ class _FakeSyncServer {
       final changes = List<Map<String, Object?>>.of(pullChanges);
       pullChanges.clear();
       return _json(<String, Object?>{
-        'protocolVersion': 1,
+        'protocolVersion': syncProtocolVersion,
         'nextCursor': changes.isEmpty ? body['cursor'] : 'cursor-1',
         'serverClock': '2026-06-03T08:00:00.000Z',
         'changes': changes,
@@ -286,7 +286,7 @@ class _FakeSyncServer {
     pushes.add(_Push(entity, changes));
     final ids = changes.map((change) => change['id']! as String).toList();
     return _json(<String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'accepted': ids,
       'serverClock': '2026-06-01T09:00:00.000Z',
       'applied': <Map<String, Object?>>[

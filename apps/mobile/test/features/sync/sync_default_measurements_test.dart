@@ -69,7 +69,7 @@ void main() {
     final protocol = await repositories.protocols.createProtocol(
       ProtocolDraft(
         name: 'Cut',
-        startDate: DateTime.utc(2026, 6, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
         compoundIds: <String>[compound.compoundId],
         targetOutcomes: <ProtocolTargetOutcomeDraft>[
           ProtocolTargetOutcomeDraft.metric(localBodyWeightId),
@@ -327,7 +327,7 @@ Future<void> Function(AppDatabase) _serverPull(
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': null,
               'serverClock': '2026-06-03T08:00:00.000Z',
               'changes': changes,

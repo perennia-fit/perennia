@@ -36,7 +36,7 @@ void main() {
     addTearDown(freshDatabase.close);
     await freshDatabase.customSelect('SELECT 1').get();
 
-    expect(database.schemaVersion, 60);
+    expect(database.schemaVersion, await _currentSchemaVersion());
     expect(
       await _tableNames(database),
       containsAll(<String>{
@@ -190,7 +190,7 @@ void main() {
     addTearDown(database.close);
     await database.customSelect('SELECT 1').get();
 
-    expect(database.schemaVersion, 60);
+    expect(database.schemaVersion, await _currentSchemaVersion());
     final routine = (await database.select(database.planRoutines).get()).single;
     expect(routine.id, 'routine-v53');
     expect(routine.cadenceKind, isNull);
@@ -234,7 +234,7 @@ void main() {
     addTearDown(fresh.close);
     await fresh.customSelect('SELECT 1').get();
 
-    expect(database.schemaVersion, 60);
+    expect(database.schemaVersion, await _currentSchemaVersion());
     final tableNames = await _tableNames(database);
     for (final retiredTable in <String>{
       'routines',
@@ -346,7 +346,7 @@ void main() {
 
     final second = AppDatabase.openFile(file);
     addTearDown(second.close);
-    expect(second.schemaVersion, 60);
+    expect(second.schemaVersion, await _currentSchemaVersion());
     final routines = await second.select(second.planRoutines).get();
     expect(routines, hasLength(1));
     expect(routines.single.cadenceKind, 'weekly');
@@ -873,5 +873,16 @@ void _createV53Database(File file) {
     ''');
   } finally {
     database.close();
+  }
+}
+
+/// The schema version a fresh database is created at, so these upgrade
+/// tests keep asserting the latest schema as it moves.
+Future<int> _currentSchemaVersion() async {
+  final fresh = AppDatabase.inMemory();
+  try {
+    return fresh.schemaVersion;
+  } finally {
+    await fresh.close();
   }
 }

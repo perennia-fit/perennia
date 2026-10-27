@@ -305,14 +305,54 @@ Metric. A standalone timestamped event, optionally tagged to a Protocol, grouped
 Protocol Days.
 
 ## Protocol
-A named, time-bounded course of one or more Compounds, each with an optional Schedule — a
-regimen the user follows (a supplement stack, a hormone course, a self-experiment). The
-plan of the Protocols domain — the analog of a Routine. A mutable template; editing it
-never alters logged Doses.
+A named, time-bounded course of one or more Protocol Members — a regimen the user follows
+(a supplement stack, a hormone course, a self-experiment) — with a Protocol Period saying
+when it is in effect. The plan of the Protocols domain — the analog of a Routine. A
+mutable template; editing it never alters logged Doses.
+
+## Protocol Member
+One Compound inside a Protocol, with its Schedule Versions. Removing it archives the
+member and freezes the local date of the removal; adding the Compound again is a new
+Protocol Member.
+
+## Protocol Period
+When a whole Protocol is in effect: its start and end dates (local dates, the end
+inclusive), an optional on/off cycle (N days on, M days off, repeating from an anchor
+date), and its Pauses.
+
+## Pause
+A date range, inclusive at both ends, when a Protocol plans nothing. A Pause never
+shifts a cycle.
+
+## In effect
+A Protocol is in effect on a date when the date is within its bounds, it isn't paused,
+and it isn't in a cycle's off-period. Distinct from Active, which means "not archived".
 
 ## Schedule
-The planned dose, frequency, and route for a Compound within a Protocol. A template for
-intended dosing only; the actual record is the logged Doses.
+When a Protocol Member's Compound is due on a day its Protocol is in effect: by days and
+times, with a planned amount, unit and route. Versioned: it is the Schedule Version that
+applies on a date. A plan for intended dosing only; the actual record is the logged Doses.
+
+## Schedule Rule
+The days-and-times part of a Schedule: every day, chosen weekdays or every N days; a list
+of clock times or a count of untimed doses; or "as needed".
+
+## Schedule Version
+One stored state of a Protocol Member's Schedule, with the local date it applies from.
+Every edit inserts a new Schedule Version, and on any date the one with the latest start
+on or before it applies. Authored plan history, never a result.
+
+## Planned dose
+One dose a Schedule plans on a date, with a clock time or untimed. Derived, never stored.
+A logged record is always a Dose; a computed one is always a planned dose.
+
+## Untimed
+A planned dose with no clock time. It counts like any other, but never gets a reminder.
+
+## Day Status
+The single label for one Compound on one date, from a closed set: Logged, Pending, Partly
+logged, Not logged, Paused, Off cycle, or Not planned (with its reason). Derived, never
+stored; never a score, a streak or a percentage.
 
 ## Protocol Day
 The grouping of all Doses sharing the same local date — a presentation concept, mirroring

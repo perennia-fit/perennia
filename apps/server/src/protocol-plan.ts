@@ -199,9 +199,10 @@ export type DueUnfilledDose = PlanAmount & {
  * The plan validators' limits, and the decoders' ceilings. Kept in lockstep
  * with the Dart `ProtocolPlanValidationLimits` and the validation vector's
  * `limits` block. Times and untimed counts start at 1, and cycle lengths at 1
- * day; `warnTimesPerDay` is the soft-warn boundary (exclusive). Defined here,
- * not in agent-validation.ts (which re-exports it), because that module
- * imports this one.
+ * day; `warnTimesPerDay` is the soft-warn boundary (exclusive). `maxPauses`
+ * is the `pause_count` limit, a validation limit only: no decoder enforces
+ * it, as in the Dart twin. Defined here, not in agent-validation.ts (which
+ * re-exports it), because that module imports this one.
  */
 export const PROTOCOL_PLAN_VALIDATION_LIMITS = {
   maxTimesPerDay: 12,
@@ -209,7 +210,8 @@ export const PROTOCOL_PLAN_VALIDATION_LIMITS = {
   minEveryNDays: 2,
   maxEveryNDays: 365,
   maxCycleLengthDays: 3650,
-  warnTimesPerDay: 6
+  warnTimesPerDay: 6,
+  maxPauses: 100
 } as const;
 
 export class ProtocolPlanCodecError extends Error {

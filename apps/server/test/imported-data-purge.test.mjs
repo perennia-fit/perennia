@@ -9,7 +9,8 @@ import {
   createDrizzleIntegrationCredentialStore,
   createMigratedServerApp,
   decodeCanonicalSeriesBlob,
-  schema
+  schema,
+  SYNC_PROTOCOL_VERSION
 } from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -232,7 +233,7 @@ test(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          protocolVersion: 1,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
           cursor: null,
           limit: 100
         })

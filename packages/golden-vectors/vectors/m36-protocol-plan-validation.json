@@ -9,7 +9,8 @@
     "minEveryNDays": 2,
     "maxEveryNDays": 365,
     "maxCycleLengthDays": 3650,
-    "warnTimesPerDay": 6
+    "warnTimesPerDay": 6,
+    "maxPauses": 100
   },
   "cases": [
     {
@@ -187,7 +188,7 @@
     {
       "name": "thirteen-times-rejects-and-warns",
       "validator": "schedule_rule",
-      "note": "D7 times_count: more than 12 times rejects; times_many is an independent check and still warns.",
+      "note": "D7 times_count: more than 12 times rejects; times_many is an independent check, judged alongside the errors rather than only when there are none, so it still warns.",
       "input": {
         "rule": {
           "v": 1,
@@ -581,6 +582,68 @@
       "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_required"]}
     },
     {
+      "name": "as-needed-rule-with-an-amount-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_absent: an as_needed rule plans nothing, so its stored amount fields stay null; one carrying an amount, unit and route rejects.",
+      "input": {"rule": {"v": 1, "kind": "as_needed"}, "amountValue": 20, "amountEntered": "20", "unit": "milligram", "route": "oral"},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_absent"]}
+    },
+    {
+      "name": "unscheduled-rule-with-a-unit-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_absent: any one of the four amount fields non-null rejects; here only the unit is set.",
+      "input": {"rule": {"v": 1, "kind": "unscheduled"}, "amountValue": null, "amountEntered": null, "unit": "milligram", "route": null},
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_absent"]}
+    },
+    {
+      "name": "three-bad-times-report-times-format-once",
+      "validator": "schedule_rule",
+      "note": "D7 issue order: a check reports once however many values fail it; 9:00, 24:00 and 12:60 give one times_format.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["9:00", "24:00", "12:60"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["times_format"]}
+    },
+    {
+      "name": "schedule-rule-errors-come-in-table-order",
+      "validator": "schedule_rule",
+      "note": "D7 issue order: errors come in the check table's order. 9:00 fails times_format, the repeat fails times_distinct, n 1 fails every_n_range, 2026-02-30 fails anchor_date and the missing unit fails amount_required; two times pass times_count.",
+      "input": {
+        "rule": {
+          "v": 1,
+          "kind": "timed",
+          "days": {"kind": "every_n_days", "n": 1, "anchor": "2026-02-30", "anchor_is_default": false},
+          "times": ["9:00", "9:00"]
+        },
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": null,
+        "route": "subcutaneous"
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": ["times_format", "times_distinct", "every_n_range", "anchor_date", "amount_required"]
+      }
+    },
+    {
+      "name": "unsorted-times-and-weekdays-are-valid",
+      "validator": "schedule_rule",
+      "note": "D7 order of times and weekdays: writers store both sorted, but no check judges the order, so unsorted lists are valid.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "weekdays", "weekdays": [5, 1, 3]}, "times": ["21:00", "09:00"]},
+        "amountValue": 20,
+        "amountEntered": "20",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
       "name": "ongoing-protocol-without-a-period-is-valid",
       "validator": "protocol_period",
       "note": "D4: ongoing, no end date, no cycle and no Pause.",
@@ -828,6 +891,151 @@
         }
       },
       "expected": {"accepted": false, "warningRules": [], "errorRules": ["pause_overlap"]}
+    },
+    {
+      "name": "one-hundred-pauses-are-valid",
+      "validator": "protocol_period",
+      "note": "D7 pause_count: 100 Pauses, the limit, are valid. Each is one day, 2026-01-01 to 2026-04-10 in turn; consecutive days share no day, so none overlap.",
+      "input": {
+        "startLocalDate": "2026-01-01",
+        "endLocalDate": null,
+        "period": {
+          "v": 1,
+          "cycle": null,
+          "pauses": [
+            {"from": "2026-01-01", "to": "2026-01-01"}, {"from": "2026-01-02", "to": "2026-01-02"}, {"from": "2026-01-03", "to": "2026-01-03"},
+            {"from": "2026-01-04", "to": "2026-01-04"}, {"from": "2026-01-05", "to": "2026-01-05"}, {"from": "2026-01-06", "to": "2026-01-06"},
+            {"from": "2026-01-07", "to": "2026-01-07"}, {"from": "2026-01-08", "to": "2026-01-08"}, {"from": "2026-01-09", "to": "2026-01-09"},
+            {"from": "2026-01-10", "to": "2026-01-10"}, {"from": "2026-01-11", "to": "2026-01-11"}, {"from": "2026-01-12", "to": "2026-01-12"},
+            {"from": "2026-01-13", "to": "2026-01-13"}, {"from": "2026-01-14", "to": "2026-01-14"}, {"from": "2026-01-15", "to": "2026-01-15"},
+            {"from": "2026-01-16", "to": "2026-01-16"}, {"from": "2026-01-17", "to": "2026-01-17"}, {"from": "2026-01-18", "to": "2026-01-18"},
+            {"from": "2026-01-19", "to": "2026-01-19"}, {"from": "2026-01-20", "to": "2026-01-20"}, {"from": "2026-01-21", "to": "2026-01-21"},
+            {"from": "2026-01-22", "to": "2026-01-22"}, {"from": "2026-01-23", "to": "2026-01-23"}, {"from": "2026-01-24", "to": "2026-01-24"},
+            {"from": "2026-01-25", "to": "2026-01-25"}, {"from": "2026-01-26", "to": "2026-01-26"}, {"from": "2026-01-27", "to": "2026-01-27"},
+            {"from": "2026-01-28", "to": "2026-01-28"}, {"from": "2026-01-29", "to": "2026-01-29"}, {"from": "2026-01-30", "to": "2026-01-30"},
+            {"from": "2026-01-31", "to": "2026-01-31"}, {"from": "2026-02-01", "to": "2026-02-01"}, {"from": "2026-02-02", "to": "2026-02-02"},
+            {"from": "2026-02-03", "to": "2026-02-03"}, {"from": "2026-02-04", "to": "2026-02-04"}, {"from": "2026-02-05", "to": "2026-02-05"},
+            {"from": "2026-02-06", "to": "2026-02-06"}, {"from": "2026-02-07", "to": "2026-02-07"}, {"from": "2026-02-08", "to": "2026-02-08"},
+            {"from": "2026-02-09", "to": "2026-02-09"}, {"from": "2026-02-10", "to": "2026-02-10"}, {"from": "2026-02-11", "to": "2026-02-11"},
+            {"from": "2026-02-12", "to": "2026-02-12"}, {"from": "2026-02-13", "to": "2026-02-13"}, {"from": "2026-02-14", "to": "2026-02-14"},
+            {"from": "2026-02-15", "to": "2026-02-15"}, {"from": "2026-02-16", "to": "2026-02-16"}, {"from": "2026-02-17", "to": "2026-02-17"},
+            {"from": "2026-02-18", "to": "2026-02-18"}, {"from": "2026-02-19", "to": "2026-02-19"}, {"from": "2026-02-20", "to": "2026-02-20"},
+            {"from": "2026-02-21", "to": "2026-02-21"}, {"from": "2026-02-22", "to": "2026-02-22"}, {"from": "2026-02-23", "to": "2026-02-23"},
+            {"from": "2026-02-24", "to": "2026-02-24"}, {"from": "2026-02-25", "to": "2026-02-25"}, {"from": "2026-02-26", "to": "2026-02-26"},
+            {"from": "2026-02-27", "to": "2026-02-27"}, {"from": "2026-02-28", "to": "2026-02-28"}, {"from": "2026-03-01", "to": "2026-03-01"},
+            {"from": "2026-03-02", "to": "2026-03-02"}, {"from": "2026-03-03", "to": "2026-03-03"}, {"from": "2026-03-04", "to": "2026-03-04"},
+            {"from": "2026-03-05", "to": "2026-03-05"}, {"from": "2026-03-06", "to": "2026-03-06"}, {"from": "2026-03-07", "to": "2026-03-07"},
+            {"from": "2026-03-08", "to": "2026-03-08"}, {"from": "2026-03-09", "to": "2026-03-09"}, {"from": "2026-03-10", "to": "2026-03-10"},
+            {"from": "2026-03-11", "to": "2026-03-11"}, {"from": "2026-03-12", "to": "2026-03-12"}, {"from": "2026-03-13", "to": "2026-03-13"},
+            {"from": "2026-03-14", "to": "2026-03-14"}, {"from": "2026-03-15", "to": "2026-03-15"}, {"from": "2026-03-16", "to": "2026-03-16"},
+            {"from": "2026-03-17", "to": "2026-03-17"}, {"from": "2026-03-18", "to": "2026-03-18"}, {"from": "2026-03-19", "to": "2026-03-19"},
+            {"from": "2026-03-20", "to": "2026-03-20"}, {"from": "2026-03-21", "to": "2026-03-21"}, {"from": "2026-03-22", "to": "2026-03-22"},
+            {"from": "2026-03-23", "to": "2026-03-23"}, {"from": "2026-03-24", "to": "2026-03-24"}, {"from": "2026-03-25", "to": "2026-03-25"},
+            {"from": "2026-03-26", "to": "2026-03-26"}, {"from": "2026-03-27", "to": "2026-03-27"}, {"from": "2026-03-28", "to": "2026-03-28"},
+            {"from": "2026-03-29", "to": "2026-03-29"}, {"from": "2026-03-30", "to": "2026-03-30"}, {"from": "2026-03-31", "to": "2026-03-31"},
+            {"from": "2026-04-01", "to": "2026-04-01"}, {"from": "2026-04-02", "to": "2026-04-02"}, {"from": "2026-04-03", "to": "2026-04-03"},
+            {"from": "2026-04-04", "to": "2026-04-04"}, {"from": "2026-04-05", "to": "2026-04-05"}, {"from": "2026-04-06", "to": "2026-04-06"},
+            {"from": "2026-04-07", "to": "2026-04-07"}, {"from": "2026-04-08", "to": "2026-04-08"}, {"from": "2026-04-09", "to": "2026-04-09"},
+            {"from": "2026-04-10", "to": "2026-04-10"}
+          ]
+        }
+      },
+      "expected": {"accepted": true, "warningRules": [], "errorRules": []}
+    },
+    {
+      "name": "one-hundred-and-one-overlapping-pauses-report-only-pause-count",
+      "validator": "protocol_period",
+      "note": "D7 pause_count: 101 Pauses reject, and the other Pause checks don't run on the list; these are 101 copies of 2026-10-10 to 2026-10-16, which would otherwise fail pause_overlap.",
+      "input": {
+        "startLocalDate": "2026-10-01",
+        "endLocalDate": null,
+        "period": {
+          "v": 1,
+          "cycle": null,
+          "pauses": [
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"},
+            {"from": "2026-10-10", "to": "2026-10-16"}, {"from": "2026-10-10", "to": "2026-10-16"}
+          ]
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["pause_count"]}
+    },
+    {
+      "name": "several-overlapping-pauses-report-pause-overlap-once",
+      "validator": "protocol_period",
+      "note": "D7 issue order: three overlapping pairs give one pause_overlap.",
+      "input": {
+        "startLocalDate": "2026-10-01",
+        "endLocalDate": null,
+        "period": {
+          "v": 1,
+          "cycle": null,
+          "pauses": [
+            {"from": "2026-10-05", "to": "2026-10-10"},
+            {"from": "2026-10-08", "to": "2026-10-12"},
+            {"from": "2026-10-11", "to": "2026-10-15"},
+            {"from": "2026-10-20", "to": "2026-10-25"},
+            {"from": "2026-10-22", "to": "2026-10-23"}
+          ]
+        }
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["pause_overlap"]}
+    },
+    {
+      "name": "protocol-period-errors-come-in-table-order",
+      "validator": "protocol_period",
+      "note": "D7 issue order: errors come in the check table's order. 2026-02-30 fails anchor_date, 0 on-days fail cycle_lengths, the end before the start fails bounds_order, 2026-10-10 to 2026-10-05 fails pause_order, 2026-09-20 to 2026-09-22 is before the start (pause_bounds), and the Pauses sharing 2026-10-14 fail pause_overlap.",
+      "input": {
+        "startLocalDate": "2026-10-01",
+        "endLocalDate": "2026-09-30",
+        "period": {
+          "v": 1,
+          "cycle": {"on_days": 0, "off_days": 7, "anchor": "2026-02-30", "anchor_is_default": false},
+          "pauses": [
+            {"from": "2026-10-10", "to": "2026-10-05"},
+            {"from": "2026-09-20", "to": "2026-09-22"},
+            {"from": "2026-10-12", "to": "2026-10-14"},
+            {"from": "2026-10-14", "to": "2026-10-16"}
+          ]
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": ["anchor_date", "cycle_lengths", "bounds_order", "pause_order", "pause_bounds", "pause_overlap"]
+      }
     }
   ]
 }

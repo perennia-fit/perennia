@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:perennia/api/perennia_api_client.dart';
+import 'package:perennia/features/sync/repositories/sync_repository.dart'
+    show syncProtocolVersion;
 
 void main() {
   test('signInEmail posts credentials to the configured server URL', () async {
@@ -236,7 +238,7 @@ void main() {
         requests.add(request);
         return http.Response(
           jsonEncode(<String, Object?>{
-            'protocolVersion': 1,
+            'protocolVersion': syncProtocolVersion,
             'accepted': <String>['set-1'],
             'serverClock': '2026-06-22T08:00:01.000Z',
             'applied': <Object?>[
@@ -255,7 +257,7 @@ void main() {
 
     final response = await client.pushSync(
       bearerToken: 'session-token',
-      protocolVersion: 1,
+      protocolVersion: syncProtocolVersion,
       deviceId: 'device-a',
       entity: 'logged_sets',
       changes: const <SyncPushChange>[
@@ -290,7 +292,7 @@ void main() {
     expect(requests.single.url.toString(), 'https://sync.example/sync/push');
     expect(requests.single.headers['authorization'], 'Bearer session-token');
     expect(jsonDecode(requests.single.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'deviceId': 'device-a',
       'entity': 'logged_sets',
       'changes': <Object?>[
@@ -371,7 +373,7 @@ void main() {
         requests.add(request);
         return http.Response(
           jsonEncode(<String, Object?>{
-            'protocolVersion': 1,
+            'protocolVersion': syncProtocolVersion,
             'nextCursor': 'cursor-1',
             'serverClock': '2026-06-22T08:00:01.000Z',
             'changes': <Object?>[
@@ -397,7 +399,7 @@ void main() {
 
     final response = await client.pullSync(
       bearerToken: 'session-token',
-      protocolVersion: 1,
+      protocolVersion: syncProtocolVersion,
       cursor: null,
       limit: 100,
     );
@@ -412,7 +414,7 @@ void main() {
     expect(requests.single.url.toString(), 'https://sync.example/sync/pull');
     expect(requests.single.headers['authorization'], 'Bearer session-token');
     expect(jsonDecode(requests.single.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'cursor': null,
       'limit': 100,
     });
@@ -426,7 +428,7 @@ void main() {
         requests.add(request);
         return http.Response(
           jsonEncode(<String, Object?>{
-            'protocolVersion': 1,
+            'protocolVersion': syncProtocolVersion,
             'fullResyncRequired': true,
             'nextCursor': 'old-cursor',
             'serverClock': '2026-06-22T08:00:01.000Z',
@@ -440,7 +442,7 @@ void main() {
 
     final response = await client.pullSync(
       bearerToken: 'session-token',
-      protocolVersion: 1,
+      protocolVersion: syncProtocolVersion,
       cursor: null,
       limit: 100,
       mode: 'snapshot',
@@ -450,7 +452,7 @@ void main() {
     expect(response.changes, isEmpty);
     expect(requests.single.url.toString(), 'https://sync.example/sync/pull');
     expect(jsonDecode(requests.single.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'cursor': null,
       'limit': 100,
       'mode': 'snapshot',

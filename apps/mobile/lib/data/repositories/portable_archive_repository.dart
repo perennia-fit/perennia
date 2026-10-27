@@ -1459,6 +1459,13 @@ class PortableArchiveRepository {
     }
 
     for (final entity in _entities) {
+      if (_isPrePlanProtocolTable(
+        entity.tableName,
+        archiveSchemaVersion: manifest.schemaVersion,
+      )) {
+        rowsByTable[entity.tableName] = const <Object>[];
+        continue;
+      }
       final manifestEntity = manifestEntities[entity.tableName];
       if (manifestEntity == null) {
         if (_mayBeAbsentFromArchive(
@@ -1492,6 +1499,18 @@ class PortableArchiveRepository {
         );
       }
       rowsByTable[entity.tableName] = rows;
+    }
+
+    // Before schema 61, Protocol plans had another shape, which is cleared
+    // rather than converted. Their rows were skipped above; their Activity
+    // Log rows are dropped here, so an old image is never replayed or undone
+    // into the new tables.
+    if (manifest.schemaVersion < _protocolPlanSchemaVersion) {
+      rowsByTable[AppDatabase.activityLogTable] = List<Object>.unmodifiable(
+        rowsByTable[AppDatabase.activityLogTable]!
+            .cast<ActivityLogRow>()
+            .where((row) => !_protocolPlanTables.contains(row.entityTable)),
+      );
     }
 
     // Before schema 53, Template Link routine IDs belonged to an unfinished
@@ -1582,6 +1601,31 @@ class PortableArchiveRepository {
         'Archive manifest has an unexpected entity set.',
       );
     }
+  }
+
+  /// The schema version that introduced the Protocol plan shape (Schedule
+  /// Versions, local-date bounds, the Protocol Period).
+  static const _protocolPlanSchemaVersion = 61;
+
+  static const _protocolPlanTables = <String>{
+    AppDatabase.protocolsTable,
+    AppDatabase.protocolCompoundsTable,
+    AppDatabase.schedulesTable,
+    AppDatabase.protocolTargetOutcomesTable,
+  };
+
+  /// Whether [tableName] holds Protocol plan rows in the shape before schema
+  /// 61. Those plans are cleared on upgrade and re-entered, not converted, so
+  /// an older archive imports its Compounds and Doses (whose Protocol tag and
+  /// name snapshot still render) and skips its plan rows without decoding
+  /// them. The archive format is unchanged; its manifest's schema version
+  /// tells the shapes apart.
+  bool _isPrePlanProtocolTable(
+    String tableName, {
+    required int archiveSchemaVersion,
+  }) {
+    return archiveSchemaVersion < _protocolPlanSchemaVersion &&
+        _protocolPlanTables.contains(tableName);
   }
 
   bool _mayBeAbsentFromArchive(

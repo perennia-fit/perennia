@@ -13,7 +13,12 @@ import {
 } from "./metric-identity.js";
 import { SYNC_TOMBSTONE_RETENTION_MS } from "./sync-tombstone-gc.js";
 
-export const SYNC_PROTOCOL_VERSION = 1;
+// Version 2 is the Protocol plan cutover (docs/designs/protocol-schedules-and-
+// reminders.md, D3): Protocol and Schedule rows carry local-date bounds, a
+// period and versioned rules. The request schemas take the version as a
+// literal, so a version-1 client, which would push incomplete plan rows and
+// erase the fields it does not know, is rejected rather than merged.
+export const SYNC_PROTOCOL_VERSION = 2;
 export const LOGGED_SETS_SYNC_ENTITY = "logged_sets";
 export const FOODS_SYNC_ENTITY = "foods";
 export const MEAL_TYPES_SYNC_ENTITY = "meal_types";

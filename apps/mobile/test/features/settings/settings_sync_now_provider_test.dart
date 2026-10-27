@@ -213,7 +213,7 @@ http.Response _pullResponse({
 }) {
   return http.Response(
     jsonEncode(<String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'fullResyncRequired': false,
       'changes': changes,
       'nextCursor': nextCursor,

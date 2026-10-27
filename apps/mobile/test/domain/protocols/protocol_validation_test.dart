@@ -16,23 +16,6 @@ void main() {
     });
   });
 
-  group('validateProtocolWindow', () {
-    final start = DateTime(2026, 3, 1);
-
-    test('accepts an open-ended, same-day, or later end', () {
-      validateProtocolWindow(start, null);
-      validateProtocolWindow(start, start);
-      validateProtocolWindow(start, DateTime(2026, 3, 2));
-    });
-
-    test('rejects an end before the start', () {
-      expect(
-        () => validateProtocolWindow(start, DateTime(2026, 2, 28)),
-        rejects,
-      );
-    });
-  });
-
   group('validateProtocolMembership', () {
     test('returns the ids unchanged, in order', () {
       final ids = <String>['b', 'a'];

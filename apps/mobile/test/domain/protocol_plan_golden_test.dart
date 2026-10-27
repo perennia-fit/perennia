@@ -74,12 +74,18 @@ Object? _run(String function, Map<String, Object?> input) {
       ).map((dose) => dose.toJson()).toList();
     case 'effect_bounds':
       final endLocalDate = input['endLocalDate'] as String?;
-      final bounds = effectBoundsFromLocalDates(
-        startLocalDate: _date(input['startLocalDate']),
-        endLocalDate:
-            endLocalDate == null ? null : ProtocolDayDate.parse(endLocalDate),
-        timezoneOffsetMinutes: input['timezoneOffsetMinutes']! as int,
-      );
+      final EffectBounds bounds;
+      try {
+        bounds = effectBoundsFromLocalDates(
+          startLocalDate: _date(input['startLocalDate']),
+          endLocalDate:
+              endLocalDate == null ? null : ProtocolDayDate.parse(endLocalDate),
+          timezoneOffsetMinutes: input['timezoneOffsetMinutes']! as int,
+        );
+      } on RangeError {
+        // An offset outside −720 to +840 (D2).
+        return const <String, Object?>{'rejects': true};
+      }
       return <String, Object?>{
         'startDate': bounds.startDate.toIso8601String(),
         'endDate': bounds.endDate?.toIso8601String(),

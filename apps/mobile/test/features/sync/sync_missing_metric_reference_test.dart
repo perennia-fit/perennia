@@ -67,7 +67,7 @@ void main() {
     final protocol = await repositoriesA.protocols.createProtocol(
       ProtocolDraft(
         name: 'Recovery',
-        startDate: DateTime.utc(2026, 6, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
         compoundIds: <String>[compound.compoundId],
         targetOutcomes: <ProtocolTargetOutcomeDraft>[
           ProtocolTargetOutcomeDraft.metric(metricId),
@@ -321,7 +321,7 @@ class _FakeSyncServer {
                 });
             }
             return _json(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': pushed.map((change) => change['id']).toList(),
               'serverClock': '2026-06-03T08:00:00.000Z',
               'applied': <Object?>[
@@ -338,7 +338,7 @@ class _FakeSyncServer {
             final snapshot = body['mode'] == 'snapshot';
             if (fullResync && !snapshot) {
               return _json(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'fullResyncRequired': true,
                 'nextCursor': null,
                 'serverClock': '2026-06-03T08:00:00.000Z',
@@ -348,7 +348,7 @@ class _FakeSyncServer {
             // A snapshot pages until it comes back empty.
             final cursor = body['cursor'];
             return _json(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'fullResyncRequired': false,
               'nextCursor': snapshot ? 'snapshot-done' : null,
               'serverClock': '2026-06-03T08:00:00.000Z',

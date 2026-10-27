@@ -36,11 +36,20 @@ const RUNNERS_BY_FUNCTION = new Map([
   [
     "effect_bounds",
     (input) => {
-      const bounds = effectBoundsFromLocalDates(
-        input.startLocalDate,
-        input.endLocalDate,
-        input.timezoneOffsetMinutes
-      );
+      let bounds;
+      try {
+        bounds = effectBoundsFromLocalDates(
+          input.startLocalDate,
+          input.endLocalDate,
+          input.timezoneOffsetMinutes
+        );
+      } catch (error) {
+        // An offset outside -720 to +840 (D2).
+        if (error instanceof RangeError) {
+          return { rejects: true };
+        }
+        throw error;
+      }
       return {
         startDate: bounds.startDate.toISOString(),
         endDate: bounds.endDate?.toISOString() ?? null

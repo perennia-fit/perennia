@@ -3823,6 +3823,456 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not save the focus. Try again.'**
   String get focusManagerSaveFailed;
+
+  /// No description provided for @protocolEditorNewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New Protocol'**
+  String get protocolEditorNewTitle;
+
+  /// No description provided for @protocolEditorEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Protocol'**
+  String get protocolEditorEditTitle;
+
+  /// No description provided for @protocolEditorNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get protocolEditorNameLabel;
+
+  /// No description provided for @protocolEditorStartDateLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Start date'**
+  String get protocolEditorStartDateLabel;
+
+  /// No description provided for @protocolEditorPeriodHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Period'**
+  String get protocolEditorPeriodHeading;
+
+  /// No description provided for @protocolEditorUntilLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Until an end date'**
+  String get protocolEditorUntilLabel;
+
+  /// No description provided for @protocolEditorOngoing.
+  ///
+  /// In en, this message translates to:
+  /// **'Ongoing, with no end date'**
+  String get protocolEditorOngoing;
+
+  /// No description provided for @protocolEditorEndDateLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'End date'**
+  String get protocolEditorEndDateLabel;
+
+  /// No description provided for @protocolEditorDoseCountButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Set the end date from a number of doses'**
+  String get protocolEditorDoseCountButton;
+
+  /// No description provided for @protocolEditorDoseCountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'End after a number of doses'**
+  String get protocolEditorDoseCountTitle;
+
+  /// No description provided for @protocolEditorDoseCountMemberLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Count the doses of'**
+  String get protocolEditorDoseCountMemberLabel;
+
+  /// No description provided for @protocolEditorDoseCountLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Number of doses'**
+  String get protocolEditorDoseCountLabel;
+
+  /// No description provided for @protocolEditorDoseCountResult.
+  ///
+  /// In en, this message translates to:
+  /// **'Ends {date}'**
+  String protocolEditorDoseCountResult(String date);
+
+  /// No description provided for @protocolEditorDoseCountUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Unavailable for this Schedule'**
+  String get protocolEditorDoseCountUnavailable;
+
+  /// No description provided for @protocolEditorDoseCountRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a number from {min} to {max}'**
+  String protocolEditorDoseCountRange(int min, int max);
+
+  /// No description provided for @protocolEditorDoseCountApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Set end date'**
+  String get protocolEditorDoseCountApply;
+
+  /// No description provided for @protocolEditorCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get protocolEditorCancel;
+
+  /// No description provided for @protocolEditorCycleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle'**
+  String get protocolEditorCycleLabel;
+
+  /// No description provided for @protocolEditorCycleSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Days on, then days off, repeating'**
+  String get protocolEditorCycleSubtitle;
+
+  /// No description provided for @protocolEditorCycleOnDaysLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Days on'**
+  String get protocolEditorCycleOnDaysLabel;
+
+  /// No description provided for @protocolEditorCycleOffDaysLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Days off'**
+  String get protocolEditorCycleOffDaysLabel;
+
+  /// No description provided for @protocolEditorCycleAnchorLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle counted from'**
+  String get protocolEditorCycleAnchorLabel;
+
+  /// No description provided for @protocolEditorAnchorIsStart.
+  ///
+  /// In en, this message translates to:
+  /// **'{date} (the start date)'**
+  String protocolEditorAnchorIsStart(String date);
+
+  /// No description provided for @protocolEditorPausesHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Pauses'**
+  String get protocolEditorPausesHeading;
+
+  /// No description provided for @protocolEditorPausesEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No Pauses'**
+  String get protocolEditorPausesEmpty;
+
+  /// No description provided for @protocolEditorAddPause.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a Pause'**
+  String get protocolEditorAddPause;
+
+  /// No description provided for @protocolEditorRemovePause.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove Pause'**
+  String get protocolEditorRemovePause;
+
+  /// No description provided for @protocolEditorDateRange.
+  ///
+  /// In en, this message translates to:
+  /// **'{from} – {to}'**
+  String protocolEditorDateRange(String from, String to);
+
+  /// No description provided for @protocolEditorCompoundsHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Compounds'**
+  String get protocolEditorCompoundsHeading;
+
+  /// No description provided for @protocolEditorSchedulesHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Schedules'**
+  String get protocolEditorSchedulesHeading;
+
+  /// No description provided for @protocolEditorScheduleTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{compound} Schedule'**
+  String protocolEditorScheduleTitle(String compound);
+
+  /// No description provided for @protocolEditorScheduleCurrentVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Current Schedule applies from {date}'**
+  String protocolEditorScheduleCurrentVersion(String date);
+
+  /// No description provided for @protocolEditorRuleTimed.
+  ///
+  /// In en, this message translates to:
+  /// **'At set times'**
+  String get protocolEditorRuleTimed;
+
+  /// No description provided for @protocolEditorRuleUntimed.
+  ///
+  /// In en, this message translates to:
+  /// **'Any time'**
+  String get protocolEditorRuleUntimed;
+
+  /// No description provided for @protocolEditorRuleAsNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'As needed'**
+  String get protocolEditorRuleAsNeeded;
+
+  /// No description provided for @protocolEditorRuleNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No schedule'**
+  String get protocolEditorRuleNone;
+
+  /// No description provided for @protocolEditorDaysDaily.
+  ///
+  /// In en, this message translates to:
+  /// **'Every day'**
+  String get protocolEditorDaysDaily;
+
+  /// No description provided for @protocolEditorDaysWeekdays.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekdays'**
+  String get protocolEditorDaysWeekdays;
+
+  /// No description provided for @protocolEditorDaysEveryN.
+  ///
+  /// In en, this message translates to:
+  /// **'Every N days'**
+  String get protocolEditorDaysEveryN;
+
+  /// No description provided for @protocolEditorEveryNLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Every how many days'**
+  String get protocolEditorEveryNLabel;
+
+  /// No description provided for @protocolEditorEveryNAnchorLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Counted from'**
+  String get protocolEditorEveryNAnchorLabel;
+
+  /// No description provided for @protocolEditorTimesHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Times'**
+  String get protocolEditorTimesHeading;
+
+  /// No description provided for @protocolEditorAddTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a time'**
+  String get protocolEditorAddTime;
+
+  /// No description provided for @protocolEditorRemoveTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {time}'**
+  String protocolEditorRemoveTime(String time);
+
+  /// No description provided for @protocolEditorUntimedCountLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Doses a day'**
+  String get protocolEditorUntimedCountLabel;
+
+  /// No description provided for @protocolEditorPlannedAmountLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Planned amount'**
+  String get protocolEditorPlannedAmountLabel;
+
+  /// No description provided for @protocolEditorUnitLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Unit'**
+  String get protocolEditorUnitLabel;
+
+  /// No description provided for @protocolEditorRouteLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Route'**
+  String get protocolEditorRouteLabel;
+
+  /// No description provided for @protocolEditorTargetOutcomesHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Target outcomes (optional)'**
+  String get protocolEditorTargetOutcomesHeading;
+
+  /// No description provided for @protocolEditorTargetOutcomesHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Which Metrics or performance to correlate — seeds the later Effect view; no analysis happens here.'**
+  String get protocolEditorTargetOutcomesHelp;
+
+  /// No description provided for @protocolEditorPerformance.
+  ///
+  /// In en, this message translates to:
+  /// **'Performance'**
+  String get protocolEditorPerformance;
+
+  /// No description provided for @protocolEditorSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get protocolEditorSave;
+
+  /// No description provided for @protocolEditorArchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get protocolEditorArchive;
+
+  /// No description provided for @protocolEditorNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Name is required.'**
+  String get protocolEditorNameRequired;
+
+  /// No description provided for @protocolEditorCompoundRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'A Protocol requires at least one Compound.'**
+  String get protocolEditorCompoundRequired;
+
+  /// No description provided for @protocolEditorFixIssues.
+  ///
+  /// In en, this message translates to:
+  /// **'Fix the marked fields to save.'**
+  String get protocolEditorFixIssues;
+
+  /// No description provided for @protocolEditorSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the Protocol: {error}'**
+  String protocolEditorSaveFailed(String error);
+
+  /// No description provided for @protocolEditorCompoundFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Compound'**
+  String get protocolEditorCompoundFallback;
+
+  /// No description provided for @protocolPlanIssueTimesFormat.
+  ///
+  /// In en, this message translates to:
+  /// **'Each time must be HH:MM, from 00:00 to 23:59.'**
+  String get protocolPlanIssueTimesFormat;
+
+  /// No description provided for @protocolPlanIssueTimesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan 1 to {max} times a day.'**
+  String protocolPlanIssueTimesCount(int max);
+
+  /// No description provided for @protocolPlanIssueTimesDistinct.
+  ///
+  /// In en, this message translates to:
+  /// **'The same time is planned twice.'**
+  String get protocolPlanIssueTimesDistinct;
+
+  /// No description provided for @protocolPlanIssueUntimedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan 1 to {max} doses a day.'**
+  String protocolPlanIssueUntimedCount(int max);
+
+  /// No description provided for @protocolPlanIssueWeekdaysValid.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose at least one weekday.'**
+  String get protocolPlanIssueWeekdaysValid;
+
+  /// No description provided for @protocolPlanIssueEveryNRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Every N days takes a number from {min} to {max}.'**
+  String protocolPlanIssueEveryNRange(int min, int max);
+
+  /// No description provided for @protocolPlanIssueAnchorDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a real date to count from.'**
+  String get protocolPlanIssueAnchorDate;
+
+  /// No description provided for @protocolPlanIssueAmountRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a planned amount, unit and route that a Dose could log.'**
+  String get protocolPlanIssueAmountRequired;
+
+  /// No description provided for @protocolPlanIssueAmountAbsent.
+  ///
+  /// In en, this message translates to:
+  /// **'As needed and No schedule carry no amount, unit or route.'**
+  String get protocolPlanIssueAmountAbsent;
+
+  /// No description provided for @protocolPlanIssueCycleLengths.
+  ///
+  /// In en, this message translates to:
+  /// **'A cycle is 1 to {max} days on and 1 to {max} days off.'**
+  String protocolPlanIssueCycleLengths(int max);
+
+  /// No description provided for @protocolPlanIssueBoundsOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'The end date can\'t be before the start date.'**
+  String get protocolPlanIssueBoundsOrder;
+
+  /// No description provided for @protocolPlanIssuePauseCount.
+  ///
+  /// In en, this message translates to:
+  /// **'A Protocol holds at most {max} Pauses.'**
+  String protocolPlanIssuePauseCount(int max);
+
+  /// No description provided for @protocolPlanIssuePauseOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'A Pause can\'t end before it starts.'**
+  String get protocolPlanIssuePauseOrder;
+
+  /// No description provided for @protocolPlanIssuePauseBounds.
+  ///
+  /// In en, this message translates to:
+  /// **'Each Pause must fall within the Protocol\'s dates.'**
+  String get protocolPlanIssuePauseBounds;
+
+  /// No description provided for @protocolPlanIssuePauseOverlap.
+  ///
+  /// In en, this message translates to:
+  /// **'Two Pauses can\'t overlap.'**
+  String get protocolPlanIssuePauseOverlap;
+
+  /// No description provided for @protocolPlanIssueTimesMany.
+  ///
+  /// In en, this message translates to:
+  /// **'More than {count} times a day is unusual. Check the times before saving.'**
+  String protocolPlanIssueTimesMany(int count);
+
+  /// No description provided for @effectPlanBreaksCountedAsDuring.
+  ///
+  /// In en, this message translates to:
+  /// **'Off-cycle and paused days are counted as during.'**
+  String get effectPlanBreaksCountedAsDuring;
 }
 
 class _AppLocalizationsDelegate

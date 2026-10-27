@@ -1,6 +1,6 @@
 /// Realistic test data for development: a training history, a body-weight
-/// trend, and logged meals, written through the same repositories the app's
-/// screens use.
+/// trend, logged meals, and a supplement stack with its Protocols and Doses,
+/// written through the same repositories the app's screens use.
 ///
 /// Writing through the repositories, rather than inserting rows, is the point:
 /// every row passes the shared validation, gets its Activity Log entry, and
@@ -14,6 +14,7 @@ library;
 import 'dart:math' as math;
 
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 
@@ -25,6 +26,7 @@ class TestDataOptions {
     this.timezone = 'UTC',
     this.includeBodyWeight = true,
     this.includeNutrition = true,
+    this.includeProtocols = true,
   }) : assert(weeks > 0);
 
   /// The last day that can hold data. Usually today, so the Today screen and
@@ -37,6 +39,10 @@ class TestDataOptions {
   final String timezone;
   final bool includeBodyWeight;
   final bool includeNutrition;
+
+  /// The motivating supplement stack: its Compounds, three Protocols with
+  /// one rhythm each, and the Doses logged against them.
+  final bool includeProtocols;
 }
 
 class TestDataSummary {
@@ -46,6 +52,9 @@ class TestDataSummary {
     required this.bodyWeightEntries,
     required this.meals,
     required this.foodEntries,
+    this.compounds = 0,
+    this.protocols = 0,
+    this.doses = 0,
   });
 
   final int workouts;
@@ -54,10 +63,16 @@ class TestDataSummary {
   final int meals;
   final int foodEntries;
 
+  /// The Compounds the stack uses, including the seeded Creatine.
+  final int compounds;
+  final int protocols;
+  final int doses;
+
   @override
   String toString() =>
       '$workouts workouts, $sets sets, $bodyWeightEntries body-weight entries, '
-      '$meals meals, $foodEntries food entries';
+      '$meals meals, $foodEntries food entries, $compounds compounds, '
+      '$protocols protocols, $doses doses';
 }
 
 /// Platform Exercise Library IDs. They are stable across installs, which is
@@ -229,6 +244,69 @@ const _dinners = <List<_Food>>[
 ];
 const _snack = _Food('Whey protein shake', 400, 80, 8, 6, grams: 30);
 
+/// One Compound of the stack and the planned dose its Schedule carries.
+/// Amounts are placeholders for exercising the app, not dosing guidance.
+class _StackCompound {
+  const _StackCompound(
+    this.name, {
+    required this.amount,
+    required this.unit,
+    required this.route,
+    this.strength,
+  });
+
+  final String name;
+  final double amount;
+  final DoseUnit unit;
+  final DoseRoute route;
+  final String? strength;
+
+  String get amountEntered =>
+      amount == amount.roundToDouble() ? amount.toInt().toString() : '$amount';
+}
+
+const _trt = _StackCompound(
+  'TRT',
+  amount: 0.1,
+  unit: DoseUnit.milliliter,
+  route: DoseRoute.subcutaneous,
+  strength: '200 mg/mL',
+);
+const _ageMate = _StackCompound(
+  'AgeMate',
+  amount: 1,
+  unit: DoseUnit.capsule,
+  route: DoseRoute.oral,
+);
+const _mnem = _StackCompound(
+  'MNEM',
+  amount: 1,
+  unit: DoseUnit.capsule,
+  route: DoseRoute.oral,
+);
+
+/// Creatine is one of the app's seeded Compounds, so the stack reuses the
+/// seeded row (stable id) rather than adding a second "Creatine".
+const _creatine = _StackCompound(
+  'Creatine',
+  amount: 5,
+  unit: DoseUnit.gram,
+  route: DoseRoute.oral,
+);
+const _ghkCu = _StackCompound(
+  'GHK-Cu',
+  amount: 1,
+  unit: DoseUnit.milligram,
+  route: DoseRoute.subcutaneous,
+);
+const _bpc157 = _StackCompound(
+  'BPC-157',
+  amount: 250,
+  unit: DoseUnit.microgram,
+  route: DoseRoute.subcutaneous,
+);
+const _seededCreatineId = '019200ff-0000-7000-8000-000000000001';
+
 class _Generator {
   _Generator(this._repositories, this._options)
       : _random = math.Random(_options.seed);
@@ -244,6 +322,9 @@ class _Generator {
   int _bodyWeightEntries = 0;
   int _meals = 0;
   int _foodEntries = 0;
+  int _compounds = 0;
+  int _protocols = 0;
+  int _doses = 0;
   final _foodIds = <String, String>{};
 
   Future<TestDataSummary> run() async {
@@ -289,14 +370,207 @@ class _Generator {
       }
     }
 
+    if (_options.includeProtocols) {
+      await _logProtocolStack(start);
+    }
+
     return TestDataSummary(
       workouts: _workouts,
       sets: _sets,
       bodyWeightEntries: _bodyWeightEntries,
       meals: _meals,
       foodEntries: _foodEntries,
+      compounds: _compounds,
+      protocols: _protocols,
+      doses: _doses,
     );
   }
+
+  /// The motivating stack, one Protocol per rhythm:
+  /// - "Daily", from the range start: TRT, AgeMate and MNEM at 09:00, and
+  ///   creatine at 17:00;
+  /// - "Skin": GHK-Cu at 21:00 on a 60-days-on, 30-off cycle anchored (and
+  ///   starting) 60 days before the range end;
+  /// - "Shoulder": BPC-157 at 21:00 from 10 days before the range end, for
+  ///   20 doses (its end date comes from the "N doses" helper).
+  ///
+  /// Then the Doses: every planned dose in the range, near its planned time,
+  /// with one day in six left unlogged. A Dose whose time is still ahead of
+  /// the real clock is not logged, so today's later planned doses stay
+  /// unlogged.
+  Future<void> _logProtocolStack(TrainingDayDate rangeStart) async {
+    final protocols = _repositories.protocols;
+    await protocols.ensureOtcLibrarySeeded(actor: _actor);
+    final compounds = <_StackCompound, CompoundRecord>{};
+    for (final compound in const [_trt, _ageMate, _mnem, _ghkCu, _bpc157]) {
+      final result = await protocols.createCompound(
+        CompoundDraft(
+          name: compound.name,
+          defaultUnit: compound.unit,
+          defaultRoute: compound.route,
+          strength: CompoundStrength.tryParse(compound.strength),
+        ),
+        actor: _actor,
+      );
+      compounds[compound] = (await protocols.listCompounds())
+          .singleWhere((record) => record.id == result.compoundId);
+    }
+    compounds[_creatine] = (await protocols.listCompounds())
+        .singleWhere((record) => record.id == _seededCreatineId);
+    _compounds = compounds.length;
+
+    final start = _protocolDay(rangeStart);
+    final end = _protocolDay(_options.endDate);
+    ScheduleDraft at(_StackCompound compound, String time) => ScheduleDraft(
+          rule: TimedScheduleRule(
+            days: const DailyScheduleDays(),
+            times: <String>[time],
+          ),
+          doseAmountValue: compound.amount,
+          doseAmountEntered: compound.amountEntered,
+          doseUnit: compound.unit,
+          route: compound.route,
+        );
+
+    await _createProtocol(
+      ProtocolDraft(
+        name: 'Daily',
+        startLocalDate: start,
+        compoundIds: [
+          for (final compound in const [_trt, _ageMate, _mnem, _creatine])
+            compounds[compound]!.id,
+        ],
+        schedulesByCompoundId: {
+          compounds[_trt]!.id: at(_trt, '09:00'),
+          compounds[_ageMate]!.id: at(_ageMate, '09:00'),
+          compounds[_mnem]!.id: at(_mnem, '09:00'),
+          compounds[_creatine]!.id: at(_creatine, '17:00'),
+        },
+      ),
+    );
+
+    final skinStart = end.addDays(-60);
+    await _createProtocol(
+      ProtocolDraft(
+        name: 'Skin',
+        startLocalDate: skinStart,
+        period: ProtocolPeriod(
+          cycle: ProtocolCycle(
+            onDays: 60,
+            offDays: 30,
+            anchor: skinStart,
+            anchorIsDefault: true,
+          ),
+        ),
+        compoundIds: [compounds[_ghkCu]!.id],
+        schedulesByCompoundId: {compounds[_ghkCu]!.id: at(_ghkCu, '21:00')},
+      ),
+    );
+
+    final shoulderStart = end.addDays(-10);
+    final shoulderSchedule = at(_bpc157, '21:00');
+    await _createProtocol(
+      ProtocolDraft(
+        name: 'Shoulder',
+        startLocalDate: shoulderStart,
+        endLocalDate: endDateForDoseCount(
+          startLocalDate: shoulderStart,
+          rule: shoulderSchedule.rule,
+          doseCount: 20,
+        ),
+        compoundIds: [compounds[_bpc157]!.id],
+        schedulesByCompoundId: {compounds[_bpc157]!.id: shoulderSchedule},
+      ),
+    );
+
+    await _logPlannedDoses(start, end, compounds.values);
+  }
+
+  Future<void> _createProtocol(ProtocolDraft draft) async {
+    await _repositories.protocols.createProtocol(draft, actor: _actor);
+    _protocols += 1;
+  }
+
+  Future<void> _logPlannedDoses(
+    ProtocolDayDate start,
+    ProtocolDayDate end,
+    Iterable<CompoundRecord> compounds,
+  ) async {
+    final compoundsById = {
+      for (final compound in compounds) compound.id: compound,
+    };
+    final protocols = await _repositories.protocols.listProtocols();
+    final protocolsById = {
+      for (final protocol in protocols) protocol.id: protocol,
+    };
+    final days = planDays(protocols.map(_planProtocolOf), start, end);
+    final now = DateTime.now();
+    final drafts = <DoseSnapshotDraft>[];
+    ProtocolDayDate? draftsDay;
+
+    Future<void> flush() async {
+      if (drafts.isEmpty) {
+        return;
+      }
+      // One batch per day, as "Log all planned" writes it.
+      await _repositories.protocols.logDoses(
+        List<DoseSnapshotDraft>.of(drafts),
+        actor: _actor,
+      );
+      _doses += drafts.length;
+      drafts.clear();
+    }
+
+    for (final day in days) {
+      if (day.localDate != draftsDay) {
+        await flush();
+        draftsDay = day.localDate;
+      }
+      // One day in six is left unlogged, as real logs have gaps.
+      if (day.localDate.daysBetween(start) % 6 == 5) {
+        continue;
+      }
+      final compound = compoundsById[day.compoundId]!;
+      final protocol = protocolsById[day.protocolId]!;
+      for (final planned in day.planned) {
+        final time = planLocalTimeMinutes(planned.localTime!);
+        // Within 15 minutes either side of the planned time, as people take
+        // a dose around its time rather than on the minute.
+        final minutes = time + _protocolRandom.nextInt(31) - 15;
+        final tookAt = DateTime(
+          day.localDate.year,
+          day.localDate.month,
+          day.localDate.day,
+        ).add(Duration(minutes: minutes.clamp(0, 24 * 60 - 1)));
+        if (tookAt.isAfter(now)) {
+          continue;
+        }
+        drafts.add(
+          DoseSnapshotDraft.fromCompound(
+            compound: compound,
+            amountValue: planned.amount.amountValue!,
+            amountEntered: planned.amount.amountEntered!,
+            unit: planned.amount.unit!,
+            route: planned.amount.route!,
+            tookAt: tookAt,
+            localDate: day.localDate,
+            protocol: ProtocolOptionRecord(
+              id: protocol.id,
+              name: protocol.name,
+            ),
+          ),
+        );
+      }
+    }
+    await flush();
+  }
+
+  /// A separate stream for the Dose times, so adding the stack leaves the
+  /// training, body-weight and nutrition history of a seed unchanged.
+  late final math.Random _protocolRandom = math.Random(_options.seed + 1);
+
+  ProtocolDayDate _protocolDay(TrainingDayDate day) =>
+      ProtocolDayDate(year: day.year, month: day.month, day: day.day);
 
   Future<void> _logLiftingSession(
     TrainingDayDate day,
@@ -548,3 +822,36 @@ NutrientAmount _nutrient(double value, NutrientUnit unit) {
 }
 
 double _roundTo(double value, double step) => (value / step).round() * step;
+
+/// [protocol] as the plan core reads it. Every member the generator writes
+/// has exactly one Schedule Version, so its current version is its history.
+PlanProtocol _planProtocolOf(ProtocolRecord protocol) {
+  return PlanProtocol(
+    protocolId: protocol.id,
+    startLocalDate: protocol.startLocalDate,
+    endLocalDate: protocol.endLocalDate,
+    period: protocol.period,
+    remindersEnabled: protocol.remindersEnabled,
+    members: [
+      for (final member in protocol.members)
+        PlanMember(
+          memberId: member.id,
+          compoundId: member.compoundId,
+          versions: [
+            if (member.currentVersion case final version?)
+              ScheduleVersion(
+                id: version.id,
+                effectiveFrom: version.effectiveFrom,
+                rule: version.rule,
+                amount: PlanAmount(
+                  amountValue: version.doseAmountValue,
+                  amountEntered: version.doseAmountEntered,
+                  unit: version.doseUnit,
+                  route: version.route,
+                ),
+              ),
+          ],
+        ),
+    ],
+  );
+}
