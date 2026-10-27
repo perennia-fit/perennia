@@ -442,7 +442,12 @@ test(
           name: "Daily",
           start_local_date: "2026-09-01",
           end_local_date: null,
-          period: null,
+          // As the app pushes it: JSON text, here a Pause before the edits.
+          period: JSON.stringify({
+            v: 1,
+            cycle: null,
+            pauses: [{ from: "2026-09-10", to: "2026-09-12" }]
+          }),
           reminders_enabled: true,
           archived_on: null
         }),
@@ -473,10 +478,12 @@ test(
         rule: timedDailyRule(["07:00"]),
         ...creatineAmount
       });
+      // The app pushes `rule` as JSON text; an Agent write stores an object.
+      // Both forms sync, and every reader plans them the same.
       const versionB = protocolPlanRow("schedules", createUuidV7(new Date(editedAt)), editedAt, {
         protocol_compound_id: memberId,
         effective_from: "2026-10-19",
-        rule: timedDailyRule(["21:00"]),
+        rule: JSON.stringify(timedDailyRule(["21:00"])),
         ...creatineAmount
       });
       for (const [replica, version] of [
@@ -507,9 +514,16 @@ test(
         assert.equal(day.state, "planned", replica.name);
         assert.deepEqual(
           day.planned.map((dose) => dose.localTime),
-          winner.payload.rule.times,
+          storedJson(winner.payload.rule).times,
           `${replica.name} applies the larger version id`
         );
+        assert.equal(
+          typeof replica.row("schedules", versionB.id).payload.rule,
+          "string",
+          `${replica.name} receives the app's rule as it was pushed`
+        );
+        const [paused] = planDays([planProtocolFrom(replica, protocolId)], "2026-09-11", "2026-09-11");
+        assert.equal(paused.state, "paused", `${replica.name} reads the period pushed as text`);
         const [before] = planDays([planProtocolFrom(replica, protocolId)], "2026-10-18", "2026-10-18");
         assert.deepEqual(
           before.planned.map((dose) => dose.localTime),
@@ -1709,6 +1723,11 @@ function protocolPlanRow(entityName, id, updatedAt, fields) {
   return { entity: entityName, id, payload: planImage(id, updatedAt, fields) };
 }
 
+/** A synced `rule` or `period`: JSON text from the app, an object from an Agent write. */
+function storedJson(value) {
+  return typeof value === "string" ? JSON.parse(value) : value;
+}
+
 /** One Protocol as the shared plan core reads it, from a replica's rows. */
 function planProtocolFrom(replica, protocolId) {
   const rows = (entityName) =>
@@ -1720,7 +1739,7 @@ function planProtocolFrom(replica, protocolId) {
     protocolId,
     startLocalDate: protocol.start_local_date,
     endLocalDate: protocol.end_local_date,
-    period: protocol.period,
+    period: storedJson(protocol.period),
     archivedOn: protocol.archived_on,
     remindersEnabled: protocol.reminders_enabled,
     members: rows("protocol_compounds")
@@ -1734,7 +1753,7 @@ function planProtocolFrom(replica, protocolId) {
           .map((version) => ({
             id: version.id,
             effectiveFrom: version.payload.effective_from,
-            rule: version.payload.rule,
+            rule: storedJson(version.payload.rule),
             amountValue: version.payload.dose_amount_value,
             amountEntered: version.payload.dose_amount_entered,
             unit: version.payload.dose_unit,

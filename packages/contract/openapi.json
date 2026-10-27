@@ -9125,7 +9125,7 @@
           "remindersEnabled": {
             "type": "boolean",
             "default": false,
-            "description": "Plan data: remind me about this Protocol. Each device schedules its own reminders."
+            "description": "Plan data: remind me about this Protocol. Each device schedules its own reminders. Left out, it is written as false."
           },
           "updatedAt": {
             "type": "string",
@@ -9167,7 +9167,8 @@
           "name",
           "startLocalDate"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "One Protocol as it should be stored. The write replaces the whole Protocol row, so a field left out takes its default: endLocalDate and period become null (no end, no cycle, no Pauses) and remindersEnabled becomes false. To edit one field, send every field as read."
       },
       "AgentProtocolBatchWriteMember": {
         "type": "object",

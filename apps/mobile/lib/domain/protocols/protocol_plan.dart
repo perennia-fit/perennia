@@ -82,6 +82,16 @@ int planLocalTimeMinutes(String value) {
   return int.parse(value.substring(0, 2)) * 60 + int.parse(value.substring(3));
 }
 
+/// [hour] and [minute] as an `HH:MM` plan time, the one form a Schedule
+/// Rule's `times` and a Dose's local time take (D7 `times_format`).
+String planLocalTime(int hour, int minute) {
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    throw RangeError('Not a clock time: $hour:$minute.');
+  }
+  return '${hour.toString().padLeft(2, '0')}:'
+      '${minute.toString().padLeft(2, '0')}';
+}
+
 /// Which days a Schedule Rule plans on (D4): every day, chosen ISO weekdays,
 /// or every N days from an anchor date.
 sealed class ScheduleDays {
@@ -489,6 +499,31 @@ class ScheduleVersion {
         'rule': rule.toJson(),
         ...amount.toJson(),
       };
+}
+
+/// D1's version order: `effectiveFrom`, then id. On a shared date the larger
+/// id (UUIDv7, so the latest edit) comes last, on every device and the
+/// server alike. Every reader that picks a version sorts with this.
+int compareScheduleVersions(ScheduleVersion a, ScheduleVersion b) {
+  final byDate = a.effectiveFrom.compareTo(b.effectiveFrom);
+  return byDate != 0 ? byDate : a.id.compareTo(b.id);
+}
+
+/// The version of [sorted] that applies on [date] (D1): the latest
+/// `effectiveFrom` on or before it, then the larger id. [sorted] must be in
+/// [compareScheduleVersions] order, so that is the last one on or before
+/// [date]; [effectiveFrom] reads an entry's date. Null when none applies yet.
+T? applyingScheduleVersion<T>(
+  List<T> sorted,
+  ProtocolDayDate date, {
+  required ProtocolDayDate Function(T version) effectiveFrom,
+}) {
+  for (var index = sorted.length - 1; index >= 0; index -= 1) {
+    if (effectiveFrom(sorted[index]).compareTo(date) <= 0) {
+      return sorted[index];
+    }
+  }
+  return null;
 }
 
 /// One Compound inside a Protocol, with its Schedule Versions (CONTEXT.md

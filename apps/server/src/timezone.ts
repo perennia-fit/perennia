@@ -7,14 +7,22 @@
 // not a zone) or for an invalid Date, and each caller decides its own fallback.
 // ---------------------------------------------------------------------------
 
-const formatters = new Map<string, Intl.DateTimeFormat | null>();
+/**
+ * Formatters by the zone string a caller passed. Only zones Intl accepts are
+ * cached, and the cache is bounded: the strings come from requests, so an
+ * unbounded cache keyed by them would grow for the life of the process. Real
+ * zones number a few hundred; past the bound the cache starts over.
+ */
+const formatters = new Map<string, Intl.DateTimeFormat>();
+const MAX_CACHED_FORMATTERS = 1024;
 
 /** The cached formatter for `timeZone`, or null when Intl rejects the zone. */
 function formatterFor(timeZone: string): Intl.DateTimeFormat | null {
-  if (formatters.has(timeZone)) {
-    return formatters.get(timeZone)!;
+  const cached = formatters.get(timeZone);
+  if (cached !== undefined) {
+    return cached;
   }
-  let formatter: Intl.DateTimeFormat | null;
+  let formatter: Intl.DateTimeFormat;
   try {
     formatter = new Intl.DateTimeFormat("en-CA", {
       timeZone,
@@ -27,7 +35,10 @@ function formatterFor(timeZone: string): Intl.DateTimeFormat | null {
       hourCycle: "h23"
     });
   } catch {
-    formatter = null;
+    return null;
+  }
+  if (formatters.size >= MAX_CACHED_FORMATTERS) {
+    formatters.clear();
   }
   formatters.set(timeZone, formatter);
   return formatter;

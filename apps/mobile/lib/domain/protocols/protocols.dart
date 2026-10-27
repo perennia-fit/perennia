@@ -775,9 +775,7 @@ class DoseRecord {
     final local = offset == null
         ? tookAt.toLocal()
         : tookAt.toUtc().add(Duration(minutes: offset));
-    final hour = local.hour.toString().padLeft(2, '0');
-    final minute = local.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
+    return planLocalTime(local.hour, local.minute);
   }
 
   /// The OPTIONAL soft tag to a `Protocol`, or null for an untagged ad-hoc
@@ -924,7 +922,6 @@ class ScheduleRecord {
     this.doseAmountEntered,
     this.doseUnit,
     this.route,
-    this.deletedAt,
   });
 
   final String id;
@@ -940,7 +937,14 @@ class ScheduleRecord {
   final DoseUnit? doseUnit;
   final DoseRoute? route;
   final DateTime updatedAt;
-  final DateTime? deletedAt;
+
+  /// The planned amount in the shared plan core's shape.
+  PlanAmount get amount => PlanAmount(
+        amountValue: doseAmountValue,
+        amountEntered: doseAmountEntered,
+        unit: doseUnit,
+        route: route,
+      );
 
   /// The planned dose + unit as the user would read it back (e.g. "5 g"), or
   /// null when the rule plans no amount.

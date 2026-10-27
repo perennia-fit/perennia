@@ -28,14 +28,16 @@ import * as schema from "./db/schema.js";
 import {
   MS_PER_DAY,
   ProtocolPlanCodecError,
+  applyingScheduleVersion,
   compareIds,
+  compareScheduleVersions,
   decodeProtocolPeriod,
   decodeScheduleRule,
   encodeProtocolPeriod,
-  encodeScheduleRule,
   epochDay,
   isJsonObject,
   isValidLocalDate,
+  pushToGroup,
   type ProtocolPeriod,
   type ScheduleRule
 } from "./protocol-plan.js";
@@ -162,7 +164,10 @@ const DoseTimezoneOffsetReadSchema = z.number().int().nullable().openapi({
     "UTC offset in minutes east of UTC (UTC-3 is -180), frozen when the Dose was logged. Null for a Dose logged without one; its local time is then read in UTC."
 });
 
-/** The UTC offsets a frozen Dose offset or the Effect read accepts (D2). */
+/**
+ * The UTC offsets a frozen Dose offset, the Effect read and
+ * `effectBoundsFromLocalDates` accept (D2): UTC-12:00 to UTC+14:00.
+ */
 const AGENT_PROTOCOLS_MIN_OFFSET_MINUTES = -720;
 const AGENT_PROTOCOLS_MAX_OFFSET_MINUTES = 840;
 
@@ -760,7 +765,7 @@ export const AgentProtocolBatchWriteProtocolSchema = z
     period: AgentProtocolPeriodSchema.nullable().default(null),
     remindersEnabled: z.boolean().default(false).openapi({
       description:
-        "Plan data: remind me about this Protocol. Each device schedules its own reminders."
+        "Plan data: remind me about this Protocol. Each device schedules its own reminders. Left out, it is written as false."
     }),
     updatedAt: ISO8601StringSchema.optional(),
     archived: ArchivedFlagSchema.openapi({
@@ -781,7 +786,10 @@ export const AgentProtocolBatchWriteProtocolSchema = z
       .default([])
   })
   .strict()
-  .openapi("AgentProtocolBatchWriteProtocol");
+  .openapi("AgentProtocolBatchWriteProtocol", {
+    description:
+      "One Protocol as it should be stored. The write replaces the whole Protocol row, so a field left out takes its default: endLocalDate and period become null (no end, no cycle, no Pauses) and remindersEnabled becomes false. To edit one field, send every field as read."
+  });
 
 export const AgentProtocolBatchWriteRequestSchema = z
   .object({
@@ -1747,7 +1755,7 @@ export function prepareAgentProtocolBatchWrite({
       const rule =
         ruleValidation.errors.length > 0
           ? null
-          : encodePlanJson(() => encodeScheduleRule(decodeScheduleRule(scheduleRow.rule)), {
+          : encodePlanJson(() => decodeScheduleRule(scheduleRow.rule), {
               itemIndex,
               entityId: scheduleRow.id,
               field: `${field}.rule`,
@@ -1842,12 +1850,10 @@ const AGENT_TODAY_MAX_SKEW_DAYS = 1;
 function storedPeriod(
   period: z.infer<typeof AgentProtocolPeriodSchema> | null
 ): Record<string, unknown> | null {
-  const encoded = encodeProtocolPeriod(decodeProtocolPeriod(period));
-  if (encoded === null) {
-    return null;
-  }
-  const decoded = encoded as ProtocolPeriod;
-  return decoded.cycle === null && decoded.pauses.length === 0 ? null : encoded;
+  const decoded = decodeProtocolPeriod(period);
+  return decoded === null || (decoded.cycle === null && decoded.pauses.length === 0)
+    ? null
+    : encodeProtocolPeriod(decoded);
 }
 
 /**
@@ -2110,10 +2116,6 @@ export function deriveEffectWindow(
   };
 }
 
-/** The UTC offsets `effectBoundsFromLocalDates` accepts: UTC-12:00 to UTC+14:00. */
-const MIN_EFFECT_BOUNDS_OFFSET_MINUTES = -720;
-const MAX_EFFECT_BOUNDS_OFFSET_MINUTES = 840;
-
 /**
  * Turns a Protocol's inclusive local-date bounds into the instants
  * `deriveEffectWindow` takes (docs/designs/protocol-schedules-and-reminders.md,
@@ -2140,11 +2142,11 @@ export function effectBoundsFromLocalDates(
     throw new RangeError(`Not a whole-minute UTC offset: ${timezoneOffsetMinutes}.`);
   }
   if (
-    timezoneOffsetMinutes < MIN_EFFECT_BOUNDS_OFFSET_MINUTES ||
-    timezoneOffsetMinutes > MAX_EFFECT_BOUNDS_OFFSET_MINUTES
+    timezoneOffsetMinutes < AGENT_PROTOCOLS_MIN_OFFSET_MINUTES ||
+    timezoneOffsetMinutes > AGENT_PROTOCOLS_MAX_OFFSET_MINUTES
   ) {
     throw new RangeError(
-      `UTC offset ${timezoneOffsetMinutes} is outside ${MIN_EFFECT_BOUNDS_OFFSET_MINUTES} to ${MAX_EFFECT_BOUNDS_OFFSET_MINUTES} minutes.`
+      `UTC offset ${timezoneOffsetMinutes} is outside ${AGENT_PROTOCOLS_MIN_OFFSET_MINUTES} to ${AGENT_PROTOCOLS_MAX_OFFSET_MINUTES} minutes.`
     );
   }
   const localMidnight = (localDate: string, addDays: number) =>
@@ -2755,46 +2757,31 @@ const LEGACY_PROTOCOLS_ACTIVITY_ENTITIES = [
   PROTOCOL_TARGET_OUTCOMES_SYNC_ENTITY
 ] as const;
 
+type OpaqueBatchOptions = {
+  userId: string;
+  batchId: string;
+  requestFingerprint: string;
+  deviceId: string;
+  operationKind: "doses" | "compounds" | "protocols";
+  groups: OpaqueBatchGroup[];
+  /**
+   * Work that needs stored data and must not run on a replay: it runs once
+   * the receipt is claimed, may rewrite and add rows in `groups`, and
+   * returns issues that refuse the whole batch, receipt included.
+   */
+  finalize?: (
+    transaction: OpaqueTransaction,
+    serverClock: Date
+  ) => Promise<AgentProtocolsBatchWriteIssue[]>;
+};
+
 async function writeOpaqueBatch(
   db: ServerDatabase,
-  {
-    userId,
-    batchId,
-    requestFingerprint,
-    deviceId,
-    operationKind,
-    groups,
-    finalize
-  }: {
-    userId: string;
-    batchId: string;
-    requestFingerprint: string;
-    deviceId: string;
-    operationKind: "doses" | "compounds" | "protocols";
-    groups: OpaqueBatchGroup[];
-    /**
-     * Work that needs stored data and must not run on a replay: it runs once
-     * the receipt is claimed, may rewrite and add rows in `groups`, and
-     * returns issues that refuse the whole batch, receipt included.
-     */
-    finalize?: (
-      transaction: OpaqueTransaction,
-      serverClock: Date
-    ) => Promise<AgentProtocolsBatchWriteIssue[]>;
-  }
+  options: OpaqueBatchOptions
 ): Promise<AgentProtocolsStoreWriteResult> {
   const serverClock = new Date();
   try {
-    return await writeOpaqueBatchInTransaction(db, {
-      userId,
-      batchId,
-      requestFingerprint,
-      deviceId,
-      operationKind,
-      groups,
-      finalize,
-      serverClock
-    });
+    return await writeOpaqueBatchInTransaction(db, { ...options, serverClock });
   } catch (error) {
     if (error instanceof OpaqueBatchRefused) {
       return emptyAgentProtocolsWriteResult(serverClock.toISOString(), {
@@ -2825,19 +2812,7 @@ async function writeOpaqueBatchInTransaction(
     groups,
     finalize,
     serverClock
-  }: {
-    userId: string;
-    batchId: string;
-    requestFingerprint: string;
-    deviceId: string;
-    operationKind: "doses" | "compounds" | "protocols";
-    groups: OpaqueBatchGroup[];
-    finalize?: (
-      transaction: OpaqueTransaction,
-      serverClock: Date
-    ) => Promise<AgentProtocolsBatchWriteIssue[]>;
-    serverClock: Date;
-  }
+  }: OpaqueBatchOptions & { serverClock: Date }
 ): Promise<AgentProtocolsStoreWriteResult> {
   return db.transaction(async (transaction) => {
     const validationErrors = await validateOpaqueBatchRows(transaction, {
@@ -3020,6 +2995,8 @@ async function finalizeProtocolPlanRows(
   }
 
   // Undo tombstones a version, and a tombstoned version never existed (D1).
+  // Each member's list is kept in D1's version order, so the version that
+  // applies on a date, the earliest and the latest are read off it.
   const versionsByMember = new Map<string, PlanVersionRow[]>();
   for (const row of storedVersionRows) {
     const effectiveFrom = row.payload.effective_from;
@@ -3030,11 +3007,14 @@ async function finalizeProtocolPlanRows(
     ) {
       continue;
     }
-    pushGrouped(versionsByMember, String(row.payload.protocol_compound_id), {
+    pushToGroup(versionsByMember, String(row.payload.protocol_compound_id), {
       id: row.id,
       effectiveFrom,
       payload: row.payload
     });
+  }
+  for (const versions of versionsByMember.values()) {
+    versions.sort(compareScheduleVersions);
   }
 
   for (const [rows, stored] of [
@@ -3046,6 +3026,63 @@ async function finalizeProtocolPlanRows(
       if (refused !== null) {
         issues.push(refused);
       }
+    }
+  }
+
+  // D1: moving the start inserts, for each member, a re-dated copy (never an
+  // edit): of the version that applied on the new start when it moves later,
+  // and of the earliest version when it moves earlier, so no date inside the
+  // bounds is left without one. Anchors left at their default move with it.
+  // As in the app, the copies are made first and only from what was stored
+  // before this request: a member this request adds is dated by its own
+  // first-version rule (a member added to a started Protocol plans from
+  // today, never its past days), and this request's edits are dated after the
+  // copies, so they keep winning.
+  const startMoveCopies = new Map<string, PreparedRow>();
+  for (const protocol of protocols) {
+    const stored = storedProtocols.get(protocol.id);
+    const oldStart = stored?.payload.start_local_date;
+    const newStart = String(protocol.payload.start_local_date);
+    if (typeof oldStart !== "string" || !isValidLocalDate(oldStart) || oldStart === newStart) {
+      continue;
+    }
+    protocol.payload.period = withPeriodDefaultAnchorMoved(protocol.payload.period, newStart);
+
+    const protocolMemberIds = [...storedMembers.values()]
+      .filter((member) => member.payload.protocol_id === protocol.id && !isUndoTombstone(member))
+      .map((member) => member.id)
+      .sort(compareIds);
+    for (const memberId of protocolMemberIds) {
+      const versions = versionsByMember.get(memberId) ?? [];
+      const earliest = versions[0];
+      const source =
+        newStart > oldStart
+          ? applyingScheduleVersion(versions, newStart)
+          : earliest === undefined
+            ? null
+            : applyingScheduleVersion(versions, earliest.effectiveFrom);
+      if (source === null || source.effectiveFrom === newStart) {
+        continue;
+      }
+      const id = createUuidV7(serverClock);
+      const payload = {
+        ...source.payload,
+        id,
+        effective_from: newStart,
+        rule: withRuleDefaultAnchorMoved(source.payload.rule, newStart),
+        updated_at: nowIso,
+        deleted_at: null
+      };
+      startMoveCopies.set(memberId, {
+        id,
+        itemIndex: protocol.itemIndex,
+        field: `protocols[${protocol.itemIndex}].schedules`,
+        updatedAt: nowIso,
+        deletedAt: null,
+        payload
+      });
+      insertVersion(versions, { id, effectiveFrom: newStart, payload });
+      versionsByMember.set(memberId, versions);
     }
   }
 
@@ -3077,78 +3114,28 @@ async function finalizeProtocolPlanRows(
     // effectiveFrom), so it can never land behind, and be hidden by, another.
     const start = String(protocol.payload.start_local_date);
     const versions = versionsByMember.get(memberId) ?? [];
+    const latest = versions.at(-1);
     let effectiveFrom: string;
-    if (versions.length === 0) {
+    if (latest === undefined) {
       const createdWithProtocol =
         storedMember === undefined && !storedProtocols.has(protocol.id);
       effectiveFrom = createdWithProtocol || start > today ? start : today;
     } else {
-      const latest = versions.reduce(
-        (max, version) => (version.effectiveFrom > max ? version.effectiveFrom : max),
-        versions[0]!.effectiveFrom
-      );
-      effectiveFrom = latest > today ? latest : today;
+      effectiveFrom = latest.effectiveFrom > today ? latest.effectiveFrom : today;
     }
     row.payload.effective_from = effectiveFrom;
     row.payload.rule = sortedRule(row.payload.rule);
-    pushGrouped(versionsByMember, memberId, {
-      id: row.id,
-      effectiveFrom,
-      payload: row.payload
-    });
+    // An edit dated on its member's start-move copy replaces that copy: in the
+    // app the edit is inserted after the copy and wins by id, but an Agent's
+    // id was minted before the server's copy, so keeping both would let the
+    // copy win. Dropping it plans exactly what the app plans.
+    if (startMoveCopies.get(memberId)?.payload.effective_from === effectiveFrom) {
+      startMoveCopies.delete(memberId);
+    }
+    insertVersion(versions, { id: row.id, effectiveFrom, payload: row.payload });
+    versionsByMember.set(memberId, versions);
   }
-
-  // D1: moving the start inserts, for each member, a re-dated copy (never an
-  // edit): of the version that applied on the new start when it moves later,
-  // and of the earliest version when it moves earlier, so no date inside the
-  // bounds is left without one. Anchors left at their default move with it.
-  for (const protocol of protocols) {
-    const stored = storedProtocols.get(protocol.id);
-    const oldStart = stored?.payload.start_local_date;
-    const newStart = String(protocol.payload.start_local_date);
-    if (typeof oldStart !== "string" || !isValidLocalDate(oldStart) || oldStart === newStart) {
-      continue;
-    }
-    protocol.payload.period = withPeriodDefaultAnchorMoved(protocol.payload.period, newStart);
-
-    const protocolMemberIds = new Set<string>();
-    for (const member of storedMembers.values()) {
-      if (member.payload.protocol_id === protocol.id && !isUndoTombstone(member)) {
-        protocolMemberIds.add(member.id);
-      }
-    }
-    for (const member of members) {
-      if (member.payload.protocol_id === protocol.id) {
-        protocolMemberIds.add(member.id);
-      }
-    }
-    for (const memberId of [...protocolMemberIds].sort(compareIds)) {
-      const versions = versionsByMember.get(memberId) ?? [];
-      const source =
-        newStart > oldStart ? versionApplyingOn(versions, newStart) : earliestVersion(versions);
-      if (source === null || source.effectiveFrom === newStart) {
-        continue;
-      }
-      const id = createUuidV7(serverClock);
-      const payload = {
-        ...source.payload,
-        id,
-        effective_from: newStart,
-        rule: withRuleDefaultAnchorMoved(source.payload.rule, newStart),
-        updated_at: nowIso,
-        deleted_at: null
-      };
-      schedules.push({
-        id,
-        itemIndex: protocol.itemIndex,
-        field: `protocols[${protocol.itemIndex}].schedules`,
-        updatedAt: nowIso,
-        deletedAt: null,
-        payload
-      });
-      pushGrouped(versionsByMember, memberId, { id, effectiveFrom: newStart, payload });
-    }
-  }
+  schedules.push(...startMoveCopies.values());
 
   return issues;
 }
@@ -3193,34 +3180,10 @@ function isUndoTombstone(row: StoredPlanRow) {
   return row.deletedAt !== null && nullableString(row.payload.archived_on) === null;
 }
 
-/** The version that applies on `date`: the latest effectiveFrom on or before it, then the larger id. */
-function versionApplyingOn(versions: readonly PlanVersionRow[], date: string) {
-  let best: PlanVersionRow | null = null;
-  for (const version of versions) {
-    if (version.effectiveFrom > date) {
-      continue;
-    }
-    if (
-      best === null ||
-      version.effectiveFrom > best.effectiveFrom ||
-      (version.effectiveFrom === best.effectiveFrom && compareIds(version.id, best.id) > 0)
-    ) {
-      best = version;
-    }
-  }
-  return best;
-}
-
-/** The earliest version: the one that applies on the earliest effectiveFrom. */
-function earliestVersion(versions: readonly PlanVersionRow[]) {
-  if (versions.length === 0) {
-    return null;
-  }
-  const earliest = versions.reduce(
-    (min, version) => (version.effectiveFrom < min ? version.effectiveFrom : min),
-    versions[0]!.effectiveFrom
-  );
-  return versionApplyingOn(versions, earliest);
+/** Inserts `version` into a list kept in D1's version order. */
+function insertVersion(versions: PlanVersionRow[], version: PlanVersionRow) {
+  versions.push(version);
+  versions.sort(compareScheduleVersions);
 }
 
 /** Writers store `times` and `weekdays` sorted (D7); the codecs accept any order. */
@@ -3301,15 +3264,6 @@ function readJsonObject(value: unknown): Record<string, unknown> | null {
 
 function byId<T extends { id: string }>(rows: readonly T[]) {
   return new Map(rows.map((row) => [row.id, row]));
-}
-
-function pushGrouped<T>(map: Map<string, T[]>, key: string, value: T) {
-  const existing = map.get(key);
-  if (existing === undefined) {
-    map.set(key, [value]);
-  } else {
-    existing.push(value);
-  }
 }
 
 async function selectStoredPlanRows(
@@ -3621,10 +3575,7 @@ function serializeMember(row: OpaqueRow, versionRows: readonly OpaqueRow[]) {
       const serialized = serializeScheduleVersion(version);
       return serialized === null ? [] : [serialized];
     })
-    .sort(
-      (left, right) =>
-        compareIds(left.effectiveFrom, right.effectiveFrom) || compareIds(left.id, right.id)
-    );
+    .sort(compareScheduleVersions);
   return {
     id: row.id,
     compoundId: String(row.payload.compound_id ?? ""),
@@ -3793,13 +3744,7 @@ function nextCursorFor<T extends { id: string }>(
 function groupBy<T>(rows: readonly T[], key: (row: T) => string) {
   const map = new Map<string, T[]>();
   for (const row of rows) {
-    const groupKey = key(row);
-    const existing = map.get(groupKey);
-    if (existing === undefined) {
-      map.set(groupKey, [row]);
-    } else {
-      existing.push(row);
-    }
+    pushToGroup(map, key(row), row);
   }
   return map;
 }

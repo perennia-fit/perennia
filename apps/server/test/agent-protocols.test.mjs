@@ -2232,6 +2232,150 @@ test(
   }
 );
 
+test(
+  "a start move copies only stored versions, and an edit in the same request keeps winning",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-start-move-batch-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const versionsOf = async (memberId) =>
+      (
+        await database.sql`
+          select id, payload from schedules
+          where user_id = ${userId}
+            and payload->>'protocol_compound_id' = ${memberId}
+          order by payload->>'effective_from', id
+        `
+      ).map((row) => row.payload);
+    const write = (protocol) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `start-move-batch-${randomUUID()}`,
+        today,
+        protocols: [protocol]
+      });
+
+    try {
+      await insertUser(database, userId);
+
+      // A started Protocol: moving its start earlier while adding a member.
+      const startedId = createUuidV7();
+      const start = addDays(today, -30);
+      const kept = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
+      const added = { id: createUuidV7(), compoundId: createUuidV7(), position: 1 };
+      const started = (startLocalDate, members, schedules) => ({
+        id: startedId,
+        name: "Daily",
+        startLocalDate,
+        members,
+        schedules
+      });
+      assert.equal(
+        (
+          await write(
+            started(start, [kept], [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: kept.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ])
+          )
+        ).status,
+        200
+      );
+      const earlierStart = addDays(today, -45);
+      assert.equal(
+        (
+          await write(
+            started(earlierStart, [kept, added], [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: added.id,
+                rule: timedDailyRule(["21:00"]),
+                ...creatineAmount
+              }
+            ])
+          )
+        ).status,
+        200
+      );
+      // D1: the kept member's earliest stored version is copied back to the
+      // new start; the added member plans from today only, as in the app.
+      assert.deepEqual(
+        (await versionsOf(kept.id)).map((version) => version.effective_from),
+        [earlierStart, start]
+      );
+      assert.deepEqual(
+        (await versionsOf(added.id)).map((version) => version.effective_from),
+        [today]
+      );
+
+      // A Protocol starting ahead: moving the start later while editing a
+      // member. The edit lands on the new start and is what plans there.
+      const aheadId = createUuidV7();
+      const member = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
+      const aheadStart = addDays(today, 5);
+      const ahead = (startLocalDate, schedules) => ({
+        id: aheadId,
+        name: "Cycle",
+        startLocalDate,
+        members: [member],
+        schedules
+      });
+      assert.equal(
+        (
+          await write(
+            ahead(aheadStart, [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: member.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ])
+          )
+        ).status,
+        200
+      );
+      const laterStart = addDays(today, 10);
+      const editId = createUuidV7();
+      assert.equal(
+        (
+          await write(
+            ahead(laterStart, [
+              {
+                id: editId,
+                protocolCompoundId: member.id,
+                rule: timedDailyRule(["07:00"]),
+                ...creatineAmount
+              }
+            ])
+          )
+        ).status,
+        200
+      );
+      const aheadVersions = await versionsOf(member.id);
+      assert.deepEqual(
+        aheadVersions.map((version) => [version.effective_from, version.rule.times.join(",")]),
+        [
+          [aheadStart, "09:00"],
+          [laterStart, "07:00"]
+        ]
+      );
+      assert.equal(aheadVersions[1].id, editId);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

@@ -3069,6 +3069,72 @@ void main() {
     });
 
     test(
+        'a rule and period stored with their keys in another order (an Agent '
+        'write, pulled from jsonb) still save as unchanged', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final period = ProtocolPeriod(
+        cycle: ProtocolCycle(
+          onDays: 60,
+          offDays: 30,
+          anchor: start,
+          anchorIsDefault: true,
+        ),
+      );
+      ProtocolDraft unchanged() => draft(
+            <String>[creatineId],
+            period: period,
+            schedules: <String, ScheduleDraft?>{
+              creatineId: timed(<String>['09:00']),
+            },
+          );
+      final created = await repositories.protocols.createProtocol(
+        unchanged(),
+        today: today,
+      );
+      // Postgres jsonb orders keys by length, then bytes; a pull re-encodes
+      // the object in that order.
+      await database.update(database.schedules).write(
+            const SchedulesCompanion(
+              rule: Value<String>(
+                '{"v":1,"days":{"kind":"daily"},"kind":"timed",'
+                '"times":["09:00"]}',
+              ),
+            ),
+          );
+      await (database.update(database.protocols)
+            ..where((row) => row.id.equals(created.protocolId)))
+          .write(
+        const ProtocolsCompanion(
+          period: Value<String?>(
+            '{"v":1,"cycle":{"anchor":"2026-07-01","on_days":60,'
+            '"off_days":30,"anchor_is_default":true},"pauses":[]}',
+          ),
+        ),
+      );
+      final protocolBefore = await (database.select(database.protocols)
+            ..where((row) => row.id.equals(created.protocolId)))
+          .getSingle();
+
+      final batchId = await repositories.protocols.editProtocol(
+        created.protocolId,
+        unchanged(),
+        today: tomorrow,
+      );
+
+      expect(await versionRows(), hasLength(1));
+      final protocolAfter = await (database.select(database.protocols)
+            ..where((row) => row.id.equals(created.protocolId)))
+          .getSingle();
+      expect(protocolAfter.updatedAt, protocolBefore.updatedAt);
+      expect(protocolAfter.period, protocolBefore.period);
+      expect(
+        (await repositories.activityLog.listEntries())
+            .where((entry) => entry.batchId == batchId),
+        isEmpty,
+      );
+    });
+
+    test(
         'a member added mid-course plans from today; one added before the '
         'start plans from the start', () async {
       final creatineId = await createCompoundId('Creatine');

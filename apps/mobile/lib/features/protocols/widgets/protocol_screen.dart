@@ -1086,27 +1086,8 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     }
   }
 
-  String _anchorLabel(
-    AppLocalizations l10n,
-    ProtocolDayDate anchor, {
-    required bool isDefault,
-  }) {
-    final formatted = DateFormat.yMMMd().format(anchor.toLocalDateTime());
-    return isDefault ? l10n.protocolEditorAnchorIsStart(formatted) : formatted;
-  }
-
-  Future<ProtocolDayDate?> _pickDate(ProtocolDayDate initial) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial.toLocalDateTime(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (picked == null || !mounted) {
-      return null;
-    }
-    return ProtocolDayDate.fromDateTime(picked);
-  }
+  Future<ProtocolDayDate?> _pickDate(ProtocolDayDate initial) =>
+      _pickProtocolDay(context, initial);
 
   Future<void> _pickStartDate() async {
     final picked = await _pickDate(_startDate);
@@ -1472,7 +1453,7 @@ class _ScheduleEditor extends StatelessWidget {
               _DateTile(
                 key: ProtocolFormScreen.scheduleEveryNAnchorKey(compoundId),
                 label: l10n.protocolEditorEveryNAnchorLabel,
-                value: _formatAnchor(
+                value: _anchorLabel(
                   l10n,
                   field.everyNAnchor,
                   isDefault: field.everyNAnchorIsDefault,
@@ -1599,27 +1580,13 @@ class _ScheduleEditor extends StatelessWidget {
     );
   }
 
-  String _formatAnchor(
-    AppLocalizations l10n,
-    ProtocolDayDate anchor, {
-    required bool isDefault,
-  }) {
-    final formatted = DateFormat.yMMMd().format(anchor.toLocalDateTime());
-    return isDefault ? l10n.protocolEditorAnchorIsStart(formatted) : formatted;
-  }
-
   Future<void> _pickAnchor(BuildContext context) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: field.everyNAnchor.toLocalDateTime(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (picked == null || !context.mounted) {
+    final picked = await _pickProtocolDay(context, field.everyNAnchor);
+    if (picked == null) {
       return;
     }
     field
-      ..everyNAnchor = ProtocolDayDate.fromDateTime(picked)
+      ..everyNAnchor = picked
       ..everyNAnchorIsDefault = false;
     onChanged();
   }
@@ -1640,8 +1607,7 @@ class _ScheduleEditor extends StatelessWidget {
     if (picked == null || !context.mounted) {
       return;
     }
-    final value = '${picked.hour.toString().padLeft(2, '0')}:'
-        '${picked.minute.toString().padLeft(2, '0')}';
+    final value = planLocalTime(picked.hour, picked.minute);
     if (index == null) {
       field.times.add(value);
     } else {
@@ -1650,6 +1616,35 @@ class _ScheduleEditor extends StatelessWidget {
     field.times.sort();
     onChanged();
   }
+}
+
+/// A cycle or every-N anchor as the editor shows it, marked when it is the
+/// default (the Protocol's start).
+String _anchorLabel(
+  AppLocalizations l10n,
+  ProtocolDayDate anchor, {
+  required bool isDefault,
+}) {
+  final formatted = DateFormat.yMMMd().format(anchor.toLocalDateTime());
+  return isDefault ? l10n.protocolEditorAnchorIsStart(formatted) : formatted;
+}
+
+/// The date picker every Protocol date in the editor uses; null when it is
+/// dismissed or [context] is gone.
+Future<ProtocolDayDate?> _pickProtocolDay(
+  BuildContext context,
+  ProtocolDayDate initial,
+) async {
+  final picked = await showDatePicker(
+    context: context,
+    initialDate: initial.toLocalDateTime(),
+    firstDate: DateTime(2000),
+    lastDate: DateTime(2100),
+  );
+  if (picked == null || !context.mounted) {
+    return null;
+  }
+  return ProtocolDayDate.fromDateTime(picked);
 }
 
 TimeOfDay _timeOfDay(String localTime) {

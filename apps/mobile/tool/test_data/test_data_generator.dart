@@ -401,7 +401,7 @@ class _Generator {
   Future<void> _logProtocolStack(TrainingDayDate rangeStart) async {
     final protocols = _repositories.protocols;
     await protocols.ensureOtcLibrarySeeded(actor: _actor);
-    final compounds = <_StackCompound, CompoundRecord>{};
+    final ids = <_StackCompound, String>{};
     for (final compound in const [_trt, _ageMate, _mnem, _ghkCu, _bpc157]) {
       final result = await protocols.createCompound(
         CompoundDraft(
@@ -412,11 +412,16 @@ class _Generator {
         ),
         actor: _actor,
       );
-      compounds[compound] = (await protocols.listCompounds())
-          .singleWhere((record) => record.id == result.compoundId);
+      ids[compound] = result.compoundId;
     }
-    compounds[_creatine] = (await protocols.listCompounds())
-        .singleWhere((record) => record.id == _seededCreatineId);
+    ids[_creatine] = _seededCreatineId;
+    final catalogue = {
+      for (final record in await protocols.listCompounds()) record.id: record,
+    };
+    final compounds = <_StackCompound, CompoundRecord>{
+      for (final MapEntry(key: compound, value: id) in ids.entries)
+        compound: catalogue[id]!,
+    };
     _compounds = compounds.length;
 
     final start = _protocolDay(rangeStart);
@@ -843,12 +848,7 @@ PlanProtocol _planProtocolOf(ProtocolRecord protocol) {
                 id: version.id,
                 effectiveFrom: version.effectiveFrom,
                 rule: version.rule,
-                amount: PlanAmount(
-                  amountValue: version.doseAmountValue,
-                  amountEntered: version.doseAmountEntered,
-                  unit: version.doseUnit,
-                  route: version.route,
-                ),
+                amount: version.amount,
               ),
           ],
         ),

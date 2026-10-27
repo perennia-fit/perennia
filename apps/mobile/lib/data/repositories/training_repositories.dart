@@ -845,7 +845,8 @@ class CatalogRepository {
           ))
         .get();
     for (final before in customizations) {
-      final focusIds = platformFocusIdsByName[normalizeExerciseName(before.name)];
+      final focusIds =
+          platformFocusIdsByName[normalizeExerciseName(before.name)];
       if (focusIds == null || focusIds == '[]') {
         continue;
       }
@@ -6785,7 +6786,7 @@ class ProtocolsRepository {
     if (before.name != name ||
         before.startLocalDate != start.storageValue ||
         before.endLocalDate != endLocalDate ||
-        before.period != period ||
+        _canonicalPeriodColumn(before.period) != period ||
         before.remindersEnabled != draft.remindersEnabled) {
       await (_database.update(_database.protocols)
             ..where((row) => row.id.equals(protocolId)))
@@ -7109,15 +7110,14 @@ class ProtocolsRepository {
       if (versions.isEmpty) {
         continue;
       }
-      final ScheduleRow? source;
-      if (movedLater) {
-        source = _scheduleRowInEffectOn(versions, start);
-      } else {
-        final earliest = versions
-            .map((row) => ProtocolDayDate.parse(row.effectiveFrom))
-            .reduce((a, b) => a.compareTo(b) <= 0 ? a : b);
-        source = _scheduleRowInEffectOn(versions, earliest);
-      }
+      // Versions come in D1's order, so the earliest is the one in effect on
+      // the first row's date.
+      final source = _scheduleRowInEffectOn(
+        versions,
+        movedLater
+            ? start
+            : ProtocolDayDate.parse(versions.first.effectiveFrom),
+      );
       if (source == null) {
         continue;
       }
@@ -7126,7 +7126,10 @@ class ProtocolsRepository {
         member.id,
         effectiveFrom: start,
         version: (
-          rule: _ruleWithDefaultAnchorAt(copy.rule, start),
+          rule: _mapRule(
+            copy.rule,
+            days: (days) => _daysWithDefaultAnchorAt(days, start),
+          ),
           amount: copy.amount,
         ),
         context: context,
@@ -7171,8 +7174,20 @@ class ProtocolsRepository {
     ScheduleDraft draft,
     ProtocolDayDate protocolStart,
   ) {
-    final rule =
-        _ruleWithDefaultAnchorAt(_sortedRule(draft.rule), protocolStart);
+    // Times and weekdays in stored (sorted) order (D7): the codecs and
+    // validators accept any order; the writers sort.
+    final rule = _mapRule(
+      draft.rule,
+      days: (days) => _daysWithDefaultAnchorAt(
+        switch (days) {
+          WeekdayScheduleDays(:final weekdays) =>
+            WeekdayScheduleDays(List<int>.of(weekdays)..sort()),
+          _ => days,
+        },
+        protocolStart,
+      ),
+      times: (times) => List<String>.of(times)..sort(),
+    );
     return switch (rule) {
       AsNeededScheduleRule() || UnscheduledScheduleRule() => (
           rule: rule,
@@ -7190,45 +7205,36 @@ class ProtocolsRepository {
     };
   }
 
-  /// [rule] with its times and weekdays in stored (sorted) order (D7). The
-  /// codecs and validators accept any order; the writers sort.
-  ScheduleRule _sortedRule(ScheduleRule rule) {
-    ScheduleDays sortedDays(ScheduleDays days) => switch (days) {
-          WeekdayScheduleDays(:final weekdays) =>
-            WeekdayScheduleDays(List<int>.of(weekdays)..sort()),
-          _ => days,
-        };
+  /// [rule] with its days mapped through [days] and its times through
+  /// [times]; a rule with no days (as needed, unscheduled) is unchanged.
+  ScheduleRule _mapRule(
+    ScheduleRule rule, {
+    required ScheduleDays Function(ScheduleDays days) days,
+    List<String> Function(List<String> times)? times,
+  }) {
     return switch (rule) {
-      TimedScheduleRule(:final days, :final times) => TimedScheduleRule(
-          days: sortedDays(days),
-          times: List<String>.of(times)..sort(),
+      TimedScheduleRule() => TimedScheduleRule(
+          days: days(rule.days),
+          times: times == null ? rule.times : times(rule.times),
         ),
-      UntimedScheduleRule(:final days, :final count) =>
-        UntimedScheduleRule(days: sortedDays(days), count: count),
+      UntimedScheduleRule() =>
+        UntimedScheduleRule(days: days(rule.days), count: rule.count),
       _ => rule,
     };
   }
 
-  /// [rule] with an every-N anchor that was left at its default moved to
+  /// [days] with an every-N anchor that was left at its default moved to
   /// [start] (D1); an anchor the user set stays.
-  ScheduleRule _ruleWithDefaultAnchorAt(
-    ScheduleRule rule,
+  ScheduleDays _daysWithDefaultAnchorAt(
+    ScheduleDays days,
     ProtocolDayDate start,
-  ) {
-    ScheduleDays moved(ScheduleDays days) => switch (days) {
-          EveryNDaysScheduleDays(:final n, :final anchorIsDefault)
-              when anchorIsDefault =>
-            EveryNDaysScheduleDays(n: n, anchor: start, anchorIsDefault: true),
-          _ => days,
-        };
-    return switch (rule) {
-      TimedScheduleRule(:final days, :final times) =>
-        TimedScheduleRule(days: moved(days), times: times),
-      UntimedScheduleRule(:final days, :final count) =>
-        UntimedScheduleRule(days: moved(days), count: count),
-      _ => rule,
-    };
-  }
+  ) =>
+      switch (days) {
+        EveryNDaysScheduleDays(:final n, :final anchorIsDefault)
+            when anchorIsDefault =>
+          EveryNDaysScheduleDays(n: n, anchor: start, anchorIsDefault: true),
+        _ => days,
+      };
 
   /// [period] as it is stored: null when it has no cycle and no Pause, and a
   /// cycle anchor that was left at its default moved to [start] (D1).
@@ -7254,8 +7260,13 @@ class ProtocolsRepository {
     );
   }
 
+  /// Whether [row] stores [version]. The rule is compared decoded, never as
+  /// stored text: a version an Agent wrote reaches the device from the
+  /// server's jsonb with its keys in another order, and must still read as
+  /// unchanged (D1: a save that changes nothing inserts nothing).
   bool _sameScheduleVersion(ScheduleRow row, _StoredScheduleVersion version) {
-    return row.rule == jsonEncode(version.rule.toJson()) &&
+    return _canonicalRuleColumn(row.rule) ==
+            jsonEncode(version.rule.toJson()) &&
         row.doseAmountValue == version.amount.amountValue &&
         row.doseAmountEntered == version.amount.amountEntered &&
         row.doseUnit == version.amount.unit?.name &&
@@ -7264,15 +7275,7 @@ class ProtocolsRepository {
 
   _StoredScheduleVersion _scheduleVersionFromRow(ScheduleRow row) {
     final record = _scheduleRecordFromRow(row);
-    return (
-      rule: record.rule,
-      amount: PlanAmount(
-        amountValue: record.doseAmountValue,
-        amountEntered: record.doseAmountEntered,
-        unit: record.doseUnit,
-        route: record.route,
-      ),
-    );
+    return (rule: record.rule, amount: record.amount);
   }
 
   /// Reconciles a `Protocol`'s declared target outcomes to exactly [outcomes]
@@ -7651,7 +7654,6 @@ class ProtocolsRepository {
       doseUnit: unit == null ? null : doseUnitFromName(unit),
       route: route == null ? null : doseRouteFromName(route),
       updatedAt: row.updatedAt,
-      deletedAt: row.deletedAt,
     );
   }
 
@@ -7804,8 +7806,7 @@ class ProtocolsRepository {
         left.doseAmountEntered == right.doseAmountEntered &&
         left.doseUnit == right.doseUnit &&
         left.route == right.route &&
-        left.updatedAt == right.updatedAt &&
-        left.deletedAt == right.deletedAt;
+        left.updatedAt == right.updatedAt;
   }
 
   bool _sameProtocolTargetOutcomeRecords(
@@ -15670,34 +15671,35 @@ typedef _StoredScheduleVersion = ({ScheduleRule rule, PlanAmount amount});
 
 /// The member's current Schedule Version among [versions]: the latest
 /// `effective_from`, then the larger id (UUIDv7 ids sort by creation time,
-/// so that is the latest edit, and every device agrees). Null when there is
-/// none. `YYYY-MM-DD` dates compare as strings.
-ScheduleRow? _currentScheduleRow(Iterable<ScheduleRow> versions) {
-  ScheduleRow? current;
-  for (final row in versions) {
-    if (current == null || _compareScheduleRows(row, current) > 0) {
-      current = row;
-    }
-  }
-  return current;
-}
+/// so that is the latest edit, and every device agrees). [versions] come
+/// from [ProtocolsRepository._activeScheduleQuery], which returns them
+/// in that order, so it is the last. Null when there is none.
+ScheduleRow? _currentScheduleRow(List<ScheduleRow> versions) =>
+    versions.lastOrNull;
 
-/// The Schedule Version that applies on [date] (D1): the latest
-/// `effective_from` on or before it, then the larger id. Null when none
+/// The Schedule Version that applies on [date] (D1), by the shared core's
+/// rule; [versions] are in [_currentScheduleRow]'s order. Null when none
 /// applies yet.
 ScheduleRow? _scheduleRowInEffectOn(
-  Iterable<ScheduleRow> versions,
+  List<ScheduleRow> versions,
   ProtocolDayDate date,
-) {
-  final day = date.storageValue;
-  return _currentScheduleRow(
-    versions.where((row) => row.effectiveFrom.compareTo(day) <= 0),
-  );
-}
+) =>
+    applyingScheduleVersion(
+      versions,
+      date,
+      effectiveFrom: (row) => ProtocolDayDate.parse(row.effectiveFrom),
+    );
 
-int _compareScheduleRows(ScheduleRow left, ScheduleRow right) {
-  final byDate = left.effectiveFrom.compareTo(right.effectiveFrom);
-  return byDate != 0 ? byDate : left.id.compareTo(right.id);
+/// A stored `rule` column re-encoded in the codec's key order, so two
+/// columns that hold the same rule compare equal however they were written.
+String _canonicalRuleColumn(String column) =>
+    jsonEncode(ScheduleRule.fromJson(jsonDecode(column)).toJson());
+
+/// A stored `period` column re-encoded in the codec's key order (see
+/// [_canonicalRuleColumn]); null stays null.
+String? _canonicalPeriodColumn(String? column) {
+  final period = _protocolPeriodFromColumn(column);
+  return period == null ? null : jsonEncode(period.toJson());
 }
 
 ProtocolDayDate? _nullableProtocolDay(String? value) =>
