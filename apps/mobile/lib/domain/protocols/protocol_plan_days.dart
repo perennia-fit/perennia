@@ -493,6 +493,15 @@ ProtocolDayDate? endDateForDoseCount({
   // days for an every-N rule, else every day. An every-365-days rule on a
   // long cycle repeats only every few million days, yet visits a few
   // thousand rule days per repeat.
+  //
+  // The constructors' ceilings bound one repeat's visits: a cycle is at most
+  // 7300 days, so a daily rule visits at most 7300 days, an every-N rule
+  // lcm(N, cycle) / N <= 7300, and a weekdays rule lcm(7, cycle) <= 51,100
+  // (3650 on / 3649 off: 51,093). The counting pass below walks one repeat,
+  // and each gap between Pauses walks less than one more (the whole repeats
+  // are skipped first), so a call visits at most about 51,100 days, plus as
+  // many again per Pause: a few milliseconds of date checks, which
+  // `protocol_plan_dose_count_test.dart` times at the worst case.
   final (rulePeriod, stride, anchorOffset) = switch (days) {
     DailyScheduleDays() => (1, 1, 0),
     WeekdayScheduleDays() => (7, 1, 0),

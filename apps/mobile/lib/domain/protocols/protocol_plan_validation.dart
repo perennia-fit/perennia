@@ -22,26 +22,9 @@ import 'dose_validation.dart';
 import 'protocol_plan.dart';
 import 'protocols.dart';
 
-/// The plan validators' limits. Kept in lockstep with the TypeScript
-/// `PROTOCOL_PLAN_VALIDATION_LIMITS` and the golden vector's `limits` block.
-class ProtocolPlanValidationLimits {
-  const ProtocolPlanValidationLimits._();
-
-  /// The most clock times a timed rule may plan in a day.
-  static const int maxTimesPerDay = 12;
-
-  /// The largest count an untimed rule may plan in a day.
-  static const int maxUntimedCount = 12;
-
-  static const int minEveryNDays = 2;
-  static const int maxEveryNDays = 365;
-
-  /// The longest on-period, and the longest off-period, of a cycle.
-  static const int maxCycleLengthDays = 3650;
-
-  /// More times than this in a day is more often a typo than a plan.
-  static const int warnTimesPerDay = 6;
-}
+// The limits are defined beside the types whose ceilings they also are, and
+// exported here, where the validators that judge them live.
+export 'protocol_plan.dart' show ProtocolPlanValidationLimits;
 
 /// Validates one Schedule Version: its stored [rule] JSON, and the planned
 /// amount, unit and route that a `timed` or `untimed` rule requires.

@@ -49,7 +49,7 @@ void main() {
       expect(
         endDate(
           '2026-10-01',
-          const UntimedScheduleRule(days: DailyScheduleDays(), count: 3),
+          UntimedScheduleRule(days: const DailyScheduleDays(), count: 3),
           7,
         ),
         date('2026-10-03'),
@@ -290,6 +290,63 @@ void main() {
       expect(endDate('2026-01-01', rule, 1000, period: period), isNull);
     });
 
+    test('the worst case the ceilings allow finishes quickly', () {
+      // A weekdays rule repeats every 7 days and a 3650 on / 3649 off cycle
+      // every 7299, so together they repeat only every 51,093 days: the most
+      // days one pass can visit under the decoders' ceilings. Pauses make
+      // every gap walk its own pass.
+      final period = ProtocolPeriod(
+        cycle: ProtocolCycle(
+          onDays: ProtocolPlanValidationLimits.maxCycleLengthDays,
+          offDays: ProtocolPlanValidationLimits.maxCycleLengthDays - 1,
+          anchor: date('2026-01-01'),
+          anchorIsDefault: true,
+        ),
+        pauses: [
+          for (var year = 2030; year < 2230; year += 20)
+            ProtocolPause(from: date('$year-01-01'), to: date('$year-01-07')),
+        ],
+      );
+      final rule = timed(['09:00'], days: WeekdayScheduleDays(const [1]));
+      final stopwatch = Stopwatch()..start();
+      final end = endDate('2026-01-01', rule, 1000, period: period);
+      // 1 day on in every 3651 meets a Monday once in 25,557 days, so the
+      // 1000th dose would fall long after 9999-12-31: whole repeats are
+      // skipped up to the last date, then at most one is walked.
+      final tooLate = endDate(
+        '2026-01-01',
+        rule,
+        1000,
+        period: ProtocolPeriod(
+          cycle: ProtocolCycle(
+            onDays: 1,
+            offDays: ProtocolPlanValidationLimits.maxCycleLengthDays,
+            anchor: date('2026-01-01'),
+            anchorIsDefault: true,
+          ),
+        ),
+      );
+      stopwatch.stop();
+      expect(tooLate, isNull);
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
+
+      // Checked by brute force: walk every day until the 1000th dose.
+      var doses = 0;
+      var day = date('2026-01-01');
+      while (true) {
+        if (day.isoWeekday == 1 &&
+            period.cycle!.isOn(day) &&
+            !period.isPaused(day)) {
+          doses += 1;
+          if (doses == 1000) {
+            break;
+          }
+        }
+        day = day.addDays(1);
+      }
+      expect(end, day);
+    });
+
     test('a doseCount outside 1-1000 is rejected', () {
       expect(
         () => endDate('2026-10-26', timed(['21:00']), 0),
@@ -302,6 +359,118 @@ void main() {
       expect(
         () => endDate('2026-10-26', timed(['21:00']), -5),
         throwsRangeError,
+      );
+    });
+  });
+
+  group('plannability is enforced in release builds too', () {
+    final anchor = date('2026-01-01');
+
+    test('every N days takes N from 1 to the ceiling', () {
+      for (final n in [0, -1, ProtocolPlanValidationLimits.maxEveryNDays + 1]) {
+        expect(
+          () => EveryNDaysScheduleDays(
+            n: n,
+            anchor: anchor,
+            anchorIsDefault: true,
+          ),
+          throwsArgumentError,
+          reason: 'n: $n',
+        );
+      }
+      expect(
+        EveryNDaysScheduleDays(
+          n: ProtocolPlanValidationLimits.maxEveryNDays,
+          anchor: anchor,
+          anchorIsDefault: true,
+        ).n,
+        ProtocolPlanValidationLimits.maxEveryNDays,
+      );
+    });
+
+    test('a cycle takes each period from 0 to the ceiling, and 1 day at least',
+        () {
+      const ceiling = ProtocolPlanValidationLimits.maxCycleLengthDays;
+      for (final (on, off) in [
+        (ceiling + 1, 7),
+        (21, ceiling + 1),
+        (-1, 3),
+        (3, -1),
+        (0, 0),
+      ]) {
+        expect(
+          () => ProtocolCycle(
+            onDays: on,
+            offDays: off,
+            anchor: anchor,
+            anchorIsDefault: true,
+          ),
+          throwsArgumentError,
+          reason: '$on on / $off off',
+        );
+      }
+      expect(
+        ProtocolCycle(
+          onDays: ceiling,
+          offDays: ceiling,
+          anchor: anchor,
+          anchorIsDefault: true,
+        ).isOn(anchor),
+        isTrue,
+      );
+    });
+
+    test('rules take 1 to the ceiling of times or untimed doses', () {
+      const days = DailyScheduleDays();
+      expect(
+          () => TimedScheduleRule(days: days, times: []), throwsArgumentError);
+      expect(
+        () => TimedScheduleRule(
+          days: days,
+          times: [
+            for (var hour = 0;
+                hour <= ProtocolPlanValidationLimits.maxTimesPerDay;
+                hour++)
+              '${hour.toString().padLeft(2, '0')}:00',
+          ],
+        ),
+        throwsArgumentError,
+      );
+      for (final count in [
+        0,
+        ProtocolPlanValidationLimits.maxUntimedCount + 1,
+        1000000000,
+      ]) {
+        expect(
+          () => UntimedScheduleRule(days: days, count: count),
+          throwsArgumentError,
+          reason: 'count: $count',
+        );
+      }
+    });
+
+    test('a decoder reads the same refusals as a FormatException', () {
+      expect(
+        () => ScheduleRule.fromJson(<String, Object?>{
+          'v': 1,
+          'kind': 'untimed',
+          'days': <String, Object?>{'kind': 'daily'},
+          'count': 1000000000,
+        }),
+        throwsFormatException,
+      );
+      expect(
+        () => ProtocolPeriod.fromJson(<String, Object?>{
+          'v': 1,
+          'cycle': <String, Object?>{
+            'on_days': 1e300,
+            'off_days': 1,
+            'anchor': '2026-01-01',
+            'anchor_is_default': true,
+          },
+          'pauses': <Object?>[],
+        }),
+        throwsFormatException,
       );
     });
   });

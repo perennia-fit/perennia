@@ -5,6 +5,7 @@ import {
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
 import {
+  PROTOCOL_PLAN_VALIDATION_LIMITS,
   compareIds,
   isJsonObject,
   isPlanLocalTime,
@@ -1734,17 +1735,9 @@ function parseDoseRoute(route: string): DoseRoute | null {
 // use the Dose validator's issue shape, the Protocols domain's own.
 // ---------------------------------------------------------------------------
 
-/// Kept in lockstep with the Dart `ProtocolPlanValidationLimits` and the
-/// vector's `limits` block. Times and untimed counts start at 1, and cycle
-/// lengths at 1 day; `warnTimesPerDay` is the soft-warn boundary (exclusive).
-export const PROTOCOL_PLAN_VALIDATION_LIMITS = {
-  maxTimesPerDay: 12,
-  maxUntimedCount: 12,
-  minEveryNDays: 2,
-  maxEveryNDays: 365,
-  maxCycleLengthDays: 3650,
-  warnTimesPerDay: 6
-} as const;
+/// The limits are defined in protocol-plan.ts, whose decoders enforce their
+/// ceilings, and re-exported here beside the validators that judge them.
+export { PROTOCOL_PLAN_VALIDATION_LIMITS };
 
 /// The planned amount a Schedule Version carries next to its rule.
 export type AgentScheduleAmountForValidation = {

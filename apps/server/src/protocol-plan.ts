@@ -27,7 +27,8 @@ export type ScheduleRuleDays =
 
 /**
  * A Schedule Rule as stored in a Schedule Version's `rule` column. The decoded
- * value keeps the stored JSON shape, so encoding is the identity.
+ * value keeps the stored JSON shape, so encoding is decoding again, which
+ * drops any key the shape does not name.
  */
 export type ScheduleRule =
   | { v: 1; kind: "timed"; days: ScheduleRuleDays; times: LocalTime[] }
@@ -179,14 +180,37 @@ export type DueUnfilledDose = PlanAmount & {
 // whole number reads as an integer however it was written (`2.0` is 2), as
 // JSON.parse already gives it.
 //
-// The one range a decoder checks is plannability, and it checks it here, once,
-// so the core never has to: every N days with N below 1, an untimed count
-// below 1, a timed rule with no times and a cycle of no days at all are
-// rejected, as the Dart twin's decoders reject them. Every other range check
-// (how many times, how long a cycle) is the shared validators' job (D7), which
-// read the stored JSON itself, so they can judge values these decoders would
-// reject.
+// The ranges a decoder checks are plannability and the safe ceilings, both from
+// PROTOCOL_PLAN_VALIDATION_LIMITS, and it checks them here, so the core never
+// has to: every N days with N below 1 or above maxEveryNDays, an untimed count
+// below 1 or above maxUntimedCount, a timed rule with no times or more than
+// maxTimesPerDay, and a cycle of no days at all or with an on- or off-period
+// below 0 or above maxCycleLengthDays are rejected, as the Dart twin's decoders
+// reject them. The ceilings keep a synced row that was never validated from
+// planning a billion doses, or a day count beyond 2^53, where the twins would
+// plan different days. `planDays` runs every Protocol's period and rules
+// through these checks once, so a caller that skipped decoding fails the same
+// way. Every other range check (an every-N of 1, a cycle with no off-period) is
+// the shared validators' job (D7), which read the stored JSON itself, so they
+// can judge values these decoders would reject.
 // ---------------------------------------------------------------------------
+
+/**
+ * The plan validators' limits, and the decoders' ceilings. Kept in lockstep
+ * with the Dart `ProtocolPlanValidationLimits` and the validation vector's
+ * `limits` block. Times and untimed counts start at 1, and cycle lengths at 1
+ * day; `warnTimesPerDay` is the soft-warn boundary (exclusive). Defined here,
+ * not in agent-validation.ts (which re-exports it), because that module
+ * imports this one.
+ */
+export const PROTOCOL_PLAN_VALIDATION_LIMITS = {
+  maxTimesPerDay: 12,
+  maxUntimedCount: 12,
+  minEveryNDays: 2,
+  maxEveryNDays: 365,
+  maxCycleLengthDays: 3650,
+  warnTimesPerDay: 6
+} as const;
 
 export class ProtocolPlanCodecError extends Error {
   constructor(message: string) {
@@ -211,7 +235,12 @@ export function decodeScheduleRule(json: unknown): ScheduleRule {
         v: 1,
         kind: "untimed",
         days: decodeScheduleRuleDays(object.days),
-        count: requirePlannableInteger(object.count, "Schedule Rule count")
+        count: requireIntegerInRange(
+          object.count,
+          "Schedule Rule count",
+          1,
+          PROTOCOL_PLAN_VALIDATION_LIMITS.maxUntimedCount
+        )
       };
     case "as_needed":
     case "unscheduled":
@@ -224,11 +253,12 @@ export function decodeScheduleRule(json: unknown): ScheduleRule {
 }
 
 /**
- * The stored JSON of a decoded rule: a deep copy, because the decoded value
- * already is that JSON, with only its known keys, in stored order.
+ * The stored JSON of a rule: decoding builds a fresh object of only the known
+ * keys, in stored order, so a key a caller added is never persisted, and a
+ * rule the core cannot plan on is never written.
  */
 export function encodeScheduleRule(rule: ScheduleRule): Record<string, unknown> {
-  return structuredClone(rule);
+  return decodeScheduleRule(rule);
 }
 
 export function decodeProtocolPeriod(json: unknown): ProtocolPeriod | null {
@@ -254,11 +284,11 @@ export function decodeProtocolPeriod(json: unknown): ProtocolPeriod | null {
   };
 }
 
-/** The stored JSON of a decoded period, as `encodeScheduleRule` copies a rule. */
+/** The stored JSON of a period, normalized as `encodeScheduleRule` normalizes a rule. */
 export function encodeProtocolPeriod(
   period: ProtocolPeriod | null
 ): Record<string, unknown> | null {
-  return period === null ? null : structuredClone(period);
+  return decodeProtocolPeriod(period);
 }
 
 function decodeScheduleRuleDays(json: unknown): ScheduleRuleDays {
@@ -276,7 +306,12 @@ function decodeScheduleRuleDays(json: unknown): ScheduleRuleDays {
     case "every_n_days":
       return {
         kind: "every_n_days",
-        n: requirePlannableInteger(object.n, "Schedule Rule n"),
+        n: requireIntegerInRange(
+          object.n,
+          "Schedule Rule n",
+          1,
+          PROTOCOL_PLAN_VALIDATION_LIMITS.maxEveryNDays
+        ),
         anchor: requireLocalDate(object.anchor, "Schedule Rule anchor"),
         anchor_is_default: requireBoolean(
           object.anchor_is_default,
@@ -292,8 +327,9 @@ function decodeScheduleRuleDays(json: unknown): ScheduleRuleDays {
 
 function decodeProtocolCycle(json: unknown): ProtocolCycle {
   const object = requireObject(json, "Protocol cycle");
-  const onDays = requireInteger(object.on_days, "Protocol cycle on_days");
-  const offDays = requireInteger(object.off_days, "Protocol cycle off_days");
+  const maximum = PROTOCOL_PLAN_VALIDATION_LIMITS.maxCycleLengthDays;
+  const onDays = requireIntegerInRange(object.on_days, "Protocol cycle on_days", 0, maximum);
+  const offDays = requireIntegerInRange(object.off_days, "Protocol cycle off_days", 0, maximum);
   if (onDays + offDays < 1) {
     throw new ProtocolPlanCodecError("A Protocol cycle must be at least 1 day long.");
   }
@@ -366,11 +402,12 @@ function requireLocalTime(json: unknown, what: string): LocalTime {
   return localTime;
 }
 
-/** A timed rule's times: at least one, the least the core can plan on. */
+/** A timed rule's times: at least one, the least the core can plan on, up to the ceiling. */
 function requireLocalTimes(json: unknown, what: string): LocalTime[] {
   const times = requireArray(json, what).map((time) => requireLocalTime(time, `${what} entry`));
-  if (times.length === 0) {
-    throw new ProtocolPlanCodecError(`${what} must hold at least one time.`);
+  const maximum = PROTOCOL_PLAN_VALIDATION_LIMITS.maxTimesPerDay;
+  if (times.length === 0 || times.length > maximum) {
+    throw new ProtocolPlanCodecError(`${what} must hold 1 to ${maximum} times.`);
   }
   return times;
 }
@@ -382,11 +419,16 @@ function requireInteger(json: unknown, what: string): number {
   return json;
 }
 
-/** An every-N-days N or an untimed count: an integer of at least 1. */
-function requirePlannableInteger(json: unknown, what: string): number {
+/** An integer from `minimum` to `maximum`, inclusive. */
+function requireIntegerInRange(
+  json: unknown,
+  what: string,
+  minimum: number,
+  maximum: number
+): number {
   const value = requireInteger(json, what);
-  if (value < 1) {
-    throw new ProtocolPlanCodecError(`${what} must be at least 1.`);
+  if (value < minimum || value > maximum) {
+    throw new ProtocolPlanCodecError(`${what} must be ${minimum} to ${maximum}.`);
   }
   return value;
 }
@@ -462,8 +504,9 @@ function epochDayIsoWeekday(day: number): number {
 }
 
 /**
- * A modulo that is never negative, so dates before an anchor count too. The
- * decoders guarantee every plan period is at least 1 day.
+ * A modulo that is never negative, so dates before an anchor count too.
+ * `planDays` decodes every period and rule it plans on first, so every
+ * divisor is a whole number of at least 1 day.
  */
 function floorMod(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;
@@ -502,8 +545,10 @@ export function planDays(
 
 /**
  * One Protocol as `planDays` reads it on every date, worked out once per call:
- * its optional fields read once, its cycle in epoch days, its Compound ids in
- * order, and each Compound's member rows.
+ * its optional fields read once, its period and rules decoded (so one built
+ * from a cast payload is rejected with the codec's error, never planned on as
+ * NaN), its cycle in epoch days, its Compound ids in order, and each
+ * Compound's member rows.
  */
 type ProtocolPlan = {
   protocol: PlanProtocol;
@@ -523,7 +568,7 @@ type MemberRow = {
   versions: VersionPlan[];
 };
 
-/** One Schedule Version, with its amount and every-N anchor worked out once. */
+/** One Schedule Version, with its rule decoded and its amount and every-N anchor worked out once. */
 type VersionPlan = {
   version: PlanScheduleVersion;
   amount: Required<PlanAmount>;
@@ -539,7 +584,7 @@ function protocolPlan(protocol: PlanProtocol): ProtocolPlan {
   for (const rows of rowsByCompound.values()) {
     rows.sort((left, right) => compareIds(right.memberId, left.memberId));
   }
-  const period = protocol.period ?? null;
+  const period = decodeProtocolPeriod(protocol.period ?? null);
   const cycle = period?.cycle ?? null;
   return {
     protocol,
@@ -561,16 +606,19 @@ function protocolPlan(protocol: PlanProtocol): ProtocolPlan {
 
 function memberRow(member: PlanMember): MemberRow {
   const versions = member.versions
-    .map((version) => ({
-      version,
-      amount: planAmount(version),
-      anchorDay:
-        version.rule.kind !== "as_needed" &&
-        version.rule.kind !== "unscheduled" &&
-        version.rule.days.kind === "every_n_days"
-          ? epochDay(version.rule.days.anchor)
-          : 0
-    }))
+    .map((stored) => {
+      const rule = decodeScheduleRule(stored.rule);
+      return {
+        version: { ...stored, rule },
+        amount: planAmount(stored),
+        anchorDay:
+          rule.kind !== "as_needed" &&
+          rule.kind !== "unscheduled" &&
+          rule.days.kind === "every_n_days"
+            ? epochDay(rule.days.anchor)
+            : 0
+      };
+    })
     .sort(
       (left, right) =>
         compareIds(left.version.effectiveFrom, right.version.effectiveFrom) ||

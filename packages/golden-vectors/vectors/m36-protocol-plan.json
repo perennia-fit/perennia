@@ -150,6 +150,48 @@
       "expected": {"rejects": true}
     },
     {
+      "name": "rule-codec-reads-an-untimed-count-at-the-ceiling",
+      "function": "rule_codec",
+      "note": "The decoder's ceiling is the validators' maxUntimedCount: a count of 12 is read.",
+      "input": {"json": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 12}},
+      "expected": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 12}
+    },
+    {
+      "name": "rule-codec-rejects-an-untimed-count-above-the-ceiling",
+      "function": "rule_codec",
+      "note": "A count above maxUntimedCount is rejected at the decoder, so a synced row that was never validated cannot plan an unbounded number of doses.",
+      "input": {"json": {"v": 1, "kind": "untimed", "days": {"kind": "daily"}, "count": 13}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-reads-times-at-the-ceiling",
+      "function": "rule_codec",
+      "note": "The decoder's ceiling is the validators' maxTimesPerDay: 12 times a day are read.",
+      "input": {"json": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"]}},
+      "expected": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"]}
+    },
+    {
+      "name": "rule-codec-rejects-times-above-the-ceiling",
+      "function": "rule_codec",
+      "note": "More times than maxTimesPerDay are rejected at the decoder.",
+      "input": {"json": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "rule-codec-reads-every-n-days-at-the-ceiling",
+      "function": "rule_codec",
+      "note": "The decoder's ceiling is the validators' maxEveryNDays: every 365 days is read.",
+      "input": {"json": {"v": 1, "kind": "timed", "days": {"kind": "every_n_days", "n": 365, "anchor": "2026-09-01", "anchor_is_default": true}, "times": ["08:00"]}},
+      "expected": {"v": 1, "kind": "timed", "days": {"kind": "every_n_days", "n": 365, "anchor": "2026-09-01", "anchor_is_default": true}, "times": ["08:00"]}
+    },
+    {
+      "name": "rule-codec-rejects-every-n-days-above-the-ceiling",
+      "function": "rule_codec",
+      "note": "An N above maxEveryNDays is rejected at the decoder, so neither twin plans on a day count beyond what both languages hold exactly.",
+      "input": {"json": {"v": 1, "kind": "untimed", "days": {"kind": "every_n_days", "n": 366, "anchor": "2026-09-01", "anchor_is_default": false}, "count": 1}},
+      "expected": {"rejects": true}
+    },
+    {
       "name": "period-codec-cycle-and-pause",
       "function": "period_codec",
       "note": "Data shapes: a cycle with its anchor, and one inclusive Pause.",
@@ -218,8 +260,50 @@
     {
       "name": "period-codec-rejects-a-cycle-that-sums-below-1-day",
       "function": "period_codec",
-      "note": "File 5: the length checked is on_days + off_days, so a negative off-period that cancels the on-period is rejected too.",
+      "note": "File 5: a negative off-period is rejected, and the length checked is on_days + off_days, so one that cancels the on-period would be rejected by that too.",
       "input": {"json": {"v": 1, "cycle": {"on_days": 2, "off_days": -2, "anchor": "2026-09-01", "anchor_is_default": false}, "pauses": []}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "period-codec-reads-a-cycle-at-the-ceiling",
+      "function": "period_codec",
+      "note": "The decoder's ceiling is the validators' maxCycleLengthDays, for the on- and the off-period alike.",
+      "input": {"json": {"v": 1, "cycle": {"on_days": 3650, "off_days": 3650, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}},
+      "expected": {"v": 1, "cycle": {"on_days": 3650, "off_days": 3650, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}
+    },
+    {
+      "name": "period-codec-reads-a-cycle-with-no-off-period",
+      "function": "period_codec",
+      "note": "The decoder's floor for each period is 0; a cycle with no off-period is the validators' to reject, not the decoder's.",
+      "input": {"json": {"v": 1, "cycle": {"on_days": 7, "off_days": 0, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}},
+      "expected": {"v": 1, "cycle": {"on_days": 7, "off_days": 0, "anchor": "2026-09-01", "anchor_is_default": true}, "pauses": []}
+    },
+    {
+      "name": "period-codec-rejects-an-on-period-above-the-ceiling",
+      "function": "period_codec",
+      "note": "An on-period above maxCycleLengthDays is rejected at the decoder.",
+      "input": {"json": {"v": 1, "cycle": {"on_days": 3651, "off_days": 7, "anchor": "2026-09-01", "anchor_is_default": false}, "pauses": []}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "period-codec-rejects-an-off-period-above-the-ceiling",
+      "function": "period_codec",
+      "note": "An off-period above maxCycleLengthDays is rejected at the decoder.",
+      "input": {"json": {"v": 1, "cycle": {"on_days": 21, "off_days": 3651, "anchor": "2026-09-01", "anchor_is_default": false}, "pauses": []}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "period-codec-rejects-a-negative-on-period",
+      "function": "period_codec",
+      "note": "Each period is at least 0 days, even when the cycle as a whole is longer than 1 day.",
+      "input": {"json": {"v": 1, "cycle": {"on_days": -1, "off_days": 3, "anchor": "2026-09-01", "anchor_is_default": false}, "pauses": []}},
+      "expected": {"rejects": true}
+    },
+    {
+      "name": "period-codec-rejects-a-negative-off-period",
+      "function": "period_codec",
+      "note": "Each period is at least 0 days, even when the cycle as a whole is longer than 1 day.",
+      "input": {"json": {"v": 1, "cycle": {"on_days": 3, "off_days": -1, "anchor": "2026-09-01", "anchor_is_default": false}, "pauses": []}},
       "expected": {"rejects": true}
     },
     {

@@ -19,18 +19,50 @@
 /// decoders do. A whole number reads as an integer however it was written
 /// (`2.0` is 2), because TypeScript's JSON.parse cannot tell them apart.
 ///
-/// The one range a decoder checks is plannability, and it checks it here,
-/// once, so the core never has to: every N days with N below 1, an untimed
-/// count below 1, a timed rule with no times and a cycle of no days at all
-/// throw a [FormatException], and the constructors assert the same. Every
-/// other range check (how many times, how long a cycle) is validation's job
-/// (`protocol_plan_validation.dart`), not the decoder's.
+/// The ranges a decoder checks are plannability and the safe ceilings, both
+/// from [ProtocolPlanValidationLimits], and the constructors check them, so
+/// the core never has to: every N days with N below 1 or above
+/// [ProtocolPlanValidationLimits.maxEveryNDays], an untimed count below 1 or
+/// above [ProtocolPlanValidationLimits.maxUntimedCount], a timed rule with no
+/// times or more than [ProtocolPlanValidationLimits.maxTimesPerDay], and a
+/// cycle of no days at all or with an on- or off-period below 0 or above
+/// [ProtocolPlanValidationLimits.maxCycleLengthDays]. A constructor throws an
+/// [ArgumentError] (a [RangeError]) for them, in release builds too, and a
+/// decoder a [FormatException]. The ceilings keep a synced row that was never
+/// validated from planning a billion doses, or a day count beyond what both
+/// languages hold exactly. Every other range check (an every-N of 1, a cycle
+/// with no off-period) is validation's job (`protocol_plan_validation.dart`),
+/// not the decoder's.
 library;
 
 import 'protocols.dart';
 
 /// The only rule and period JSON version this core reads and writes.
 const int protocolPlanJsonVersion = 1;
+
+/// The plan validators' limits, and the decoders' and constructors' ceilings.
+/// Kept in lockstep with the TypeScript `PROTOCOL_PLAN_VALIDATION_LIMITS` and
+/// the golden vector's `limits` block. It lives here, not in
+/// `protocol_plan_validation.dart` (which exports it), so the types below can
+/// enforce the ceilings without an import cycle.
+class ProtocolPlanValidationLimits {
+  const ProtocolPlanValidationLimits._();
+
+  /// The most clock times a timed rule may plan in a day.
+  static const int maxTimesPerDay = 12;
+
+  /// The largest count an untimed rule may plan in a day.
+  static const int maxUntimedCount = 12;
+
+  static const int minEveryNDays = 2;
+  static const int maxEveryNDays = 365;
+
+  /// The longest on-period, and the longest off-period, of a cycle.
+  static const int maxCycleLengthDays = 3650;
+
+  /// More times than this in a day is more often a typo than a plan.
+  static const int warnTimesPerDay = 6;
+}
 
 final RegExp _localTimePattern = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
 
@@ -58,10 +90,15 @@ sealed class ScheduleDays {
       'weekdays' => WeekdayScheduleDays(
           _intList(map['weekdays'], 'weekdays'),
         ),
-      'every_n_days' => EveryNDaysScheduleDays(
-          n: _plannableInt(map['n'], 'n'),
-          anchor: _date(map['anchor'], 'anchor'),
-          anchorIsDefault: _bool(map['anchor_is_default'], 'anchor_is_default'),
+      'every_n_days' => _plannable(
+          'every N days',
+          json,
+          () => EveryNDaysScheduleDays(
+            n: _int(map['n'], 'n'),
+            anchor: _date(map['anchor'], 'anchor'),
+            anchorIsDefault:
+                _bool(map['anchor_is_default'], 'anchor_is_default'),
+          ),
         ),
       _ => throw FormatException('Unknown Schedule days kind.', kind),
     };
@@ -103,13 +140,20 @@ class WeekdayScheduleDays extends ScheduleDays {
 
 /// Every [n] days, counted from [anchor] (day 0). The anchor is always
 /// stored; [anchorIsDefault] marks one the editor set to the Protocol's
-/// start, which moves with the start (D1). [n] is at least 1.
+/// start, which moves with the start (D1). [n] is 1 to
+/// [ProtocolPlanValidationLimits.maxEveryNDays]; anything else throws a
+/// [RangeError].
 class EveryNDaysScheduleDays extends ScheduleDays {
-  const EveryNDaysScheduleDays({
-    required this.n,
+  EveryNDaysScheduleDays({
+    required int n,
     required this.anchor,
     required this.anchorIsDefault,
-  }) : assert(n >= 1, 'Every N days needs an N of at least 1.');
+  }) : n = RangeError.checkValueInInterval(
+          n,
+          1,
+          ProtocolPlanValidationLimits.maxEveryNDays,
+          'n',
+        );
 
   final int n;
   final ProtocolDayDate anchor;
@@ -141,13 +185,21 @@ sealed class ScheduleRule {
     _requireVersion(map);
     final kind = map['kind'];
     return switch (kind) {
-      'timed' => TimedScheduleRule(
-          days: ScheduleDays.fromJson(map['days']),
-          times: _timeList(map['times']),
+      'timed' => _plannable(
+          'timed rule',
+          json,
+          () => TimedScheduleRule(
+            days: ScheduleDays.fromJson(map['days']),
+            times: _timeList(map['times']),
+          ),
         ),
-      'untimed' => UntimedScheduleRule(
-          days: ScheduleDays.fromJson(map['days']),
-          count: _plannableInt(map['count'], 'count'),
+      'untimed' => _plannable(
+          'untimed rule',
+          json,
+          () => UntimedScheduleRule(
+            days: ScheduleDays.fromJson(map['days']),
+            count: _int(map['count'], 'count'),
+          ),
         ),
       'as_needed' => const AsNeededScheduleRule(),
       'unscheduled' => const UnscheduledScheduleRule(),
@@ -158,11 +210,22 @@ sealed class ScheduleRule {
   Map<String, Object?> toJson();
 }
 
-/// One or more `HH:MM` clock times on each planned day, stored sorted.
+/// 1 to [ProtocolPlanValidationLimits.maxTimesPerDay] `HH:MM` clock times on
+/// each planned day, stored sorted; any other number throws a [RangeError].
 class TimedScheduleRule extends ScheduleRule {
   TimedScheduleRule({required this.days, required Iterable<String> times})
-      : assert(times.isNotEmpty, 'A timed rule needs at least one time.'),
-        times = List<String>.unmodifiable(times);
+      : times = _plannableTimes(times);
+
+  static List<String> _plannableTimes(Iterable<String> times) {
+    final list = List<String>.unmodifiable(times);
+    RangeError.checkValueInInterval(
+      list.length,
+      1,
+      ProtocolPlanValidationLimits.maxTimesPerDay,
+      'times.length',
+    );
+    return list;
+  }
 
   final ScheduleDays days;
   final List<String> times;
@@ -176,11 +239,18 @@ class TimedScheduleRule extends ScheduleRule {
       };
 }
 
-/// A count of untimed doses on each planned day, at least 1. Untimed planned
-/// doses count like any other, but never get a reminder.
+/// A count of untimed doses on each planned day, 1 to
+/// [ProtocolPlanValidationLimits.maxUntimedCount]; anything else throws a
+/// [RangeError]. Untimed planned doses count like any other, but never get a
+/// reminder.
 class UntimedScheduleRule extends ScheduleRule {
-  const UntimedScheduleRule({required this.days, required this.count})
-      : assert(count >= 1, 'An untimed rule needs a count of at least 1.');
+  UntimedScheduleRule({required this.days, required int count})
+      : count = RangeError.checkValueInInterval(
+          count,
+          1,
+          ProtocolPlanValidationLimits.maxUntimedCount,
+          'count',
+        );
 
   final ScheduleDays days;
   final int count;
@@ -220,27 +290,43 @@ class UnscheduledScheduleRule extends ScheduleRule {
 /// A repeating on/off cycle (D4): [onDays] on, then [offDays] off, counted
 /// from cycle day 0 at [anchor]. A date is on-cycle when
 /// `(date − anchor) mod (onDays + offDays) < onDays`, so the cycle is at
-/// least 1 day long.
+/// least 1 day long. Each period is 0 to
+/// [ProtocolPlanValidationLimits.maxCycleLengthDays] days; anything else, or
+/// a cycle of no days at all, throws an [ArgumentError].
 class ProtocolCycle {
-  const ProtocolCycle({
-    required this.onDays,
-    required this.offDays,
+  ProtocolCycle({
+    required int onDays,
+    required int offDays,
     required this.anchor,
     required this.anchorIsDefault,
-  }) : assert(onDays + offDays >= 1, 'A cycle is at least 1 day long.');
+  })  : onDays = RangeError.checkValueInInterval(
+          onDays,
+          0,
+          ProtocolPlanValidationLimits.maxCycleLengthDays,
+          'onDays',
+        ),
+        offDays = RangeError.checkValueInInterval(
+          offDays,
+          0,
+          ProtocolPlanValidationLimits.maxCycleLengthDays,
+          'offDays',
+        ) {
+    if (onDays + offDays < 1) {
+      throw ArgumentError('A cycle is at least 1 day long.');
+    }
+  }
 
   factory ProtocolCycle.fromJson(Object? json) {
     final map = _object(json, 'cycle');
-    final onDays = _int(map['on_days'], 'on_days');
-    final offDays = _int(map['off_days'], 'off_days');
-    if (onDays + offDays < 1) {
-      throw FormatException('Expected a cycle of at least 1 day.', json);
-    }
-    return ProtocolCycle(
-      onDays: onDays,
-      offDays: offDays,
-      anchor: _date(map['anchor'], 'anchor'),
-      anchorIsDefault: _bool(map['anchor_is_default'], 'anchor_is_default'),
+    return _plannable(
+      'cycle',
+      json,
+      () => ProtocolCycle(
+        onDays: _int(map['on_days'], 'on_days'),
+        offDays: _int(map['off_days'], 'off_days'),
+        anchor: _date(map['anchor'], 'anchor'),
+        anchorIsDefault: _bool(map['anchor_is_default'], 'anchor_is_default'),
+      ),
     );
   }
 
@@ -799,14 +885,15 @@ int _int(Object? value, String field) {
   throw FormatException('Expected a $field integer.', value);
 }
 
-/// An every-N-days N or an untimed count: an integer of at least 1, the
-/// least the core can plan on.
-int _plannableInt(Object? value, String field) {
-  final whole = _int(value, field);
-  if (whole < 1) {
-    throw FormatException('Expected a $field of at least 1.', value);
+/// [construct]'s value, with the [ArgumentError] a constructor throws for a
+/// value the core cannot plan on, or one above a ceiling, read as malformed
+/// JSON: a decoder throws only [FormatException]s.
+T _plannable<T>(String what, Object? json, T Function() construct) {
+  try {
+    return construct();
+  } on ArgumentError catch (error) {
+    throw FormatException('Expected a plannable $what: $error', json);
   }
-  return whole;
 }
 
 /// [value] as an integer when it is a finite whole number, an `int` or a
@@ -854,14 +941,9 @@ String _time(Object? value, String field) {
 String? _nullableTime(Object? value, String field) =>
     value == null ? null : _time(value, field);
 
-/// A timed rule's times: at least one, the least the core can plan on.
+/// A timed rule's times; how many is the constructor's to check.
 List<String> _timeList(Object? value) {
-  final times =
-      _list(value, 'times').map((item) => _time(item, 'time')).toList();
-  if (times.isEmpty) {
-    throw FormatException('Expected at least one time.', value);
-  }
-  return times;
+  return _list(value, 'times').map((item) => _time(item, 'time')).toList();
 }
 
 DoseUnit? _nullableUnit(Object? value) => value == null
