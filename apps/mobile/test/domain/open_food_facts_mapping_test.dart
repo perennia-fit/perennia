@@ -519,11 +519,6 @@ void main() {
         '"nutrients":{"energy":"53","fat":"0","saturated_fat":"0"},'
         '"modifiedAt":1745020800,"scans":412}',
       );
-      final keys =
-          (jsonDecode(encodeBundleProductLine(product)) as Map<String, Object?>)
-              .keys
-              .toList();
-      expect(keys, bundleProductLineKeys);
     });
 
     test('writes unknown optional fields as null', () {
@@ -551,20 +546,11 @@ void main() {
     });
 
     test('decodes what it encodes', () {
-      final decoded = decodeBundleProductLine(encodeBundleProductLine(product));
+      final line = encodeBundleProductLine(product);
 
-      expect(decoded.code, product.code);
-      expect(decoded.name, product.name);
-      expect(decoded.brand, product.brand);
-      expect(decoded.isLiquid, product.isLiquid);
-      expect(decoded.servingLabel, product.servingLabel);
-      expect(decoded.servingSize, product.servingSize);
-      expect(decoded.packageSize, product.packageSize);
-      expect(decoded.nutrientText, product.nutrientText);
-      expect(decoded.modifiedAt, product.modifiedAt);
-      expect(decoded.scans, product.scans);
-      expect(
-          encodeBundleProductLine(decoded), encodeBundleProductLine(product));
+      // The exact line in the test above pins every field, so an identical
+      // re-encoding means every field survived the decode.
+      expect(encodeBundleProductLine(decodeBundleProductLine(line)), line);
     });
 
     test('round-trips the header', () {

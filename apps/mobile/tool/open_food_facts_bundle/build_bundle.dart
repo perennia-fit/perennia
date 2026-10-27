@@ -129,14 +129,14 @@ Future<void> main(List<String> args) async {
   final merged = <String, _Candidate>{
     for (final list in byCountry.values)
       for (final candidate in list) candidate.product.code: candidate,
-  };
-  final codes = merged.keys.toList()..sort();
+  }.values.toList()
+    ..sort((a, b) => a.product.code.compareTo(b.product.code));
 
   // Step 5: header, product lines, gzip.
   final productBytes = BytesBuilder(copy: false);
-  for (final code in codes) {
+  for (final candidate in merged) {
     productBytes.add(
-      utf8.encode('${encodeBundleProductLine(merged[code]!.product)}\n'),
+      utf8.encode('${encodeBundleProductLine(candidate.product)}\n'),
     );
   }
   final productLines = productBytes.takeBytes();
@@ -155,7 +155,7 @@ Future<void> main(List<String> args) async {
     attributionText: _attributionText,
     countries: launchCountries.values.toList(),
     perCountryLimit: perCountryLimit,
-    productCount: codes.length,
+    productCount: merged.length,
   );
   final uncompressed = BytesBuilder(copy: false)
     ..add(utf8.encode('${header.toJsonLine()}\n'))
@@ -172,7 +172,7 @@ Future<void> main(List<String> args) async {
     keptByCountry: {
       for (final MapEntry(:key, :value) in byCountry.entries) key: value.length,
     },
-    merged: [for (final code in codes) merged[code]!],
+    merged: merged,
     uncompressedProductBytes: productLines.length,
     compressedBytes: compressed.length,
     header: header,
@@ -361,39 +361,33 @@ class _Report {
 }
 
 ({String input, String datasetVersion})? _parseArguments(List<String> args) {
-  String? input;
-  String? datasetVersion;
+  final values = <String, String>{};
   for (var i = 0; i < args.length; i++) {
-    final arg = args[i];
-    String? next() => i + 1 < args.length ? args[++i] : null;
-    if (arg == '--input') {
-      input = next();
-    } else if (arg.startsWith('--input=')) {
-      input = arg.substring('--input='.length);
-    } else if (arg == '--dataset-version') {
-      datasetVersion = next();
-    } else if (arg.startsWith('--dataset-version=')) {
-      datasetVersion = arg.substring('--dataset-version='.length);
-    } else {
+    final [name, ...inline] = args[i].split('=');
+    final value = inline.isNotEmpty
+        ? inline.join('=')
+        : (i + 1 < args.length ? args[++i] : null);
+    if ((name != '--input' && name != '--dataset-version') || value == null) {
       return null;
     }
+    values[name] = value;
   }
+  final input = values['--input'];
+  final datasetVersion = values['--dataset-version'];
   if (input == null || datasetVersion == null || !_isDate(datasetVersion)) {
     return null;
   }
   return (input: input, datasetVersion: datasetVersion);
 }
 
+/// A dataset version is a `YYYY-MM-DD` date, the same form as a nutrition day.
 bool _isDate(String value) {
-  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
-  if (match == null) {
+  try {
+    NutritionDayDate.parse(value);
+    return true;
+  } on FormatException {
     return false;
   }
-  final year = int.parse(match.group(1)!);
-  final month = int.parse(match.group(2)!);
-  final day = int.parse(match.group(3)!);
-  final date = DateTime.utc(year, month, day);
-  return date.year == year && date.month == month && date.day == day;
 }
 
 String _hex(List<int> bytes) =>

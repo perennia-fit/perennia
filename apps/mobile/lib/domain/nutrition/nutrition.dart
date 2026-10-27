@@ -132,15 +132,17 @@ enum NutrientId {
   final NutrientUnit defaultUnit;
 
   static NutrientId byStorageKey(String storageKey) {
-    return NutrientId.values.firstWhere(
-      (id) => id.storageKey == storageKey,
-      orElse: () => throw ArgumentError.value(
-        storageKey,
-        'storageKey',
-        'Unknown Nutrient id.',
-      ),
-    );
+    return _byStorageKey[storageKey] ??
+        (throw ArgumentError.value(
+          storageKey,
+          'storageKey',
+          'Unknown Nutrient id.',
+        ));
   }
+
+  static final _byStorageKey = <String, NutrientId>{
+    for (final id in NutrientId.values) id.storageKey: id,
+  };
 }
 
 enum NutrientDisplayTier {
@@ -1712,8 +1714,8 @@ double _resolveBaseQuantity(
 }) {
   return switch (portion.unit) {
     PortionUnit.gram || PortionUnit.milliliter => portion.value,
-    PortionUnit.ounce => portion.value * 28.349523125,
-    PortionUnit.fluidOunce => portion.value * 29.5735295625,
+    PortionUnit.ounce => portion.value * gramsPerOunce,
+    PortionUnit.fluidOunce => portion.value * millilitresPerFluidOunce,
     PortionUnit.serving => portion.value *
         _requiredPortionSize(
           servingSize,
@@ -1741,9 +1743,18 @@ double _requiredPortionSize(double? value, PortionUnit unit) {
 String formatNutrientEntered(double value) {
   final fixed = value.toStringAsFixed(6);
   return fixed
-      .replaceFirst(RegExp(r'0+$'), '')
-      .replaceFirst(RegExp(r'\.$'), '');
+      .replaceFirst(_trailingZeros, '')
+      .replaceFirst(_trailingPoint, '');
 }
+
+final _trailingZeros = RegExp(r'0+$');
+final _trailingPoint = RegExp(r'\.$');
+
+/// Grams in an avoirdupois ounce.
+const gramsPerOunce = 28.349523125;
+
+/// Millilitres in a US fluid ounce.
+const millilitresPerFluidOunce = 29.5735295625;
 
 String _requiredString(Map<String, Object?> json, String key) {
   final value = json[key];

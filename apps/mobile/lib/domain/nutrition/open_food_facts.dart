@@ -142,9 +142,12 @@ NutrientVector nutrientVectorFromText(Map<NutrientId, String> text) {
 Map<NutrientId, String> nutrientTextFromVector(NutrientVector vector) {
   return <NutrientId, String>{
     for (final id in NutrientId.values)
-      if (vector[id].status == NutrientValueStatus.complete &&
-          vector[id].entered != null)
-        id: vector[id].entered!,
+      if (vector[id]
+          case NutrientAmount(
+            status: NutrientValueStatus.complete,
+            :final entered?,
+          ))
+        id: entered,
   };
 }
 
@@ -173,20 +176,26 @@ PlatformFoodRecord toPlatformFoodRecord(MappedOpenFoodFactsProduct product) {
 OpenFoodFactsNutrientStructure openFoodFactsNutrientStructure(
   Map<String, Object?> product,
 ) {
-  final nutrition = product['nutrition'];
-  if (nutrition is! Map) {
-    return OpenFoodFactsNutrientStructure.nutriments;
-  }
-  final aggregated = nutrition['aggregated_set'];
-  if (aggregated is! Map) {
-    return OpenFoodFactsNutrientStructure.nutriments;
-  }
-  final per = aggregated['per'];
-  final preparation = aggregated['preparation'];
-  if ((per == '100g' || per == '100ml') && preparation == 'as_sold') {
-    return OpenFoodFactsNutrientStructure.nutrition;
-  }
-  return OpenFoodFactsNutrientStructure.nutriments;
+  return _qualifyingAggregatedSet(product) == null
+      ? OpenFoodFactsNutrientStructure.nutriments
+      : OpenFoodFactsNutrientStructure.nutrition;
+}
+
+/// `nutrition.aggregated_set` when it is per 100 g or ml as sold, else `null`.
+Map<Object?, Object?>? _qualifyingAggregatedSet(Map<String, Object?> product) {
+  return switch (product) {
+    {
+      'nutrition': {
+        'aggregated_set': {
+              'per': '100g' || '100ml',
+              'preparation': 'as_sold',
+            } &&
+            final Map<Object?, Object?> aggregated,
+      },
+    } =>
+      aggregated,
+    _ => null,
+  };
 }
 
 enum OpenFoodFactsNutrientStructure { nutrition, nutriments }
@@ -200,8 +209,8 @@ enum OpenFoodFactsNutrientStructure { nutrition, nutriments }
 /// `0`, as Open Food Facts usually stores it, and a 13-digit code starting
 /// with `0` is also tried without it.
 List<String> barcodeCandidates(String raw) {
-  final code = raw.replaceAll(RegExp(r'[\s-]'), '');
-  if (!RegExp(r'^\d{6,18}$').hasMatch(code)) {
+  final code = raw.replaceAll(_barcodeSeparators, '');
+  if (!_barcodeDigits.hasMatch(code)) {
     return const <String>[];
   }
   return <String>[
@@ -219,7 +228,7 @@ List<String> barcodeCandidates(String raw) {
 String? buildFoodSearchMatch(String query) {
   final parts = query
       .toLowerCase()
-      .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
+      .split(_searchPartSeparators)
       .where((part) => part.isNotEmpty)
       .take(_maxSearchParts)
       .toList();
@@ -229,6 +238,9 @@ String? buildFoodSearchMatch(String query) {
   return parts.map((part) => '"$part"*').join(' ');
 }
 
+final _barcodeSeparators = RegExp(r'[\s-]');
+final _barcodeDigits = RegExp(r'^\d{6,18}$');
+final _searchPartSeparators = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
 const _maxSearchParts = 8;
 
 /// The `fields` every live request asks for, comma-joined. Both nutrition
@@ -253,22 +265,8 @@ String openFoodFactsProductUrl(String code) =>
 const bundleFormat = 'perennia-open-food-facts-bundle';
 const bundleFormatVersion = 1;
 
-/// The keys of a product line, in the order they are written.
-const bundleProductLineKeys = <String>[
-  'code',
-  'name',
-  'brand',
-  'isLiquid',
-  'servingLabel',
-  'servingSize',
-  'packageSize',
-  'nutrients',
-  'modifiedAt',
-  'scans',
-];
-
-/// One product line, without its newline. Every key is always present, in
-/// [bundleProductLineKeys] order, with no extra whitespace. A bundled product
+/// One product line, without its newline. Every key is always present, in the
+/// order written here, with no extra whitespace. A bundled product
 /// always has a scan count (the builder keeps only scanned products).
 String encodeBundleProductLine(MappedOpenFoodFactsProduct product) {
   final scans = product.scans;
@@ -401,43 +399,30 @@ class BundleHeader {
 // Mapping helpers.
 
 /// Each Nutrient's key in `nutrition.aggregated_set.nutrients` and its
-/// `_100g` keys in legacy `nutriments` (primary first, then aliases), with the
-/// legacy multiplier into the Nutrient's default unit. Energy is kilocalories
-/// only: `energy-kcal_value` is on the label's basis, which can be per
-/// serving, and kilojoules are not converted.
-const _nutrientKeys = <(NutrientId, String, List<String>, double)>[
-  (NutrientId.energy, 'energy-kcal', <String>['energy-kcal_100g'], 1),
-  (NutrientId.protein, 'proteins', <String>['proteins_100g'], 1),
-  (
-    NutrientId.carbohydrate,
-    'carbohydrates',
-    <String>['carbohydrates_100g'],
-    1,
-  ),
-  (NutrientId.sugar, 'sugars', <String>['sugars_100g'], 1),
-  (NutrientId.fat, 'fat', <String>['fat_100g'], 1),
-  (
-    NutrientId.saturatedFat,
-    'saturated-fat',
-    <String>['saturated-fat_100g'],
-    1,
-  ),
+/// `_100g` keys in legacy `nutriments` (primary first, then aliases). Energy is
+/// kilocalories only: `energy-kcal_value` is on the label's basis, which can be
+/// per serving, and kilojoules are not converted.
+const _nutrientKeys = <(NutrientId, String, List<String>)>[
+  (NutrientId.energy, 'energy-kcal', ['energy-kcal_100g']),
+  (NutrientId.protein, 'proteins', ['proteins_100g']),
+  (NutrientId.carbohydrate, 'carbohydrates', ['carbohydrates_100g']),
+  (NutrientId.sugar, 'sugars', ['sugars_100g']),
+  (NutrientId.fat, 'fat', ['fat_100g']),
+  (NutrientId.saturatedFat, 'saturated-fat', ['saturated-fat_100g']),
   (
     NutrientId.monounsaturatedFat,
     'monounsaturated-fat',
-    <String>['monounsaturated-fat_100g', 'mono-unsaturated-fat_100g'],
-    1,
+    ['monounsaturated-fat_100g', 'mono-unsaturated-fat_100g'],
   ),
   (
     NutrientId.polyunsaturatedFat,
     'polyunsaturated-fat',
-    <String>['polyunsaturated-fat_100g', 'poly-unsaturated-fat_100g'],
-    1,
+    ['polyunsaturated-fat_100g', 'poly-unsaturated-fat_100g'],
   ),
-  (NutrientId.fiber, 'fiber', <String>['fiber_100g', 'fibers_100g'], 1),
-  (NutrientId.sodium, 'sodium', <String>['sodium_100g'], 1000),
-  (NutrientId.cholesterol, 'cholesterol', <String>['cholesterol_100g'], 1000),
-  (NutrientId.caffeine, 'caffeine', <String>['caffeine_100g'], 1000),
+  (NutrientId.fiber, 'fiber', ['fiber_100g', 'fibers_100g']),
+  (NutrientId.sodium, 'sodium', ['sodium_100g']),
+  (NutrientId.cholesterol, 'cholesterol', ['cholesterol_100g']),
+  (NutrientId.caffeine, 'caffeine', ['caffeine_100g']),
 ];
 
 /// Mass units accepted in `nutrition.aggregated_set`, as powers of ten of a
@@ -451,42 +436,41 @@ const _gramExponentByUnit = <String, int>{
   'mcg': -6,
 };
 
-const _maxEnergyKcalPer100 = 900.0;
-const _maxGramsPer100 = 100.0;
-const _gramNutrientsCheckedForPlausibility = <NutrientId>[
-  NutrientId.protein,
-  NutrientId.carbohydrate,
-  NutrientId.sugar,
-  NutrientId.fat,
-  NutrientId.saturatedFat,
-  NutrientId.monounsaturatedFat,
-  NutrientId.polyunsaturatedFat,
-  NutrientId.fiber,
-];
+/// The most a value can be per 100 g or ml before the product is excluded as
+/// implausible.
+const _maxPer100 = <NutrientId, double>{
+  NutrientId.energy: 900,
+  NutrientId.protein: 100,
+  NutrientId.carbohydrate: 100,
+  NutrientId.sugar: 100,
+  NutrientId.fat: 100,
+  NutrientId.saturatedFat: 100,
+  NutrientId.monounsaturatedFat: 100,
+  NutrientId.polyunsaturatedFat: 100,
+  NutrientId.fiber: 100,
+};
 
 /// Reads every Nutrient from the one structure
 /// [openFoodFactsNutrientStructure] picks, never a mix, then drops negative
 /// values and formats the rest. The plausibility check runs on this text.
 Map<NutrientId, String> _nutrientText(Map<String, Object?> product) {
-  final values = switch (openFoodFactsNutrientStructure(product)) {
-    OpenFoodFactsNutrientStructure.nutrition => _aggregatedValues(product),
-    OpenFoodFactsNutrientStructure.nutriments => _nutrimentsValues(product),
-  };
+  final aggregated = _qualifyingAggregatedSet(product);
+  final values = aggregated == null
+      ? _nutrimentsValues(product)
+      : _aggregatedValues(aggregated);
   return <NutrientId, String>{
     for (final MapEntry(key: id, :value) in values.entries)
       if (value >= 0) id: formatNutrientEntered(value),
   };
 }
 
-Map<NutrientId, double> _aggregatedValues(Map<String, Object?> product) {
-  final nutrition = product['nutrition']! as Map;
-  final aggregated = nutrition['aggregated_set']! as Map;
+Map<NutrientId, double> _aggregatedValues(Map<Object?, Object?> aggregated) {
   final nutrients = aggregated['nutrients'];
   if (nutrients is! Map) {
     return const <NutrientId, double>{};
   }
   final values = <NutrientId, double>{};
-  for (final (id, key, _, _) in _nutrientKeys) {
+  for (final (id, key, _) in _nutrientKeys) {
     final entry = nutrients[key];
     if (entry is! Map || entry['source'] == 'estimate') {
       continue;
@@ -531,11 +515,13 @@ Map<NutrientId, double> _nutrimentsValues(Map<String, Object?> product) {
     return const <NutrientId, double>{};
   }
   final values = <NutrientId, double>{};
-  for (final (id, _, keys, multiplier) in _nutrientKeys) {
+  for (final (id, _, keys) in _nutrientKeys) {
     for (final key in keys) {
       final value = _number(nutriments[key]);
       if (value != null) {
-        values[id] = value * multiplier;
+        // Legacy values are in grams, except energy in kilocalories.
+        final unit = id.defaultUnit == NutrientUnit.kilocalorie ? 'kcal' : 'g';
+        values[id] = _convertUnit(value, unit, id.defaultUnit)!;
         break;
       }
     }
@@ -544,27 +530,16 @@ Map<NutrientId, double> _nutrimentsValues(Map<String, Object?> product) {
 }
 
 bool _isImplausible(Map<NutrientId, String> text) {
-  final energy = text[NutrientId.energy];
-  if (energy != null && double.parse(energy) > _maxEnergyKcalPer100) {
-    return true;
-  }
-  for (final id in _gramNutrientsCheckedForPlausibility) {
-    final grams = text[id];
-    if (grams != null && double.parse(grams) > _maxGramsPer100) {
-      return true;
-    }
-  }
-  return false;
+  return text.entries.any(
+    (entry) => switch (_maxPer100[entry.key]) {
+      final max? => double.parse(entry.value) > max,
+      null => false,
+    },
+  );
 }
 
-String? _firstBrand(Object? brands) {
-  final text = _string(brands);
-  if (text == null) {
-    return null;
-  }
-  final first = text.split(',').first.trim();
-  return first.isEmpty ? null : first;
-}
+String? _firstBrand(Object? brands) =>
+    _string(_string(brands)?.split(',').first);
 
 /// Writes an integral size as an integer (`170`, not `170.0`).
 num? _compactNumber(double? value) {
@@ -622,27 +597,25 @@ _Quantity? _quantity({
   if (text == null) {
     return null;
   }
-  final match = RegExp(r'(-?\d+(?:[\.,]\d+)?)\s*([A-Za-z ]+)').firstMatch(text);
+  final match = _quantityText.firstMatch(text);
   if (match == null) {
     return null;
   }
-  final fallbackValue = _number(match.group(1));
-  final fallbackUnit = match.group(2);
-  if (fallbackValue == null || fallbackUnit == null) {
-    return null;
-  }
-  return _quantityFromValue(fallbackValue, fallbackUnit);
+  return _quantityFromValue(_number(match.group(1))!, match.group(2)!);
 }
 
+final _quantityText = RegExp(r'(-?\d+(?:[\.,]\d+)?)\s*([A-Za-z ]+)');
+final _whitespaceRun = RegExp(r'\s+');
+
 _Quantity? _quantityFromValue(double value, String unit) {
-  if (!value.isFinite || value <= 0) {
+  if (value <= 0) {
     return null;
   }
   final normalizedUnit = unit
       .trim()
       .toLowerCase()
       .replaceAll('.', '')
-      .replaceAll(RegExp(r'\s+'), ' ');
+      .replaceAll(_whitespaceRun, ' ');
   return switch (normalizedUnit) {
     'g' || 'gram' || 'grams' => (baseQuantity: value, isLiquid: false),
     'kg' || 'kilogram' || 'kilograms' => (
@@ -650,7 +623,7 @@ _Quantity? _quantityFromValue(double value, String unit) {
         isLiquid: false
       ),
     'oz' || 'ounce' || 'ounces' => (
-        baseQuantity: value * 28.349523125,
+        baseQuantity: value * gramsPerOunce,
         isLiquid: false
       ),
     'ml' || 'milliliter' || 'milliliters' || 'millilitre' || 'millilitres' => (
@@ -662,7 +635,7 @@ _Quantity? _quantityFromValue(double value, String unit) {
         isLiquid: true
       ),
     'fl oz' || 'floz' || 'fluid ounce' || 'fluid ounces' => (
-        baseQuantity: value * 29.5735295625,
+        baseQuantity: value * millilitresPerFluidOunce,
         isLiquid: true
       ),
     _ => null,
