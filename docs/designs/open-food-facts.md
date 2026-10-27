@@ -1139,7 +1139,8 @@ Omit to list the bundled USDA catalog; with `source=openFoodFacts`, omitting it
 returns no foods." The route description, the `source` parameter's description
 and the `attribution` description, which said Open Food Facts was not
 available, are rewritten to describe both sources and that the server never
-calls Open Food Facts; the new fields carry descriptions of their own.
+calls Open Food Facts; the new fields carry descriptions of their own, and the
+existing `id` field gains one (the barcode, for Open Food Facts).
 
 On the server, a new module `apps/server/src/open-food-facts-bundle.ts` reads the
 bundle once, on the first Open Food Facts request, synchronously: gunzip, split,
@@ -2405,6 +2406,10 @@ Conventions in this plan:
         with the rules in [Agent surface](#agent-surface), using
         `barcodeCandidates` from file 8. An undefined query returns `[]`.
     *   `export const OPEN_FOOD_FACTS_DISCLAIMER`, the Goal 7 text.
+    *   The load rejects a nutrient key that is not a Nutrient id, using
+        `isNutrientId`, a small export added to `apps/server/src/agent-validation.ts`
+        on top of its existing `NutrientIdSchema` (importing the id list from
+        `agent-foods.ts` would be circular).
 
 ##### 39. `apps/server/src/agent-foods.ts` (Modify)
 
