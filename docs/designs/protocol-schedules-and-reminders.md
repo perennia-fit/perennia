@@ -2,7 +2,7 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2)
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3)
 
 --------------------------------------------------------------------------------
 
@@ -222,6 +222,33 @@ Building Phase 2 raised more. They are settled the same way:
 
 The decisions that change what Phase 2 built land as file 34a.
 
+Building file 34a and Phase 3 raised more. They are settled the same way:
+
+*   which members an earlier start move copies, ties on the earliest date,
+    and what a copy stores → D1;
+*   the Protocol-row comparison and where a default anchor is moved → D1
+    and D4;
+*   a Protocol tombstoned by undo, and the issues reported beside
+    `protocol_archived` → D6;
+*   where the Agent path sorts times and weekdays → file 29;
+*   the Planned list: when "Log all planned" shows, what tapping a Logged
+    row does, a future day in the log sheet, its date field, the day
+    boundary, and how an edited Dose's time reads → D6;
+*   the clock, the one-shot read and `today` → files 35 and 37;
+*   which day the Compound list logs on → file 38.
+
+The decisions that change what file 34a and Phase 3 built land as file
+40a.
+
+One question is open. Matching fills the timed slot nearest a Dose's time
+(D6), and a Dose logged from the Planned list on today is timed now. So a
+Dose logged at 12:00 against a 09:00 row fills a 13:00 slot instead, and
+the 09:00 row stays "Pending". "Log all planned" does the same: at 12:00 it
+logs the due 09:00 dose, which then fills 13:00. Phase 3 follows D6 as
+written. The fix changes either matching (and its vectors) or the time a
+planned Dose is logged at, so it is decided before Phase 4, whose
+Consistency view shows which slot each Dose filled.
+
 ## Critical User Journeys (CUJs)
 
 ### CUJ 1: Morning stack, one reminder
@@ -423,6 +450,24 @@ own id. No version is ever edited in place.
         Compound added mid-course keeps its own first date, so moving the
         course's start doesn't turn days before it was added into "Not
         logged".
+    *   **A member removed before it planned anything** gets no copy. That
+        is a member whose `archived_on` is before its earliest version, such
+        as one added while the start was still ahead and removed before the
+        start came. It planned no day, so it was not planned from the old
+        start, and a copy would turn days that were never in its plan into
+        "Not logged". Its `archived_on` is read as stored before the save,
+        so a member the same save removes still gets its copy. (Settled
+        after file 34a's build, which copies such a member; file 40a.)
+    *   **Known limit: a later move, then an earlier one.** If the start
+        moves later past a member added mid-course, and then moves earlier
+        again, that member's earliest version is now on or before the old
+        start, so it gets a copy, and its days before it was added read
+        "Not logged". Nothing stored tells it apart from a member that was
+        planned from the start: a member planned from an earlier start has
+        the same shape. Telling them apart would need a new column on the
+        member row, which this spec doesn't add. The case needs two start
+        moves in opposite directions around a mid-course addition, so it
+        is accepted.
     *   **Within one save.** Copies are taken from the rows and versions
         stored before the save. A member the same save removes gets its
         copy like any stored member, and is then archived. A member the same
@@ -432,9 +477,13 @@ own id. No version is ever edited in place.
         and an edit on or after the latest, so a copy never shares a date
         with an edit, and the new start never already holds a version of a
         member that gets a copy.
-    *   The copy's rule and amount are the earliest version's. A default
-        anchor in it needs no rewriting, because it is read as the start
-        (below); a writer may still store the new start there.
+    *   The copy's rule and amount are the earliest version's. When
+        several versions share the earliest date, the copy is of the one in
+        effect on it, the larger id, as "Which version applies" reads it. A
+        default anchor in the copy needs no rewriting, because it is read as
+        the start (below). Both writers still store the new start there, as
+        every write of theirs stores the start of the save, and that plans
+        the same as keeping the source's date.
 *   **Default anchors follow the start.** An every-N or cycle anchor left at
     its default (`anchor_is_default: true`) means "the Protocol's start",
     and is read that way when planning (D4), on every version. Moving the
@@ -456,7 +505,10 @@ own id. No version is ever edited in place.
     none, and comparing with it would insert a copy of the current version.
     Two versions are the same when their decoded rules and amounts are
     equal, ignoring the stored date of a default anchor, which is never
-    read. Agent writes don't follow this rule (D6).
+    read. The app compares the Protocol row the same way: a stored `period`
+    whose default cycle anchor holds another date (an Agent's write, say)
+    equals the save's period, so an unchanged save leaves the row alone.
+    Agent writes don't follow this rule (D6).
 *   **No Schedule.** A member can have no Schedule, as today. A member with no
     versions, or whose version that applies has the rule kind `unscheduled`,
     plans nothing, and reads "Not planned" with the reason `no_schedule`.
@@ -651,9 +703,12 @@ an anchor after the start.
 for a cycle and for every N days, whatever date is stored with it. Every
 reader does this: `planDays` and `endDateForDoseCount` in the core, and the
 editor, which shows the start. The stored date is kept so a row is still a
-complete rule on its own, and is whatever its writer stored: the app stores
-the start at the time of the save, and a re-dated copy (D1) may keep its
-source's date. Nothing plans from it. An anchor stored with
+complete rule on its own, and is whatever its writer stored. The app stores
+the start at the time of the save, in every version and period it writes.
+On a start move, both writers store the new start in a copy's default
+every-N anchor (D1) and in the period's default cycle anchor. The Agent path
+moves a default anchor only on a start move; on any other write it stores
+the anchor as sent. Nothing plans from the stored date. An anchor stored with
 `anchor_is_default: false` is read as stored. This is what lets a start move
 leave every version untouched (D1).
 
@@ -780,7 +835,10 @@ lists those Doses by date without a status label.
 
 Filling by nearest time means a Dose at 20:50 fills a 21:00 slot, not an
 unfilled 09:00 one. So the 21:00 reminder doesn't fire after the Dose, and the
-morning reads "Not logged", which is what happened. The Protocol tag only
+morning reads "Not logged", which is what happened. The same rule can
+surprise when a Dose is logged from the Planned list at the current time:
+it may fill a later slot than the row that was tapped. That is the one open
+question (see Open Questions). The Protocol tag only
 records which Protocol a Dose was logged under; it never decides whether the
 Dose counts. A Template Link works the same way in Training: it records
 provenance, never adherence.
@@ -815,30 +873,76 @@ of a 20 mg/mL Compound is 2 mg; it is computed by `resolveDoseActiveMass` in
 computes this from the Dose and the slot; the core has no field for it.
 
 **The Planned list** sits at the top of the Protocol Day view, inside the lock.
-It is hidden when the day has nothing planned.
+It is hidden when the day has nothing planned. It has no heading of its own:
+its Protocol group headers and row labels say what it is.
 
 *   **Rows.** Each row is one slot, grouped under its slot's Protocol. It shows
     the Compound, the planned time (or "Any time"), the amount, and one label:
     "Logged" when filled, "Pending" when unfilled today, "Not logged" when
-    unfilled on a past day.
-*   **Tapping a row** opens the log sheet prefilled with the planned amount and
-    route, tagged with the row's Protocol. On today, the time is now. On a past
-    day, it is the row's planned time on that date, or 12:00 for an untimed
-    row. Both date and time are editable.
-*   **"Log all planned"** appears only on today's Protocol Day. It logs every
-    due unfilled planned dose: timed ones whose time is at or before now, and
-    untimed ones. Each is timed now and tagged with its row's Protocol. All are
-    written in one transaction and one Batch (`dueUnfilled` in the core picks
-    the rows). Past days have no bulk action.
-*   **The log sheet** gains a date field next to its time (CUJ 7). Opened
-    outside the Planned list, it defaults to now on today, or 12:00 on a past
-    Protocol Day, and the amount still prefills from the last Dose of that
-    Compound. It no longer prefills the time from the last Dose; that default
-    recorded times that never happened. When an existing Dose is edited, its
-    date may change; its local date and offset are then frozen again from the
-    new time.
+    unfilled on a past day. Groups are ordered by Protocol name, then id.
+    Within a group, rows are ordered by planned time (untimed last), then
+    Compound name, then Compound id, then slot.
+*   **Tapping a "Pending" or "Not logged" row** opens the log sheet
+    prefilled with the planned amount and route, tagged with the row's
+    Protocol. On today, the time is now. On a past day, it is the row's
+    planned time on that date, or 12:00 for an untimed row. Both date and
+    time are editable.
+*   **Tapping a "Logged" row** opens the Dose that fills it (its `doseId` in
+    `fills`) for edit, as tapping that Dose in the day's log does. A new log
+    from a filled row would record a second Dose of something already
+    taken, which is the duplicate the row exists to prevent. An extra Dose
+    is still logged from the Compound list. (Phase 3 opens a new log here,
+    reading the old wording "tapping a row" literally; file 40a changes it.)
+*   **"Log all planned"** appears only on today's Protocol Day, while at
+    least one row reads "Pending". It logs every due unfilled planned dose:
+    timed ones whose time is at or before now, and untimed ones. Each is
+    timed now and tagged with its row's Protocol. All are written in one
+    transaction and one Batch (`dueUnfilled` in the core picks the rows).
+    Past days have no bulk action.
+    *   The button follows the labels the user sees, not what is due, so
+        it doesn't appear and disappear as planned times pass. Before the
+        first planned time (07:00 with everything planned for 09:00), a
+        tap finds nothing due, writes nothing and shows nothing.
+    *   It reads today's stored plan when tapped, not the rendered rows.
+    *   It can't log twice: the button is disabled while its write runs,
+        and a second call made before the first finishes shares the first
+        call's result instead of reading the plan again.
+    *   A write that fails shows no message, the same as the log sheet's
+        Save; showing one needs new copy.
+*   **The day boundary.** "Today" is read when the day is built, and the
+    view rebuilds when local midnight has passed, checked once a minute
+    and on resume. Without it, a view left open overnight would keep
+    yesterday's "Pending" rows and its "Log all planned" button. The
+    selected Protocol Day stays where it was: the day that was today now
+    reads as a past day.
+*   **The log sheet** gains a date field (CUJ 7). The date and the time are
+    stacked as two full-width rows, each a 48 dp target that opens its
+    picker, rather than side by side.
+    *   Opened outside the Planned list, it defaults to now on today, or
+        12:00 on a past Protocol Day, and the amount still prefills from
+        the last Dose of that Compound. It no longer prefills the time from
+        the last Dose; that default recorded times that never happened.
+    *   A future Protocol Day (reached from the Compound list, file 38) is
+        treated as today: the time defaults to now, never to a moment that
+        hasn't happened.
+    *   The date picker ends at today, or at the edited Dose's own date
+        when that is later, so it never offers a day still to come.
+    *   When an existing Dose is edited, the sheet shows its date and time
+        at its frozen `timezoneOffsetMinutes` (D2), in the device's zone
+        only when the offset is null. Its date and time may change. A
+        changed date or time is read at that same offset, which the Dose
+        keeps, and its local date is frozen again from the new time. An
+        edit corrects when the Dose was taken where it was taken; reading
+        the change in the device's current zone would move a Dose logged
+        abroad by the difference between the two zones. An untouched Save
+        changes neither. (Phase 3 shows and reads the time in the device's
+        current zone; file 40a changes it.)
 *   **A future Protocol Day** shows its Planned list with times and amounts,
     but no log action and no status label.
+*   **Day Status labels.** Phase 3 adds the strings for the seven Day
+    Statuses and the five not-planned reasons, but the Planned list shows
+    only its three row labels. Phase 4's Consistency view is the first
+    surface to show the others.
 
 **The Consistency view** opens from a Compound's row in the Compound list, or
 from a Protocol, where it shows a tab per member. For a date range (default:
@@ -935,7 +1039,24 @@ amounts.
             No path restores an archived row (D1).
         *   A write that names an archived Protocol is refused with
             `protocol_archived`, whatever it sends, because the app can't
-            edit an archived Protocol either (D1).
+            edit an archived Protocol either (D1). "Archived" means the
+            stored row has both `deleted_at` and `archived_on`.
+        *   A write that names a Protocol tombstoned by undo (`deleted_at`
+            with no `archived_on`) is refused with
+            `archived_row_not_restorable`, whatever `archived` it sends.
+            Undo means the row never existed (D1), so it isn't "archived",
+            but it can't be edited either: a re-sent `archived: true` must
+            not change its fields or move its start.
+        *   A refused Protocol gets no start-move copies. The write's
+            member and Schedule checks still run beside the refusal, so one
+            response lists every problem: `archived: false` on an archived
+            member, say, or a Schedule naming no member. A write that
+            re-sends the Protocol's members with `archived: true` and no
+            Schedules reports only the Protocol's refusal.
+        *   A member tombstoned by undo and sent with `archived: true` is
+            accepted as Phase 2 built it. It keeps its stamp and its null
+            `archived_on`, so it stays a tombstone that every reader
+            ignores.
         *   Reads don't carry an `archived` field. `archivedOn` is non-null
             exactly when the row is archived, and is the one place that says
             so. A read is not a write shape anyway: `versions`,
@@ -955,8 +1076,8 @@ amounts.
     | `today_out_of_range` | `today` is more than one day from the server's UTC date (field `today`) |
     | `schedule_version_exists` | a Schedule id already exists for this account: versions are insert-only |
     | `schedule_member_not_found` | a Schedule's `protocolCompoundId` is not a member of the Protocol it is listed under, in this request or already stored (a row tombstoned by undo doesn't count) |
-    | `archived_row_not_restorable` | `archived: false`, or no `archived`, for a member that is already archived |
-    | `protocol_archived` | the write names a Protocol that is already archived (file 34a) |
+    | `archived_row_not_restorable` | `archived: false`, or no `archived`, for a member that is already archived; or any write naming a Protocol tombstoned by undo |
+    | `protocol_archived` | the write names a Protocol that is already archived (file 34a); one tombstoned by undo gets `archived_row_not_restorable` instead |
     | `rule_format`, `period_format` | the codec refuses a `rule` or `period` the D7 validators accepted. Unreachable while the two agree; it is a guard so a drift between them refuses the write instead of storing a row no reader can plan |
 
     An accepted write that drew soft warnings (such as `times_many`) returns
@@ -2157,10 +2278,11 @@ This entry is lettered so the numbers of every later file stay as they were.
             `YYYY-MM-DD` dates (`isValidLocalDate` from file 12), so a bad
             bound is a 400 before file 13 runs (D7).
     *   **`prepareAgentProtocolBatchWrite`** stays pure. It validates with
-        file 13, checks the `today` bound (`today_out_of_range`), and
-        encodes each `rule` and `period` through the codecs (`rule_format`,
-        `period_format`). A `period` with no cycle and no Pause is stored as
-        null. Soft warnings go to the response's top-level `warnings`.
+        file 13, checks the `today` bound (`today_out_of_range`), sorts each
+        rule's `times` and `weekdays` (D7), and encodes each `rule` and
+        `period` through the codecs (`rule_format`, `period_format`). A
+        `period` with no cycle and no Pause is stored as null. Soft warnings
+        go to the response's top-level `warnings`.
     *   **The store's `writeProtocolBatch`** does everything that needs
         stored data, inside its transaction, so REST and MCP share it:
         *   it reads the stored Protocols, members and versions the request
@@ -2174,16 +2296,18 @@ This entry is lettered so the numbers of every later file stay as they were.
             `archived_row_not_restorable`;
         *   it inserts re-dated copies on a start move, from what was stored
             before the request, before dating the request's versions (D1);
-        *   it assigns each Schedule version's `effective_from` by D1;
-        *   it sorts each rule's `times` and `weekdays` before inserting
-            (D7).
+        *   it assigns each Schedule version's `effective_from` by D1.
+
+        The sorting happens in `prepareAgentProtocolBatchWrite`, before the
+        rule is encoded, not in the store. The stored rule is the same
+        either way, and the pure step is where the rule is still an object.
 
         As built in Phase 2, the copies differ from D1 (it copies on a later
         move, copies every member that undo didn't tombstone, skips a copy
         whose source already starts on the new date, and drops a copy when
         an edit is dated on the same day), an archived Protocol can still be
         edited, and `rule` and `period` are stored as objects. File 34a
-        brings all three to this spec.
+        brought all three to this spec.
     *   **Reads** return the new shape, with `versions` and `currentVersion`
         (D6).
     *   **Doses:**
@@ -2427,6 +2551,34 @@ plan these rules shape.
         *   an Agent Schedule equal to the current version is inserted (D6);
         *   `rule` and `period` are stored as JSON text, and a row stored as
             an object still reads.
+*   **As built.** File 34a's build made these choices where the entry above
+    was silent. Each is now stated where it applies:
+    *   `scheduleDaysFromStart` and `protocolCycleFromStart`, which read a
+        default anchor as the start, are public in `protocol_plan_days.dart`.
+        `planDays`, the repository and the editor share them, so D4 has one
+        reading in Dart. The repository's private
+        `_plannedProtocolCompoundQuery` holds the "every member row except
+        undo tombstones" predicate the start move uses.
+    *   The app's Protocol-row comparison, `_canonicalPeriodColumn`, reads a
+        default cycle anchor as the start too (D1, "Saves that change
+        nothing").
+    *   A copy, and the period on any start move, store the new start in a
+        default anchor (D1, D4). A tie on the earliest date copies the
+        larger id (D1).
+    *   A copy of a row an Agent stored as an object in Phase 2 is written
+        as JSON text. The source row is left as it is (Data shapes).
+    *   The Agent path sorts in `prepareAgentProtocolBatchWrite` (file 29).
+    *   A Protocol tombstoned by undo is refused with
+        `archived_row_not_restorable`, and the member and Schedule checks
+        run beside a Protocol's refusal (D6).
+    *   The existing vector `start-moved-later-past-an-edit` was left as
+        it was. Its input still plans correctly, but its `note` still calls
+        `ver-x-3` a copy, which no writer makes any more. File 40a rewrites
+        the note.
+    *   Two review findings were left as spec gaps, and are now settled in
+        D1: a member archived before its earliest version (file 40a stops
+        copying it), and a mid-course member after a later move and then an
+        earlier one (a known limit).
 
 #### Phase 3: the Planned list
 
@@ -2442,9 +2594,30 @@ plan these rules shape.
     *   **What it builds:** `PlanProtocol`s and `PlanDose`s from Drift. It
         leaves out rows tombstoned by undo, and keeps archived rows with their
         `archived_on`.
-    *   **Phase 3 adds** `watchPlannedDay(localDate) -> Stream<PlannedDay>`.
-        `PlannedDay` holds the day's `DayStatus`es and `PlanDay`s, plus each
-        Compound's and Protocol's name, for the rows.
+    *   **Phase 3 adds** `watchPlannedDay(localDate, {required today})
+        -> Stream<PlannedDay>`. `PlannedDay` holds the day's `DayStatus`es
+        and `PlanDay`s, plus each Compound's and Protocol's record, for the
+        rows.
+        *   `today` is the caller's local date, read from its clock. The
+            repository never reads a clock, and a required parameter means
+            no caller can forget it. It decides "Pending" against "Not
+            logged" and whether the day has Day Statuses at all.
+        *   `PlannedDay` also carries the day's `ProtocolDayRecord`: the
+            Doses its Day Statuses were matched against. The stream reads
+            them through `ProtocolsRepository.watchProtocolDay`, the same
+            watch the day's log shows, so the view reads one stream and the
+            log and the Planned list can't disagree for a frame.
+        *   The stream re-emits when a Protocol, Protocol Member, Schedule
+            Version, Compound or Dose changes. It doesn't re-emit when
+            midnight passes; the view rebuilds with a new `today` instead
+            (D6, "The day boundary").
+        *   A future day has no Day Statuses. Its rows come from the same
+            matching run over its PlanDays with no Doses, so a slot is
+            numbered the same way on every day.
+    *   **Phase 3 also adds** a one-shot `plannedDay(localDate, {required
+        today}) -> Future<PlannedDay>`, the same read once. "Log all
+        planned" uses it to act on what is stored when it runs, not on a
+        rendered snapshot.
 
 ##### 36. `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart` (Modify)
 
@@ -2466,12 +2639,33 @@ plan these rules shape.
     takes the rows from `dueUnfilled(…, today, now)` and calls
     `ProtocolsRepository.logDoses` once, with each row's planned amount,
     unit and route, tagged with its Protocol and timed now.
+    *   **The clock.** A new `protocolsClockProvider`
+        (`Provider<DateTime Function()>`, `DateTime.now` by default) is the
+        one clock of the Protocols logging surfaces, injectable in tests
+        like `syncNowProvider`. The selected Protocol Day's default, the
+        log sheet's time default and "Log all planned" all read it.
+    *   **The day boundary.** The controller keeps the `today` its build
+        read. `refreshIfDayChanged()` rebuilds when the clock's local date
+        differs from it; the view calls it once a minute and on resume
+        (D6).
+    *   **"Log all planned"** reads today's plan with the one-shot
+        `plannedDay` (file 35). An empty `dueUnfilled` writes nothing. A
+        call made while another is in flight shares that call (D6).
 
 ##### 38. `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart` (Modify, Phase 3 part)
 
 *   **Proposed Changes**: Opens `LogDoseSheet` (~342) with `initialDate` set
-    to the selected Protocol Day (`selectedProtocolDayProvider`), so a past
-    day defaults to 12:00 on that date.
+    to the Protocol Day the list was opened for, so a past day defaults to
+    12:00 on that date.
+    *   **Which day.** Opened from the Protocol Day view's add button, that
+        is the selected Protocol Day. Opened from Library or Settings, it is
+        today. The list reached from Library or Settings is the 2-tap repeat
+        path, and the selected Protocol Day outlives the view that set it:
+        logging on whatever day was last browsed would back-date a Dose
+        the user means to log now.
+    *   Phase 3 reads `selectedProtocolDayProvider` on every route, so the
+        list from Library or Settings opens on the last browsed day. File
+        40a changes it.
 
 ##### 39. `apps/mobile/lib/l10n/app_en.arb` and generated `app_localizations*.dart` (Modify/Regenerate)
 
@@ -2482,7 +2676,9 @@ plan these rules shape.
     *   the five not-planned reasons: "Not scheduled today", "As needed",
         "No schedule", "Removed" and "Outside the Protocol's dates".
 
-    No string uses a word D6 bans.
+    No string uses a word D6 bans. The Planned list has no heading string
+    (D6). The Day Status and reason strings land in Phase 3 but nothing
+    shows them until Phase 4 (file 41).
 
 ##### 40. Tests (Create/Modify)
 
@@ -2494,7 +2690,11 @@ plan these rules shape.
     *   two-tap logging from a row;
     *   the date field;
     *   labels present alongside color;
-    *   contrast in both themes.
+    *   contrast in both themes;
+    *   a double tap on "Log all planned" logs the due rows once, and
+        moving the clock past midnight turns today's rows into "Not
+        logged" and removes the bulk action (both on a real in-memory
+        database, through `protocolsClockProvider`).
 *   `apps/mobile/test/features/protocols/log_dose_sheet_test.dart` (Modify):
     the prefill rules on today, past and future days, and a date change on
     edit.
@@ -2503,6 +2703,64 @@ plan these rules shape.
     Batch is either fully applied or absent, and the Planned list matches.
 *   `apps/mobile/test/features/protocols/compound_list_screen_test.dart`
     (Modify): the sheet opens on the selected Protocol Day.
+
+##### 40a. Rules settled after file 34a's and Phase 3's builds (Modify)
+
+This entry is lettered so the numbers of every later file stay as they were.
+It changes what file 34a and Phase 3 built, so it lands as its own pull
+request after Phase 3's. Nothing in Phase 4 depends on it, but it should
+land before Phase 4's Consistency view shows these Doses.
+
+*   **Files**:
+    *   `apps/mobile/lib/data/repositories/training_repositories.dart`:
+        *   `_redateVersionsForStartMove` skips a member whose
+            `archived_on`, as stored before the save, is before its earliest
+            version (D1, "A member removed before it planned anything").
+        *   `editDose`: when the time changes on a Dose with a
+            `timezoneOffsetMinutes`, the new time is read at that offset,
+            which is kept, and only the local date is frozen again from it.
+            The timezone label is kept too. A Dose with a null offset is
+            frozen again from the device's zone, as today (D6).
+    *   `apps/server/src/agent-protocols.ts`: the start-move copies in
+        `finalizeProtocolPlanRows` skip the same members.
+    *   `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart`:
+        *   a "Logged" Planned list row opens `LogDoseSheet.edit` on the
+            Dose that fills it, found in the `PlannedDay`'s
+            `ProtocolDayRecord` by its `doseId`. "Pending" and "Not logged"
+            rows keep opening a new log (D6);
+        *   `LogDoseSheet.edit` shows and edits the Dose's date and time at
+            its frozen offset, and the day's Dose rows show their time the
+            same way, so a row and its edit sheet agree (D2, D6). A Dose
+            with a null offset reads in the device's zone, as today.
+    *   `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart`:
+        `CompoundListScreen` gains an optional `protocolDay`. The Protocol
+        Day view's add button passes the selected Protocol Day. Library and
+        Settings pass nothing, and the sheet then opens on today (file 38).
+    *   `packages/golden-vectors/vectors/m36-protocol-plan.json`: the
+        `note` of `start-moved-later-past-an-edit` says that `ver-x-3` is
+        an equal version dated on the new start, as a writer before file
+        34a or an Agent could store, and that it plans the same as
+        `start-moved-later-needs-no-copy`. The input and expected output
+        don't change.
+*   **Tests:**
+    *   `apps/mobile/test/features/protocols/protocols_repository_test.dart`:
+        moving the start earlier gives no copy to a member archived before
+        its earliest version, and still gives one to a member the same save
+        removes; editing the time of a Dose logged at another offset keeps
+        that offset and freezes the local date from it.
+    *   `apps/server/test/agent-protocols.test.mjs`: the same start-move
+        case through the Agent write.
+    *   `apps/mobile/test/features/protocols/protocols_day_view_test.dart`:
+        tapping a "Logged" row opens that Dose for edit, and saving it adds
+        no Dose; a Dose logged at another offset shows its own clock time.
+    *   `apps/mobile/test/features/protocols/log_dose_sheet_test.dart`: the
+        edit sheet shows a Dose's time at its frozen offset.
+    *   `apps/mobile/test/features/protocols/compound_list_screen_test.dart`:
+        opened as from Library after browsing a past day, the sheet opens on
+        today; opened from the Protocol Day view, on the selected day.
+*   **Not in this entry:** the open question on nearest-time matching and
+    logging at the current time (Open Questions). It is decided before
+    Phase 4, and its changes, if any, get their own entry.
 
 #### Phase 4: the Consistency view
 
