@@ -183,7 +183,31 @@ class FoodReferenceDatabase extends _$FoodReferenceDatabase {
   /// Keeps a product the user opened or scanned. The row always becomes
   /// `online`; its values are replaced only by a copy with a later
   /// `modified_at`.
-  Future<void> keepProduct(OpenFoodFactsProductsCompanion row) {
+  ///
+  /// While the install holds the write lock this waits, within the same
+  /// 5-second window as the busy timeout. The busy timeout alone is not
+  /// enough: a writer that is waiting when the install commits gets
+  /// SQLITE_BUSY at once (its snapshot went stale), which SQLite's busy
+  /// handler does not retry, so the write is tried again here.
+  Future<void> keepProduct(OpenFoodFactsProductsCompanion row) async {
+    final deadline = DateTime.now().add(_busyWindow);
+    while (true) {
+      try {
+        return await _keepOnce(row);
+      } on SqliteException catch (error) {
+        if (error.resultCode != _sqliteBusy ||
+            DateTime.now().isAfter(deadline)) {
+          rethrow;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
+  }
+
+  static const _busyWindow = Duration(seconds: 5);
+  static const _sqliteBusy = 5;
+
+  Future<void> _keepOnce(OpenFoodFactsProductsCompanion row) {
     final companion = row.copyWith(origin: const Value(originOnline));
     return transaction(() async {
       await into(openFoodFactsProducts).insert(
