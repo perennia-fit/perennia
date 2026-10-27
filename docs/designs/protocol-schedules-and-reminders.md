@@ -1415,14 +1415,32 @@ so both languages sort them the same way.
 In Dart, the decoders of the amount-carrying shapes (Schedule Version,
 planned dose and fill) also reject a `unit` or `route` that isn't in the Dose
 registries (`DoseUnit`, `DoseRoute`). TypeScript carries both as strings, and
-the server's write path judges them through `amount_required` (D7). The
-codecs don't range-check: how many times, or how long a cycle, is D7's job.
+the server's write path judges them through `amount_required` (D7).
 Dart throws a `FormatException`; TypeScript throws `ProtocolPlanCodecError`.
 
-**A plan period under one day.** An every-N rule with N < 1, or a cycle whose
-on and off days sum to less than 1, can't come from validated data. Where the
-core meets one (`planDays`, `endDateForDoseCount`), it throws a `RangeError`
-rather than planning on a division by zero.
+**Plannability and ceilings.** The decoders also reject what the core can't
+plan safely, so a synced row that never passed D7 can neither divide by zero
+nor make the core build an unbounded list:
+
+*   every N days with N below 1 or above `maxEveryNDays` (365);
+*   an untimed count below 1 or above `maxUntimedCount` (12);
+*   a timed rule with no times, or more than `maxTimesPerDay` (12);
+*   a cycle whose on or off period is below 0 or above
+    `maxCycleLengthDays` (3650), or whose on and off days sum to less than 1.
+
+The ceilings are D7's own limits, defined once per language next to the
+codecs (`ProtocolPlanValidationLimits` in `protocol_plan.dart`,
+`PROTOCOL_PLAN_VALIDATION_LIMITS` in `protocol-plan.ts`) and re-exported by
+the validators. The lower bounds stay looser than D7's: N = 1 decodes, and
+`every_n_range` rejects it at write time. Every other range check is D7's.
+The same ranges hold where the core is entered without a decoder: the Dart
+constructors (`EveryNDaysScheduleDays`, `TimedScheduleRule`,
+`UntimedScheduleRule`, `ProtocolCycle`) throw an `ArgumentError` in every
+build, and TypeScript's `planDays` runs each Protocol's period and each
+version's rule through the decoders once per call. The TypeScript encoders
+run their input through the decoder too, so only known keys are stored.
+With these ceilings, `endDateForDoseCount` visits at most about 51,000 days
+per repeat (a weekdays rule on a 3650-on, 3649-off cycle).
 
 **Vector case shapes.**
 
@@ -1559,10 +1577,13 @@ files, so stage a new runner before running the gate locally.
     with the process timezone set to `America/Sao_Paulo` and
     `Europe/Lisbon` through the `TZ` environment variable, under
     `flutter test`. A process can't change its own zone, so the test runs
-    its assertions in its own process, then re-runs this file once per zone
-    as a child `flutter test` process with `TZ` set. Each child first
-    asserts that its zone took effect, so a platform that ignores `TZ` fails
-    rather than passing without testing anything.
+    its checks in its own process, then runs them again once per zone, in
+    plain Dart VM children started concurrently with `TZ` set. The checks
+    live in `test/domain/protocol_day_date_dst_checks.dart`, which imports
+    nothing from Flutter. The children use the SDK's own `dart` (found
+    through `FLUTTER_ROOT`), not one on PATH. Each child first asserts that
+    its zone took effect, so a platform that ignores `TZ` fails rather than
+    passing without testing anything.
 
 ##### 11. `apps/mobile/test/domain/golden_vector_ownership_test.dart` (Modify)
 
