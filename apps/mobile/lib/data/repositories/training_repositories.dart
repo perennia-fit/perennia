@@ -3833,6 +3833,40 @@ class NutritionRepository {
     return portionJson == null ? null : Portion.fromJsonString(portionJson);
   }
 
+  /// The Last Portion of each of [foodIds] from [foodSource], in one query;
+  /// a food never logged with a Portion is absent.
+  Future<Map<String, Portion>> lastPortionsForFoods({
+    required List<String> foodIds,
+    required FoodSource foodSource,
+  }) async {
+    if (foodIds.isEmpty) {
+      return const <String, Portion>{};
+    }
+    final rows = await (_database.select(_database.foodEntries)
+          ..where(
+            (row) =>
+                row.deletedAt.isNull() &
+                row.entryKind.equals(FoodEntryKind.food.name) &
+                row.foodId.isIn(foodIds) &
+                row.foodSource.equals(foodSource.name) &
+                row.portionJson.isNotNull(),
+          )
+          ..orderBy([
+            (row) => OrderingTerm.desc(row.updatedAt),
+            (row) => OrderingTerm.desc(row.id),
+          ]))
+        .get();
+    final portions = <String, Portion>{};
+    for (final row in rows) {
+      final foodId = row.foodId;
+      final portionJson = row.portionJson;
+      if (foodId != null && portionJson != null) {
+        portions.putIfAbsent(foodId, () => Portion.fromJsonString(portionJson));
+      }
+    }
+    return portions;
+  }
+
   Future<NutritionDayRecord> nutritionDay(NutritionDayDate localDate) async {
     final mealRows = await _activeMealQuery(localDate: localDate).get();
     final mealIds = mealRows.map((row) => row.id).toSet();

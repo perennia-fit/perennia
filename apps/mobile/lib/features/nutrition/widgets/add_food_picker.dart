@@ -412,7 +412,7 @@ class _OnlineSlot extends StatelessWidget {
               width: 24,
               height: 24,
               child: Padding(
-                padding: EdgeInsets.all(3),
+                padding: EdgeInsets.all(AppDimens.dense / 4),
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
             )
@@ -622,7 +622,7 @@ class _FoodResultRow extends StatelessWidget {
           children: [
             if (item.brand case final brand?)
               Padding(
-                padding: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.only(bottom: AppDimens.dense / 2),
                 child: Text(
                   brand,
                   style: context.textStyles.label.copyWith(

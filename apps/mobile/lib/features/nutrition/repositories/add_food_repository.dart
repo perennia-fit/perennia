@@ -151,10 +151,7 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     );
     return (
       status: result.status,
-      items: [
-        for (final food in result.products)
-          await _openFoodFactsItem(food, isLiveResult: true),
-      ],
+      items: await _openFoodFactsItems(result.products, isLiveResult: true),
     );
   }
 
@@ -169,7 +166,9 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     final product = result.product;
     return (
       status: result.status,
-      item: product == null ? null : await _openFoodFactsItem(product),
+      item: product == null
+          ? null
+          : (await _openFoodFactsItems(<PlatformFoodRecord>[product])).single,
     );
   }
 
@@ -326,13 +325,34 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     required int limit,
   }) async {
     final foods = await _openFoodFacts.searchLocal(query, limit: limit);
-    return [for (final food in foods) await _openFoodFactsItem(food)];
+    return _openFoodFactsItems(foods);
   }
 
-  Future<FoodPickerItem> _openFoodFactsItem(
-    PlatformFoodRecord food, {
+  /// Picker items for Open Food Facts records, with their Last Portions read
+  /// in one query rather than one per row.
+  Future<List<FoodPickerItem>> _openFoodFactsItems(
+    List<PlatformFoodRecord> foods, {
     bool isLiveResult = false,
   }) async {
+    final lastPortions = await _repositories.nutrition.lastPortionsForFoods(
+      foodIds: [for (final food in foods) food.id],
+      foodSource: FoodSource.openFoodFacts,
+    );
+    return [
+      for (final food in foods)
+        _openFoodFactsItem(
+          food,
+          lastPortion: lastPortions[food.id],
+          isLiveResult: isLiveResult,
+        ),
+    ];
+  }
+
+  FoodPickerItem _openFoodFactsItem(
+    PlatformFoodRecord food, {
+    required Portion? lastPortion,
+    required bool isLiveResult,
+  }) {
     return FoodPickerItem(
       id: food.id,
       name: food.name,
@@ -343,10 +363,7 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
       servingLabel: food.servingLabel,
       servingSize: food.servingSize,
       packageSize: food.packageSize,
-      lastPortion: await _repositories.nutrition.lastPortionForFood(
-        foodId: food.id,
-        foodSource: food.foodSource,
-      ),
+      lastPortion: lastPortion,
       brand: food.brand,
       sourceModifiedAt: food.sourceModifiedAt,
       scans: food.scans,

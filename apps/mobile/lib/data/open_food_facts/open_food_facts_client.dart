@@ -10,8 +10,8 @@ import '../app_version.dart';
 /// The project address Open Food Facts asks for in the User-Agent
 /// (`AppName/Version (ContactEmail)`). It must be a project address, not a
 /// personal one, and forks change it. A test fails while this is not an email
-/// address, so the app cannot ship with the placeholder.
-const openFoodFactsContactEmail = '<supplied by the maintainer>';
+/// address.
+const openFoodFactsContactEmail = 'contact@perennia.fit';
 
 /// `Perennia/<version> (<contact email>)`, with the version before `+`.
 String perenniaUserAgent() {
@@ -121,7 +121,7 @@ class OpenFoodFactsClient {
     }
 
     final status = response.statusCode;
-    if (status == 404) {
+    if (status == 404 || (status == 400 && _isV3Failure(response))) {
       return const OpenFoodFactsNotFound();
     }
     if (status == 429) {
@@ -156,11 +156,20 @@ class OpenFoodFactsClient {
 
   static bool _isSuccess(int status) => status >= 200 && status < 300;
 
+  /// A v3 `status: failure` answer with no product: the code is unknown or
+  /// rejected (`product_not_found`, an invalid code), never a server fault.
   static bool _isProductNotFound(Map<String, Object?> body) {
-    final result = body['result'];
-    return body['status'] == 'failure' &&
-        result is Map &&
-        result['id'] == 'product_not_found';
+    return body['status'] == 'failure' && body['product'] is! Map;
+  }
+
+  static bool _isV3Failure(http.Response response) {
+    try {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      return decoded is Map &&
+          _isProductNotFound(Map<String, Object?>.from(decoded));
+    } on FormatException {
+      return false;
+    }
   }
 
   /// Maps every product in a search response; excluded ones are left out.

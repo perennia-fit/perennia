@@ -230,10 +230,10 @@ same barcode with different numbers.
 
 ## Open Questions
 
-*   **The contact email in the User-Agent.** Open Food Facts asks for
-    `AppName/Version (ContactEmail)`. The value is one constant,
-    `openFoodFactsContactEmail` (see file 16), and it must be a project address,
-    not a personal one. The maintainer supplies it before pull request 2 merges.
+*   **The contact email in the User-Agent** (resolved). Open Food Facts asks
+    for `AppName/Version (ContactEmail)`. The value is one constant,
+    `openFoodFactsContactEmail` (see file 16), set to the project address
+    `contact@perennia.fit`. Forks change it.
 
 Two questions are deferred, not blocking: the legal check above, and a kilojoule
 fallback for energy (see [Future Improvements](#future-improvements)).
@@ -1831,12 +1831,11 @@ Conventions in this plan:
     *   `RequestBudget` (same file): a sliding 60-second window with a capacity,
         and `bool tryAcquire()`. One budget for search (capacity 10), one for
         products (capacity 15).
-    *   `const openFoodFactsContactEmail = '<supplied by the maintainer>';` and
+    *   `const openFoodFactsContactEmail = 'contact@perennia.fit';` and
         `String perenniaUserAgent()`, returning
         `Perennia/${perenniaAppVersion.split('+').first} ($openFoodFactsContactEmail)`.
-        A test in file 37 fails while the constant is not an email address, so
-        pull request 2 cannot merge until the maintainer sets it (see
-        [Open Questions](#open-questions)).
+        A test in file 37 fails while the constant is not an email address
+        (see [Open Questions](#open-questions)).
 
 ##### 17. App version constant (Create; Modify; Modify)
 

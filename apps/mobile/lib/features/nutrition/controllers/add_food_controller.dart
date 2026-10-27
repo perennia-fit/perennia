@@ -115,19 +115,27 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     });
     ref.listen(bundleStatusProvider, (previous, next) {
       final status = next.asData?.value;
-      if (status == null || status == previous?.asData?.value) {
+      final was = previous?.asData?.value;
+      if (status == null || status == was) {
         return;
       }
       _updateCurrent((current) => current.copyWith(bundleStatus: status));
       // The install writes on another connection, so stream queries here do
-      // not see it: search again once the bundle is ready.
-      if (status == BundleStatus.ready) {
-        _searchDebounceTimer?.cancel();
-        unawaited(_refresh(generation: ++_searchGeneration));
+      // not see it: search the device again when an install finishes. Not on
+      // the first value (the bundle was already there), and without touching
+      // a live search that is shown or running.
+      if (was == BundleStatus.installing && status == BundleStatus.ready) {
+        unawaited(_reloadDeviceMatches());
       }
     });
-    _onlineLookupsEnabled =
-        await ref.read(addFoodRepositoryProvider).onlineLookupsEnabled();
+    try {
+      _onlineLookupsEnabled =
+          await ref.read(addFoodRepositoryProvider).onlineLookupsEnabled();
+    } on Object {
+      // Settings that fail to load must not take the picker down with them;
+      // online lookups default to on.
+      _onlineLookupsEnabled = true;
+    }
     return _load(filter: _filter, query: _query);
   }
 
@@ -319,6 +327,29 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
           mealId: mealId,
           entry: entry,
         );
+  }
+
+  /// Re-runs the device search for the current query and filter, keeping
+  /// the online slot and any live search in flight.
+  Future<void> _reloadDeviceMatches() async {
+    final filter = _filter;
+    final query = _query;
+    final List<FoodPickerItem> results;
+    try {
+      results = await ref.read(addFoodRepositoryProvider).search(
+            filter: filter,
+            query: query,
+          );
+    } on Object {
+      return;
+    }
+    if (filter != _filter || query != _query) {
+      return;
+    }
+    _updateCurrent((current) {
+      final merged = _mergeLiveResults(results, current.onlineResults);
+      return current.copyWith(results: merged.results);
+    });
   }
 
   Future<void> _refresh({required int generation}) async {

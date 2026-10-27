@@ -58,7 +58,7 @@ abstract interface class OpenFoodFactsRepository {
   Future<void> keepOpenedProduct(PlatformFoodRecord record);
 
   /// Erase all data: waits for a running install, deletes every product and
-  /// the stored hash, then installs the bundle again.
+  /// the stored hash, then installs the bundle again. Never throws.
   Future<void> resetDeviceData();
 }
 
@@ -285,7 +285,14 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
       return;
     }
     await opened.installer.ensureInstalled();
-    await opened.database.resetAll();
+    try {
+      await opened.database.resetAll();
+    } on Object catch (error, stackTrace) {
+      // Erase all data has already erased the user's data; a reference reset
+      // that fails is reported, never thrown, and the next erase retries.
+      unawaited(reportQuietly(_crashReporter, error, stackTrace));
+      return;
+    }
     await opened.installer.ensureInstalled();
   }
 
@@ -357,15 +364,19 @@ class StubOpenFoodFactsRepository implements OpenFoodFactsRepository {
 final openFoodFactsRepositoryProvider = Provider<OpenFoodFactsRepository>((
   ref,
 ) {
+  final httpClient = http.Client();
   final repository = DriftOpenFoodFactsRepository(
     databaseFile: () async => File(
       p.join(
           (await getApplicationCacheDirectory()).path, 'food_reference.sqlite'),
     ),
-    client: OpenFoodFactsClient(httpClient: http.Client()),
+    client: OpenFoodFactsClient(httpClient: httpClient),
     crashReporter: ref.read(clientCrashReporterProvider),
   );
-  ref.onDispose(repository.close);
+  ref.onDispose(() {
+    unawaited(repository.close());
+    httpClient.close();
+  });
   return repository;
 });
 

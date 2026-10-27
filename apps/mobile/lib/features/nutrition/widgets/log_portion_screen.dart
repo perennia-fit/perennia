@@ -97,7 +97,7 @@ class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
           children: [
             Text(widget.food.name, style: context.textStyles.h1),
             if (widget.food.brand case final brand?) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: AppDimens.dense / 2),
               Text(
                 brand,
                 key: LogPortionScreen.brandKey,

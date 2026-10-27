@@ -80,19 +80,29 @@ class OpenFoodFactsBundleInstaller {
   /// The asset's header, or `null` when it cannot be read. Read once: an
   /// install that already read it shares it.
   Future<BundleHeader?> bundleHeader() async {
-    return _header ??= await readBundleHeaderOrNull(_asset);
+    if (_header case final header?) {
+      return header;
+    }
+    final header = await readBundleHeaderOrNull(_asset);
+    if (header == null ||
+        header.format != bundleFormat ||
+        header.formatVersion != bundleFormatVersion) {
+      return null;
+    }
+    return _header = header;
   }
 
   Future<void> _install() async {
     try {
       final bytes = await _asset.load();
-      final header = _header = readBundleHeader(bytes);
+      final header = readBundleHeader(bytes);
       if (header.format != bundleFormat ||
           header.formatVersion != bundleFormatVersion) {
         throw FormatException(
           'Unsupported bundle ${header.format} v${header.formatVersion}.',
         );
       }
+      _header = header;
       final storedHash = await _database.metaValue(bundleContentHashKey);
       if (storedHash == header.contentHash) {
         _setStatus(BundleStatus.ready);
