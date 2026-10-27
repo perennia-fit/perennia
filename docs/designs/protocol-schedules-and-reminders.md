@@ -2,7 +2,7 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review)
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phase 1)
 
 --------------------------------------------------------------------------------
 
@@ -195,6 +195,18 @@ under [Future Improvements](#future-improvements).
 None open. The questions settled while drafting map to decisions: Schedule
 history → D1; the time model → D2; the sync cutover → D3; where the period
 lives → D4; the notification stack → D5.
+
+Building Phase 1 raised questions this spec had not answered. They are now
+settled in the sections they belong to:
+
+*   output order, coverage and counts → [Shared core API](#shared-core-api-pure-dart-and-typescript-mirror-each-other);
+*   dates before an anchor → D4;
+*   Doses with no PlanDay → D6;
+*   codec strictness, issue order, `amount_required`, sorting, and the new
+    `pause_count` and `amount_absent` checks → D7;
+*   the UTC offset range → D2.
+
+The new rules land in Phase 2 (file 17a).
 
 ## Critical User Journeys (CUJs)
 
@@ -395,6 +407,9 @@ own id. No version is ever edited in place.
     versions, or whose version that applies has the rule kind `unscheduled`,
     plans nothing, and reads "Not planned" with the reason `no_schedule`.
     Clearing a Schedule in the editor inserts an `unscheduled` version.
+    A member row with no versions has no first date, so it covers every date
+    up to and including its `archived_on` (every date, when it is not
+    archived), and reads `no_schedule` on each of them, not `removed`.
 *   **Undo.** Undoing an edit tombstones the version row it inserted, as the
     Activity Log does for any insert. Tombstoned versions are ignored. A
     member row tombstoned by undo (which has `deleted_at` but no
@@ -473,6 +488,11 @@ the Activity Log, as for any row. See Risks.
     after the inclusive end date. The app passes the device's current offset.
     The Agent Effect read gains an optional `timezoneOffsetMinutes` query parameter,
     default 0 (UTC), documented as such.
+    *   **Offset range.** The offset is a whole number of minutes from −720
+        to +840 (UTC−12:00 to UTC+14:00, the span of real zones). The
+        function throws a `RangeError` for a fractional offset, and, from
+        Phase 2, for one outside that range. The Agent Effect read returns
+        400 for an offset outside it, before calling the function.
 *   **The shared core never sees a timezone.** It takes and returns local dates
     and `HH:MM` strings, and receives "today" as an input. The server never
     works out "today" for a user; Agent requests carry it (D6). Daylight-saving
@@ -542,10 +562,22 @@ A **Schedule Rule** says when a member's Compound is due on a day its Protocol
 is in effect:
 
 *   **days**: every day, chosen weekdays, or every N days from an anchor date,
-    which defaults to the Protocol's start;
+    which defaults to the Protocol's start. A date is due when
+    (date − anchor) mod N = 0;
 *   **times**: a list of `HH:MM` times, or a count of untimed doses;
 *   the planned amount, unit and route, as today;
 *   or **as needed**, which plans nothing.
+
+**An anchor fixes a phase, not a first day.** Both the cycle and the every-N
+formulas use a floor modulo, whose result is never negative. So dates before
+an anchor follow the same rhythm, counted backwards from it. An anchor can be
+after the start: D1 keeps a user-set anchor when the start moves earlier, and
+the user can pick a later one. The days between the start and that anchor are
+then planned in step with the anchor. For example, every 3 days anchored on
+2026-10-05 is due on 2026-10-02. A cycle of 3 on and 2 off anchored on
+2026-10-05 reads 2026-10-01 to 2026-10-02 as on (cycle days −4 and −3, which
+are days 1 and 2), and 2026-10-03 to 2026-10-04 as off. No validator rejects
+an anchor after the start.
 
 Putting the period on the Protocol keeps one Protocol equal to one course. That
 matters for the Effect view, which compares outcomes before, during and after a
@@ -656,6 +688,18 @@ How a date is decided for one Protocol and Protocol Member, in order:
 4.  **Report every slot.** `fills` lists every slot, with `doseId: null` when
     it is unfilled.
 
+**Counts.** `plannedCount` is the number of slots. `loggedCount` is the
+number of filled slots, not the number of Doses, so it never exceeds
+`plannedCount`. `extraCount` is the number of Doses that filled nothing. So
+`loggedCount + extraCount` is the number of Doses on that Compound and date.
+
+**Doses with no PlanDay.** A Day Status exists only for a Compound and date
+that has at least one PlanDay in the input. A Dose whose Compound and date
+has none is ignored. That happens for a Compound in no Protocol, or one
+filtered out by the caller. It is not counted as an extra anywhere. A Compound
+in no Protocol therefore has no Day Statuses. Its Consistency view (Phase 4)
+lists those Doses by date without a status label.
+
 Filling by nearest time means a Dose at 20:50 fills a 21:00 slot, not an
 unfilled 09:00 one. So the 21:00 reminder doesn't fire after the Dose, and the
 morning reads "Not logged", which is what happened. The Protocol tag only
@@ -735,8 +779,15 @@ amounts.
     counted from the Protocol's start. It counts doses, not days: a rule of
     08:00 and 20:00 reaches 20 doses on day 10. It skips off-cycle and paused
     days, and uses the member's current rule.
-*   **Limits:** N is 1 to 1000. For an `as_needed` rule it returns
-    "unavailable".
+*   **Limits:** N is 1 to 1000; outside that range it throws a `RangeError`.
+*   **"Unavailable"** is `null`. It is returned for an `as_needed` or
+    `unscheduled` rule, for a rule that is never on (its days never fall on
+    an on-cycle day), and when the Nth dose would fall after 9999-12-31, the
+    last date a `YYYY-MM-DD` value can hold. It stops there rather than
+    walking on.
+*   **Inputs:** named parameters `startLocalDate`, `rule`, `doseCount` and an
+    optional `period`. The Protocol's end date is not an input: this
+    computes it.
 *   **Why Dart only:** no Agent operation uses it.
 
 **Contract changes for the Agent surface:**
@@ -810,24 +861,78 @@ Plan values join the shared two-tier validation module.
 *   **Signatures.** `validateScheduleRule(rule, {amountValue, amountEntered,
     unit, route})` and `validateProtocolPeriod({startLocalDate, endLocalDate,
     period})`, with the same parameters in both languages.
-*   **Vectors.** The same golden vectors run in Dart and TypeScript.
+*   **What they read.** `rule` and `period` are the stored JSON (a map, or
+    null for no period), not decoded values, so the validators can judge
+    values the codecs reject: a time of "9:00", an anchor of "2026-02-30", a
+    count of 2.5. They assume a known `v` and `kind`; rejecting an unknown one
+    is the codec's job. A whole number written as a float (`2.0`) counts as
+    that integer, because JSON can't tell them apart.
+*   **Typed bounds.** `startLocalDate` and `endLocalDate` are real dates
+    already: a `ProtocolDayDate` in Dart, and in TypeScript a `YYYY-MM-DD`
+    string that must be a real date. A bound that isn't a real date is a
+    caller bug and throws a `RangeError`; it is never reported as an issue.
+    No date check is added for the bounds. The Agent write path rejects a
+    non-date bound with 400 before calling the validator (file 29), and the
+    app's date pickers can't produce one.
+*   **Issue order.** Each check reports at most once, however many elements
+    fail it: one `times_format` for three bad times, one `pause_overlap` for
+    several overlapping Pauses. Errors come in the order of the table below,
+    and so do warnings. Warnings are judged on their own, not only when there
+    are no errors. So 13 times gives the error `times_count` and the warning
+    `times_many`.
+*   **`amount_required` in detail.** It applies to `timed` and `untimed` rules
+    only. It requires all four fields: `amountValue`, a non-blank
+    `amountEntered`, `unit` and `route`. Then the Dose validator
+    (`validateDose` in Dart, `validateAgentDose` in TypeScript) judges
+    `amountValue` with the unit and route, and any hard error it reports
+    fails the check. `amountEntered` is the text as typed, kept for display,
+    and is not judged further. The Dose validator's own rule ids are not
+    passed through: every failure is reported once, as `amount_required`.
+    Its soft warnings are dropped, because they belong to the Dose logged
+    against the plan and show then.
+*   **Order of times and weekdays.** Times and weekdays are stored sorted.
+    Writers sort them: the app's `ProtocolsRepository` (file 21) and the
+    Agent write path (file 29) sort both lists before inserting a version. The codecs and
+    the validators accept any order, and no check judges it. `planDays` emits
+    `planned` in stored order, and matching numbers slots by time anyway.
+*   **Pauses with impossible dates.** A Pause whose `from` or `to` isn't a
+    real date can't be ordered, so it fails `pause_order`. `pause_bounds` and
+    `pause_overlap` skip that Pause.
+*   **Vectors.** The same golden vectors run in Dart and TypeScript, and both
+    runners compare `errorRules` and `warningRules` as ordered lists.
 
 | Check id | Field | Condition | Tier | Function |
 | :------- | :---- | :-------- | :--- | :------- |
 | `times_format` | rule.times | each time is `HH:MM`, 00:00-23:59 | reject | `validateScheduleRule` |
 | `times_count` | rule.times | 1 to 12 times | reject | `validateScheduleRule` |
-| `times_distinct` | rule.times | no duplicates (stored sorted) | reject | `validateScheduleRule` |
+| `times_distinct` | rule.times | no duplicates | reject | `validateScheduleRule` |
 | `untimed_count` | rule.count | 1 to 12 | reject | `validateScheduleRule` |
 | `weekdays_valid` | rule.days.weekdays | non-empty, each 1-7, no duplicates | reject | `validateScheduleRule` |
 | `every_n_range` | rule.days.n | 2 to 365 | reject | `validateScheduleRule` |
 | `anchor_date` | rule.days.anchor, period.cycle.anchor | a valid date | reject | both (each checks its own anchors) |
-| `amount_required` | amount, unit, route | all three present for `timed` and `untimed`, and valid per the Dose validator | reject | `validateScheduleRule` |
+| `amount_required` | amount | for `timed` and `untimed`: all four of amountValue, amountEntered, unit and route present, and valid per the Dose validator (see above) | reject | `validateScheduleRule` |
+| `amount_absent` | amount | for `as_needed` and `unscheduled`: all four of amountValue, amountEntered, unit and route null or absent (Phase 2) | reject | `validateScheduleRule` |
 | `cycle_lengths` | period.cycle | on and off lengths each 1 to 3650 days | reject | `validateProtocolPeriod` |
 | `bounds_order` | endLocalDate | not before startLocalDate (replaces `validateProtocolWindow`) | reject | `validateProtocolPeriod` |
-| `pause_order` | period.pauses | each has from ≤ to | reject | `validateProtocolPeriod` |
+| `pause_count` | period.pauses | at most 100 Pauses (Phase 2) | reject | `validateProtocolPeriod` |
+| `pause_order` | period.pauses | each has real dates and from ≤ to | reject | `validateProtocolPeriod` |
 | `pause_bounds` | period.pauses | within the Protocol's bounds | reject | `validateProtocolPeriod` |
 | `pause_overlap` | period.pauses | no two overlap | reject | `validateProtocolPeriod` |
 | `times_many` | rule.times | more than 6 a day, which is more often a typo than a plan | warn | `validateScheduleRule` |
+
+**The two Phase 2 checks.** Phase 1 built every check above except
+`amount_absent` and `pause_count`, which land in Phase 2 (file 17a).
+
+*   **`amount_absent`** keeps the stored shape honest: the data shapes say
+    the amount fields are null for `as_needed` and `unscheduled`. Without the
+    check, an Agent could store an amount that nothing reads. The app's
+    editor clears the amount when the user picks "As needed" or "No
+    schedule".
+*   **`pause_count`** bounds the Pause list, which a security review found
+    unbounded. 100 is far beyond any real plan, and keeps a write's size and
+    the overlap sort small. Its limit is `maxPauses` in the limits class, the
+    constant and the vector's `limits` block. An over-long list reports only
+    `pause_count`; the other Pause checks don't run on it.
 
 Two checks sit outside the shared module, because only one side has what they
 need. The "N doses" helper rejects N outside 1-1000; it is Dart only. Agent
@@ -1184,12 +1289,12 @@ and `1..12` gives a range.
 `rule`, version 1:
 
 ```text
-{"v":1,"kind":"timed",   "days":DAYS,"times":["HH:MM", ...]}   1..12 distinct times, stored sorted
+{"v":1,"kind":"timed",   "days":DAYS,"times":["HH:MM", ...]}   1..12 distinct times, stored sorted (writers sort; D7)
 {"v":1,"kind":"untimed", "days":DAYS,"count":int}              1..12
 {"v":1,"kind":"as_needed"}
 {"v":1,"kind":"unscheduled"}                                   the member has no Schedule
 DAYS = {"kind":"daily"}
-     | {"kind":"weekdays","weekdays":[1..7, ...]}              ISO 8601, 1 = Monday; stored sorted
+     | {"kind":"weekdays","weekdays":[1..7, ...]}              ISO 8601, 1 = Monday; stored sorted (writers sort; D7)
      | {"kind":"every_n_days","n":2..365,"anchor":"YYYY-MM-DD","anchor_is_default":bool}
 ```
 
@@ -1247,16 +1352,17 @@ dayStatuses(planDays: PlanDay[], doses: PlanDose[], today: LocalDate) -> DayStat
                fills: [{slot: int, protocolId, plannedLocalTime: "HH:MM" | null,
                         amountValue?, amountEntered?, unit?, route?,
                         doseId: string | null}]}
-  Dates after `today` are not returned. Matching and status order: D6.
+  Dates after `today` are not returned. A Dose whose Compound and date has no
+  PlanDay is ignored. Matching and status order: D6.
 
 dueUnfilled(dayStatuses: DayStatus[], today: LocalDate, nowLocalTime: "HH:MM")
   -> [{compoundId, slot, protocolId, amountValue, amountEntered, unit, route}]
   Only `today`'s unfilled slots, timed at or before now, or untimed.
 
-effectBoundsFromLocalDates(startLocalDate, endLocalDate?, timezoneOffsetMinutes)
-  -> {startDate: instant, endDate: instant | null}                  (D2)
-endDateForDoseCount(startLocalDate, rule, period?, doseCount) -> LocalDate | unavailable
-  (Dart only; D6)
+effectBoundsFromLocalDates({startLocalDate, endLocalDate?, timezoneOffsetMinutes})
+  -> EffectBounds{startDate: instant, endDate: instant | null}      (D2)
+endDateForDoseCount({startLocalDate, rule, doseCount, period?}) -> LocalDate | null
+  (Dart only; D6; null is "unavailable")
 ```
 
 Archive dates arrive already frozen (`archived_on`). No function parses an
@@ -1264,10 +1370,65 @@ instant or a timezone, except `effectBoundsFromLocalDates`, which applies the
 offset it is given. It uses the same local-midnight-minus-offset conversion as
 the local-time anchors in `apps/server/src/metric-reading-normalization.ts`.
 
+**Parameters.** `planDays`, `dayStatuses` and `dueUnfilled` take positional
+parameters in both languages. In Dart, `effectBoundsFromLocalDates` and
+`endDateForDoseCount` take named parameters, and `EffectBounds` is a class in
+`apps/mobile/lib/domain/effect/effect.dart`. In TypeScript,
+`effectBoundsFromLocalDates(startLocalDate, endLocalDate, timezoneOffsetMinutes)`
+takes the same three positionally and returns `{startDate: Date, endDate:
+Date | null}`. It throws a `RangeError` for a fractional offset, as Dart's
+`int` type rules out, and from Phase 2 for one outside −720 to +840 (D2).
+
+**Coverage.** `planDays` returns one PlanDay for every date in `[from, to]`,
+inclusive, for each Protocol and each Compound that has at least one member
+row in that Protocol, whatever the row's archive date or versions. That
+includes dates outside the Protocol's bounds, which come back with state
+`outside` and an empty `planned` list. So one Compound in one Protocol over a 30-day range is
+always 30 PlanDays. `planned` is non-empty exactly when `state` is `planned`.
+`notPlannedReason` is present exactly when `status` is `not_planned`.
+
+**Output order,** in both languages, so two outputs compare equal as lists:
+
+| Output | Ordered by |
+| :----- | :--------- |
+| `planDays` | `localDate`, then `protocolId`, then `compoundId` |
+| `PlanDay.planned` | the rule's stored order: its `times`, or `count` untimed entries |
+| `dayStatuses` | `localDate`, then `compoundId` |
+| `DayStatus.fills` | `slot` |
+| `dueUnfilled` | `compoundId`, then `slot` |
+
+Ids, dates and times compare by UTF-16 code unit, Dart's `String.compareTo`,
+so both languages sort them the same way.
+
+**Codecs.** The rule and period decoders reject, besides any `v` other than
+1 and any unknown `kind`:
+
+*   a value of the wrong JSON type: a string where an object, array, integer
+    or boolean belongs;
+*   a fractional number where an integer belongs. A whole number written as a
+    float (`2.0`) reads as that integer;
+*   a date that isn't a real `YYYY-MM-DD` date (`2026-02-30`, `2026-13-01`, or
+    another format). Every four-digit year reads as written, including years
+    0 to 99;
+*   a time that isn't `HH:MM` from 00:00 to 23:59, such as `9:00` or `24:00`.
+
+In Dart, the decoders of the amount-carrying shapes (Schedule Version,
+planned dose and fill) also reject a `unit` or `route` that isn't in the Dose
+registries (`DoseUnit`, `DoseRoute`). TypeScript carries both as strings, and
+the server's write path judges them through `amount_required` (D7). The
+codecs don't range-check: how many times, or how long a cycle, is D7's job.
+Dart throws a `FormatException`; TypeScript throws `ProtocolPlanCodecError`.
+
+**A plan period under one day.** An every-N rule with N < 1, or a cycle whose
+on and off days sum to less than 1, can't come from validated data. Where the
+core meets one (`planDays`, `endDateForDoseCount`), it throws a `RangeError`
+rather than planning on a division by zero.
+
 **Vector case shapes.**
 
 *   **Both files** carry `name`, `domain`, `schemaVersion`, `schema` and
-    `cases`.
+    `cases`. Any case may carry an optional `note`: why the case exists and
+    which rule it pins. Runners ignore it.
 *   **File 1:** each case has `name`, `function` (`rule_codec`,
     `period_codec`, `plan_days`, `day_statuses`, `due_unfilled` or
     `effect_bounds`), `input` (that function's arguments, by parameter name)
@@ -1348,7 +1509,9 @@ files, so stage a new runner before running the gate locally.
     *   Types and JSON codecs for Schedule Rule, Protocol Period, Pause,
         Schedule Version, `PlanProtocol`, `PlanDay`, `PlanDose` and
         `DayStatus`.
-    *   The codecs reject unknown `kind`s and any `v` other than 1.
+    *   The codecs reject unknown `kind`s and any `v` other than 1, and are
+        as strict as [Shared core API](#shared-core-api-pure-dart-and-typescript-mirror-each-other)
+        **Codecs** says, throwing a `FormatException`.
     *   Uses `ProtocolDayDate` for dates.
 
 ##### 6. `apps/mobile/lib/domain/protocols/protocols.dart` (Modify, Phase 1 part)
@@ -1361,7 +1524,9 @@ files, so stage a new runner before running the gate locally.
 ##### 7. `apps/mobile/lib/domain/protocols/protocol_plan_days.dart` (Create)
 
 *   **Proposed Changes**: `planDays`, `dayStatuses`, `dueUnfilled` and
-    `endDateForDoseCount`, following D1, D4 and D6. It does no I/O.
+    `endDateForDoseCount`, following D1, D4 and D6, with the coverage and
+    output order in the Shared core API. `endDateForDoseCount` takes named
+    parameters and returns null for "unavailable" (D6). It does no I/O.
 
 ##### 8. `apps/mobile/lib/domain/protocols/protocol_plan_validation.dart` (Create)
 
@@ -1375,8 +1540,9 @@ files, so stage a new runner before running the gate locally.
 
 ##### 9. `apps/mobile/lib/domain/effect/effect.dart` (Modify)
 
-*   **Proposed Changes**: Adds `effectBoundsFromLocalDates` (D2). The Effect
-    math is unchanged.
+*   **Proposed Changes**: Adds `effectBoundsFromLocalDates`, with named
+    parameters, and the `EffectBounds{startDate, endDate}` class it returns
+    (D2). The Effect math is unchanged.
 
 ##### 10. Dart tests (Create)
 
@@ -1392,7 +1558,11 @@ files, so stage a new runner before running the gate locally.
     `daysBetween` and day iteration across both daylight-saving changes,
     with the process timezone set to `America/Sao_Paulo` and
     `Europe/Lisbon` through the `TZ` environment variable, under
-    `flutter test`.
+    `flutter test`. A process can't change its own zone, so the test runs
+    its assertions in its own process, then re-runs this file once per zone
+    as a child `flutter test` process with `TZ` set. Each child first
+    asserts that its zone took effect, so a platform that ignores `TZ` fails
+    rather than passing without testing anything.
 
 ##### 11. `apps/mobile/test/domain/golden_vector_ownership_test.dart` (Modify)
 
@@ -1405,18 +1575,23 @@ files, so stage a new runner before running the gate locally.
 *   **Type / Scope**: TypeScript twin of files 5 and 7, except
     `endDateForDoseCount`.
 *   **Proposed Changes**: The same functions and JSON, with no database access.
-    Dates are `YYYY-MM-DD` strings with UTC epoch-day arithmetic.
+    Dates are `YYYY-MM-DD` strings with UTC epoch-day arithmetic. The codecs
+    throw `ProtocolPlanCodecError`, and dates are checked without `Date.UTC`,
+    which would read years 0-99 as 1900-1999.
 
 ##### 13. `apps/server/src/agent-validation.ts` (Modify)
 
 *   **Proposed Changes**: Adds `validateAgentScheduleRule`,
     `validateAgentProtocolPeriod` and `PROTOCOL_PLAN_VALIDATION_LIMITS` next to
-    `validateAgentDose`, with the D7 signatures and the same issue shape.
+    `validateAgentDose`, with the D7 signatures and the same issue shape. Both
+    take the stored JSON, and the period validator takes `YYYY-MM-DD` bounds
+    that must be real dates (D7).
 
 ##### 14. `apps/server/src/agent-protocols.ts` (Modify, Phase 1 part)
 
 *   **Proposed Changes**: Adds `effectBoundsFromLocalDates` next to
-    `deriveEffectWindow`. Nothing calls it yet.
+    `deriveEffectWindow`, with positional parameters, throwing a `RangeError`
+    for a fractional offset. Nothing calls it yet.
 
 ##### 15. `apps/server/src/index.ts` (Modify, Phase 1 part)
 
@@ -1446,6 +1621,74 @@ files, so stage a new runner before running the gate locally.
         same commit.
 
 #### Phase 2: storage, sync, the plan editor, Effect input and the Agent plan shape
+
+##### 17a. The plan core, its validators and vectors: rules settled after Phase 1 (Modify)
+
+This entry is lettered so the numbers of every later file stay as they were.
+
+*   **Files**: `apps/mobile/lib/domain/protocols/protocol_plan_validation.dart`,
+    `apps/server/src/agent-validation.ts`,
+    `apps/mobile/lib/domain/effect/effect.dart`,
+    `apps/server/src/agent-protocols.ts` (`effectBoundsFromLocalDates` only),
+    the two m36 vector files and the validation schema, and the two runners
+    that read `effect_bounds` cases (`apps/mobile/test/domain/protocol_plan_golden_test.dart`,
+    `apps/server/test/protocol-plan.golden.test.mjs`).
+*   **Proposed Changes**:
+    *   **`amount_absent`** (D7) in both validators, after `amount_required`:
+        an `as_needed` or `unscheduled` rule with any of `amountValue`,
+        `amountEntered`, `unit` or `route` non-null rejects.
+    *   **`pause_count`** (D7) in both validators, after `bounds_order`: more
+        than `maxPauses` Pauses rejects, and the other Pause checks don't
+        run. `maxPauses: 100` joins `ProtocolPlanValidationLimits`,
+        `PROTOCOL_PLAN_VALIDATION_LIMITS`, the vector's `limits` block and
+        that block's schema (`required` and `properties`). `schemaVersion`
+        stays 1: the case shape is unchanged, and every runner changes in
+        the same pull request.
+    *   **The offset range** (D2) in both `effectBoundsFromLocalDates`: an
+        offset outside −720 to +840 throws a `RangeError`. An
+        `effect_bounds` case may now expect `{"rejects": true}`, as a codec
+        case does, and both runners map a `RangeError` to it.
+*   **Vectors to add** (each with a `note`):
+    *   in `m36-protocol-plan-validation.json`:
+        *   `as-needed-rule-with-an-amount-rejects` → `[amount_absent]`;
+        *   `unscheduled-rule-with-a-unit-rejects` → `[amount_absent]`;
+        *   `one-hundred-pauses-are-valid` → accepted;
+        *   `one-hundred-and-one-overlapping-pauses-report-only-pause-count`
+            → `[pause_count]`;
+        *   `three-bad-times-report-times-format-once` → `[times_format]`;
+        *   `several-overlapping-pauses-report-pause-overlap-once` →
+            `[pause_overlap]`;
+        *   `schedule-rule-errors-come-in-table-order`: an every-N timed rule
+            with times `["9:00", "9:00"]`, `n` 1, an impossible anchor and no
+            unit → `[times_format, times_distinct, every_n_range,
+            anchor_date, amount_required]`;
+        *   `thirteen-times-rejects-and-warns` (exists) pins warnings judged
+            alongside errors;
+        *   `protocol-period-errors-come-in-table-order`: an impossible cycle
+            anchor, 0 on-days, an end before the start, a reversed Pause, a
+            Pause outside the bounds and two overlapping Pauses →
+            `[anchor_date, cycle_lengths, bounds_order, pause_order,
+            pause_bounds, pause_overlap]`;
+        *   `unsorted-times-and-weekdays-are-valid` → accepted;
+    *   in `m36-protocol-plan.json`:
+        *   `every-n-days-anchor-after-the-start-plans-backwards`: every 3 days
+            anchored 2026-10-05, start 2026-10-01; 2026-10-02 and 2026-10-05
+            planned, the other days `not_scheduled_today`;
+        *   `cycle-anchor-after-the-start-counts-backwards`: 3 on and 2 off
+            anchored 2026-10-05, start 2026-10-01; 2026-10-01 to 2026-10-02
+            planned, 2026-10-03 to 2026-10-04 `off_cycle`, 2026-10-05
+            planned;
+        *   `day-statuses-ignore-a-dose-with-no-plan-day`: a Dose of a
+            Compound with no PlanDay yields no Day Status, and no other
+            Compound's `extraCount` changes;
+        *   `rule-codec-keeps-unsorted-times-in-stored-order`: the codec
+            reads `["21:00", "09:00"]` and encodes it unchanged;
+        *   `effect-bounds-offset-minus-720` and
+            `effect-bounds-offset-plus-840`: the two ends of the range;
+        *   `effect-bounds-rejects-offset-minus-721` and
+            `effect-bounds-rejects-offset-plus-841` → `{"rejects": true}`;
+        *   no case for a fractional offset: Dart's `int` can't express one,
+            so it stays a TypeScript guard.
 
 ##### 18. `apps/mobile/lib/data/local/app_database.dart` (Modify)
 
@@ -1515,6 +1758,9 @@ files, so stage a new runner before running the gate locally.
             dated by D1. It no longer updates in place.
         *   A null draft inserts an `unscheduled` version, unless the member
             has no versions yet, in which case it inserts nothing.
+        *   Every inserted version has its `times` and `weekdays` sorted,
+            and null amount fields for an `as_needed` or `unscheduled` rule
+            (D7).
         *   `_activeScheduleQuery(...).getSingleOrNull()` and every read that
             assumes one Schedule per member (`listProtocols`,
             `_protocolsFromRows`) select by version instead. A member has many
@@ -1554,7 +1800,8 @@ files, so stage a new runner before running the gate locally.
         and replaces the frequency picker with:
         *   days: daily, weekday chips, or every N days;
         *   times: a list of time pickers, or an untimed count;
-        *   or "As needed", or "No schedule".
+        *   or "As needed", or "No schedule", either of which clears the
+            amount, unit and route (D7 `amount_absent`).
     *   **Validation:** rejects and warnings from file 8 show inline, as Dose
         validation does.
     *   **Strings:** the editor's strings go into `app_en.arb`, and the
@@ -1625,12 +1872,17 @@ files, so stage a new runner before running the gate locally.
             `remindersEnabled`.
         *   The Schedule takes `rule` and the amount fields, and has no
             `effectiveFrom`.
+        *   `today`, `startLocalDate` and `endLocalDate` must be real
+            `YYYY-MM-DD` dates (`isValidLocalDate` from file 12), so a bad
+            bound is a 400 before file 13 runs (D7).
     *   **`prepareAgentProtocolBatchWrite`** stays pure. It validates with
         file 13 and checks the `today` bound.
     *   **The store's `writeProtocolBatch`** does everything that needs
         stored data, inside its transaction, so REST and MCP share it:
         *   it assigns each Schedule version's `effective_from` by D1;
         *   it rejects a Schedule id that already exists;
+        *   it sorts each rule's `times` and `weekdays` before inserting
+            (D7);
         *   it inserts re-dated copies on a start move;
         *   for `archived: true`, it sets `deleted_at` to the current time and
             `archived_on` to `today`.
@@ -1643,7 +1895,8 @@ files, so stage a new runner before running the gate locally.
         *   the `timezone` description says it is a display label;
         *   reads return `timezoneOffsetMinutes`.
     *   **The Effect read** gains an optional `timezoneOffsetMinutes`
-        (default 0). It builds its Effect window bounds with
+        (default 0), an integer from −720 to +840; outside that it returns
+        400 (D2). It builds its Effect window bounds with
         `effectBoundsFromLocalDates` instead of parsing `start_date`, in
         `deriveEffectWindow` (~1634-1680) and the Protocol source branch of
         the Effect handler (~2040-2054).
@@ -1718,6 +1971,8 @@ files, so stage a new runner before running the gate locally.
         *   a null draft inserts `unscheduled`;
         *   removing a member freezes `archived_on` and leaves its versions;
         *   undo tombstones the inserted version;
+        *   unsorted times and weekdays are stored sorted, and an
+            `as_needed` draft stores no amount;
         *   `logDoses` is all-or-nothing;
         *   the offset is written from the local time, and re-frozen on edit;
         *   a Dose image without the offset applies with null;
@@ -1742,7 +1997,10 @@ files, so stage a new runner before running the gate locally.
         *   `archived: true` stamps the time and sets `archivedOn`;
         *   a `today` more than one day from the server's UTC date rejected;
         *   Dose offset precedence and derivation;
-        *   the Effect read with and without `timezoneOffsetMinutes`.
+        *   the Effect read with and without `timezoneOffsetMinutes`, and
+            400 for −721 and +841;
+        *   a non-date `startLocalDate` rejected with 400;
+        *   unsorted `times` and `weekdays` stored sorted.
     *   `apps/server/test/sync-convergence.test.mjs` (Modify): two devices
         insert same-day versions offline. Both rows reach both devices, and
         both pick the larger id. A version-1 request is rejected.
