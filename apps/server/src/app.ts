@@ -2703,7 +2703,10 @@ export function createApp(options: CreateAppOptions = {}) {
       });
     } catch (error) {
       if (error instanceof OpenFoodFactsBundleUnavailableError) {
-        logger.error?.({ error }, "open food facts bundle unavailable");
+        logger.error?.(
+          { error, cause: error.cause },
+          "open food facts bundle unavailable"
+        );
         return context.json(
           AgentFoodsUnavailableResponseSchema.parse({
             code: "agent_foods_unavailable",

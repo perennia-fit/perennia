@@ -451,10 +451,16 @@ test("agent MCP search-platform-foods returns the same Open Food Facts body as R
     logger: { info() {}, error() {} },
     agentApiKeyStore: createAgentKeyStore("user-1")
   });
+  const mcpErrors = [];
   const { client, close } = await createMcpClient(
     createAgentMcpServer({
       agentApiKeyStore: createAgentKeyStore("user-1"),
-      logger: { info() {}, error() {} }
+      logger: {
+        info() {},
+        error(payload, message) {
+          mcpErrors.push({ payload, message });
+        }
+      }
     })
   );
 
@@ -487,7 +493,9 @@ test("agent MCP search-platform-foods returns the same Open Food Facts body as R
     assert.equal(mcpByBarcode.structuredContent.foods[0].id, code);
 
     setOpenFoodFactsBundleLoaderForTesting(() => {
-      throw new OpenFoodFactsBundleUnavailableError(new Error("ENOENT"));
+      throw new OpenFoodFactsBundleUnavailableError(
+        new Error("ENOENT: no such file or directory")
+      );
     });
     const restUnavailable = await getAgent(
       app,
@@ -501,6 +509,13 @@ test("agent MCP search-platform-foods returns the same Open Food Facts body as R
     assert.equal(mcpUnavailable.isError, true);
     assert.deepEqual(mcpUnavailable.structuredContent, await restUnavailable.json());
     assert.equal(mcpUnavailable.structuredContent.code, "agent_foods_unavailable");
+    // The reason the bundle is missing reaches the log, not only the
+    // generic message (the cause is not an enumerable property of the error).
+    const logged = mcpErrors.find(
+      (entry) => entry.message === "open food facts bundle unavailable"
+    );
+    assert.ok(logged);
+    assert.match(String(logged.payload.cause?.message), /ENOENT/);
   } finally {
     setOpenFoodFactsBundleLoaderForTesting(null);
     await close();

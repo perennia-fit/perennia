@@ -323,7 +323,10 @@ fallback for energy (see [Future Improvements](#future-improvements)).
     `GET /agent/foods/platform-search?source=openFoodFacts&search=<code>` (or
     the MCP tool `agent_search_platform_foods` with the same input), then logs
     the result with the existing meal batch-write operation
-    (`POST /agent/meals/batch-write`, command `log-meal`).
+    (`POST /agent/meals/batch-write`, command `log-meal`), sending the food's
+    `nutrientsPer100` as the entry's `nutrients` with the `null` `value` and
+    `entered` of each unknown amount left out (see
+    [Agent surface](#agent-surface)).
 *   **Then**: for a bundled product, the first food in the response is the
     record in that barcode's line of the bundle, plus an attribution object with
     the licence, the disclaimer, the dataset version and the repository location
@@ -1115,7 +1118,14 @@ Response:
     reports is `complete`, with `entered` and `value` read from its text; any
     other is `{ status: "unknown", value: null, entered: null }` with its
     default unit. (USDA foods keep the seed's vector as it is, which lists only
-    the Nutrients the seed has; that branch does not change.)
+    the Nutrients the seed has; that branch does not change.) The meal
+    batch-write takes an unknown amount without `value` and `entered`
+    (`AgentNutrientAmountSchema` rejects `null` there), and it resolves a Food
+    from the library only for `foodSource: "user"`, so an agent logging an
+    Open Food Facts food sends this vector as the entry's `nutrients` with each
+    unknown amount reduced to `{ status: "unknown", unit }`. The agent
+    documentation (file 45) states this; the read shape and the shared
+    validation schema do not change.
 *   `attribution.source` accepts `openFoodFacts`. `attribution` gains
     `disclaimer` (the Goal 7 text for Open Food Facts, `null` for USDA). For Open
     Food Facts, `datasetVersion`, `sourceName`, `sourceUrl`, `licenseName` and
@@ -1145,10 +1155,15 @@ Decisions made while implementing this module:
     unavailable.** Besides gzip and JSON, the load rejects a header whose
     `format` or `formatVersion` is not the one the app writes, a product count
     that differs from the header's `productCount`, a repeated code, a field of
-    the wrong type, a size that is not positive, and nutrient text that is not
+    the wrong type, a size that is not positive, a nutrient id that is not a
+    Nutrient id (the app's decoder throws on one, where the server would
+    otherwise drop it), a `modifiedAt` outside the date range (above 8.64e12
+    seconds, where `toISOString` throws and the app's `DateTime` rejects it),
+    and nutrient text that is not
     plain decimal text (an optional sign, digits, an optional fraction and
     exponent), which `Number()` and Dart's `double.parse` read as the same
-    number; `Number()` alone would also take `0x10`. A server
+    number; `Number()` alone would also take `0x10`. Negative values stay
+    accepted, as the app accepts them too. A server
     that cannot trust the file answers 503 rather than serving part of it. It
     does not recheck `contentHash`; the app's asset test does.
 *   **A failed load is cached too.** The file is part of the deployed image and
@@ -2454,12 +2469,20 @@ Conventions in this plan:
         *   no `search`, or one with no word parts and no candidates, returns
             empty `foods`;
         *   the nutrient vector includes every id.
+    *   `apps/server/test/open-food-facts-bundle.test.mjs` also checks that the
+        load rejects a nutrient id that is not a Nutrient id and a `modifiedAt`
+        outside the date range.
     *   `apps/server/test/agent-foods-routes.test.mjs` (Modify): the REST
-        responses for Open Food Facts, and a 503 when
-        `setOpenFoodFactsBundleLoaderForTesting` installs a loader that throws.
+        responses for Open Food Facts; a 503 when
+        `setOpenFoodFactsBundleLoaderForTesting` installs a loader that throws,
+        with the logged payload carrying the cause's message; and CUJ 7: a
+        bundled food from the search, its unknown amounts sent without `value`
+        and `entered`, logs through `POST /agent/meals/batch-write` with
+        `foodSource: "openFoodFacts"`.
     *   `apps/server/test/agent-mcp.test.mjs` (Modify):
         `agent_search_platform_foods` returns the same body as REST for the same
-        input, including the error for an unreadable bundle.
+        input, including the error for an unreadable bundle, whose cause is
+        logged.
 
 ##### 42. `Dockerfile` (Modify)
 
@@ -2471,8 +2494,11 @@ Conventions in this plan:
 ##### 43. `.github/workflows/ci.yml` and `tools/ci-local.mjs` (Modify)
 
 *   **Type / Scope**: CI configuration, changed together.
-*   **Proposed Changes**: Add `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz`
-    to the `js` job's paths (`JS_PATHS`), because the server tests read it.
+*   **Proposed Changes**: Add `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz`,
+    `apps/mobile/lib/domain/nutrition/nutrition.dart` and
+    `apps/mobile/lib/domain/nutrition/open_food_facts.dart` to the `js` job's
+    paths (`JS_PATHS`), because the server tests read the bundle and check the
+    Nutrient ids and the bundle format against those Dart files.
 
 ##### 44. Generated contract files (Modify, generated)
 
@@ -2493,6 +2519,11 @@ Conventions in this plan:
     *   The "Food Library Reads and Writes" prose describes
         `source=openFoodFacts`: that `search` takes a name or a barcode, that
         only the bundle is searched, and the attribution and disclaimer to show.
+    *   The same prose says how to log a returned food with `log-meal`
+        (`POST /agent/meals/batch-write`, `foodSource: "openFoodFacts"`,
+        `foodId` set to the barcode): send `nutrientsPer100` as `nutrients`,
+        with each unknown amount sent as `{ status: "unknown", unit }`, without
+        `value` and `entered`.
     *   `SKILL.md` gains an example next to the existing
         `search-platform-foods --query search=chicken`:
         `search-platform-foods --query source=openFoodFacts --query search=<code>`.

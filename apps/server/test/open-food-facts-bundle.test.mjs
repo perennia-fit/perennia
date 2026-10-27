@@ -221,6 +221,29 @@ test("an unreadable or unknown bundle file throws OpenFoodFactsBundleUnavailable
       () => loadOpenFoodFactsBundle(hexNutrient),
       OpenFoodFactsBundleUnavailableError
     );
+
+    // The app's decoder throws on an id that is not a Nutrient id.
+    const unknownNutrient = writeBundle(directory, "unknown-nutrient.gz", [
+      product({ code: "7000003", name: "Milk", nutrients: { energy: "64", taurine: "1" } })
+    ]);
+    assert.throws(
+      () => loadOpenFoodFactsBundle(unknownNutrient),
+      (error) =>
+        error instanceof OpenFoodFactsBundleUnavailableError &&
+        /nutrients\.taurine/.test(error.cause.message)
+    );
+
+    // A safe integer past the Date range (8.64e12 seconds) would make
+    // toISOString throw on every request that returns the product.
+    const outOfRangeDate = writeBundle(directory, "out-of-range-date.gz", [
+      product({ code: "7000004", name: "Milk", modifiedAt: 8.64e12 + 1 })
+    ]);
+    assert.throws(
+      () => loadOpenFoodFactsBundle(outOfRangeDate),
+      (error) =>
+        error instanceof OpenFoodFactsBundleUnavailableError &&
+        /modifiedAt/.test(error.cause.message)
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -271,7 +294,8 @@ function product({
   name,
   brand = null,
   scans = 1,
-  nutrients = { energy: "100", protein: "1", carbohydrate: "2", fat: "3" }
+  nutrients = { energy: "100", protein: "1", carbohydrate: "2", fat: "3" },
+  modifiedAt = 1745020800
 }) {
   return {
     code,
@@ -282,7 +306,7 @@ function product({
     servingSize: null,
     packageSize: null,
     nutrients,
-    modifiedAt: 1745020800,
+    modifiedAt,
     scans
   };
 }

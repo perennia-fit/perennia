@@ -218,9 +218,19 @@ test("GET /agent/foods/platform-search?source=openFoodFacts searches the bundle 
 });
 
 test("GET /agent/foods/platform-search?source=openFoodFacts is 503 when the bundle cannot be read, and USDA still works", async () => {
-  const app = createAgentFoodsApp({});
+  const errors = [];
+  const app = createAgentFoodsApp({
+    logger: {
+      info() {},
+      error(payload, message) {
+        errors.push({ payload, message });
+      }
+    }
+  });
   setOpenFoodFactsBundleLoaderForTesting(() => {
-    throw new OpenFoodFactsBundleUnavailableError(new Error("ENOENT"));
+    throw new OpenFoodFactsBundleUnavailableError(
+      new Error("ENOENT: no such file or directory")
+    );
   });
   try {
     const response = await getAgent(
@@ -232,12 +242,108 @@ test("GET /agent/foods/platform-search?source=openFoodFacts is 503 when the bund
       code: "agent_foods_unavailable",
       message: "The Open Food Facts bundle is not available on this server."
     });
+    // The reason the bundle is missing reaches the log, not only the generic
+    // message (the cause is not an enumerable property of the error).
+    const logged = errors.find(
+      (entry) => entry.message === "open food facts bundle unavailable"
+    );
+    assert.ok(logged);
+    assert.match(String(logged.payload.cause?.message), /ENOENT/);
 
     const usda = await getAgent(app, "/agent/foods/platform-search?search=chicken");
     assert.equal(usda.status, 200);
   } finally {
     setOpenFoodFactsBundleLoaderForTesting(null);
   }
+});
+
+test("an Open Food Facts food from platform-search logs with log-meal once its unknown amounts drop the nulls", async () => {
+  const writes = [];
+  const app = createAgentFoodsApp({
+    agentMealBatchWriteStore: {
+      async writeMealBatch(input) {
+        writes.push(input);
+        return {
+          duplicate: false,
+          serverClock: "2026-10-27T05:00:01.000Z",
+          applied: [input.meal, ...input.entries].map((row) => ({
+            id: row.id,
+            updatedAt: row.updatedAt,
+            deviceId: input.deviceId
+          }))
+        };
+      }
+    }
+  });
+
+  const search = await getAgent(
+    app,
+    "/agent/foods/platform-search?source=openFoodFacts&search=coca%20cola&limit=1"
+  );
+  assert.equal(search.status, 200);
+  const [food] = (await search.json()).foods;
+  const code = food.id;
+  const byBarcode = await getAgent(
+    app,
+    `/agent/foods/platform-search?source=openFoodFacts&search=${code}&limit=1`
+  );
+  assert.deepEqual((await byBarcode.json()).foods[0], food);
+  // The read vector carries unknown amounts as value: null, entered: null.
+  const unknownIds = Object.keys(food.nutrientsPer100).filter(
+    (id) => food.nutrientsPer100[id].status === "unknown"
+  );
+  assert.ok(unknownIds.length > 0);
+  assert.equal(food.nutrientsPer100[unknownIds[0]].value, null);
+
+  // As the agent documentation says: send each unknown amount with its unit
+  // and without value and entered.
+  const nutrients = Object.fromEntries(
+    Object.entries(food.nutrientsPer100).map(([id, amount]) => [
+      id,
+      amount.status === "unknown"
+        ? { status: "unknown", unit: amount.unit }
+        : amount
+    ])
+  );
+  const entryId = randomUUID();
+  const response = await app.request("/agent/meals/batch-write", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer prn_agent_secret",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      idempotencyKey: `agent-food-log-open-food-facts-${randomUUID()}`,
+      meal: {
+        id: randomUUID(),
+        mealType: "Lunch",
+        startedAt: "2026-10-27T02:00:00.000Z",
+        endedAt: null,
+        timezone: "Australia/Brisbane",
+        localDate: "2026-10-27"
+      },
+      entries: [
+        {
+          id: entryId,
+          position: 0,
+          name: food.name,
+          nutrients,
+          isLiquid: food.isLiquid,
+          foodId: code,
+          foodSource: "openFoodFacts",
+          portion: { value: 330, entered: "330", unit: food.isLiquid ? "milliliter" : "gram" },
+          servingLabel: food.servingLabel,
+          servingSize: food.servingSize,
+          packageSize: food.packageSize
+        }
+      ]
+    })
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.entries[0].id, entryId);
+  assert.equal(body.entries[0].kind, "food");
+  assert.equal(writes.length, 1);
 });
 
 test(

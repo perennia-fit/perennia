@@ -1558,7 +1558,10 @@ export function createAgentMcpServer({
         });
       } catch (error) {
         if (error instanceof OpenFoodFactsBundleUnavailableError) {
-          logger.error?.({ error }, "open food facts bundle unavailable");
+          logger.error?.(
+            { error, cause: error.cause },
+            "open food facts bundle unavailable"
+          );
           return errorResult(
             AgentFoodsUnavailableResponseSchema.parse({
               code: "agent_foods_unavailable",

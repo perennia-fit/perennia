@@ -409,7 +409,14 @@ Nothing is fetched from an external service.
   bundle is searched: a product that is not in it is not found, and omitting
   `search` returns no foods. Each food carries its `brand`, the date Open Food
   Facts last changed it (`sourceModifiedAt`) and its Open Food Facts page
-  (`productUrl`); `id` is the barcode.
+  (`productUrl`); `id` is the barcode. Its `nutrientsPer100` lists every
+  Nutrient; one the bundle does not report is
+  `{ status: "unknown", value: null, entered: null }`. To log the food with
+  `log-meal` (`POST /agent/meals/batch-write`, `foodSource: "openFoodFacts"`,
+  `foodId` set to the barcode), send `nutrientsPer100` as the entry's
+  `nutrients` with each unknown amount sent as `{ status: "unknown", unit }`,
+  without `value` and `entered` (the write rejects `null` there), along with
+  `name`, `isLiquid` and the serving and package sizes.
 
 The response includes an `attribution` object. Surface its
 `attributionText` and licence wherever the result is shown; for Open Food

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 
+import { isNutrientId } from "./agent-validation.js";
 import { barcodeCandidates } from "./barcode-candidates.js";
 
 /**
@@ -288,6 +289,12 @@ function parseProductLine(line: string, lineNumber: number): BundleProduct {
   }
   const nutrientText: Record<string, string> = {};
   for (const [id, entered] of Object.entries(nutrients)) {
+    // The app's decoder throws on an id that is not a Nutrient id
+    // (NutrientId.byStorageKey); the server would otherwise drop it silently,
+    // and the two readers would disagree on the same line.
+    if (!isNutrientId(id)) {
+      throw lineError(lineNumber, `nutrients.${id}`);
+    }
     // The app reads the text as `entered` and its parsed number as `value`
     // (Dart's double.parse). Only plain decimal text is accepted, which
     // Number() and double.parse read as the same nearest double; Number()
@@ -310,7 +317,7 @@ function parseProductLine(line: string, lineNumber: number): BundleProduct {
     servingSize: optionalPositiveNumber(json, "servingSize", lineNumber),
     packageSize: optionalPositiveNumber(json, "packageSize", lineNumber),
     nutrients: nutrientText,
-    modifiedAt: requiredInteger(json, "modifiedAt", lineNumber),
+    modifiedAt: requiredModifiedAt(json, lineNumber),
     scans: requiredInteger(json, "scans", lineNumber),
     words: [...normalizedWords(name), ...(brand === null ? [] : normalizedWords(brand))]
   };
@@ -370,6 +377,24 @@ function requiredInteger(json: JsonObject, key: string, lineNumber: number): num
   const value = json[key];
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw lineError(lineNumber, key);
+  }
+  return value;
+}
+
+// The latest instant a JavaScript Date (and Dart's DateTime) can hold, in
+// milliseconds since the Unix epoch.
+const MAX_DATE_MILLISECONDS = 8.64e15;
+
+/**
+ * The change date in Unix seconds. A value past the date range (8.64e12
+ * seconds) would make toISOString throw on every request that returns the
+ * product, and the app's DateTime.fromMillisecondsSinceEpoch rejects it too,
+ * so the load refuses the file instead.
+ */
+function requiredModifiedAt(json: JsonObject, lineNumber: number): number {
+  const value = requiredInteger(json, "modifiedAt", lineNumber);
+  if (value * 1000 > MAX_DATE_MILLISECONDS) {
+    throw lineError(lineNumber, "modifiedAt");
   }
   return value;
 }
