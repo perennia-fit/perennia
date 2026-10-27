@@ -2,7 +2,7 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phase 1)
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2)
 
 --------------------------------------------------------------------------------
 
@@ -208,6 +208,20 @@ settled in the sections they belong to:
 
 The new rules land in Phase 2 (file 17a).
 
+Building Phase 2 raised more. They are settled the same way:
+
+*   start-date moves, default anchors and the base an unchanged save is
+    compared with → D1;
+*   the shared-core reading of a default anchor → D4 and
+    [Shared core API](#shared-core-api-pure-dart-and-typescript-mirror-each-other);
+*   the Agent surface: which writes carry `today`, field naming, whole-row
+    writes, archived rows, unchanged Schedule writes, rule ids and warnings
+    → D6;
+*   the storage form of `rule` and `period` → [Data shapes](#data-shapes-fixed-by-this-spec);
+*   the offset range on Dose writes → D2.
+
+The decisions that change what Phase 2 built land as file 34a.
+
 ## Critical User Journeys (CUJs)
 
 ### CUJ 1: Morning stack, one reminder
@@ -393,16 +407,56 @@ own id. No version is ever edited in place.
         effectiveFrom for that member)`, so an edit can never land behind an
         existing version and be hidden by it.
     *   An edit takes effect that same day (CUJ 6).
-*   **Moving the start date later** inserts, for each member, a copy of the
-    version that applied on the new start date, dated from the new start, so
-    the most recent edit keeps winning by id. Versions are still never edited.
-    **Moving it earlier** inserts a copy of each member's earliest version,
-    dated from the new start, so no date inside the bounds is left without a
-    version. A cycle or every-N anchor that was left at its default (the
-    start) moves with the start; an anchor the user set stays.
+*   **Moving the start date later** inserts nothing. The version that
+    applies on the new start is already the latest one dated on or before
+    it, and dates before the new start read `outside`.
+*   **Moving it earlier** inserts, for each member that was planned from the
+    old start, a copy of its earliest version dated from the new start, so
+    those members plan the new days. Versions are still never edited.
+    *   **Which members.** Every member row of the Protocol whose earliest
+        version is dated on or before the old start and after the new
+        start. That includes archived (removed) members, which were part of
+        the course from its start and still cover those days up to their
+        `archived_on`. It excludes rows tombstoned by undo (they never
+        existed), members with no versions (they already cover every date),
+        and members whose earliest version is after the old start: a
+        Compound added mid-course keeps its own first date, so moving the
+        course's start doesn't turn days before it was added into "Not
+        logged".
+    *   **Within one save.** Copies are taken from the rows and versions
+        stored before the save. A member the same save removes gets its
+        copy like any stored member, and is then archived. A member the same
+        save adds gets its first version by the first-version rule above.
+        The save's own Schedule edits are dated after the copies.
+    *   **No ties.** A copy is dated before every version its member has,
+        and an edit on or after the latest, so a copy never shares a date
+        with an edit, and the new start never already holds a version of a
+        member that gets a copy.
+    *   The copy's rule and amount are the earliest version's. A default
+        anchor in it needs no rewriting, because it is read as the start
+        (below); a writer may still store the new start there.
+*   **Default anchors follow the start.** An every-N or cycle anchor left at
+    its default (`anchor_is_default: true`) means "the Protocol's start",
+    and is read that way when planning (D4), on every version. Moving the
+    start moves it everywhere without writing anything. An anchor the user
+    set stays where it is. Reading it at plan time, rather than copying
+    every later version with a moved anchor on each start move, keeps one
+    row per edit. It also covers a version another device or an Agent
+    wrote before it saw the start move. And it matches how the rest of the
+    period behaves: the start is a Protocol field, which is not versioned
+    (below), so moving it reclassifies past days as any period edit does.
 *   **Saves that change nothing** insert nothing. The editor sends every
     member's Schedule on every save, and only one that differs from the
-    version that applies today becomes a new version.
+    member's current version (the latest `effectiveFrom`, then the larger
+    id) becomes a new version. The current version is the comparison base,
+    not the version in effect today: a new version is dated `max(today,
+    latest effectiveFrom)`, and the current version is the one in effect on
+    that date. When a version is dated in the future (a Protocol whose
+    start is still ahead), the version in effect today is an older one or
+    none, and comparing with it would insert a copy of the current version.
+    Two versions are the same when their decoded rules and amounts are
+    equal, ignoring the stored date of a default anchor, which is never
+    read. Agent writes don't follow this rule (D6).
 *   **No Schedule.** A member can have no Schedule, as today. A member with no
     versions, or whose version that applies has the rule kind `unscheduled`,
     plans nothing, and reads "Not planned" with the reason `no_schedule`.
@@ -431,7 +485,12 @@ own id. No version is ever edited in place.
     history with a gap of "removed" days.
 *   **Archived Protocols** keep their versions and freeze an `archived_on`
     the same way. Past days still count an archived Protocol up to and
-    including that date.
+    including that date. An archived Protocol is read-only: the app's editor
+    refuses to edit one, and so does the Agent write path (D6). No path
+    restores an archived Protocol or Protocol Member. Clearing an archive
+    would erase its `archived_on`, so the days it read "removed" would turn
+    back into planned days. Coming back is a new member row (above), or a
+    new Protocol.
 
 Versioning matters because a Schedule edit changes what was planned, and so
 changes past Day Statuses. Changing daily to Monday, Wednesday and Friday would
@@ -492,7 +551,15 @@ the Activity Log, as for any row. See Risks.
         to +840 (UTC−12:00 to UTC+14:00, the span of real zones). The
         function throws a `RangeError` for a fractional offset, and, from
         Phase 2, for one outside that range. The Agent Effect read returns
-        400 for an offset outside it, before calling the function.
+        400 for an offset outside it, before calling the function. An Agent
+        Dose write's `timezoneOffsetMinutes` has the same range, and is a
+        400 outside it.
+    *   **Where the range lives.** Each language keeps it as a private
+        pair of constants, not part of `ProtocolPlanValidationLimits`,
+        because it is not a D7 check. Dart keeps it in `effect.dart`. The
+        server keeps one pair in `agent-protocols.ts`, used by both Agent
+        schemas and its `effectBoundsFromLocalDates`. The `effect_bounds`
+        vectors pin both ends, so the two can't drift unnoticed.
 *   **The shared core never sees a timezone.** It takes and returns local dates
     and `HH:MM` strings, and receives "today" as an input. The server never
     works out "today" for a user; Agent requests carry it (D6). Daylight-saving
@@ -532,8 +599,8 @@ who don't exist (Alternative P).
     server), so no new guard is needed.
 *   **Re-entering.** The developer test-data generator today creates no
     Compounds, Protocols or Doses. It gains the motivating stack, with its
-    Compounds and four weeks of Doses, in the same phase as the clear
-    (Phase 2), so plans for development are one command away.
+    Compounds and Doses over the generator's date range, in the same phase
+    as the clear (Phase 2), so plans for development are one command away.
 
 There is no read-time conversion and there are no legacy columns. Every
 Protocol has local-date bounds, and every Schedule Version has a rule and an
@@ -578,6 +645,17 @@ then planned in step with the anchor. For example, every 3 days anchored on
 2026-10-05 reads 2026-10-01 to 2026-10-02 as on (cycle days −4 and −3, which
 are days 1 and 2), and 2026-10-03 to 2026-10-04 as off. No validator rejects
 an anchor after the start.
+
+**A default anchor is the start.** An anchor stored with
+`anchor_is_default: true` is read as the Protocol's `startLocalDate`, both
+for a cycle and for every N days, whatever date is stored with it. Every
+reader does this: `planDays` and `endDateForDoseCount` in the core, and the
+editor, which shows the start. The stored date is kept so a row is still a
+complete rule on its own, and is whatever its writer stored: the app stores
+the start at the time of the save, and a re-dated copy (D1) may keep its
+source's date. Nothing plans from it. An anchor stored with
+`anchor_is_default: false` is read as stored. This is what lets a start move
+leave every version untouched (D1).
 
 Putting the period on the Protocol keeps one Protocol equal to one course. That
 matters for the Effect view, which compares outcomes before, during and after a
@@ -795,27 +873,95 @@ amounts.
 *   **Naming.** Agent fields are camelCase, like the rest of the Agent API:
     `startLocalDate`, `endLocalDate`, `period`, `remindersEnabled`,
     `effectiveFrom`, `rule`, `timezoneOffsetMinutes`, `archivedOn`, `today`.
-    Snake_case stays only in Drift columns and sync payloads.
+    Snake_case stays in Drift columns and sync payloads. Two more naming
+    rules hold at the Agent surface:
+    *   **Inside `rule` and `period`, keys stay snake_case.** Their keys
+        (`on_days`, `anchor_is_default`, `every_n_days` and so on) are the
+        stored JSON of the Data shapes, which the codecs, validators and vectors all
+        read. An Agent reads and writes that same document. Renaming its
+        keys at the API would need a second codec in each language, which
+        the vectors would then have to pin too.
+    *   **The Schedule's amount fields** keep their existing Agent names,
+        `doseAmountValue`, `doseAmountEntered`, `doseUnit` and `route`,
+        rather than the core's `amountValue`, `amountEntered` and `unit`.
+        They are the fields Agents already write, and renaming them would
+        break Agent clients for no gain.
 *   **Same release as the app.**
     *   Protocol and Schedule reads and writes carry the new fields, validated
         by the shared two-tier module (D7).
     *   `frequency` is removed from Agent Schedule writes; a write that
         includes it is rejected.
-    *   Every Agent batch write carries a required top-level `today`, the
-        user's local date, as the Day Status read does. The server assigns
+    *   The Protocol batch write carries a required top-level `today`, the
+        user's local date, as the Day Status read does. It is the one Agent
+        write that dates something by the user's calendar: a version's
+        `effectiveFrom` and an archive's `archivedOn`. A Dose takes its
+        local date from `tookAt` and its offset, and no other batch write
+        reads a local date, so no other write carries `today`; requiring it
+        there would break every Agent client for a field nothing reads.
+        The server assigns
         `effectiveFrom` exactly as the app does (D1). A write can't set `effectiveFrom` itself, can't reuse
         an existing version id, and can't archive a version, so versions are
         insert-only for Agents as they are for the app.
+    *   **A Schedule entry is an explicit edit.** The editor sends every
+        member's Schedule on every save, so the app drops unchanged ones
+        (D1). An Agent sends only the Schedules it means to change, each
+        under a new id, so the server inserts every Schedule Version the
+        write carries, even one equal to the current version. Dropping it
+        would leave the id the Agent chose, and the response reports,
+        pointing at nothing. An equal version plans exactly what its
+        predecessor planned, so inserting it changes no Day Status.
+    *   **Start moves** make the same copies as the app (D1), from the rows
+        and versions stored before the request, inside the write's
+        transaction.
+    *   **A Protocol write replaces the whole row.** Every field of the
+        Protocol is written as sent. A field left out takes its default:
+        `endLocalDate` and `period` become null, and `remindersEnabled`
+        false. The schema's description says so, and tells an Agent to send
+        every field as read to change one. A patch was rejected because it
+        would have to tell "left out" from "set to null" for `endLocalDate`
+        and `period`, where null is a real value (ongoing, no cycle and no
+        Pause). Members, Schedule Versions and target outcomes are separate
+        rows, and a write changes only the ones it lists.
     *   An Agent archives a Protocol Member or a Protocol by sending
         `archived: true`; the write schemas no longer accept `deletedAt`. The
         server stamps `deletedAt` with the current time and sets `archivedOn`
         to `today`. So an Agent can't
         backdate a removal, just as the app can't.
+        *   Re-sending `archived: true` for a member that is already archived
+            is accepted and keeps its first stamp, so a write may list every
+            member of the Protocol, removed ones included.
+        *   `archived: false` (or leaving it out) for a member that is
+            already archived is refused with `archived_row_not_restorable`.
+            No path restores an archived row (D1).
+        *   A write that names an archived Protocol is refused with
+            `protocol_archived`, whatever it sends, because the app can't
+            edit an archived Protocol either (D1).
+        *   Reads don't carry an `archived` field. `archivedOn` is non-null
+            exactly when the row is archived, and is the one place that says
+            so. A read is not a write shape anyway: `versions`,
+            `currentVersion`, `archivedOn` and `deletedAt` are all refused
+            by the strict write schemas.
     *   `today` must be within one day of the server's UTC date, which every
         real timezone satisfies; otherwise the write is rejected. This keeps
         an Agent from writing something a person using the app could not.
     *   Dose writes gain an optional `timezoneOffsetMinutes` (D2).
     *   The Effect read gains an optional `timezoneOffsetMinutes` (D2).
+*   **Agent write issues.** A refused Protocol write returns 422 with one
+    issue per problem, each with a stable `rule` id. The D7 check ids pass
+    through unchanged. The write path adds these:
+
+    | Rule id | When |
+    | :------ | :--- |
+    | `today_out_of_range` | `today` is more than one day from the server's UTC date (field `today`) |
+    | `schedule_version_exists` | a Schedule id already exists for this account: versions are insert-only |
+    | `schedule_member_not_found` | a Schedule's `protocolCompoundId` is not a member of the Protocol it is listed under, in this request or already stored (a row tombstoned by undo doesn't count) |
+    | `archived_row_not_restorable` | `archived: false`, or no `archived`, for a member that is already archived |
+    | `protocol_archived` | the write names a Protocol that is already archived (file 34a) |
+    | `rule_format`, `period_format` | the codec refuses a `rule` or `period` the D7 validators accepted. Unreachable while the two agree; it is a guard so a drift between them refuses the write instead of storing a row no reader can plan |
+
+    An accepted write that drew soft warnings (such as `times_many`) returns
+    them in a top-level `warnings` array beside `protocols`. A refused write
+    returns its `warnings` beside its `errors`.
 *   **Later stage.** Two new reads, mirrored as MCP tools:
     *   `listAgentProtocolPlannedDays`: `GET /agent/protocols/planned-days`, MCP
         tool `agent_list_protocol_planned_days`.
@@ -836,7 +982,14 @@ amounts.
         an empty list.
 *   **Reads** return each Protocol Member's full version history as
     `versions`, sorted by `effectiveFrom` and then id, plus `currentVersion`,
-    the version the editor would show (the latest `effectiveFrom`).
+    the version the editor would show (the latest `effectiveFrom`, then the
+    larger id). Versions tombstoned by undo are left out. A version whose
+    `effectiveFrom` or `rule` the codec can't read, and a `period` it can't
+    read, are left out too (the period reads null), rather than failing the
+    whole read. No writer of this version can store one, because both
+    writers validate and encode through the codecs. Such a row could only
+    come from a later rule version (`v` 2), which this read can't plan from
+    either.
 *   **The contract diff.** It shows these field and route changes in
     `packages/contract/openapi.json` and the generated clients. Responses
     carry statuses and counts only, with no ratio or streak field.
@@ -933,6 +1086,22 @@ Plan values join the shared two-tier validation module.
     the overlap sort small. Its limit is `maxPauses` in the limits class, the
     constant and the vector's `limits` block. An over-long list reports only
     `pause_count`; the other Pause checks don't run on it.
+
+**Issue fields.** Each issue carries the `field` and `limit` the Dose
+validator's issues carry:
+
+*   `amount_required`: field `amount`, limit `amount|unit|route`.
+*   `amount_absent`: field `amount`, limit `absent`. "Absent" means null or
+    missing. A blank `amountEntered` (`""` or spaces) is a value, so it is
+    carried and rejects. `amount_required` reads blank as missing, because
+    a planned amount needs text to show; `amount_absent` asks only whether
+    the row stores anything, and a blank string is something.
+*   `pause_count`: field `period.pauses`, limit `100` (`maxPauses`).
+
+**In the app,** a rejected plan throws the same `DoseValidationException`
+that a rejected Dose throws, carrying the shared issues, so the editor shows
+both the same way. A negative planned amount is a hard reject of the Dose
+validator, so it reports `amount_required`, like any other invalid amount.
 
 Two checks sit outside the shared module, because only one side has what they
 need. The "N doses" helper rejects N outside 1-1000; it is Dart only. Agent
@@ -1299,7 +1468,22 @@ DAYS = {"kind":"daily"}
 ```
 
 An anchor is always stored. The editor sets it to the Protocol's start and
-marks it as the default, until the user picks another date.
+marks it as the default, until the user picks another date. A default
+anchor is read as the Protocol's start, whatever date it stores (D4).
+
+**How `rule` and `period` are stored.** In Drift each is a text column
+holding the JSON. In a sync payload, an Activity Log image and a server row,
+each is the same JSON text: a string holding the encoded object, never the
+object itself. Every JSON-valued column in this repository travels that way
+(the app's JSON columns, and the server's `nutrient_values_json`), so one
+form keeps every writer and reader alike. The Agent write path encodes
+through the codec and stores the text, as the app does (file 34a). Readers
+on both sides also accept the decoded object, because Phase 2's Agent path
+stored objects before this rule. Keeping that one branch is cheaper than a
+migration of developer data. Two rows that hold the same JSON in different
+forms or key orders are the same plan: the app compares decoded values,
+never stored text (D1). Pauses are stored in the order written; no reader
+depends on their order, including `pause_overlap`.
 
 **`doses` row:** adds `timezone_offset_minutes` (int, nullable). A Dose payload
 without the key, which every Dose logged before this change is, reads as null;
@@ -1307,13 +1491,16 @@ it is never treated as malformed.
 
 **Version rules** (D1):
 
-*   Every changed save inserts a row, and an unchanged save inserts nothing.
+*   In the app, every changed save inserts a row, and an unchanged save,
+    judged against the current version, inserts nothing. An Agent write
+    inserts every Schedule Version it carries (D6).
 *   A member's first version is dated from the Protocol's start when the
     member is created with the Protocol, or while the start is still in the
     future, and from today otherwise.
 *   Later edits are dated `max(today, the latest effective_from for that
     member)`.
-*   Moving the start inserts re-dated copies, as D1 describes.
+*   Moving the start earlier inserts re-dated copies for the members D1
+    names. Moving it later inserts nothing.
 *   Removing a Protocol Member archives the member row and freezes its
     `archived_on`. Versions are never edited or deleted, except that undo
     tombstones the row it inserted.
@@ -1335,6 +1522,7 @@ planDays(protocols: PlanProtocol[], from: LocalDate, to: LocalDate) -> PlanDay[]
                  A member row covers its first effectiveFrom through archivedOn;
                  for each date the covering row of that Compound applies, the
                  larger memberId on a tie.
+                 A default anchor (anchor_is_default) reads as startLocalDate (D4).
   PlanDay      = {protocolId, compoundId, localDate,
                   state: "planned" | "not_scheduled_today" | "as_needed" |
                          "no_schedule" | "removed" | "outside" | "paused" | "off_cycle",
@@ -1362,8 +1550,25 @@ dueUnfilled(dayStatuses: DayStatus[], today: LocalDate, nowLocalTime: "HH:MM")
 effectBoundsFromLocalDates({startLocalDate, endLocalDate?, timezoneOffsetMinutes})
   -> EffectBounds{startDate: instant, endDate: instant | null}      (D2)
 endDateForDoseCount({startLocalDate, rule, doseCount, period?}) -> LocalDate | null
-  (Dart only; D6; null is "unavailable")
+  (Dart only; D6; null is "unavailable"; a default anchor reads as startLocalDate)
+
+compareScheduleVersions(a, b) -> int
+  D1's version order: effectiveFrom, then id.
+applyingScheduleVersion(sorted, localDate) -> version | null
+  The version that applies on localDate: the last of `sorted` (already in
+  that order) dated on or before it. Null when none applies yet.
 ```
+
+**Shared version order.** `compareScheduleVersions` and
+`applyingScheduleVersion` are exported from the core in both languages
+(`protocol_plan.dart`, `protocol-plan.ts`). `applyingScheduleVersion` is
+generic over the entry type. In Dart it takes the date reader as a named
+`effectiveFrom` function, and `compareScheduleVersions` takes two
+`ScheduleVersion`s. In TypeScript both take any object with an
+`effectiveFrom` (and, to compare, an `id`). `planDays`, the app's repository and
+the Agent write and read paths all use them, so "which version applies" and
+"the current version" (the last in this order) are decided in one place per
+language.
 
 Archive dates arrive already frozen (`archived_on`). No function parses an
 instant or a timezone, except `effectBoundsFromLocalDates`, which applies the
@@ -1630,9 +1835,22 @@ This entry is lettered so the numbers of every later file stay as they were.
     `apps/server/src/agent-validation.ts`,
     `apps/mobile/lib/domain/effect/effect.dart`,
     `apps/server/src/agent-protocols.ts` (`effectBoundsFromLocalDates` only),
-    the two m36 vector files and the validation schema, and the two runners
+    the two m36 vector files and both their schemas, the two runners
     that read `effect_bounds` cases (`apps/mobile/test/domain/protocol_plan_golden_test.dart`,
-    `apps/server/test/protocol-plan.golden.test.mjs`).
+    `apps/server/test/protocol-plan.golden.test.mjs`), and these, which the
+    changes below also need:
+    *   `apps/mobile/lib/domain/protocols/protocol_plan.dart` and
+        `apps/server/src/protocol-plan.ts`: export `compareScheduleVersions`
+        and `applyingScheduleVersion` ([Shared core API](#shared-core-api-pure-dart-and-typescript-mirror-each-other));
+    *   `apps/mobile/test/domain/protocol_plan_validation_test.dart`: assert
+        `maxPauses` in the `limits` block;
+    *   `packages/golden-vectors/vectors/m36-protocol-plan.schema.json`:
+        `effect_bounds` cases may expect `{"rejects": true}`, and their
+        `timezoneOffsetMinutes` input is unbounded, so a case can carry an
+        offset outside the range. The cycle's `on_days` and `off_days`
+        minimum is 0, not 1. The codecs don't range-check (that is D7's
+        `cycle_lengths`), so the schema of a codec case must let a case
+        carry a value the validator would reject.
 *   **Proposed Changes**:
     *   **`amount_absent`** (D7) in both validators, after `amount_required`:
         an `as_needed` or `unscheduled` rule with any of `amountValue`,
@@ -1707,7 +1925,10 @@ This entry is lettered so the numbers of every later file stay as they were.
         the new shapes. `start_date`, `end_date` and `frequency` are gone.
     4.  `createIndex` for a new index `schedules_protocol_compound_effective_from_index`
         on `(protocol_compound_id, effective_from)`. `createTable` doesn't
-        install `@TableIndex`.
+        install `@TableIndex`. The old `schedules_protocol_compound_id_index`
+        is dropped with the old table and not recreated: the new index leads
+        with `protocol_compound_id`, so it serves every lookup by member,
+        and a second index would only slow writes.
     5.  `addColumn` for `doses.timezone_offset_minutes` and
         `protocol_compounds.archived_on`. Each is guarded with
         `_columnExists`, because upgrades from below 37, 41 or 42 already
@@ -1732,8 +1953,9 @@ This entry is lettered so the numbers of every later file stay as they were.
         their `DateTime` bounds with `startLocalDate` and `endLocalDate`, and
         gain `period` and `remindersEnabled`.
     *   A Protocol read exposes, for each member, `currentVersion` (the
-        latest `effectiveFrom`, then the larger id), which the editor shows,
-        and `versionInEffectToday`.
+        latest `effectiveFrom`, then the larger id), which the editor shows
+        and an unchanged save is compared with (D1), and
+        `versionInEffectToday`, for surfaces that describe today.
     *   `DoseRecord` gains `timezoneOffsetMinutes` and a derived `localTime`.
     *   `validateProtocolWindow` is removed from `protocol_validation.dart`;
         its callers use D7's `bounds_order` check.
@@ -1753,9 +1975,9 @@ This entry is lettered so the numbers of every later file stay as they were.
             `timezoneOffsetMinutes` when the time changes, and keeps a null
             offset null otherwise.
     *   **Schedules:**
-        *   `_reconcileSchedule` compares the draft with the member's version
-            in effect today and inserts a version row only when it differs,
-            dated by D1. It no longer updates in place.
+        *   `_reconcileSchedule` compares the draft with the member's
+            current version, decoded, and inserts a version row only when it
+            differs, dated by D1. It no longer updates in place.
         *   A null draft inserts an `unscheduled` version, unless the member
             has no versions yet, in which case it inserts nothing.
         *   Every inserted version has its `times` and `weekdays` sorted,
@@ -1765,24 +1987,41 @@ This entry is lettered so the numbers of every later file stay as they were.
             assumes one Schedule per member (`listProtocols`,
             `_protocolsFromRows`) select by version instead. A member has many
             rows.
-        *   A start-date change inserts the re-dated copies D1 describes, and
-            moves default anchors.
+        *   A start-date change inserts the re-dated copies D1 describes,
+            before the save's member and Schedule changes. As built in
+            Phase 2 it also copies on a later move, and copies only members
+            the save keeps; file 34a brings it to D1.
     *   **Archives:**
         *   `_replaceProtocolMembers` no longer calls
             `_reconcileSchedule(row.id, null, …)` on removal.
         *   Archiving a Protocol Member or a Protocol sets `deleted_at` and
             freezes `archived_on` as the device's local date at that moment.
     *   **Protocols:** create and edit write local-date bounds, `period` and
-        `reminders_enabled`, validated by file 8.
+        `reminders_enabled`, validated by file 8. Editing or archiving an
+        archived Protocol throws a `StateError`.
+    *   **`today`.** `createProtocol`, `editProtocol` and `archiveProtocol`
+        take an optional named `today` (`ProtocolDayDate`), defaulting to
+        the device's local date at the write's timestamp. It dates versions
+        and `archived_on`, and lets tests pin "today" without a fake clock.
+        No caller in the app passes it.
+    *   **Rejects** from file 8 throw `DoseValidationException` (D7), before
+        anything persists.
     *   **Effect:** `EffectRepository.windowForProtocol` (~7577) passes
         `effectBoundsFromLocalDates(…, device offset)` into
         `effectWindowForProtocol`.
     *   **Sync images:**
         *   `_doseImage` and `_doseCompanionFromImage` carry
             `timezone_offset_minutes`, and a missing key reads as null.
-        *   The protocol, member and schedule images carry the new fields. A
-            protocol or schedule image without them is treated as malformed,
-            and the existing quarantine sets it aside.
+        *   The protocol, member and schedule images carry the new fields,
+            with `rule` and `period` as JSON text (Data shapes). An image is
+            malformed, and the existing quarantine sets it aside, when it is
+            missing a required plan field (a protocol's `start_local_date`
+            or `reminders_enabled`, a schedule's `effective_from` or `rule`),
+            when a date isn't a real `YYYY-MM-DD`, or when the rule or period
+            codec rejects its JSON. A missing nullable field
+            (`end_local_date`, `period`, `archived_on`, the amount fields)
+            reads as null. Every pre-change protocol or schedule image lacks
+            a required field, so it is quarantined.
 
 ##### 22. `apps/mobile/lib/features/protocols/widgets/protocol_screen.dart` and `apps/mobile/lib/l10n/app_en.arb` (Modify, Phase 2 part)
 
@@ -1802,16 +2041,47 @@ This entry is lettered so the numbers of every later file stay as they were.
         *   times: a list of time pickers, or an untimed count;
         *   or "As needed", or "No schedule", either of which clears the
             amount, unit and route (D7 `amount_absent`).
+    *   **Defaults for new values,** so a new rule is valid as soon as it
+        is picked, and one choice gets a working plan:
+        *   a new member starts with no Schedule, and its amount fields take
+            its Compound's default unit and route;
+        *   a new timed rule is daily at 09:00; a new untimed rule is daily
+            with a count of 1;
+        *   switching to every N days starts at N = 2 with a default anchor
+            (the start); switching to weekdays preselects the start's
+            weekday;
+        *   "Add a time" suggests one hour after the last time;
+        *   a new cycle starts with empty on and off counts, which the user
+            must fill (D7 `cycle_lengths` rejects until then), and a default
+            anchor.
+    *   **Saving:** "No schedule" saves a null draft, which file 21 turns
+        into an `unscheduled` version, or into nothing for a member with no
+        versions. Ending early is setting the "Until" end date to today;
+        there is no separate "End early" action.
+    *   **The "N doses" helper** reads "Unavailable" when the member's rule
+        is invalid, `as_needed` or `unscheduled`, or when
+        `endDateForDoseCount` returns null.
     *   **Validation:** rejects and warnings from file 8 show inline, as Dose
-        validation does.
-    *   **Strings:** the editor's strings go into `app_en.arb`, and the
-        generated `app_localizations*.dart` is regenerated.
+        validation does. Hard rejects appear after the first save attempt,
+        then update live as the user edits. Warnings show live and never
+        block a save. Inline issues use DESIGN.md's text colors with an
+        icon, not the error red, because an issue under a field is guidance
+        rather than a failure, and color is never its only signal.
+    *   **Text buttons** use `textPrimary`. DESIGN.md's cyan primary fails
+        WCAG AA contrast for text on the light theme.
+    *   **Strings:** only the editor's own strings go into `app_en.arb`, and
+        the generated `app_localizations*.dart` is regenerated. Strings the
+        rest of the Protocol screen already hard-codes stay as they are; the
+        move is not this feature's.
 
 ##### 23. `apps/mobile/lib/features/protocols/widgets/effect_screen.dart` (Modify)
 
 *   **Proposed Changes**: For a Protocol with a cycle or Pauses, shows
     "Off-cycle and paused days are counted as during." under the existing
-    `EffectScreen.disclaimerText`. Its string goes into `app_en.arb`.
+    `EffectScreen.disclaimerText`. Its string goes into `app_en.arb`. The
+    screen reads the Protocol's period from `protocolDetailProvider`, which
+    the Protocol screen already watches, rather than adding a period field
+    to Effect's own state, which is about outcomes, not the plan.
 
 ##### 24. `apps/mobile/lib/features/sync/repositories/sync_repository.dart` (Modify)
 
@@ -1833,16 +2103,24 @@ This entry is lettered so the numbers of every later file stay as they were.
 
 *   **Proposed Changes**: A new `includeProtocols` option, default true,
     following `includeBodyWeight` and `includeNutrition`.
-    *   **Compounds:** TRT, AgeMate, MNEM, creatine, GHK-Cu and BPC-157.
+    *   **Compounds:** TRT, AgeMate, MNEM, GHK-Cu and BPC-157 are created.
+        Creatine is one of the app's seeded Compounds, so the stack reuses
+        the seeded row (its stable id) rather than adding a second
+        "Creatine".
     *   **Protocols,** written through the app's repositories:
         *   "Daily", starting at the range start: TRT, AgeMate and MNEM at
             09:00, creatine at 17:00;
-        *   "Skin": GHK-Cu at 21:00 on a 60/30 cycle anchored 60 days before
-            the range end;
+        *   "Skin": GHK-Cu at 21:00 on a 60/30 cycle, starting on its anchor
+            60 days before the range end, with the anchor left at its
+            default;
         *   "Shoulder": BPC-157 at 21:00, starting 10 days before the range
             end, for 20 doses.
-    *   **Doses:** over the generator's `weeks` and `endDate` range (12 weeks
-        by default), with one day in six left unlogged.
+    *   **Doses:** over the generator's whole `weeks` and `endDate` range
+        (12 weeks by default), one per planned dose, with one day in six
+        left unlogged. Each is timed within 15 minutes either side of its
+        planned time, as people take them, and a Dose whose time is still
+        ahead of now is not written. Amounts are placeholders for exercising
+        the app, not dosing guidance, and the code says so.
     *   **Summary:** counts in `TestDataSummary`.
 
     The test asserts the Compounds, Protocols and Dose counts.
@@ -1866,26 +2144,46 @@ This entry is lettered so the numbers of every later file stay as they were.
         member and Schedule sub-schemas become `.strict()`, so `frequency`
         and `deletedAt` are rejected rather than stripped.
         *   The request gains a required top-level `today`, which must be
-            within one day of the server's UTC date.
-        *   Entities gain `archived: boolean`.
+            within one day of the server's UTC date. Only this write gains
+            it (D6).
+        *   Entities gain `archived: boolean`, default false.
         *   The Protocol gains `startLocalDate`, `endLocalDate`, `period` and
-            `remindersEnabled`.
+            `remindersEnabled`. `endLocalDate` and `period` default to null
+            and `remindersEnabled` to false, and the schema's description
+            says the write replaces the whole row (D6).
         *   The Schedule takes `rule` and the amount fields, and has no
             `effectiveFrom`.
         *   `today`, `startLocalDate` and `endLocalDate` must be real
             `YYYY-MM-DD` dates (`isValidLocalDate` from file 12), so a bad
             bound is a 400 before file 13 runs (D7).
     *   **`prepareAgentProtocolBatchWrite`** stays pure. It validates with
-        file 13 and checks the `today` bound.
+        file 13, checks the `today` bound (`today_out_of_range`), and
+        encodes each `rule` and `period` through the codecs (`rule_format`,
+        `period_format`). A `period` with no cycle and no Pause is stored as
+        null. Soft warnings go to the response's top-level `warnings`.
     *   **The store's `writeProtocolBatch`** does everything that needs
         stored data, inside its transaction, so REST and MCP share it:
-        *   it assigns each Schedule version's `effective_from` by D1;
-        *   it rejects a Schedule id that already exists;
-        *   it sorts each rule's `times` and `weekdays` before inserting
-            (D7);
-        *   it inserts re-dated copies on a start move;
+        *   it reads the stored Protocols, members and versions the request
+            touches, in one query each;
+        *   it rejects a Schedule id that already exists
+            (`schedule_version_exists`), and a Schedule whose member isn't
+            in its Protocol (`schedule_member_not_found`);
         *   for `archived: true`, it sets `deleted_at` to the current time and
-            `archived_on` to `today`.
+            `archived_on` to `today`, or keeps both for a row already
+            archived; `archived: false` on an archived member is
+            `archived_row_not_restorable`;
+        *   it inserts re-dated copies on a start move, from what was stored
+            before the request, before dating the request's versions (D1);
+        *   it assigns each Schedule version's `effective_from` by D1;
+        *   it sorts each rule's `times` and `weekdays` before inserting
+            (D7).
+
+        As built in Phase 2, the copies differ from D1 (it copies on a later
+        move, copies every member that undo didn't tombstone, skips a copy
+        whose source already starts on the new date, and drops a copy when
+        an edit is dated on the same day), an archived Protocol can still be
+        edited, and `rule` and `period` are stored as objects. File 34a
+        brings all three to this spec.
     *   **Reads** return the new shape, with `versions` and `currentVersion`
         (D6).
     *   **Doses:**
@@ -1897,9 +2195,11 @@ This entry is lettered so the numbers of every later file stay as they were.
     *   **The Effect read** gains an optional `timezoneOffsetMinutes`
         (default 0), an integer from −720 to +840; outside that it returns
         400 (D2). It builds its Effect window bounds with
-        `effectBoundsFromLocalDates` instead of parsing `start_date`, in
-        `deriveEffectWindow` (~1634-1680) and the Protocol source branch of
-        the Effect handler (~2040-2054).
+        `effectBoundsFromLocalDates` instead of parsing `start_date`. The
+        conversion happens in the Protocol source branch of the Effect
+        handler, which passes instants on. `deriveEffectWindow` keeps taking
+        instants and is unchanged, because the m29 Effect-window vectors pin
+        its instant-based input in both languages.
     *   The pass-throughs of a supplied `deletedAt` (~519, ~566, and the
         Protocol's own at ~1381-1394 and the member's at ~1416, ~1430) are
         removed.
@@ -1926,7 +2226,9 @@ This entry is lettered so the numbers of every later file stay as they were.
     and a logged Schedule write leaves none of `period`, `rule`,
     `startLocalDate`, `endLocalDate` or `today`. The deny-list already covers
     their parent keys, so `apps/server/src/observability.ts` changes only if
-    this test fails.
+    this test fails. It did fail for `today`, which sits at the top level of
+    the request rather than under a denied parent, so `today` joins the
+    deny-list.
 
 ##### 32. Generated contract (Regenerate), plus one hand edit
 
@@ -2028,6 +2330,103 @@ This entry is lettered so the numbers of every later file stay as they were.
         *   in `apps/server/test/`: `agent-protocols.test.mjs`,
             `protocols-lifecycle-sync.test.mjs`, `protocols-sync.test.mjs`
             and `effect-window.golden.test.mjs`.
+
+##### 34a. Rules settled after Phase 2's build (Modify)
+
+This entry is lettered so the numbers of every later file stay as they were.
+It changes what Phase 2's pull request built, so it lands as its own pull
+request after that one, and before Phase 3, whose Planned list reads the
+plan these rules shape.
+
+*   **Files**:
+    *   `apps/mobile/lib/domain/protocols/protocol_plan_days.dart` and
+        `apps/server/src/protocol-plan.ts`: in `planDays` (and Dart's
+        `endDateForDoseCount`), an every-N or cycle anchor with
+        `anchor_is_default: true` is read as the Protocol's
+        `startLocalDate` (D4).
+    *   `apps/mobile/lib/data/repositories/training_repositories.dart`:
+        *   `_redateVersionsForStartMove` follows D1. It copies nothing on a
+            later move. On an earlier move it copies, for each member row of
+            the Protocol that undo didn't tombstone (archived ones and ones
+            this save removes included), the earliest version when that
+            version is dated on or before the old start and after the new
+            one.
+        *   `_sameScheduleVersion` ignores the stored date of a default
+            anchor, so an unchanged save after a start move inserts
+            nothing (D1).
+    *   `apps/mobile/lib/features/protocols/widgets/protocol_screen.dart`:
+        the editor loads a default every-N or cycle anchor as the
+        Protocol's start, not the stored date, so it shows what is planned
+        (D4).
+    *   `apps/server/src/agent-protocols.ts`:
+        *   the start-move copies in `finalizeProtocolPlanRows` follow the
+            same D1 rule as the app. The skip for a source that already
+            starts on the new date, and the step that drops a copy when an
+            edit is dated on its day, are removed: neither case can arise
+            once later moves copy nothing (D1, "No ties");
+        *   a write that names a stored archived Protocol is refused with
+            `protocol_archived` (D6). The member rules are unchanged;
+        *   `rule` and `period` are stored as JSON text, the codec's
+            encoding (Data shapes). The readers keep accepting an object;
+        *   the `startLocalDate` description says that moving the start
+            earlier copies the versions of the members planned from the
+            old start, and that default anchors follow the start.
+    *   Generated contract, as file 32, for the changed descriptions.
+    *   The two m36 vector files, for the cases below.
+*   **Vectors to add** (each with a `note`):
+    *   in `m36-protocol-plan.json`:
+        *   `default-every-n-anchor-reads-the-start`: every 2 days, default
+            anchor stored as 2026-09-01, start 2026-09-04. 2026-09-04 and
+            2026-09-06 are planned and 2026-09-05 is `not_scheduled_today`.
+            Counted from the stored date, 2026-09-04 would not be planned;
+        *   `default-anchor-on-a-later-version-follows-the-start`: start
+            2026-09-04, a daily version from 2026-09-01 and an every-2-days
+            version from 2026-09-10 whose default anchor stores 2026-09-01.
+            2026-09-10 is planned and 2026-09-11 is not;
+        *   `default-cycle-anchor-reads-the-start`: 3 on and 2 off, default
+            anchor stored as 2026-09-01, start 2026-09-05. 2026-09-05 is
+            on (cycle day 0), where the stored date would make it day 4, off;
+        *   `start-moved-later-needs-no-copy`: the versions of
+            `start-moved-later-past-an-edit` without its copy give the same
+            PlanDays;
+        *   `start-moved-earlier-keeps-a-mid-course-member-to-its-first-date`:
+            the start moved from 2026-10-10 to 2026-10-05. Member A, planned
+            from the old start, has a copy dated 2026-10-05; member B, added
+            on 2026-10-12, has none. B reads `removed` from 2026-10-05 to
+            2026-10-11 and is planned from 2026-10-12;
+        *   `start-moved-earlier-extends-an-archived-member`: a member
+            planned from the old start 2026-10-10 and archived on
+            2026-10-15, with a copy dated 2026-10-05, is planned from
+            2026-10-05 through 2026-10-15 and reads `removed` after;
+        *   `every-n-days-user-anchor-before-the-start` (exists) pins that a
+            user-set anchor is read as stored;
+    *   in `m36-protocol-plan-validation.json`:
+        *   `as-needed-rule-with-a-blank-amount-entered-rejects`:
+            `amountEntered` of `"  "` and nothing else →
+            `[amount_absent]` (D7).
+*   **Tests:**
+    *   `apps/mobile/test/domain/protocol_plan_dose_count_test.dart`: an
+        every-N rule whose default anchor stores another date counts from
+        `startLocalDate`.
+    *   `apps/mobile/test/features/protocols/protocols_repository_test.dart`:
+        *   moving the start later inserts no version;
+        *   moving it earlier copies a member planned from the old start, an
+            archived one, and one the same save removes, but not a member
+            added mid-course or one with no versions;
+        *   after a later start move, an unchanged save of a member whose
+            current version has a default every-N anchor inserts nothing.
+    *   `apps/mobile/test/features/protocols/protocol_screen_test.dart`: a
+        default anchor whose stored date is an old start shows the current
+        start.
+    *   `apps/server/test/agent-protocols.test.mjs`:
+        *   the same start-move cases through the Agent write;
+        *   a write naming an archived Protocol is refused with
+            `protocol_archived`; re-sending an archived member with
+            `archived: true` is accepted and keeps its stamp; `archived:
+            false` on it is refused with `archived_row_not_restorable`;
+        *   an Agent Schedule equal to the current version is inserted (D6);
+        *   `rule` and `period` are stored as JSON text, and a row stored as
+            an object still reads.
 
 #### Phase 3: the Planned list
 
