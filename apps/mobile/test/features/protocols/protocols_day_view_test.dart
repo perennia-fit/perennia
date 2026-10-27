@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
@@ -234,6 +236,474 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });
+
+  group('the Planned list (D6)', () {
+    testWidgets(
+      'today\'s rows read Logged or Pending, with the planned time or Any '
+      'time and the amount, grouped under their Protocol',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_today),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_today),
+            plannedDay: _plannedDay(
+              _today,
+              doses: <PlanDose>[_planDose('c-trt', _today, '08:40')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        expect(
+          find.byKey(ProtocolsDayView.plannedGroupKey('protocol-daily')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(ProtocolsDayView.plannedGroupKey('protocol-night')),
+          findsOneWidget,
+        );
+        expect(find.text('Daily'), findsOneWidget);
+        expect(find.text('Night'), findsOneWidget);
+        expect(_rowLabel(tester, 'protocol-daily', 'c-trt'), 'Logged');
+        expect(_rowLabel(tester, 'protocol-daily', 'c-agemate'), 'Pending');
+        expect(_rowLabel(tester, 'protocol-daily', 'c-creatine'), 'Pending');
+        expect(_rowLabel(tester, 'protocol-night', 'c-ghk'), 'Pending');
+        expect(_rowLabel(tester, 'protocol-night', 'c-magnesium'), 'Pending');
+        expect(_rowText(tester, 'protocol-daily', 'c-trt'),
+            contains('0.5 mL · 9:00 AM'));
+        expect(_rowText(tester, 'protocol-daily', 'c-creatine'),
+            contains('5 g · 5:00 PM'));
+        expect(_rowText(tester, 'protocol-night', 'c-magnesium'),
+            contains('Any time'));
+        expect(find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+            findsOneWidget);
+        expect(find.text('Log all planned'), findsOneWidget);
+        // The logged Doses still list below; none are logged in this fixture.
+        expect(find.byKey(ProtocolsDayView.emptyStateKey), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a past day\'s unfilled rows read Not logged, and it has no bulk action',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_yesterday),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_yesterday),
+            plannedDay: _plannedDay(
+              _yesterday,
+              doses: <PlanDose>[_planDose('c-trt', _yesterday, '09:05')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        expect(_rowLabel(tester, 'protocol-daily', 'c-trt'), 'Logged');
+        expect(_rowLabel(tester, 'protocol-daily', 'c-agemate'), 'Not logged');
+        expect(_rowLabel(tester, 'protocol-night', 'c-ghk'), 'Not logged');
+        expect(find.text('Pending'), findsNothing);
+        expect(
+            find.byKey(ProtocolsDayView.logAllPlannedButtonKey), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a future day shows its times and amounts with no label and no action',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_tomorrow),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_tomorrow),
+            plannedDay: _plannedDay(_tomorrow),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        expect(_rowText(tester, 'protocol-daily', 'c-trt'),
+            contains('0.5 mL · 9:00 AM'));
+        expect(_rowText(tester, 'protocol-night', 'c-magnesium'),
+            contains('Any time'));
+        for (final label in <String>['Logged', 'Pending', 'Not logged']) {
+          expect(find.text(label), findsNothing);
+        }
+        expect(
+            find.byKey(ProtocolsDayView.logAllPlannedButtonKey), findsNothing);
+
+        await tester.tap(_rowFinder('protocol-daily', 'c-trt'));
+        await tester.pumpAndSettle();
+        expect(find.byType(LogDoseSheet), findsNothing);
+      },
+    );
+
+    testWidgets('the list is hidden when the day has nothing planned', (
+      tester,
+    ) async {
+      await _pumpView(
+        tester,
+        _emptyDay(_today),
+        controller: _FakeProtocolDayController(
+          _emptyDay(_today),
+          plannedDay: _plannedDay(_today, protocols: const <PlanProtocol>[]),
+        ),
+      );
+      await _pumpUntilFound(tester, find.byKey(ProtocolsDayView.emptyStateKey));
+
+      expect(find.byKey(ProtocolsDayView.plannedListKey), findsNothing);
+    });
+
+    testWidgets(
+      'a row logs in two taps: open it, then Save, at its planned amount and '
+      'tagged with its Protocol, timed now on today',
+      (tester) async {
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_today),
+          plannedDay: _plannedDay(_today),
+        );
+        await _pumpView(tester, _emptyDay(_today), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        // Tap 1: the row.
+        await tester.tap(_rowFinder('protocol-daily', 'c-agemate'));
+        await tester.pumpAndSettle();
+        expect(find.byType(LogDoseSheet), findsOneWidget);
+        expect(find.text('Daily'), findsWidgets);
+
+        // Tap 2: Save.
+        await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.pump();
+
+        final dose = controller.loggedDoses.single;
+        expect(dose.compoundId, 'c-agemate');
+        expect(dose.compoundName, 'AgeMate');
+        expect(dose.amountEntered, '1');
+        expect(dose.unit, DoseUnit.capsule);
+        expect(dose.route, DoseRoute.oral);
+        expect(dose.protocolId, 'protocol-daily');
+        expect(dose.protocolName, 'Daily');
+        expect(dose.tookAt, _now);
+      },
+    );
+
+    testWidgets(
+      'a past day\'s row opens the sheet on that date at its planned time, '
+      'both editable (CUJ 7)',
+      (tester) async {
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_yesterday),
+          plannedDay: _plannedDay(_yesterday),
+        );
+        await _pumpView(tester, _emptyDay(_yesterday), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        await tester.tap(_rowFinder('protocol-night', 'c-ghk'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.descendant(
+            of: find.byKey(LogDoseSheet.dateFieldKey),
+            matching: find.text('Oct 26, 2026'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(LogDoseSheet.timeFieldKey),
+            matching: find.text('9:00 PM'),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.pump();
+
+        final dose = controller.loggedDoses.single;
+        expect(dose.tookAt, DateTime(2026, 10, 26, 21));
+        expect(dose.protocolId, 'protocol-night');
+      },
+    );
+
+    testWidgets(
+      'an untimed row on a past day opens the sheet at 12:00 on that date',
+      (tester) async {
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_yesterday),
+          plannedDay: _plannedDay(_yesterday),
+        );
+        await _pumpView(tester, _emptyDay(_yesterday), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        await tester.tap(_rowFinder('protocol-night', 'c-magnesium'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.pump();
+
+        expect(
+            controller.loggedDoses.single.tookAt, DateTime(2026, 10, 26, 12));
+      },
+    );
+
+    testWidgets(
+      'every row label is a word beside its icon: color is never the only '
+      'signal',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_today),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_today),
+            plannedDay: _plannedDay(
+              _today,
+              doses: <PlanDose>[_planDose('c-trt', _today, '09:00')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        for (final (compoundId, label) in <(String, String)>[
+          ('c-trt', 'Logged'),
+          ('c-agemate', 'Pending'),
+        ]) {
+          final row = _rowFinder('protocol-daily', compoundId);
+          final text = find.descendant(of: row, matching: find.text(label));
+          expect(text, findsOneWidget);
+          final labelRow =
+              find.ancestor(of: text, matching: find.byType(Row)).first;
+          expect(
+            find.descendant(of: labelRow, matching: find.byType(Icon)),
+            findsOneWidget,
+          );
+        }
+        // The two labels differ in word as well as in icon color.
+        expect(find.text('Logged'), findsOneWidget);
+        expect(find.text('Pending'), findsNWidgets(4));
+      },
+    );
+
+    testWidgets(
+        'the Planned list meets accessibility guidelines in both themes',
+        (tester) async {
+      for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+        final semantics = tester.ensureSemantics();
+        await _pumpView(
+          tester,
+          _dayWithDoses(),
+          theme: theme,
+          controller: _FakeProtocolDayController(
+            _dayWithDoses(),
+            plannedDay: _plannedDay(
+              _today,
+              doses: <PlanDose>[_planDose('c-trt', _today, '09:00')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+
+        semantics.dispose();
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
+    testWidgets(
+      '"Log all planned" logs the due rows in one Batch and leaves a later '
+      'row Pending (CUJ 1)',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        // Seeded in the test's own zone, with frames pumped until it lands,
+        // so the database's queue and stream timers all run on fake time.
+        var seeded = false;
+        unawaited(_seedDailyStack(repositories).then((_) => seeded = true));
+        for (var frame = 0; frame < 100 && !seeded; frame += 1) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        expect(seeded, isTrue);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              trainingRepositoriesProvider.overrideWith((ref) => repositories),
+              protocolsClockProvider.overrideWithValue(() => _cuj1Now),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: AppTheme.light(),
+              home: const ProtocolsDayView(),
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+        );
+        expect(find.text('Pending'), findsNWidgets(3));
+
+        await tester.tap(find.byKey(ProtocolsDayView.logAllPlannedButtonKey));
+        await _pumpUntilFound(tester, find.text('Logged'));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(find.text('Logged'), findsNWidgets(2));
+        expect(find.text('Pending'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.ancestor(
+              of: find.text('Pending'),
+              matching: find.byType(InkWell),
+            ),
+            matching: find.text('Creatine'),
+          ),
+          findsOneWidget,
+        );
+        // The two Doses list below, timed now, in one Batch.
+        final doses = await database.select(database.doses).get();
+        expect(
+            doses.map((dose) => dose.compoundName).toSet(), {'TRT', 'AgeMate'});
+        expect(
+          doses.every((dose) => dose.tookAt.isAtSameMomentAs(_cuj1Now)),
+          isTrue,
+        );
+        expect(doses.every((dose) => dose.protocolName == 'Daily'), isTrue);
+        final entries = await repositories.activityLog.listEntries();
+        final doseBatches = entries
+            .where((entry) => entry.entityTable == AppDatabase.dosesTable)
+            .map((entry) => entry.batchId)
+            .toSet();
+        expect(doseBatches, hasLength(1));
+
+        // Unmount, then close the database on fake time: Drift's close waits
+        // for its stream-cache timers, which only frames can fire.
+        await tester.pumpWidget(const SizedBox.shrink());
+        var closed = false;
+        unawaited(database.close().then((_) => closed = true));
+        for (var frame = 0; frame < 100 && !closed; frame += 1) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        expect(closed, isTrue);
+      },
+    );
+
+    testWidgets(
+      'a double tap on "Log all planned" logs the due rows once',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+        );
+
+        // Two taps before any frame: both reach the button's handler.
+        await tester.tap(find.byKey(ProtocolsDayView.logAllPlannedButtonKey));
+        await tester.tap(find.byKey(ProtocolsDayView.logAllPlannedButtonKey));
+        await _pumpUntilFound(tester, find.text('Logged'));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final doses = await database.select(database.doses).get();
+        expect(doses.map((dose) => dose.compoundName).toList()..sort(),
+            <String>['AgeMate', 'TRT']);
+        expect(find.text('Logged'), findsNWidgets(2));
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'when local midnight passes, the day the view opened on reads as past: '
+      'Not logged, with no bulk action',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        var now = _cuj1Now;
+        await _pumpLiveView(tester, repositories, () => now);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.logAllPlannedButtonKey),
+        );
+        expect(find.text('Pending'), findsNWidgets(3));
+
+        now = DateTime(2026, 10, 28, 8);
+        await tester.pump(const Duration(minutes: 1));
+        await _pumpUntilFound(tester, find.text('Not logged'));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(find.text('Not logged'), findsNWidgets(3));
+        expect(find.text('Pending'), findsNothing);
+        expect(
+            find.byKey(ProtocolsDayView.logAllPlannedButtonKey), findsNothing);
+
+        await _closeLive(tester, database);
+      },
+    );
+  });
+}
+
+/// Seeds the CUJ 1 stack in the test's own zone, with frames pumped until it
+/// lands, so the database's queue and stream timers all run on fake time.
+Future<void> _seedOnFakeTime(
+  WidgetTester tester,
+  TrainingRepositories repositories,
+) async {
+  var seeded = false;
+  unawaited(_seedDailyStack(repositories).then((_) => seeded = true));
+  for (var frame = 0; frame < 100 && !seeded; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  expect(seeded, isTrue);
+}
+
+/// The Protocol Day view over a real repository and [clock].
+Future<void> _pumpLiveView(
+  WidgetTester tester,
+  TrainingRepositories repositories,
+  DateTime Function() clock,
+) {
+  return tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        trainingRepositoriesProvider.overrideWith((ref) => repositories),
+        protocolsClockProvider.overrideWithValue(clock),
+      ],
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: AppTheme.light(),
+        home: const ProtocolsDayView(),
+      ),
+    ),
+  );
+}
+
+/// Unmounts, then closes the database on fake time: Drift's close waits for
+/// its stream-cache timers, which only frames can fire.
+Future<void> _closeLive(WidgetTester tester, AppDatabase database) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  var closed = false;
+  unawaited(database.close().then((_) => closed = true));
+  for (var frame = 0; frame < 100 && !closed; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  expect(closed, isTrue);
 }
 
 Future<void> _pumpView(
@@ -262,6 +732,7 @@ Future<void> _pumpView(
             const <ProtocolOptionRecord>[],
           ),
         ),
+        protocolsClockProvider.overrideWithValue(() => _now),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -294,9 +765,11 @@ List<CompoundRecord> _seededCompounds() {
 }
 
 class _FakeProtocolDayController extends ProtocolDayController {
-  _FakeProtocolDayController(this.day);
+  _FakeProtocolDayController(this.day, {this.plannedDay});
 
   final ProtocolDayRecord day;
+  final PlannedDay? plannedDay;
+  final loggedDoses = <DoseSnapshotDraft>[];
   int seedCalls = 0;
   int previousDayCount = 0;
   int nextDayCount = 0;
@@ -306,7 +779,18 @@ class _FakeProtocolDayController extends ProtocolDayController {
 
   @override
   Stream<ProtocolDayState> build() {
-    return Stream<ProtocolDayState>.value(ProtocolDayState(day: day));
+    return Stream<ProtocolDayState>.value(
+      ProtocolDayState(day: day, plannedDay: plannedDay),
+    );
+  }
+
+  @override
+  Future<LogDoseResult> logDose(DoseSnapshotDraft draft) async {
+    loggedDoses.add(draft);
+    return LogDoseResult(
+      batchId: 'batch-log-${loggedDoses.length}',
+      doseId: 'dose-log-${loggedDoses.length}',
+    );
   }
 
   @override
@@ -343,10 +827,247 @@ bool _chipSelected(WidgetTester tester, Key key) {
   return chip.selected;
 }
 
-ProtocolDayRecord _emptyDay() {
-  return ProtocolDayRecord(
-    localDate: const ProtocolDayDate(year: 2026, month: 6, day: 30),
-    doses: <DoseRecord>[],
+ProtocolDayRecord _emptyDay([
+  ProtocolDayDate localDate = const ProtocolDayDate(
+    year: 2026,
+    month: 6,
+    day: 30,
+  ),
+]) {
+  return ProtocolDayRecord(localDate: localDate, doses: <DoseRecord>[]);
+}
+
+/// "Now" for the Planned list fixtures: the afternoon of 2026-10-27.
+final DateTime _now = DateTime(2026, 10, 27, 15, 30);
+const _today = ProtocolDayDate(year: 2026, month: 10, day: 27);
+const _yesterday = ProtocolDayDate(year: 2026, month: 10, day: 26);
+const _tomorrow = ProtocolDayDate(year: 2026, month: 10, day: 28);
+const _start = ProtocolDayDate(year: 2026, month: 10, day: 1);
+
+/// CUJ 1's moment: 09:30, after the 09:00 doses and before the 17:00 one.
+final DateTime _cuj1Now = DateTime(2026, 10, 27, 9, 30);
+
+PlanMember _member(
+  String compoundId,
+  ScheduleRule rule,
+  PlanAmount amount,
+) {
+  return PlanMember(
+    memberId: 'm-$compoundId',
+    compoundId: compoundId,
+    versions: <ScheduleVersion>[
+      ScheduleVersion(
+        id: 'v-$compoundId',
+        effectiveFrom: _start,
+        rule: rule,
+        amount: amount,
+      ),
+    ],
+  );
+}
+
+ScheduleRule _dailyAt(String time) => TimedScheduleRule(
+      days: const DailyScheduleDays(),
+      times: <String>[time],
+    );
+
+/// Two Protocols: "Daily" (TRT and AgeMate at 09:00, creatine at 17:00) and
+/// "Night" (GHK-Cu at 21:00, and one untimed magnesium).
+List<PlanProtocol> _protocols() {
+  return <PlanProtocol>[
+    PlanProtocol(
+      protocolId: 'protocol-daily',
+      startLocalDate: _start,
+      members: <PlanMember>[
+        _member(
+          'c-trt',
+          _dailyAt('09:00'),
+          const PlanAmount(
+            amountValue: 0.5,
+            amountEntered: '0.5',
+            unit: DoseUnit.milliliter,
+            route: DoseRoute.intramuscular,
+          ),
+        ),
+        _member(
+          'c-agemate',
+          _dailyAt('09:00'),
+          const PlanAmount(
+            amountValue: 1,
+            amountEntered: '1',
+            unit: DoseUnit.capsule,
+            route: DoseRoute.oral,
+          ),
+        ),
+        _member(
+          'c-creatine',
+          _dailyAt('17:00'),
+          const PlanAmount(
+            amountValue: 5,
+            amountEntered: '5',
+            unit: DoseUnit.gram,
+            route: DoseRoute.oral,
+          ),
+        ),
+      ],
+    ),
+    PlanProtocol(
+      protocolId: 'protocol-night',
+      startLocalDate: _start,
+      members: <PlanMember>[
+        _member(
+          'c-ghk',
+          _dailyAt('21:00'),
+          const PlanAmount(
+            amountValue: 2,
+            amountEntered: '2',
+            unit: DoseUnit.milligram,
+            route: DoseRoute.topical,
+          ),
+        ),
+        _member(
+          'c-magnesium',
+          UntimedScheduleRule(days: const DailyScheduleDays(), count: 1),
+          const PlanAmount(
+            amountValue: 400,
+            amountEntered: '400',
+            unit: DoseUnit.milligram,
+            route: DoseRoute.oral,
+          ),
+        ),
+      ],
+    ),
+  ];
+}
+
+/// The Planned list for [localDate] against [_today], built by the shared
+/// core exactly as the repository builds it.
+PlannedDay _plannedDay(
+  ProtocolDayDate localDate, {
+  List<PlanDose> doses = const <PlanDose>[],
+  List<PlanProtocol>? protocols,
+}) {
+  final days = planDays(protocols ?? _protocols(), localDate, localDate);
+  final isFuture = localDate.compareTo(_today) > 0;
+  final statuses =
+      isFuture ? const <DayStatus>[] : dayStatuses(days, doses, _today);
+  return PlannedDay(
+    localDate: localDate,
+    today: _today,
+    day: _emptyDay(localDate),
+    planDays: days,
+    dayStatuses: statuses,
+    rowStatuses:
+        isFuture ? dayStatuses(days, const <PlanDose>[], localDate) : statuses,
+    compounds: <String, CompoundRecord>{
+      for (final (id, name, unit) in <(String, String, DoseUnit)>[
+        ('c-trt', 'TRT', DoseUnit.milliliter),
+        ('c-agemate', 'AgeMate', DoseUnit.capsule),
+        ('c-creatine', 'Creatine', DoseUnit.gram),
+        ('c-ghk', 'GHK-Cu', DoseUnit.milligram),
+        ('c-magnesium', 'Magnesium', DoseUnit.milligram),
+      ])
+        id: CompoundRecord(
+          id: id,
+          name: name,
+          defaultUnit: unit,
+          defaultRoute: DoseRoute.oral,
+          updatedAt: DateTime.utc(2026, 10, 1),
+        ),
+    },
+    protocols: const <String, ProtocolOptionRecord>{
+      'protocol-daily':
+          ProtocolOptionRecord(id: 'protocol-daily', name: 'Daily'),
+      'protocol-night':
+          ProtocolOptionRecord(id: 'protocol-night', name: 'Night'),
+    },
+  );
+}
+
+int _sequence = 0;
+
+PlanDose _planDose(String compoundId, ProtocolDayDate date, String time) {
+  _sequence += 1;
+  return PlanDose(
+    doseId: 'dose-$compoundId-$_sequence',
+    compoundId: compoundId,
+    localDate: date,
+    localTime: time,
+    sequence: 0,
+  );
+}
+
+/// A Planned list row; each fixture Compound has one slot, slot 0.
+Finder _rowFinder(String protocolId, String compoundId) =>
+    find.byKey(ProtocolsDayView.plannedRowKey(protocolId, compoundId, 0));
+
+String _rowText(WidgetTester tester, String protocolId, String compoundId) {
+  return tester
+      .widgetList<Text>(
+        find.descendant(
+          of: _rowFinder(protocolId, compoundId),
+          matching: find.byType(Text),
+        ),
+      )
+      .map((text) => text.data)
+      .join(' | ');
+}
+
+/// The row's label: its last Text.
+String? _rowLabel(WidgetTester tester, String protocolId, String compoundId) {
+  return tester
+      .widgetList<Text>(
+        find.descendant(
+          of: _rowFinder(protocolId, compoundId),
+          matching: find.byType(Text),
+        ),
+      )
+      .last
+      .data;
+}
+
+/// CUJ 1's "Daily" Protocol through the real repositories.
+Future<void> _seedDailyStack(TrainingRepositories repositories) async {
+  Future<String> compound(String name, DoseUnit unit, DoseRoute route) async {
+    final result = await repositories.protocols.createCompound(
+      CompoundDraft(name: name, defaultUnit: unit, defaultRoute: route),
+    );
+    return result.compoundId;
+  }
+
+  final trt = await compound(
+    'TRT',
+    DoseUnit.milliliter,
+    DoseRoute.intramuscular,
+  );
+  final ageMate = await compound('AgeMate', DoseUnit.capsule, DoseRoute.oral);
+  final creatine = await compound('Creatine', DoseUnit.gram, DoseRoute.oral);
+  ScheduleDraft dailyAt(
+      String time, String amount, DoseUnit unit, DoseRoute route) {
+    return ScheduleDraft(
+      rule: _dailyAt(time),
+      doseAmountValue: double.parse(amount),
+      doseAmountEntered: amount,
+      doseUnit: unit,
+      route: route,
+    );
+  }
+
+  final today = ProtocolDayDate.fromDateTime(_cuj1Now);
+  await repositories.protocols.createProtocol(
+    ProtocolDraft(
+      name: 'Daily',
+      startLocalDate: today,
+      compoundIds: <String>[trt, ageMate, creatine],
+      remindersEnabled: true,
+      schedulesByCompoundId: <String, ScheduleDraft?>{
+        trt: dailyAt(
+            '09:00', '0.5', DoseUnit.milliliter, DoseRoute.intramuscular),
+        ageMate: dailyAt('09:00', '1', DoseUnit.capsule, DoseRoute.oral),
+        creatine: dailyAt('17:00', '5', DoseUnit.gram, DoseRoute.oral),
+      },
+    ),
+    today: today,
   );
 }
 

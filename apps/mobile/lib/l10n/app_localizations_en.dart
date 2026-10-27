@@ -2575,4 +2575,58 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get effectPlanBreaksCountedAsDuring =>
       'Off-cycle and paused days are counted as during.';
+
+  @override
+  String get plannedListRowLogged => 'Logged';
+
+  @override
+  String get plannedListRowPending => 'Pending';
+
+  @override
+  String get plannedListRowNotLogged => 'Not logged';
+
+  @override
+  String get plannedListAnyTime => 'Any time';
+
+  @override
+  String get plannedListLogAll => 'Log all planned';
+
+  @override
+  String get logDoseDateLabel => 'Date';
+
+  @override
+  String get dayStatusNotPlanned => 'Not planned';
+
+  @override
+  String get dayStatusPaused => 'Paused';
+
+  @override
+  String get dayStatusOffCycle => 'Off cycle';
+
+  @override
+  String get dayStatusPending => 'Pending';
+
+  @override
+  String get dayStatusLogged => 'Logged';
+
+  @override
+  String get dayStatusPartlyLogged => 'Partly logged';
+
+  @override
+  String get dayStatusNotLogged => 'Not logged';
+
+  @override
+  String get notPlannedReasonNotScheduledToday => 'Not scheduled today';
+
+  @override
+  String get notPlannedReasonAsNeeded => 'As needed';
+
+  @override
+  String get notPlannedReasonNoSchedule => 'No schedule';
+
+  @override
+  String get notPlannedReasonRemoved => 'Removed';
+
+  @override
+  String get notPlannedReasonOutside => 'Outside the Protocol\'s dates';
 }

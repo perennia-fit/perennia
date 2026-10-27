@@ -1,11 +1,25 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/protocols/protocol_plan_days.dart'
+    show DueUnfilledDose, dueUnfilled;
 
 /// The Protocols repository provider, mirroring `nutritionRepositoryProvider`.
 /// Widgets -> this controller -> the repository (the only layer touching Drift).
 final protocolsRepositoryProvider = Provider<ProtocolsRepository>((ref) {
   return ref.watch(trainingRepositoriesProvider).protocols;
+});
+
+/// The Planned list's read path (D6), reached like [protocolsRepositoryProvider].
+final protocolPlanRepositoryProvider = Provider<ProtocolPlanRepository>((ref) {
+  return ref.watch(trainingRepositoriesProvider).protocolPlan;
+});
+
+/// The clock the Protocols logging surfaces read "now" and "today" from: the
+/// selected Protocol Day's default, the log sheet's time default, and "Log
+/// all planned". Overridden in tests, like `syncNowProvider`.
+final protocolsClockProvider = Provider<DateTime Function()>((ref) {
+  return DateTime.now;
 });
 
 /// The active (non-archived) `Compound` library, for the bare logging surface's
@@ -85,7 +99,8 @@ final selectedProtocolDayProvider =
 
 class SelectedProtocolDayController extends Notifier<ProtocolDayDate> {
   @override
-  ProtocolDayDate build() => ProtocolDayDate.fromDateTime(DateTime.now());
+  ProtocolDayDate build() =>
+      ProtocolDayDate.fromDateTime(ref.watch(protocolsClockProvider)());
 
   void select(ProtocolDayDate localDate) {
     state = localDate;
@@ -101,16 +116,82 @@ final protocolDayControllerProvider =
   ProtocolDayController.new,
 );
 
-/// The derived `Protocol Day` for the selected date. Nothing here is stored or
-/// synced — the day-view is computed on read.
+/// The derived `Protocol Day` for the selected date, with its Planned list
+/// (D6). Nothing here is stored or synced — the day-view is computed on read.
 class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
+  /// The local date this build read as today. Day Statuses, row labels and
+  /// "Log all planned" all depend on it, so [refreshIfDayChanged] rebuilds
+  /// when the clock has moved past it.
+  ProtocolDayDate? _today;
+
+  /// The "Log all planned" call in flight, shared by any tap made before it
+  /// finishes, so a double tap cannot log the same due doses twice.
+  Future<List<LogDoseResult>>? _logAllPlannedInFlight;
+
   @override
   Stream<ProtocolDayState> build() {
-    final repository = ref.watch(protocolsRepositoryProvider);
+    final planRepository = ref.watch(protocolPlanRepositoryProvider);
     final selectedDate = ref.watch(selectedProtocolDayProvider);
-    return repository.watchProtocolDay(selectedDate).map(
-          (day) => ProtocolDayState(day: day),
+    final today = _today =
+        ProtocolDayDate.fromDateTime(ref.read(protocolsClockProvider)());
+    // One stream carries the day's Doses and the Planned list matched
+    // against them, so the log and the rows always come from one read.
+    return planRepository.watchPlannedDay(selectedDate, today: today).map(
+          (planned) => ProtocolDayState(day: planned.day, plannedDay: planned),
         );
+  }
+
+  /// Rebuilds the day when the local date has moved past the one this build
+  /// read as today (local midnight, or a resume on a later day). Without it
+  /// the view would keep labelling yesterday as today: "Pending" rows and a
+  /// "Log all planned" button on a past day. The selected Protocol Day is
+  /// left as it is.
+  void refreshIfDayChanged() {
+    final today = _today;
+    final now =
+        ProtocolDayDate.fromDateTime(ref.read(protocolsClockProvider)());
+    if (today != null && now != today) {
+      ref.invalidateSelf();
+    }
+  }
+
+  /// "Log all planned" (D6): logs every due unfilled planned dose of today,
+  /// timed ones whose time is at or before now and untimed ones, as picked
+  /// by the shared core's `dueUnfilled`. Each Dose takes its row's planned
+  /// amount, unit and route, is tagged with its row's Protocol, and is timed
+  /// now. All of them go through ONE `ProtocolsRepository.logDoses` call: one
+  /// transaction and one Batch, so a kill mid-write leaves all or none.
+  ///
+  /// Reads today's plan afresh rather than the rendered state, so it acts on
+  /// what is stored at the moment of the tap, whatever day is selected.
+  /// Returns the logged results, empty when nothing was due. A call made
+  /// while another is in flight shares it rather than reading the plan
+  /// again before the first one's Batch is written.
+  Future<List<LogDoseResult>> logAllPlanned() {
+    return _logAllPlannedInFlight ??= _logAllPlanned().whenComplete(() {
+      _logAllPlannedInFlight = null;
+    });
+  }
+
+  Future<List<LogDoseResult>> _logAllPlanned() async {
+    final now = ref.read(protocolsClockProvider)();
+    final today = ProtocolDayDate.fromDateTime(now);
+    final plannedDay = await ref
+        .read(protocolPlanRepositoryProvider)
+        .plannedDay(today, today: today);
+    final local = now.toLocal();
+    final due = dueUnfilled(
+      plannedDay.dayStatuses,
+      today,
+      planLocalTime(local.hour, local.minute),
+    );
+    if (due.isEmpty) {
+      return const <LogDoseResult>[];
+    }
+    final drafts = <DoseSnapshotDraft>[
+      for (final row in due) _plannedDoseDraft(plannedDay, row, now),
+    ];
+    return ref.read(protocolsRepositoryProvider).logDoses(drafts);
   }
 
   void selectProtocolDay(ProtocolDayDate localDate) {
@@ -180,10 +261,50 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   }
 }
 
+/// One "Log all planned" row as a Dose draft. A planned dose's amount, unit
+/// and route are all present (D7 `amount_required`), and its Compound is a
+/// member row's live reference, so a missing one is a broken invariant: it
+/// throws before anything is written rather than logging a partial Batch.
+DoseSnapshotDraft _plannedDoseDraft(
+  PlannedDay plannedDay,
+  DueUnfilledDose row,
+  DateTime now,
+) {
+  final compound = plannedDay.compounds[row.compoundId];
+  final amount = row.amount;
+  final amountValue = amount.amountValue;
+  final amountEntered = amount.amountEntered;
+  final unit = amount.unit;
+  final route = amount.route;
+  if (compound == null ||
+      amountValue == null ||
+      amountEntered == null ||
+      unit == null ||
+      route == null) {
+    throw StateError(
+      'Planned dose ${row.compoundId}#${row.slot} has no Compound or amount.',
+    );
+  }
+  return DoseSnapshotDraft.fromCompound(
+    compound: compound,
+    amountValue: amountValue,
+    amountEntered: amountEntered,
+    unit: unit,
+    route: route,
+    tookAt: now,
+    protocol: plannedDay.protocols[row.protocolId] ??
+        (throw StateError('Planned dose has no Protocol ${row.protocolId}.')),
+  );
+}
+
 class ProtocolDayState {
   const ProtocolDayState({
     required this.day,
+    this.plannedDay,
   });
 
   final ProtocolDayRecord day;
+
+  /// The day's Planned list (D6), or null when no plan has been read.
+  final PlannedDay? plannedDay;
 }
