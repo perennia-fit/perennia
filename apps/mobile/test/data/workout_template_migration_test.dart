@@ -34,7 +34,7 @@ void main() {
     addTearDown(database.close);
     await database.customSelect('SELECT 1').get();
 
-    expect(database.schemaVersion, 61);
+    expect(database.schemaVersion, await _currentSchemaVersion());
     final existingExercise =
         await database.select(database.exercises).getSingle();
     final existingWorkout =
@@ -466,3 +466,14 @@ void _createV50Database(File file) {
 
 int _seconds(DateTime dateTime) =>
     dateTime.toUtc().millisecondsSinceEpoch ~/ Duration.millisecondsPerSecond;
+
+/// The schema version a fresh database is created at, so these upgrade
+/// tests keep asserting the latest schema as it moves.
+Future<int> _currentSchemaVersion() async {
+  final fresh = AppDatabase.inMemory();
+  try {
+    return fresh.schemaVersion;
+  } finally {
+    await fresh.close();
+  }
+}

@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 
-/// Schema 61 drops the old Open Food Facts cache from the user database; the
+/// Schema 62 drops the old Open Food Facts cache from the user database; the
 /// products now live in the rebuildable reference database. Nothing else
 /// changes (docs/designs/open-food-facts.md, "Installing the bundle on the
 /// device").
@@ -16,14 +16,14 @@ void main() {
     () => driftRuntimeOptions.dontWarnAboutMultipleDatabases = previousWarning,
   );
 
-  test('a version-60 database with cache rows opens at 61 without the table',
+  test('a version-61 database with cache rows opens at 62 without the table',
       () async {
     final directory = await Directory.systemTemp.createTemp('prn_off_cache_');
     addTearDown(() => directory.delete(recursive: true));
-    final file = File('${directory.path}/v60.sqlite');
+    final file = File('${directory.path}/v61.sqlite');
 
-    // Schema 60 is schema 61 plus the cache table: build 61, add the table
-    // and its rows, and mark the file as version 60.
+    // Schema 61 is schema 62 plus the cache table: build 62, add the table
+    // and its rows, and mark the file as version 61.
     final current = AppDatabase.openFile(file);
     await current.customSelect('SELECT 1').get();
     final expectedTables = await _tableNames(current);
@@ -56,14 +56,14 @@ void main() {
         'INSERT INTO meal_types (id, name, sort_order, updated_at) '
         "VALUES ('meal-type-kept', 'Second breakfast', 9, 0)",
       )
-      ..execute('PRAGMA user_version = 60');
+      ..execute('PRAGMA user_version = 61');
     raw.close();
 
     final migrated = AppDatabase.openFile(file);
     addTearDown(migrated.close);
     await migrated.customSelect('SELECT 1').get();
 
-    expect(migrated.schemaVersion, 61);
+    expect(migrated.schemaVersion, 62);
     final tables = await _tableNames(migrated);
     expect(tables, isNot(contains('open_food_facts_cache')));
     expect(tables, expectedTables);

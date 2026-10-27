@@ -3551,7 +3551,7 @@ export function createApp(options: CreateAppOptions = {}) {
           code: "agent_protocols_batch_write_failed",
           message: "Batch contains one or more hard validation failures.",
           errors: prepared.errors,
-          warnings: []
+          warnings: prepared.warnings
         }),
         422
       );
@@ -3561,6 +3561,7 @@ export function createApp(options: CreateAppOptions = {}) {
       batchId: requestBody.idempotencyKey,
       requestFingerprint: agentProtocolsBatchRequestFingerprint(requestBody),
       deviceId: `agent:${agent.keyId}`,
+      today: prepared.today,
       protocols: prepared.protocols,
       members: prepared.members,
       schedules: prepared.schedules,
@@ -3591,7 +3592,8 @@ export function createApp(options: CreateAppOptions = {}) {
           accepted: writeResult.accepted,
           duplicate: writeResult.duplicate,
           results: prepared.responseProtocols
-        })
+        }),
+        warnings: prepared.warnings
       }),
       200
     );

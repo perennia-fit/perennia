@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { createMigratedServerApp, schema } from "../src/index.ts";
+import {
+  createMigratedServerApp,
+  schema,
+  SYNC_PROTOCOL_VERSION
+} from "../src/index.ts";
 import { CANONICAL_ACTIVITY_PLATFORM_EXERCISE_IDS } from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -574,7 +578,7 @@ async function syncPushOk(app, sessionToken, body) {
       authorization: `Bearer ${sessionToken}`,
       "content-type": "application/json"
     },
-    body: JSON.stringify({ protocolVersion: 1, ...body })
+    body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, ...body })
   });
   assert.equal(response.status, 200);
   return response;

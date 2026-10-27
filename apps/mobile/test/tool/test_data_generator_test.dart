@@ -78,6 +78,83 @@ void main() {
     expect(summary.foodEntries, greaterThanOrEqualTo(summary.meals));
   });
 
+  test('logs the supplement stack: its Compounds, Protocols and Doses',
+      () async {
+    final summary = await generateTestData(repositories, options);
+    final protocols = repositories.protocols;
+
+    final compounds = await protocols.listCompounds();
+    for (final name in const [
+      'TRT',
+      'AgeMate',
+      'MNEM',
+      'Creatine',
+      'GHK-Cu',
+      'BPC-157',
+    ]) {
+      expect(
+        compounds.where((compound) => compound.name == name),
+        hasLength(1),
+        reason: name,
+      );
+    }
+    expect(summary.compounds, 6);
+
+    final byName = {
+      for (final protocol in await protocols.listProtocols())
+        protocol.name: protocol,
+    };
+    expect(byName.keys, unorderedEquals(['Daily', 'Skin', 'Shoulder']));
+    expect(summary.protocols, 3);
+    const rangeStart = ProtocolDayDate(year: 2026, month: 6, day: 15);
+    expect(byName['Daily']!.startLocalDate, rangeStart);
+    expect(byName['Daily']!.members, hasLength(4));
+    final skin = byName['Skin']!;
+    expect(skin.startLocalDate,
+        const ProtocolDayDate(year: 2026, month: 4, day: 29));
+    expect(skin.period!.cycle!.onDays, 60);
+    expect(skin.period!.cycle!.offDays, 30);
+    final shoulder = byName['Shoulder']!;
+    expect(
+      shoulder.startLocalDate,
+      const ProtocolDayDate(year: 2026, month: 6, day: 18),
+    );
+    // 20 doses at one a day: the helper's end date, inclusive.
+    expect(
+      shoulder.endLocalDate,
+      const ProtocolDayDate(year: 2026, month: 7, day: 7),
+    );
+    for (final protocol in byName.values) {
+      for (final member in protocol.members) {
+        expect(member.currentVersion!.rule, isA<TimedScheduleRule>());
+      }
+    }
+
+    // Every planned dose of the two weeks, one day in six left unlogged:
+    // days 5 and 11 of the range. Daily plans four a day on all 14 days;
+    // Skin is on through 2026-06-27 (cycle days 0-59) and off on the
+    // range's last day; Shoulder runs from 2026-06-18.
+    final doses = <DoseRecord>[];
+    for (var day = 0; day < 14; day += 1) {
+      doses.addAll(
+        (await protocols.protocolDay(rangeStart.addDays(day))).doses,
+      );
+    }
+    const loggedDays = 12;
+    const shoulderLoggedDays = 9; // 2026-06-18 to 06-28, less 06-20, 06-26
+    const skinLoggedDays = 11; // 2026-06-15 to 06-27, less 06-20, 06-26
+    expect(
+      doses,
+      hasLength(4 * loggedDays + skinLoggedDays + shoulderLoggedDays),
+    );
+    expect(summary.doses, doses.length);
+    expect(doses.every((dose) => dose.protocolId != null), isTrue);
+    expect(
+      doses.every((dose) => dose.timezoneOffsetMinutes != null),
+      isTrue,
+    );
+  });
+
   test('the same seed produces the same history', () async {
     final first = await generateTestData(repositories, options);
 

@@ -133,7 +133,7 @@ void main() {
           requests.add(request);
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': <String>[setId],
               'serverClock': '2026-06-22T08:00:01.000Z',
               'applied': <Object?>[
@@ -163,7 +163,7 @@ void main() {
     expect(requests.single.url.toString(), 'https://sync.example/sync/push');
     expect(requests.single.headers['authorization'], 'Bearer session-token');
     expect(jsonDecode(requests.single.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'deviceId': 'device-a',
       'entity': AppDatabase.loggedSetsTable,
       'changes': <Object?>[
@@ -254,7 +254,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .map((change) =>
                       (change! as Map<String, Object?>)['id']! as String)
@@ -311,7 +311,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-off-1',
               'serverClock': '2026-06-27T08:00:02.000Z',
               'changes': <Object?>[
@@ -520,7 +520,7 @@ void main() {
           requests.add(request);
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': <String>[setId],
               'serverClock': '2026-06-22T08:00:01.000Z',
               'applied': <Object?>[],
@@ -573,7 +573,7 @@ void main() {
           expect(changes.length, lessThanOrEqualTo(100));
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -616,7 +616,7 @@ void main() {
           if (requests.length == 1) {
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'nextCursor': 'cursor-1',
                 'serverClock': '2026-06-22T08:00:01.000Z',
                 'changes': <Object?>[
@@ -637,7 +637,7 @@ void main() {
 
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-22T08:00:02.000Z',
               'changes': <Object?>[],
@@ -667,7 +667,7 @@ void main() {
     expect(requests.first.url.toString(), 'https://sync.example/sync/pull');
     expect(requests.first.headers['authorization'], 'Bearer session-token');
     expect(jsonDecode(requests.first.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'cursor': null,
       'limit': 100,
     });
@@ -682,7 +682,7 @@ void main() {
     expect(secondResult.serverClock, '2026-06-22T08:00:02.000Z');
     expect(requests, hasLength(2));
     expect(jsonDecode(requests.last.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'cursor': 'cursor-1',
       'limit': 100,
     });
@@ -703,7 +703,7 @@ void main() {
           final cursor = jsonDecode(request.body)['cursor'];
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-unknown-1',
               'serverClock': '2026-06-22T09:00:01.000Z',
               'changes': cursor == null
@@ -791,7 +791,7 @@ void main() {
           final cursor = jsonDecode(request.body)['cursor'];
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-broken-1',
               'serverClock': '2026-06-22T09:00:01.000Z',
               'changes': cursor == null
@@ -882,7 +882,7 @@ void main() {
         httpClient: MockClient((request) async {
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-envelope-1',
               'serverClock': '2026-06-22T09:00:01.000Z',
               'changes': <Object?>[
@@ -938,7 +938,7 @@ void main() {
           final cursor = jsonDecode(request.body)['cursor'];
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': cursor == null ? 'cursor-1' : 'cursor-2',
               'serverClock': '2026-06-22T09:00:01.000Z',
               'changes': <Object?>[
@@ -1013,7 +1013,7 @@ void main() {
         httpClient: MockClient((request) async {
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-22T09:00:01.000Z',
               'changes': <Object?>[],
@@ -1047,7 +1047,7 @@ void main() {
           final cursor = jsonDecode(request.body)['cursor'];
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-22T09:00:01.000Z',
               'changes': cursor == null
@@ -1136,7 +1136,7 @@ void main() {
           if (body['mode'] != 'snapshot') {
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'fullResyncRequired': true,
                 'nextCursor': null,
                 'serverClock': '2026-06-22T09:00:00.000Z',
@@ -1148,7 +1148,7 @@ void main() {
           }
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'snapshot-cursor-1',
               'serverClock': '2026-06-22T09:00:02.000Z',
               'changes': body['cursor'] == null
@@ -1202,7 +1202,7 @@ void main() {
         httpClient: MockClient((request) async {
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-metrics-1',
               'serverClock': '2026-06-25T07:00:01.000Z',
               'changes': <Object?>[
@@ -1363,7 +1363,7 @@ void main() {
         httpClient: MockClient((request) async {
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-imported-set-1',
               'serverClock': '2026-07-01T07:30:17.000Z',
               'changes': <Object?>[
@@ -1430,7 +1430,7 @@ void main() {
           requests.add(request);
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-consent-1',
               'serverClock': '2026-06-25T10:00:01.000Z',
               'changes': <Object?>[
@@ -1473,7 +1473,7 @@ void main() {
     expect(syncEntries, hasLength(1));
     expect(syncEntries.single.syncAcknowledgedAt, isNotNull);
     expect(jsonDecode(requests.single.body), <String, Object?>{
-      'protocolVersion': 1,
+      'protocolVersion': syncProtocolVersion,
       'cursor': null,
       'limit': 100,
     });
@@ -1509,7 +1509,7 @@ void main() {
           final change = changes.single! as Map<String, Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': <String>[consentId],
               'serverClock': '2026-06-25T10:00:01.000Z',
               'applied': <Object?>[
@@ -1576,7 +1576,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-22T08:00:01.000Z',
               'changes': <Object?>[
@@ -1649,7 +1649,7 @@ void main() {
           }
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': <String>[
                 for (final change in changes) change['id']! as String,
               ],
@@ -1717,7 +1717,7 @@ void main() {
           if (request.url.path == '/sync/pull') {
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'nextCursor': 'cursor-1',
                 'serverClock': '2026-06-22T09:00:01.000Z',
                 'changes': <Object?>[
@@ -1820,13 +1820,13 @@ void main() {
 
           if (request.url.path == '/sync/pull' && requests.length == 1) {
             expect(body, <String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'cursor': '2000-01-01T00:00:00.000Z|expired-row',
               'limit': 100,
             });
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'fullResyncRequired': true,
                 'nextCursor': '2000-01-01T00:00:00.000Z|expired-row',
                 'serverClock': '2026-06-22T09:00:00.000Z',
@@ -1844,7 +1844,7 @@ void main() {
                 (changes.single! as Map<String, Object?>)['id'], pendingSetId);
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'accepted': <String>[pendingSetId],
                 'serverClock': '2026-06-22T09:00:01.000Z',
                 'applied': <Object?>[
@@ -1865,7 +1865,7 @@ void main() {
               body['cursor'] == null) {
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'fullResyncRequired': false,
                 'nextCursor': 'snapshot-cursor-1',
                 'serverClock': '2026-06-22T09:00:02.000Z',
@@ -1894,7 +1894,7 @@ void main() {
               body['cursor'] == 'snapshot-cursor-1') {
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'fullResyncRequired': false,
                 'nextCursor': 'snapshot-cursor-1',
                 'serverClock': '2026-06-22T09:00:03.000Z',
@@ -1989,7 +1989,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-22T08:01:01.000Z',
               'changes': <Object?>[
@@ -2068,7 +2068,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-24T05:00:01.000Z',
               'changes': <Object?>[
@@ -2174,7 +2174,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-1',
               'serverClock': '2026-06-24T05:00:01.000Z',
               'changes': <Object?>[
@@ -2261,7 +2261,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -2321,7 +2321,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-dose-1',
               'serverClock': '2026-06-30T08:00:02.000Z',
               'changes': <Object?>[
@@ -2404,7 +2404,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-dose-tombstone',
               'serverClock': '2026-06-30T09:00:01.000Z',
               'changes': <Object?>[
@@ -2480,7 +2480,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-lww',
               'serverClock': '2026-06-30T12:00:01.000Z',
               'changes': <Object?>[
@@ -2533,14 +2533,17 @@ void main() {
     final created = await repositories.protocols.createProtocol(
       ProtocolDraft(
         name: 'Lean bulk',
-        startDate: DateTime.utc(2026, 7, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
         compoundIds: <String>[compound.compoundId],
         schedulesByCompoundId: <String, ScheduleDraft?>{
-          compound.compoundId: const ScheduleDraft(
+          compound.compoundId: ScheduleDraft(
+            rule: TimedScheduleRule(
+              days: const DailyScheduleDays(),
+              times: const <String>['09:00'],
+            ),
             doseAmountValue: 5,
             doseAmountEntered: '5',
             doseUnit: DoseUnit.gram,
-            frequency: ScheduleFrequency.onceDaily,
             route: DoseRoute.oral,
           ),
         },
@@ -2561,7 +2564,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -2628,8 +2631,22 @@ void main() {
     final protocolPayload = pushedProtocol['payload']! as Map<String, Object?>;
     final schedulePayload = pushedSchedule['payload']! as Map<String, Object?>;
     expect(protocolPayload['name'], 'Lean bulk');
+    expect(protocolPayload['start_local_date'], '2026-07-01');
+    expect(protocolPayload['end_local_date'], isNull);
+    expect(protocolPayload['period'], isNull);
+    expect(protocolPayload['reminders_enabled'], isFalse);
     expect(schedulePayload['dose_amount_entered'], '5');
-    expect(schedulePayload['frequency'], ScheduleFrequency.onceDaily.name);
+    expect(schedulePayload['effective_from'], '2026-07-01');
+    expect(
+      jsonDecode(schedulePayload['rule']! as String),
+      <String, Object?>{
+        'v': 1,
+        'kind': 'timed',
+        'days': <String, Object?>{'kind': 'daily'},
+        'times': <Object?>['09:00'],
+      },
+    );
+    expect(schedulePayload, isNot(contains('frequency')));
 
     // Second device pulls the Compound, the Protocol, its member, its target
     // outcome, and its Schedule — a Drift FK chain (Protocol ->
@@ -2643,7 +2660,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-protocol-1',
               'serverClock': '2026-07-01T00:00:02.000Z',
               'changes': <Object?>[
@@ -2699,9 +2716,17 @@ void main() {
     expect(pulledProtocol.members, hasLength(1));
     final pulledMember = pulledProtocol.members.single;
     expect(pulledMember.compoundId, compound.compoundId);
-    expect(pulledMember.schedule, isNotNull);
-    expect(pulledMember.schedule!.doseAmountEntered, '5');
-    expect(pulledMember.schedule!.frequency, ScheduleFrequency.onceDaily);
+    final pulledVersion = pulledMember.currentVersion;
+    expect(pulledVersion, isNotNull);
+    expect(pulledVersion!.doseAmountEntered, '5');
+    expect(
+      pulledVersion.effectiveFrom,
+      const ProtocolDayDate(year: 2026, month: 7, day: 1),
+    );
+    expect(
+      (pulledVersion.rule as TimedScheduleRule).times,
+      <String>['09:00'],
+    );
     expect(pulledProtocol.targetOutcomes, hasLength(1));
     expect(
       pulledProtocol.targetOutcomes.single.kind,
@@ -2725,7 +2750,7 @@ void main() {
     final created = await repositories.protocols.createProtocol(
       ProtocolDraft(
         name: 'Lean bulk',
-        startDate: DateTime.utc(2026, 7, 1),
+        startLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 1),
         compoundIds: <String>[compound.compoundId],
       ),
     );
@@ -2760,7 +2785,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-protocol-tombstone',
               'serverClock': '2026-07-01T09:00:01.000Z',
               'changes': <Object?>[
@@ -2771,8 +2796,11 @@ void main() {
                   'payload': <String, Object?>{
                     'id': created.protocolId,
                     'name': 'Lean bulk',
-                    'start_date': '2026-07-01T00:00:00.000Z',
-                    'end_date': null,
+                    'start_local_date': '2026-07-01',
+                    'end_local_date': null,
+                    'period': null,
+                    'reminders_enabled': false,
+                    'archived_on': '2026-07-01',
                     'updated_at': deletedAt.toIso8601String(),
                     'deleted_at': deletedAt.toIso8601String(),
                   },
@@ -2801,6 +2829,7 @@ void main() {
 
     expect(result.appliedCount, 1);
     expect(pulledProtocol.deletedAt?.toUtc(), deletedAt);
+    expect(pulledProtocol.archivedOn, '2026-07-01');
     expect(pulledProtocol.syncDeviceId, 'device-b');
     // No cascade: the tagged Dose keeps its tag and remains intact.
     expect(doseRow.deletedAt, isNull);
@@ -2836,7 +2865,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -2899,7 +2928,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-catalog-1',
               'serverClock': '2026-07-01T00:00:02.000Z',
               'changes': <Object?>[
@@ -2980,7 +3009,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-exercise-tombstone',
               'serverClock': '2026-07-01T01:00:01.000Z',
               'changes': <Object?>[
@@ -3077,7 +3106,7 @@ void main() {
           pushRequests.add(request);
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': <String>[],
               'serverClock': '2026-07-01T00:00:01.000Z',
               'applied': <Object?>[],
@@ -3144,7 +3173,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -3194,7 +3223,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-goal-1',
               'serverClock': '2026-06-30T08:00:02.000Z',
               'changes': <Object?>[
@@ -3294,7 +3323,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-goal-2',
               'serverClock': '2026-06-30T08:00:03.000Z',
               'changes': <Object?>[
@@ -3356,7 +3385,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -3420,7 +3449,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-settings-1',
               'serverClock': '2026-06-30T08:00:02.000Z',
               'changes': <Object?>[
@@ -3498,7 +3527,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-settings-lww',
               'serverClock': '2026-06-30T08:00:02.000Z',
               'changes': <Object?>[
@@ -3577,7 +3606,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -3648,7 +3677,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-food-meal-type-1',
               'serverClock': '2026-07-04T08:00:02.000Z',
               'changes': <Object?>[
@@ -3747,7 +3776,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-food-meal-type-2',
               'serverClock': '2026-07-04T08:00:03.000Z',
               'changes': <Object?>[
@@ -3827,7 +3856,7 @@ void main() {
           final changes = body['changes']! as List<Object?>;
           return http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'accepted': changes
                   .cast<Map<String, Object?>>()
                   .map((change) => change['id']! as String)
@@ -3885,7 +3914,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'cursor-food-entry-1',
               'serverClock': '2026-07-04T08:00:02.000Z',
               'changes': <Object?>[
@@ -3981,7 +4010,7 @@ void main() {
             }
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'accepted': changes.map((change) => change['id']).toList(),
                 'serverClock': '2026-07-22T10:00:00.000Z',
                 'applied': changes
@@ -4161,7 +4190,7 @@ void main() {
         httpClient: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object?>{
-              'protocolVersion': 1,
+              'protocolVersion': syncProtocolVersion,
               'nextCursor': 'plan-tree-cursor',
               'serverClock': '2026-07-22T10:00:00.000Z',
               'changes': pushedChanges.reversed.toList(),
@@ -4271,7 +4300,7 @@ void main() {
             httpClient: MockClient(
               (_) async => http.Response(
                 jsonEncode(<String, Object?>{
-                  'protocolVersion': 1,
+                  'protocolVersion': syncProtocolVersion,
                   'nextCursor': 'tie-cursor',
                   'serverClock': '2026-07-22T10:00:00.000Z',
                   'changes': changes,
@@ -4485,7 +4514,7 @@ Future<void> _pullChangeInto(
       httpClient: MockClient(
         (_) async => http.Response(
           jsonEncode(<String, Object?>{
-            'protocolVersion': 1,
+            'protocolVersion': syncProtocolVersion,
             'nextCursor': 'cursor-1',
             'serverClock': '2026-06-22T08:00:01.000Z',
             'changes': <Object?>[change],

@@ -13,7 +13,11 @@ import '../../auth/repositories/auth_repository.dart';
 import '../../settings/repositories/integration_consent_repository.dart';
 import '../models/sync_status.dart';
 
-const syncProtocolVersion = 1;
+/// The sync wire protocol this build speaks. The server rejects any other
+/// version, so a build that predates the Protocol plan shape (version 1) can
+/// never push its incomplete copy of a Protocol or Schedule row and erase the
+/// plan fields it doesn't know.
+const syncProtocolVersion = 2;
 const syncStateId = 'default';
 const _syncPushBatchLimit = 100;
 const _routinesSyncEntity = 'routines';

@@ -87,6 +87,80 @@ test("privacy logger strips Protocols values on the new agent paths (PROTOCOLS.m
   assert.doesNotMatch(serialized, /250/);
 });
 
+test("privacy logger strips the Protocol plan values of a logged Agent Protocol write and Schedule write", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  // A logged Agent Protocol batch write, spread as the request body arrives,
+  // and a logged Schedule Version write on its own.
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/agent/protocols/batch-write",
+      idempotencyKey: "plan-1",
+      today: "2026-10-27",
+      protocols: [
+        {
+          id: "protocol-1",
+          name: "Skin",
+          startLocalDate: "2026-09-01",
+          endLocalDate: "2026-12-31",
+          period: {
+            v: 1,
+            cycle: { on_days: 60, off_days: 30, anchor: "2026-09-02", anchor_is_default: false },
+            pauses: [{ from: "2026-10-10", to: "2026-10-16" }]
+          },
+          remindersEnabled: true
+        }
+      ]
+    },
+    "synthetic Agent Protocol write"
+  );
+  logger.info(
+    {
+      userId: "user-1",
+      schedule: {
+        effective_from: "2026-10-19",
+        rule: {
+          v: 1,
+          kind: "timed",
+          days: { kind: "weekdays", weekdays: [1, 3, 5] },
+          times: ["07:00"]
+        },
+        dose_amount_entered: "0.1"
+      }
+    },
+    "synthetic Schedule write"
+  );
+
+  assert.equal(logEvents.length, 2);
+  for (const event of logEvents) {
+    assert.equal(event.payload.userId, "user-1");
+    const serialized = JSON.stringify(event.payload);
+    // Each key is gone or filtered, never carried with its value.
+    for (const key of ["period", "rule", "startLocalDate", "endLocalDate", "today"]) {
+      assert.doesNotMatch(serialized, new RegExp(`"${key}":(?!"\\[Filtered\\]")`), key);
+    }
+    for (const value of [
+      "2026-09-01",
+      "2026-12-31",
+      "2026-09-02",
+      "2026-10-10",
+      "2026-10-19",
+      "2026-10-27",
+      "07:00",
+      "weekdays",
+      "Skin"
+    ]) {
+      assert.doesNotMatch(serialized, new RegExp(value), value);
+    }
+  }
+});
+
 test("Sentry crash reporting is opt-in and requires a DSN", () => {
   const sdk = createFakeSentrySdk();
 

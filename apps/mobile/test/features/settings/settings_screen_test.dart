@@ -718,7 +718,7 @@ void main() {
             final change = changes.single! as Map<String, Object?>;
             return http.Response(
               jsonEncode(<String, Object?>{
-                'protocolVersion': 1,
+                'protocolVersion': syncProtocolVersion,
                 'accepted': <String>[change['id']! as String],
                 'serverClock': '2026-06-25T10:00:01.000Z',
                 'applied': <Object?>[
@@ -1650,7 +1650,7 @@ Future<void> _pullGarminConsentRows(
       httpClient: MockClient(
         (_) async => http.Response(
           jsonEncode(<String, Object?>{
-            'protocolVersion': 1,
+            'protocolVersion': syncProtocolVersion,
             'nextCursor': 'cursor-consent-1',
             'serverClock': '2026-06-25T10:00:00.000Z',
             'changes': <Object?>[

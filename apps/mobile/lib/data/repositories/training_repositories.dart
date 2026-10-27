@@ -16,6 +16,8 @@ import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/nutrition_day_assembly.dart';
 import '../../domain/nutrition/nutrition_import.dart';
 import '../../domain/protocols/dose_validation.dart';
+import '../../domain/protocols/protocol_plan.dart';
+import '../../domain/protocols/protocol_plan_validation.dart';
 import '../../domain/protocols/protocol_validation.dart';
 import '../../domain/protocols/protocols.dart';
 import '../../domain/settings/account_settings.dart';
@@ -60,6 +62,7 @@ export '../../domain/protocols/dose_validation.dart'
         DoseValidationResult,
         DoseUnitLimit,
         validateDose;
+export '../../domain/protocols/protocol_plan.dart';
 export '../../domain/protocols/protocols.dart';
 export '../../domain/training/routine_cadence.dart';
 export '../../domain/training/routine_up_next.dart'
@@ -827,7 +830,8 @@ class CatalogRepository {
           ))
         .get();
     for (final before in customizations) {
-      final focusIds = platformFocusIdsByName[normalizeExerciseName(before.name)];
+      final focusIds =
+          platformFocusIdsByName[normalizeExerciseName(before.name)];
       if (focusIds == null || focusIds == '[]') {
         continue;
       }
@@ -5021,15 +5025,49 @@ class ProtocolsRepository {
     });
   }
 
+  /// Logs several self-describing `Dose`s at once ("Log all planned"): one
+  /// transaction and one reversible Activity Log batch, so either every Dose
+  /// is written or none is. Each runs the same shared two-tier validator as
+  /// [logDose]; a hard-reject on any one throws and rolls the whole write
+  /// back. The results share [LogDoseResult.batchId], in [drafts] order.
+  Future<List<LogDoseResult>> logDoses(
+    List<DoseSnapshotDraft> drafts, {
+    String actor = 'manual',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final results = <LogDoseResult>[];
+      for (final draft in drafts) {
+        final outcome = await _logDose(draft, context);
+        results.add(
+          LogDoseResult(
+            batchId: context.batchId,
+            doseId: outcome.doseId,
+            warnings: outcome.warnings,
+          ),
+        );
+      }
+      return List<LogDoseResult>.unmodifiable(results);
+    });
+  }
+
   /// Edits a logged `Dose` in place (amount/unit/route/time), keeping its
   /// identity ('s review surface: tap a Dose to open it for edit).
   /// Runs the SAME shared two-tier validator as [logDose] (PROTOCOLS.md §6) —
-  /// a hard-reject throws before anything is written. The Dose's local date
-  /// is NEVER re-derived from the device's CURRENT timezone here: when
+  /// a hard-reject throws before anything is written. While the Dose's time
+  /// is unchanged, its local date, timezone label and UTC offset are NEVER
+  /// re-derived from the device's CURRENT timezone: when
   /// [draft.localDate]/[draft.timezone] are omitted, the ALREADY-FROZEN values
-  /// on the existing row carry over untouched, so editing a Dose can never
-  /// silently move it to a different `Protocol Day` after the device travels.
-  /// One reversible Activity Log batch; never bypasses it.
+  /// on the existing row carry over untouched (a null offset stays null), so
+  /// editing a Dose can never silently move it to a different `Protocol Day`
+  /// after the device travels. When the time changes, the edit records a new
+  /// moment, so all three are frozen again from the new time, as a new log
+  /// would freeze them. One reversible Activity Log batch; never bypasses it.
   Future<String> editDose(
     String doseId,
     DoseSnapshotDraft draft, {
@@ -5451,6 +5489,12 @@ class ProtocolsRepository {
         draft.tookAt.toLocal().timeZoneName;
     final localDate =
         draft.localDate ?? ProtocolDayDate.fromDateTime(draft.tookAt);
+    // The UTC offset at the dose instant, frozen beside the local date: with
+    // `took_at` it gives the Dose's local clock time for good, which the
+    // `timezone` abbreviation cannot. Read from the original value, since
+    // `tookAtUtc` carries no zone.
+    final timezoneOffsetMinutes =
+        draft.tookAt.toLocal().timeZoneOffset.inMinutes;
     final protocolTag = _validateDoseProtocolTag(draft);
 
     final id = _repositories._ids.create(context.timestamp);
@@ -5468,6 +5512,7 @@ class ProtocolsRepository {
             tookAt: tookAtUtc,
             timezone: timezone,
             localDate: Value<String>(localDate.storageValue),
+            timezoneOffsetMinutes: Value<int?>(timezoneOffsetMinutes),
             provenance: Value<String>(draft.provenance.name),
             protocolId: Value<String?>(protocolTag.protocolId),
             protocolName: Value<String?>(protocolTag.protocolName),
@@ -5519,13 +5564,26 @@ class ProtocolsRepository {
     validation.throwIfRejected();
 
     final tookAtUtc = draft.tookAt.toUtc();
-    // Never re-derive the local date/timezone from the (possibly-changed)
-    // device timezone on edit — an omitted value stays pinned to whatever was
-    // ALREADY FROZEN on the row, so an edit can never silently move
-    // a Dose to a different Protocol Day after the device travels.
-    final timezone = _normalizeOptionalText(draft.timezone) ?? before.timezone;
-    final localDate =
-        draft.localDate ?? ProtocolDayDate.parse(before.localDate);
+    final String timezone;
+    final ProtocolDayDate localDate;
+    final int? timezoneOffsetMinutes;
+    if (tookAtUtc == before.tookAt.toUtc()) {
+      // Never re-derive the local date/timezone/offset from the
+      // (possibly-changed) device timezone while the time stands — an
+      // omitted value stays pinned to whatever was ALREADY FROZEN on the
+      // row, so an edit can never silently move a Dose to a different
+      // Protocol Day after the device travels.
+      timezone = _normalizeOptionalText(draft.timezone) ?? before.timezone;
+      localDate = draft.localDate ?? ProtocolDayDate.parse(before.localDate);
+      timezoneOffsetMinutes = before.timezoneOffsetMinutes;
+    } else {
+      // A new time is a new moment: freeze all three again from it, exactly
+      // as logging it would.
+      timezone = _normalizeOptionalText(draft.timezone) ??
+          draft.tookAt.toLocal().timeZoneName;
+      localDate = draft.localDate ?? ProtocolDayDate.fromDateTime(draft.tookAt);
+      timezoneOffsetMinutes = draft.tookAt.toLocal().timeZoneOffset.inMinutes;
+    }
     final protocolTag = _validateDoseProtocolTag(draft);
 
     await (_database.update(_database.doses)
@@ -5542,6 +5600,7 @@ class ProtocolsRepository {
         tookAt: Value<DateTime>(tookAtUtc),
         timezone: Value<String>(timezone),
         localDate: Value<String>(localDate.storageValue),
+        timezoneOffsetMinutes: Value<int?>(timezoneOffsetMinutes),
         provenance: Value<String>(draft.provenance.name),
         protocolId: Value<String?>(protocolTag.protocolId),
         protocolName: Value<String?>(protocolTag.protocolName),
@@ -5980,6 +6039,7 @@ class ProtocolsRepository {
       tookAt: row.tookAt,
       timezone: row.timezone,
       localDate: ProtocolDayDate.parse(row.localDate),
+      timezoneOffsetMinutes: row.timezoneOffsetMinutes,
       provenance: DoseProvenance.values.byName(row.provenance),
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,
@@ -6009,21 +6069,28 @@ class ProtocolsRepository {
   }
 
   // ---------------------------------------------------------------------
-  // `Protocol` (PROTOCOLS.md §1.4): the Routine analog — a named,
-  // time-bounded plan grouping one or more Compounds (a stack). A MUTABLE
-  // PLAN: every write below touches only `protocols`/`protocol_compounds`/
-  // `protocol_target_outcomes`, NEVER a logged `Dose`. Schedules
-  // and target outcomes + the Dose tag (seeding the later Effect
-  // view — no analysis here) have landed; sync is still a later M28 slice —
-  // this stays local-first like the rest of the domain until then.
+  // `Protocol`: a named course grouping one or more Compounds (a stack). A
+  // MUTABLE PLAN: every write below touches only `protocols`,
+  // `protocol_compounds`, `schedules` and `protocol_target_outcomes`, NEVER a
+  // logged `Dose`.
+  //
+  // Schedules keep their history (Schedule Versions): every changed save
+  // inserts a version row and none is ever edited, so an edit never rewrites
+  // how past days read. "Today", which dates a version, is the device's local
+  // date when the write happens; a caller may pass it explicitly, as an
+  // Agent write does on the server.
   // ---------------------------------------------------------------------
 
   /// Creates a `Protocol` (one or more Compounds — a stack). One reversible
-  /// Activity Log batch covering the Protocol row and every member row.
+  /// Activity Log batch covering the Protocol row, every member row and each
+  /// member's first Schedule Version, which applies from the Protocol's start
+  /// (so a Protocol created today with a past start plans those past days).
+  /// [today] defaults to the device's local date.
   Future<CreateProtocolResult> createProtocol(
     ProtocolDraft draft, {
     String actor = 'manual',
     String? batchId,
+    ProtocolDayDate? today,
   }) {
     final context = _repositories._writeContexts.create(
       actor: actor,
@@ -6031,20 +6098,28 @@ class ProtocolsRepository {
     );
 
     return _database.transaction(() async {
-      final id = await _createProtocol(draft, context);
+      final id = await _createProtocol(
+        draft,
+        context,
+        today: today ?? ProtocolDayDate.fromDateTime(context.timestamp),
+      );
       return CreateProtocolResult(batchId: context.batchId, protocolId: id);
     });
   }
 
-  /// Edits a `Protocol`'s name/window and reconciles its membership to
-  /// exactly [ProtocolDraft.compoundIds] (added/removed/reordered). Mutates
-  /// the live Protocol plan ONLY — by design it never reads or writes a
-  /// logged `Dose` (§1.4). One reversible Activity Log batch.
+  /// Edits a `Protocol`'s name, bounds, Period and reminders flag, and
+  /// reconciles its membership to exactly [ProtocolDraft.compoundIds]
+  /// (added/removed/reordered) and each member's Schedule. Mutates the live
+  /// Protocol plan ONLY — by design it never reads or writes a logged `Dose`.
+  /// A Schedule that changed gets a new Schedule Version; one that didn't
+  /// gets nothing. One reversible Activity Log batch. [today] defaults to the
+  /// device's local date.
   Future<String> editProtocol(
     String protocolId,
     ProtocolDraft draft, {
     String actor = 'manual',
     String? batchId,
+    ProtocolDayDate? today,
   }) {
     final context = _repositories._writeContexts.create(
       actor: actor,
@@ -6052,18 +6127,27 @@ class ProtocolsRepository {
     );
 
     return _database.transaction(() async {
-      await _editProtocol(protocolId, draft, context);
+      await _editProtocol(
+        protocolId,
+        draft,
+        context,
+        today: today ?? ProtocolDayDate.fromDateTime(context.timestamp),
+      );
       return context.batchId;
     });
   }
 
-  /// Archives a `Protocol` (soft-delete via `deletedAt`): it drops from the
-  /// active list but its history survives, and this never cascades to a
-  /// logged `Dose` (PROTOCOLS.md §7). One reversible Activity Log batch.
+  /// Archives a `Protocol` (soft-delete via `deletedAt`, freezing the local
+  /// date of the archive as `archived_on`): it drops from the active list but
+  /// its history survives, its Schedule Versions stay, past days still count
+  /// it up to and including that date, and this never cascades to a logged
+  /// `Dose`. One reversible Activity Log batch. [today] defaults to the
+  /// device's local date.
   Future<String> archiveProtocol(
     String protocolId, {
     String actor = 'manual',
     String? batchId,
+    ProtocolDayDate? today,
   }) {
     final context = _repositories._writeContexts.create(
       actor: actor,
@@ -6071,7 +6155,12 @@ class ProtocolsRepository {
     );
 
     return _database.transaction(() async {
-      await _setProtocolDeletedAt(protocolId, context.timestamp, context);
+      await _setProtocolDeletedAt(
+        protocolId,
+        context.timestamp,
+        context,
+        archivedOn: today ?? ProtocolDayDate.fromDateTime(context.timestamp),
+      );
       return context.batchId;
     });
   }
@@ -6446,24 +6535,28 @@ class ProtocolsRepository {
 
   Future<String> _createProtocol(
     ProtocolDraft draft,
-    WriteContext context,
-  ) async {
+    WriteContext context, {
+    required ProtocolDayDate today,
+  }) async {
     final name = validateProtocolName(draft.name);
-    validateProtocolWindow(draft.startDate, draft.endDate);
     final compoundIds = validateProtocolMembership(draft.compoundIds);
     final compoundRows = await _requireActiveCompoundRows(compoundIds);
     final targetOutcomes = validateProtocolTargetOutcomes(
       draft.targetOutcomes,
     );
     await _requireActiveMetricRows(_metricIdsOf(targetOutcomes));
+    final start = draft.startLocalDate;
+    final period = _validatedPeriodColumn(draft, start);
 
     final id = _repositories._ids.create(context.timestamp);
     await _database.into(_database.protocols).insert(
           ProtocolsCompanion.insert(
             id: id,
             name: name,
-            startDate: draft.startDate.toUtc(),
-            endDate: Value<DateTime?>(draft.endDate?.toUtc()),
+            startLocalDate: start.storageValue,
+            endLocalDate: Value<String?>(draft.endLocalDate?.storageValue),
+            period: Value<String?>(period),
+            remindersEnabled: Value<bool>(draft.remindersEnabled),
             updatedAt: context.timestamp,
           ),
         );
@@ -6484,10 +6577,14 @@ class ProtocolsRepository {
         position: index,
         context: context,
       );
+      // A member created with its Protocol plans from the Protocol's start.
       await _reconcileSchedule(
         memberId,
         draft.schedulesByCompoundId[compoundId],
         context,
+        protocolStart: start,
+        firstVersionFrom: start,
+        today: today,
       );
     }
 
@@ -6499,33 +6596,38 @@ class ProtocolsRepository {
   Future<void> _editProtocol(
     String protocolId,
     ProtocolDraft draft,
-    WriteContext context,
-  ) async {
+    WriteContext context, {
+    required ProtocolDayDate today,
+  }) async {
     final before = await _requireProtocolRow(protocolId);
     if (before.deletedAt != null) {
       throw StateError('Protocol is archived: $protocolId.');
     }
     final name = validateProtocolName(draft.name);
-    validateProtocolWindow(draft.startDate, draft.endDate);
     final compoundIds = validateProtocolMembership(draft.compoundIds);
     final compoundRows = await _requireActiveCompoundRows(compoundIds);
     final targetOutcomes = validateProtocolTargetOutcomes(
       draft.targetOutcomes,
     );
     await _requireActiveMetricRows(_metricIdsOf(targetOutcomes));
+    final start = draft.startLocalDate;
+    final period = _validatedPeriodColumn(draft, start);
+    final endLocalDate = draft.endLocalDate?.storageValue;
 
-    final startDate = draft.startDate.toUtc();
-    final endDate = draft.endDate?.toUtc();
     if (before.name != name ||
-        before.startDate != startDate ||
-        before.endDate != endDate) {
+        before.startLocalDate != start.storageValue ||
+        before.endLocalDate != endLocalDate ||
+        _canonicalPeriodColumn(before.period) != period ||
+        before.remindersEnabled != draft.remindersEnabled) {
       await (_database.update(_database.protocols)
             ..where((row) => row.id.equals(protocolId)))
           .write(
         ProtocolsCompanion(
           name: Value<String>(name),
-          startDate: Value<DateTime>(startDate),
-          endDate: Value<DateTime?>(endDate),
+          startLocalDate: Value<String>(start.storageValue),
+          endLocalDate: Value<String?>(endLocalDate),
+          period: Value<String?>(period),
+          remindersEnabled: Value<bool>(draft.remindersEnabled),
           updatedAt: Value<DateTime>(context.timestamp),
         ),
       );
@@ -6539,26 +6641,58 @@ class ProtocolsRepository {
       );
     }
 
+    final previousStart = ProtocolDayDate.parse(before.startLocalDate);
+    if (previousStart != start) {
+      await _redateVersionsForStartMove(
+        protocolId,
+        keptCompoundIds: compoundIds.toSet(),
+        previousStart: previousStart,
+        start: start,
+        context: context,
+      );
+    }
+
     await _replaceProtocolMembers(
       protocolId,
       compoundRows.map((row) => row.id).toList(growable: false),
       draft.schedulesByCompoundId,
       context,
+      protocolStart: start,
+      today: today,
     );
 
     await _replaceProtocolTargetOutcomes(protocolId, targetOutcomes, context);
   }
 
+  /// The `period` column for [draft]: its cycle anchor moved to [start] when
+  /// the anchor was left at its default, judged by the shared plan validator
+  /// (D7 `cycle_lengths`, `bounds_order`, the Pause checks) together with the
+  /// bounds, and null when there is no cycle and no Pause.
+  String? _validatedPeriodColumn(
+    ProtocolDraft draft,
+    ProtocolDayDate start,
+  ) {
+    final period = _normalizedPeriod(draft.period, start);
+    validateProtocolPeriod(
+      startLocalDate: start,
+      endLocalDate: draft.endLocalDate,
+      period: period?.toJson(),
+    ).throwIfRejected();
+    return period == null ? null : jsonEncode(period.toJson());
+  }
+
   Future<void> _setProtocolDeletedAt(
     String protocolId,
     DateTime deletedAt,
-    WriteContext context,
-  ) async {
+    WriteContext context, {
+    required ProtocolDayDate archivedOn,
+  }) async {
     final before = await _requireProtocolRow(protocolId);
     await (_database.update(_database.protocols)
           ..where((row) => row.id.equals(protocolId)))
         .write(
       ProtocolsCompanion(
+        archivedOn: Value<String?>(archivedOn.storageValue),
         updatedAt: Value<DateTime>(context.timestamp),
         deletedAt: Value<DateTime?>(deletedAt),
       ),
@@ -6602,17 +6736,25 @@ class ProtocolsRepository {
   }
 
   /// Reconciles a `Protocol`'s membership to exactly [compoundIds] (mirrors
-  /// `_replaceRoutineExerciseGroupMembers`): removed members are tombstoned
-  /// (along with their `Schedule`, if any), new ones inserted, and
-  /// kept ones repositioned in place. [schedulesByCompoundId] reconciles each
-  /// KEPT/NEW member's optional `Schedule` too, regardless of whether its
-  /// position changed.
+  /// `_replaceRoutineExerciseGroupMembers`): removed members are archived,
+  /// new ones inserted, and kept ones repositioned in place.
+  /// [schedulesByCompoundId] reconciles each KEPT/NEW member's optional
+  /// `Schedule` too, regardless of whether its position changed.
+  ///
+  /// A removed member's archive (`deleted_at`, plus `archived_on` frozen as
+  /// [today]) is the one record of the removal: its Schedule Versions stay
+  /// as they are, and the archive day itself is still planned. A member
+  /// added while the Protocol's start is still ahead plans from the start;
+  /// one added to a Protocol that has already started plans from [today],
+  /// so its past days don't turn into "Not logged".
   Future<void> _replaceProtocolMembers(
     String protocolId,
     List<String> compoundIds,
     Map<String, ScheduleDraft?> schedulesByCompoundId,
-    WriteContext context,
-  ) async {
+    WriteContext context, {
+    required ProtocolDayDate protocolStart,
+    required ProtocolDayDate today,
+  }) async {
     final activeRows = await _activeProtocolCompoundQuery(
       protocolId: protocolId,
     ).get();
@@ -6627,6 +6769,7 @@ class ProtocolsRepository {
               ..where((table) => table.id.equals(row.id)))
             .write(
           ProtocolCompoundsCompanion(
+            archivedOn: Value<String?>(today.storageValue),
             updatedAt: Value<DateTime>(context.timestamp),
             deletedAt: Value<DateTime?>(context.timestamp),
           ),
@@ -6639,12 +6782,11 @@ class ProtocolsRepository {
           beforeImage: _protocolCompoundImage(row),
           afterImage: _protocolCompoundImage(after),
         );
-        // The member is gone — its Schedule (if any) retires with it. No
-        // orphaned plan row (PROTOCOLS.md §1.4, §7).
-        await _reconcileSchedule(row.id, null, context);
       }
     }
 
+    final newMemberFrom =
+        protocolStart.compareTo(today) > 0 ? protocolStart : today;
     for (var index = 0; index < compoundIds.length; index += 1) {
       final compoundId = compoundIds[index];
       final existing = activeByCompoundId[compoundId];
@@ -6656,7 +6798,14 @@ class ProtocolsRepository {
           position: index,
           context: context,
         );
-        await _reconcileSchedule(memberId, desiredSchedule, context);
+        await _reconcileSchedule(
+          memberId,
+          desiredSchedule,
+          context,
+          protocolStart: protocolStart,
+          firstVersionFrom: newMemberFrom,
+          today: today,
+        );
         continue;
       }
 
@@ -6679,122 +6828,285 @@ class ProtocolsRepository {
         );
       }
 
-      await _reconcileSchedule(existing.id, desiredSchedule, context);
+      await _reconcileSchedule(
+        existing.id,
+        desiredSchedule,
+        context,
+        protocolStart: protocolStart,
+        firstVersionFrom: newMemberFrom,
+        today: today,
+      );
     }
   }
 
-  /// Reconciles ONE member's optional `Schedule` to [desired]: null
-  /// tombstones an existing Schedule (or is a no-op with none); a non-null
-  /// draft creates a new Schedule row, or updates an existing one in place —
-  /// never a new identity. Runs the SAME shared two-tier validator as a
-  /// logged `Dose` (PROTOCOLS.md §6, `validateDose`) against the planned dose
-  /// amount/unit/route — a hard-reject throws before anything persists; there
-  /// is NO parallel Schedule validator. Purely plan-layer: never reads or
-  /// writes a logged `Dose`.
+  /// Reconciles ONE member's `Schedule` to [desired] by inserting a Schedule
+  /// Version only when it changed (D1). Versions are never edited in place.
+  ///
+  /// - A member with no versions gets its first one, dated
+  ///   [firstVersionFrom]; a null [desired] then inserts nothing.
+  /// - Otherwise [desired] is compared with the member's current version
+  ///   (the latest `effective_from`, then the larger id), which is the one in
+  ///   effect on the date a new version would take. An unchanged save
+  ///   inserts nothing; a null [desired] means "no Schedule" and compares as
+  ///   an `unscheduled` rule.
+  /// - A changed save is dated `max(today, the latest effective_from)`, so it
+  ///   takes effect that same day and can never land behind an existing
+  ///   version and be hidden by it.
+  ///
+  /// The draft is stored normalized: times and weekdays sorted, a default
+  /// every-N anchor at [protocolStart], and no amount for an `as_needed` or
+  /// `unscheduled` rule. It is then judged by the shared plan validator
+  /// (`validateScheduleRule`), whose `amount_required` runs the SAME
+  /// two-tier Dose validator as a logged `Dose` on the planned amount; a
+  /// hard-reject throws before anything persists. Purely plan-layer: never
+  /// reads or writes a logged `Dose`.
   Future<void> _reconcileSchedule(
     String protocolCompoundId,
     ScheduleDraft? desired,
-    WriteContext context,
-  ) async {
-    final existing = await _activeScheduleQuery(
+    WriteContext context, {
+    required ProtocolDayDate protocolStart,
+    required ProtocolDayDate firstVersionFrom,
+    required ProtocolDayDate today,
+  }) async {
+    final versions = await _activeScheduleQuery(
       protocolCompoundId: protocolCompoundId,
-    ).getSingleOrNull();
+    ).get();
+    if (versions.isEmpty && desired == null) {
+      return;
+    }
 
-    if (desired == null) {
-      if (existing == null) {
+    final next = _normalizedScheduleVersion(
+      desired ?? const ScheduleDraft(rule: UnscheduledScheduleRule()),
+      protocolStart,
+    );
+    validateScheduleRule(
+      next.rule.toJson(),
+      amountValue: next.amount.amountValue,
+      amountEntered: next.amount.amountEntered,
+      unit: next.amount.unit?.name,
+      route: next.amount.route?.name,
+    ).throwIfRejected();
+
+    final ProtocolDayDate effectiveFrom;
+    if (versions.isEmpty) {
+      effectiveFrom = firstVersionFrom;
+    } else {
+      final current = _currentScheduleRow(versions)!;
+      if (_sameScheduleVersion(current, next)) {
         return;
       }
-      await (_database.update(_database.schedules)
-            ..where((row) => row.id.equals(existing.id)))
-          .write(
-        SchedulesCompanion(
-          updatedAt: Value<DateTime>(context.timestamp),
-          deletedAt: Value<DateTime?>(context.timestamp),
+      final latest = ProtocolDayDate.parse(current.effectiveFrom);
+      effectiveFrom = latest.compareTo(today) > 0 ? latest : today;
+    }
+
+    await _insertScheduleVersion(
+      protocolCompoundId,
+      effectiveFrom: effectiveFrom,
+      version: next,
+      context: context,
+    );
+  }
+
+  /// Moving a Protocol's start inserts re-dated Schedule Version copies, so
+  /// versions are still never edited (D1). For each member that stays:
+  ///
+  /// - **later**: a copy of the version that applied on the new start, dated
+  ///   from it, so the most recent edit keeps winning by id;
+  /// - **earlier**: a copy of the member's earliest version (the one in
+  ///   effect on its first date), dated from the new start, so no date inside
+  ///   the bounds is left without a version.
+  ///
+  /// An every-N anchor left at its default moves to the new start in the
+  /// copy; an anchor the user set stays. A member with no versions gets no
+  /// copy, and neither does one with no version on or before the new start
+  /// when it moves later (it was added after that date).
+  Future<void> _redateVersionsForStartMove(
+    String protocolId, {
+    required Set<String> keptCompoundIds,
+    required ProtocolDayDate previousStart,
+    required ProtocolDayDate start,
+    required WriteContext context,
+  }) async {
+    final members = await _activeProtocolCompoundQuery(
+      protocolId: protocolId,
+    ).get();
+    final movedLater = start.compareTo(previousStart) > 0;
+    for (final member in members) {
+      if (!keptCompoundIds.contains(member.compoundId)) {
+        continue;
+      }
+      final versions = await _activeScheduleQuery(
+        protocolCompoundId: member.id,
+      ).get();
+      if (versions.isEmpty) {
+        continue;
+      }
+      // Versions come in D1's order, so the earliest is the one in effect on
+      // the first row's date.
+      final source = _scheduleRowInEffectOn(
+        versions,
+        movedLater
+            ? start
+            : ProtocolDayDate.parse(versions.first.effectiveFrom),
+      );
+      if (source == null) {
+        continue;
+      }
+      final copy = _scheduleVersionFromRow(source);
+      await _insertScheduleVersion(
+        member.id,
+        effectiveFrom: start,
+        version: (
+          rule: _mapRule(
+            copy.rule,
+            days: (days) => _daysWithDefaultAnchorAt(days, start),
+          ),
+          amount: copy.amount,
         ),
-      );
-      final after = await _requireScheduleRow(existing.id);
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.schedulesTable,
-        entityId: existing.id,
-        beforeImage: _scheduleImage(existing),
-        afterImage: _scheduleImage(after),
-      );
-      return;
-    }
-
-    final amountEntered = desired.doseAmountEntered.trim();
-    if (amountEntered.isEmpty) {
-      throw ArgumentError.value(
-        desired.doseAmountEntered,
-        'doseAmountEntered',
-        'Entered Schedule dose amount must not be empty.',
+        context: context,
       );
     }
-    // PROTOCOLS.md §6: the SAME shared two-tier validator a logged Dose runs
-    // — a hard-reject (e.g. negative amount, absurd per-dose cap, malformed
-    // unit/route) throws here so nothing persists.
-    final validation = validateDose(
-      amount: amountEntered,
-      unit: desired.doseUnit.name,
-      route: desired.route.name,
-    );
-    validation.throwIfRejected();
+  }
 
-    if (existing == null) {
-      final scheduleId = _repositories._ids.create(context.timestamp);
-      await _database.into(_database.schedules).insert(
-            SchedulesCompanion.insert(
-              id: scheduleId,
-              protocolCompoundId: protocolCompoundId,
-              doseAmountValue: desired.doseAmountValue,
-              doseAmountEntered: amountEntered,
-              doseUnit: desired.doseUnit.name,
-              frequency: desired.frequency.name,
-              route: desired.route.name,
-              updatedAt: context.timestamp,
-            ),
-          );
-      final after = await _requireScheduleRow(scheduleId);
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.schedulesTable,
-        entityId: scheduleId,
-        beforeImage: null,
-        afterImage: _scheduleImage(after),
-      );
-      return;
-    }
-
-    final unchanged = existing.doseAmountValue == desired.doseAmountValue &&
-        existing.doseAmountEntered == amountEntered &&
-        existing.doseUnit == desired.doseUnit.name &&
-        existing.frequency == desired.frequency.name &&
-        existing.route == desired.route.name;
-    if (unchanged) {
-      return;
-    }
-
-    await (_database.update(_database.schedules)
-          ..where((row) => row.id.equals(existing.id)))
-        .write(
-      SchedulesCompanion(
-        doseAmountValue: Value<double>(desired.doseAmountValue),
-        doseAmountEntered: Value<String>(amountEntered),
-        doseUnit: Value<String>(desired.doseUnit.name),
-        frequency: Value<String>(desired.frequency.name),
-        route: Value<String>(desired.route.name),
-        updatedAt: Value<DateTime>(context.timestamp),
-      ),
-    );
-    final after = await _requireScheduleRow(existing.id);
+  Future<void> _insertScheduleVersion(
+    String protocolCompoundId, {
+    required ProtocolDayDate effectiveFrom,
+    required _StoredScheduleVersion version,
+    required WriteContext context,
+  }) async {
+    final scheduleId = _repositories._ids.create(context.timestamp);
+    await _database.into(_database.schedules).insert(
+          SchedulesCompanion.insert(
+            id: scheduleId,
+            protocolCompoundId: protocolCompoundId,
+            effectiveFrom: effectiveFrom.storageValue,
+            rule: jsonEncode(version.rule.toJson()),
+            doseAmountValue: Value<double?>(version.amount.amountValue),
+            doseAmountEntered: Value<String?>(version.amount.amountEntered),
+            doseUnit: Value<String?>(version.amount.unit?.name),
+            route: Value<String?>(version.amount.route?.name),
+            updatedAt: context.timestamp,
+          ),
+        );
+    final after = await _requireScheduleRow(scheduleId);
     await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.schedulesTable,
-      entityId: existing.id,
-      beforeImage: _scheduleImage(existing),
+      entityId: scheduleId,
+      beforeImage: null,
       afterImage: _scheduleImage(after),
     );
+  }
+
+  /// [draft] as it is stored (D7): times and weekdays sorted, an every-N
+  /// anchor left at its default moved to [protocolStart], the entered amount
+  /// trimmed, and no amount at all for a rule that plans nothing.
+  _StoredScheduleVersion _normalizedScheduleVersion(
+    ScheduleDraft draft,
+    ProtocolDayDate protocolStart,
+  ) {
+    // Times and weekdays in stored (sorted) order (D7): the codecs and
+    // validators accept any order; the writers sort.
+    final rule = _mapRule(
+      draft.rule,
+      days: (days) => _daysWithDefaultAnchorAt(
+        switch (days) {
+          WeekdayScheduleDays(:final weekdays) =>
+            WeekdayScheduleDays(List<int>.of(weekdays)..sort()),
+          _ => days,
+        },
+        protocolStart,
+      ),
+      times: (times) => List<String>.of(times)..sort(),
+    );
+    return switch (rule) {
+      AsNeededScheduleRule() || UnscheduledScheduleRule() => (
+          rule: rule,
+          amount: PlanAmount.none,
+        ),
+      TimedScheduleRule() || UntimedScheduleRule() => (
+          rule: rule,
+          amount: PlanAmount(
+            amountValue: draft.doseAmountValue,
+            amountEntered: _normalizeOptionalText(draft.doseAmountEntered),
+            unit: draft.doseUnit,
+            route: draft.route,
+          ),
+        ),
+    };
+  }
+
+  /// [rule] with its days mapped through [days] and its times through
+  /// [times]; a rule with no days (as needed, unscheduled) is unchanged.
+  ScheduleRule _mapRule(
+    ScheduleRule rule, {
+    required ScheduleDays Function(ScheduleDays days) days,
+    List<String> Function(List<String> times)? times,
+  }) {
+    return switch (rule) {
+      TimedScheduleRule() => TimedScheduleRule(
+          days: days(rule.days),
+          times: times == null ? rule.times : times(rule.times),
+        ),
+      UntimedScheduleRule() =>
+        UntimedScheduleRule(days: days(rule.days), count: rule.count),
+      _ => rule,
+    };
+  }
+
+  /// [days] with an every-N anchor that was left at its default moved to
+  /// [start] (D1); an anchor the user set stays.
+  ScheduleDays _daysWithDefaultAnchorAt(
+    ScheduleDays days,
+    ProtocolDayDate start,
+  ) =>
+      switch (days) {
+        EveryNDaysScheduleDays(:final n, :final anchorIsDefault)
+            when anchorIsDefault =>
+          EveryNDaysScheduleDays(n: n, anchor: start, anchorIsDefault: true),
+        _ => days,
+      };
+
+  /// [period] as it is stored: null when it has no cycle and no Pause, and a
+  /// cycle anchor that was left at its default moved to [start] (D1).
+  ProtocolPeriod? _normalizedPeriod(
+    ProtocolPeriod? period,
+    ProtocolDayDate start,
+  ) {
+    if (period == null || (period.cycle == null && period.pauses.isEmpty)) {
+      return null;
+    }
+    final cycle = period.cycle;
+    if (cycle == null || !cycle.anchorIsDefault) {
+      return period;
+    }
+    return ProtocolPeriod(
+      cycle: ProtocolCycle(
+        onDays: cycle.onDays,
+        offDays: cycle.offDays,
+        anchor: start,
+        anchorIsDefault: true,
+      ),
+      pauses: period.pauses,
+    );
+  }
+
+  /// Whether [row] stores [version]. The rule is compared decoded, never as
+  /// stored text: a version an Agent wrote reaches the device from the
+  /// server's jsonb with its keys in another order, and must still read as
+  /// unchanged (D1: a save that changes nothing inserts nothing).
+  bool _sameScheduleVersion(ScheduleRow row, _StoredScheduleVersion version) {
+    return _canonicalRuleColumn(row.rule) ==
+            jsonEncode(version.rule.toJson()) &&
+        row.doseAmountValue == version.amount.amountValue &&
+        row.doseAmountEntered == version.amount.amountEntered &&
+        row.doseUnit == version.amount.unit?.name &&
+        row.route == version.amount.route?.name;
+  }
+
+  _StoredScheduleVersion _scheduleVersionFromRow(ScheduleRow row) {
+    final record = _scheduleRecordFromRow(row);
+    return (rule: record.rule, amount: record.amount);
   }
 
   /// Reconciles a `Protocol`'s declared target outcomes to exactly [outcomes]
@@ -6972,8 +7284,9 @@ class ProtocolsRepository {
       ..orderBy([(row) => OrderingTerm.asc(row.position)]);
   }
 
-  /// Active (non-archived) `Schedule` rows, optionally scoped to one member
-  /// (`ProtocolCompound`) row.
+  /// Schedule Version rows not tombstoned by undo, optionally scoped to one
+  /// member (`ProtocolCompound`) row. A member has many: one per changed
+  /// save, none ever edited.
   SimpleSelectStatement<$SchedulesTable, ScheduleRow> _activeScheduleQuery({
     String? protocolCompoundId,
     Set<String>? protocolCompoundIds,
@@ -6987,6 +7300,7 @@ class ProtocolsRepository {
     }
     query.orderBy([
       (row) => OrderingTerm.asc(row.protocolCompoundId),
+      (row) => OrderingTerm.asc(row.effectiveFrom),
       (row) => OrderingTerm.asc(row.id),
     ]);
     return query;
@@ -7036,8 +7350,10 @@ class ProtocolsRepository {
       return ProtocolSummaryRecord(
         id: row.id,
         name: row.name,
-        startDate: row.startDate,
-        endDate: row.endDate,
+        startLocalDate: ProtocolDayDate.parse(row.startLocalDate),
+        endLocalDate: _nullableProtocolDay(row.endLocalDate),
+        period: _protocolPeriodFromColumn(row.period),
+        remindersEnabled: row.remindersEnabled,
         compoundIds: members.map((member) => member.compoundId).toList(
               growable: false,
             ),
@@ -7082,10 +7398,13 @@ class ProtocolsRepository {
     for (final member in memberRows) {
       membersByProtocolId.putIfAbsent(member.protocolId, () => []).add(member);
     }
-    final scheduleByProtocolCompoundId = <String, ScheduleRow>{
-      for (final schedule in scheduleRows)
-        schedule.protocolCompoundId: schedule,
-    };
+    final versionsByProtocolCompoundId = <String, List<ScheduleRow>>{};
+    for (final schedule in scheduleRows) {
+      versionsByProtocolCompoundId
+          .putIfAbsent(schedule.protocolCompoundId, () => [])
+          .add(schedule);
+    }
+    final today = ProtocolDayDate.fromDateTime(DateTime.now());
     final targetOutcomesByProtocolId =
         <String, List<ProtocolTargetOutcomeRow>>{};
     for (final outcome in targetOutcomeRows) {
@@ -7105,18 +7424,25 @@ class ProtocolsRepository {
       return ProtocolRecord(
         id: row.id,
         name: row.name,
-        startDate: row.startDate,
-        endDate: row.endDate,
+        startLocalDate: ProtocolDayDate.parse(row.startLocalDate),
+        endLocalDate: _nullableProtocolDay(row.endLocalDate),
+        period: _protocolPeriodFromColumn(row.period),
+        remindersEnabled: row.remindersEnabled,
         members: members.map(
           (member) {
-            final scheduleRow = scheduleByProtocolCompoundId[member.id];
+            final versions = versionsByProtocolCompoundId[member.id] ??
+                const <ScheduleRow>[];
+            final current = _currentScheduleRow(versions);
+            final inEffectToday = _scheduleRowInEffectOn(versions, today);
             return ProtocolMemberRecord(
               id: member.id,
               compoundId: member.compoundId,
               position: member.position,
-              schedule: scheduleRow == null
+              currentVersion:
+                  current == null ? null : _scheduleRecordFromRow(current),
+              versionInEffectToday: inEffectToday == null
                   ? null
-                  : _scheduleRecordFromRow(scheduleRow),
+                  : _scheduleRecordFromRow(inEffectToday),
             );
           },
         ).toList(growable: false),
@@ -7143,20 +7469,22 @@ class ProtocolsRepository {
     );
   }
 
-  /// Maps a persisted `Schedule` row to its read model, REJECTING a unit,
-  /// route, or frequency stored outside the curated registries (
-  /// the same registry chokepoint discipline as `DoseRecord`).
+  /// Maps a persisted Schedule Version row to its read model, REJECTING a
+  /// unit or route stored outside the curated registries (the same registry
+  /// chokepoint discipline as `DoseRecord`) and a rule its codec rejects.
   ScheduleRecord _scheduleRecordFromRow(ScheduleRow row) {
+    final unit = row.doseUnit;
+    final route = row.route;
     return ScheduleRecord(
       id: row.id,
       protocolCompoundId: row.protocolCompoundId,
+      effectiveFrom: ProtocolDayDate.parse(row.effectiveFrom),
+      rule: ScheduleRule.fromJson(jsonDecode(row.rule)),
       doseAmountValue: row.doseAmountValue,
       doseAmountEntered: row.doseAmountEntered,
-      doseUnit: doseUnitFromName(row.doseUnit),
-      frequency: scheduleFrequencyFromName(row.frequency),
-      route: doseRouteFromName(row.route),
+      doseUnit: unit == null ? null : doseUnitFromName(unit),
+      route: route == null ? null : doseRouteFromName(route),
       updatedAt: row.updatedAt,
-      deletedAt: row.deletedAt,
     );
   }
 
@@ -7218,8 +7546,10 @@ class ProtocolsRepository {
   ) {
     return left.id == right.id &&
         left.name == right.name &&
-        left.startDate == right.startDate &&
-        left.endDate == right.endDate &&
+        left.startLocalDate == right.startLocalDate &&
+        left.endLocalDate == right.endLocalDate &&
+        _samePeriod(left.period, right.period) &&
+        left.remindersEnabled == right.remindersEnabled &&
         _sameRowList(left.compoundIds, right.compoundIds);
   }
 
@@ -7251,8 +7581,10 @@ class ProtocolsRepository {
     }
     return left.id == right.id &&
         left.name == right.name &&
-        left.startDate == right.startDate &&
-        left.endDate == right.endDate &&
+        left.startLocalDate == right.startLocalDate &&
+        left.endLocalDate == right.endLocalDate &&
+        _samePeriod(left.period, right.period) &&
+        left.remindersEnabled == right.remindersEnabled &&
         left.updatedAt == right.updatedAt &&
         left.deletedAt == right.deletedAt &&
         _sameProtocolMemberRecords(left.members, right.members) &&
@@ -7276,7 +7608,18 @@ class ProtocolsRepository {
     return left.id == right.id &&
         left.compoundId == right.compoundId &&
         left.position == right.position &&
-        _sameScheduleRecord(left.schedule, right.schedule);
+        _sameScheduleRecord(left.currentVersion, right.currentVersion) &&
+        _sameScheduleRecord(
+          left.versionInEffectToday,
+          right.versionInEffectToday,
+        );
+  }
+
+  bool _samePeriod(ProtocolPeriod? left, ProtocolPeriod? right) {
+    if (left == null || right == null) {
+      return left == right;
+    }
+    return jsonEncode(left.toJson()) == jsonEncode(right.toJson());
   }
 
   bool _sameScheduleRecord(ScheduleRecord? left, ScheduleRecord? right) {
@@ -7288,13 +7631,13 @@ class ProtocolsRepository {
     }
     return left.id == right.id &&
         left.protocolCompoundId == right.protocolCompoundId &&
+        left.effectiveFrom == right.effectiveFrom &&
+        jsonEncode(left.rule.toJson()) == jsonEncode(right.rule.toJson()) &&
         left.doseAmountValue == right.doseAmountValue &&
         left.doseAmountEntered == right.doseAmountEntered &&
         left.doseUnit == right.doseUnit &&
-        left.frequency == right.frequency &&
         left.route == right.route &&
-        left.updatedAt == right.updatedAt &&
-        left.deletedAt == right.deletedAt;
+        left.updatedAt == right.updatedAt;
   }
 
   bool _sameProtocolTargetOutcomeRecords(
@@ -7399,16 +7742,27 @@ class EffectRepository {
 
   AppDatabase get _database => _repositories.database;
 
-  /// The `Effect` window for a `Protocol` (PROTOCOLS.md §1.4, §4): DURING is
-  /// the Protocol's own declared start/end — never the Schedule/plan, but a
-  /// Protocol's start/end ARE plan dates by definition (§1.4), which is why a
-  /// Compound-only window ([windowForCompound]) instead derives DURING from
-  /// the actual logged Doses.
+  /// The `Effect` window for a `Protocol`: DURING is the Protocol's own
+  /// declared start/end — never the Schedule/plan, but a Protocol's start/end
+  /// ARE plan dates by definition, which is why a Compound-only window
+  /// ([windowForCompound]) instead derives DURING from the actual logged
+  /// Doses.
+  ///
+  /// The bounds are local dates, so they become instants through
+  /// [effectBoundsFromLocalDates] at the device's current UTC offset: local
+  /// midnight of the start, and local midnight of the day after the
+  /// inclusive end. The Effect math itself is unchanged.
   EffectWindow windowForProtocol(ProtocolRecord protocol, {DateTime? now}) {
+    final at = now ?? DateTime.now();
+    final bounds = effectBoundsFromLocalDates(
+      startLocalDate: protocol.startLocalDate,
+      endLocalDate: protocol.endLocalDate,
+      timezoneOffsetMinutes: at.toLocal().timeZoneOffset.inMinutes,
+    );
     return effectWindowForProtocol(
-      startDate: protocol.startDate,
-      endDate: protocol.endDate,
-      now: now ?? DateTime.now(),
+      startDate: bounds.startDate,
+      endDate: bounds.endDate,
+      now: at,
     );
   }
 
@@ -14872,6 +15226,48 @@ Map<String, Object?> _compoundImage(CompoundRow row) {
   };
 }
 
+/// One Schedule Version's stored content: its rule and planned amount.
+typedef _StoredScheduleVersion = ({ScheduleRule rule, PlanAmount amount});
+
+/// The member's current Schedule Version among [versions]: the latest
+/// `effective_from`, then the larger id (UUIDv7 ids sort by creation time,
+/// so that is the latest edit, and every device agrees). [versions] come
+/// from [ProtocolsRepository._activeScheduleQuery], which returns them
+/// in that order, so it is the last. Null when there is none.
+ScheduleRow? _currentScheduleRow(List<ScheduleRow> versions) =>
+    versions.lastOrNull;
+
+/// The Schedule Version that applies on [date] (D1), by the shared core's
+/// rule; [versions] are in [_currentScheduleRow]'s order. Null when none
+/// applies yet.
+ScheduleRow? _scheduleRowInEffectOn(
+  List<ScheduleRow> versions,
+  ProtocolDayDate date,
+) =>
+    applyingScheduleVersion(
+      versions,
+      date,
+      effectiveFrom: (row) => ProtocolDayDate.parse(row.effectiveFrom),
+    );
+
+/// A stored `rule` column re-encoded in the codec's key order, so two
+/// columns that hold the same rule compare equal however they were written.
+String _canonicalRuleColumn(String column) =>
+    jsonEncode(ScheduleRule.fromJson(jsonDecode(column)).toJson());
+
+/// A stored `period` column re-encoded in the codec's key order (see
+/// [_canonicalRuleColumn]); null stays null.
+String? _canonicalPeriodColumn(String? column) {
+  final period = _protocolPeriodFromColumn(column);
+  return period == null ? null : jsonEncode(period.toJson());
+}
+
+ProtocolDayDate? _nullableProtocolDay(String? value) =>
+    value == null ? null : ProtocolDayDate.parse(value);
+
+ProtocolPeriod? _protocolPeriodFromColumn(String? value) =>
+    value == null ? null : ProtocolPeriod.fromJson(jsonDecode(value));
+
 Map<String, Object?> _doseImage(DoseRow row) {
   return <String, Object?>{
     'id': row.id,
@@ -14885,6 +15281,7 @@ Map<String, Object?> _doseImage(DoseRow row) {
     'took_at': _iso(row.tookAt),
     'timezone': row.timezone,
     'local_date': row.localDate,
+    'timezone_offset_minutes': row.timezoneOffsetMinutes,
     'provenance': row.provenance,
     'protocol_id': row.protocolId,
     'protocol_name': row.protocolName,
@@ -14893,12 +15290,18 @@ Map<String, Object?> _doseImage(DoseRow row) {
   };
 }
 
+/// The `protocols` sync and Activity Log image. `period` rides JSON-encoded,
+/// exactly as the column stores it, like every other JSON column's image
+/// (`equipment_ids`, `recipe_ingredients_json`).
 Map<String, Object?> _protocolImage(ProtocolRow row) {
   return <String, Object?>{
     'id': row.id,
     'name': row.name,
-    'start_date': _iso(row.startDate),
-    'end_date': row.endDate == null ? null : _iso(row.endDate!),
+    'start_local_date': row.startLocalDate,
+    'end_local_date': row.endLocalDate,
+    'period': row.period,
+    'reminders_enabled': row.remindersEnabled,
+    'archived_on': row.archivedOn,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
@@ -14910,19 +15313,23 @@ Map<String, Object?> _protocolCompoundImage(ProtocolCompoundRow row) {
     'protocol_id': row.protocolId,
     'compound_id': row.compoundId,
     'position': row.position,
+    'archived_on': row.archivedOn,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
 }
 
+/// One Schedule Version's sync and Activity Log image. `rule` rides
+/// JSON-encoded, exactly as the column stores it.
 Map<String, Object?> _scheduleImage(ScheduleRow row) {
   return <String, Object?>{
     'id': row.id,
     'protocol_compound_id': row.protocolCompoundId,
+    'effective_from': row.effectiveFrom,
+    'rule': row.rule,
     'dose_amount_value': row.doseAmountValue,
     'dose_amount_entered': row.doseAmountEntered,
     'dose_unit': row.doseUnit,
-    'frequency': row.frequency,
     'route': row.route,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
@@ -15542,6 +15949,12 @@ DosesCompanion _doseCompanionFromImage(Map<String, Object?> image) {
     tookAt: Value<DateTime>(_activityRequiredDateTime(image, 'took_at')),
     timezone: Value<String>(_activityRequiredString(image, 'timezone')),
     localDate: Value<String>(_activityRequiredString(image, 'local_date')),
+    // Nullable-with-default: a Dose logged before the offset was recorded,
+    // and every image of one, carries no `timezone_offset_minutes` key. It
+    // applies with a null offset; it is never treated as malformed.
+    timezoneOffsetMinutes: Value<int?>(
+      _activityNullableInt(image, 'timezone_offset_minutes'),
+    ),
     provenance: Value<String>(_activityRequiredString(image, 'provenance')),
     // Nullable-with-default: Activity Log images predating carry no
     // `protocol_id`/`protocol_name` keys, and replaying/undoing them must not
@@ -15554,11 +15967,35 @@ DosesCompanion _doseCompanionFromImage(Map<String, Object?> image) {
   );
 }
 
+/// A `protocols` image in the plan shape. An image without
+/// `start_local_date` or `reminders_enabled` (every image written before
+/// the plan shape, which carried `start_date` instead), or with a bound or
+/// Period its codec rejects, is malformed: it throws a [FormatException],
+/// which a sync pull quarantines rather than applies.
 ProtocolsCompanion _protocolCompanionFromImage(Map<String, Object?> image) {
+  final period = _planImageJsonColumn(image, 'period');
+  if (period != null) {
+    ProtocolPeriod.fromJson(_planImageJson(period, 'period'));
+  }
+  final remindersEnabled = image['reminders_enabled'];
+  if (remindersEnabled is! bool) {
+    throw const FormatException(
+      'Protocol image field reminders_enabled must be a boolean.',
+    );
+  }
   return ProtocolsCompanion(
     name: Value<String>(_activityRequiredString(image, 'name')),
-    startDate: Value<DateTime>(_activityRequiredDateTime(image, 'start_date')),
-    endDate: Value<DateTime?>(_activityNullableDateTime(image, 'end_date')),
+    startLocalDate: Value<String>(
+      _planImageLocalDate(image, 'start_local_date'),
+    ),
+    endLocalDate: Value<String?>(
+      _planImageNullableLocalDate(image, 'end_local_date'),
+    ),
+    period: Value<String?>(period),
+    remindersEnabled: Value<bool>(remindersEnabled),
+    archivedOn: Value<String?>(
+      _planImageNullableLocalDate(image, 'archived_on'),
+    ),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
@@ -15571,25 +16008,84 @@ ProtocolCompoundsCompanion _protocolCompoundCompanionFromImage(
     protocolId: Value<String>(_activityRequiredString(image, 'protocol_id')),
     compoundId: Value<String>(_activityRequiredString(image, 'compound_id')),
     position: Value<int>(_activityRequiredInt(image, 'position')),
+    archivedOn: Value<String?>(
+      _planImageNullableLocalDate(image, 'archived_on'),
+    ),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
 }
 
+/// One Schedule Version's image in the plan shape. An image without
+/// `effective_from` or `rule` (every image written before the plan shape,
+/// which carried `frequency` instead), or with a value its codec rejects,
+/// is malformed: it throws a [FormatException], which a sync pull
+/// quarantines rather than applies.
 SchedulesCompanion _scheduleCompanionFromImage(Map<String, Object?> image) {
+  final rule = _planImageJsonColumn(image, 'rule');
+  if (rule == null) {
+    throw const FormatException('Schedule image field rule is missing.');
+  }
+  ScheduleRule.fromJson(_planImageJson(rule, 'rule'));
   return SchedulesCompanion(
     protocolCompoundId:
         Value<String>(_activityRequiredString(image, 'protocol_compound_id')),
+    effectiveFrom: Value<String>(
+      _planImageLocalDate(image, 'effective_from'),
+    ),
+    rule: Value<String>(rule),
     doseAmountValue:
-        Value<double>(_activityRequiredDouble(image, 'dose_amount_value')),
+        Value<double?>(_activityNullableDouble(image, 'dose_amount_value')),
     doseAmountEntered:
-        Value<String>(_activityRequiredString(image, 'dose_amount_entered')),
-    doseUnit: Value<String>(_activityRequiredString(image, 'dose_unit')),
-    frequency: Value<String>(_activityRequiredString(image, 'frequency')),
-    route: Value<String>(_activityRequiredString(image, 'route')),
+        Value<String?>(_activityNullableString(image, 'dose_amount_entered')),
+    doseUnit: Value<String?>(_activityNullableString(image, 'dose_unit')),
+    route: Value<String?>(_activityNullableString(image, 'route')),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
+}
+
+String? _planImageNullableString(Map<String, Object?> image, String key) {
+  final value = image[key];
+  if (value == null || value is String) {
+    return value as String?;
+  }
+  throw FormatException('Plan image field $key must be a string.', value);
+}
+
+/// A JSON column's image value (`rule`, `period`) as the column stores it:
+/// JSON text. The app writes JSON text, as it does for every JSON column;
+/// a writer that sent the decoded JSON object instead is read the same way.
+String? _planImageJsonColumn(Map<String, Object?> image, String key) {
+  final value = image[key];
+  if (value is Map<String, Object?>) {
+    return jsonEncode(value);
+  }
+  return _planImageNullableString(image, key);
+}
+
+/// A required `YYYY-MM-DD` plan image field, as stored.
+String _planImageLocalDate(Map<String, Object?> image, String key) {
+  final value = _planImageNullableString(image, key);
+  if (value == null) {
+    throw FormatException('Plan image field $key is missing.');
+  }
+  return ProtocolDayDate.parse(value).storageValue;
+}
+
+String? _planImageNullableLocalDate(Map<String, Object?> image, String key) {
+  final value = _planImageNullableString(image, key);
+  return value == null ? null : ProtocolDayDate.parse(value).storageValue;
+}
+
+Object? _planImageJson(String encoded, String key) {
+  try {
+    return jsonDecode(encoded);
+  } on FormatException catch (error) {
+    throw FormatException(
+      'Plan image field $key is not JSON: ${error.message}',
+    );
+  }
 }
 
 ProtocolTargetOutcomesCompanion _protocolTargetOutcomeCompanionFromImage(

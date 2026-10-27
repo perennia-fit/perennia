@@ -1116,6 +1116,77 @@ void main() {
       );
     });
 
+    test(
+        'imports a schema-60 archive\'s Compounds and Doses and skips its '
+        'Protocol plan rows and their Activity Log rows', () async {
+      await _seedProtocolsData(repositories);
+      final compound = (await repositories.protocols.listCompounds()).single;
+      await repositories.protocols.createProtocol(
+        ProtocolDraft(
+          name: 'Archive stack',
+          startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
+          compoundIds: <String>[compound.id],
+          schedulesByCompoundId: <String, ScheduleDraft?>{
+            compound.id: ScheduleDraft(
+              rule: TimedScheduleRule(
+                days: const DailyScheduleDays(),
+                times: const <String>['09:00'],
+              ),
+              doseAmountValue: 2000,
+              doseAmountEntered: '2000',
+              doseUnit: DoseUnit.internationalUnit,
+              route: DoseRoute.oral,
+            ),
+          },
+          targetOutcomes: const <ProtocolTargetOutcomeDraft>[
+            ProtocolTargetOutcomeDraft.performance,
+          ],
+        ),
+      );
+      final schema60Archive = _asSchema60Archive(
+        await repositories.portableArchives.exportPortableArchive(),
+      );
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(
+        schema60Archive,
+      );
+
+      final restoredRows = _archiveRowsByTable(
+        await restoredRepositories.portableArchives.exportPortableArchive(),
+      );
+      _expectSeededProtocolsArchiveRows(restoredRows);
+      // A Dose from before the offset existed restores with none.
+      expect(
+        restoredRows[AppDatabase.dosesTable]!.single['timezoneOffsetMinutes'],
+        isNull,
+      );
+      for (final table in _protocolPlanTables) {
+        expect(restoredRows[table], isEmpty, reason: table);
+        expect(
+          restoredRows[AppDatabase.activityLogTable]!
+              .where((row) => row['entityTable'] == table),
+          isEmpty,
+          reason: '$table Activity Log rows',
+        );
+      }
+      expect(
+        restoredRows[AppDatabase.activityLogTable]!
+            .map((row) => row['entityTable'])
+            .toSet(),
+        containsAll(<String>[
+          AppDatabase.compoundsTable,
+          AppDatabase.dosesTable,
+        ]),
+      );
+      expect(
+        await restoredDatabase.customSelect('PRAGMA foreign_key_check').get(),
+        isEmpty,
+      );
+    });
+
     test('imports schema-53 Routine rows as cadence-less collections',
         () async {
       final templateId = await repositories.workoutTemplates.create(
@@ -2996,6 +3067,71 @@ List<int> _asSchema52Archive(List<int> bytes) {
           file.name,
           rows.map(jsonEncode).join('\n'),
         ),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
+const _protocolPlanTables = <String>{
+  AppDatabase.protocolsTable,
+  AppDatabase.protocolCompoundsTable,
+  AppDatabase.schedulesTable,
+  AppDatabase.protocolTargetOutcomesTable,
+};
+
+/// [bytes] as a schema-60 archive: the Protocol plan rows in the shape before
+/// schema 61 (instant bounds and a `frequency`, which today's rows cannot
+/// decode), and Doses without a UTC offset.
+List<int> _asSchema60Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source)..['schemaVersion'] = 60;
+  final protocolsFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.protocolsTable);
+  final schedulesFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.schedulesTable);
+  final dosesFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.dosesTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName) {
+      continue;
+    }
+    if (file.name == protocolsFileName ||
+        file.name == schedulesFileName ||
+        file.name == dosesFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        if (file.name == protocolsFileName) {
+          expect(old.remove('startLocalDate'), isNotNull);
+          old
+            ..remove('endLocalDate')
+            ..remove('period')
+            ..remove('remindersEnabled')
+            ..remove('archivedOn')
+            ..['startDate'] = 1780272000000
+            ..['endDate'] = null;
+        } else if (file.name == schedulesFileName) {
+          expect(old.remove('rule'), isNotNull);
+          old
+            ..remove('effectiveFrom')
+            ..['frequency'] = 'onceDaily';
+        } else {
+          old.remove('timezoneOffsetMinutes');
+        }
+        return old;
+      }).toList(growable: false);
+      expect(rows, isNotEmpty);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
       );
       continue;
     }

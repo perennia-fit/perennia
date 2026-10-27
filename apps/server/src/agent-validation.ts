@@ -4,6 +4,14 @@ import {
   AgentApiKeyUnavailableResponseSchema,
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
+import {
+  PROTOCOL_PLAN_VALIDATION_LIMITS,
+  compareIds,
+  isJsonObject,
+  isPlanLocalTime,
+  isValidLocalDate,
+  isWholeNumber
+} from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import type {
   DimensionId,
@@ -1715,6 +1723,340 @@ function parseDoseRoute(route: string): DoseRoute | null {
   return (DOSE_ROUTES as readonly string[]).includes(route)
     ? (route as DoseRoute)
     : null;
+}
+
+// ---------------------------------------------------------------------------
+// Protocol Plan tier (docs/designs/protocol-schedules-and-reminders.md, D7).
+// The same shared two-tier module, extended for Schedule Rules and Protocol
+// Periods. Twins the Dart `validateScheduleRule` / `validateProtocolPeriod`
+// (apps/mobile/lib/domain/protocols/protocol_plan_validation.dart): the same
+// stable rule ids and limits, agreeing on
+// packages/golden-vectors/vectors/m36-protocol-plan-validation.json. Results
+// use the Dose validator's issue shape, the Protocols domain's own.
+// ---------------------------------------------------------------------------
+
+/// The limits are defined in protocol-plan.ts, whose decoders enforce their
+/// ceilings, and re-exported here beside the validators that judge them.
+export { PROTOCOL_PLAN_VALIDATION_LIMITS };
+
+/// The planned amount a Schedule Version carries next to its rule.
+export type AgentScheduleAmountForValidation = {
+  amountValue: number | null | undefined;
+  amountEntered: string | null | undefined;
+  unit: string | null | undefined;
+  route: string | null | undefined;
+};
+
+/// `startLocalDate` and `endLocalDate` must already be real `YYYY-MM-DD`
+/// dates (the Dart twin takes parsed dates); anything else throws a
+/// RangeError rather than being compared as text.
+export type AgentProtocolPeriodValidationInput = {
+  startLocalDate: string;
+  endLocalDate: string | null | undefined;
+  period: Readonly<Record<string, unknown>> | null | undefined;
+};
+
+/// Validates one Schedule Version: its stored `rule` JSON and the planned
+/// amount a `timed` or `untimed` rule requires and an `as_needed` or
+/// `unscheduled` rule must not carry. Like the Dart twin, it reads
+/// the stored JSON rather than a decoded rule, so it can judge values a
+/// decoder rejects (a time of "9:00", an anchor of "2026-02-30", a count of
+/// 2.5). The JSON's `v` and `kind`s are the codec's to reject; this assumes a
+/// known shape and judges its values.
+export function validateAgentScheduleRule(
+  rule: Readonly<Record<string, unknown>>,
+  amount: AgentScheduleAmountForValidation
+): AgentDoseValidationResult {
+  const errors: AgentDoseValidationIssue[] = [];
+  const warnings: AgentDoseValidationIssue[] = [];
+  const limits = PROTOCOL_PLAN_VALIDATION_LIMITS;
+  if (rule.kind !== "timed" && rule.kind !== "untimed") {
+    // `as_needed` and `unscheduled` plan nothing, so the stored shape keeps
+    // their amount fields null (`amount_absent`): an amount here is one
+    // nothing would ever read.
+    const carried = [amount.amountValue, amount.amountEntered, amount.unit, amount.route];
+    if (carried.some((value) => value !== null && value !== undefined)) {
+      errors.push(
+        doseIssue({
+          field: "amount",
+          rule: "amount_absent",
+          message: "An as-needed or unscheduled rule carries no amount, unit or route.",
+          limit: "absent"
+        })
+      );
+    }
+    return { errors, warnings };
+  }
+
+  if (rule.kind === "timed") {
+    const times = Array.isArray(rule.times) ? (rule.times as unknown[]) : [];
+    if (times.some((time) => typeof time !== "string" || !isPlanLocalTime(time))) {
+      errors.push(
+        doseIssue({
+          field: "rule.times",
+          rule: "times_format",
+          message: "Each time must be HH:MM, from 00:00 to 23:59.",
+          limit: "HH:MM"
+        })
+      );
+    }
+    if (times.length < 1 || times.length > limits.maxTimesPerDay) {
+      errors.push(
+        doseIssue({
+          field: "rule.times",
+          rule: "times_count",
+          message: `A timed rule plans 1 to ${limits.maxTimesPerDay} times a day.`,
+          limit: limits.maxTimesPerDay
+        })
+      );
+    }
+    if (new Set(times).size !== times.length) {
+      errors.push(
+        doseIssue({
+          field: "rule.times",
+          rule: "times_distinct",
+          message: "A timed rule cannot plan the same time twice.",
+          limit: "unique"
+        })
+      );
+    }
+    if (times.length > limits.warnTimesPerDay) {
+      warnings.push(
+        doseIssue({
+          field: "rule.times",
+          rule: "times_many",
+          message: `More than ${limits.warnTimesPerDay} times a day is unusual.`,
+          limit: limits.warnTimesPerDay
+        })
+      );
+    }
+  } else if (!isIntegerInRange(rule.count, 1, limits.maxUntimedCount)) {
+    errors.push(
+      doseIssue({
+        field: "rule.count",
+        rule: "untimed_count",
+        message: `An untimed rule plans 1 to ${limits.maxUntimedCount} doses a day.`,
+        limit: limits.maxUntimedCount
+      })
+    );
+  }
+
+  const days = isJsonObject(rule.days) ? rule.days : {};
+  if (days.kind === "weekdays") {
+    const weekdays = Array.isArray(days.weekdays) ? (days.weekdays as unknown[]) : [];
+    if (
+      weekdays.length === 0 ||
+      !weekdays.every((weekday) => isIntegerInRange(weekday, 1, 7)) ||
+      new Set(weekdays).size !== weekdays.length
+    ) {
+      errors.push(
+        doseIssue({
+          field: "rule.days.weekdays",
+          rule: "weekdays_valid",
+          message: "Choose at least one weekday, each from 1 (Monday) to 7 (Sunday), once.",
+          limit: "1-7"
+        })
+      );
+    }
+  }
+  if (days.kind === "every_n_days") {
+    if (!isIntegerInRange(days.n, limits.minEveryNDays, limits.maxEveryNDays)) {
+      errors.push(
+        doseIssue({
+          field: "rule.days.n",
+          rule: "every_n_range",
+          message: `Every N days takes N from ${limits.minEveryNDays} to ${limits.maxEveryNDays}.`,
+          limit: `${limits.minEveryNDays}-${limits.maxEveryNDays}`
+        })
+      );
+    }
+    if (!isLocalDateValue(days.anchor)) {
+      errors.push(anchorDateIssue("rule.days.anchor"));
+    }
+  }
+
+  if (!scheduleAmountIsValid(amount)) {
+    errors.push(
+      doseIssue({
+        field: "amount",
+        rule: "amount_required",
+        message: "A timed or untimed rule needs a valid amount, unit and route.",
+        limit: "amount|unit|route"
+      })
+    );
+  }
+
+  return { errors, warnings };
+}
+
+/// Validates a Protocol's bounds (`endLocalDate` inclusive, null for ongoing)
+/// and its stored `period` JSON, or null for no cycle and no Pause.
+export function validateAgentProtocolPeriod(
+  input: AgentProtocolPeriodValidationInput
+): AgentDoseValidationResult {
+  const errors: AgentDoseValidationIssue[] = [];
+  const startLocalDate = requireBoundDate(input.startLocalDate, "startLocalDate");
+  const endLocalDate =
+    input.endLocalDate === null || input.endLocalDate === undefined
+      ? null
+      : requireBoundDate(input.endLocalDate, "endLocalDate");
+  const period = input.period ?? null;
+  const cycle = period?.cycle;
+  const pauses = Array.isArray(period?.pauses) ? (period.pauses as unknown[]) : [];
+
+  if (isJsonObject(cycle)) {
+    if (!isLocalDateValue(cycle.anchor)) {
+      errors.push(anchorDateIssue("period.cycle.anchor"));
+    }
+    const maximum = PROTOCOL_PLAN_VALIDATION_LIMITS.maxCycleLengthDays;
+    if (
+      !isIntegerInRange(cycle.on_days, 1, maximum) ||
+      !isIntegerInRange(cycle.off_days, 1, maximum)
+    ) {
+      errors.push(
+        doseIssue({
+          field: "period.cycle",
+          rule: "cycle_lengths",
+          message: `A cycle is 1 to ${maximum} days on and 1 to ${maximum} days off.`,
+          limit: maximum
+        })
+      );
+    }
+  }
+
+  if (endLocalDate !== null && endLocalDate < startLocalDate) {
+    errors.push(
+      doseIssue({
+        field: "endLocalDate",
+        rule: "bounds_order",
+        message: "A Protocol cannot end before it starts.",
+        limit: "startLocalDate"
+      })
+    );
+  }
+
+  // pause_count bounds the list before anything walks or sorts it; an
+  // over-long list reports only that, and the other Pause checks don't run.
+  const maxPauses = PROTOCOL_PLAN_VALIDATION_LIMITS.maxPauses;
+  if (pauses.length > maxPauses) {
+    errors.push(
+      doseIssue({
+        field: "period.pauses",
+        rule: "pause_count",
+        message: `A Protocol holds at most ${maxPauses} Pauses.`,
+        limit: maxPauses
+      })
+    );
+    return { errors, warnings: [] };
+  }
+
+  // A Pause whose dates are not real dates cannot be ordered, so it fails
+  // pause_order, and the bounds and overlap checks skip it. Real local dates
+  // sort as strings.
+  const ranges: { from: string; to: string }[] = [];
+  let unordered = false;
+  for (const pause of pauses) {
+    const object = isJsonObject(pause) ? pause : {};
+    const from = isLocalDateValue(object.from) ? object.from : null;
+    const to = isLocalDateValue(object.to) ? object.to : null;
+    if (from === null || to === null || from > to) {
+      unordered = true;
+    }
+    if (from !== null && to !== null) {
+      ranges.push({ from, to });
+    }
+  }
+  if (unordered) {
+    errors.push(
+      doseIssue({
+        field: "period.pauses",
+        rule: "pause_order",
+        message: "A Pause cannot end before it starts.",
+        limit: "from<=to"
+      })
+    );
+  }
+
+  const outsideBounds = (localDate: string) =>
+    localDate < startLocalDate || (endLocalDate !== null && localDate > endLocalDate);
+  if (ranges.some((range) => outsideBounds(range.from) || outsideBounds(range.to))) {
+    errors.push(
+      doseIssue({
+        field: "period.pauses",
+        rule: "pause_bounds",
+        message: "A Pause must fall within the Protocol's dates.",
+        limit: "startLocalDate..endLocalDate"
+      })
+    );
+  }
+
+  // Pauses are inclusive at both ends, so two that share a day overlap.
+  const byStart = [...ranges].sort((left, right) => compareIds(left.from, right.from));
+  let latestEnd: string | null = null;
+  let overlaps = false;
+  for (const range of byStart) {
+    if (latestEnd !== null && range.from <= latestEnd) {
+      overlaps = true;
+    }
+    if (latestEnd === null || range.to > latestEnd) {
+      latestEnd = range.to;
+    }
+  }
+  if (overlaps) {
+    errors.push(
+      doseIssue({
+        field: "period.pauses",
+        rule: "pause_overlap",
+        message: "Two Pauses cannot overlap.",
+        limit: "disjoint"
+      })
+    );
+  }
+
+  return { errors, warnings: [] };
+}
+
+/// All four present (the entered amount non-blank) and accepted by the Dose
+/// validator, which judges the numeric amount. Its soft warnings are left to
+/// the Dose logged against the plan.
+function scheduleAmountIsValid(amount: AgentScheduleAmountForValidation): boolean {
+  const { amountValue, amountEntered, unit, route } = amount;
+  if (
+    amountValue === null ||
+    amountValue === undefined ||
+    typeof amountEntered !== "string" ||
+    amountEntered.trim().length === 0 ||
+    typeof unit !== "string" ||
+    typeof route !== "string"
+  ) {
+    return false;
+  }
+  return validateAgentDose({ amount: amountValue, unit, route }).errors.length === 0;
+}
+
+function anchorDateIssue(field: string): AgentDoseValidationIssue {
+  return doseIssue({
+    field,
+    rule: "anchor_date",
+    message: "An anchor must be a real YYYY-MM-DD date.",
+    limit: "YYYY-MM-DD"
+  });
+}
+
+function requireBoundDate(localDate: string, field: string): string {
+  if (!isValidLocalDate(localDate)) {
+    throw new RangeError(`${field} is not a YYYY-MM-DD date: ${localDate}.`);
+  }
+  return localDate;
+}
+
+/// A whole number in range, as the plan core's decoders read one.
+function isIntegerInRange(value: unknown, minimum: number, maximum: number): boolean {
+  return isWholeNumber(value) && value >= minimum && value <= maximum;
+}
+
+function isLocalDateValue(value: unknown): value is string {
+  return typeof value === "string" && isValidLocalDate(value);
 }
 
 // ---------------------------------------------------------------------------

@@ -608,19 +608,41 @@ never cascades to logged Doses (they keep their self-describing snapshot).
 ## Protocol Write Shape
 
 `manage-protocols` (`POST /agent/protocols/batch-write`) creates, edits, or
-archives Protocol plans with their member Compounds, Schedules, and target
-outcomes. Plan writes never touch logged Doses — archiving a Protocol never
-cascades (PROTOCOLS.md §7).
+archives Protocol plans with their Protocol Members, Schedule Versions, and
+target outcomes. Every request carries `today`, the user's local date
+(`YYYY-MM-DD`), which must be within one day of the server's UTC date. A
+Protocol's bounds are local dates: `startLocalDate`, and an inclusive
+`endLocalDate` (`null` is ongoing). `period` is `null`, or an on/off `cycle`
+and the `pauses`. Each Schedule is a new Schedule Version with a `rule`; the
+server dates it (`effectiveFrom`) exactly as the app does, so never send
+`effectiveFrom`, and never reuse a version id: every edit is a new version.
+`timed` and `untimed` rules need the planned amount, unit, and route;
+`as_needed` and `unscheduled` (no Schedule) carry none. The rule and period are
+judged by the shared two-tier plan validators; soft warnings come back in
+`warnings[]`. Plan writes never touch logged Doses — archiving a Protocol never
+cascades.
 
 ```json
 {
   "idempotencyKey": "stable-protocol-batch-key",
+  "today": "2026-10-26",
   "protocols": [
     {
       "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d012",
-      "name": "Off-season base",
-      "startDate": "2026-06-01T00:00:00.000Z",
-      "endDate": null,
+      "name": "Skin",
+      "startLocalDate": "2026-09-01",
+      "endLocalDate": null,
+      "period": {
+        "v": 1,
+        "cycle": {
+          "on_days": 60,
+          "off_days": 30,
+          "anchor": "2026-09-01",
+          "anchor_is_default": true
+        },
+        "pauses": []
+      },
+      "remindersEnabled": true,
       "members": [
         {
           "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d013",
@@ -632,11 +654,16 @@ cascades (PROTOCOLS.md §7).
         {
           "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d014",
           "protocolCompoundId": "018f6a90-6d7f-7d63-bfc1-6f1025e0d013",
-          "doseAmountValue": 5,
-          "doseAmountEntered": "5",
-          "doseUnit": "gram",
-          "frequency": "daily",
-          "route": "oral"
+          "rule": {
+            "v": 1,
+            "kind": "timed",
+            "days": { "kind": "daily" },
+            "times": ["21:00"]
+          },
+          "doseAmountValue": 0.1,
+          "doseAmountEntered": "0.1",
+          "doseUnit": "milliliter",
+          "route": "topical"
         }
       ],
       "targetOutcomes": [
@@ -646,8 +673,7 @@ cascades (PROTOCOLS.md §7).
           "outcomeKind": "metric"
         }
       ],
-      "updatedAt": "2026-06-24T05:00:00.000Z",
-      "deletedAt": null
+      "updatedAt": "2026-06-24T05:00:00.000Z"
     }
   ]
 }
@@ -658,7 +684,10 @@ Dose, Compound, and Protocol batch results include per-item `outcome` (`applied`
 `warnings[]` from the shared two-tier validator. Compound and Protocol structural
 failures are hard-validation errors on the batch response rather than permanently
 empty per-item warning arrays.
-Set `deletedAt` on any row to archive it.
+Set `deletedAt` on a Dose, Compound, or target outcome to archive it. Archive a
+Protocol or a Protocol Member with `archived: true`: the server stamps the time
+and freezes `archivedOn` as `today`. An archived Protocol or member is never
+restored; add the Compound again as a new member.
 
 ## Effect Window Read
 

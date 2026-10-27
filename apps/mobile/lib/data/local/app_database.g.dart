@@ -14233,6 +14233,12 @@ class $DosesTable extends Doses with TableInfo<$DosesTable, DoseRow> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant('1970-01-01'));
+  static const VerificationMeta _timezoneOffsetMinutesMeta =
+      const VerificationMeta('timezoneOffsetMinutes');
+  @override
+  late final GeneratedColumn<int> timezoneOffsetMinutes = GeneratedColumn<int>(
+      'timezone_offset_minutes', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   static const VerificationMeta _provenanceMeta =
       const VerificationMeta('provenance');
   @override
@@ -14294,6 +14300,7 @@ class $DosesTable extends Doses with TableInfo<$DosesTable, DoseRow> {
         tookAt,
         timezone,
         localDate,
+        timezoneOffsetMinutes,
         provenance,
         protocolId,
         protocolName,
@@ -14381,6 +14388,12 @@ class $DosesTable extends Doses with TableInfo<$DosesTable, DoseRow> {
       context.handle(_localDateMeta,
           localDate.isAcceptableOrUnknown(data['local_date']!, _localDateMeta));
     }
+    if (data.containsKey('timezone_offset_minutes')) {
+      context.handle(
+          _timezoneOffsetMinutesMeta,
+          timezoneOffsetMinutes.isAcceptableOrUnknown(
+              data['timezone_offset_minutes']!, _timezoneOffsetMinutesMeta));
+    }
     if (data.containsKey('provenance')) {
       context.handle(
           _provenanceMeta,
@@ -14452,6 +14465,8 @@ class $DosesTable extends Doses with TableInfo<$DosesTable, DoseRow> {
           .read(DriftSqlType.string, data['${effectivePrefix}timezone'])!,
       localDate: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}local_date'])!,
+      timezoneOffsetMinutes: attachedDatabase.typeMapping.read(
+          DriftSqlType.int, data['${effectivePrefix}timezone_offset_minutes']),
       provenance: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}provenance'])!,
       protocolId: attachedDatabase.typeMapping
@@ -14487,6 +14502,7 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
   final DateTime tookAt;
   final String timezone;
   final String localDate;
+  final int? timezoneOffsetMinutes;
   final String provenance;
   final String? protocolId;
   final String? protocolName;
@@ -14506,6 +14522,7 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
       required this.tookAt,
       required this.timezone,
       required this.localDate,
+      this.timezoneOffsetMinutes,
       required this.provenance,
       this.protocolId,
       this.protocolName,
@@ -14531,6 +14548,9 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
     map['took_at'] = Variable<DateTime>(tookAt);
     map['timezone'] = Variable<String>(timezone);
     map['local_date'] = Variable<String>(localDate);
+    if (!nullToAbsent || timezoneOffsetMinutes != null) {
+      map['timezone_offset_minutes'] = Variable<int>(timezoneOffsetMinutes);
+    }
     map['provenance'] = Variable<String>(provenance);
     if (!nullToAbsent || protocolId != null) {
       map['protocol_id'] = Variable<String>(protocolId);
@@ -14566,6 +14586,9 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
       tookAt: Value(tookAt),
       timezone: Value(timezone),
       localDate: Value(localDate),
+      timezoneOffsetMinutes: timezoneOffsetMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(timezoneOffsetMinutes),
       provenance: Value(provenance),
       protocolId: protocolId == null && nullToAbsent
           ? const Value.absent()
@@ -14599,6 +14622,8 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
       tookAt: serializer.fromJson<DateTime>(json['tookAt']),
       timezone: serializer.fromJson<String>(json['timezone']),
       localDate: serializer.fromJson<String>(json['localDate']),
+      timezoneOffsetMinutes:
+          serializer.fromJson<int?>(json['timezoneOffsetMinutes']),
       provenance: serializer.fromJson<String>(json['provenance']),
       protocolId: serializer.fromJson<String?>(json['protocolId']),
       protocolName: serializer.fromJson<String?>(json['protocolName']),
@@ -14624,6 +14649,7 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
       'tookAt': serializer.toJson<DateTime>(tookAt),
       'timezone': serializer.toJson<String>(timezone),
       'localDate': serializer.toJson<String>(localDate),
+      'timezoneOffsetMinutes': serializer.toJson<int?>(timezoneOffsetMinutes),
       'provenance': serializer.toJson<String>(provenance),
       'protocolId': serializer.toJson<String?>(protocolId),
       'protocolName': serializer.toJson<String?>(protocolName),
@@ -14646,6 +14672,7 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
           DateTime? tookAt,
           String? timezone,
           String? localDate,
+          Value<int?> timezoneOffsetMinutes = const Value.absent(),
           String? provenance,
           Value<String?> protocolId = const Value.absent(),
           Value<String?> protocolName = const Value.absent(),
@@ -14667,6 +14694,9 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
         tookAt: tookAt ?? this.tookAt,
         timezone: timezone ?? this.timezone,
         localDate: localDate ?? this.localDate,
+        timezoneOffsetMinutes: timezoneOffsetMinutes.present
+            ? timezoneOffsetMinutes.value
+            : this.timezoneOffsetMinutes,
         provenance: provenance ?? this.provenance,
         protocolId: protocolId.present ? protocolId.value : this.protocolId,
         protocolName:
@@ -14698,6 +14728,9 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
       tookAt: data.tookAt.present ? data.tookAt.value : this.tookAt,
       timezone: data.timezone.present ? data.timezone.value : this.timezone,
       localDate: data.localDate.present ? data.localDate.value : this.localDate,
+      timezoneOffsetMinutes: data.timezoneOffsetMinutes.present
+          ? data.timezoneOffsetMinutes.value
+          : this.timezoneOffsetMinutes,
       provenance:
           data.provenance.present ? data.provenance.value : this.provenance,
       protocolId:
@@ -14730,6 +14763,7 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
           ..write('tookAt: $tookAt, ')
           ..write('timezone: $timezone, ')
           ..write('localDate: $localDate, ')
+          ..write('timezoneOffsetMinutes: $timezoneOffsetMinutes, ')
           ..write('provenance: $provenance, ')
           ..write('protocolId: $protocolId, ')
           ..write('protocolName: $protocolName, ')
@@ -14754,6 +14788,7 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
       tookAt,
       timezone,
       localDate,
+      timezoneOffsetMinutes,
       provenance,
       protocolId,
       protocolName,
@@ -14776,6 +14811,7 @@ class DoseRow extends DataClass implements Insertable<DoseRow> {
           other.tookAt == this.tookAt &&
           other.timezone == this.timezone &&
           other.localDate == this.localDate &&
+          other.timezoneOffsetMinutes == this.timezoneOffsetMinutes &&
           other.provenance == this.provenance &&
           other.protocolId == this.protocolId &&
           other.protocolName == this.protocolName &&
@@ -14797,6 +14833,7 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
   final Value<DateTime> tookAt;
   final Value<String> timezone;
   final Value<String> localDate;
+  final Value<int?> timezoneOffsetMinutes;
   final Value<String> provenance;
   final Value<String?> protocolId;
   final Value<String?> protocolName;
@@ -14817,6 +14854,7 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
     this.tookAt = const Value.absent(),
     this.timezone = const Value.absent(),
     this.localDate = const Value.absent(),
+    this.timezoneOffsetMinutes = const Value.absent(),
     this.provenance = const Value.absent(),
     this.protocolId = const Value.absent(),
     this.protocolName = const Value.absent(),
@@ -14838,6 +14876,7 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
     required DateTime tookAt,
     required String timezone,
     this.localDate = const Value.absent(),
+    this.timezoneOffsetMinutes = const Value.absent(),
     this.provenance = const Value.absent(),
     this.protocolId = const Value.absent(),
     this.protocolName = const Value.absent(),
@@ -14867,6 +14906,7 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
     Expression<DateTime>? tookAt,
     Expression<String>? timezone,
     Expression<String>? localDate,
+    Expression<int>? timezoneOffsetMinutes,
     Expression<String>? provenance,
     Expression<String>? protocolId,
     Expression<String>? protocolName,
@@ -14888,6 +14928,8 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
       if (tookAt != null) 'took_at': tookAt,
       if (timezone != null) 'timezone': timezone,
       if (localDate != null) 'local_date': localDate,
+      if (timezoneOffsetMinutes != null)
+        'timezone_offset_minutes': timezoneOffsetMinutes,
       if (provenance != null) 'provenance': provenance,
       if (protocolId != null) 'protocol_id': protocolId,
       if (protocolName != null) 'protocol_name': protocolName,
@@ -14912,6 +14954,7 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
       Value<DateTime>? tookAt,
       Value<String>? timezone,
       Value<String>? localDate,
+      Value<int?>? timezoneOffsetMinutes,
       Value<String>? provenance,
       Value<String?>? protocolId,
       Value<String?>? protocolName,
@@ -14932,6 +14975,8 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
       tookAt: tookAt ?? this.tookAt,
       timezone: timezone ?? this.timezone,
       localDate: localDate ?? this.localDate,
+      timezoneOffsetMinutes:
+          timezoneOffsetMinutes ?? this.timezoneOffsetMinutes,
       provenance: provenance ?? this.provenance,
       protocolId: protocolId ?? this.protocolId,
       protocolName: protocolName ?? this.protocolName,
@@ -14979,6 +15024,10 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
     if (localDate.present) {
       map['local_date'] = Variable<String>(localDate.value);
     }
+    if (timezoneOffsetMinutes.present) {
+      map['timezone_offset_minutes'] =
+          Variable<int>(timezoneOffsetMinutes.value);
+    }
     if (provenance.present) {
       map['provenance'] = Variable<String>(provenance.value);
     }
@@ -15021,6 +15070,7 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
           ..write('tookAt: $tookAt, ')
           ..write('timezone: $timezone, ')
           ..write('localDate: $localDate, ')
+          ..write('timezoneOffsetMinutes: $timezoneOffsetMinutes, ')
           ..write('provenance: $provenance, ')
           ..write('protocolId: $protocolId, ')
           ..write('protocolName: $protocolName, ')
@@ -15050,18 +15100,39 @@ class $ProtocolsTable extends Protocols
   late final GeneratedColumn<String> name = GeneratedColumn<String>(
       'name', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _startDateMeta =
-      const VerificationMeta('startDate');
+  static const VerificationMeta _startLocalDateMeta =
+      const VerificationMeta('startLocalDate');
   @override
-  late final GeneratedColumn<DateTime> startDate = GeneratedColumn<DateTime>(
-      'start_date', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
-  static const VerificationMeta _endDateMeta =
-      const VerificationMeta('endDate');
+  late final GeneratedColumn<String> startLocalDate = GeneratedColumn<String>(
+      'start_local_date', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _endLocalDateMeta =
+      const VerificationMeta('endLocalDate');
   @override
-  late final GeneratedColumn<DateTime> endDate = GeneratedColumn<DateTime>(
-      'end_date', aliasedName, true,
-      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  late final GeneratedColumn<String> endLocalDate = GeneratedColumn<String>(
+      'end_local_date', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _periodMeta = const VerificationMeta('period');
+  @override
+  late final GeneratedColumn<String> period = GeneratedColumn<String>(
+      'period', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _remindersEnabledMeta =
+      const VerificationMeta('remindersEnabled');
+  @override
+  late final GeneratedColumn<bool> remindersEnabled = GeneratedColumn<bool>(
+      'reminders_enabled', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("reminders_enabled" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _archivedOnMeta =
+      const VerificationMeta('archivedOn');
+  @override
+  late final GeneratedColumn<String> archivedOn = GeneratedColumn<String>(
+      'archived_on', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _syncDeviceIdMeta =
       const VerificationMeta('syncDeviceId');
   @override
@@ -15094,8 +15165,11 @@ class $ProtocolsTable extends Protocols
   List<GeneratedColumn> get $columns => [
         id,
         name,
-        startDate,
-        endDate,
+        startLocalDate,
+        endLocalDate,
+        period,
+        remindersEnabled,
+        archivedOn,
         syncDeviceId,
         syncPreviouslySynced,
         updatedAt,
@@ -15122,15 +15196,35 @@ class $ProtocolsTable extends Protocols
     } else if (isInserting) {
       context.missing(_nameMeta);
     }
-    if (data.containsKey('start_date')) {
-      context.handle(_startDateMeta,
-          startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta));
+    if (data.containsKey('start_local_date')) {
+      context.handle(
+          _startLocalDateMeta,
+          startLocalDate.isAcceptableOrUnknown(
+              data['start_local_date']!, _startLocalDateMeta));
     } else if (isInserting) {
-      context.missing(_startDateMeta);
+      context.missing(_startLocalDateMeta);
     }
-    if (data.containsKey('end_date')) {
-      context.handle(_endDateMeta,
-          endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta));
+    if (data.containsKey('end_local_date')) {
+      context.handle(
+          _endLocalDateMeta,
+          endLocalDate.isAcceptableOrUnknown(
+              data['end_local_date']!, _endLocalDateMeta));
+    }
+    if (data.containsKey('period')) {
+      context.handle(_periodMeta,
+          period.isAcceptableOrUnknown(data['period']!, _periodMeta));
+    }
+    if (data.containsKey('reminders_enabled')) {
+      context.handle(
+          _remindersEnabledMeta,
+          remindersEnabled.isAcceptableOrUnknown(
+              data['reminders_enabled']!, _remindersEnabledMeta));
+    }
+    if (data.containsKey('archived_on')) {
+      context.handle(
+          _archivedOnMeta,
+          archivedOn.isAcceptableOrUnknown(
+              data['archived_on']!, _archivedOnMeta));
     }
     if (data.containsKey('sync_device_id')) {
       context.handle(
@@ -15167,10 +15261,16 @@ class $ProtocolsTable extends Protocols
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
       name: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
-      startDate: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}start_date'])!,
-      endDate: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}end_date']),
+      startLocalDate: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}start_local_date'])!,
+      endLocalDate: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}end_local_date']),
+      period: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}period']),
+      remindersEnabled: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool, data['${effectivePrefix}reminders_enabled'])!,
+      archivedOn: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}archived_on']),
       syncDeviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
       syncPreviouslySynced: attachedDatabase.typeMapping.read(
@@ -15191,8 +15291,11 @@ class $ProtocolsTable extends Protocols
 class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
   final String id;
   final String name;
-  final DateTime startDate;
-  final DateTime? endDate;
+  final String startLocalDate;
+  final String? endLocalDate;
+  final String? period;
+  final bool remindersEnabled;
+  final String? archivedOn;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
   final DateTime updatedAt;
@@ -15200,8 +15303,11 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
   const ProtocolRow(
       {required this.id,
       required this.name,
-      required this.startDate,
-      this.endDate,
+      required this.startLocalDate,
+      this.endLocalDate,
+      this.period,
+      required this.remindersEnabled,
+      this.archivedOn,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
       required this.updatedAt,
@@ -15211,9 +15317,16 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
-    map['start_date'] = Variable<DateTime>(startDate);
-    if (!nullToAbsent || endDate != null) {
-      map['end_date'] = Variable<DateTime>(endDate);
+    map['start_local_date'] = Variable<String>(startLocalDate);
+    if (!nullToAbsent || endLocalDate != null) {
+      map['end_local_date'] = Variable<String>(endLocalDate);
+    }
+    if (!nullToAbsent || period != null) {
+      map['period'] = Variable<String>(period);
+    }
+    map['reminders_enabled'] = Variable<bool>(remindersEnabled);
+    if (!nullToAbsent || archivedOn != null) {
+      map['archived_on'] = Variable<String>(archivedOn);
     }
     if (!nullToAbsent || syncDeviceId != null) {
       map['sync_device_id'] = Variable<String>(syncDeviceId);
@@ -15230,10 +15343,16 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
     return ProtocolsCompanion(
       id: Value(id),
       name: Value(name),
-      startDate: Value(startDate),
-      endDate: endDate == null && nullToAbsent
+      startLocalDate: Value(startLocalDate),
+      endLocalDate: endLocalDate == null && nullToAbsent
           ? const Value.absent()
-          : Value(endDate),
+          : Value(endLocalDate),
+      period:
+          period == null && nullToAbsent ? const Value.absent() : Value(period),
+      remindersEnabled: Value(remindersEnabled),
+      archivedOn: archivedOn == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedOn),
       syncDeviceId: syncDeviceId == null && nullToAbsent
           ? const Value.absent()
           : Value(syncDeviceId),
@@ -15251,8 +15370,11 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
     return ProtocolRow(
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
-      startDate: serializer.fromJson<DateTime>(json['startDate']),
-      endDate: serializer.fromJson<DateTime?>(json['endDate']),
+      startLocalDate: serializer.fromJson<String>(json['startLocalDate']),
+      endLocalDate: serializer.fromJson<String?>(json['endLocalDate']),
+      period: serializer.fromJson<String?>(json['period']),
+      remindersEnabled: serializer.fromJson<bool>(json['remindersEnabled']),
+      archivedOn: serializer.fromJson<String?>(json['archivedOn']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
           serializer.fromJson<bool>(json['syncPreviouslySynced']),
@@ -15266,8 +15388,11 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
-      'startDate': serializer.toJson<DateTime>(startDate),
-      'endDate': serializer.toJson<DateTime?>(endDate),
+      'startLocalDate': serializer.toJson<String>(startLocalDate),
+      'endLocalDate': serializer.toJson<String?>(endLocalDate),
+      'period': serializer.toJson<String?>(period),
+      'remindersEnabled': serializer.toJson<bool>(remindersEnabled),
+      'archivedOn': serializer.toJson<String?>(archivedOn),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -15278,8 +15403,11 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
   ProtocolRow copyWith(
           {String? id,
           String? name,
-          DateTime? startDate,
-          Value<DateTime?> endDate = const Value.absent(),
+          String? startLocalDate,
+          Value<String?> endLocalDate = const Value.absent(),
+          Value<String?> period = const Value.absent(),
+          bool? remindersEnabled,
+          Value<String?> archivedOn = const Value.absent(),
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
           DateTime? updatedAt,
@@ -15287,8 +15415,12 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
       ProtocolRow(
         id: id ?? this.id,
         name: name ?? this.name,
-        startDate: startDate ?? this.startDate,
-        endDate: endDate.present ? endDate.value : this.endDate,
+        startLocalDate: startLocalDate ?? this.startLocalDate,
+        endLocalDate:
+            endLocalDate.present ? endLocalDate.value : this.endLocalDate,
+        period: period.present ? period.value : this.period,
+        remindersEnabled: remindersEnabled ?? this.remindersEnabled,
+        archivedOn: archivedOn.present ? archivedOn.value : this.archivedOn,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
         syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -15299,8 +15431,18 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
     return ProtocolRow(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
-      startDate: data.startDate.present ? data.startDate.value : this.startDate,
-      endDate: data.endDate.present ? data.endDate.value : this.endDate,
+      startLocalDate: data.startLocalDate.present
+          ? data.startLocalDate.value
+          : this.startLocalDate,
+      endLocalDate: data.endLocalDate.present
+          ? data.endLocalDate.value
+          : this.endLocalDate,
+      period: data.period.present ? data.period.value : this.period,
+      remindersEnabled: data.remindersEnabled.present
+          ? data.remindersEnabled.value
+          : this.remindersEnabled,
+      archivedOn:
+          data.archivedOn.present ? data.archivedOn.value : this.archivedOn,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
           : this.syncDeviceId,
@@ -15317,8 +15459,11 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
     return (StringBuffer('ProtocolRow(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('startDate: $startDate, ')
-          ..write('endDate: $endDate, ')
+          ..write('startLocalDate: $startLocalDate, ')
+          ..write('endLocalDate: $endLocalDate, ')
+          ..write('period: $period, ')
+          ..write('remindersEnabled: $remindersEnabled, ')
+          ..write('archivedOn: $archivedOn, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -15328,16 +15473,29 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
   }
 
   @override
-  int get hashCode => Object.hash(id, name, startDate, endDate, syncDeviceId,
-      syncPreviouslySynced, updatedAt, deletedAt);
+  int get hashCode => Object.hash(
+      id,
+      name,
+      startLocalDate,
+      endLocalDate,
+      period,
+      remindersEnabled,
+      archivedOn,
+      syncDeviceId,
+      syncPreviouslySynced,
+      updatedAt,
+      deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ProtocolRow &&
           other.id == this.id &&
           other.name == this.name &&
-          other.startDate == this.startDate &&
-          other.endDate == this.endDate &&
+          other.startLocalDate == this.startLocalDate &&
+          other.endLocalDate == this.endLocalDate &&
+          other.period == this.period &&
+          other.remindersEnabled == this.remindersEnabled &&
+          other.archivedOn == this.archivedOn &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
           other.updatedAt == this.updatedAt &&
@@ -15347,8 +15505,11 @@ class ProtocolRow extends DataClass implements Insertable<ProtocolRow> {
 class ProtocolsCompanion extends UpdateCompanion<ProtocolRow> {
   final Value<String> id;
   final Value<String> name;
-  final Value<DateTime> startDate;
-  final Value<DateTime?> endDate;
+  final Value<String> startLocalDate;
+  final Value<String?> endLocalDate;
+  final Value<String?> period;
+  final Value<bool> remindersEnabled;
+  final Value<String?> archivedOn;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
   final Value<DateTime> updatedAt;
@@ -15357,8 +15518,11 @@ class ProtocolsCompanion extends UpdateCompanion<ProtocolRow> {
   const ProtocolsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
-    this.startDate = const Value.absent(),
-    this.endDate = const Value.absent(),
+    this.startLocalDate = const Value.absent(),
+    this.endLocalDate = const Value.absent(),
+    this.period = const Value.absent(),
+    this.remindersEnabled = const Value.absent(),
+    this.archivedOn = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -15368,8 +15532,11 @@ class ProtocolsCompanion extends UpdateCompanion<ProtocolRow> {
   ProtocolsCompanion.insert({
     required String id,
     required String name,
-    required DateTime startDate,
-    this.endDate = const Value.absent(),
+    required String startLocalDate,
+    this.endLocalDate = const Value.absent(),
+    this.period = const Value.absent(),
+    this.remindersEnabled = const Value.absent(),
+    this.archivedOn = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     required DateTime updatedAt,
@@ -15377,13 +15544,16 @@ class ProtocolsCompanion extends UpdateCompanion<ProtocolRow> {
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         name = Value(name),
-        startDate = Value(startDate),
+        startLocalDate = Value(startLocalDate),
         updatedAt = Value(updatedAt);
   static Insertable<ProtocolRow> custom({
     Expression<String>? id,
     Expression<String>? name,
-    Expression<DateTime>? startDate,
-    Expression<DateTime>? endDate,
+    Expression<String>? startLocalDate,
+    Expression<String>? endLocalDate,
+    Expression<String>? period,
+    Expression<bool>? remindersEnabled,
+    Expression<String>? archivedOn,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
     Expression<DateTime>? updatedAt,
@@ -15393,8 +15563,11 @@ class ProtocolsCompanion extends UpdateCompanion<ProtocolRow> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
-      if (startDate != null) 'start_date': startDate,
-      if (endDate != null) 'end_date': endDate,
+      if (startLocalDate != null) 'start_local_date': startLocalDate,
+      if (endLocalDate != null) 'end_local_date': endLocalDate,
+      if (period != null) 'period': period,
+      if (remindersEnabled != null) 'reminders_enabled': remindersEnabled,
+      if (archivedOn != null) 'archived_on': archivedOn,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
         'sync_previously_synced': syncPreviouslySynced,
@@ -15407,8 +15580,11 @@ class ProtocolsCompanion extends UpdateCompanion<ProtocolRow> {
   ProtocolsCompanion copyWith(
       {Value<String>? id,
       Value<String>? name,
-      Value<DateTime>? startDate,
-      Value<DateTime?>? endDate,
+      Value<String>? startLocalDate,
+      Value<String?>? endLocalDate,
+      Value<String?>? period,
+      Value<bool>? remindersEnabled,
+      Value<String?>? archivedOn,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
       Value<DateTime>? updatedAt,
@@ -15417,8 +15593,11 @@ class ProtocolsCompanion extends UpdateCompanion<ProtocolRow> {
     return ProtocolsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
-      startDate: startDate ?? this.startDate,
-      endDate: endDate ?? this.endDate,
+      startLocalDate: startLocalDate ?? this.startLocalDate,
+      endLocalDate: endLocalDate ?? this.endLocalDate,
+      period: period ?? this.period,
+      remindersEnabled: remindersEnabled ?? this.remindersEnabled,
+      archivedOn: archivedOn ?? this.archivedOn,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -15436,11 +15615,20 @@ class ProtocolsCompanion extends UpdateCompanion<ProtocolRow> {
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
-    if (startDate.present) {
-      map['start_date'] = Variable<DateTime>(startDate.value);
+    if (startLocalDate.present) {
+      map['start_local_date'] = Variable<String>(startLocalDate.value);
     }
-    if (endDate.present) {
-      map['end_date'] = Variable<DateTime>(endDate.value);
+    if (endLocalDate.present) {
+      map['end_local_date'] = Variable<String>(endLocalDate.value);
+    }
+    if (period.present) {
+      map['period'] = Variable<String>(period.value);
+    }
+    if (remindersEnabled.present) {
+      map['reminders_enabled'] = Variable<bool>(remindersEnabled.value);
+    }
+    if (archivedOn.present) {
+      map['archived_on'] = Variable<String>(archivedOn.value);
     }
     if (syncDeviceId.present) {
       map['sync_device_id'] = Variable<String>(syncDeviceId.value);
@@ -15466,8 +15654,11 @@ class ProtocolsCompanion extends UpdateCompanion<ProtocolRow> {
     return (StringBuffer('ProtocolsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('startDate: $startDate, ')
-          ..write('endDate: $endDate, ')
+          ..write('startLocalDate: $startLocalDate, ')
+          ..write('endLocalDate: $endLocalDate, ')
+          ..write('period: $period, ')
+          ..write('remindersEnabled: $remindersEnabled, ')
+          ..write('archivedOn: $archivedOn, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -15513,6 +15704,12 @@ class $ProtocolCompoundsTable extends ProtocolCompounds
   late final GeneratedColumn<int> position = GeneratedColumn<int>(
       'position', aliasedName, false,
       type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _archivedOnMeta =
+      const VerificationMeta('archivedOn');
+  @override
+  late final GeneratedColumn<String> archivedOn = GeneratedColumn<String>(
+      'archived_on', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _syncDeviceIdMeta =
       const VerificationMeta('syncDeviceId');
   @override
@@ -15547,6 +15744,7 @@ class $ProtocolCompoundsTable extends ProtocolCompounds
         protocolId,
         compoundId,
         position,
+        archivedOn,
         syncDeviceId,
         syncPreviouslySynced,
         updatedAt,
@@ -15590,6 +15788,12 @@ class $ProtocolCompoundsTable extends ProtocolCompounds
     } else if (isInserting) {
       context.missing(_positionMeta);
     }
+    if (data.containsKey('archived_on')) {
+      context.handle(
+          _archivedOnMeta,
+          archivedOn.isAcceptableOrUnknown(
+              data['archived_on']!, _archivedOnMeta));
+    }
     if (data.containsKey('sync_device_id')) {
       context.handle(
           _syncDeviceIdMeta,
@@ -15629,6 +15833,8 @@ class $ProtocolCompoundsTable extends ProtocolCompounds
           .read(DriftSqlType.string, data['${effectivePrefix}compound_id'])!,
       position: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}position'])!,
+      archivedOn: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}archived_on']),
       syncDeviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
       syncPreviouslySynced: attachedDatabase.typeMapping.read(
@@ -15652,6 +15858,7 @@ class ProtocolCompoundRow extends DataClass
   final String protocolId;
   final String compoundId;
   final int position;
+  final String? archivedOn;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
   final DateTime updatedAt;
@@ -15661,6 +15868,7 @@ class ProtocolCompoundRow extends DataClass
       required this.protocolId,
       required this.compoundId,
       required this.position,
+      this.archivedOn,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
       required this.updatedAt,
@@ -15672,6 +15880,9 @@ class ProtocolCompoundRow extends DataClass
     map['protocol_id'] = Variable<String>(protocolId);
     map['compound_id'] = Variable<String>(compoundId);
     map['position'] = Variable<int>(position);
+    if (!nullToAbsent || archivedOn != null) {
+      map['archived_on'] = Variable<String>(archivedOn);
+    }
     if (!nullToAbsent || syncDeviceId != null) {
       map['sync_device_id'] = Variable<String>(syncDeviceId);
     }
@@ -15689,6 +15900,9 @@ class ProtocolCompoundRow extends DataClass
       protocolId: Value(protocolId),
       compoundId: Value(compoundId),
       position: Value(position),
+      archivedOn: archivedOn == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedOn),
       syncDeviceId: syncDeviceId == null && nullToAbsent
           ? const Value.absent()
           : Value(syncDeviceId),
@@ -15708,6 +15922,7 @@ class ProtocolCompoundRow extends DataClass
       protocolId: serializer.fromJson<String>(json['protocolId']),
       compoundId: serializer.fromJson<String>(json['compoundId']),
       position: serializer.fromJson<int>(json['position']),
+      archivedOn: serializer.fromJson<String?>(json['archivedOn']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
           serializer.fromJson<bool>(json['syncPreviouslySynced']),
@@ -15723,6 +15938,7 @@ class ProtocolCompoundRow extends DataClass
       'protocolId': serializer.toJson<String>(protocolId),
       'compoundId': serializer.toJson<String>(compoundId),
       'position': serializer.toJson<int>(position),
+      'archivedOn': serializer.toJson<String?>(archivedOn),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -15735,6 +15951,7 @@ class ProtocolCompoundRow extends DataClass
           String? protocolId,
           String? compoundId,
           int? position,
+          Value<String?> archivedOn = const Value.absent(),
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
           DateTime? updatedAt,
@@ -15744,6 +15961,7 @@ class ProtocolCompoundRow extends DataClass
         protocolId: protocolId ?? this.protocolId,
         compoundId: compoundId ?? this.compoundId,
         position: position ?? this.position,
+        archivedOn: archivedOn.present ? archivedOn.value : this.archivedOn,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
         syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -15758,6 +15976,8 @@ class ProtocolCompoundRow extends DataClass
       compoundId:
           data.compoundId.present ? data.compoundId.value : this.compoundId,
       position: data.position.present ? data.position.value : this.position,
+      archivedOn:
+          data.archivedOn.present ? data.archivedOn.value : this.archivedOn,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
           : this.syncDeviceId,
@@ -15776,6 +15996,7 @@ class ProtocolCompoundRow extends DataClass
           ..write('protocolId: $protocolId, ')
           ..write('compoundId: $compoundId, ')
           ..write('position: $position, ')
+          ..write('archivedOn: $archivedOn, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -15786,7 +16007,7 @@ class ProtocolCompoundRow extends DataClass
 
   @override
   int get hashCode => Object.hash(id, protocolId, compoundId, position,
-      syncDeviceId, syncPreviouslySynced, updatedAt, deletedAt);
+      archivedOn, syncDeviceId, syncPreviouslySynced, updatedAt, deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -15795,6 +16016,7 @@ class ProtocolCompoundRow extends DataClass
           other.protocolId == this.protocolId &&
           other.compoundId == this.compoundId &&
           other.position == this.position &&
+          other.archivedOn == this.archivedOn &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
           other.updatedAt == this.updatedAt &&
@@ -15806,6 +16028,7 @@ class ProtocolCompoundsCompanion extends UpdateCompanion<ProtocolCompoundRow> {
   final Value<String> protocolId;
   final Value<String> compoundId;
   final Value<int> position;
+  final Value<String?> archivedOn;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
   final Value<DateTime> updatedAt;
@@ -15816,6 +16039,7 @@ class ProtocolCompoundsCompanion extends UpdateCompanion<ProtocolCompoundRow> {
     this.protocolId = const Value.absent(),
     this.compoundId = const Value.absent(),
     this.position = const Value.absent(),
+    this.archivedOn = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -15827,6 +16051,7 @@ class ProtocolCompoundsCompanion extends UpdateCompanion<ProtocolCompoundRow> {
     required String protocolId,
     required String compoundId,
     required int position,
+    this.archivedOn = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     required DateTime updatedAt,
@@ -15842,6 +16067,7 @@ class ProtocolCompoundsCompanion extends UpdateCompanion<ProtocolCompoundRow> {
     Expression<String>? protocolId,
     Expression<String>? compoundId,
     Expression<int>? position,
+    Expression<String>? archivedOn,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
     Expression<DateTime>? updatedAt,
@@ -15853,6 +16079,7 @@ class ProtocolCompoundsCompanion extends UpdateCompanion<ProtocolCompoundRow> {
       if (protocolId != null) 'protocol_id': protocolId,
       if (compoundId != null) 'compound_id': compoundId,
       if (position != null) 'position': position,
+      if (archivedOn != null) 'archived_on': archivedOn,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
         'sync_previously_synced': syncPreviouslySynced,
@@ -15867,6 +16094,7 @@ class ProtocolCompoundsCompanion extends UpdateCompanion<ProtocolCompoundRow> {
       Value<String>? protocolId,
       Value<String>? compoundId,
       Value<int>? position,
+      Value<String?>? archivedOn,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
       Value<DateTime>? updatedAt,
@@ -15877,6 +16105,7 @@ class ProtocolCompoundsCompanion extends UpdateCompanion<ProtocolCompoundRow> {
       protocolId: protocolId ?? this.protocolId,
       compoundId: compoundId ?? this.compoundId,
       position: position ?? this.position,
+      archivedOn: archivedOn ?? this.archivedOn,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -15899,6 +16128,9 @@ class ProtocolCompoundsCompanion extends UpdateCompanion<ProtocolCompoundRow> {
     }
     if (position.present) {
       map['position'] = Variable<int>(position.value);
+    }
+    if (archivedOn.present) {
+      map['archived_on'] = Variable<String>(archivedOn.value);
     }
     if (syncDeviceId.present) {
       map['sync_device_id'] = Variable<String>(syncDeviceId.value);
@@ -15926,6 +16158,7 @@ class ProtocolCompoundsCompanion extends UpdateCompanion<ProtocolCompoundRow> {
           ..write('protocolId: $protocolId, ')
           ..write('compoundId: $compoundId, ')
           ..write('position: $position, ')
+          ..write('archivedOn: $archivedOn, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -15956,35 +16189,40 @@ class $SchedulesTable extends Schedules
           requiredDuringInsert: true,
           defaultConstraints: GeneratedColumn.constraintIsAlways(
               'REFERENCES protocol_compounds (id)'));
+  static const VerificationMeta _effectiveFromMeta =
+      const VerificationMeta('effectiveFrom');
+  @override
+  late final GeneratedColumn<String> effectiveFrom = GeneratedColumn<String>(
+      'effective_from', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _ruleMeta = const VerificationMeta('rule');
+  @override
+  late final GeneratedColumn<String> rule = GeneratedColumn<String>(
+      'rule', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _doseAmountValueMeta =
       const VerificationMeta('doseAmountValue');
   @override
   late final GeneratedColumn<double> doseAmountValue = GeneratedColumn<double>(
-      'dose_amount_value', aliasedName, false,
-      type: DriftSqlType.double, requiredDuringInsert: true);
+      'dose_amount_value', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
   static const VerificationMeta _doseAmountEnteredMeta =
       const VerificationMeta('doseAmountEntered');
   @override
   late final GeneratedColumn<String> doseAmountEntered =
-      GeneratedColumn<String>('dose_amount_entered', aliasedName, false,
-          type: DriftSqlType.string, requiredDuringInsert: true);
+      GeneratedColumn<String>('dose_amount_entered', aliasedName, true,
+          type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _doseUnitMeta =
       const VerificationMeta('doseUnit');
   @override
   late final GeneratedColumn<String> doseUnit = GeneratedColumn<String>(
-      'dose_unit', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _frequencyMeta =
-      const VerificationMeta('frequency');
-  @override
-  late final GeneratedColumn<String> frequency = GeneratedColumn<String>(
-      'frequency', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+      'dose_unit', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _routeMeta = const VerificationMeta('route');
   @override
   late final GeneratedColumn<String> route = GeneratedColumn<String>(
-      'route', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+      'route', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _syncDeviceIdMeta =
       const VerificationMeta('syncDeviceId');
   @override
@@ -16017,10 +16255,11 @@ class $SchedulesTable extends Schedules
   List<GeneratedColumn> get $columns => [
         id,
         protocolCompoundId,
+        effectiveFrom,
+        rule,
         doseAmountValue,
         doseAmountEntered,
         doseUnit,
-        frequency,
         route,
         syncDeviceId,
         syncPreviouslySynced,
@@ -16050,39 +16289,39 @@ class $SchedulesTable extends Schedules
     } else if (isInserting) {
       context.missing(_protocolCompoundIdMeta);
     }
+    if (data.containsKey('effective_from')) {
+      context.handle(
+          _effectiveFromMeta,
+          effectiveFrom.isAcceptableOrUnknown(
+              data['effective_from']!, _effectiveFromMeta));
+    } else if (isInserting) {
+      context.missing(_effectiveFromMeta);
+    }
+    if (data.containsKey('rule')) {
+      context.handle(
+          _ruleMeta, rule.isAcceptableOrUnknown(data['rule']!, _ruleMeta));
+    } else if (isInserting) {
+      context.missing(_ruleMeta);
+    }
     if (data.containsKey('dose_amount_value')) {
       context.handle(
           _doseAmountValueMeta,
           doseAmountValue.isAcceptableOrUnknown(
               data['dose_amount_value']!, _doseAmountValueMeta));
-    } else if (isInserting) {
-      context.missing(_doseAmountValueMeta);
     }
     if (data.containsKey('dose_amount_entered')) {
       context.handle(
           _doseAmountEnteredMeta,
           doseAmountEntered.isAcceptableOrUnknown(
               data['dose_amount_entered']!, _doseAmountEnteredMeta));
-    } else if (isInserting) {
-      context.missing(_doseAmountEnteredMeta);
     }
     if (data.containsKey('dose_unit')) {
       context.handle(_doseUnitMeta,
           doseUnit.isAcceptableOrUnknown(data['dose_unit']!, _doseUnitMeta));
-    } else if (isInserting) {
-      context.missing(_doseUnitMeta);
-    }
-    if (data.containsKey('frequency')) {
-      context.handle(_frequencyMeta,
-          frequency.isAcceptableOrUnknown(data['frequency']!, _frequencyMeta));
-    } else if (isInserting) {
-      context.missing(_frequencyMeta);
     }
     if (data.containsKey('route')) {
       context.handle(
           _routeMeta, route.isAcceptableOrUnknown(data['route']!, _routeMeta));
-    } else if (isInserting) {
-      context.missing(_routeMeta);
     }
     if (data.containsKey('sync_device_id')) {
       context.handle(
@@ -16119,16 +16358,18 @@ class $SchedulesTable extends Schedules
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
       protocolCompoundId: attachedDatabase.typeMapping.read(
           DriftSqlType.string, data['${effectivePrefix}protocol_compound_id'])!,
+      effectiveFrom: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}effective_from'])!,
+      rule: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}rule'])!,
       doseAmountValue: attachedDatabase.typeMapping.read(
-          DriftSqlType.double, data['${effectivePrefix}dose_amount_value'])!,
+          DriftSqlType.double, data['${effectivePrefix}dose_amount_value']),
       doseAmountEntered: attachedDatabase.typeMapping.read(
-          DriftSqlType.string, data['${effectivePrefix}dose_amount_entered'])!,
+          DriftSqlType.string, data['${effectivePrefix}dose_amount_entered']),
       doseUnit: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}dose_unit'])!,
-      frequency: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}frequency'])!,
+          .read(DriftSqlType.string, data['${effectivePrefix}dose_unit']),
       route: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}route'])!,
+          .read(DriftSqlType.string, data['${effectivePrefix}route']),
       syncDeviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
       syncPreviouslySynced: attachedDatabase.typeMapping.read(
@@ -16149,11 +16390,12 @@ class $SchedulesTable extends Schedules
 class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
   final String id;
   final String protocolCompoundId;
-  final double doseAmountValue;
-  final String doseAmountEntered;
-  final String doseUnit;
-  final String frequency;
-  final String route;
+  final String effectiveFrom;
+  final String rule;
+  final double? doseAmountValue;
+  final String? doseAmountEntered;
+  final String? doseUnit;
+  final String? route;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
   final DateTime updatedAt;
@@ -16161,11 +16403,12 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
   const ScheduleRow(
       {required this.id,
       required this.protocolCompoundId,
-      required this.doseAmountValue,
-      required this.doseAmountEntered,
-      required this.doseUnit,
-      required this.frequency,
-      required this.route,
+      required this.effectiveFrom,
+      required this.rule,
+      this.doseAmountValue,
+      this.doseAmountEntered,
+      this.doseUnit,
+      this.route,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
       required this.updatedAt,
@@ -16175,11 +16418,20 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['protocol_compound_id'] = Variable<String>(protocolCompoundId);
-    map['dose_amount_value'] = Variable<double>(doseAmountValue);
-    map['dose_amount_entered'] = Variable<String>(doseAmountEntered);
-    map['dose_unit'] = Variable<String>(doseUnit);
-    map['frequency'] = Variable<String>(frequency);
-    map['route'] = Variable<String>(route);
+    map['effective_from'] = Variable<String>(effectiveFrom);
+    map['rule'] = Variable<String>(rule);
+    if (!nullToAbsent || doseAmountValue != null) {
+      map['dose_amount_value'] = Variable<double>(doseAmountValue);
+    }
+    if (!nullToAbsent || doseAmountEntered != null) {
+      map['dose_amount_entered'] = Variable<String>(doseAmountEntered);
+    }
+    if (!nullToAbsent || doseUnit != null) {
+      map['dose_unit'] = Variable<String>(doseUnit);
+    }
+    if (!nullToAbsent || route != null) {
+      map['route'] = Variable<String>(route);
+    }
     if (!nullToAbsent || syncDeviceId != null) {
       map['sync_device_id'] = Variable<String>(syncDeviceId);
     }
@@ -16195,11 +16447,19 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
     return SchedulesCompanion(
       id: Value(id),
       protocolCompoundId: Value(protocolCompoundId),
-      doseAmountValue: Value(doseAmountValue),
-      doseAmountEntered: Value(doseAmountEntered),
-      doseUnit: Value(doseUnit),
-      frequency: Value(frequency),
-      route: Value(route),
+      effectiveFrom: Value(effectiveFrom),
+      rule: Value(rule),
+      doseAmountValue: doseAmountValue == null && nullToAbsent
+          ? const Value.absent()
+          : Value(doseAmountValue),
+      doseAmountEntered: doseAmountEntered == null && nullToAbsent
+          ? const Value.absent()
+          : Value(doseAmountEntered),
+      doseUnit: doseUnit == null && nullToAbsent
+          ? const Value.absent()
+          : Value(doseUnit),
+      route:
+          route == null && nullToAbsent ? const Value.absent() : Value(route),
       syncDeviceId: syncDeviceId == null && nullToAbsent
           ? const Value.absent()
           : Value(syncDeviceId),
@@ -16218,11 +16478,13 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
       id: serializer.fromJson<String>(json['id']),
       protocolCompoundId:
           serializer.fromJson<String>(json['protocolCompoundId']),
-      doseAmountValue: serializer.fromJson<double>(json['doseAmountValue']),
-      doseAmountEntered: serializer.fromJson<String>(json['doseAmountEntered']),
-      doseUnit: serializer.fromJson<String>(json['doseUnit']),
-      frequency: serializer.fromJson<String>(json['frequency']),
-      route: serializer.fromJson<String>(json['route']),
+      effectiveFrom: serializer.fromJson<String>(json['effectiveFrom']),
+      rule: serializer.fromJson<String>(json['rule']),
+      doseAmountValue: serializer.fromJson<double?>(json['doseAmountValue']),
+      doseAmountEntered:
+          serializer.fromJson<String?>(json['doseAmountEntered']),
+      doseUnit: serializer.fromJson<String?>(json['doseUnit']),
+      route: serializer.fromJson<String?>(json['route']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
           serializer.fromJson<bool>(json['syncPreviouslySynced']),
@@ -16236,11 +16498,12 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'protocolCompoundId': serializer.toJson<String>(protocolCompoundId),
-      'doseAmountValue': serializer.toJson<double>(doseAmountValue),
-      'doseAmountEntered': serializer.toJson<String>(doseAmountEntered),
-      'doseUnit': serializer.toJson<String>(doseUnit),
-      'frequency': serializer.toJson<String>(frequency),
-      'route': serializer.toJson<String>(route),
+      'effectiveFrom': serializer.toJson<String>(effectiveFrom),
+      'rule': serializer.toJson<String>(rule),
+      'doseAmountValue': serializer.toJson<double?>(doseAmountValue),
+      'doseAmountEntered': serializer.toJson<String?>(doseAmountEntered),
+      'doseUnit': serializer.toJson<String?>(doseUnit),
+      'route': serializer.toJson<String?>(route),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -16251,11 +16514,12 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
   ScheduleRow copyWith(
           {String? id,
           String? protocolCompoundId,
-          double? doseAmountValue,
-          String? doseAmountEntered,
-          String? doseUnit,
-          String? frequency,
-          String? route,
+          String? effectiveFrom,
+          String? rule,
+          Value<double?> doseAmountValue = const Value.absent(),
+          Value<String?> doseAmountEntered = const Value.absent(),
+          Value<String?> doseUnit = const Value.absent(),
+          Value<String?> route = const Value.absent(),
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
           DateTime? updatedAt,
@@ -16263,11 +16527,16 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
       ScheduleRow(
         id: id ?? this.id,
         protocolCompoundId: protocolCompoundId ?? this.protocolCompoundId,
-        doseAmountValue: doseAmountValue ?? this.doseAmountValue,
-        doseAmountEntered: doseAmountEntered ?? this.doseAmountEntered,
-        doseUnit: doseUnit ?? this.doseUnit,
-        frequency: frequency ?? this.frequency,
-        route: route ?? this.route,
+        effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+        rule: rule ?? this.rule,
+        doseAmountValue: doseAmountValue.present
+            ? doseAmountValue.value
+            : this.doseAmountValue,
+        doseAmountEntered: doseAmountEntered.present
+            ? doseAmountEntered.value
+            : this.doseAmountEntered,
+        doseUnit: doseUnit.present ? doseUnit.value : this.doseUnit,
+        route: route.present ? route.value : this.route,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
         syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -16280,6 +16549,10 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
       protocolCompoundId: data.protocolCompoundId.present
           ? data.protocolCompoundId.value
           : this.protocolCompoundId,
+      effectiveFrom: data.effectiveFrom.present
+          ? data.effectiveFrom.value
+          : this.effectiveFrom,
+      rule: data.rule.present ? data.rule.value : this.rule,
       doseAmountValue: data.doseAmountValue.present
           ? data.doseAmountValue.value
           : this.doseAmountValue,
@@ -16287,7 +16560,6 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
           ? data.doseAmountEntered.value
           : this.doseAmountEntered,
       doseUnit: data.doseUnit.present ? data.doseUnit.value : this.doseUnit,
-      frequency: data.frequency.present ? data.frequency.value : this.frequency,
       route: data.route.present ? data.route.value : this.route,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
@@ -16305,10 +16577,11 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
     return (StringBuffer('ScheduleRow(')
           ..write('id: $id, ')
           ..write('protocolCompoundId: $protocolCompoundId, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('rule: $rule, ')
           ..write('doseAmountValue: $doseAmountValue, ')
           ..write('doseAmountEntered: $doseAmountEntered, ')
           ..write('doseUnit: $doseUnit, ')
-          ..write('frequency: $frequency, ')
           ..write('route: $route, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
@@ -16322,10 +16595,11 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
   int get hashCode => Object.hash(
       id,
       protocolCompoundId,
+      effectiveFrom,
+      rule,
       doseAmountValue,
       doseAmountEntered,
       doseUnit,
-      frequency,
       route,
       syncDeviceId,
       syncPreviouslySynced,
@@ -16337,10 +16611,11 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
       (other is ScheduleRow &&
           other.id == this.id &&
           other.protocolCompoundId == this.protocolCompoundId &&
+          other.effectiveFrom == this.effectiveFrom &&
+          other.rule == this.rule &&
           other.doseAmountValue == this.doseAmountValue &&
           other.doseAmountEntered == this.doseAmountEntered &&
           other.doseUnit == this.doseUnit &&
-          other.frequency == this.frequency &&
           other.route == this.route &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
@@ -16351,11 +16626,12 @@ class ScheduleRow extends DataClass implements Insertable<ScheduleRow> {
 class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
   final Value<String> id;
   final Value<String> protocolCompoundId;
-  final Value<double> doseAmountValue;
-  final Value<String> doseAmountEntered;
-  final Value<String> doseUnit;
-  final Value<String> frequency;
-  final Value<String> route;
+  final Value<String> effectiveFrom;
+  final Value<String> rule;
+  final Value<double?> doseAmountValue;
+  final Value<String?> doseAmountEntered;
+  final Value<String?> doseUnit;
+  final Value<String?> route;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
   final Value<DateTime> updatedAt;
@@ -16364,10 +16640,11 @@ class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
   const SchedulesCompanion({
     this.id = const Value.absent(),
     this.protocolCompoundId = const Value.absent(),
+    this.effectiveFrom = const Value.absent(),
+    this.rule = const Value.absent(),
     this.doseAmountValue = const Value.absent(),
     this.doseAmountEntered = const Value.absent(),
     this.doseUnit = const Value.absent(),
-    this.frequency = const Value.absent(),
     this.route = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
@@ -16378,11 +16655,12 @@ class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
   SchedulesCompanion.insert({
     required String id,
     required String protocolCompoundId,
-    required double doseAmountValue,
-    required String doseAmountEntered,
-    required String doseUnit,
-    required String frequency,
-    required String route,
+    required String effectiveFrom,
+    required String rule,
+    this.doseAmountValue = const Value.absent(),
+    this.doseAmountEntered = const Value.absent(),
+    this.doseUnit = const Value.absent(),
+    this.route = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     required DateTime updatedAt,
@@ -16390,19 +16668,17 @@ class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         protocolCompoundId = Value(protocolCompoundId),
-        doseAmountValue = Value(doseAmountValue),
-        doseAmountEntered = Value(doseAmountEntered),
-        doseUnit = Value(doseUnit),
-        frequency = Value(frequency),
-        route = Value(route),
+        effectiveFrom = Value(effectiveFrom),
+        rule = Value(rule),
         updatedAt = Value(updatedAt);
   static Insertable<ScheduleRow> custom({
     Expression<String>? id,
     Expression<String>? protocolCompoundId,
+    Expression<String>? effectiveFrom,
+    Expression<String>? rule,
     Expression<double>? doseAmountValue,
     Expression<String>? doseAmountEntered,
     Expression<String>? doseUnit,
-    Expression<String>? frequency,
     Expression<String>? route,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
@@ -16414,10 +16690,11 @@ class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
       if (id != null) 'id': id,
       if (protocolCompoundId != null)
         'protocol_compound_id': protocolCompoundId,
+      if (effectiveFrom != null) 'effective_from': effectiveFrom,
+      if (rule != null) 'rule': rule,
       if (doseAmountValue != null) 'dose_amount_value': doseAmountValue,
       if (doseAmountEntered != null) 'dose_amount_entered': doseAmountEntered,
       if (doseUnit != null) 'dose_unit': doseUnit,
-      if (frequency != null) 'frequency': frequency,
       if (route != null) 'route': route,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
@@ -16431,11 +16708,12 @@ class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
   SchedulesCompanion copyWith(
       {Value<String>? id,
       Value<String>? protocolCompoundId,
-      Value<double>? doseAmountValue,
-      Value<String>? doseAmountEntered,
-      Value<String>? doseUnit,
-      Value<String>? frequency,
-      Value<String>? route,
+      Value<String>? effectiveFrom,
+      Value<String>? rule,
+      Value<double?>? doseAmountValue,
+      Value<String?>? doseAmountEntered,
+      Value<String?>? doseUnit,
+      Value<String?>? route,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
       Value<DateTime>? updatedAt,
@@ -16444,10 +16722,11 @@ class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
     return SchedulesCompanion(
       id: id ?? this.id,
       protocolCompoundId: protocolCompoundId ?? this.protocolCompoundId,
+      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+      rule: rule ?? this.rule,
       doseAmountValue: doseAmountValue ?? this.doseAmountValue,
       doseAmountEntered: doseAmountEntered ?? this.doseAmountEntered,
       doseUnit: doseUnit ?? this.doseUnit,
-      frequency: frequency ?? this.frequency,
       route: route ?? this.route,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -16466,6 +16745,12 @@ class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
     if (protocolCompoundId.present) {
       map['protocol_compound_id'] = Variable<String>(protocolCompoundId.value);
     }
+    if (effectiveFrom.present) {
+      map['effective_from'] = Variable<String>(effectiveFrom.value);
+    }
+    if (rule.present) {
+      map['rule'] = Variable<String>(rule.value);
+    }
     if (doseAmountValue.present) {
       map['dose_amount_value'] = Variable<double>(doseAmountValue.value);
     }
@@ -16474,9 +16759,6 @@ class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
     }
     if (doseUnit.present) {
       map['dose_unit'] = Variable<String>(doseUnit.value);
-    }
-    if (frequency.present) {
-      map['frequency'] = Variable<String>(frequency.value);
     }
     if (route.present) {
       map['route'] = Variable<String>(route.value);
@@ -16505,10 +16787,11 @@ class SchedulesCompanion extends UpdateCompanion<ScheduleRow> {
     return (StringBuffer('SchedulesCompanion(')
           ..write('id: $id, ')
           ..write('protocolCompoundId: $protocolCompoundId, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('rule: $rule, ')
           ..write('doseAmountValue: $doseAmountValue, ')
           ..write('doseAmountEntered: $doseAmountEntered, ')
           ..write('doseUnit: $doseUnit, ')
-          ..write('frequency: $frequency, ')
           ..write('route: $route, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
@@ -23304,9 +23587,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final Index protocolCompoundsCompoundIdIndex = Index(
       'protocol_compounds_compound_id_index',
       'CREATE INDEX protocol_compounds_compound_id_index ON protocol_compounds (compound_id)');
-  late final Index schedulesProtocolCompoundIdIndex = Index(
-      'schedules_protocol_compound_id_index',
-      'CREATE INDEX schedules_protocol_compound_id_index ON schedules (protocol_compound_id)');
+  late final Index schedulesProtocolCompoundEffectiveFromIndex = Index(
+      'schedules_protocol_compound_effective_from_index',
+      'CREATE INDEX schedules_protocol_compound_effective_from_index ON schedules (protocol_compound_id, effective_from)');
   late final Index protocolTargetOutcomesProtocolIdIndex = Index(
       'protocol_target_outcomes_protocol_id_index',
       'CREATE INDEX protocol_target_outcomes_protocol_id_index ON protocol_target_outcomes (protocol_id)');
@@ -23436,7 +23719,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         dosesCompoundIdIndex,
         protocolCompoundsProtocolIdIndex,
         protocolCompoundsCompoundIdIndex,
-        schedulesProtocolCompoundIdIndex,
+        schedulesProtocolCompoundEffectiveFromIndex,
         protocolTargetOutcomesProtocolIdIndex,
         monitoringSeriesCacheLastAccessedAtIndex,
         integrationDataClassConsentsCredentialDataClassIndex,
@@ -32742,6 +33025,7 @@ typedef $$DosesTableCreateCompanionBuilder = DosesCompanion Function({
   required DateTime tookAt,
   required String timezone,
   Value<String> localDate,
+  Value<int?> timezoneOffsetMinutes,
   Value<String> provenance,
   Value<String?> protocolId,
   Value<String?> protocolName,
@@ -32763,6 +33047,7 @@ typedef $$DosesTableUpdateCompanionBuilder = DosesCompanion Function({
   Value<DateTime> tookAt,
   Value<String> timezone,
   Value<String> localDate,
+  Value<int?> timezoneOffsetMinutes,
   Value<String> provenance,
   Value<String?> protocolId,
   Value<String?> protocolName,
@@ -32814,6 +33099,10 @@ class $$DosesTableFilterComposer extends Composer<_$AppDatabase, $DosesTable> {
 
   ColumnFilters<String> get localDate => $composableBuilder(
       column: $table.localDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get timezoneOffsetMinutes => $composableBuilder(
+      column: $table.timezoneOffsetMinutes,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get provenance => $composableBuilder(
       column: $table.provenance, builder: (column) => ColumnFilters(column));
@@ -32883,6 +33172,10 @@ class $$DosesTableOrderingComposer
   ColumnOrderings<String> get localDate => $composableBuilder(
       column: $table.localDate, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get timezoneOffsetMinutes => $composableBuilder(
+      column: $table.timezoneOffsetMinutes,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get provenance => $composableBuilder(
       column: $table.provenance, builder: (column) => ColumnOrderings(column));
 
@@ -32950,6 +33243,9 @@ class $$DosesTableAnnotationComposer
   GeneratedColumn<String> get localDate =>
       $composableBuilder(column: $table.localDate, builder: (column) => column);
 
+  GeneratedColumn<int> get timezoneOffsetMinutes => $composableBuilder(
+      column: $table.timezoneOffsetMinutes, builder: (column) => column);
+
   GeneratedColumn<String> get provenance => $composableBuilder(
       column: $table.provenance, builder: (column) => column);
 
@@ -33006,6 +33302,7 @@ class $$DosesTableTableManager extends RootTableManager<
             Value<DateTime> tookAt = const Value.absent(),
             Value<String> timezone = const Value.absent(),
             Value<String> localDate = const Value.absent(),
+            Value<int?> timezoneOffsetMinutes = const Value.absent(),
             Value<String> provenance = const Value.absent(),
             Value<String?> protocolId = const Value.absent(),
             Value<String?> protocolName = const Value.absent(),
@@ -33027,6 +33324,7 @@ class $$DosesTableTableManager extends RootTableManager<
             tookAt: tookAt,
             timezone: timezone,
             localDate: localDate,
+            timezoneOffsetMinutes: timezoneOffsetMinutes,
             provenance: provenance,
             protocolId: protocolId,
             protocolName: protocolName,
@@ -33048,6 +33346,7 @@ class $$DosesTableTableManager extends RootTableManager<
             required DateTime tookAt,
             required String timezone,
             Value<String> localDate = const Value.absent(),
+            Value<int?> timezoneOffsetMinutes = const Value.absent(),
             Value<String> provenance = const Value.absent(),
             Value<String?> protocolId = const Value.absent(),
             Value<String?> protocolName = const Value.absent(),
@@ -33069,6 +33368,7 @@ class $$DosesTableTableManager extends RootTableManager<
             tookAt: tookAt,
             timezone: timezone,
             localDate: localDate,
+            timezoneOffsetMinutes: timezoneOffsetMinutes,
             provenance: provenance,
             protocolId: protocolId,
             protocolName: protocolName,
@@ -33100,8 +33400,11 @@ typedef $$DosesTableProcessedTableManager = ProcessedTableManager<
 typedef $$ProtocolsTableCreateCompanionBuilder = ProtocolsCompanion Function({
   required String id,
   required String name,
-  required DateTime startDate,
-  Value<DateTime?> endDate,
+  required String startLocalDate,
+  Value<String?> endLocalDate,
+  Value<String?> period,
+  Value<bool> remindersEnabled,
+  Value<String?> archivedOn,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   required DateTime updatedAt,
@@ -33111,8 +33414,11 @@ typedef $$ProtocolsTableCreateCompanionBuilder = ProtocolsCompanion Function({
 typedef $$ProtocolsTableUpdateCompanionBuilder = ProtocolsCompanion Function({
   Value<String> id,
   Value<String> name,
-  Value<DateTime> startDate,
-  Value<DateTime?> endDate,
+  Value<String> startLocalDate,
+  Value<String?> endLocalDate,
+  Value<String?> period,
+  Value<bool> remindersEnabled,
+  Value<String?> archivedOn,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   Value<DateTime> updatedAt,
@@ -33174,11 +33480,22 @@ class $$ProtocolsTableFilterComposer
   ColumnFilters<String> get name => $composableBuilder(
       column: $table.name, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<DateTime> get startDate => $composableBuilder(
-      column: $table.startDate, builder: (column) => ColumnFilters(column));
+  ColumnFilters<String> get startLocalDate => $composableBuilder(
+      column: $table.startLocalDate,
+      builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<DateTime> get endDate => $composableBuilder(
-      column: $table.endDate, builder: (column) => ColumnFilters(column));
+  ColumnFilters<String> get endLocalDate => $composableBuilder(
+      column: $table.endLocalDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get period => $composableBuilder(
+      column: $table.period, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get remindersEnabled => $composableBuilder(
+      column: $table.remindersEnabled,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get archivedOn => $composableBuilder(
+      column: $table.archivedOn, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
@@ -33253,11 +33570,23 @@ class $$ProtocolsTableOrderingComposer
   ColumnOrderings<String> get name => $composableBuilder(
       column: $table.name, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<DateTime> get startDate => $composableBuilder(
-      column: $table.startDate, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<String> get startLocalDate => $composableBuilder(
+      column: $table.startLocalDate,
+      builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<DateTime> get endDate => $composableBuilder(
-      column: $table.endDate, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<String> get endLocalDate => $composableBuilder(
+      column: $table.endLocalDate,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get period => $composableBuilder(
+      column: $table.period, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get remindersEnabled => $composableBuilder(
+      column: $table.remindersEnabled,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get archivedOn => $composableBuilder(
+      column: $table.archivedOn, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId,
@@ -33289,11 +33618,20 @@ class $$ProtocolsTableAnnotationComposer
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
 
-  GeneratedColumn<DateTime> get startDate =>
-      $composableBuilder(column: $table.startDate, builder: (column) => column);
+  GeneratedColumn<String> get startLocalDate => $composableBuilder(
+      column: $table.startLocalDate, builder: (column) => column);
 
-  GeneratedColumn<DateTime> get endDate =>
-      $composableBuilder(column: $table.endDate, builder: (column) => column);
+  GeneratedColumn<String> get endLocalDate => $composableBuilder(
+      column: $table.endLocalDate, builder: (column) => column);
+
+  GeneratedColumn<String> get period =>
+      $composableBuilder(column: $table.period, builder: (column) => column);
+
+  GeneratedColumn<bool> get remindersEnabled => $composableBuilder(
+      column: $table.remindersEnabled, builder: (column) => column);
+
+  GeneratedColumn<String> get archivedOn => $composableBuilder(
+      column: $table.archivedOn, builder: (column) => column);
 
   GeneratedColumn<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => column);
@@ -33379,8 +33717,11 @@ class $$ProtocolsTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
             Value<String> name = const Value.absent(),
-            Value<DateTime> startDate = const Value.absent(),
-            Value<DateTime?> endDate = const Value.absent(),
+            Value<String> startLocalDate = const Value.absent(),
+            Value<String?> endLocalDate = const Value.absent(),
+            Value<String?> period = const Value.absent(),
+            Value<bool> remindersEnabled = const Value.absent(),
+            Value<String?> archivedOn = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -33390,8 +33731,11 @@ class $$ProtocolsTableTableManager extends RootTableManager<
               ProtocolsCompanion(
             id: id,
             name: name,
-            startDate: startDate,
-            endDate: endDate,
+            startLocalDate: startLocalDate,
+            endLocalDate: endLocalDate,
+            period: period,
+            remindersEnabled: remindersEnabled,
+            archivedOn: archivedOn,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -33401,8 +33745,11 @@ class $$ProtocolsTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             required String id,
             required String name,
-            required DateTime startDate,
-            Value<DateTime?> endDate = const Value.absent(),
+            required String startLocalDate,
+            Value<String?> endLocalDate = const Value.absent(),
+            Value<String?> period = const Value.absent(),
+            Value<bool> remindersEnabled = const Value.absent(),
+            Value<String?> archivedOn = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             required DateTime updatedAt,
@@ -33412,8 +33759,11 @@ class $$ProtocolsTableTableManager extends RootTableManager<
               ProtocolsCompanion.insert(
             id: id,
             name: name,
-            startDate: startDate,
-            endDate: endDate,
+            startLocalDate: startLocalDate,
+            endLocalDate: endLocalDate,
+            period: period,
+            remindersEnabled: remindersEnabled,
+            archivedOn: archivedOn,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -33489,6 +33839,7 @@ typedef $$ProtocolCompoundsTableCreateCompanionBuilder
   required String protocolId,
   required String compoundId,
   required int position,
+  Value<String?> archivedOn,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   required DateTime updatedAt,
@@ -33501,6 +33852,7 @@ typedef $$ProtocolCompoundsTableUpdateCompanionBuilder
   Value<String> protocolId,
   Value<String> compoundId,
   Value<int> position,
+  Value<String?> archivedOn,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   Value<DateTime> updatedAt,
@@ -33570,6 +33922,9 @@ class $$ProtocolCompoundsTableFilterComposer
 
   ColumnFilters<int> get position => $composableBuilder(
       column: $table.position, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get archivedOn => $composableBuilder(
+      column: $table.archivedOn, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
@@ -33661,6 +34016,9 @@ class $$ProtocolCompoundsTableOrderingComposer
   ColumnOrderings<int> get position => $composableBuilder(
       column: $table.position, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get archivedOn => $composableBuilder(
+      column: $table.archivedOn, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId,
       builder: (column) => ColumnOrderings(column));
@@ -33730,6 +34088,9 @@ class $$ProtocolCompoundsTableAnnotationComposer
 
   GeneratedColumn<int> get position =>
       $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get archivedOn => $composableBuilder(
+      column: $table.archivedOn, builder: (column) => column);
 
   GeneratedColumn<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => column);
@@ -33835,6 +34196,7 @@ class $$ProtocolCompoundsTableTableManager extends RootTableManager<
             Value<String> protocolId = const Value.absent(),
             Value<String> compoundId = const Value.absent(),
             Value<int> position = const Value.absent(),
+            Value<String?> archivedOn = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -33846,6 +34208,7 @@ class $$ProtocolCompoundsTableTableManager extends RootTableManager<
             protocolId: protocolId,
             compoundId: compoundId,
             position: position,
+            archivedOn: archivedOn,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -33857,6 +34220,7 @@ class $$ProtocolCompoundsTableTableManager extends RootTableManager<
             required String protocolId,
             required String compoundId,
             required int position,
+            Value<String?> archivedOn = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             required DateTime updatedAt,
@@ -33868,6 +34232,7 @@ class $$ProtocolCompoundsTableTableManager extends RootTableManager<
             protocolId: protocolId,
             compoundId: compoundId,
             position: position,
+            archivedOn: archivedOn,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -33961,11 +34326,12 @@ typedef $$ProtocolCompoundsTableProcessedTableManager = ProcessedTableManager<
 typedef $$SchedulesTableCreateCompanionBuilder = SchedulesCompanion Function({
   required String id,
   required String protocolCompoundId,
-  required double doseAmountValue,
-  required String doseAmountEntered,
-  required String doseUnit,
-  required String frequency,
-  required String route,
+  required String effectiveFrom,
+  required String rule,
+  Value<double?> doseAmountValue,
+  Value<String?> doseAmountEntered,
+  Value<String?> doseUnit,
+  Value<String?> route,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   required DateTime updatedAt,
@@ -33975,11 +34341,12 @@ typedef $$SchedulesTableCreateCompanionBuilder = SchedulesCompanion Function({
 typedef $$SchedulesTableUpdateCompanionBuilder = SchedulesCompanion Function({
   Value<String> id,
   Value<String> protocolCompoundId,
-  Value<double> doseAmountValue,
-  Value<String> doseAmountEntered,
-  Value<String> doseUnit,
-  Value<String> frequency,
-  Value<String> route,
+  Value<String> effectiveFrom,
+  Value<String> rule,
+  Value<double?> doseAmountValue,
+  Value<String?> doseAmountEntered,
+  Value<String?> doseUnit,
+  Value<String?> route,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   Value<DateTime> updatedAt,
@@ -34020,6 +34387,12 @@ class $$SchedulesTableFilterComposer
   ColumnFilters<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<String> get effectiveFrom => $composableBuilder(
+      column: $table.effectiveFrom, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rule => $composableBuilder(
+      column: $table.rule, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<double> get doseAmountValue => $composableBuilder(
       column: $table.doseAmountValue,
       builder: (column) => ColumnFilters(column));
@@ -34030,9 +34403,6 @@ class $$SchedulesTableFilterComposer
 
   ColumnFilters<String> get doseUnit => $composableBuilder(
       column: $table.doseUnit, builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<String> get frequency => $composableBuilder(
-      column: $table.frequency, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get route => $composableBuilder(
       column: $table.route, builder: (column) => ColumnFilters(column));
@@ -34083,6 +34453,13 @@ class $$SchedulesTableOrderingComposer
   ColumnOrderings<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get effectiveFrom => $composableBuilder(
+      column: $table.effectiveFrom,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rule => $composableBuilder(
+      column: $table.rule, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<double> get doseAmountValue => $composableBuilder(
       column: $table.doseAmountValue,
       builder: (column) => ColumnOrderings(column));
@@ -34093,9 +34470,6 @@ class $$SchedulesTableOrderingComposer
 
   ColumnOrderings<String> get doseUnit => $composableBuilder(
       column: $table.doseUnit, builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<String> get frequency => $composableBuilder(
-      column: $table.frequency, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get route => $composableBuilder(
       column: $table.route, builder: (column) => ColumnOrderings(column));
@@ -34147,6 +34521,12 @@ class $$SchedulesTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<String> get effectiveFrom => $composableBuilder(
+      column: $table.effectiveFrom, builder: (column) => column);
+
+  GeneratedColumn<String> get rule =>
+      $composableBuilder(column: $table.rule, builder: (column) => column);
+
   GeneratedColumn<double> get doseAmountValue => $composableBuilder(
       column: $table.doseAmountValue, builder: (column) => column);
 
@@ -34155,9 +34535,6 @@ class $$SchedulesTableAnnotationComposer
 
   GeneratedColumn<String> get doseUnit =>
       $composableBuilder(column: $table.doseUnit, builder: (column) => column);
-
-  GeneratedColumn<String> get frequency =>
-      $composableBuilder(column: $table.frequency, builder: (column) => column);
 
   GeneratedColumn<String> get route =>
       $composableBuilder(column: $table.route, builder: (column) => column);
@@ -34221,11 +34598,12 @@ class $$SchedulesTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
             Value<String> protocolCompoundId = const Value.absent(),
-            Value<double> doseAmountValue = const Value.absent(),
-            Value<String> doseAmountEntered = const Value.absent(),
-            Value<String> doseUnit = const Value.absent(),
-            Value<String> frequency = const Value.absent(),
-            Value<String> route = const Value.absent(),
+            Value<String> effectiveFrom = const Value.absent(),
+            Value<String> rule = const Value.absent(),
+            Value<double?> doseAmountValue = const Value.absent(),
+            Value<String?> doseAmountEntered = const Value.absent(),
+            Value<String?> doseUnit = const Value.absent(),
+            Value<String?> route = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -34235,10 +34613,11 @@ class $$SchedulesTableTableManager extends RootTableManager<
               SchedulesCompanion(
             id: id,
             protocolCompoundId: protocolCompoundId,
+            effectiveFrom: effectiveFrom,
+            rule: rule,
             doseAmountValue: doseAmountValue,
             doseAmountEntered: doseAmountEntered,
             doseUnit: doseUnit,
-            frequency: frequency,
             route: route,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
@@ -34249,11 +34628,12 @@ class $$SchedulesTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             required String id,
             required String protocolCompoundId,
-            required double doseAmountValue,
-            required String doseAmountEntered,
-            required String doseUnit,
-            required String frequency,
-            required String route,
+            required String effectiveFrom,
+            required String rule,
+            Value<double?> doseAmountValue = const Value.absent(),
+            Value<String?> doseAmountEntered = const Value.absent(),
+            Value<String?> doseUnit = const Value.absent(),
+            Value<String?> route = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             required DateTime updatedAt,
@@ -34263,10 +34643,11 @@ class $$SchedulesTableTableManager extends RootTableManager<
               SchedulesCompanion.insert(
             id: id,
             protocolCompoundId: protocolCompoundId,
+            effectiveFrom: effectiveFrom,
+            rule: rule,
             doseAmountValue: doseAmountValue,
             doseAmountEntered: doseAmountEntered,
             doseUnit: doseUnit,
-            frequency: frequency,
             route: route,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,

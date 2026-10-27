@@ -7475,21 +7475,36 @@
             "type": "string",
             "minLength": 1
           },
-          "startDate": {
+          "startLocalDate": {
             "type": [
               "string",
               "null"
             ],
             "minLength": 1,
-            "description": "ISO-8601 timestamp."
+            "description": "Local date (YYYY-MM-DD) the Protocol starts."
           },
-          "endDate": {
+          "endLocalDate": {
             "type": [
               "string",
               "null"
             ],
             "minLength": 1,
-            "description": "ISO-8601 timestamp."
+            "description": "Inclusive local end date (YYYY-MM-DD); null is ongoing."
+          },
+          "period": {
+            "$ref": "#/components/schemas/AgentProtocolPeriod"
+          },
+          "remindersEnabled": {
+            "type": "boolean",
+            "description": "Plan data: the user asked to be reminded about this Protocol. Reminders themselves are device-local."
+          },
+          "archivedOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Local date (YYYY-MM-DD) the Protocol was archived, frozen when it was archived. Past days still count it through this date."
           },
           "updatedAt": {
             "type": "string",
@@ -7510,12 +7525,6 @@
               "$ref": "#/components/schemas/AgentProtocolMember"
             }
           },
-          "schedules": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AgentProtocolSchedule"
-            }
-          },
           "targetOutcomes": {
             "type": "array",
             "items": {
@@ -7526,14 +7535,86 @@
         "required": [
           "id",
           "name",
-          "startDate",
-          "endDate",
+          "startLocalDate",
+          "endLocalDate",
+          "period",
+          "remindersEnabled",
+          "archivedOn",
           "updatedAt",
           "deletedAt",
           "members",
-          "schedules",
           "targetOutcomes"
         ]
+      },
+      "AgentProtocolPeriod": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "v": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "cycle": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "on_days": {
+                "type": "number",
+                "description": "Days on, 1 to 3650."
+              },
+              "off_days": {
+                "type": "number",
+                "description": "Days off, 1 to 3650."
+              },
+              "anchor": {
+                "type": "string",
+                "description": "YYYY-MM-DD date that is cycle day 0; a date is on-cycle when (date - anchor) mod (on + off) < on, before the anchor too."
+              },
+              "anchor_is_default": {
+                "type": "boolean",
+                "description": "True while the anchor is the Protocol's start date; such an anchor moves when the start moves."
+              }
+            },
+            "required": [
+              "on_days",
+              "off_days",
+              "anchor",
+              "anchor_is_default"
+            ]
+          },
+          "pauses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "description": "First paused YYYY-MM-DD date."
+                },
+                "to": {
+                  "type": "string",
+                  "description": "Last paused YYYY-MM-DD date, inclusive."
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ]
+            },
+            "description": "At most 100 non-overlapping Pauses inside the Protocol's dates."
+          }
+        },
+        "required": [
+          "v",
+          "pauses"
+        ],
+        "description": "A Protocol Period, version 1: an optional on/off cycle and the Pauses. Null means no cycle and no Pause."
       },
       "AgentProtocolMember": {
         "type": "object",
@@ -7549,6 +7630,35 @@
           "position": {
             "type": "integer",
             "minimum": 0
+          },
+          "archivedOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Local date (YYYY-MM-DD) the member was removed, frozen when it was archived. The member is still planned that day, and reads removed from the next."
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolScheduleVersion"
+            },
+            "description": "Every Schedule Version of this member, sorted by effectiveFrom and then id. Versions are authored plan history, inserted on every changed save and never edited."
+          },
+          "currentVersion": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentProtocolScheduleVersion"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "The version an editor shows: the latest effectiveFrom, the larger id on a tie. Null when the member has no Schedule Version."
+              }
+            ]
           },
           "updatedAt": {
             "type": "string",
@@ -7568,11 +7678,14 @@
           "id",
           "compoundId",
           "position",
+          "archivedOn",
+          "versions",
+          "currentVersion",
           "updatedAt",
           "deletedAt"
         ]
       },
-      "AgentProtocolSchedule": {
+      "AgentProtocolScheduleVersion": {
         "type": "object",
         "properties": {
           "id": {
@@ -7582,6 +7695,14 @@
           "protocolCompoundId": {
             "type": "string",
             "minLength": 1
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Local date (YYYY-MM-DD) this Schedule Version applies from. On any date the version with the latest effectiveFrom on or before it applies, the larger id on a tie."
+          },
+          "rule": {
+            "$ref": "#/components/schemas/AgentScheduleRule"
           },
           "doseAmountValue": {
             "type": [
@@ -7618,10 +7739,6 @@
               "unit"
             ]
           },
-          "frequency": {
-            "type": "string",
-            "minLength": 1
-          },
           "route": {
             "type": [
               "string",
@@ -7645,26 +7762,197 @@
             "type": "string",
             "minLength": 1,
             "description": "ISO-8601 timestamp."
-          },
-          "deletedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "description": "ISO-8601 timestamp."
           }
         },
         "required": [
           "id",
           "protocolCompoundId",
+          "effectiveFrom",
+          "rule",
           "doseAmountValue",
           "doseAmountEntered",
           "doseUnit",
-          "frequency",
           "route",
-          "updatedAt",
-          "deletedAt"
+          "updatedAt"
+        ]
+      },
+      "AgentScheduleRule": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "v": {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "timed"
+                ]
+              },
+              "days": {
+                "$ref": "#/components/schemas/AgentScheduleRuleDays"
+              },
+              "times": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "1 to 12 distinct HH:MM wall-clock times. Stored sorted."
+              }
+            },
+            "required": [
+              "v",
+              "kind",
+              "days",
+              "times"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "v": {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "untimed"
+                ]
+              },
+              "days": {
+                "$ref": "#/components/schemas/AgentScheduleRuleDays"
+              },
+              "count": {
+                "type": "number",
+                "description": "1 to 12 planned doses a day with no clock time."
+              }
+            },
+            "required": [
+              "v",
+              "kind",
+              "days",
+              "count"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "v": {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "as_needed"
+                ]
+              }
+            },
+            "required": [
+              "v",
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "v": {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unscheduled"
+                ]
+              }
+            },
+            "required": [
+              "v",
+              "kind"
+            ]
+          }
+        ],
+        "description": "A Schedule Rule, version 1: when a Protocol Member's Compound is due on a day its Protocol is in effect. timed and untimed rules need a planned amount, unit and route; as_needed plans nothing; unscheduled is a member with no Schedule, and both carry no amount."
+      },
+      "AgentScheduleRuleDays": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "daily"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "weekdays"
+                ]
+              },
+              "weekdays": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "description": "ISO 8601 weekdays, 1 = Monday to 7 = Sunday. Stored sorted."
+              }
+            },
+            "required": [
+              "kind",
+              "weekdays"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "every_n_days"
+                ]
+              },
+              "n": {
+                "type": "number",
+                "description": "Due every n days, 2 to 365."
+              },
+              "anchor": {
+                "type": "string",
+                "description": "YYYY-MM-DD date the rhythm is counted from; a date is due when (date - anchor) mod n = 0, before the anchor too."
+              },
+              "anchor_is_default": {
+                "type": "boolean",
+                "description": "True while the anchor is the Protocol's start date; such an anchor moves when the start moves."
+              }
+            },
+            "required": [
+              "kind",
+              "n",
+              "anchor",
+              "anchor_is_default"
+            ]
+          }
         ]
       },
       "AgentProtocolTargetOutcome": {
@@ -7817,7 +8105,15 @@
           },
           "timezone": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Display label for the timezone the Dose was logged in, as captured at log time: an IANA name such as America/Sao_Paulo, or an abbreviation such as BRT. It is a label only; timezoneOffsetMinutes is what turns tookAt into the Dose's local clock time."
+          },
+          "timezoneOffsetMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "UTC offset in minutes east of UTC (UTC-3 is -180), frozen when the Dose was logged. Null for a Dose logged without one; its local time is then read in UTC."
           },
           "localDate": {
             "type": "string",
@@ -7872,6 +8168,7 @@
           "route",
           "tookAt",
           "timezone",
+          "timezoneOffsetMinutes",
           "localDate",
           "provenance",
           "protocolId",
@@ -8444,7 +8741,13 @@
           "timezone": {
             "type": "string",
             "minLength": 1,
-            "description": "IANA timezone captured at log time."
+            "description": "Display label for the timezone at log time: an IANA name such as America/Sao_Paulo, or an abbreviation such as BRT. When it is an IANA name and timezoneOffsetMinutes is absent, the server derives the offset from it and tookAt; an abbreviation cannot be converted, so the offset then stays null."
+          },
+          "timezoneOffsetMinutes": {
+            "type": "integer",
+            "minimum": -720,
+            "maximum": 840,
+            "description": "Optional UTC offset at log time, in minutes east of UTC (UTC-3 is -180), -720 to +840. Frozen on the Dose with tookAt so its local clock time never moves. Wins over the offset derived from timezone."
           },
           "localDate": {
             "type": "string",
@@ -8735,6 +9038,13 @@
             "items": {
               "$ref": "#/components/schemas/AgentProtocolsEntityBatchWriteResult"
             }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolsBatchWriteIssue"
+            },
+            "description": "Soft warnings from the shared plan validators (an improbable plan, such as more than 6 times a day). The batch was still written."
           }
         },
         "required": [
@@ -8743,7 +9053,8 @@
           "idempotencyKey",
           "batchId",
           "serverClock",
-          "protocols"
+          "protocols",
+          "warnings"
         ]
       },
       "AgentProtocolBatchWriteRequest": {
@@ -8755,6 +9066,11 @@
             "maxLength": 200,
             "description": "Stable key for this agent request. Replays with the same key do not append another Activity Log batch."
           },
+          "today": {
+            "type": "string",
+            "description": "The user's local date (YYYY-MM-DD). It dates Schedule Versions and archives exactly as the app does, and must be within one day of the server's UTC date.",
+            "example": "2026-10-26"
+          },
           "protocols": {
             "type": "array",
             "items": {
@@ -8762,13 +9078,15 @@
             },
             "minItems": 1,
             "maxItems": 50,
-            "description": "Protocols (plus their members, schedules, and target outcomes) to create, edit, or archive. Plan writes never touch logged Doses."
+            "description": "Protocols (plus their members, Schedule Versions, and target outcomes) to create, edit, or archive. Plan writes never touch logged Doses."
           }
         },
         "required": [
           "idempotencyKey",
+          "today",
           "protocols"
-        ]
+        ],
+        "additionalProperties": false
       },
       "AgentProtocolBatchWriteProtocol": {
         "type": "object",
@@ -8779,7 +9097,7 @@
                 "$ref": "#/components/schemas/AgentProtocolsClientRowId"
               },
               {
-                "description": "UUIDv7 Protocol id for a new row, or an existing legacy id for an edit/archive."
+                "description": "UUIDv7 Protocol id for a new row, or an existing id for an edit or archive."
               }
             ]
           },
@@ -8787,37 +9105,37 @@
             "type": "string",
             "minLength": 1
           },
-          "startDate": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "default": null,
-            "description": "ISO-8601 timestamp."
+          "startLocalDate": {
+            "type": "string",
+            "description": "Local date (YYYY-MM-DD) the Protocol starts. Moving it inserts re-dated copies of the members' Schedule Versions, and moves anchors left at their default.",
+            "example": "2026-10-26"
           },
-          "endDate": {
+          "endLocalDate": {
             "type": [
               "string",
               "null"
             ],
-            "minLength": 1,
             "default": null,
-            "description": "ISO-8601 timestamp."
+            "description": "Inclusive local end date (YYYY-MM-DD); null is ongoing.",
+            "example": "2026-10-26"
+          },
+          "period": {
+            "$ref": "#/components/schemas/AgentProtocolPeriod"
+          },
+          "remindersEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Plan data: remind me about this Protocol. Each device schedules its own reminders. Left out, it is written as false."
           },
           "updatedAt": {
             "type": "string",
             "minLength": 1,
             "description": "ISO-8601 timestamp."
           },
-          "deletedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "default": null,
-            "description": "Set to archive the Protocol. Archiving is a plan edit — it never cascades to a logged Dose (PROTOCOLS.md §7)."
+          "archived": {
+            "type": "boolean",
+            "default": false,
+            "description": "Set to true to archive the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; past days still count the Protocol through that date. Archiving is a plan edit: it never cascades to a logged Dose, and an archived Protocol is never restored."
           },
           "members": {
             "type": "array",
@@ -8846,8 +9164,11 @@
         },
         "required": [
           "id",
-          "name"
-        ]
+          "name",
+          "startLocalDate"
+        ],
+        "additionalProperties": false,
+        "description": "One Protocol as it should be stored. The write replaces the whole Protocol row, so a field left out takes its default: endLocalDate and period become null (no end, no cycle, no Pauses) and remindersEnabled becomes false. To edit one field, send every field as read."
       },
       "AgentProtocolBatchWriteMember": {
         "type": "object",
@@ -8858,7 +9179,7 @@
                 "$ref": "#/components/schemas/AgentProtocolsClientRowId"
               },
               {
-                "description": "UUIDv7 Protocol member id for a new row, or an existing legacy id for an edit/archive."
+                "description": "UUIDv7 Protocol Member id for a new row, or an existing id for an edit or archive."
               }
             ]
           },
@@ -8877,20 +9198,17 @@
             "minLength": 1,
             "description": "ISO-8601 timestamp."
           },
-          "deletedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "default": null,
-            "description": "ISO-8601 timestamp."
+          "archived": {
+            "type": "boolean",
+            "default": false,
+            "description": "Set to true to remove the member from the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; the member is still planned that day. Its Schedule Versions are kept. A removed member is never restored: adding the Compound again is a new member row."
           }
         },
         "required": [
           "id",
           "compoundId"
-        ]
+        ],
+        "additionalProperties": false
       },
       "AgentProtocolBatchWriteSchedule": {
         "type": "object",
@@ -8901,14 +9219,17 @@
                 "$ref": "#/components/schemas/AgentProtocolsClientRowId"
               },
               {
-                "description": "UUIDv7 Schedule id for a new row, or an existing legacy id for an edit/archive."
+                "description": "UUIDv7 id of a new Schedule Version. Versions are insert-only: an id that already exists is rejected."
               }
             ]
           },
           "protocolCompoundId": {
             "type": "string",
             "minLength": 1,
-            "description": "Reference to a UUIDv7 row, or to an existing legacy row owned by this account."
+            "description": "The Protocol Member this Schedule Version belongs to: one in this request, or an existing member of the same Protocol."
+          },
+          "rule": {
+            "$ref": "#/components/schemas/AgentScheduleRule"
           },
           "doseAmountValue": {
             "type": [
@@ -8922,7 +9243,6 @@
               "string",
               "null"
             ],
-            "minLength": 1,
             "default": null
           },
           "doseUnit": {
@@ -8948,10 +9268,6 @@
               "unit"
             ]
           },
-          "frequency": {
-            "type": "string",
-            "minLength": 1
-          },
           "route": {
             "type": [
               "string",
@@ -8976,22 +9292,15 @@
             "type": "string",
             "minLength": 1,
             "description": "ISO-8601 timestamp."
-          },
-          "deletedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "default": null,
-            "description": "ISO-8601 timestamp."
           }
         },
         "required": [
           "id",
           "protocolCompoundId",
-          "frequency"
-        ]
+          "rule"
+        ],
+        "additionalProperties": false,
+        "description": "A new Schedule Version for one Protocol Member. The server dates it (effectiveFrom) exactly as the app does: a member's first version applies from the Protocol's start when the member is created with its Protocol or the start is still ahead, and from today otherwise; a later version applies from the later of today and the member's latest effectiveFrom. times and weekdays are stored sorted. Every edit is a new version; none is edited or archived."
       },
       "AgentProtocolBatchWriteTargetOutcome": {
         "type": "object",
@@ -14481,7 +14790,7 @@
           "protocolVersion": {
             "type": "number",
             "enum": [
-              1
+              2
             ]
           },
           "accepted": {
@@ -14594,7 +14903,7 @@
           "protocolVersion": {
             "type": "number",
             "enum": [
-              1
+              2
             ],
             "description": "Version of the delta-sync protocol spoken by the client."
           },
@@ -15313,7 +15622,7 @@
           "protocolVersion": {
             "type": "number",
             "enum": [
-              1
+              2
             ]
           },
           "fullResyncRequired": {
@@ -15461,7 +15770,7 @@
           "protocolVersion": {
             "type": "number",
             "enum": [
-              1
+              2
             ],
             "description": "Version of the delta-sync protocol spoken by the client."
           },
@@ -19709,7 +20018,7 @@
           "Agent Reads"
         ],
         "summary": "List the caller's Protocols with their plan detail.",
-        "description": "Returns a bounded page of Protocols, each with its member Compounds, Schedules, and declared target outcomes (all plan data — never derived analytics).",
+        "description": "Returns a bounded page of Protocols, each with its local-date bounds, Protocol Period, Protocol Members (with every Schedule Version and the current one), and declared target outcomes (all plan data — never derived analytics).",
         "security": [
           {
             "bearerAuth": []
@@ -20062,7 +20371,7 @@
           "Agent Reads"
         ],
         "summary": "Read a descriptive Effect window for a Compound/Protocol × Metric.",
-        "description": "Computes a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course (start to end date; no end date = ongoing until now) or a Compound's logged Dose timeline (earliest to latest Dose; a single Dose = ongoing until now), with BEFORE and AFTER mirroring DURING's length. The window is the same one the app's Effect view shows; the range only scopes the Dose markers returned. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
+        "description": "Computes a descriptive before/during/after summary of one outcome Metric around a Protocol's declared course (local midnight of its start date to local midnight after its inclusive end date, at timezoneOffsetMinutes, default UTC; no end date = ongoing until now) or a Compound's logged Dose timeline (earliest to latest Dose; a single Dose = ongoing until now), with BEFORE and AFTER mirroring DURING's length. The window is the same one the app's Effect view shows; off-cycle and paused days count as during. The range only scopes the Dose markers returned. Aggregates (count/min/max/mean) are computed on demand and never stored. Strictly descriptive — never a causal, efficacy, or medical claim.",
         "security": [
           {
             "bearerAuth": []
@@ -20084,10 +20393,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "description": "The Protocol whose declared start/end dates are the DURING span; its tagged Doses are returned as markers. Provide exactly one of compoundId or protocolId."
+              "description": "The Protocol whose local start and end dates (read at timezoneOffsetMinutes) are the DURING span; its tagged Doses are returned as markers. Provide exactly one of compoundId or protocolId."
             },
             "required": false,
-            "description": "The Protocol whose declared start/end dates are the DURING span; its tagged Doses are returned as markers. Provide exactly one of compoundId or protocolId.",
+            "description": "The Protocol whose local start and end dates (read at timezoneOffsetMinutes) are the DURING span; its tagged Doses are returned as markers. Provide exactly one of compoundId or protocolId.",
             "name": "protocolId",
             "in": "query"
           },
@@ -20133,6 +20442,22 @@
             "required": true,
             "description": "Exclusive ISO-8601 upper bound of the Dose markers returned. Does not move the window.",
             "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": -720,
+              "maximum": 840,
+              "default": 0,
+              "description": "UTC offset, in minutes east of UTC (UTC-3 is -180), from -720 to +840, that turns a Protocol's local-date bounds into instants: DURING runs from local midnight of its start date to local midnight after its inclusive end date. Defaults to 0 (UTC). Ignored for a Compound source."
+            },
+            "required": false,
+            "description": "UTC offset, in minutes east of UTC (UTC-3 is -180), from -720 to +840, that turns a Protocol's local-date bounds into instants: DURING runs from local midnight of its start date to local midnight after its inclusive end date. Defaults to 0 (UTC). Ignored for a Compound source.",
+            "name": "timezoneOffsetMinutes",
             "in": "query"
           }
         ],
@@ -20480,8 +20805,8 @@
         "tags": [
           "Agent Writes"
         ],
-        "summary": "Batch-write Protocols (plan + schedules + target outcomes).",
-        "description": "Authenticated agent write path for Protocol plans. Creates, edits, and archives Protocols with their member Compounds, Schedules, and target outcomes in one idempotent batch. Plan writes never touch logged Doses — archiving a Protocol never cascades (PROTOCOLS.md §7).",
+        "summary": "Batch-write Protocols (plan + Schedule Versions + target outcomes).",
+        "description": "Authenticated agent write path for Protocol plans. Creates, edits, and archives Protocols with their Protocol Members, Schedule Versions, and target outcomes in one idempotent batch, validated by the shared two-tier plan validators. The request carries the user's local date as today, which dates every new Schedule Version and archive exactly as the app does; versions are insert-only. Plan writes never touch logged Doses: archiving a Protocol never cascades.",
         "security": [
           {
             "bearerAuth": []
