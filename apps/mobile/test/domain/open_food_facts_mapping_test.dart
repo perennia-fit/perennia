@@ -448,6 +448,83 @@ void main() {
     });
   });
 
+  group('edge values', () {
+    test('formatNutrientEntered keeps exponents and never writes -0', () {
+      expect(formatNutrientEntered(1e30), '1e+30');
+      expect(formatNutrientEntered(1.5e21), '1.5e+21');
+      expect(formatNutrientEntered(-0.0), '0');
+      expect(formatNutrientEntered(-0.0000001), '0');
+      expect(formatNutrientEntered(100), '100');
+    });
+
+    test('keeps the magnitude of a huge value', () {
+      final product = _mapped(<String, Object?>{
+        ..._base,
+        'nutriments': <String, Object?>{'sodium_100g': 1e27},
+      });
+
+      expect(product.nutrientText[NutrientId.sodium], '1e+30');
+      expect(
+        nutrientVectorFromText(product.nutrientText)[NutrientId.sodium].value,
+        1e30,
+      );
+    });
+
+    test('writes a negative zero value as 0', () {
+      final product = _mapped(<String, Object?>{
+        ..._base,
+        'nutriments': <String, Object?>{'fat_100g': -0.0, 'sugars_100g': '-0'},
+      });
+
+      expect(product.nutrientText, <NutrientId, String>{
+        NutrientId.fat: '0',
+        NutrientId.sugar: '0',
+      });
+    });
+
+    test('excludes a change date a DateTime cannot hold', () {
+      for (final seconds in <Object>[1e13, -1e13, '99999999999999']) {
+        final result = mapOpenFoodFactsProduct(<String, Object?>{
+          ..._base,
+          'last_modified_t': seconds,
+        });
+        expect(
+          _reason(result),
+          OpenFoodFactsExclusion.missingChangeDate,
+          reason: '$seconds',
+        );
+      }
+      expect(
+        _mapped(<String, Object?>{..._base, 'last_modified_t': 8640000000000})
+            .modifiedAt
+            .year,
+        275760,
+      );
+    });
+
+    test('writes a size past 2^53 without clamping it', () {
+      final product = MappedOpenFoodFactsProduct(
+        code: '12345678',
+        name: 'Typo',
+        brand: null,
+        isLiquid: false,
+        servingLabel: null,
+        servingSize: 9007199254740992,
+        packageSize: 1e30,
+        nutrientText: const <NutrientId, String>{},
+        modifiedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+        scans: 1,
+      );
+      final line = encodeBundleProductLine(product);
+      final decoded = decodeBundleProductLine(line);
+
+      expect(line, contains('"packageSize":1e+30'));
+      expect(decoded.packageSize, 1e30);
+      expect(decoded.servingSize, 9007199254740992);
+      expect(encodeBundleProductLine(decoded), line);
+    });
+  });
+
   group('openFoodFactsNutrientStructure', () {
     test('returns nutrition only when every condition holds', () {
       OpenFoodFactsNutrientStructure structure(Object? nutrition) =>
@@ -605,6 +682,11 @@ void main() {
         buildFoodSearchMatch('milk AND NEAR oat* name:x'),
         '"milk"* "and"* "near"* "oat"* "name"* "x"*',
       );
+    });
+
+    test('keeps a decomposed accent inside its word', () {
+      expect(buildFoodSearchMatch('Cre\u0300me bru\u0302le\u0301e'),
+          '"cre\u0300me"* "bru\u0302le\u0301e"*');
     });
 
     test('returns null for an empty or punctuation-only query', () {

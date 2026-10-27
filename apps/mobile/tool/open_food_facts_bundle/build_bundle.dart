@@ -96,7 +96,12 @@ Future<void> main(List<String> args) async {
       if (!launchCountries.keys.any(line.contains)) {
         continue;
       }
-      _consider(line, report.linesRead, kept, report);
+      try {
+        _consider(line, report.linesRead, kept, report);
+      } on Object catch (error) {
+        // One odd product must not end a 30-minute run; the report names it.
+        report.failedLines.add('line ${report.linesRead}: $error');
+      }
     }
   } on FileSystemException catch (error) {
     stderr.writeln('Could not read ${options.input}: ${error.message}');
@@ -299,6 +304,9 @@ class _Report {
   int zeroScans = 0;
   int duplicateCodes = 0;
 
+  /// Lines whose mapping threw, with the line number and the error.
+  final List<String> failedLines = [];
+
   void print({
     required Map<String, int> eligibleByCountry,
     required Map<String, int> keptByCountry,
@@ -319,6 +327,8 @@ class _Report {
       ..writeln('  content hash:            ${header.contentHash}')
       ..writeln('  dump lines read:         $linesRead')
       ..writeln('  malformed lines:         $malformedLines')
+      ..writeln('  failed lines:            ${failedLines.length}')
+      ..writeAll(failedLines.take(10).map((line) => '    $line\n'))
       ..writeln('  tag text, not tagged:    $notInLaunchCountry')
       ..writeln('  launch-country products: $launchCountryProducts')
       ..writeln('  excluded by the mapping:');
@@ -366,15 +376,27 @@ class _Report {
     final [name, ...inline] = args[i].split('=');
     final value = inline.isNotEmpty
         ? inline.join('=')
-        : (i + 1 < args.length ? args[++i] : null);
-    if ((name != '--input' && name != '--dataset-version') || value == null) {
+        : (i + 1 < args.length && !args[i + 1].startsWith('--')
+            ? args[++i]
+            : null);
+    if (name != '--input' && name != '--dataset-version') {
+      stderr.writeln('Unknown argument: $name');
+      return null;
+    }
+    if (value == null) {
+      stderr.writeln('$name needs a value.');
       return null;
     }
     values[name] = value;
   }
   final input = values['--input'];
   final datasetVersion = values['--dataset-version'];
-  if (input == null || datasetVersion == null || !_isDate(datasetVersion)) {
+  if (input == null || datasetVersion == null) {
+    stderr.writeln('Both --input and --dataset-version are required.');
+    return null;
+  }
+  if (!_isDate(datasetVersion)) {
+    stderr.writeln('--dataset-version must be a YYYY-MM-DD date.');
     return null;
   }
   return (input: input, datasetVersion: datasetVersion);

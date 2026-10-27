@@ -1740,11 +1740,18 @@ double _requiredPortionSize(double? value, PortionUnit unit) {
 /// with trailing zeros and a trailing point removed. The Open Food Facts
 /// mapping uses the same rule, so a bundled product and the same product
 /// fetched live produce the same text.
+///
+/// From 1e21 up, `toStringAsFixed` writes exponential notation (`1e+30`),
+/// whose trailing zeros are digits of the exponent, so it is returned as is.
+/// A value that rounds to zero is written `0`, never `-0`.
 String formatNutrientEntered(double value) {
   final fixed = value.toStringAsFixed(6);
-  return fixed
-      .replaceFirst(_trailingZeros, '')
-      .replaceFirst(_trailingPoint, '');
+  if (fixed.contains('e')) {
+    return fixed;
+  }
+  final trimmed =
+      fixed.replaceFirst(_trailingZeros, '').replaceFirst(_trailingPoint, '');
+  return trimmed == '-0' ? '0' : trimmed;
 }
 
 final _trailingZeros = RegExp(r'0+$');

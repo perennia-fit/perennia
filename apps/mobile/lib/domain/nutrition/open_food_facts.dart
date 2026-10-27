@@ -28,7 +28,8 @@ OpenFoodFactsMappingResult mapOpenFoodFactsProduct(
         OpenFoodFactsExclusion.missingName);
   }
   final modifiedSeconds = _number(product['last_modified_t']);
-  if (modifiedSeconds == null) {
+  // A change date DateTime cannot hold is as unusable as a missing one.
+  if (modifiedSeconds == null || modifiedSeconds.abs() > _maxDateTimeSeconds) {
     return const ExcludedOpenFoodFactsProduct(
       OpenFoodFactsExclusion.missingChangeDate,
     );
@@ -68,6 +69,9 @@ OpenFoodFactsMappingResult mapOpenFoodFactsProduct(
     scans: scans?.truncate(),
   );
 }
+
+/// The largest Unix time in seconds a `DateTime` can hold (±8.64e15 ms).
+const _maxDateTimeSeconds = 8640000000000;
 
 sealed class OpenFoodFactsMappingResult {
   const OpenFoodFactsMappingResult();
@@ -222,7 +226,7 @@ List<String> barcodeCandidates(String raw) {
 
 /// The FTS5 match expression for a picker query, or `null` when the query has
 /// no parts. The query is lower-cased and split on every character that is not
-/// a Unicode letter or digit; the first 8 parts become quoted prefix terms
+/// a Unicode letter, digit or combining mark; the first 8 parts become quoted prefix terms
 /// that must all match (`"chobani"* "gr"*`). Quoting makes typed FTS5
 /// operators (`AND`, `NEAR`, `*`, `:`) plain text.
 String? buildFoodSearchMatch(String query) {
@@ -240,7 +244,10 @@ String? buildFoodSearchMatch(String query) {
 
 final _barcodeSeparators = RegExp(r'[\s-]');
 final _barcodeDigits = RegExp(r'^\d{6,18}$');
-final _searchPartSeparators = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+// Combining marks (\p{M}) stay inside a part, as the FTS5 unicode61
+// tokenizer keeps them inside a token, so a decomposed "Cre\u0300me" is one
+// part, not two.
+final _searchPartSeparators = RegExp(r'[^\p{L}\p{N}\p{M}]+', unicode: true);
 const _maxSearchParts = 8;
 
 /// The `fields` every live request asks for, comma-joined. Both nutrition
@@ -541,13 +548,19 @@ bool _isImplausible(Map<NutrientId, String> text) {
 String? _firstBrand(Object? brands) =>
     _string(_string(brands)?.split(',').first);
 
-/// Writes an integral size as an integer (`170`, not `170.0`).
+/// Writes an integral size as an integer (`170`, not `170.0`). Only below
+/// 2^53, where every integer is exact as a double: `toInt` clamps larger
+/// values to the int64 maximum, which would change them.
 num? _compactNumber(double? value) {
   if (value == null) {
     return null;
   }
-  return value == value.truncateToDouble() ? value.toInt() : value;
+  return value.abs() < _maxExactInteger && value == value.truncateToDouble()
+      ? value.toInt()
+      : value;
 }
+
+const _maxExactInteger = 9007199254740992.0;
 
 String? _firstString(Map<String, Object?> values, List<String> keys) {
   for (final key in keys) {

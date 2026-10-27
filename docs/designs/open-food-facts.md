@@ -857,10 +857,12 @@ pause:
 1.  If the query has barcode candidates, the stored products with those codes
     come first.
 2.  Then the FTS5 search. The query is lower-cased and split on every character
-    that is not a Unicode letter or digit; empty parts are dropped and the first
-    8 kept. Each part is written as a quoted prefix term (`"chobani"* "gr"*`),
-    and all must match. The tokenizer folds diacritics, so "creme" finds
-    "Crème".
+    that is not a Unicode letter, digit or combining mark (combining marks stay
+    inside a part, as the tokenizer keeps them inside a token, so "Crème"
+    typed in decomposed form, `e` then U+0300, is one part); empty parts are
+    dropped and the first 8 kept. Each part is written as a quoted prefix term
+    (`"chobani"* "gr"*`), and all must match. The tokenizer folds diacritics,
+    so "creme" finds "Crème".
 3.  Order: `bm25` with name weighted 2 and brand weighted 1, then `scans`
     descending (no value counts as 0), then `code` ascending. The limit is 50.
 4.  A query with no parts and no barcode candidates searches nothing, and the
