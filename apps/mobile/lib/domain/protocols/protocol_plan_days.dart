@@ -99,7 +99,6 @@ PlanDay _planDay(
   if (version == null) {
     return state(PlanDayState.noSchedule);
   }
-  final days = version.days;
   switch (version.version.rule) {
     case UnscheduledScheduleRule():
       return state(PlanDayState.noSchedule);
@@ -108,7 +107,9 @@ PlanDay _planDay(
     case TimedScheduleRule() || UntimedScheduleRule():
       break;
   }
-  if (days == null || !days.includes(date)) {
+  // Only the as-needed and unscheduled rules, which returned above, have no
+  // days.
+  if (!version.days!.includes(date)) {
     return state(PlanDayState.notScheduledToday);
   }
   return state(PlanDayState.planned, version.planned);
@@ -116,7 +117,11 @@ PlanDay _planDay(
 
 /// [days] as planned (D4): an every-N anchor left at its default reads as
 /// [start], whatever date it stores; an anchor the user set reads as stored.
-ScheduleDays _daysFromStart(ScheduleDays days, ProtocolDayDate start) =>
+///
+/// The one reading of a default anchor: [planDays], [endDateForDoseCount],
+/// the repository's writes and comparisons, and the editor all go through
+/// it, so what is stored, compared and shown never plans differently.
+ScheduleDays scheduleDaysFromStart(ScheduleDays days, ProtocolDayDate start) =>
     switch (days) {
       EveryNDaysScheduleDays(:final n, anchorIsDefault: true)
           when days.anchor != start =>
@@ -125,8 +130,12 @@ ScheduleDays _daysFromStart(ScheduleDays days, ProtocolDayDate start) =>
     };
 
 /// [cycle] as planned (D4): an anchor left at its default reads as [start],
-/// whatever date it stores; an anchor the user set reads as stored.
-ProtocolCycle? _cycleFromStart(ProtocolCycle? cycle, ProtocolDayDate start) {
+/// whatever date it stores; an anchor the user set reads as stored. The
+/// cycle twin of [scheduleDaysFromStart].
+ProtocolCycle? protocolCycleFromStart(
+  ProtocolCycle? cycle,
+  ProtocolDayDate start,
+) {
   if (cycle == null || !cycle.anchorIsDefault || cycle.anchor == start) {
     return cycle;
   }
@@ -143,7 +152,7 @@ ProtocolCycle? _cycleFromStart(ProtocolCycle? cycle, ProtocolDayDate start) {
 /// Compound ids in order, and each Compound's member rows.
 class _ProtocolPlan {
   _ProtocolPlan._(this.protocol, this.compoundIds, this._rowsByCompound)
-      : cycle = _cycleFromStart(
+      : cycle = protocolCycleFromStart(
           protocol.period?.cycle,
           protocol.startLocalDate,
         );
@@ -233,7 +242,7 @@ class _VersionPlan {
       : days = switch (version.rule) {
           TimedScheduleRule(:final days) ||
           UntimedScheduleRule(:final days) =>
-            _daysFromStart(days, start),
+            scheduleDaysFromStart(days, start),
           AsNeededScheduleRule() || UnscheduledScheduleRule() => null,
         },
         planned = List<PlannedDose>.unmodifiable(
@@ -526,8 +535,8 @@ ProtocolDayDate? endDateForDoseCount({
   if (storedDays == null) {
     return null;
   }
-  final days = _daysFromStart(storedDays, startLocalDate);
-  final cycle = _cycleFromStart(period?.cycle, startLocalDate);
+  final days = scheduleDaysFromStart(storedDays, startLocalDate);
+  final cycle = protocolCycleFromStart(period?.cycle, startLocalDate);
   final cycleLength = cycle == null ? 1 : cycle.onDays + cycle.offDays;
 
   // Days are counted as offsets from the start. Ignoring Pauses, which day

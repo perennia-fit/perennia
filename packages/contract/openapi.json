@@ -7578,7 +7578,7 @@
               },
               "anchor_is_default": {
                 "type": "boolean",
-                "description": "True while the anchor is the Protocol's start date; such an anchor moves when the start moves."
+                "description": "True when the anchor is left at its default: it is read as the Protocol's startLocalDate, whatever date is stored, so it follows the start without a write."
               }
             },
             "required": [
@@ -7943,7 +7943,7 @@
               },
               "anchor_is_default": {
                 "type": "boolean",
-                "description": "True while the anchor is the Protocol's start date; such an anchor moves when the start moves."
+                "description": "True when the anchor is left at its default: it is read as the Protocol's startLocalDate, whatever date is stored, so it follows the start without a write."
               }
             },
             "required": [

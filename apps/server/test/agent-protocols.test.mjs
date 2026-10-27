@@ -2143,7 +2143,7 @@ test(
       days: { kind: "every_n_days", n: 3, anchor, anchor_is_default: anchorIsDefault },
       times: ["21:00"]
     });
-    const write = (startLocalDate, extra = {}) =>
+    const write = (startLocalDate, extra = {}, cycleAnchor = startLocalDate) =>
       post(app, "/agent/protocols/batch-write", {
         idempotencyKey: `start-move-${randomUUID()}`,
         today,
@@ -2154,7 +2154,7 @@ test(
             startLocalDate,
             period: {
               v: 1,
-              cycle: { on_days: 60, off_days: 30, anchor: startLocalDate, anchor_is_default: true },
+              cycle: { on_days: 60, off_days: 30, anchor: cycleAnchor, anchor_is_default: true },
               pauses: []
             },
             members,
@@ -2212,9 +2212,11 @@ test(
 
       // Earlier: a copy of each member's earliest version, dated from the new
       // start. The copy stores the new start in a default anchor, as the
-      // app's writes do; an anchor the Agent set stays.
+      // app's writes do; an anchor the Agent set stays. The write re-sends
+      // the period's default cycle anchor at the old start, as a read of the
+      // Protocol returns it, and the new start is stored there.
       const earlierStart = addDays(today, -40);
-      assert.equal((await write(earlierStart)).status, 200);
+      assert.equal((await write(earlierStart, {}, laterStart)).status, 200);
       assert.deepEqual(await anchors(defaultAnchorMember), [
         [earlierStart, earlierStart],
         [start, start]
@@ -2455,12 +2457,14 @@ test(
       );
 
       // Move the start earlier, archiving another member in the same write.
+      // The member archived before is left out of the write: a stored member
+      // of the Protocol gets its copy whether or not the write lists it, as
+      // the app copies from every member row it stores.
       const earlierStart = addDays(today, -45);
       assert.equal(
         (
           await write(earlierStart, [
             planned,
-            { ...archived, archived: true },
             { ...removedNow, archived: true },
             unscheduled,
             midCourse
@@ -2648,6 +2652,62 @@ test(
         new Date(archivedProtocol.deleted_at).getTime()
       );
       assert.equal((await versionsOf(kept.id)).length, 2);
+
+      // A Protocol tombstoned by undo (deleted_at with no archived_on) never
+      // existed: a write naming it is refused whatever it sends, a re-sent
+      // archived: true included, so it can't be edited or have its start
+      // moved, and no version is inserted for its members.
+      const undoneId = createUuidV7();
+      const undoneMember = { id: createUuidV7(), compoundId: createUuidV7(), position: 0 };
+      const writeUndone = (fields) =>
+        post(app, "/agent/protocols/batch-write", {
+          idempotencyKey: `archived-undone-${randomUUID()}`,
+          today,
+          protocols: [{ id: undoneId, name: "Undone", startLocalDate: start, ...fields }]
+        });
+      assert.equal(
+        (
+          await writeUndone({
+            members: [undoneMember],
+            schedules: [
+              {
+                id: createUuidV7(),
+                protocolCompoundId: undoneMember.id,
+                rule: timedDailyRule(["09:00"]),
+                ...creatineAmount
+              }
+            ]
+          })
+        ).status,
+        200
+      );
+      await database.sql`
+        update protocols
+        set deleted_at = now(),
+            payload = payload || jsonb_build_object('deleted_at', now(), 'archived_on', null)
+        where id = ${undoneId}
+      `;
+      for (const fields of [
+        { archived: true },
+        { archived: true, startLocalDate: addDays(start, -10), members: [undoneMember] },
+        { archived: true, name: "Renamed" },
+        { name: "Renamed" }
+      ]) {
+        const refused = await writeUndone(fields);
+        assert.equal(refused.status, 422, JSON.stringify(fields));
+        assert.deepEqual(
+          await rulesOf(refused),
+          ["archived_row_not_restorable"],
+          JSON.stringify(fields)
+        );
+      }
+      const [undone] = await database.sql`
+        select payload from protocols where id = ${undoneId}
+      `;
+      assert.equal(undone.payload.name, "Undone");
+      assert.equal(undone.payload.start_local_date, start);
+      assert.equal(undone.payload.archived_on, null);
+      assert.equal((await versionsOf(undoneMember.id)).length, 1);
     } finally {
       await database.close();
     }
@@ -2690,7 +2750,9 @@ test(
             id: protocolId,
             name: "Skin",
             startLocalDate,
-            period: { ...period, cycle: { ...period.cycle, anchor: startLocalDate } },
+            // Always the period as first written: its default cycle anchor
+            // stays at the first start, and a start move stores the new one.
+            period,
             members: [{ id: memberId, compoundId: createUuidV7(), position: 0 }],
             schedules
           }

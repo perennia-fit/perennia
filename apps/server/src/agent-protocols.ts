@@ -33,7 +33,6 @@ import {
   compareScheduleVersions,
   decodeProtocolPeriod,
   decodeScheduleRule,
-  encodeProtocolPeriod,
   encodeScheduleRule,
   epochDay,
   isJsonObject,
@@ -208,7 +207,7 @@ const ScheduleRuleDaysSchema = z
       }),
       anchor_is_default: z.boolean().openapi({
         description:
-          "True while the anchor is the Protocol's start date; such an anchor moves when the start moves."
+          "True when the anchor is left at its default: it is read as the Protocol's startLocalDate, whatever date is stored, so it follows the start without a write."
       })
     })
   ])
@@ -253,7 +252,7 @@ export const AgentProtocolPeriodSchema = z
         }),
         anchor_is_default: z.boolean().openapi({
           description:
-            "True while the anchor is the Protocol's start date; such an anchor moves when the start moves."
+            "True when the anchor is left at its default: it is read as the Protocol's startLocalDate, whatever date is stored, so it follows the start without a write."
         })
       })
       .nullable()
@@ -1762,9 +1761,7 @@ export function prepareAgentProtocolBatchWrite({
               // Stored as JSON text in the codec's encoding (Data shapes),
               // with its times and weekdays sorted, as writers store them (D7).
               () =>
-                JSON.stringify(
-                  encodeScheduleRule(decodeScheduleRule(sortedRule(scheduleRow.rule)))
-                ),
+                JSON.stringify(encodeScheduleRule(sortedRule(scheduleRow.rule) as ScheduleRule)),
               {
                 itemIndex,
                 entityId: scheduleRow.id,
@@ -1857,7 +1854,9 @@ const AGENT_TODAY_MAX_SKEW_DAYS = 1;
 /**
  * The stored period, as JSON text in the codec's encoding (Data shapes), the
  * form every writer stores: null when there is no cycle and no Pause, as the
- * app writes it (readers accept both forms, and a decoded object too).
+ * app writes it (readers accept both forms, and a decoded object too). The
+ * decoded period is already the encoding: decoding builds a fresh object of
+ * only the known keys, in stored order.
  */
 function storedPeriodText(
   period: z.infer<typeof AgentProtocolPeriodSchema> | null
@@ -1865,7 +1864,7 @@ function storedPeriodText(
   const decoded = decodeProtocolPeriod(period);
   return decoded === null || (decoded.cycle === null && decoded.pauses.length === 0)
     ? null
-    : JSON.stringify(encodeProtocolPeriod(decoded));
+    : JSON.stringify(decoded);
 }
 
 /**
@@ -3032,25 +3031,35 @@ async function finalizeProtocolPlanRows(
   // An archived Protocol is read-only, as it is in the app's editor (D1,
   // D6): a write that names one is refused whatever it sends, a re-sent
   // `archived: true` included. A row tombstoned by undo never existed, so it
-  // isn't "archived" here; it keeps the restore refusal below.
-  const archivedProtocolIds = new Set<string>();
+  // isn't "archived" here, but the app can't edit it either: a write that
+  // names one is refused with the restore refusal, also whatever it sends,
+  // so a re-sent `archived: true` can't edit it or move its start.
+  const refusedProtocolIds = new Set<string>();
   for (const row of protocols) {
     const stored = storedProtocols.get(row.id);
-    if (stored !== undefined && stored.deletedAt !== null && !isUndoTombstone(stored)) {
-      archivedProtocolIds.add(row.id);
-      issues.push(
-        entityIssue(row.itemIndex, row.id, {
-          field: row.field,
-          rule: "protocol_archived",
-          message:
-            "This Protocol is archived, and an archived Protocol is read-only. Create a new Protocol instead."
-        })
-      );
+    if (stored === undefined || stored.deletedAt === null) {
+      continue;
     }
+    refusedProtocolIds.add(row.id);
+    issues.push(
+      isUndoTombstone(stored)
+        ? entityIssue(row.itemIndex, row.id, {
+            field: row.field,
+            rule: "archived_row_not_restorable",
+            message:
+              "This Protocol was removed by undo and can't be restored or edited. Create a new Protocol instead."
+          })
+        : entityIssue(row.itemIndex, row.id, {
+            field: row.field,
+            rule: "protocol_archived",
+            message:
+              "This Protocol is archived, and an archived Protocol is read-only. Create a new Protocol instead."
+          })
+    );
   }
 
   for (const [rows, stored] of [
-    [protocols.filter((row) => !archivedProtocolIds.has(row.id)), storedProtocols],
+    [protocols.filter((row) => !refusedProtocolIds.has(row.id)), storedProtocols],
     [members, storedMembers]
   ] as const) {
     for (const row of rows) {
@@ -3083,7 +3092,7 @@ async function finalizeProtocolPlanRows(
     const oldStart = stored?.payload.start_local_date;
     const newStart = String(protocol.payload.start_local_date);
     if (
-      archivedProtocolIds.has(protocol.id) ||
+      refusedProtocolIds.has(protocol.id) ||
       typeof oldStart !== "string" ||
       !isValidLocalDate(oldStart) ||
       oldStart === newStart

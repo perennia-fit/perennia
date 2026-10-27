@@ -3135,6 +3135,63 @@ void main() {
     });
 
     test(
+        'a period whose default cycle anchor stores another date (an Agent '
+        'write) still saves as unchanged: the anchor reads as the start (D4)',
+        () async {
+      final creatineId = await createCompoundId('Creatine');
+      ProtocolDraft unchanged() => draft(
+            <String>[creatineId],
+            period: ProtocolPeriod(
+              cycle: ProtocolCycle(
+                onDays: 60,
+                offDays: 30,
+                anchor: start,
+                anchorIsDefault: true,
+              ),
+            ),
+            schedules: <String, ScheduleDraft?>{
+              creatineId: timed(<String>['09:00']),
+            },
+          );
+      final created = await repositories.protocols.createProtocol(
+        unchanged(),
+        today: today,
+      );
+      // An Agent stored a default anchor dated before the start; it is
+      // never read, since a default anchor plans from the start.
+      await (database.update(database.protocols)
+            ..where((row) => row.id.equals(created.protocolId)))
+          .write(
+        const ProtocolsCompanion(
+          period: Value<String?>(
+            '{"v":1,"cycle":{"on_days":60,"off_days":30,'
+            '"anchor":"2026-06-01","anchor_is_default":true},"pauses":[]}',
+          ),
+        ),
+      );
+      final protocolBefore = await (database.select(database.protocols)
+            ..where((row) => row.id.equals(created.protocolId)))
+          .getSingle();
+
+      final batchId = await repositories.protocols.editProtocol(
+        created.protocolId,
+        unchanged(),
+        today: tomorrow,
+      );
+
+      final protocolAfter = await (database.select(database.protocols)
+            ..where((row) => row.id.equals(created.protocolId)))
+          .getSingle();
+      expect(protocolAfter.updatedAt, protocolBefore.updatedAt);
+      expect(protocolAfter.period, protocolBefore.period);
+      expect(
+        (await repositories.activityLog.listEntries())
+            .where((entry) => entry.batchId == batchId),
+        isEmpty,
+      );
+    });
+
+    test(
         'a member added mid-course plans from today; one added before the '
         'start plans from the start', () async {
       final creatineId = await createCompoundId('Creatine');

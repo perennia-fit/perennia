@@ -18,6 +18,8 @@ import '../../domain/nutrition/nutrition_day_assembly.dart';
 import '../../domain/nutrition/nutrition_import.dart';
 import '../../domain/protocols/dose_validation.dart';
 import '../../domain/protocols/protocol_plan.dart';
+import '../../domain/protocols/protocol_plan_days.dart'
+    show protocolCycleFromStart, scheduleDaysFromStart;
 import '../../domain/protocols/protocol_plan_validation.dart';
 import '../../domain/protocols/protocol_validation.dart';
 import '../../domain/protocols/protocols.dart';
@@ -6786,7 +6788,7 @@ class ProtocolsRepository {
     if (before.name != name ||
         before.startLocalDate != start.storageValue ||
         before.endLocalDate != endLocalDate ||
-        _canonicalPeriodColumn(before.period) != period ||
+        _canonicalPeriodColumn(before.period, start) != period ||
         before.remindersEnabled != draft.remindersEnabled) {
       await (_database.update(_database.protocols)
             ..where((row) => row.id.equals(protocolId)))
@@ -7111,17 +7113,9 @@ class ProtocolsRepository {
     if (start.compareTo(previousStart) >= 0) {
       return;
     }
-    final members = await (_database.select(_database.protocolCompounds)
-          ..where(
-            (row) =>
-                row.protocolId.equals(protocolId) &
-                (row.deletedAt.isNull() | row.archivedOn.isNotNull()),
-          )
-          ..orderBy([
-            (row) => OrderingTerm.asc(row.position),
-            (row) => OrderingTerm.asc(row.id),
-          ]))
-        .get();
+    final members = await _plannedProtocolCompoundQuery(
+      protocolId: protocolId,
+    ).get();
     if (members.isEmpty) {
       return;
     }
@@ -7134,7 +7128,7 @@ class ProtocolsRepository {
     for (final member in members) {
       // Versions come in D1's order, so the first is the earliest.
       final versions = versionsByMember[member.id];
-      if (versions == null || versions.isEmpty) {
+      if (versions == null) {
         continue;
       }
       final firstDate = ProtocolDayDate.parse(versions.first.effectiveFrom);
@@ -7151,7 +7145,7 @@ class ProtocolsRepository {
         version: (
           rule: _mapRule(
             copy.rule,
-            days: (days) => _daysWithDefaultAnchorAt(days, start),
+            days: (days) => scheduleDaysFromStart(days, start),
           ),
           amount: copy.amount,
         ),
@@ -7201,7 +7195,7 @@ class ProtocolsRepository {
     // validators accept any order; the writers sort.
     final rule = _mapRule(
       draft.rule,
-      days: (days) => _daysWithDefaultAnchorAt(
+      days: (days) => scheduleDaysFromStart(
         switch (days) {
           WeekdayScheduleDays(:final weekdays) =>
             WeekdayScheduleDays(List<int>.of(weekdays)..sort()),
@@ -7246,19 +7240,6 @@ class ProtocolsRepository {
     };
   }
 
-  /// [days] with an every-N anchor that was left at its default moved to
-  /// [start] (D1); an anchor the user set stays.
-  ScheduleDays _daysWithDefaultAnchorAt(
-    ScheduleDays days,
-    ProtocolDayDate start,
-  ) =>
-      switch (days) {
-        EveryNDaysScheduleDays(:final n, :final anchorIsDefault)
-            when anchorIsDefault =>
-          EveryNDaysScheduleDays(n: n, anchor: start, anchorIsDefault: true),
-        _ => days,
-      };
-
   /// [period] as it is stored: null when it has no cycle and no Pause, and a
   /// cycle anchor that was left at its default moved to [start] (D1).
   ProtocolPeriod? _normalizedPeriod(
@@ -7268,19 +7249,10 @@ class ProtocolsRepository {
     if (period == null || (period.cycle == null && period.pauses.isEmpty)) {
       return null;
     }
-    final cycle = period.cycle;
-    if (cycle == null || !cycle.anchorIsDefault) {
-      return period;
-    }
-    return ProtocolPeriod(
-      cycle: ProtocolCycle(
-        onDays: cycle.onDays,
-        offDays: cycle.offDays,
-        anchor: start,
-        anchorIsDefault: true,
-      ),
-      pauses: period.pauses,
-    );
+    final cycle = protocolCycleFromStart(period.cycle, start);
+    return identical(cycle, period.cycle)
+        ? period
+        : ProtocolPeriod(cycle: cycle, pauses: period.pauses);
   }
 
   /// Whether [row] stores [version]. The rule is compared decoded, never as
@@ -7301,7 +7273,7 @@ class ProtocolsRepository {
     String comparable(ScheduleRule rule) => jsonEncode(
           _mapRule(
             rule,
-            days: (days) => _daysWithDefaultAnchorAt(days, protocolStart),
+            days: (days) => scheduleDaysFromStart(days, protocolStart),
           ).toJson(),
         );
     return comparable(ScheduleRule.fromJson(jsonDecode(row.rule))) ==
@@ -7477,6 +7449,27 @@ class ProtocolsRepository {
       (row) => OrderingTerm.asc(row.id),
     ]);
     return query;
+  }
+
+  /// Member rows the plan reads: every row except those tombstoned by undo
+  /// (`deleted_at` without `archived_on`), which never existed (D1), so
+  /// archived members are included with their `archived_on`. Optionally
+  /// scoped to one Protocol.
+  SimpleSelectStatement<$ProtocolCompoundsTable, ProtocolCompoundRow>
+      _plannedProtocolCompoundQuery({String? protocolId}) {
+    return _database.select(_database.protocolCompounds)
+      ..where((row) {
+        Expression<bool> predicate =
+            row.deletedAt.isNull() | row.archivedOn.isNotNull();
+        if (protocolId != null) {
+          predicate = predicate & row.protocolId.equals(protocolId);
+        }
+        return predicate;
+      })
+      ..orderBy([
+        (row) => OrderingTerm.asc(row.position),
+        (row) => OrderingTerm.asc(row.id),
+      ]);
   }
 
   SimpleSelectStatement<$ProtocolCompoundsTable, ProtocolCompoundRow>
@@ -15732,9 +15725,21 @@ ScheduleRow? _scheduleRowInEffectOn(
 /// A stored `period` column re-encoded in the codec's key order, so two
 /// columns that hold the same period compare equal however they were
 /// written; null stays null.
-String? _canonicalPeriodColumn(String? column) {
+///
+/// A default cycle anchor is read as [start], as `planDays` reads it (D4):
+/// its stored date is never read, so a column whose default anchor stores
+/// another date (an Agent's write, say) still compares equal to the save's
+/// period, and an unchanged save leaves the Protocol row alone.
+String? _canonicalPeriodColumn(String? column, ProtocolDayDate start) {
   final period = _protocolPeriodFromColumn(column);
-  return period == null ? null : jsonEncode(period.toJson());
+  return period == null
+      ? null
+      : jsonEncode(
+          ProtocolPeriod(
+            cycle: protocolCycleFromStart(period.cycle, start),
+            pauses: period.pauses,
+          ).toJson(),
+        );
 }
 
 ProtocolDayDate? _nullableProtocolDay(String? value) =>
