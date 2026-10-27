@@ -94,8 +94,10 @@ Offline-first, and deliberately boring:
   reversible in one action.
 - **Deleting is archiving.** User-facing deletes tombstone the row so history
   survives and sync converges. Nothing cascades.
-- The most sensitive domain syncs as an **opaque payload**: the server stores and
-  moves it without being able to read it.
+- Protocols data (Compounds, Protocols, Schedules and Doses) syncs like every
+  other domain. The server stores each row as a JSON payload and **reads it**,
+  which is what gives the user's Agent the same access the app has. It is not
+  end-to-end encrypted.
 
 ## Validation
 

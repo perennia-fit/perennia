@@ -37,3 +37,12 @@ to a case shape increments all of them in the same change.
 Cases contain no IANA timezone names. The core works only in local dates and
 `HH:MM` wall-clock times, and receives "today" and "now" as inputs; a UTC
 offset appears only as an input of `effect_bounds` cases.
+
+## Barcode candidates
+
+`m36-barcode-candidates.json` (domain `barcode-candidates`) pins how a scanned
+or typed code becomes the list of Open Food Facts barcodes to try. The app runs
+it in `apps/mobile/test/domain/barcode_candidates_golden_test.dart` against
+`barcodeCandidates` in `apps/mobile/lib/domain/nutrition/open_food_facts.dart`;
+the server runs it in `apps/server/test/barcode-candidates.golden.test.mjs`
+against `apps/server/src/barcode-candidates.ts`.
