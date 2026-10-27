@@ -4273,6 +4273,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Off-cycle and paused days are counted as during.'**
   String get effectPlanBreaksCountedAsDuring;
+
+  /// No description provided for @plannedListRowLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged'**
+  String get plannedListRowLogged;
+
+  /// No description provided for @plannedListRowPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get plannedListRowPending;
+
+  /// No description provided for @plannedListRowNotLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'Not logged'**
+  String get plannedListRowNotLogged;
+
+  /// No description provided for @plannedListAnyTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Any time'**
+  String get plannedListAnyTime;
+
+  /// No description provided for @plannedListLogAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Log all planned'**
+  String get plannedListLogAll;
+
+  /// No description provided for @logDoseDateLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Date'**
+  String get logDoseDateLabel;
+
+  /// No description provided for @dayStatusNotPlanned.
+  ///
+  /// In en, this message translates to:
+  /// **'Not planned'**
+  String get dayStatusNotPlanned;
+
+  /// No description provided for @dayStatusPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused'**
+  String get dayStatusPaused;
+
+  /// No description provided for @dayStatusOffCycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Off cycle'**
+  String get dayStatusOffCycle;
+
+  /// No description provided for @dayStatusPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get dayStatusPending;
+
+  /// No description provided for @dayStatusLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged'**
+  String get dayStatusLogged;
+
+  /// No description provided for @dayStatusPartlyLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'Partly logged'**
+  String get dayStatusPartlyLogged;
+
+  /// No description provided for @dayStatusNotLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'Not logged'**
+  String get dayStatusNotLogged;
+
+  /// No description provided for @notPlannedReasonNotScheduledToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Not scheduled today'**
+  String get notPlannedReasonNotScheduledToday;
+
+  /// No description provided for @notPlannedReasonAsNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'As needed'**
+  String get notPlannedReasonAsNeeded;
+
+  /// No description provided for @notPlannedReasonNoSchedule.
+  ///
+  /// In en, this message translates to:
+  /// **'No schedule'**
+  String get notPlannedReasonNoSchedule;
+
+  /// No description provided for @notPlannedReasonRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed'**
+  String get notPlannedReasonRemoved;
+
+  /// No description provided for @notPlannedReasonOutside.
+  ///
+  /// In en, this message translates to:
+  /// **'Outside the Protocol\'s dates'**
+  String get notPlannedReasonOutside;
 }
 
 class _AppLocalizationsDelegate

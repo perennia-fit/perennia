@@ -328,6 +328,7 @@ class _CompoundRow extends ConsumerWidget {
     CompoundRecord compound,
   ) async {
     final controller = ref.read(protocolDayControllerProvider.notifier);
+    final protocolDay = ref.read(selectedProtocolDayProvider);
     final lastDose = await controller.lastDoseFor(compound.id);
     if (!context.mounted) {
       return;
@@ -339,7 +340,13 @@ class _CompoundRow extends ConsumerWidget {
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
         ),
-        child: LogDoseSheet(compound: compound, lastDose: lastDose),
+        // The sheet logs on the selected Protocol Day, so a past day
+        // defaults to 12:00 on that date and today to now (D6).
+        child: LogDoseSheet(
+          compound: compound,
+          lastDose: lastDose,
+          initialDate: protocolDay,
+        ),
       ),
     );
   }

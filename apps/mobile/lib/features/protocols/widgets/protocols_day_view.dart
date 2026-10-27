@@ -5,14 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/protocol_controller.dart';
 import '../controllers/protocols_day_controller.dart';
 import 'compound_list_screen.dart';
 import 'protocol_screen.dart';
 
-/// The Protocol Day view (walking skeleton): a derived
-/// `Protocol Day` list. Its FAB hands off to the Compound list
+/// The Protocol Day view: a derived `Protocol Day` list, topped by the
+/// Planned list (D6) when the day has anything planned. Its FAB hands off to
+/// the Compound list
 /// (`CompoundListScreen`) — the ≤2-tap "repeat dose" entry point —
 /// rather than duplicating a picker here; logging always starts from an
 /// existing `Compound`.
@@ -31,8 +33,16 @@ class ProtocolsDayView extends ConsumerStatefulWidget {
   static const emptyStateKey = Key('protocols.day.empty');
   static const logDoseButtonKey = Key('protocols.day.logDose');
   static const protocolsButtonKey = Key('protocols.day.protocols');
+  static const plannedListKey = Key('protocols.day.plannedList');
+  static const logAllPlannedButtonKey = Key('protocols.day.logAllPlanned');
 
   static Key doseRowKey(String id) => Key('protocols.day.dose-$id');
+
+  static Key plannedGroupKey(String protocolId) =>
+      Key('protocols.day.planned-$protocolId');
+
+  static Key plannedRowKey(String protocolId, String compoundId, int slot) =>
+      Key('protocols.day.planned-$protocolId-$compoundId-$slot');
 
   @override
   ConsumerState<ProtocolsDayView> createState() => _ProtocolsDayViewState();
@@ -75,7 +85,10 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
         ],
       ),
       body: dayState.when(
-        data: (state) => _ProtocolDayBody(day: state.day),
+        data: (state) => _ProtocolDayBody(
+          day: state.day,
+          plannedDay: state.plannedDay,
+        ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
           child: Padding(
@@ -124,45 +137,343 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
 }
 
 class _ProtocolDayBody extends StatelessWidget {
-  const _ProtocolDayBody({required this.day});
+  const _ProtocolDayBody({required this.day, this.plannedDay});
 
   final ProtocolDayRecord day;
+  final PlannedDay? plannedDay;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final planned = plannedDay;
+    final showPlanned = planned != null && planned.hasPlanned;
+    final emptyMessage = Text(
+      'No doses logged for this day.',
+      style: TextStyle(color: colors.textSecondary),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _ProtocolDayHeader(localDate: day.localDate),
         Expanded(
-          child: day.isEmpty
+          child: !showPlanned && day.isEmpty
               ? Center(
                   key: ProtocolsDayView.emptyStateKey,
                   child: Padding(
                     padding: const EdgeInsets.all(AppDimens.base),
-                    child: Text(
-                      'No doses logged for this day.',
-                      style: TextStyle(color: colors.textSecondary),
-                    ),
+                    child: emptyMessage,
                   ),
                 )
-              : ListView.separated(
-                  key: ProtocolsDayView.doseListKey,
+              : ListView(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppDimens.base,
                   ),
-                  itemCount: day.doses.length,
-                  separatorBuilder: (_, __) =>
-                      Divider(height: 1, color: colors.divider),
-                  itemBuilder: (context, index) =>
-                      _DoseRow(dose: day.doses[index]),
+                  children: [
+                    // The Planned list sits at the top of the day, above
+                    // the logged Doses, and is hidden when nothing is
+                    // planned (D6).
+                    if (showPlanned) _PlannedList(plannedDay: planned),
+                    if (day.isEmpty)
+                      Padding(
+                        key: ProtocolsDayView.emptyStateKey,
+                        padding: const EdgeInsets.all(AppDimens.base),
+                        child: Center(child: emptyMessage),
+                      )
+                    else
+                      Column(
+                        key: ProtocolsDayView.doseListKey,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (var index = 0;
+                              index < day.doses.length;
+                              index += 1) ...[
+                            if (index > 0)
+                              Divider(height: 1, color: colors.divider),
+                            _DoseRow(dose: day.doses[index]),
+                          ],
+                        ],
+                      ),
+                  ],
                 ),
         ),
       ],
     );
   }
+}
+
+/// The Planned list (D6): one row per planned dose of the day, grouped under
+/// its Protocol, each with the Compound, the planned time (or "Any time"),
+/// the amount, and one text label. Color is never the only signal: every
+/// label is a word, and its icon only echoes it.
+///
+/// * Today: rows read "Logged" or "Pending"; tapping a row opens the log
+///   sheet, and "Log all planned" logs every due unfilled row in one Batch.
+/// * A past day: rows read "Logged" or "Not logged"; tapping a row opens
+///   the log sheet on that date. There is no bulk action.
+/// * A future day: rows show their times and amounts only, with no label
+///   and no log action.
+class _PlannedList extends ConsumerWidget {
+  const _PlannedList({required this.plannedDay});
+
+  final PlannedDay plannedDay;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.colors;
+    final l10n = context.l10n;
+    final groups = plannedDay.groups;
+    final anyPending = groups.any(
+      (group) => group.rows.any(
+        (row) => row.status == PlannedRowStatus.pending,
+      ),
+    );
+
+    return Padding(
+      key: ProtocolsDayView.plannedListKey,
+      padding: const EdgeInsets.only(bottom: AppDimens.base),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: AppRadii.cardMd,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppDimens.base),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < groups.length; index += 1) ...[
+                if (index > 0) const SizedBox(height: AppDimens.dense),
+                _PlannedGroup(plannedDay: plannedDay, group: groups[index]),
+              ],
+              // Only today's Protocol Day offers the bulk action (D6), and
+              // only while something on it is still unfilled.
+              if (plannedDay.isToday && anyPending) ...[
+                const SizedBox(height: AppDimens.dense),
+                SizedBox(
+                  height: AppDimens.touchTarget,
+                  child: FilledButton(
+                    key: ProtocolsDayView.logAllPlannedButtonKey,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colors.save,
+                    ),
+                    onPressed: () => unawaited(
+                      ref
+                          .read(protocolDayControllerProvider.notifier)
+                          .logAllPlanned(),
+                    ),
+                    child: Text(l10n.plannedListLogAll),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlannedGroup extends StatelessWidget {
+  const _PlannedGroup({required this.plannedDay, required this.group});
+
+  final PlannedDay plannedDay;
+  final PlannedRowGroup group;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Column(
+      key: ProtocolsDayView.plannedGroupKey(group.protocol.id),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          group.protocol.name,
+          style: context.textStyles.label.copyWith(
+            color: colors.textSecondary,
+          ),
+        ),
+        for (final row in group.rows)
+          _PlannedRowTile(
+            plannedDay: plannedDay,
+            protocol: group.protocol,
+            row: row,
+          ),
+      ],
+    );
+  }
+}
+
+class _PlannedRowTile extends ConsumerWidget {
+  const _PlannedRowTile({
+    required this.plannedDay,
+    required this.protocol,
+    required this.row,
+  });
+
+  final PlannedDay plannedDay;
+  final ProtocolOptionRecord protocol;
+  final PlannedRow row;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.colors;
+    final l10n = context.l10n;
+    final compound = plannedDay.compounds[row.compoundId];
+    final plannedTime = row.plannedLocalTime;
+    final timeLabel = plannedTime == null
+        ? l10n.plannedListAnyTime
+        : _timeOfDay(plannedTime).format(context);
+    final amount = row.amount;
+    final unit = amount.unit;
+    final amountLabel = <String>[
+      if (amount.amountEntered != null) amount.amountEntered!,
+      if (unit != null) doseUnitLabel(unit),
+    ].join(' ');
+    final detail = <String>[
+      if (amountLabel.isNotEmpty) amountLabel,
+      timeLabel,
+    ].join(' · ');
+    // A future day has no log action (D6); nor can a row whose Compound
+    // row is missing, which no validated plan holds.
+    final canLog = !plannedDay.isFuture && compound != null;
+
+    final content = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppDimens.dense / 2),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    compound?.name ?? row.compoundId,
+                    style: TextStyle(
+                      color: colors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detail,
+                    style: TextStyle(color: colors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            if (row.status != PlannedRowStatus.none)
+              _PlannedRowLabel(status: row.status),
+          ],
+        ),
+      ),
+    );
+
+    if (!canLog) {
+      return KeyedSubtree(
+        key: ProtocolsDayView.plannedRowKey(
+          row.protocolId,
+          row.compoundId,
+          row.slot,
+        ),
+        child: content,
+      );
+    }
+    return InkWell(
+      key: ProtocolsDayView.plannedRowKey(
+        row.protocolId,
+        row.compoundId,
+        row.slot,
+      ),
+      onTap: () => unawaited(_openLogSheet(context, compound)),
+      child: content,
+    );
+  }
+
+  /// Opens the log sheet for this row (D6): prefilled with the planned
+  /// amount, unit and route, tagged with the row's Protocol, on the row's
+  /// date. The sheet decides the time: now on today; on a past day the
+  /// planned time on that date, or 12:00 for an untimed row.
+  Future<void> _openLogSheet(
+    BuildContext context,
+    CompoundRecord compound,
+  ) async {
+    final plannedTime = row.plannedLocalTime;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+        ),
+        child: LogDoseSheet(
+          compound: compound,
+          initialDate: plannedDay.localDate,
+          initialTime: plannedTime == null ? null : _timeOfDay(plannedTime),
+          plannedAmount: row.amount,
+          plannedRoute: row.amount.route,
+          protocol: protocol,
+        ),
+      ),
+    );
+  }
+}
+
+/// The one label of a Planned list row, as a word with an icon echoing it.
+class _PlannedRowLabel extends StatelessWidget {
+  const _PlannedRowLabel({required this.status});
+
+  final PlannedRowStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final l10n = context.l10n;
+    final (IconData icon, Color iconColor, String label) = switch (status) {
+      PlannedRowStatus.logged => (
+          Icons.check_circle,
+          colors.save,
+          l10n.plannedListRowLogged,
+        ),
+      PlannedRowStatus.pending => (
+          Icons.schedule,
+          colors.textSecondary,
+          l10n.plannedListRowPending,
+        ),
+      PlannedRowStatus.notLogged => (
+          Icons.remove_circle_outline,
+          colors.textSecondary,
+          l10n.plannedListRowNotLogged,
+        ),
+      PlannedRowStatus.none => (
+          Icons.circle_outlined,
+          colors.textSecondary,
+          ''
+        ),
+    };
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ExcludeSemantics(child: Icon(icon, size: 18, color: iconColor)),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: context.textStyles.label.copyWith(
+            color: colors.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+TimeOfDay _timeOfDay(String localTime) {
+  final minutes = planLocalTimeMinutes(localTime);
+  return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 }
 
 /// The date header: a swipe/arrow-navigable strip mirroring
@@ -307,8 +618,15 @@ class _DoseRow extends StatelessWidget {
 /// (PROTOCOLS.md §5): an amount stepper (`components.stepper-button`,
 /// `numeral-hero` readout), unit + route chips drawn ONLY from the curated
 /// registries (off-registry is impossible by construction, since
-/// the chips are generated from the enums themselves), and a time defaulting
-/// to now with a picker to adjust.
+/// the chips are generated from the enums themselves), and a date and a time
+/// with pickers to adjust them (CUJ 7).
+///
+/// **The time default (D6).** On today's Protocol Day the time is now. On a
+/// past day ([initialDate] before today) it is [initialTime] on that date,
+/// or 12:00 when there is none. A day after today is treated as today: the
+/// sheet never defaults to a moment that hasn't happened. The time is never
+/// prefilled from the last Dose, because that default recorded times that
+/// never happened.
 ///
 /// Always logs against an existing `Compound` — Compound creation lives
 /// exclusively in `CompoundEditorSheet` — so opening this sheet for
@@ -317,24 +635,40 @@ class _DoseRow extends StatelessWidget {
 /// caller, e.g. via `ProtocolDayController.lastDoseFor`): its
 /// amount/unit/route seed the draft on top of `DoseSnapshotDraft.fromCompound`
 /// when present; a Compound with no prior Dose falls back to its default
-/// unit/route. Local-first: `Save` confirms within one frame — no spinner, no
-/// network on the logging path.
+/// unit/route. Opened from a Planned list row, [plannedAmount],
+/// [plannedRoute] and [protocol] seed the draft instead: the row's planned
+/// amount, unit and route, tagged with its Protocol. Local-first: `Save`
+/// confirms within one frame — no spinner, no network on the logging path.
 ///
 /// The [LogDoseSheet.edit] constructor reuses this SAME entry surface as the
 /// Protocol Day review surface's tap-to-edit/delete: it seeds every
 /// field straight from the tapped [DoseRecord] (never a live `Compound`
 /// lookup — a Dose is self-describing, PROTOCOLS.md §1.1), preserves the
-/// Dose's already-frozen local date/timezone/provenance untouched,
-/// and adds a Delete action that routes through
-/// `ProtocolsRepository.deleteDose` (tombstone + undo-recoverable, no
+/// Dose's already-frozen local date/timezone/provenance untouched while its
+/// time stands, lets its date and time change (the local date and offset are
+/// then frozen again from the new time), and adds a Delete action that routes
+/// through `ProtocolsRepository.deleteDose` (tombstone + undo-recoverable, no
 /// cascade) — never bypassing the Activity Log.
 class LogDoseSheet extends ConsumerStatefulWidget {
-  const LogDoseSheet({super.key, required this.compound, this.lastDose})
-      : editingDose = null;
+  const LogDoseSheet({
+    super.key,
+    required this.compound,
+    this.lastDose,
+    this.initialDate,
+    this.initialTime,
+    this.plannedAmount,
+    this.plannedRoute,
+    this.protocol,
+  }) : editingDose = null;
 
   const LogDoseSheet.edit({super.key, required DoseRecord dose})
       : compound = null,
         lastDose = null,
+        initialDate = null,
+        initialTime = null,
+        plannedAmount = null,
+        plannedRoute = null,
+        protocol = null,
         editingDose = dose;
 
   /// The Compound this Dose logs against. Null in edit mode (a Dose reads its
@@ -350,10 +684,31 @@ class LogDoseSheet extends ConsumerStatefulWidget {
   /// new Dose against [compound].
   final DoseRecord? editingDose;
 
+  /// The Protocol Day the sheet logs on, or null for today. Decides the time
+  /// default with [initialTime] (see the class docs).
+  final ProtocolDayDate? initialDate;
+
+  /// The time to default to on a past [initialDate]: a Planned list row's
+  /// planned time. Null means 12:00 there; ignored on today.
+  final TimeOfDay? initialTime;
+
+  /// A Planned list row's planned amount and unit, which seed the draft over
+  /// the last Dose's. Only complete amounts seed it.
+  final PlanAmount? plannedAmount;
+
+  /// A Planned list row's planned route, which seeds the draft over the last
+  /// Dose's.
+  final DoseRoute? plannedRoute;
+
+  /// The Protocol a Planned list row belongs to, preselected as the Dose's
+  /// tag. Null logs an untagged Dose by default.
+  final ProtocolOptionRecord? protocol;
+
   static const amountFieldKey = Key('protocols.logDose.amount');
   static const decrementButtonKey = Key('protocols.logDose.decrement');
   static const incrementButtonKey = Key('protocols.logDose.increment');
   static const timeFieldKey = Key('protocols.logDose.time');
+  static const dateFieldKey = Key('protocols.logDose.date');
 
   /// The OPTIONAL `Protocol` tag picker (PROTOCOLS.md §1.4): tags a
   /// Dose at log time or after (this SAME sheet is the edit surface too,
@@ -399,8 +754,8 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
     _unit = seed.unit;
     _route = seed.route;
     _tookAt = _seedTookAt();
-    _protocolId = widget.editingDose?.protocolId;
-    _protocolName = widget.editingDose?.protocolName;
+    _protocolId = widget.editingDose?.protocolId ?? widget.protocol?.id;
+    _protocolName = widget.editingDose?.protocolName ?? widget.protocol?.name;
   }
 
   @override
@@ -415,8 +770,9 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   /// editable. Otherwise `DoseSnapshotDraft.fromCompound` is the
   /// seed (the Compound's default unit/route + a placeholder amount); the
   /// last Dose's amount/unit/route overlay it when present (prefill-from-last,
-  /// PROTOCOLS.md §5). A Compound with no prior Dose keeps the Compound's
-  /// defaults (first-time fallback).
+  /// PROTOCOLS.md §5), and a Planned list row's planned amount/unit/route
+  /// overlay that (D6). A Compound with no prior Dose and no plan keeps the
+  /// Compound's defaults (first-time fallback).
   DoseSnapshotDraft _seedDraft() {
     final editingDose = widget.editingDose;
     if (editingDose != null) {
@@ -436,36 +792,41 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
     }
     final compound = widget.compound!;
     final lastDose = widget.lastDose;
+    final planned = widget.plannedAmount;
+    final plannedValue = planned?.amountValue;
+    final plannedEntered = planned?.amountEntered;
+    final hasPlannedAmount = plannedValue != null && plannedEntered != null;
     return DoseSnapshotDraft.fromCompound(
       compound: compound,
-      amountValue: lastDose?.amountValue ?? 1,
-      amountEntered: lastDose?.amountEntered ?? '1',
-      unit: lastDose?.unit ?? compound.defaultUnit,
-      route: lastDose?.route ?? compound.defaultRoute,
-      tookAt: DateTime.now(),
+      amountValue: hasPlannedAmount ? plannedValue : lastDose?.amountValue ?? 1,
+      amountEntered:
+          hasPlannedAmount ? plannedEntered : lastDose?.amountEntered ?? '1',
+      unit: planned?.unit ?? lastDose?.unit ?? compound.defaultUnit,
+      route: widget.plannedRoute ?? lastDose?.route ?? compound.defaultRoute,
+      tookAt: _now(),
     );
   }
 
-  /// The dose instant always defaults to NOW when logging a new Dose — the
-  /// moment actually being logged — never a stale absolute timestamp copied
-  /// from history. When a last Dose exists its LOCAL time-of-day (the
-  /// Compound's usual dosing time) prefills onto today's date, which is still
-  /// "now" enough to save untouched while remaining adjustable via the time
-  /// picker. In edit mode the instant seeds from the Dose being edited
-  /// (its own date, not "today") so an untouched Save cannot silently move it.
+  DateTime _now() => ref.read(protocolsClockProvider)().toLocal();
+
+  /// The dose instant's default (D6). In edit mode it seeds from the Dose
+  /// being edited (its own date, not "today"), so an untouched Save cannot
+  /// silently move it. Otherwise: now on today; on a past [initialDate], its
+  /// [initialTime], or 12:00 when there is none. A day after today reads as
+  /// today, so the default is never a moment still to come.
   DateTime _seedTookAt() {
     final editingDose = widget.editingDose;
     if (editingDose != null) {
       return editingDose.tookAt.toLocal();
     }
-    final now = DateTime.now();
-    final lastDose = widget.lastDose;
-    if (lastDose == null) {
+    final now = _now();
+    final date = widget.initialDate;
+    if (date == null ||
+        date.compareTo(ProtocolDayDate.fromDateTime(now)) >= 0) {
       return now;
     }
-    final lastLocal = lastDose.tookAt.toLocal();
-    return DateTime(
-        now.year, now.month, now.day, lastLocal.hour, lastLocal.minute);
+    final time = widget.initialTime ?? const TimeOfDay(hour: 12, minute: 0);
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
   @override
@@ -552,35 +913,19 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
               ],
             ),
             const SizedBox(height: AppDimens.base),
-            InkWell(
-              key: LogDoseSheet.timeFieldKey,
-              borderRadius: AppRadii.cardMd,
+            _MomentField(
+              fieldKey: LogDoseSheet.dateFieldKey,
+              icon: Icons.calendar_today_outlined,
+              label: context.l10n.logDoseDateLabel,
+              value: DateFormat.yMMMd().format(_tookAt),
+              onTap: _pickDate,
+            ),
+            _MomentField(
+              fieldKey: LogDoseSheet.timeFieldKey,
+              icon: Icons.access_time,
+              label: 'Time',
+              value: TimeOfDay.fromDateTime(_tookAt).format(context),
               onTap: _pickTime,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minHeight: AppDimens.touchTarget,
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.access_time, color: colors.textSecondary),
-                    const SizedBox(width: AppDimens.dense),
-                    Expanded(
-                      child: Text(
-                        'Time',
-                        style: context.textStyles.body.copyWith(
-                          color: colors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      TimeOfDay.fromDateTime(_tookAt).format(context),
-                      style: context.textStyles.body.copyWith(
-                        color: colors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
             const SizedBox(height: AppDimens.base),
             DropdownButtonFormField<String?>(
@@ -611,6 +956,32 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
         ),
       ),
     );
+  }
+
+  /// Moves the Dose to another date, keeping its time of day (CUJ 7). The
+  /// picker ends at today, or at the Dose's own date when that is later, so
+  /// it never offers a day that hasn't happened.
+  Future<void> _pickDate() async {
+    final current = DateTime(_tookAt.year, _tookAt.month, _tookAt.day);
+    final now = _now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(1900),
+      lastDate: current.isAfter(today) ? current : today,
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _tookAt = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          _tookAt.hour,
+          _tookAt.minute,
+        );
+      });
+    }
   }
 
   Future<void> _pickTime() async {
@@ -758,10 +1129,12 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
     try {
       final editingDose = widget.editingDose;
       if (editingDose != null) {
-        // The Dose's own frozen compound identity/timezone/local
-        // date/provenance carry over untouched — an edit only ever changes
-        // amount/unit/route/time-of-day, and NEVER re-derives the local date
-        // from the device's current timezone.
+        // The Dose's own frozen compound identity and provenance carry over
+        // untouched. While its moment stands, so do its frozen timezone and
+        // local date: an edit NEVER re-derives them from the device's
+        // current timezone. A new date or time is a new moment, so both are
+        // left out and the repository freezes them again from it (D6).
+        final momentChanged = _tookAt.toUtc() != editingDose.tookAt.toUtc();
         await controller.editDose(
           editingDose.id,
           DoseSnapshotDraft(
@@ -773,8 +1146,8 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
             unit: _unit,
             route: _route,
             tookAt: _tookAt,
-            timezone: editingDose.timezone,
-            localDate: editingDose.localDate,
+            timezone: momentChanged ? null : editingDose.timezone,
+            localDate: momentChanged ? null : editingDose.localDate,
             provenance: editingDose.provenance,
             protocolId: _protocolId,
             protocolName: _protocolName,
@@ -857,6 +1230,59 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
     if (mounted) {
       await Navigator.of(context).maybePop();
     }
+  }
+}
+
+/// One labelled row of the log sheet that opens a picker: the date or the
+/// time. A full-width 48 dp target.
+class _MomentField extends StatelessWidget {
+  const _MomentField({
+    required this.fieldKey,
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final Key fieldKey;
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return InkWell(
+      key: fieldKey,
+      borderRadius: AppRadii.cardMd,
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: AppDimens.touchTarget,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: colors.textSecondary),
+            const SizedBox(width: AppDimens.dense),
+            Expanded(
+              child: Text(
+                label,
+                style: context.textStyles.body.copyWith(
+                  color: colors.textPrimary,
+                ),
+              ),
+            ),
+            Text(
+              value,
+              style: context.textStyles.body.copyWith(
+                color: colors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

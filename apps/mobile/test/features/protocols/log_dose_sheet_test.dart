@@ -5,6 +5,7 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/widgets/protocols_day_view.dart';
+import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
 /// The Track-tab analog for logging a `Dose` (PROTOCOLS.md §5): an
@@ -293,6 +294,9 @@ void main() {
         protocolOptions: <ProtocolOptionRecord>[_leanBulkProtocolOption()],
       );
 
+      // The date field makes the sheet taller than the test surface.
+      await tester.ensureVisible(find.byKey(LogDoseSheet.protocolFieldKey));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(LogDoseSheet.protocolFieldKey));
       await tester.pumpAndSettle();
       await tester.tap(find.text('None (ad-hoc)').last);
@@ -305,6 +309,247 @@ void main() {
       expect(controller.editedDoses, hasLength(1));
       expect(controller.editedDoses.single.draft.protocolId, isNull);
       expect(controller.editedDoses.single.draft.protocolName, isNull);
+    },
+  );
+
+  group('the time default (D6)', () {
+    testWidgets(
+      'on today the time is now, never the last Dose\'s time of day',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        // The last Dose was at 08:00 two days ago; that time is not reused.
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: _doseRecord(
+            amountValue: 2,
+            amountEntered: '2',
+            unit: DoseUnit.capsule,
+            route: DoseRoute.sublingual,
+          ),
+          controller: controller,
+        );
+
+        expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '3:30 PM');
+        expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 27, 2026');
+
+        await _save(tester);
+        expect(controller.loggedDoses.single.tookAt, _now);
+      },
+    );
+
+    testWidgets(
+      'on today a planned time is ignored: the time is still now',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: controller,
+          initialDate: _today,
+          initialTime: const TimeOfDay(hour: 9, minute: 0),
+        );
+
+        await _save(tester);
+        expect(controller.loggedDoses.single.tookAt, _now);
+      },
+    );
+
+    testWidgets(
+      'on a past day the time is the planned time on that date (CUJ 7)',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: controller,
+          initialDate: _yesterday,
+          initialTime: const TimeOfDay(hour: 21, minute: 0),
+        );
+
+        expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 26, 2026');
+        expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '9:00 PM');
+
+        await _save(tester);
+        final dose = controller.loggedDoses.single;
+        expect(dose.tookAt, DateTime(2026, 10, 26, 21));
+        // The local date is frozen from the new moment by the repository.
+        expect(dose.localDate, isNull);
+      },
+    );
+
+    testWidgets(
+      'on a past day with no planned time the time is 12:00',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: controller,
+          initialDate: _yesterday,
+        );
+
+        expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '12:00 PM');
+        await _save(tester);
+        expect(
+            controller.loggedDoses.single.tookAt, DateTime(2026, 10, 26, 12));
+      },
+    );
+
+    testWidgets(
+      'a future day reads as today, so the time is now and never a moment '
+      'still to come',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: controller,
+          initialDate: _tomorrow,
+          initialTime: const TimeOfDay(hour: 9, minute: 0),
+        );
+
+        await _save(tester);
+        expect(controller.loggedDoses.single.tookAt, _now);
+      },
+    );
+  });
+
+  testWidgets(
+    'a Planned list row prefills its planned amount, unit and route over the '
+    'last Dose, tagged with its Protocol',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      await _pumpSheet(
+        tester,
+        compound: _vitaminD(),
+        lastDose: _doseRecord(
+          amountValue: 2,
+          amountEntered: '2',
+          unit: DoseUnit.capsule,
+          route: DoseRoute.sublingual,
+        ),
+        controller: controller,
+        protocolOptions: <ProtocolOptionRecord>[_leanBulkProtocolOption()],
+        plannedAmount: const PlanAmount(
+          amountValue: 2000,
+          amountEntered: '2000',
+          unit: DoseUnit.internationalUnit,
+          route: DoseRoute.oral,
+        ),
+        plannedRoute: DoseRoute.oral,
+        protocol: _leanBulkProtocolOption(),
+      );
+
+      expect(find.text('2000'), findsOneWidget);
+      expect(
+        _chipSelected(
+          tester,
+          LogDoseSheet.unitChipKey(DoseUnit.internationalUnit),
+        ),
+        isTrue,
+      );
+      expect(
+        _chipSelected(tester, LogDoseSheet.routeChipKey(DoseRoute.oral)),
+        isTrue,
+      );
+      expect(find.text('Lean bulk'), findsOneWidget);
+
+      await _save(tester);
+      final dose = controller.loggedDoses.single;
+      expect(dose.amountEntered, '2000');
+      expect(dose.unit, DoseUnit.internationalUnit);
+      expect(dose.route, DoseRoute.oral);
+      expect(dose.protocolId, 'protocol-1');
+      expect(dose.protocolName, 'Lean bulk');
+    },
+  );
+
+  testWidgets(
+    'the date field moves a new Dose to another day, keeping its time',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      await _pumpSheet(
+        tester,
+        compound: _vitaminD(),
+        lastDose: null,
+        controller: controller,
+      );
+
+      await _pickDay(tester, '25');
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 25, 2026');
+
+      await _save(tester);
+      expect(
+        controller.loggedDoses.single.tookAt,
+        DateTime(2026, 10, 25, 15, 30),
+      );
+    },
+  );
+
+  testWidgets(
+    'the date picker offers no day after today',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      await _pumpSheet(
+        tester,
+        compound: _vitaminD(),
+        lastDose: null,
+        controller: controller,
+      );
+
+      await tester.tap(find.byKey(LogDoseSheet.dateFieldKey));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byType(CalendarDatePicker),
+      );
+      expect(picker.lastDate, DateTime(2026, 10, 27));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'editing a Dose can change its date; the local date and offset are then '
+    'frozen again from the new time',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      final dose = _editableDose(tookAt: DateTime(2026, 10, 27, 9));
+      await _pumpEditSheet(tester, dose: dose, controller: controller);
+
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 27, 2026');
+      await _pickDay(tester, '26');
+
+      await _save(tester);
+      final edited = controller.editedDoses.single;
+      expect(edited.doseId, dose.id);
+      expect(edited.draft.tookAt, DateTime(2026, 10, 26, 9));
+      // Left out, so the repository freezes both again from the new time.
+      expect(edited.draft.localDate, isNull);
+      expect(edited.draft.timezone, isNull);
+    },
+  );
+
+  testWidgets(
+    'an edit that keeps the date and time keeps the frozen local date and '
+    'timezone',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      final dose = _editableDose(tookAt: DateTime(2026, 10, 27, 9));
+      await _pumpEditSheet(tester, dose: dose, controller: controller);
+
+      await tester.tap(find.byKey(LogDoseSheet.incrementButtonKey));
+      await tester.pump();
+      await _save(tester);
+
+      final edited = controller.editedDoses.single;
+      expect(edited.draft.tookAt, DateTime(2026, 10, 27, 9));
+      expect(edited.draft.localDate, dose.localDate);
+      expect(edited.draft.timezone, dose.timezone);
     },
   );
 
@@ -337,6 +582,55 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });
+}
+
+/// The value text of a date or time field: its last Text.
+String? _fieldValue(WidgetTester tester, Key key) {
+  final texts = tester
+      .widgetList<Text>(
+        find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+      )
+      .toList();
+  return texts.last.data;
+}
+
+Future<void> _save(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+  await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+  await tester.pump();
+}
+
+/// Opens the date field and picks [day] of the shown month.
+Future<void> _pickDay(WidgetTester tester, String day) async {
+  await tester.ensureVisible(find.byKey(LogDoseSheet.dateFieldKey));
+  await tester.tap(find.byKey(LogDoseSheet.dateFieldKey));
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.descendant(
+      of: find.byType(CalendarDatePicker),
+      matching: find.text(day),
+    ),
+  );
+  await tester.pump();
+  await tester.tap(find.text('OK'));
+  await tester.pumpAndSettle();
+}
+
+DoseRecord _editableDose({required DateTime tookAt}) {
+  return DoseRecord(
+    id: 'dose-edit',
+    compoundId: 'compound-vitamin-d',
+    compoundName: 'Vitamin D',
+    amountValue: 1,
+    amountEntered: '1',
+    unit: DoseUnit.internationalUnit,
+    route: DoseRoute.oral,
+    tookAt: tookAt.toUtc(),
+    timezone: 'AEST',
+    localDate: ProtocolDayDate.fromDateTime(tookAt),
+    provenance: DoseProvenance.manual,
+    updatedAt: tookAt.toUtc(),
+  );
 }
 
 bool _chipSelected(WidgetTester tester, Key key) {
@@ -427,6 +721,12 @@ class _FakeProtocolDayController extends ProtocolDayController {
   }
 }
 
+/// "Now" for every sheet here: the afternoon of 2026-10-27, local time.
+final DateTime _now = DateTime(2026, 10, 27, 15, 30);
+const _today = ProtocolDayDate(year: 2026, month: 10, day: 27);
+const _yesterday = ProtocolDayDate(year: 2026, month: 10, day: 26);
+const _tomorrow = ProtocolDayDate(year: 2026, month: 10, day: 28);
+
 Future<void> _pumpSheet(
   WidgetTester tester, {
   required CompoundRecord compound,
@@ -434,6 +734,11 @@ Future<void> _pumpSheet(
   required _FakeProtocolDayController controller,
   ThemeData? theme,
   List<ProtocolOptionRecord> protocolOptions = const <ProtocolOptionRecord>[],
+  ProtocolDayDate? initialDate,
+  TimeOfDay? initialTime,
+  PlanAmount? plannedAmount,
+  DoseRoute? plannedRoute,
+  ProtocolOptionRecord? protocol,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -442,11 +747,22 @@ Future<void> _pumpSheet(
         protocolOptionListProvider.overrideWith(
           (ref) => Stream<List<ProtocolOptionRecord>>.value(protocolOptions),
         ),
+        protocolsClockProvider.overrideWithValue(() => _now),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: theme ?? AppTheme.light(),
         home: Scaffold(
-          body: LogDoseSheet(compound: compound, lastDose: lastDose),
+          body: LogDoseSheet(
+            compound: compound,
+            lastDose: lastDose,
+            initialDate: initialDate,
+            initialTime: initialTime,
+            plannedAmount: plannedAmount,
+            plannedRoute: plannedRoute,
+            protocol: protocol,
+          ),
         ),
       ),
     ),
@@ -468,8 +784,11 @@ Future<void> _pumpEditSheet(
         protocolOptionListProvider.overrideWith(
           (ref) => Stream<List<ProtocolOptionRecord>>.value(protocolOptions),
         ),
+        protocolsClockProvider.overrideWithValue(() => _now),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: theme ?? AppTheme.light(),
         home: Scaffold(
           body: LogDoseSheet.edit(dose: dose),

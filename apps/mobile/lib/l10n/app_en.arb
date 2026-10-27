@@ -1388,5 +1388,23 @@
       }
     }
   },
-  "effectPlanBreaksCountedAsDuring": "Off-cycle and paused days are counted as during."
+  "effectPlanBreaksCountedAsDuring": "Off-cycle and paused days are counted as during.",
+  "plannedListRowLogged": "Logged",
+  "plannedListRowPending": "Pending",
+  "plannedListRowNotLogged": "Not logged",
+  "plannedListAnyTime": "Any time",
+  "plannedListLogAll": "Log all planned",
+  "logDoseDateLabel": "Date",
+  "dayStatusNotPlanned": "Not planned",
+  "dayStatusPaused": "Paused",
+  "dayStatusOffCycle": "Off cycle",
+  "dayStatusPending": "Pending",
+  "dayStatusLogged": "Logged",
+  "dayStatusPartlyLogged": "Partly logged",
+  "dayStatusNotLogged": "Not logged",
+  "notPlannedReasonNotScheduledToday": "Not scheduled today",
+  "notPlannedReasonAsNeeded": "As needed",
+  "notPlannedReasonNoSchedule": "No schedule",
+  "notPlannedReasonRemoved": "Removed",
+  "notPlannedReasonOutside": "Outside the Protocol's dates"
 }

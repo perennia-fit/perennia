@@ -19,7 +19,11 @@ import '../../domain/nutrition/nutrition_import.dart';
 import '../../domain/protocols/dose_validation.dart';
 import '../../domain/protocols/protocol_plan.dart';
 import '../../domain/protocols/protocol_plan_days.dart'
-    show protocolCycleFromStart, scheduleDaysFromStart;
+    show dayStatuses, planDays, protocolCycleFromStart, scheduleDaysFromStart;
+// Prefixed as well, for the one reader whose own field is named
+// `dayStatuses` (`PlannedDay`).
+import '../../domain/protocols/protocol_plan_days.dart' as plan_core
+    show dayStatuses;
 import '../../domain/protocols/protocol_plan_validation.dart';
 import '../../domain/protocols/protocol_validation.dart';
 import '../../domain/protocols/protocols.dart';
@@ -100,6 +104,7 @@ part 'csv_export_repository.dart';
 part 'focus_repository.dart';
 part 'portable_archive_repository.dart';
 part 'plan_sync_repository.dart';
+part 'protocol_plan_repository.dart';
 part 'routine_plan_repository.dart';
 part 'routine_up_next_repository.dart';
 part 'template_divergence_repository.dart';
@@ -145,6 +150,7 @@ class TrainingRepositories {
     workoutTemplates = WorkoutTemplateRepository._(this);
     routinePlans = RoutinePlanRepository._(this);
     routineUpNext = RoutineUpNextRepository._(this);
+    protocolPlan = ProtocolPlanRepository._(this);
     templateMaterialize = TemplateMaterializeRepository._(this);
     templateDivergence = TemplateDivergenceRepository._(this);
     sets = LoggedSetRepository._(this);
@@ -194,6 +200,7 @@ class TrainingRepositories {
   late final WorkoutTemplateRepository workoutTemplates;
   late final RoutinePlanRepository routinePlans;
   late final RoutineUpNextRepository routineUpNext;
+  late final ProtocolPlanRepository protocolPlan;
   late final TemplateMaterializeRepository templateMaterialize;
   late final TemplateDivergenceRepository templateDivergence;
   late final LoggedSetRepository sets;

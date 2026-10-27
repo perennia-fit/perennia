@@ -239,6 +239,92 @@ void main() {
   );
 
   testWidgets(
+    'the sheet opens on the selected Protocol Day: a past day defaults to '
+    '12:00 on that date, today to now',
+    (tester) async {
+      final harness = _Harness(
+        compounds: <CompoundRecord>[_compound('c-1', 'Ashwagandha')],
+      );
+      harness.controller.nextLastDose = _lastDose(
+        compoundId: 'c-1',
+        compoundName: 'Ashwagandha',
+        amountValue: 500,
+        amountEntered: '500',
+        unit: DoseUnit.milligram,
+        route: DoseRoute.oral,
+      );
+
+      await _pumpCompoundList(
+        tester,
+        harness: harness,
+        selectedProtocolDay: const ProtocolDayDate(
+          year: 2026,
+          month: 10,
+          day: 25,
+        ),
+      );
+      await _pumpUntilFound(tester, find.text('Ashwagandha'));
+
+      await tester.tap(find.byKey(CompoundListScreen.compoundRowKey('c-1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(LogDoseSheet.dateFieldKey),
+          matching: find.text('Oct 25, 2026'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LogDoseSheet.timeFieldKey),
+          matching: find.text('12:00 PM'),
+        ),
+        findsOneWidget,
+      );
+      // The amount still prefills from the last Dose of the Compound.
+      expect(find.text('500'), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+      await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+      await tester.pump();
+
+      expect(
+        harness.controller.loggedDoses.single.tookAt,
+        DateTime(2026, 10, 25, 12),
+      );
+    },
+  );
+
+  testWidgets(
+    'on today\'s Protocol Day the sheet defaults to now',
+    (tester) async {
+      final harness = _Harness(
+        compounds: <CompoundRecord>[_compound('c-1', 'Ashwagandha')],
+      );
+
+      await _pumpCompoundList(
+        tester,
+        harness: harness,
+        selectedProtocolDay: const ProtocolDayDate(
+          year: 2026,
+          month: 10,
+          day: 27,
+        ),
+      );
+      await _pumpUntilFound(tester, find.text('Ashwagandha'));
+
+      await tester.tap(find.byKey(CompoundListScreen.compoundRowKey('c-1')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+      await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+      await tester.pump();
+
+      expect(harness.controller.loggedDoses.single.tookAt, _now);
+    },
+  );
+
+  testWidgets(
     'a Compound with no prior Dose falls back to its default unit/route',
     (tester) async {
       final harness = _Harness(
@@ -509,14 +595,32 @@ class _FakeProtocolDayController extends ProtocolDayController {
   Future<void> ensureOtcLibrarySeeded() async {}
 }
 
+/// "Now" for the sheet's time default: the afternoon of 2026-10-27.
+final DateTime _now = DateTime(2026, 10, 27, 15, 30);
+
+class _FixedProtocolDay extends SelectedProtocolDayController {
+  _FixedProtocolDay(this._date);
+
+  final ProtocolDayDate _date;
+
+  @override
+  ProtocolDayDate build() => _date;
+}
+
 Future<void> _pumpCompoundList(
   WidgetTester tester, {
   required _Harness harness,
   ThemeData? theme,
+  ProtocolDayDate? selectedProtocolDay,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        protocolsClockProvider.overrideWithValue(() => _now),
+        if (selectedProtocolDay != null)
+          selectedProtocolDayProvider.overrideWith(
+            () => _FixedProtocolDay(selectedProtocolDay),
+          ),
         protocolDayControllerProvider.overrideWith(() => harness.controller),
         compoundListProvider.overrideWith((ref) => harness.compoundsStream),
         recentCompoundIdsProvider.overrideWith(
