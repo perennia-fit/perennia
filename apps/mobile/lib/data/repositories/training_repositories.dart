@@ -6709,6 +6709,11 @@ class ProtocolsRepository {
     required ProtocolDayDate archivedOn,
   }) async {
     final before = await _requireProtocolRow(protocolId);
+    // Archiving again would re-date the frozen `archived_on` and reclassify
+    // past days; an archived Protocol is never edited (D1).
+    if (before.deletedAt != null) {
+      throw StateError('Protocol is archived: $protocolId.');
+    }
     await (_database.update(_database.protocols)
           ..where((row) => row.id.equals(protocolId)))
         .write(

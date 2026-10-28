@@ -306,8 +306,9 @@ export const foodEntries = pgTable(
 );
 
 // A user's per-nutrient `Goal` target (NUTRITION.md §4/§7) on the
-// opaque-payload sync rails: the server never inspects domain columns,
-// exactly like meals/food entries. Goal targets are configuration, never a
+// payload sync rails: its fields live in the JSON payload, not in domain
+// columns, which the server reads (ARCHITECTURE.md), exactly like meals/food
+// entries. Goal targets are configuration, never a
 // stored derived value — the payload holds only the target the
 // user typed. Archives via the in-payload deleted_at; merge by UUID,
 // tenant-isolated by userId.
@@ -365,9 +366,9 @@ export const userSettings = pgTable(
   })
 );
 
-// A user-authored `Food` (CONTEXT.md, NUTRITION.md §3) on the opaque-payload
-// sync rails: the server never inspects domain columns, exactly like
-// meals/food entries. Covers both a plain User Food and a Recipe (a Food whose
+// A user-authored `Food` (CONTEXT.md, NUTRITION.md §3) on the payload sync
+// rails: its fields live in the JSON payload, not in domain columns, which the
+// server reads (ARCHITECTURE.md), exactly like meals/food entries. Covers both a plain User Food and a Recipe (a Food whose
 // payload carries its own flat ingredient snapshot) — both are always
 // `food_source: user`. Platform reference data (USDA/Open Food Facts) never
 // reaches this table on the client and so never syncs (mirrors the
@@ -430,9 +431,9 @@ export const mealTypes = pgTable(
   })
 );
 
-// A user's `Exercise Category` (CONTEXT.md) on the opaque-payload
-// sync rails: the server never inspects domain columns, exactly like
-// meals/compounds. Archives via the in-payload deleted_at. The Platform
+// A user's `Exercise Category` (CONTEXT.md) on the payload sync rails: its
+// fields live in the JSON payload, not in domain columns, which the server
+// reads (ARCHITECTURE.md), exactly like meals/compounds. Archives via the in-payload deleted_at. The Platform
 // categories are a bundled seed with FIXED ids on every device, and the app
 // pushes them (and a user's rename/recolor/archive of them) like any other
 // category, so every account holds a row under the same ids. The key is
@@ -529,9 +530,9 @@ export const exercises = pgTable(
   })
 );
 
-// Protocols catalogue entry (CONTEXT.md `Compound`) on the opaque-payload sync
-// rails: the server never inspects domain columns, exactly like meals/food
-// entries. Archives via the in-payload deleted_at (PROTOCOLS.md §7). The
+// Protocols catalogue entry (CONTEXT.md `Compound`) on the payload sync rails:
+// its fields live in the JSON payload, not in domain columns, which the server
+// reads (ARCHITECTURE.md), exactly like meals/food entries. Archives via the in-payload deleted_at (PROTOCOLS.md §7). The
 // app's OTC seed Compounds carry FIXED ids on every device and sync like any
 // other Compound, so the key is (user_id, id), exactly like `focuses`.
 export const compounds = pgTable(
@@ -589,9 +590,9 @@ export const doses = pgTable(
   })
 );
 
-// A `Protocol` (CONTEXT.md, PROTOCOLS.md §1.4/§7) on the opaque-payload sync
-// rails: the server never inspects domain columns, exactly like
-// meals/compounds. Archives via the in-payload deleted_at; merge by UUID,
+// A `Protocol` (CONTEXT.md, PROTOCOLS.md §1.4/§7) on the payload sync rails:
+// its fields live in the JSON payload, not in domain columns, which the server
+// reads (ARCHITECTURE.md), exactly like meals/compounds. Archives via the in-payload deleted_at; merge by UUID,
 // tenant-isolated by userId. Never cascades to a Dose.
 export const protocols = pgTable(
   "protocols",

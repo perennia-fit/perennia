@@ -132,12 +132,18 @@ class AddFoodPicker extends ConsumerWidget {
             ),
           ),
           state.maybeWhen(
-            data: (value) => value.filter == AddFoodPickerFilter.openFoodFacts
-                ? const Padding(
-                    padding: EdgeInsets.only(top: AppDimens.base),
-                    child: OpenFoodFactsAttributionNotice(compact: true),
-                  )
-                : const SizedBox.shrink(),
+            // Every Open Food Facts food in the picker carries the notice,
+            // including one listed under Recent.
+            data: (value) =>
+                value.filter == AddFoodPickerFilter.openFoodFacts ||
+                        value.results.any(
+                          (item) => item.foodSource == FoodSource.openFoodFacts,
+                        )
+                    ? const Padding(
+                        padding: EdgeInsets.only(top: AppDimens.base),
+                        child: OpenFoodFactsAttributionNotice(compact: true),
+                      )
+                    : const SizedBox.shrink(),
             orElse: () => const SizedBox.shrink(),
           ),
           const SizedBox(height: AppDimens.base),

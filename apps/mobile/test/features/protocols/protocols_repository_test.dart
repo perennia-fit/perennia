@@ -3384,6 +3384,50 @@ void main() {
       expect((await memberRow(creatineId)).deletedAt, isNull);
     });
 
+    test('editing or archiving an archived Protocol throws', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final created = await repositories.protocols.createProtocol(
+        draft(
+          <String>[creatineId],
+          schedules: <String, ScheduleDraft?>{
+            creatineId: timed(<String>['09:00']),
+          },
+        ),
+        today: today,
+      );
+      await repositories.protocols.archiveProtocol(
+        created.protocolId,
+        today: today,
+      );
+      final archived = await database.select(database.protocols).getSingle();
+
+      await expectLater(
+        repositories.protocols.archiveProtocol(
+          created.protocolId,
+          today: today.addDays(3),
+        ),
+        throwsStateError,
+      );
+      await expectLater(
+        repositories.protocols.editProtocol(
+          created.protocolId,
+          draft(
+            <String>[creatineId],
+            schedules: <String, ScheduleDraft?>{
+              creatineId: timed(<String>['07:00']),
+            },
+          ),
+          today: today,
+        ),
+        throwsStateError,
+      );
+
+      final row = await database.select(database.protocols).getSingle();
+      expect(row.archivedOn, archived.archivedOn);
+      expect(row.deletedAt, archived.deletedAt);
+      expect(row.updatedAt, archived.updatedAt);
+    });
+
     test('undoing an edit tombstones the version it inserted', () async {
       final creatineId = await createCompoundId('Creatine');
       final created = await repositories.protocols.createProtocol(

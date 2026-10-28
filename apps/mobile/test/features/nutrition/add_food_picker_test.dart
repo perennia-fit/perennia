@@ -410,6 +410,29 @@ void main() {
     expect(find.textContaining('ODbL'), findsAtLeastNWidgets(1));
   });
 
+  testWidgets('a Recent list with an Open Food Facts food shows the notice',
+      (tester) async {
+    await _pumpPicker(tester, repository: _StubAddFoodRepository());
+    await _pumpUntilFound(tester, find.text('Chicken breast'));
+    expect(
+      find.byKey(NutritionAttributionKeys.openFoodFactsNotice),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pumpPicker(
+      tester,
+      repository: _StubAddFoodRepository(
+        recent: <FoodPickerItem>[..._recent, ..._openFoodFacts],
+      ),
+    );
+    await _pumpUntilFound(tester, find.text('Hazelnut cocoa spread'));
+    expect(
+      find.byKey(NutritionAttributionKeys.openFoodFactsNotice),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Quick add creates a Quick Entry directly into the current Meal',
       (tester) async {
     final database = AppDatabase.inMemory();
@@ -810,6 +833,26 @@ void main() {
     expect(_onlineLine(tester), 'No matches on Open Food Facts.');
   });
 
+  testWidgets('submitting keeps the device matches on screen', (tester) async {
+    final repository = _OnlineAddFoodRepository();
+    await _pumpOpenFoodFactsFilter(tester, repository: repository);
+    await tester.enterText(find.byKey(AddFoodPicker.searchFieldKey), 'hazel');
+    await _pumpSearchDebounce(tester);
+
+    final gate = repository.localGate = Completer<void>();
+    await tester.tap(find.byKey(AddFoodPicker.onlineSearchRowKey));
+    await tester.pump();
+
+    // The submit's device search is still running: nothing goes blank.
+    expect(find.text('Hazelnut cocoa spread'), findsOneWidget);
+    expect(find.byKey(AddFoodPicker.onlineSearchRowKey), findsOneWidget);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(repository.onlineQueries, <String>['hazel']);
+    expect(find.text('Hazelnut cocoa spread'), findsOneWidget);
+  });
+
   testWidgets('an empty query asks for a product or brand name',
       (tester) async {
     await _pumpOpenFoodFactsFilter(
@@ -1168,7 +1211,10 @@ class _BarcodeAddFoodHarnessState extends State<_BarcodeAddFoodHarness> {
 }
 
 class _StubAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
-  _StubAddFoodRepository();
+  _StubAddFoodRepository({List<FoodPickerItem>? recent})
+      : recent = recent ?? _recent;
+
+  final List<FoodPickerItem> recent;
 
   @override
   Future<List<FoodPickerItem>> search({
@@ -1177,7 +1223,7 @@ class _StubAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
     int limit = 50,
   }) async {
     final candidates = switch (filter) {
-      AddFoodPickerFilter.recent => _recent,
+      AddFoodPickerFilter.recent => recent,
       AddFoodPickerFilter.user => _user,
       AddFoodPickerFilter.usda => _usda,
       AddFoodPickerFilter.openFoodFacts => _openFoodFacts,
@@ -1341,12 +1387,17 @@ class _OnlineAddFoodRepository implements AddFoodRepository {
   final barcodes = <String>[];
   final kept = <FoodPickerItem>[];
 
+  /// When set, device searches wait for it, so a test can look at the frame
+  /// drawn while one runs.
+  Completer<void>? localGate;
+
   @override
   Future<List<FoodPickerItem>> search({
     required AddFoodPickerFilter filter,
     required String query,
     int limit = 50,
   }) async {
+    await localGate?.future;
     if (filter != AddFoodPickerFilter.openFoodFacts) {
       return const <FoodPickerItem>[];
     }

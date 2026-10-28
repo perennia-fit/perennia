@@ -569,6 +569,32 @@
       "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_required"]}
     },
     {
+      "name": "timed-rule-with-blank-amountEntered-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_required: a blank amountEntered reads as missing, because a planned amount needs text to show.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+        "amountValue": 20,
+        "amountEntered": "  ",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_required"]}
+    },
+    {
+      "name": "timed-rule-with-negative-amount-rejects",
+      "validator": "schedule_rule",
+      "note": "D7 amount_required: all four fields are present, but the Dose validator hard-rejects a negative amountValue; its own rule id is not passed through.",
+      "input": {
+        "rule": {"v": 1, "kind": "timed", "days": {"kind": "daily"}, "times": ["09:00"]},
+        "amountValue": -5,
+        "amountEntered": "-5",
+        "unit": "milligram",
+        "route": "subcutaneous"
+      },
+      "expected": {"accepted": false, "warningRules": [], "errorRules": ["amount_required"]}
+    },
+    {
       "name": "untimed-rule-without-unit-rejects",
       "validator": "schedule_rule",
       "note": "D7 amount_required: an untimed rule needs an amount too.",

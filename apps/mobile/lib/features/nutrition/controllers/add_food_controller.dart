@@ -163,7 +163,7 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
       _showPendingQuery(query);
     }
     _searchDebounceTimer?.cancel();
-    await _refresh(generation: ++_searchGeneration);
+    await _refresh(generation: ++_searchGeneration, keepShown: true);
     if (_filter != AddFoodPickerFilter.openFoodFacts) {
       return null;
     }
@@ -352,10 +352,19 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     });
   }
 
-  Future<void> _refresh({required int generation}) async {
+  /// Searches the device again. With [keepShown], the current data stays on
+  /// screen while the search runs instead of going through `AsyncLoading`:
+  /// a submit must never blank the device's matches, the online row or the
+  /// bundle line before its live request starts.
+  Future<void> _refresh({
+    required int generation,
+    bool keepShown = false,
+  }) async {
     final filter = _filter;
     final query = _query;
-    state = const AsyncLoading<AddFoodPickerState>();
+    if (!keepShown || !state.hasValue) {
+      state = const AsyncLoading<AddFoodPickerState>();
+    }
     final next = await AsyncValue.guard(
       () => _load(filter: filter, query: query),
     );
