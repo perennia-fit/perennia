@@ -140,11 +140,13 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
   /// Compound creation exclusively to `CompoundEditorSheet`) — so the
   /// Day view's FAB hands off to the Compound list, whose rows are the ≤2-tap
   /// entry point (tap a Compound → the prefilled sheet → Save). Reuses the
-  /// existing discreet surface rather than duplicating a picker here.
+  /// existing discreet surface rather than duplicating a picker here. The
+  /// list logs on the selected Protocol Day (file 38).
   void _openCompoundList(BuildContext context) {
+    final protocolDay = ref.read(selectedProtocolDayProvider);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => const CompoundListScreen(),
+        builder: (_) => CompoundListScreen(protocolDay: protocolDay),
       ),
     );
   }
@@ -233,10 +235,14 @@ class _ProtocolDayBody extends StatelessWidget {
 /// the amount, and one text label. Color is never the only signal: every
 /// label is a word, and its icon only echoes it.
 ///
-/// * Today: rows read "Logged" or "Pending"; tapping a row opens the log
-///   sheet, and "Log all planned" logs every due unfilled row in one Batch.
-/// * A past day: rows read "Logged" or "Not logged"; tapping a row opens
-///   the log sheet on that date. There is no bulk action.
+/// * Today: rows read "Logged" or "Pending"; tapping a "Pending" row opens
+///   the log sheet, and "Log all planned" logs every due unfilled row in one
+///   Batch.
+/// * A past day: rows read "Logged" or "Not logged"; tapping a "Not logged"
+///   row opens the log sheet on that date. There is no bulk action.
+/// * On either, tapping a "Logged" row opens the Dose that fills it for
+///   edit, never a new log: a second Dose of something already taken is the
+///   duplicate the row exists to prevent.
 /// * A future day: rows show their times and amounts only, with no label
 ///   and no log action.
 class _PlannedList extends ConsumerStatefulWidget {
@@ -382,8 +388,21 @@ class _PlannedRowTile extends ConsumerWidget {
       timeLabel,
     ].join(' · ');
     // A future day has no log action (D6); nor can a row whose Compound
-    // row is missing, which no validated plan holds.
-    final canLog = !plannedDay.isFuture && compound != null;
+    // row is missing, which no validated plan holds. A "Logged" row opens
+    // the Dose that fills it for edit instead.
+    final VoidCallback? onTap;
+    if (row.status == PlannedRowStatus.logged) {
+      final fillingDose = _fillingDose();
+      onTap = fillingDose == null
+          ? null
+          : () => unawaited(
+                showLogDoseSheet(context, LogDoseSheet.edit(dose: fillingDose)),
+              );
+    } else if (!plannedDay.isFuture && compound != null) {
+      onTap = () => unawaited(_openLogSheet(context, compound));
+    } else {
+      onTap = null;
+    }
 
     return InkWell(
       key: ProtocolsDayView.plannedRowKey(
@@ -391,7 +410,7 @@ class _PlannedRowTile extends ConsumerWidget {
         row.compoundId,
         row.slot,
       ),
-      onTap: canLog ? () => unawaited(_openLogSheet(context, compound)) : null,
+      onTap: onTap,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
         child: Padding(
@@ -410,6 +429,35 @@ class _PlannedRowTile extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// The Dose that fills this row's slot (its `doseId` in the day's
+  /// `fills`), found in the same emission's [PlannedDay.day], or null when
+  /// the slot is unfilled. Both come from one read, so a filled slot's Dose
+  /// is always there.
+  DoseRecord? _fillingDose() {
+    for (final status in plannedDay.dayStatuses) {
+      if (status.compoundId != row.compoundId ||
+          status.localDate != plannedDay.localDate) {
+        continue;
+      }
+      for (final fill in status.fills) {
+        if (fill.slot != row.slot || fill.protocolId != row.protocolId) {
+          continue;
+        }
+        final doseId = fill.doseId;
+        if (doseId == null) {
+          return null;
+        }
+        for (final dose in plannedDay.day.doses) {
+          if (dose.id == doseId) {
+            return dose;
+          }
+        }
+        return null;
+      }
+    }
+    return null;
   }
 
   /// Opens the log sheet for this row (D6): prefilled with the planned
@@ -490,6 +538,19 @@ TimeOfDay _timeOfDay(String localTime) {
   return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 }
 
+/// A Dose's date and clock time where it was taken (D2, D6): its instant at
+/// its frozen `timezoneOffsetMinutes`, as a UTC `DateTime` whose fields are
+/// that clock, so formatting reads them as they are. A Dose with a null
+/// offset reads in the device's zone. The day's Dose rows and the edit sheet
+/// both read it here, so a row and its edit sheet agree, and a Dose logged
+/// abroad shows the time it was taken there.
+DateTime _doseClock(DoseRecord dose) {
+  final offset = dose.timezoneOffsetMinutes;
+  return offset == null
+      ? dose.tookAt.toLocal()
+      : dose.tookAt.toUtc().add(Duration(minutes: offset));
+}
+
 /// The date header: a swipe/arrow-navigable strip mirroring
 /// `NutritionDayView`'s `_NutritionDayHeader` and the Training Day
 /// Home's date navigation. Moves the derived `Protocol Day` — never a stored
@@ -563,7 +624,7 @@ class _DoseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timeLabel = DateFormat.jm().format(dose.tookAt.toLocal());
+    final timeLabel = DateFormat.jm().format(_doseClock(dose));
     // Every part of the detail line reads from the Dose's OWN snapshot — the
     // amount, the route (always paired with text; color is never the sole
     // signal), the frozen Compound strength when captured (§1.1), and the
@@ -680,8 +741,11 @@ Future<void> showLogDoseSheet(BuildContext context, LogDoseSheet sheet) {
 /// field straight from the tapped [DoseRecord] (never a live `Compound`
 /// lookup — a Dose is self-describing, PROTOCOLS.md §1.1), preserves the
 /// Dose's already-frozen local date/timezone/provenance untouched while its
-/// time stands, lets its date and time change (the local date and offset are
-/// then frozen again from the new time), and adds a Delete action that routes
+/// time stands, and lets its date and time change. It shows and edits them at
+/// the Dose's frozen UTC offset (D2, D6), as the day's Dose rows show them:
+/// a changed time is read at that offset, which the Dose keeps, and only its
+/// local date is frozen again. A Dose with a null offset reads in the
+/// device's zone. It adds a Delete action that routes
 /// through `ProtocolsRepository.deleteDose` (tombstone + undo-recoverable, no
 /// cascade) — never bypassing the Activity Log.
 class LogDoseSheet extends ConsumerStatefulWidget {
@@ -768,7 +832,16 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   late final TextEditingController _amountController;
   late DoseUnit _unit;
   late DoseRoute _route;
+
+  /// The date and clock time the fields show. In edit mode with a frozen
+  /// offset ([_offsetMinutes]), a UTC `DateTime` whose fields are the clock
+  /// at that offset; otherwise a device-local `DateTime`. [_instant] is the
+  /// moment it names.
   late DateTime _tookAt;
+
+  /// The edited Dose's frozen UTC offset, or null when logging a new Dose or
+  /// editing one logged before offsets were recorded.
+  late final int? _offsetMinutes;
 
   /// The OPTIONAL `Protocol` tag — null means untagged/ad-hoc.
   /// Seeded from the tapped [DoseRecord] in edit mode; null when logging a
@@ -788,6 +861,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
     _amountController = TextEditingController(text: seed.amountEntered);
     _unit = seed.unit;
     _route = seed.route;
+    _offsetMinutes = widget.editingDose?.timezoneOffsetMinutes;
     _tookAt = _seedTookAt();
     _protocolId = widget.editingDose?.protocolId ?? widget.protocol?.id;
     _protocolName = widget.editingDose?.protocolName ?? widget.protocol?.name;
@@ -844,6 +918,23 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
 
   DateTime _now() => ref.read(protocolsClockProvider)().toLocal();
 
+  /// A clock reading for the fields, in [_tookAt]'s form: at the edited
+  /// Dose's frozen offset when it has one, else in the device's zone.
+  DateTime _clock(int year, int month, int day, int hour, int minute) {
+    return _offsetMinutes == null
+        ? DateTime(year, month, day, hour, minute)
+        : DateTime.utc(year, month, day, hour, minute);
+  }
+
+  /// The moment [_tookAt] names: its clock read at the frozen offset, or in
+  /// the device's zone.
+  DateTime get _instant {
+    final offset = _offsetMinutes;
+    return offset == null
+        ? _tookAt
+        : _tookAt.subtract(Duration(minutes: offset));
+  }
+
   /// The dose instant's default (D6). In edit mode it seeds from the Dose
   /// being edited (its own date, not "today"), so an untouched Save cannot
   /// silently move it. Otherwise: now on today; on a past [initialDate], its
@@ -852,7 +943,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   DateTime _seedTookAt() {
     final editingDose = widget.editingDose;
     if (editingDose != null) {
-      return editingDose.tookAt.toLocal();
+      return _doseClock(editingDose);
     }
     final now = _now();
     final date = widget.initialDate;
@@ -893,7 +984,8 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
                     key: LogDoseSheet.deleteButtonKey,
                     tooltip: 'Delete dose',
                     onPressed: _saving ? null : _confirmDelete,
-                    icon: Icon(Icons.delete_outline, color: colors.textSecondary),
+                    icon:
+                        Icon(Icons.delete_outline, color: colors.textSecondary),
                   ),
               ],
             ),
@@ -995,10 +1087,17 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
 
   /// Moves the Dose to another date, keeping its time of day (CUJ 7). The
   /// picker ends at today, or at the Dose's own date when that is later, so
-  /// it never offers a day that hasn't happened.
+  /// it never offers a day that hasn't happened. "Today" is read in the same
+  /// frame as the fields: at the edited Dose's frozen offset when it has one,
+  /// else in the device's zone. Read in the device's zone, a Dose logged far
+  /// from it could be moved to a day that hasn't happened where it was taken,
+  /// or kept from a day that has.
   Future<void> _pickDate() async {
     final current = DateTime(_tookAt.year, _tookAt.month, _tookAt.day);
-    final now = _now();
+    final offset = _offsetMinutes;
+    final now = offset == null
+        ? _now()
+        : _now().toUtc().add(Duration(minutes: offset));
     final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
@@ -1008,7 +1107,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
     );
     if (picked != null && mounted) {
       setState(() {
-        _tookAt = DateTime(
+        _tookAt = _clock(
           picked.year,
           picked.month,
           picked.day,
@@ -1026,7 +1125,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
     );
     if (picked != null && mounted) {
       setState(() {
-        _tookAt = DateTime(
+        _tookAt = _clock(
           _tookAt.year,
           _tookAt.month,
           _tookAt.day,
@@ -1167,9 +1266,10 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
         // The Dose's own frozen compound identity and provenance carry over
         // untouched. While its moment stands, so do its frozen timezone and
         // local date: an edit NEVER re-derives them from the device's
-        // current timezone. A new date or time is a new moment, so both are
-        // left out and the repository freezes them again from it (D6).
-        final momentChanged = _tookAt.toUtc() != editingDose.tookAt.toUtc();
+        // current timezone. A new date or time is read at the Dose's frozen
+        // offset, so both are left out: the repository keeps the offset and
+        // label, and freezes the local date again from the new time (D6).
+        final momentChanged = _instant.toUtc() != editingDose.tookAt.toUtc();
         await controller.editDose(
           editingDose.id,
           DoseSnapshotDraft(
@@ -1180,7 +1280,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
             amountEntered: amountEntered,
             unit: _unit,
             route: _route,
-            tookAt: _tookAt,
+            tookAt: _instant,
             timezone: momentChanged ? null : editingDose.timezone,
             localDate: momentChanged ? null : editingDose.localDate,
             provenance: editingDose.provenance,
@@ -1196,7 +1296,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
             amountEntered: amountEntered,
             unit: _unit,
             route: _route,
-            tookAt: _tookAt,
+            tookAt: _instant,
             protocol: _selectedProtocol(),
           ),
         );

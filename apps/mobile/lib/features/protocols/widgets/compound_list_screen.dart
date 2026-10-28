@@ -17,8 +17,18 @@ import 'protocols_lock_screen.dart';
 /// Settings; deliberately NOT on the primary `Training | Nutrition` domain
 /// toggle. Neutral capsule iconography throughout — never a syringe.
 /// Tokens come through the theme, never hardcoded.
+///
+/// **Which day a Dose logs on (file 38).** Opened from the Protocol Day
+/// view's add button, [protocolDay] is that view's selected Protocol Day, and
+/// the log sheet opens on it. Opened from Library or Settings, it is null and
+/// the sheet opens on today. That list is the 2-tap repeat path, and the
+/// selected Protocol Day outlives the view that set it: logging on whatever
+/// day was last browsed would back-date a Dose the user means to log now.
 class CompoundListScreen extends ConsumerStatefulWidget {
-  const CompoundListScreen({super.key});
+  const CompoundListScreen({super.key, this.protocolDay});
+
+  /// The Protocol Day the log sheet opens on, or null for today.
+  final ProtocolDayDate? protocolDay;
 
   static const routeName = '/supplements';
 
@@ -182,7 +192,10 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
                             title: 'Favorites',
                           ),
                           for (final compound in favorites)
-                            _CompoundRow(compound: compound),
+                            _CompoundRow(
+                              compound: compound,
+                              protocolDay: widget.protocolDay,
+                            ),
                           const SizedBox(height: AppDimens.base),
                         ],
                         if (recentMatches.isNotEmpty) ...[
@@ -191,7 +204,10 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
                             title: 'Recent',
                           ),
                           for (final compound in recentMatches)
-                            _CompoundRow(compound: compound),
+                            _CompoundRow(
+                              compound: compound,
+                              protocolDay: widget.protocolDay,
+                            ),
                           const SizedBox(height: AppDimens.base),
                         ],
                         _SectionHeader(
@@ -199,7 +215,10 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
                           title: 'All compounds',
                         ),
                         for (final compound in all)
-                          _CompoundRow(compound: compound),
+                          _CompoundRow(
+                            compound: compound,
+                            protocolDay: widget.protocolDay,
+                          ),
                       ],
                     ),
             ),
@@ -250,9 +269,12 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _CompoundRow extends ConsumerWidget {
-  const _CompoundRow({required this.compound});
+  const _CompoundRow({required this.compound, required this.protocolDay});
 
   final CompoundRecord compound;
+
+  /// The Protocol Day the log sheet opens on, or null for today.
+  final ProtocolDayDate? protocolDay;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -328,13 +350,13 @@ class _CompoundRow extends ConsumerWidget {
     CompoundRecord compound,
   ) async {
     final controller = ref.read(protocolDayControllerProvider.notifier);
-    final protocolDay = ref.read(selectedProtocolDayProvider);
     final lastDose = await controller.lastDoseFor(compound.id);
     if (!context.mounted) {
       return;
     }
-    // The sheet logs on the selected Protocol Day, so a past day defaults to
-    // 12:00 on that date and today to now (D6).
+    // The sheet logs on the Protocol Day this list was opened for, or today
+    // when it was opened from Library or Settings, so a past day defaults to
+    // 12:00 on that date and today to now (D6, file 38).
     await showLogDoseSheet(
       context,
       LogDoseSheet(
