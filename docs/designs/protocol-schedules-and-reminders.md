@@ -2,7 +2,7 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, and to close the question on nearest-time matching)
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, and to record the decisions made building file 40a and Phase 4)
 
 --------------------------------------------------------------------------------
 
@@ -255,6 +255,23 @@ slot is filled, and that is accepted as part of the same rule (see Risks).
 Phase 4's Consistency view shows which slot each Dose filled, which makes
 the outcome visible.
 
+Building file 40a and Phase 4 raised more. They are settled the same way:
+
+*   a member archived on its earliest version's date → D1;
+*   how a "Logged" row finds its Dose, the frame an edited Dose's date
+    and time are held in, the frame of the edit sheet's "today", and the
+    order of the day's Dose rows → D6 and file 40a;
+*   the Consistency view: its range and day boundary, its tabs, the lock,
+    the chart and how its shading is labelled, the day list, and planned
+    against logged masses → D6 and files 41 to 45;
+*   `watchConsistency`'s `today` and range limits, and how `sequence` is
+    numbered over a range → file 44;
+*   the new strings and the performance README row → files 41 and 46.
+
+Two findings change what was built and land as file 46a: one helper for
+a Dose's clock time at its frozen offset, where three copies exist, and
+the day's Dose rows in matching's order rather than instant order.
+
 ## Critical User Journeys (CUJs)
 
 ### CUJ 1: Morning stack, one reminder
@@ -464,6 +481,14 @@ own id. No version is ever edited in place.
         "Not logged". Its `archived_on` is read as stored before the save,
         so a member the same save removes still gets its copy. (Settled
         after file 34a's build, which copies such a member; file 40a.)
+        *   **"Before" is strict.** A member covers dates through its
+            `archived_on`, inclusive, so one archived on its earliest
+            version's date planned that day, and it still gets its copy.
+            Only an `archived_on` strictly before that date skips the
+            member. The server skips a member only when its stored
+            `archived_on` is a valid date; the app never stores another
+            kind, because sync and import refuse a malformed one.
+            (Settled after file 40a's build.)
     *   **Known limit: a later move, then an earlier one.** If the start
         moves later past a member added mid-course, and then moves earlier
         again, that member's earliest version is now on or before the old
@@ -878,6 +903,15 @@ of a 20 mg/mL Compound is 2 mg; it is computed by `resolveDoseActiveMass` in
 `apps/mobile/lib/domain/protocols/protocols.dart`. There is no verdict. The UI
 computes this from the Dose and the slot; the core has no field for it.
 
+*   **Which strength.** The planned mass uses the Compound's current
+    strength, because a Schedule Version stores an amount and unit but no
+    strength. The logged mass uses the strength frozen on the Dose when it
+    was logged (its snapshot), so a later change to the Compound never
+    rewrites what was taken. After a strength change, a past day's two
+    masses can therefore differ while both amounts as entered match; the
+    amounts as entered stay the primary reading. Both masses show only
+    when both resolve. (Settled after Phase 4's build.)
+
 **The Planned list** sits at the top of the Protocol Day view, inside the lock.
 It is hidden when the day has nothing planned. It has no heading of its own:
 its Protocol group headers and row labels say what it is.
@@ -899,6 +933,13 @@ its Protocol group headers and row labels say what it is.
     taken, which is the duplicate the row exists to prevent. An extra Dose
     is still logged from the Compound list. (Phase 3 opens a new log here,
     reading the old wording "tapping a row" literally; file 40a changes it.)
+    *   **How the row finds its Dose.** `PlannedRow` carries no `doseId`.
+        The view finds the row's fill in the `PlannedDay`'s Day Statuses,
+        by the row's Compound, Protocol and slot, and then the Dose with
+        that fill's `doseId` in the same emission's `ProtocolDayRecord`.
+        Both come from one read, so a filled slot's Dose is always there.
+        If it were missing, tapping the row would do nothing rather than
+        start a new log. (Settled after file 40a's build.)
 *   **"Log all planned"** appears only on today's Protocol Day, while at
     least one row reads "Pending". It logs every due unfilled planned dose:
     timed ones whose time is at or before now, and untimed ones. Each is
@@ -932,7 +973,12 @@ its Protocol group headers and row labels say what it is.
         treated as today: the time defaults to now, never to a moment that
         hasn't happened.
     *   The date picker ends at today, or at the edited Dose's own date
-        when that is later, so it never offers a day still to come.
+        when that is later, so it never offers a day still to come. On an
+        edit of a Dose with a frozen offset, "today" is read at that
+        offset, the frame its fields show; otherwise in the device's zone.
+        Read in the device's zone, a Dose logged far from it could be
+        moved to a day that hasn't happened where it was taken, or kept
+        from one that has. (Settled after file 40a's build.)
     *   When an existing Dose is edited, the sheet shows its date and time
         at its frozen `timezoneOffsetMinutes` (D2), in the device's zone
         only when the offset is null. Its date and time may change. A
@@ -943,6 +989,20 @@ its Protocol group headers and row labels say what it is.
         abroad by the difference between the two zones. An untouched Save
         changes neither. (Phase 3 shows and reads the time in the device's
         current zone; file 40a changes it.)
+        *   **Where the offset is applied.** The sheet holds the date and
+            time as a clock reading at the Dose's offset, and turns it into
+            the moment only on Save. When the moment changed, it sends no
+            `localDate` and no `timezone`, and `editDose` keeps the offset
+            and the timezone label and freezes the local date from the new
+            moment at that offset. A draft that names its own `localDate`
+            or `timezone` still takes precedence, as it does on any edit.
+            (Settled after file 40a's build.)
+*   **The day's Dose rows**, below the Planned list, show each Dose's time
+    at its own frozen offset, as its edit sheet does (D2). Phase 3 orders
+    them by instant, then id. On a Protocol Day that holds Doses logged at
+    different offsets, their clock times can then read out of order, and
+    the order differs from matching's (local time, then id; step 2). File
+    46a orders them as matching does.
 *   **A future Protocol Day** shows its Planned list with times and amounts,
     but no log action and no status label.
 *   **Day Status labels.** Phase 3 adds the strings for the seven Day
@@ -955,7 +1015,59 @@ from a Protocol, where it shows a tab per member. For a date range (default:
 the last 30 days, including today), it shows a chart of each Dose's time of day
 against the planned times, built with `fl_chart` like the existing Effect
 timeline. Below the chart is a day-by-day list of Day Statuses, times and
-amounts.
+amounts. Building Phase 4 settled the rest:
+
+*   **The range.** The presets are the last 7, 30, 90 or 365 days, each
+    ending today. A custom range ends at today at the latest, because the
+    view never shows a day still to come, and its picker starts at
+    2000-01-01. A custom pick longer than 366 days keeps its last 366, and
+    the dates written out under the picker show the range actually read.
+    "Today" is read from the Protocols clock (file 37) when the view opens
+    and on every pick. One range serves every tab.
+*   **The day boundary.** Unlike the Planned list, the view doesn't
+    rebuild when local midnight passes. It has no log action, so a stale
+    "today" can't date a Dose. A view left open past midnight keeps its
+    range, where the old today's unfilled slots still read "Pending",
+    until a range is picked or the view is opened again.
+*   **Tabs.** Opened from a Protocol, the view has one tab per member, in
+    member order. Each tab is that member Compound's own Consistency
+    across every Protocol it is in, not only the one it was opened from,
+    because a Day Status is one per Compound and date, summed across the
+    Protocols in effect. Each tab is named by its own read, so an archived
+    Compound keeps its name. The Protocol's button shows only on a saved
+    Protocol with members, and the tabs are its members as saved, not the
+    form's unsaved edits; a new Protocol has nothing stored to show.
+*   **The lock.** From both entry points, the view sits inside its own
+    `ProtocolsLockGate`, so if the app locks while it is on top, it is
+    covered like the rest of the section.
+*   **The chart.** Each logged Dose is a dot at its frozen local date and
+    time. A Dose that filled nothing is a ring instead of a filled dot;
+    the chart reads which Doses are extras from the day list's own
+    extras, so the two never disagree. Each planned time is a horizontal
+    segment over the run of consecutive days it is planned on, so a
+    Schedule Version change moves the line on the day it applies from;
+    two Protocols planning the same time on a day draw one segment.
+    Untimed planned doses are segments in an "Any time" band above the
+    day.
+*   **Shading.** Paused and off-cycle days, by their Day Status, are
+    shaded runs. Both use one shade and differ by pattern: off-cycle runs
+    are hatched. Every run, however short, gets a marker under the plot,
+    solid for paused and dashed for off cycle, in the secondary text
+    token, which keeps its contrast in both themes. A run at least 56 px
+    wide also gets its word, "Paused" or "Off cycle", under its marker.
+    The legend names both shadings with the same patterns, and the day
+    list labels every day. So a one-day run with no room for its word is
+    still told apart without color. A day after today has no Day Status,
+    so it is never shaded.
+*   **The day list** is newest date first. For a Compound in a Protocol,
+    it lists every date of the range, each with its Day Status; a date
+    with no Day Status is listed only when it holds a Dose. Each date
+    shows its label, the not-planned reason, and the extra count next to
+    them. Each slot shows its planned time (or "Any time"), its amount and
+    the name of its Protocol, then the Dose that filled it, or "Pending"
+    on today and "Not logged" before it. The extra Doses follow, marked
+    "Extra". A Compound in no Protocol shows a line saying it has no Day
+    Statuses, then its Doses by date with no label.
 
 **The Effect view.** Its window input moves to `effectBoundsFromLocalDates`
 (D2); its math is unchanged. For a Protocol with a cycle or Pauses, it shows
@@ -2727,18 +2839,27 @@ land before Phase 4's Consistency view shows these Doses.
             `timezoneOffsetMinutes`, the new time is read at that offset,
             which is kept, and only the local date is frozen again from it.
             The timezone label is kept too. A Dose with a null offset is
-            frozen again from the device's zone, as today (D6).
+            frozen again from the device's zone, as today (D6). A draft
+            that names its own `localDate` or `timezone` still takes
+            precedence; the edit sheet names neither when the moment
+            changes.
     *   `apps/server/src/agent-protocols.ts`: the start-move copies in
         `finalizeProtocolPlanRows` skip the same members.
     *   `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart`:
         *   a "Logged" Planned list row opens `LogDoseSheet.edit` on the
-            Dose that fills it, found in the `PlannedDay`'s
-            `ProtocolDayRecord` by its `doseId`. "Pending" and "Not logged"
+            Dose that fills it. `PlannedRow` has no `doseId`, so the row's
+            fill is found in the `PlannedDay`'s `dayStatuses` by Compound,
+            Protocol and slot, and its Dose by that fill's `doseId` in the
+            `PlannedDay`'s `ProtocolDayRecord`. "Pending" and "Not logged"
             rows keep opening a new log (D6);
         *   `LogDoseSheet.edit` shows and edits the Dose's date and time at
             its frozen offset, and the day's Dose rows show their time the
             same way, so a row and its edit sheet agree (D2, D6). A Dose
-            with a null offset reads in the device's zone, as today.
+            with a null offset reads in the device's zone, as today. The
+            sheet holds a clock reading at the offset and turns it into the
+            moment on Save, sending no `localDate` or `timezone` when the
+            moment changed. Its date picker reads "today" at the offset
+            too (D6, "The log sheet").
     *   `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart`:
         `CompoundListScreen` gains an optional `protocolDay`. The Protocol
         Day view's add button passes the selected Protocol Day. Library and
@@ -2761,13 +2882,18 @@ land before Phase 4's Consistency view shows these Doses.
         tapping a "Logged" row opens that Dose for edit, and saving it adds
         no Dose; a Dose logged at another offset shows its own clock time.
     *   `apps/mobile/test/features/protocols/log_dose_sheet_test.dart`: the
-        edit sheet shows a Dose's time at its frozen offset.
+        edit sheet shows a Dose's time at its frozen offset, and its date
+        picker ends at today at that offset, for a western and an eastern
+        offset.
     *   `apps/mobile/test/features/protocols/compound_list_screen_test.dart`:
         opened as from Library after browsing a past day, the sheet opens on
         today; opened from the Protocol Day view, on the selected day.
 *   **Not in this entry:** nearest-time matching, and the time a Dose
     logged from the Planned list is logged at. Both stay as built (Open
-    Questions).
+    Questions). Two findings from its review land in file 46a instead,
+    because they touch files this entry doesn't list: the clock-at-offset
+    arithmetic copied in three places, and the order of the day's Dose
+    rows.
 
 #### Phase 4: the Consistency view
 
@@ -2775,41 +2901,106 @@ land before Phase 4's Consistency view shows these Doses.
 
 *   **Proposed Changes**:
     *   Opens for one Compound, or for a Protocol with a tab per member.
+        Each tab is that Compound's own Consistency across every Protocol
+        it is in (D6, "Tabs").
     *   A range picker: the last 30 days (including today) by default; 7, 90
-        or 365 days; or a custom range up to 366 days.
+        or 365 days; or a custom range up to 366 days. A custom range ends
+        at today at the latest, its picker starts at 2000-01-01, and a
+        longer pick keeps its last 366 days. The chosen dates are written
+        out under the picker (D6, "The range").
     *   The chart (file 42) above a day list. Each day shows its Day Status
         label and reason, the logged times and amounts, and the planned times
-        and amounts, as D6 describes.
+        and amounts, as D6 describes ("The day list", "Amounts").
     *   It shows `EffectScreen.disclaimerText`.
+    *   It doesn't rebuild when local midnight passes (D6, "The day
+        boundary").
+    *   **Strings.** New `app_en.arb` strings, with the generated
+        `app_localizations*.dart` regenerated: the "Consistency" button and
+        the screen title, the range presets and "Custom", "Planned",
+        "Extra" and the extra count, the lines for a Compound in no
+        Protocol, for no Doses, for an empty chart and for a load error,
+        the chart's three legend entries and its semantics label. The Day
+        Status, not-planned reason and Planned list row strings of file 39
+        are reused. No string uses a word D6 bans. (The arb files are not
+        in this phase's list of files; settled after Phase 4's build.)
 
 ##### 42. `apps/mobile/lib/features/protocols/widgets/consistency_chart.dart` and `apps/mobile/lib/features/protocols/models/consistency_chart_data.dart` (Create)
 
-*   **Proposed Changes**: An `fl_chart` scatter. X is the date and Y is the
-    time of day.
-    *   Each logged Dose is a point.
+*   **Proposed Changes**: An `fl_chart` chart drawn as a scatter. X is the
+    date and Y is the time of day.
+    *   **Why a `LineChart`.** `fl_chart`'s `ScatterChart` draws points
+        only, with no segments and no shaded ranges. So the chart is a
+        `LineChart`: the Doses are a series of dots with no line, each
+        planned segment is a two-point line, and the shaded runs are
+        ranges painted behind the plot. (Settled after Phase 4's build.)
+    *   Each logged Dose is a point; an extra is a ring, read from
+        `ConsistencyRange.extraDoseIds` (file 44).
     *   Each planned time is a horizontal segment over the days it applies.
     *   Untimed planned doses are drawn as a band labelled "Any time" along
         the top.
-    *   Off-cycle and paused days are shaded and labelled.
+    *   Off-cycle and paused days are shaded and labelled, as D6
+        ("Shading") describes: one shade, hatched for off cycle, a marker
+        under every run, the run's word when it is at least 56 px wide,
+        and matching legend swatches.
 
     The model is pure and tested, following
     `apps/mobile/lib/features/protocols/models/effect_timeline_chart_data.dart`.
+    It is built once per `ConsistencyRange` the repository emits, not on
+    every widget build.
 
 ##### 43. `apps/mobile/lib/features/protocols/controllers/consistency_controller.dart` (Create)
 
 *   **Proposed Changes**: The range state and the `watchConsistency` stream.
+    *   The range state is in memory only and auto-disposed with the view,
+        so the view opens on the default again. It reads "today" from
+        `protocolsClockProvider` (file 37) when built and on every pick,
+        and passes it to `watchConsistency`.
+    *   A custom pick is clamped before it reaches the repository: an end
+        after today becomes today, and a range longer than
+        `maxConsistencyRangeDays` (366) keeps its last 366 days.
 
 ##### 44. `apps/mobile/lib/data/repositories/protocol_plan_repository.dart` (Modify, Phase 4 part)
 
-*   **Proposed Changes**: Adds `watchConsistency(compoundId, from, to) ->
-    Stream<ConsistencyRange>`: the range's `DayStatus`es, its `PlanDay`s and
-    its Doses.
+*   **Proposed Changes**: Adds `watchConsistency(compoundId, from, to,
+    {required today}) -> Stream<ConsistencyRange>`: the range's `PlanDay`s
+    for the Compound, its `DayStatus`es (none after `today`) and its
+    non-archived Doses.
+    *   **`today`** is required and named, as on `watchPlannedDay` (file
+        35): it is the caller's local date, read from its clock, and the
+        repository never reads a clock. (File 44 first named no `today`;
+        settled after Phase 4's build.)
+    *   **Range limits.** It throws an `ArgumentError` when `from` is
+        after `to`, or when the range holds more than
+        `maxConsistencyRangeDays` (366) days, both ends included. The
+        controller clamps a pick first (file 43), so the view never
+        throws.
+    *   **What it reads.** Every Protocol the Compound is a member of,
+        keeping only that Compound's PlanDays, so its Day Statuses are the
+        ones a read of the whole plan would give. It re-emits when a
+        Protocol, Protocol Member, Schedule Version, Compound or Dose
+        changes, like `watchPlannedDay`.
+    *   **`ConsistencyRange`** carries the PlanDays, Day Statuses and
+        Doses, the Compound's record (for a planned amount's strength,
+        D6 "Amounts") and each Protocol's record. It derives the day list
+        (`days`, newest first, D6 "The day list") and `extraDoseIds`, the
+        one reading of an extra that the chart and the day list share.
+    *   **`sequence` per Compound and date.** `_planDoses` numbers each
+        Dose's `sequence` among its Compound's Doses on its local date, as
+        D6 step 2 and `PlanDose` define it. Phase 3 numbered it per
+        Compound only, which is the same on a one-day read, so the
+        Planned list numbers exactly as before. A range read needs the
+        per-date numbering. (Settled after Phase 4's build.)
 
 ##### 45. `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart` and `apps/mobile/lib/features/protocols/widgets/protocol_screen.dart` (Modify, Phase 4 part)
 
 *   **Proposed Changes**: Each Compound row gets a "Consistency" icon button
     (≥ 48 dp). The Protocol screen gets a "Consistency" button. Both open file
     41.
+    *   Both push the view wrapped in its own `ProtocolsLockGate` (D6,
+        "The lock").
+    *   The Protocol screen's button shows only when editing a saved
+        Protocol that has members. It opens a tab per member in member
+        order, read from the Protocol as saved (D6, "Tabs").
 
 ##### 46. Tests (Create)
 
@@ -2824,6 +3015,55 @@ land before Phase 4's Consistency view shows these Doses.
     (Modify): a budget for `planDays` plus `dayStatuses` over 366 days for one
     Compound in 3 Protocols. It has 5 versions per Protocol and 800 Doses, and
     must finish under 50 ms.
+*   `apps/mobile/test/performance/README.md` (Modify): a row for that
+    budget, beside the other budgets' rows. (Not in this list before
+    Phase 4's build; settled after it.)
+
+##### 46a. Findings settled after file 40a's and Phase 4's builds (Modify)
+
+This entry is lettered so the numbers of every later file stay as they were.
+It changes what file 40a and Phase 4 built, so it lands as its own pull
+request after Phase 4's. Nothing in Phase 5 depends on it.
+
+*   **Files**:
+    *   `apps/mobile/lib/domain/protocols/protocols.dart`: one pure helper
+        for a Dose's clock reading where it was taken: an instant at a
+        nullable frozen offset, as a UTC `DateTime` whose fields are that
+        clock, or the device's zone when the offset is null.
+        `DoseRecord` exposes it as a getter, and `DoseRecord.localTime`
+        formats it. Today the same arithmetic is written three times:
+        `DoseRecord.localTime`, `_doseClock` in `protocols_day_view.dart`,
+        and the local-date step of `editDose` in
+        `training_repositories.dart`. A fix to one would leave the others
+        reading a Dose differently, which is the disagreement between a
+        row and its edit sheet that file 40a removed. No behavior changes.
+    *   `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart`:
+        `_doseClock` is removed, and the day's Dose rows and the edit
+        sheet read the helper.
+    *   `apps/mobile/lib/data/repositories/training_repositories.dart`:
+        *   `editDose` reads the helper to freeze the local date at the
+            Dose's offset.
+        *   `watchProtocolDay` lists the day's Doses by local time (the
+            helper's clock), then id: matching's order (D6 step 2). The
+            query keeps its instant order, and the rows are sorted after
+            the read, because the clock depends on each row's offset.
+            Doses logged at different offsets on one Protocol Day then
+            read in clock order, and the day's log and the Planned list
+            take them in the same order (D6, "The day's Dose rows").
+    *   `apps/mobile/lib/data/repositories/protocol_plan_repository.dart`:
+        the Consistency read's Doses (`_consistencyDoseQuery`) are sorted
+        the same way, so a day list's Doses and extras read in clock
+        order.
+*   **Tests:**
+    *   `apps/mobile/test/features/protocols/protocols_repository_test.dart`:
+        two Doses on one Protocol Day, the later instant at an earlier
+        clock time through its offset, are listed in clock order.
+    *   `apps/mobile/test/features/protocols/protocols_day_view_test.dart`:
+        the same two Doses show in clock order.
+    *   The existing tests for the edit sheet's offset and for `editDose`
+        pass unchanged.
+*   **Not in this entry:** the Consistency view's day boundary, which
+    stays as built (D6, "The day boundary").
 
 #### Phase 5: reminders
 
