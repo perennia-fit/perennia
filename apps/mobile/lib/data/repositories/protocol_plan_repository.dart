@@ -47,10 +47,8 @@ final class PlannedRow {
 
 /// One Protocol's rows on the Planned list, in display order.
 final class PlannedRowGroup {
-  PlannedRowGroup({
-    required this.protocol,
-    required Iterable<PlannedRow> rows,
-  }) : rows = List<PlannedRow>.unmodifiable(rows);
+  PlannedRowGroup({required this.protocol, required Iterable<PlannedRow> rows})
+      : rows = List<PlannedRow>.unmodifiable(rows);
 
   /// The Protocol's id and name, also the tag a Dose logged from its rows
   /// carries.
@@ -180,9 +178,8 @@ final class PlannedDay {
         return byTime;
       }
     }
-    final byName = _compoundName(a.compoundId).compareTo(
-      _compoundName(b.compoundId),
-    );
+    final byName =
+        _compoundName(a.compoundId).compareTo(_compoundName(b.compoundId));
     if (byName != 0) {
       return byName;
     }
@@ -382,8 +379,10 @@ final class ConsistencyRange {
     final statusByDate = <ProtocolDayDate, DayStatus>{
       for (final status in dayStatuses) status.localDate: status,
     };
-    final dates = <ProtocolDayDate>{...statusByDate.keys, ...dosesByDate.keys}
-        .toList()
+    final dates = <ProtocolDayDate>{
+      ...statusByDate.keys,
+      ...dosesByDate.keys,
+    }.toList()
       ..sort((a, b) => b.compareTo(a));
     return List<ConsistencyDay>.unmodifiable(
       dates.map((date) {
@@ -622,7 +621,17 @@ final class ProtocolPlanRepository {
     _checkConsistencyRange(from, to);
     return _combineLatest2(
       _planQuery().watch().map(_planFromJoinedRows),
-      _consistencyDoseQuery(compoundId, from, to).watch().map(
+      _repositories.protocols
+          ._activeDoseQuery(
+            (row) =>
+                row.compoundId.equals(compoundId) &
+                row.localDate.isBetweenValues(
+                  from.storageValue,
+                  to.storageValue,
+                ),
+          )
+          .watch()
+          .map(
             (rows) => rows
                 .map(_repositories.protocols._doseFromRow)
                 .toList(growable: false)
@@ -676,25 +685,6 @@ final class ProtocolPlanRepository {
     );
   }
 
-  /// The Compound's non-archived Doses whose frozen local date falls in the
-  /// range, in no set order. [watchConsistency] sorts them after the read
-  /// ([_compareConsistencyDoses], a total order), because a Dose's clock
-  /// depends on its own frozen offset, which SQL doesn't apply, so an
-  /// `ORDER BY` here would never be observed.
-  SimpleSelectStatement<$DosesTable, DoseRow> _consistencyDoseQuery(
-    String compoundId,
-    ProtocolDayDate from,
-    ProtocolDayDate to,
-  ) {
-    return _database.select(_database.doses)
-      ..where(
-        (row) =>
-            row.deletedAt.isNull() &
-            row.compoundId.equals(compoundId) &
-            row.localDate.isBetweenValues(from.storageValue, to.storageValue),
-      );
-  }
-
   JoinedSelectStatement<HasResultSet, dynamic> _planQuery() {
     final protocols = _database.protocols;
     final members = _database.protocolCompounds;
@@ -715,7 +705,9 @@ final class ProtocolPlanRepository {
             schedules.deletedAt.isNull(),
       ),
     ])
-      ..where(protocols.deletedAt.isNull() | protocols.archivedOn.isNotNull())
+      ..where(
+        protocols.deletedAt.isNull() | protocols.archivedOn.isNotNull(),
+      )
       ..orderBy([
         OrderingTerm.asc(protocols.id),
         OrderingTerm.asc(members.id),
@@ -743,8 +735,10 @@ final class ProtocolPlanRepository {
         compound.id,
         () => _repositories.protocols._compoundFromRow(compound),
       );
-      final versions =
-          versionsByMember.putIfAbsent(member.id, () => <ScheduleVersion>[]);
+      final versions = versionsByMember.putIfAbsent(
+        member.id,
+        () => <ScheduleVersion>[],
+      );
       if (schedule != null) {
         versions.add(_scheduleVersionFromRow(schedule));
       }

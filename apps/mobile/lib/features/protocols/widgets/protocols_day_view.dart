@@ -11,6 +11,7 @@ import '../controllers/protocol_controller.dart';
 import '../controllers/protocols_day_controller.dart';
 import '../services/protocol_reminder_scheduler.dart';
 import 'compound_list_screen.dart';
+import 'plan_labels.dart';
 import 'protocol_reminders_settings.dart';
 import 'protocol_screen.dart';
 
@@ -119,10 +120,8 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
         ],
       ),
       body: dayState.when(
-        data: (state) => _ProtocolDayBody(
-          day: state.day,
-          plannedDay: state.plannedDay,
-        ),
+        data: (state) =>
+            _ProtocolDayBody(day: state.day, plannedDay: state.plannedDay),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
           child: Padding(
@@ -164,11 +163,9 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
   /// stack). A secondary surface reached from the app bar, never primary
   /// navigation.
   void _openProtocolList(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const ProtocolListScreen(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const ProtocolListScreen()));
   }
 }
 
@@ -338,9 +335,8 @@ class _PlannedListState extends ConsumerState<_PlannedList> {
     final plannedDay = widget.plannedDay;
     final groups = plannedDay.groups;
     final anyPending = groups.any(
-      (group) => group.rows.any(
-        (row) => row.status == PlannedRowStatus.pending,
-      ),
+      (group) =>
+          group.rows.any((row) => row.status == PlannedRowStatus.pending),
     );
 
     return Padding(
@@ -368,9 +364,7 @@ class _PlannedListState extends ConsumerState<_PlannedList> {
                   height: AppDimens.touchTarget,
                   child: FilledButton(
                     key: ProtocolsDayView.logAllPlannedButtonKey,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: colors.save,
-                    ),
+                    style: FilledButton.styleFrom(backgroundColor: colors.save),
                     onPressed:
                         _loggingAll ? null : () => unawaited(_logAllPlanned()),
                     child: Text(l10n.plannedListLogAll),
@@ -401,9 +395,7 @@ class _PlannedGroup extends StatelessWidget {
       children: [
         Text(
           group.protocol.name,
-          style: context.textStyles.label.copyWith(
-            color: colors.textSecondary,
-          ),
+          style: context.textStyles.label.copyWith(color: colors.textSecondary),
         ),
         for (final row in group.rows)
           _PlannedRowTile(
@@ -434,13 +426,8 @@ class _PlannedRowTile extends ConsumerWidget {
     final plannedTime = row.plannedLocalTime;
     final timeLabel = plannedTime == null
         ? l10n.plannedListAnyTime
-        : _timeOfDay(plannedTime).format(context);
-    final amount = row.amount;
-    final unit = amount.unit;
-    final amountLabel = <String>[
-      if (amount.amountEntered != null) amount.amountEntered!,
-      if (unit != null) doseUnitLabel(unit),
-    ].join(' ');
+        : planTimeOfDay(plannedTime).format(context);
+    final amountLabel = plannedAmountLabel(row.amount);
     final detail = <String>[
       if (amountLabel.isNotEmpty) amountLabel,
       timeLabel,
@@ -532,7 +519,7 @@ class _PlannedRowTile extends ConsumerWidget {
       LogDoseSheet(
         compound: compound,
         initialDate: plannedDay.localDate,
-        initialTime: plannedTime == null ? null : _timeOfDay(plannedTime),
+        initialTime: plannedTime == null ? null : planTimeOfDay(plannedTime),
         plannedAmount: row.amount,
         plannedRoute: row.amount.route,
         protocol: protocol,
@@ -575,25 +562,8 @@ class _PlannedRowLabel extends StatelessWidget {
       PlannedRowStatus.none => throw StateError('A future row has no label.'),
     };
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ExcludeSemantics(child: Icon(icon, size: 18, color: iconColor)),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: context.textStyles.label.copyWith(
-            color: colors.textPrimary,
-          ),
-        ),
-      ],
-    );
+    return StatusWordLabel(icon: icon, iconColor: iconColor, label: label);
   }
-}
-
-TimeOfDay _timeOfDay(String localTime) {
-  final minutes = planLocalTimeMinutes(localTime);
-  return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 }
 
 /// The date header: a swipe/arrow-navigable strip mirroring
@@ -608,8 +578,9 @@ class _ProtocolDayHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
-    final dateLabel =
-        DateFormat.yMMMMEEEEd().format(localDate.toLocalDateTime());
+    final dateLabel = DateFormat.yMMMMEEEEd().format(
+      localDate.toLocalDateTime(),
+    );
 
     return GestureDetector(
       key: ProtocolsDayView.dayHeaderKey,
@@ -733,10 +704,7 @@ class _DayRowText extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Text(
-          detail,
-          style: TextStyle(color: colors.textSecondary),
-        ),
+        Text(detail, style: TextStyle(color: colors.textSecondary)),
       ],
     );
   }
@@ -1022,8 +990,9 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
                 Expanded(
                   child: Text(
                     title,
-                    style: context.textStyles.h1
-                        .copyWith(color: colors.textPrimary),
+                    style: context.textStyles.h1.copyWith(
+                      color: colors.textPrimary,
+                    ),
                   ),
                 ),
                 if (editingDose != null)
@@ -1031,8 +1000,10 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
                     key: LogDoseSheet.deleteButtonKey,
                     tooltip: 'Delete dose',
                     onPressed: _saving ? null : _confirmDelete,
-                    icon:
-                        Icon(Icons.delete_outline, color: colors.textSecondary),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: colors.textSecondary,
+                    ),
                   ),
               ],
             ),
@@ -1437,9 +1408,7 @@ class _MomentField extends StatelessWidget {
       borderRadius: AppRadii.cardMd,
       onTap: onTap,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          minHeight: AppDimens.touchTarget,
-        ),
+        constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
         child: Row(
           children: [
             Icon(icon, color: colors.textSecondary),

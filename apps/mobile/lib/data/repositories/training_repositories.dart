@@ -5947,7 +5947,9 @@ class ProtocolsRepository {
   /// The derived `Protocol Day` for [localDate]: the day's `Dose`s grouped by
   /// their frozen local date, computed on read (nothing stored).
   Future<ProtocolDayRecord> protocolDay(ProtocolDayDate localDate) async {
-    final rows = await _activeDoseQuery(localDate: localDate).get();
+    final rows = await _activeDoseQuery(
+      (row) => row.localDate.equals(localDate.storageValue),
+    ).get();
     return _protocolDayFromRows(localDate, rows);
   }
 
@@ -5958,7 +5960,9 @@ class ProtocolsRepository {
   /// Dose's clock falls on the Protocol Day, so the day's log and the Planned
   /// list then take them in the same order.
   Stream<ProtocolDayRecord> watchProtocolDay(ProtocolDayDate localDate) {
-    return _activeDoseQuery(localDate: localDate).watch().map(
+    return _activeDoseQuery(
+      (row) => row.localDate.equals(localDate.storageValue),
+    ).watch().map(
           (rows) => _protocolDayFromRows(localDate, rows),
         );
   }
@@ -5980,22 +5984,19 @@ class ProtocolsRepository {
       ]);
   }
 
-  SimpleSelectStatement<$DosesTable, DoseRow> _activeDoseQuery({
-    ProtocolDayDate? localDate,
-  }) {
-    final query = _database.select(_database.doses)
-      ..where((row) {
-        var predicate = row.deletedAt.isNull();
-        if (localDate != null) {
-          predicate = predicate & row.localDate.equals(localDate.storageValue);
-        }
-        return predicate;
-      })
+  /// The non-archived Doses that [filter] keeps, in the day log's order
+  /// (time, then id). The Protocol Day and the Consistency read
+  /// (`ProtocolPlanRepository.watchConsistency`) both read Doses here, so
+  /// they share one tombstone filter and one order.
+  SimpleSelectStatement<$DosesTable, DoseRow> _activeDoseQuery(
+    Expression<bool> Function($DosesTable row) filter,
+  ) {
+    return _database.select(_database.doses)
+      ..where((row) => row.deletedAt.isNull() & filter(row))
       ..orderBy([
         (row) => OrderingTerm.asc(row.tookAt),
         (row) => OrderingTerm.asc(row.id),
       ]);
-    return query;
   }
 
   /// The day's Doses, sorted after the read into clock order, then id
