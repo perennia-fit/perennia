@@ -6,7 +6,7 @@
     recorded under [Agent surface](#agent-surface) and the corrected contract
     and CI notes; amended after the first bundle build: where nutrient values
     are read from; revised after Goldfish review 2026-10-26; first draft
-    2026-10-25)
+    2026-10-25; 2026-10-28 to record behaviour found by a drift report)
 
 --------------------------------------------------------------------------------
 
@@ -278,8 +278,8 @@ fallback for energy (see [Future Improvements](#future-improvements)).
         log-portion screen opens for the product, and the product is saved to
         the device cache.
     *   **Online, product unknown to Open Food Facts:** the existing not-found
-        state appears, offering **Quick add** (which creates a Quick Entry) and
-        creating a User Food.
+        state appears, offering **USDA** (which switches to the USDA filter)
+        and **Quick add** (which creates a Quick Entry).
     *   **Offline:** no request is sent. The not-found state appears with the
         line "You're offline. Showing foods on this device."
 
@@ -424,13 +424,19 @@ Changed:
     serving. Kilojoules are not converted (a Future Improvement).
 *   **Brand (new):** the first comma-separated entry of `brands`, trimmed;
     `null` if empty.
-*   **Change date (new):** `last_modified_t`, in Unix seconds.
-*   **Scan count (new):** `unique_scans_n`, or `null`.
+*   **Change date (new):** `last_modified_t`, in Unix seconds, read by the
+    nutrient value rule (step 3 under
+    [Where nutrient values are read from](#where-nutrient-values-are-read-from))
+    and truncated to whole seconds.
+*   **Scan count (new):** `unique_scans_n`, read by the same rule, so a numeric
+    string is accepted; a fraction is truncated toward zero and a negative
+    count is kept as it is. `null` when it does not parse.
 *   **Exclusions.** The mapping returns "excluded" with one of four reasons:
     *   `missingCode` — no barcode;
     *   `missingName` — no name by the rule above;
-    *   `missingChangeDate` — no `last_modified_t`, because the newer-copy rule
-        needs it;
+    *   `missingChangeDate` — no `last_modified_t`, or one beyond the range a
+        `DateTime` can hold (more than 8.64e12 seconds either side of 1970),
+        because the newer-copy rule needs it;
     *   `implausible` — a value that cannot be right per 100 g or ml: energy
         above 900 kcal, or protein, carbohydrate, sugar, fat, saturated fat,
         monounsaturated fat, polyunsaturated fat or fibre above 100 g.
@@ -443,7 +449,10 @@ Changed:
     first that applies is the one reported.
 *   **Nutrient text.** Each known value is formatted once with the existing
     rule (six decimal places, trailing zeros and point removed) into its
-    `entered` text. The numeric value is that text parsed back, so the app and
+    `entered` text. Two cases are added to that rule: output in exponent form
+    (from 1e21 up, such as `1e+21`) is returned unchanged, because its trailing
+    zeros are exponent digits, and a value that rounds to zero is written `0`,
+    never `-0`. The numeric value is that text parsed back, so the app and
     the server read the same number from the same text.
 
 #### Where nutrient values are read from
@@ -536,10 +545,13 @@ For each key, in this order:
     micro sign or U+03BC Greek mu) and `mcg`, and the value is converted into
     the Nutrient's default unit by powers of 1,000 (for example sodium `0.5 g`
     becomes `500`, protein `500 mg` becomes `0.5`, caffeine `40000 µg` becomes
-    `40`). A missing, empty or other unit makes the Nutrient unknown.
+    `40`). A missing, empty or other unit makes the Nutrient unknown, and so
+    does a converted value that is not finite (a huge gram value scaled to mg
+    or µg overflows).
 
 **Reading `nutriments`.** Each Nutrient is read from its `_100g` key, the first
-present of:
+whose value parses by the rule in step 3 (a present key whose value does not
+parse is passed over), of:
 
 | Nutrient | Keys | Multiplier |
 | :------- | :--- | :--------- |
@@ -556,7 +568,8 @@ present of:
 | cholesterol | `cholesterol_100g` | 1,000 (g to mg) |
 | caffeine | `caffeine_100g` | 1,000 (g to mg) |
 
-The value is parsed by the rule in step 3 above and multiplied.
+The value is parsed by the rule in step 3 above and multiplied. A product that
+is not finite makes the Nutrient unknown, as in step 4.
 
 **After either path,** a negative value makes the Nutrient unknown. The
 remaining value is formatted with `formatNutrientEntered` into its `entered`
@@ -698,7 +711,8 @@ Product line (shown wrapped; one line in the file):
     whitespace.
 *   `code`, `name`, `isLiquid`, `nutrients`, `modifiedAt` and `scans` are never
     `null`. `brand`, `servingLabel`, `servingSize` and `packageSize` are written
-    as `null` when unknown.
+    as `null` when unknown. A size that is a whole number below 2^53 is written
+    as an integer (`170`, not `170.0`).
 *   `nutrients` maps Nutrient ids, as written in `usda_foods.json` (for example
     `saturated_fat`), to the value per 100 g or ml as text, in the Nutrient's
     default unit. A Nutrient that is absent is unknown, never zero
@@ -790,9 +804,14 @@ reported to the opt-in crash reporter only, and is never thrown to the caller.
 The next app start tries again.
 
 Only one install runs at a time. A call to install while one is running returns
-the running install. Erase all data waits for a running install to finish, then
+the running install. Erase all data waits for the install by calling it: a
+running install is awaited; otherwise a new check runs, which installs when
+the stored hash differs. It then
 resets the database and installs again (see
-[One product, one row](#one-product-one-row)).
+[One product, one row](#one-product-one-row)). If the database cannot be
+opened, the reset does nothing. If the reset itself fails, the failure goes to
+the opt-in crash reporter only, nothing is thrown (the user's data is already
+erased), and no install follows; the next erase tries again.
 
 The repository holds the current status (`unknown` before the first check,
 then `installing`, `ready` or `failed`). Its status stream gives a new listener
@@ -803,8 +822,9 @@ the previous bundle; on the first install, only the device cache, with the
 status line "Preparing the offline food list." Because the install is one
 transaction, a killed install leaves the previous state, and the next start
 runs it again (CUJ 9). Drift stream queries on the app's connection do not see
-writes made on the isolate's connection, so the picker searches again when the
-status becomes `ready`.
+writes made on the isolate's connection, so the picker searches the device
+again when the status changes from `installing` to `ready`. It keeps the online
+slot and any live results while it does.
 
 The old cache table `open_food_facts_cache` in `AppDatabase` is dropped in
 schema version 62 (version 61 went to the Protocol Schedules change). Its rows are not copied: the app has not been released, so no
@@ -833,7 +853,8 @@ copy in that match's place; it is stored only if the user opens it.
 Storing never delays the screen: when the user opens a live result or a live
 barcode lookup finds a product, the log-portion screen opens with the live copy
 at once, and the write runs in the background. During a first install it can
-wait up to the 5-second busy timeout for the install's lock; if it still fails,
+wait up to 5 seconds for the install's lock (the busy timeout, plus a retry of
+the `SQLITE_BUSY` error the timeout does not cover); if it still fails,
 the product is simply not kept, and the failure goes to the opt-in crash
 reporter only.
 
@@ -862,8 +883,9 @@ pause:
 1.  If the query has barcode candidates, the stored products with those codes
     come first.
 2.  Then the FTS5 search. The query is lower-cased and split on every character
-    that is not a Unicode letter, digit or combining mark (combining marks stay
-    inside a part, as the tokenizer keeps them inside a token, so "Crème"
+    that is not a Unicode letter, number (`\p{N}`, which includes digits,
+    fractions such as `½` and other numerals) or combining mark (combining
+    marks stay inside a part, as the tokenizer keeps them inside a token, so "Crème"
     typed in decomposed form, `e` then U+0300, is one part); empty parts are
     dropped and the first 8 kept. Each part is written as a quoted prefix term
     (`"chobani"* "gr"*`), and all must match. The tokenizer folds diacritics,
@@ -913,8 +935,11 @@ layer (only repositories touch the network, per
     a user would have to restart repeatedly to exceed the limit.
 *   **Timeouts:** 10 seconds per request.
 *   **Outcomes:** the client returns one of `results` (with products), `notFound`
-    (HTTP 404, or v3 `status: failure` with `result.id: product_not_found`),
-    `offline` (no connection or a timeout), or `unavailable` with a reason kept
+    (HTTP 404; any v3 `status: failure` body with no product, on a 2xx status
+    or HTTP 400, which covers `product_not_found` and a rejected code; or a
+    product request whose product the mapping excludes),
+    `offline` (no connection, an `http.ClientException`, or a timeout), or
+    `unavailable` with a reason kept
     for tests: `rateLimited` (HTTP 429), `busy` (HTTP 503), `httpError` (any
     other non-2xx status), `malformed` (a body that does not parse) or
     `budgetExceeded` (the local request budget; nothing was sent). The user sees
@@ -953,7 +978,7 @@ bottom:
     | Condition | Shown |
     | :-------- | :---- |
     | Online lookups are off | "Online lookups are off. Turn them on in Settings > Food data." |
-    | A live request is running | The online search row, with a progress indicator in place of its icon |
+    | A live request is running | The online search row, with a progress indicator in place of its icon; it cannot be tapped until the request ends |
     | The last live request found no connection | "You're offline. Showing foods on this device." |
     | The last live request was unavailable | "Open Food Facts is unavailable. Try again in a minute." |
     | The last live search returned no products | "No matches on Open Food Facts." |
@@ -981,8 +1006,8 @@ action, in the Open Food Facts filter):
 The other filters (Recent, User, USDA) keep their behaviour.
 
 **Scanning** uses the barcode rules. The existing `BarcodeLookupStatus` values
-are kept and two are added. Each miss shows the existing not-found state (Quick
-add and creating a User Food) with one line:
+are kept and two are added. Each miss shows the existing not-found state (the
+USDA and Quick add actions) with one line:
 
 | `BarcodeLookupStatus` | Line under the not-found state |
 | :-------------------- | :----------------------------- |
@@ -1013,7 +1038,8 @@ rather than joined by a second widget. It gains two optional inputs, `code` and
 *   **Full form** (the log-portion screen): the existing sentence "Open Food
     Facts branded and barcode data is provided by Open Food Facts." and links;
     then, when `code` is set, a **View on Open Food Facts**
-    `AttributionLinkButton` for `https://world.openfoodfacts.org/product/<code>`;
+    `AttributionLinkButton` for `https://world.openfoodfacts.org/product/<code>`,
+    with the code URI-encoded;
     the disclaimer; and, when `changeDate` is set, "Open Food Facts data from
     <date>", formatted with `DateFormat.yMMMd` in the device's locale and local
     time zone.
@@ -1079,8 +1105,10 @@ Request:
 No new parameter is added: a barcode is searched through `search`. Responses:
 
 *   `source=openFoodFacts` with no `search`, or with a `search` that has neither
-    word parts nor barcode candidates, returns 200 with empty `foods`. Listing
-    the whole bundle is not supported.
+    word parts nor barcode candidates (such as punctuation only), returns 200
+    with empty `foods`. Listing the whole bundle is not supported. A `search`
+    that is empty or only whitespace is rejected with 400 by the existing query
+    schema (`trim().min(1)`), which predates this spec, for both sources.
 *   If the bundle file cannot be read, the response is HTTP 503 with the
     existing `AgentFoodsUnavailableResponseSchema` and the message "The Open Food
     Facts bundle is not available on this server." The route's 503 schema
@@ -1112,7 +1140,8 @@ Response:
 *   Each food gains `brand`, `sourceModifiedAt` (ISO-8601, UTC) and
     `productUrl`, all nullable and `null` for USDA. For Open Food Facts,
     `id` is the barcode, `productUrl` is
-    `https://world.openfoodfacts.org/product/<code>` (the app's link), and
+    `https://world.openfoodfacts.org/product/<code>` (the app's link, with the
+    code URI-encoded by `encodeURIComponent`), and
     `nutrientsPer100` has every Nutrient id, built with the existing
     `nutrientVectorStorage` in `agent-foods.ts`. A nutrient the bundle
     reports is `complete`, with `entered` and `value` read from its text; any
@@ -1153,18 +1182,23 @@ barcode candidate rule lives in `apps/server/src/barcode-candidates.ts`.
 Decisions made while implementing this module:
 
 *   **The load checks the file, and any failure makes the bundle
-    unavailable.** Besides gzip and JSON, the load rejects a header whose
+    unavailable.** Besides gzip and JSON, the load rejects a file that does
+    not end with a newline, a header whose
     `format` or `formatVersion` is not the one the app writes, a product count
     that differs from the header's `productCount`, a repeated code, a field of
-    the wrong type, a size that is not positive, a nutrient id that is not a
+    the wrong type, an empty string where text is expected, a `scans`,
+    `modifiedAt`, `productCount` or `perCountryLimit` that is negative or not
+    an integer, a size that is not positive, a nutrient id that is not a
     Nutrient id (the app's decoder throws on one, where the server would
     otherwise drop it), a `modifiedAt` outside the date range (above 8.64e12
     seconds, where `toISOString` throws and the app's `DateTime` rejects it),
     and nutrient text that is not
-    plain decimal text (an optional sign, digits, an optional fraction and
-    exponent), which `Number()` and Dart's `double.parse` read as the same
-    number; `Number()` alone would also take `0x10`. Negative values stay
-    accepted, as the app accepts them too. A server
+    plain decimal text (an optional leading `-`, digits, an optional fraction
+    and exponent; a `+` sign is rejected), which `Number()` and Dart's
+    `double.parse` read as the same number; `Number()` alone would also take
+    `0x10`. Negative nutrient text stays accepted, as the app accepts it too.
+    These checks are stricter than the app's decoder, so a file the app reads
+    can still make the server answer 503. A server
     that cannot trust the file answers 503 rather than serving part of it. It
     does not recheck `contentHash`; the app's asset test does.
 *   **A failed load is cached too.** The file is part of the deployed image and
@@ -1615,15 +1649,27 @@ Conventions in this plan:
     *   `String? buildFoodSearchMatch(String query)`: the FTS5 match
         expression, or `null` when the query has no parts.
     *   Constants `openFoodFactsFields` (the live `fields` list, as one
-        comma-joined string) and `openFoodFactsDisclaimer` (the Goal 7 text),
-        and the function `String openFoodFactsProductUrl(String code)`.
+        comma-joined string), `openFoodFactsDisclaimer` (the Goal 7 text),
+        `openFoodFactsBaseUrl` (`https://world.openfoodfacts.org/`) and
+        `openFoodFactsBundleAssetPath` (the bundle's path relative to
+        `apps/mobile`, which the builder, the installer and the asset test
+        share), and the function `String openFoodFactsProductUrl(String code)`,
+        which URI-encodes the code.
+    *   `Map<String, String> nutrientTextToJson(Map<NutrientId, String> text)`
+        and `Map<NutrientId, String> nutrientTextFromJson(Map<String, Object?> json)`:
+        the compact nutrient form (storage key to text, in `NutrientId` order)
+        that a bundle line and a stored row both carry. An unknown key is an
+        error.
     *   The bundle format: `const bundleFormat = 'perennia-open-food-facts-bundle'`
         and `const bundleFormatVersion = 1`;
-        `String encodeBundleProductLine(MappedOpenFoodFactsProduct product)`;
+        `String encodeBundleProductLine(MappedOpenFoodFactsProduct product)`,
+        which throws an `ArgumentError` when `scans` is `null` (a bundled
+        product always has a scan count) and writes a whole-number size below
+        2^53 as an integer (`170`, not `170.0`);
         `MappedOpenFoodFactsProduct decodeBundleProductLine(String line)`; and
         `BundleHeader`, with the header's fields (as in
         [The bundle file](#the-bundle-file)), `String toJsonLine()` and
-        `static BundleHeader fromJsonLine(String line)`.
+        `factory BundleHeader.fromJsonLine(String line)`.
 
 ##### 2. `apps/mobile/lib/domain/nutrition/nutrition.dart` (Modify)
 
@@ -1633,9 +1679,12 @@ Conventions in this plan:
         `final DateTime? sourceModifiedAt` and `final int? scans`, all optional
         and `null` by default.
     *   The private `_formatDerivedValue` becomes the public
-        `String formatNutrientEntered(double value)`, with the same body (six
-        decimal places, trailing zeros and point removed). Its two callers in
-        this file are updated. It is the rule file 1 uses, so there is one copy
+        `String formatNutrientEntered(double value)`: six decimal places,
+        trailing zeros and point removed, as before, plus two cases. Exponent
+        output (1e21 and above) is returned unchanged, and a value that rounds
+        to zero is written `0`, never `-0`. Its two callers in this file
+        (`NutrientAmount.scale` and the recipe per-100 value) are updated and
+        get the two cases too. It is the rule file 1 uses, so there is one copy
         of it.
 
 ##### 3. `apps/mobile/tool/open_food_facts_bundle/build_bundle.dart` (Create)
@@ -1653,6 +1702,18 @@ Conventions in this plan:
     *   The report's count by structure uses the
         `openFoodFactsNutrientStructure` (file 1) result recorded with each
         product in step 2; raw dump lines are not kept.
+    *   The dump is decoded as UTF-8 with `allowMalformed`. A line that does not
+        decode as a JSON object is counted as malformed and skipped. A line
+        whose handling throws is caught, counted and listed in the report (the
+        first 10), so one odd product does not end the run.
+    *   In step 2 the line's `countries_tags` are checked before the mapping
+        runs. A line whose tag text appears but whose tags name no launch
+        country is counted and skipped, so the exclusion counts cover
+        launch-country products only.
+    *   The report also prints the dataset version, the content hash, the
+        lines read, the malformed and failed lines, the lines with tag text
+        but no tag, the launch-country products, and the uncompressed size of
+        the product lines.
 
 ##### 4. `apps/mobile/assets/seeds/open_food_facts_bundle.ndjson.gz` (Create)
 
@@ -1788,7 +1849,8 @@ Conventions in this plan:
 *   **Proposed Changes**: Fails if any of these holds:
     *   the header's `format` or `formatVersion` differs from `bundleFormat` and
         `bundleFormatVersion`;
-    *   `productCount` differs from the number of product lines;
+    *   `datasetVersion` is not in `YYYY-MM-DD` form;
+    *   `productCount` differs from the number of product lines, or is 0;
     *   codes are not unique, or not sorted;
     *   a line does not decode with `decodeBundleProductLine`, or has a key not
         in the format;
@@ -1833,8 +1895,13 @@ Conventions in this plan:
         [Installing the bundle on the device](#installing-the-bundle-on-the-device):
         `id` autoincrement and `code` unique.
     *   `onCreate` calls `m.createAll()`, then creates the FTS5 table and its
-        insert, update and delete triggers with `customStatement`. `onUpgrade`
-        drops every table and runs `onCreate`.
+        insert, update and delete triggers (`open_food_facts_products_ai`,
+        `_ad` and `_au`) with `customStatement`. `onUpgrade` drops the
+        triggers and every table and runs `onCreate`.
+    *   Constants: `originBundle` and `originOnline` (the two `origin` values),
+        `bundleContentHashKey` (`bundle_content_hash`), and
+        `FoodReferenceDatabase.productsTable` and `productsFtsTable` (the two
+        table names).
     *   Factories:
         *   `FoodReferenceDatabase.memory()`, for tests;
         *   `FoodReferenceDatabase.connect(File file)`: the app's connection,
@@ -1852,24 +1919,46 @@ Conventions in this plan:
         *   `Future<void> keepProduct(OpenFoodFactsProductsCompanion row)`:
             insert with `origin = 'online'`. On a conflict on `code`, always set
             `origin = 'online'`, and replace the other values only when
-            `excluded.modified_at > modified_at`.
+            `excluded.modified_at > modified_at`. On `SQLITE_BUSY` it tries
+            again every 50 ms until 5 seconds have passed, then rethrows. The
+            busy timeout alone is not enough: a writer that was waiting when
+            the install commits gets `SQLITE_BUSY` at once, because its
+            snapshot went stale, and SQLite's busy handler does not retry
+            that.
         *   `Future<void> replaceBundle(Iterable<String> productLines, BundleHeader header, {Future<void> Function()? beforeCommitForTesting})`:
             the three install steps in one transaction. Its insert is
             `INSERT … ON CONFLICT(code) DO UPDATE SET <values> WHERE excluded.modified_at > modified_at`
-            and never changes `origin`. `beforeCommitForTesting` runs just
-            before the transaction commits.
+            and never changes `origin`. The rows are inserted in batches of
+            2,000, all inside that one transaction, to keep memory flat; this
+            is not the batched commits of
+            [Alternative R](#alternative-r-staging-table-or-batched-commits-for-the-install).
+            `beforeCommitForTesting` runs just before the transaction commits.
         *   `Future<void> resetAll()`: delete every product row and the
             `bundle_content_hash` key.
         *   `Future<String?> metaValue(String key)` and
             `Future<void> setMeta(String key, String value)`.
+    *   Top-level helpers:
+        *   `OpenFoodFactsProductsCompanion productCompanion(MappedOpenFoodFactsProduct product, {required String origin})`
+            and `MappedOpenFoodFactsProduct productFromRow(OpenFoodFactsProductRow row)`,
+            between a mapped product and its row;
+        *   `String encodeNutrientsJson(Map<NutrientId, String> text)` and
+            `Map<NutrientId, String> decodeNutrientsJson(String json)`, the
+            `nutrients_json` column through `nutrientTextToJson` and
+            `nutrientTextFromJson` (file 1);
+        *   `bool isSqliteBusy(Object error)`: whether the error is SQLite's
+            `SQLITE_BUSY`. On the app's background connection drift delivers
+            it wrapped in a `DriftRemoteException`, so the check unwraps that
+            first; the type comes from the experimental
+            `package:drift/remote.dart`.
 
 ##### 16. `apps/mobile/lib/data/open_food_facts/open_food_facts_client.dart` (Create)
 
 *   **Type / Scope**: Repository-layer HTTP client.
 *   **Proposed Changes**:
     *   `OpenFoodFactsClient({required http.Client httpClient, Uri? baseUrl, DateTime Function()? clock})`.
-        `baseUrl` defaults to `https://world.openfoodfacts.org/`; tests and the
-        staging check pass another.
+        `baseUrl` defaults to `openFoodFactsBaseUrl` (file 1),
+        `https://world.openfoodfacts.org/`; tests and the staging check pass
+        another.
     *   `Future<OpenFoodFactsOutcome> search(String query)` and
         `Future<OpenFoodFactsOutcome> product(String code)`, with the endpoints,
         parameters, timeout and outcomes in [Live requests](#live-requests).
@@ -1912,8 +2001,8 @@ Conventions in this plan:
 *   **Type / Scope**: Repository-layer service.
 *   **Proposed Changes**:
     *   `abstract interface class BundleAssetSource { Future<Uint8List> load(); }`.
-        `RootBundleAssetSource` reads
-        `assets/seeds/open_food_facts_bundle.ndjson.gz` with `rootBundle.load`.
+        `RootBundleAssetSource` reads `openFoodFactsBundleAssetPath`
+        (`assets/seeds/open_food_facts_bundle.ndjson.gz`) with `rootBundle.load`.
     *   Constructor:
 
         ```text
@@ -1927,20 +2016,40 @@ Conventions in this plan:
 
         With `databaseFile` set, the install runs in `Isolate.run`, on a
         `FoodReferenceDatabase.openInIsolate(databaseFile)` connection that it
-        closes before returning. Without it (tests with an in-memory database),
+        closes before returning. After `replaceBundle` it runs
+        `PRAGMA wal_checkpoint(TRUNCATE)` on that connection, because the one
+        large transaction leaves the WAL file at its peak size. Without it (tests with an in-memory database),
         the install runs `replaceBundle` on `database` directly.
     *   `Future<void> ensureInstalled()` runs the steps in
         [Installing the bundle on the device](#installing-the-bundle-on-the-device):
         *   inside the isolate: decode the bytes, then call `replaceBundle`;
         *   a call while an install runs returns the running install's future;
         *   every failure sets `failed` and calls
-            `crashReporter?.captureException(error, stackTrace)`; nothing is
-            thrown.
+            `reportQuietly(crashReporter, error, stackTrace)`; nothing is
+            thrown. `reportQuietly` is a new helper in
+            `apps/mobile/lib/features/settings/services/client_crash_reporting.dart`:
+            it calls `captureException` when a reporter is set and never
+            throws. The repository uses it for its own failures too.
     *   `BundleStatus get currentStatus` and `Stream<BundleStatus> watchStatus()`,
         which emits `currentStatus` first and then each change. `BundleStatus`
         is the enum `unknown`, `installing`, `ready` and `failed`.
+        `Stream<BundleStatus> get statusChanges` emits each change only,
+        synchronously, for the repository, which relays it and keeps its own
+        current status. `Future<void> close()` ends the status stream.
     *   `Future<BundleHeader?> bundleHeader()` reads the asset's header, or
-        returns `null` if it cannot.
+        returns `null` if it cannot or if its `format` or `formatVersion` is
+        not the one this build knows. The header is cached: an install that
+        already read it shares it, and a later call does not read the asset
+        again.
+    *   Top-level functions: `BundleHeader readBundleHeader(Uint8List bytes)`
+        (decodes only up to the header line's newline);
+        `Future<BundleHeader?> readBundleHeaderOrNull(BundleAssetSource asset)`
+        (`null` on any failure, with no format check);
+        `Iterable<String> bundleProductLines(Uint8List bytes)` (every line
+        after the header, split lazily); and
+        `Stream<T> currentThenChanges<T>(T Function() current, Stream<T> changes)`,
+        which both the installer and the repository use for their status
+        streams.
 
 ##### 19. `apps/mobile/lib/data/repositories/open_food_facts_repository.dart` (Create)
 
@@ -1953,7 +2062,10 @@ Conventions in this plan:
     *   `abstract interface class OpenFoodFactsRepository` with:
         *   `Future<void> ensureBundleInstalled()`;
         *   `Stream<BundleStatus> watchBundleStatus()`;
-        *   `Future<BundleHeader?> bundleHeader()`;
+        *   `Future<BundleHeader?> bundleHeader()`: the installer's
+            `bundleHeader()`. When the database cannot be opened, so there is
+            no installer, it falls back to `readBundleHeaderOrNull` on the
+            asset, which skips the format check;
         *   `Future<List<PlatformFoodRecord>> searchLocal(String query, {int limit = 50})`:
             barcode-candidate matches first, then `searchProducts` with
             `buildFoodSearchMatch`, without duplicates;
@@ -1964,9 +2076,15 @@ Conventions in this plan:
             hit is returned at once and kept in the background;
         *   `Future<void> keepOpenedProduct(PlatformFoodRecord record)`, which
             calls `keepProduct` with the record's fields and
-            `nutrientTextFromVector`;
-        *   `Future<void> resetDeviceData()`: waits for a running install, then
-            `resetAll()`, then `ensureBundleInstalled()`.
+            `nutrientTextFromVector`. A record with no `sourceModifiedAt` is
+            stored with `modified_at = 0`, so any dated copy replaces it;
+        *   `Future<void> resetDeviceData()`: returns at once if the database
+            cannot be opened; otherwise calls the installer's
+            `ensureInstalled()` (which awaits a running install, or runs a new
+            check that can start one),
+            then `resetAll()`, then `ensureInstalled()` again. A `resetAll`
+            failure is reported through `reportQuietly` and not thrown, and the
+            second install is skipped.
     *   `DriftOpenFoodFactsRepository implements OpenFoodFactsRepository`:
         *   the app constructor
             `DriftOpenFoodFactsRepository({required Future<File> Function() databaseFile, required OpenFoodFactsClient client, ClientCrashReporter? crashReporter})`
@@ -2061,8 +2179,14 @@ Conventions in this plan:
     *   **`BarcodeLookupStatus`** gains `unavailable` and `disabled`.
     *   **`build`** reads `onlineLookupsEnabled()` once, and listens to
         `settingsControllerProvider` (updating `onlineLookupsEnabled`) and to
-        `bundleStatusProvider` (updating `bundleStatus`, and re-running the local
-        search when it becomes `ready`).
+        `bundleStatusProvider` (updating `bundleStatus`). Only on a change from
+        `installing` to `ready`, not on the first value, it re-runs the device
+        search through `_reloadDeviceMatches`, which replaces `results` (with
+        the Goal 4 merge against the current `onlineResults`) and leaves
+        `onlineStatus` and `onlineResults` as they are.
+    *   **Error handling.** If reading `onlineLookupsEnabled()` fails, online
+        lookups count as on. An unexpected error from the repository's
+        `searchOnline` or `lookupBarcode` reads as `unavailable`.
     *   **`setQuery`** keeps the 300 ms local search, and resets `onlineResults`
         to empty and `onlineStatus` to `idle` when the query changes.
     *   **`Future<FoodPickerItem?> submitQuery(String query)`** (it returned
@@ -2100,6 +2224,11 @@ Conventions in this plan:
         *   `onlineSearchRowKey`, `onlineGroupKey`, `onlineStatusLineKey`;
         *   `bundleStatusLineKey`, `emptyQueryLineKey`, `barcodeStatusLineKey`.
     *   **Rows.** Result rows show the brand as a secondary line.
+    *   **Barcode banner.** While `barcodeLookupStatus` is `loading`, the
+        banner reads "Looking up barcode in Open Food Facts". The controller
+        sets `loading` on every scan or submitted barcode, before the
+        repository runs, so the banner shows briefly even when a stored
+        product is used and nothing is sent.
     *   **Opening.** `onSubmitted` awaits `submitQuery`, and opens the
         log-portion screen for a returned item through the same path the scan
         uses. Opening any item calls the controller's `openItem` first.
@@ -2115,7 +2244,9 @@ Conventions in this plan:
         `DateTime? changeDate`, and the compact and full forms in
         [The picker, the scanner and the log-portion screen](#the-picker-the-scanner-and-the-log-portion-screen).
     *   `NutritionAttributionKeys` gains `openFoodFactsProductLink`,
-        `openFoodFactsDisclaimer` and `openFoodFactsChangeDate`.
+        `openFoodFactsDisclaimer`, `openFoodFactsChangeDate` and
+        `openFoodFactsDbclLink` (the About screen's DbCL link, file 31).
+    *   The product link is `openFoodFactsProductUrl(code)` (file 1).
     *   Add `openFoodFactsDbclUrl = 'https://opendatacommons.org/licenses/dbcl/1-0/'`
         next to the existing `openFoodFactsSourceUrl` and `openFoodFactsOdblUrl`.
 
@@ -2123,7 +2254,8 @@ Conventions in this plan:
 
 *   **Type / Scope**: Widget.
 *   **Proposed Changes**:
-    *   Under the name, show the brand when present.
+    *   Under the name, show the brand when present, with the key
+        `LogPortionScreen.brandKey`.
     *   Replace the compact `OpenFoodFactsAttributionNotice` with the full form
         for every food whose source is `FoodSource.openFoodFacts`, passing the
         food's id as `code` and `sourceModifiedAt` as `changeDate`.
@@ -2184,7 +2316,8 @@ Conventions in this plan:
 *   **Type / Scope**: Widget.
 *   **Proposed Changes**:
     *   `AboutScreen` and `_NutritionCredits` become `ConsumerWidget`s.
-        `_NutritionCredits` reads `bundleHeaderProvider`.
+        `_NutritionCredits` reads `bundleHeaderProvider`. The Open Food Facts
+        paragraph carries the key `AboutScreen.openFoodFactsParagraphKey`.
     *   Replace the Open Food Facts paragraph and the offline paragraph with the
         texts in
         [The picker, the scanner and the log-portion screen](#the-picker-the-scanner-and-the-log-portion-screen):
@@ -2405,7 +2538,17 @@ Conventions in this plan:
     *   `export function searchBundle(bundle: OpenFoodFactsBundle, query: string | undefined, limit: number): BundleProduct[]`,
         with the rules in [Agent surface](#agent-surface), using
         `barcodeCandidates` from file 8. An undefined query returns `[]`.
-    *   `export const OPEN_FOOD_FACTS_DISCLAIMER`, the Goal 7 text.
+    *   `export const OPEN_FOOD_FACTS_DISCLAIMER`, the Goal 7 text, and
+        `OPEN_FOOD_FACTS_BUNDLE_FORMAT` and `OPEN_FOOD_FACTS_BUNDLE_FORMAT_VERSION`,
+        the format the load accepts (the app's `bundleFormat` and
+        `bundleFormatVersion`).
+    *   `export function openFoodFactsProductUrl(code: string): string`, the
+        `productUrl` value, which URI-encodes the code.
+    *   `export function normalizedWords(text: string): string[]`, the name
+        normalization in [Agent surface](#agent-surface), used for products at
+        load and for the query.
+    *   `export type OpenFoodFactsBundleHeader` and `export type BundleProduct`,
+        the parsed header and product line.
     *   The load rejects a nutrient key that is not a Nutrient id, using
         `isNutrientId`, a small export added to `apps/server/src/agent-validation.ts`
         on top of its existing `NutrientIdSchema` (importing the id list from

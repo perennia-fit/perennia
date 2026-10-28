@@ -2,7 +2,7 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3)
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, and behaviour a drift report found)
 
 --------------------------------------------------------------------------------
 
@@ -240,6 +240,18 @@ Building file 34a and Phase 3 raised more. They are settled the same way:
 The decisions that change what file 34a and Phase 3 built land as file
 40a.
 
+A drift report against the built code found behaviour the spec hadn't
+stated. It is recorded as built, where it applies:
+
+*   a first Schedule for a member that had none → D1;
+*   an Agent Dose's local date, and archiving a target outcome → D6 and
+    file 29;
+*   the codecs' ceilings and their errors for a period under one day →
+    [Shared core API](#shared-core-api-pure-dart-and-typescript-mirror-each-other),
+    D7 and files 3, 8, 13 and 17a;
+*   the planned-day types, and "Log all planned" with an incomplete row →
+    files 35 to 37.
+
 One question is open. Matching fills the timed slot nearest a Dose's time
 (D6), and a Dose logged from the Planned list on today is timed now. So a
 Dose logged at 12:00 against a 09:00 row fills a 13:00 slot instead, and
@@ -391,7 +403,8 @@ Consistency view shows which slot each Dose filled.
    │ Dose                                 │──┘│ planDays(protocols, from, to)    │
    │   localDate, timezoneOffsetMinutes   │   │ dayStatuses(planDays, doses,     │
    └──────────────────────────────────────┘   │             today)               │
-                                              │ dueUnfilled(dayStatuses, now)    │
+                                              │ dueUnfilled(dayStatuses, today,  │
+                                              │             now)                 │
                                               └───────────┬──────────────────────┘
                                 ┌─────────────────────────┼─────────────────────┐
                                 ▼                         ▼                     ▼
@@ -430,6 +443,13 @@ own id. No version is ever edited in place.
     *   A member added to a Protocol that has already started gets a first
         version dated today. So adding creatine to a months-old "Daily"
         Protocol doesn't turn its past days into "Not logged".
+    *   A member that already exists with no versions, and is then given a
+        Schedule, is dated the same way as an added member: today, or the
+        Protocol's start while that is still ahead. Both writers do this.
+        Before, the row covered every date and read `no_schedule` (below).
+        Now it covers the dates from that first version, so by the coverage
+        rule its earlier days read `removed`, not `no_schedule`. Either way
+        they read "Not planned", and no past day turns into "Not logged".
     *   Every later edit is dated `max(today, the latest existing
         effectiveFrom for that member)`, so an edit can never land behind an
         existing version and be hidden by it.
@@ -998,10 +1018,12 @@ amounts.
     *   The Protocol batch write carries a required top-level `today`, the
         user's local date, as the Day Status read does. It is the one Agent
         write that dates something by the user's calendar: a version's
-        `effectiveFrom` and an archive's `archivedOn`. A Dose takes its
-        local date from `tookAt` and its offset, and no other batch write
-        reads a local date, so no other write carries `today`; requiring it
-        there would break every Agent client for a field nothing reads.
+        `effectiveFrom` and an archive's `archivedOn`. A Dose carries its
+        own local date: `localDate` is a required field of each Dose, stored
+        as sent. Nothing checks that it is a real date or that it agrees
+        with `tookAt` and its offset. No other batch write reads a local
+        date, so no other write carries `today`; requiring it there would
+        break every Agent client for a field nothing reads.
         The server assigns
         `effectiveFrom` exactly as the app does (D1). A write can't set `effectiveFrom` itself, can't reuse
         an existing version id, and can't archive a version, so versions are
@@ -1027,7 +1049,10 @@ amounts.
         Pause). Members, Schedule Versions and target outcomes are separate
         rows, and a write changes only the ones it lists.
     *   An Agent archives a Protocol Member or a Protocol by sending
-        `archived: true`; the write schemas no longer accept `deletedAt`. The
+        `archived: true`; their write schemas no longer accept `deletedAt`.
+        A target outcome is not part of this change: its write schema is
+        not strict and still takes `deletedAt`, and the Agent skill's
+        reference archives an outcome by setting it (file 29). The
         server stamps `deletedAt` with the current time and sets `archivedOn`
         to `today`. So an Agent can't
         backdate a removal, just as the app can't.
@@ -1062,6 +1087,12 @@ amounts.
             so. A read is not a write shape anyway: `versions`,
             `currentVersion`, `archivedOn` and `deletedAt` are all refused
             by the strict write schemas.
+        *   Reads leave out a Protocol or member tombstoned by undo, even
+            with `includeArchived`, because it never existed (D1).
+        *   The read schema keeps `startLocalDate` nullable. The server reads
+            the stored payload as it is, and a row synced before Phase 2 can
+            lack the field; failing the whole list on one such row would
+            hide every other Protocol. A row the app writes always has it.
     *   `today` must be within one day of the server's UTC date, which every
         real timezone satisfies; otherwise the write is rejected. This keeps
         an Agent from writing something a person using the app could not.
@@ -1126,8 +1157,11 @@ Plan values join the shared two-tier validation module.
     twin also lives.
 *   **Limits.** The numeric limits below live in a `ProtocolPlanValidationLimits`
     class in Dart and a `PROTOCOL_PLAN_VALIDATION_LIMITS` constant in
-    TypeScript. The vector file carries a matching `limits` block, and both
-    runners assert it, as the precedent's runners do.
+    TypeScript. Both are defined in the core files (`protocol_plan.dart`,
+    `protocol-plan.ts`), whose decoders enforce the ceilings, and the
+    validation modules re-export them. The vector file carries a matching
+    `limits` block, and both runners assert it, as the precedent's runners
+    do.
 *   **Result type.** Results use the Dose validator's issue type, because it
     is the Protocols domain's own: `DoseValidationIssue` in Dart and
     `AgentDoseValidationIssueSchema` in TypeScript. That gives errors and
@@ -1668,7 +1702,7 @@ dueUnfilled(dayStatuses: DayStatus[], today: LocalDate, nowLocalTime: "HH:MM")
   -> [{compoundId, slot, protocolId, amountValue, amountEntered, unit, route}]
   Only `today`'s unfilled slots, timed at or before now, or untimed.
 
-effectBoundsFromLocalDates({startLocalDate, endLocalDate?, timezoneOffsetMinutes})
+effectBoundsFromLocalDates({startLocalDate, endLocalDate, timezoneOffsetMinutes})
   -> EffectBounds{startDate: instant, endDate: instant | null}      (D2)
 endDateForDoseCount({startLocalDate, rule, doseCount, period?}) -> LocalDate | null
   (Dart only; D6; null is "unavailable"; a default anchor reads as startLocalDate)
@@ -1699,7 +1733,9 @@ the local-time anchors in `apps/server/src/metric-reading-normalization.ts`.
 **Parameters.** `planDays`, `dayStatuses` and `dueUnfilled` take positional
 parameters in both languages. In Dart, `effectBoundsFromLocalDates` and
 `endDateForDoseCount` take named parameters, and `EffectBounds` is a class in
-`apps/mobile/lib/domain/effect/effect.dart`. In TypeScript,
+`apps/mobile/lib/domain/effect/effect.dart`. There, `endLocalDate` is
+required but may be null (an ongoing Protocol), so no caller can leave it
+out by mistake. In TypeScript,
 `effectBoundsFromLocalDates(startLocalDate, endLocalDate, timezoneOffsetMinutes)`
 takes the same three positionally and returns `{startDate: Date, endDate:
 Date | null}`. It throws a `RangeError` for a fractional offset, as Dart's
@@ -1741,14 +1777,33 @@ so both languages sort them the same way.
 In Dart, the decoders of the amount-carrying shapes (Schedule Version,
 planned dose and fill) also reject a `unit` or `route` that isn't in the Dose
 registries (`DoseUnit`, `DoseRoute`). TypeScript carries both as strings, and
-the server's write path judges them through `amount_required` (D7). The
-codecs don't range-check: how many times, or how long a cycle, is D7's job.
-Dart throws a `FormatException`; TypeScript throws `ProtocolPlanCodecError`.
+the server's write path judges them through `amount_required` (D7).
+
+The decoders also enforce safe ceilings, the same in both languages and
+pinned by codec vectors. They read their bounds from the limits (D7):
+
+| Value | Codec accepts | Validator accepts (D7) |
+| :---- | :------------ | :--------------------- |
+| every-N `n` | 1 to 365 | 2 to 365 (`every_n_range`) |
+| untimed `count` | 1 to 12 | 1 to 12 (`untimed_count`) |
+| timed `times` | 1 to 12 times | 1 to 12 (`times_count`) |
+| cycle `on_days`, `off_days` | each 0 to 3650, summing to at least 1 | each 1 to 3650 (`cycle_lengths`) |
+
+The ceilings keep a synced row that was never validated from planning a
+billion doses, or a day count past what both languages hold exactly. The
+codecs check nothing else about ranges: an every-N of 1, or a cycle with no
+off-period, decodes, and rejecting it is D7's job. Dart throws a
+`FormatException`; TypeScript throws `ProtocolPlanCodecError`. In Dart the
+rule and cycle constructors enforce the same bounds, throwing an
+`ArgumentError`, so no value outside them can be built.
 
 **A plan period under one day.** An every-N rule with N < 1, or a cycle whose
-on and off days sum to less than 1, can't come from validated data. Where the
-core meets one (`planDays`, `endDateForDoseCount`), it throws a `RangeError`
-rather than planning on a division by zero.
+on and off days sum to less than 1, can't come from validated data, and the
+core never plans one. In TypeScript, `planDays` decodes every rule and
+period, so it throws `ProtocolPlanCodecError` on one. In Dart such a value
+can't be built: the every-N constructor throws a `RangeError`, and a
+zero-length cycle an `ArgumentError`, so `planDays` and
+`endDateForDoseCount` never meet one.
 
 **Vector case shapes.**
 
@@ -1813,6 +1868,11 @@ files, so stage a new runner before running the gate locally.
     shape, with a `limits` block of `{maxTimesPerDay: 12, maxUntimedCount: 12,
     minEveryNDays: 2, maxEveryNDays: 365, maxCycleLengthDays: 3650,
     warnTimesPerDay: 6}`.
+    *   `amount_required`'s two less obvious failures each have a case: a
+        blank `amountEntered` (`timed-rule-with-blank-amountEntered-rejects`)
+        and a Dose-validator hard error on a present amount
+        (`timed-rule-with-negative-amount-rejects`), both →
+        `[amount_required]`. Both runners check the file's `schemaVersion`.
 
 ##### 3. `packages/golden-vectors/vectors/m36-protocol-plan.schema.json` and `packages/golden-vectors/vectors/m36-protocol-plan-validation.schema.json` (Create)
 
@@ -1839,6 +1899,16 @@ files, so stage a new runner before running the gate locally.
         as strict as [Shared core API](#shared-core-api-pure-dart-and-typescript-mirror-each-other)
         **Codecs** says, throwing a `FormatException`.
     *   Uses `ProtocolDayDate` for dates.
+    *   Also public, as built:
+        *   `ProtocolPlanValidationLimits` (D7), which file 8 re-exports;
+        *   `protocolPlanJsonVersion`, the one JSON `v` (1);
+        *   the `HH:MM` helpers `isPlanLocalTime`, `planLocalTime` and
+            `planLocalTimeMinutes`;
+        *   `planWholeNumber`, the whole-number reading the decoders and
+            validators share;
+        *   the types `PlanAmount` (the four amount fields), `PlanMember`,
+            `PlannedDose` and `PlanSlotFill` (one entry of a `DayStatus`'s
+            `fills`).
 
 ##### 6. `apps/mobile/lib/domain/protocols/protocols.dart` (Modify, Phase 1 part)
 
@@ -1853,6 +1923,9 @@ files, so stage a new runner before running the gate locally.
     `endDateForDoseCount`, following D1, D4 and D6, with the coverage and
     output order in the Shared core API. `endDateForDoseCount` takes named
     parameters and returns null for "unavailable" (D6). It does no I/O.
+    Also public, as built: `DueUnfilledDose`, the row `dueUnfilled`
+    returns, and `minDoseCountForEndDate` and `maxDoseCountForEndDate` (1
+    and 1000), which the editor's "N doses" helper reads.
 
 ##### 8. `apps/mobile/lib/domain/protocols/protocol_plan_validation.dart` (Create)
 
@@ -1860,7 +1933,9 @@ files, so stage a new runner before running the gate locally.
     *   `validateScheduleRule` and `validateProtocolPeriod`, with the D7
         signatures and check assignment.
     *   Both return `DoseValidationResult`.
-    *   A `ProtocolPlanValidationLimits` class holds the limits in file 2.
+    *   It re-exports `ProtocolPlanValidationLimits`, the limits in file 2,
+        from file 5. File 5 defines the class, so its types can enforce the
+        codec ceilings without an import cycle.
     *   It follows the layout of
         `apps/mobile/lib/domain/training/plan_validation.dart`.
 
@@ -1885,10 +1960,13 @@ files, so stage a new runner before running the gate locally.
     with the process timezone set to `America/Sao_Paulo` and
     `Europe/Lisbon` through the `TZ` environment variable, under
     `flutter test`. A process can't change its own zone, so the test runs
-    its assertions in its own process, then re-runs this file once per zone
-    as a child `flutter test` process with `TZ` set. Each child first
-    asserts that its zone took effect, so a platform that ignores `TZ` fails
-    rather than passing without testing anything.
+    its assertions in its own process, then runs them again once per zone
+    in a child process with `TZ` set. As built, the assertions live in
+    `apps/mobile/test/domain/protocol_day_date_dst_checks.dart`, which the
+    test imports and also runs in each child as a plain Dart VM, not a child
+    `flutter test`. Each child first asserts that its zone took effect, so a
+    platform that ignores `TZ` fails rather than passing without testing
+    anything.
 
 ##### 11. `apps/mobile/test/domain/golden_vector_ownership_test.dart` (Modify)
 
@@ -1904,12 +1982,23 @@ files, so stage a new runner before running the gate locally.
     Dates are `YYYY-MM-DD` strings with UTC epoch-day arithmetic. The codecs
     throw `ProtocolPlanCodecError`, and dates are checked without `Date.UTC`,
     which would read years 0-99 as 1900-1999.
+    *   Also public, as built:
+        *   `PROTOCOL_PLAN_VALIDATION_LIMITS` (D7), which file 13 re-exports;
+        *   `encodeScheduleRule` and `encodeProtocolPeriod`, which write a
+            decoded value back as its normalized stored JSON;
+        *   `MS_PER_DAY`, `epochDay` and `isValidLocalDate`, for local-date
+            arithmetic;
+        *   `isJsonObject` and `isWholeNumber`, for reading stored JSON;
+        *   `compareIds`, the UTF-16 code-unit order of the Shared core API,
+            and `pushToGroup`, which appends to a keyed group.
 
 ##### 13. `apps/server/src/agent-validation.ts` (Modify)
 
-*   **Proposed Changes**: Adds `validateAgentScheduleRule`,
-    `validateAgentProtocolPeriod` and `PROTOCOL_PLAN_VALIDATION_LIMITS` next to
-    `validateAgentDose`, with the D7 signatures and the same issue shape. Both
+*   **Proposed Changes**: Adds `validateAgentScheduleRule` and
+    `validateAgentProtocolPeriod` next to `validateAgentDose`, with the D7
+    signatures and the same issue shape, and re-exports
+    `PROTOCOL_PLAN_VALIDATION_LIMITS` from file 12. File 12 defines the
+    constant, because this module imports that one. Both
     take the stored JSON, and the period validator takes `YYYY-MM-DD` bounds
     that must be real dates (D7).
 
@@ -1969,9 +2058,12 @@ This entry is lettered so the numbers of every later file stay as they were.
         `effect_bounds` cases may expect `{"rejects": true}`, and their
         `timezoneOffsetMinutes` input is unbounded, so a case can carry an
         offset outside the range. The cycle's `on_days` and `off_days`
-        minimum is 0, not 1. The codecs don't range-check (that is D7's
-        `cycle_lengths`), so the schema of a codec case must let a case
-        carry a value the validator would reject.
+        minimum is 0, not 1, so a codec case can expect a cycle the codecs
+        read and D7's `cycle_lengths` rejects. As built, that is the only
+        bound relaxed: the schema still holds every-N `n` to 2 or more,
+        `times` to distinct values and weekdays to distinct values from 1
+        to 7. So no case can expect the codec to read `n = 1`, which it
+        does ([Shared core API](#shared-core-api-pure-dart-and-typescript-mirror-each-other)).
 *   **Proposed Changes**:
     *   **`amount_absent`** (D7) in both validators, after `amount_required`:
         an `as_needed` or `unscheduled` rule with any of `amountValue`,
@@ -2180,8 +2272,8 @@ This entry is lettered so the numbers of every later file stay as they were.
         versions. Ending early is setting the "Until" end date to today;
         there is no separate "End early" action.
     *   **The "N doses" helper** reads "Unavailable" when the member's rule
-        is invalid, `as_needed` or `unscheduled`, or when
-        `endDateForDoseCount` returns null.
+        is invalid, `as_needed` or `unscheduled`, while the cycle or Pauses
+        fail validation, or when `endDateForDoseCount` returns null.
     *   **Validation:** rejects and warnings from file 8 show inline, as Dose
         validation does. Hard rejects appear after the first save attempt,
         then update live as the user edits. Warnings show live and never
@@ -2263,7 +2355,10 @@ This entry is lettered so the numbers of every later file stay as they were.
 *   **Proposed Changes**:
     *   **Schemas.** `AgentProtocolBatchWriteRequestSchema` and its Protocol,
         member and Schedule sub-schemas become `.strict()`, so `frequency`
-        and `deletedAt` are rejected rather than stripped.
+        and `deletedAt` are rejected rather than stripped. The target-outcome
+        sub-schema stays as it was: not strict, with its `deletedAt`, which
+        is how an Agent archives an outcome (the skill's API reference says
+        so).
         *   The request gains a required top-level `today`, which must be
             within one day of the server's UTC date. Only this write gains
             it (D6).
@@ -2598,6 +2693,19 @@ plan these rules shape.
         -> Stream<PlannedDay>`. `PlannedDay` holds the day's `DayStatus`es
         and `PlanDay`s, plus each Compound's and Protocol's record, for the
         rows.
+        *   **Its public types, as built.** `PlannedDay` carries
+            `localDate`, `today`, `day` (below), `planDays`, `dayStatuses`,
+            and by id the full `CompoundRecord` of each Compound planned
+            that day and the `ProtocolOptionRecord` of each Protocol,
+            archived ones included. It derives `isToday`, `isFuture` and
+            `groups`, the Planned list's rows in D6's order.
+            *   A `PlannedRowGroup` is one Protocol and its `PlannedRow`s.
+            *   A `PlannedRow` holds `protocolId`, `compoundId`, `slot`,
+                `plannedLocalTime` (null when untimed), the planned
+                `PlanAmount` and a `PlannedRowStatus`.
+            *   `PlannedRowStatus` is `logged`, `pending` or `notLogged`
+                (D6's three labels), or `none` on a future day, whose rows
+                show no label.
         *   `today` is the caller's local date, read from its clock. The
             repository never reads a clock, and a required parameter means
             no caller can forget it. It decides "Pending" against "Not
@@ -2628,8 +2736,10 @@ plan these rules shape.
     *   **`LogDoseSheet`** gains optional constructor parameters:
         `initialDate`, `initialTime`, `plannedAmount` (`amountValue`,
         `amountEntered`, `unit`), `plannedRoute` and `protocol`.
-        *   The prefill of the time from the last Dose (`_seedTookAt`) is
-            removed, and the time defaults to D6's rule.
+        *   The prefill of the time from the last Dose is removed, and the
+            time defaults to D6's rule. As built, the method that set the
+            prefill, `_seedTookAt`, keeps its name and now computes D6's
+            default.
         *   The time picker gains a date field.
         *   `LogDoseSheet.edit` lets the date change.
 
@@ -2651,6 +2761,12 @@ plan these rules shape.
     *   **"Log all planned"** reads today's plan with the one-shot
         `plannedDay` (file 35). An empty `dueUnfilled` writes nothing. A
         call made while another is in flight shares that call (D6).
+        *   As built, it builds every Dose before it writes any. A due row
+            whose Compound, amount, unit, route or Protocol is missing from
+            the `PlannedDay` throws a `StateError`, so nothing is written.
+            D7's `amount_required` and the member's live Compound make that
+            a broken invariant, not a user error, and one Batch is never
+            partly logged.
 
 ##### 38. `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart` (Modify, Phase 3 part)
 
