@@ -420,7 +420,17 @@ const AgentProtocolTargetOutcomeSchema = z
   .object({
     id: z.string().min(1),
     metricId: z.string().min(1).nullable(),
-    outcomeKind: z.string().min(1),
+    // Not the write's enum: the write accepted any string until
+    // docs/designs/protocol-target-outcome-sync-shape.md (D4), and one old row
+    // with another kind must not fail the read for the whole account.
+    outcomeKind: z.string().min(1).openapi({
+      description:
+        "metric (a Metric, named by metricId) or performance (Workout analytics broadly). An outcome an Agent stored before the kind was checked may hold another value; the app ignores it."
+    }),
+    position: z.number().int().min(0).openapi({
+      description:
+        "The outcome's place in the Protocol's list, as the app orders it. Outcomes are listed by position, then id."
+    }),
     updatedAt: ISO8601StringSchema,
     deletedAt: ISO8601StringSchema.nullable()
   })
@@ -752,7 +762,14 @@ const AgentProtocolBatchWriteTargetOutcomeSchema = z
       description:
         "Optional Metric id. Metric ids are opaque and may be canonical catalogue ids rather than Protocol-row UUIDv7 values."
     }),
-    outcomeKind: z.string().trim().min(1).default("metric"),
+    outcomeKind: z.enum(["metric", "performance"]).default("metric").openapi({
+      description:
+        "metric (a Metric, named by metricId) or performance (Workout analytics broadly; metricId null). A metric outcome without a metricId, or a performance outcome with one, is refused with target_outcome_metric_id."
+    }),
+    position: z.number().int().min(0).optional().openapi({
+      description:
+        "The outcome's place in the Protocol's list. Left out, an existing outcome keeps its position and a new one goes after the Protocol's other outcomes, in the order sent."
+    }),
     updatedAt: ISO8601StringSchema.optional(),
     deletedAt: ISO8601StringSchema.nullable().default(null)
   })
@@ -2116,6 +2133,21 @@ export function prepareAgentProtocolBatchWrite({
         continue;
       }
       seenRow.add(outcome.id);
+      // Mirrors the app's validateProtocolTargetOutcomes: a structural
+      // refusal, not a validation tier.
+      if ((outcome.outcomeKind === "metric") !== (outcome.metricId !== null)) {
+        errors.push(
+          entityIssue(itemIndex, outcome.id, {
+            field: `protocols[${itemIndex}].targetOutcomes`,
+            rule: "target_outcome_metric_id",
+            message:
+              outcome.outcomeKind === "metric"
+                ? "A metric target outcome needs a metricId."
+                : "A performance target outcome has no metricId; send null."
+          })
+        );
+        continue;
+      }
       const outcomeUpdatedAt = outcome.updatedAt ?? nowIso;
       targetOutcomes.push({
         id: outcome.id,
@@ -2123,11 +2155,16 @@ export function prepareAgentProtocolBatchWrite({
         field: `protocols[${itemIndex}].targetOutcomes`,
         updatedAt: outcomeUpdatedAt,
         deletedAt: outcome.deletedAt ?? null,
+        // Exactly the app's image (_protocolTargetOutcomeImage): a pull hands
+        // this payload to the app's decoder unchanged. The app can't read
+        // another shape (docs/designs/protocol-target-outcome-sync-shape.md).
         payload: {
           id: outcome.id,
           protocol_id: protocol.id,
+          kind: outcome.outcomeKind,
           metric_id: outcome.metricId,
-          outcome_kind: outcome.outcomeKind,
+          // Assigned by the store from stored outcomes when left out (D3).
+          position: outcome.position ?? null,
           updated_at: outcomeUpdatedAt,
           deleted_at: outcome.deletedAt ?? null
         }
@@ -2726,9 +2763,11 @@ export function createDrizzleAgentProtocolsStore(
             serializeMember(row, schedulesByMember.get(row.id) ?? [])
           ),
           targetOutcomes: outcomes
-            .slice()
-            .sort((left, right) => left.id.localeCompare(right.id))
             .map((row) => serializeTargetOutcome(row))
+            .sort(
+              (left, right) =>
+                left.position - right.position || compareIds(left.id, right.id)
+            )
         });
       });
 
@@ -3081,7 +3120,8 @@ export function createDrizzleAgentProtocolsStore(
             serverClock,
             protocols,
             members,
-            schedules
+            schedules,
+            targetOutcomes
           }),
         groups: [
           {
@@ -3355,7 +3395,8 @@ async function finalizeProtocolPlanRows(
     serverClock,
     protocols,
     members,
-    schedules
+    schedules,
+    targetOutcomes
   }: {
     userId: string;
     today: string;
@@ -3363,6 +3404,7 @@ async function finalizeProtocolPlanRows(
     protocols: PreparedRow[];
     members: PreparedRow[];
     schedules: PreparedRow[];
+    targetOutcomes: PreparedRow[];
   }
 ): Promise<AgentProtocolsBatchWriteIssue[]> {
   const issues: AgentProtocolsBatchWriteIssue[] = [];
@@ -3596,7 +3638,80 @@ async function finalizeProtocolPlanRows(
   }
   schedules.push(...startMoveCopies);
 
+  await assignTargetOutcomePositions(transaction, { userId, targetOutcomes });
+
   return issues;
+}
+
+/**
+ * Fills each target outcome's `position` left null by
+ * prepareAgentProtocolBatchWrite, in batch order, so an Agent outcome sorts
+ * where the app would put it rather than first
+ * (docs/designs/protocol-target-outcome-sync-shape.md, D3). An outcome stored
+ * already under the same Protocol keeps its position, so archiving one by
+ * sending deletedAt doesn't move it. A new one goes one past the largest
+ * position among the Protocol's live stored outcomes (other than this batch's)
+ * and this batch's earlier live outcomes. Later batch rows don't count, so the
+ * result depends on batch order; positions needn't be unique.
+ */
+async function assignTargetOutcomePositions(
+  transaction: OpaqueTransaction,
+  { userId, targetOutcomes }: { userId: string; targetOutcomes: PreparedRow[] }
+) {
+  if (targetOutcomes.every((row) => row.payload.position !== null)) {
+    return;
+  }
+  const protocolIds = [
+    ...new Set(targetOutcomes.map((row) => String(row.payload.protocol_id)))
+  ];
+  const stored = await selectStoredPlanRows(
+    transaction,
+    schema.protocolTargetOutcomes,
+    userId,
+    [
+      inArray(
+        schema.protocolTargetOutcomes.id,
+        targetOutcomes.map((row) => row.id)
+      ),
+      inArray(sql`${schema.protocolTargetOutcomes.payload}->>'protocol_id'`, protocolIds)
+    ]
+  );
+  const storedById = byId(stored);
+  const batchIds = new Set(targetOutcomes.map((row) => row.id));
+  const largestByProtocol = new Map<string, number>();
+  const noteLargest = (protocolId: string, position: number) => {
+    largestByProtocol.set(
+      protocolId,
+      Math.max(largestByProtocol.get(protocolId) ?? -1, position)
+    );
+  };
+  for (const row of stored) {
+    if (row.deletedAt === null && !batchIds.has(row.id)) {
+      noteLargest(String(row.payload.protocol_id), payloadPosition(row.payload) ?? 0);
+    }
+  }
+  for (const row of targetOutcomes) {
+    const protocolId = String(row.payload.protocol_id);
+    if (row.payload.position === null) {
+      const existing = storedById.get(row.id);
+      const kept =
+        existing !== undefined && existing.payload.protocol_id === protocolId
+          ? payloadPosition(existing.payload)
+          : null;
+      row.payload.position = kept ?? (largestByProtocol.get(protocolId) ?? -1) + 1;
+    }
+    if (row.deletedAt === null) {
+      noteLargest(protocolId, row.payload.position as number);
+    }
+  }
+}
+
+/** A plan row payload's `position` when it is a non-negative integer. */
+function payloadPosition(payload: Record<string, unknown>): number | null {
+  const position = payload.position;
+  return typeof position === "number" && Number.isInteger(position) && position >= 0
+    ? position
+    : null;
 }
 
 /**
@@ -3744,7 +3859,11 @@ function byId<T extends { id: string }>(rows: readonly T[]) {
 
 async function selectStoredPlanRows(
   transaction: Pick<ServerDatabase, "select">,
-  table: typeof schema.protocols | typeof schema.protocolCompounds | typeof schema.schedules,
+  table:
+    | typeof schema.protocols
+    | typeof schema.protocolCompounds
+    | typeof schema.schedules
+    | typeof schema.protocolTargetOutcomes,
   userId: string,
   anyOf: ReturnType<typeof inArray>[]
 ): Promise<StoredPlanRow[]> {
@@ -4351,11 +4470,24 @@ function readPlanAmount(amount: PlanAmount) {
   };
 }
 
+/**
+ * Reads `kind`, the key the app writes. An Agent write stored `outcome_kind`
+ * and no `position` before docs/designs/protocol-target-outcome-sync-shape.md
+ * (D4, D5), and an Agent undo can restore such a payload, so both fall back.
+ */
 function serializeTargetOutcome(row: OpaqueRow) {
+  const kind = row.payload.kind;
+  const legacyKind = row.payload.outcome_kind;
   return {
     id: row.id,
     metricId: nullableString(row.payload.metric_id),
-    outcomeKind: String(row.payload.outcome_kind ?? "metric"),
+    outcomeKind:
+      typeof kind === "string" && kind.length > 0
+        ? kind
+        : typeof legacyKind === "string" && legacyKind.length > 0
+          ? legacyKind
+          : "metric",
+    position: payloadPosition(row.payload) ?? 0,
     updatedAt: row.updatedAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null
   };
