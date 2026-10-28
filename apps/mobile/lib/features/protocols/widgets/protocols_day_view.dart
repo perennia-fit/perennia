@@ -14,6 +14,7 @@ import 'compound_list_screen.dart';
 import 'plan_labels.dart';
 import 'protocol_reminders_settings.dart';
 import 'protocol_screen.dart';
+import 'protocols_lock_screen.dart';
 
 /// The Protocol Day view: a derived `Protocol Day` list, topped by the
 /// Planned list (D6) when the day has anything planned. Its FAB hands off to
@@ -149,11 +150,17 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
   /// entry point (tap a Compound → the prefilled sheet → Save). Reuses the
   /// existing discreet surface rather than duplicating a picker here. The
   /// list logs on the selected Protocol Day (file 38).
+  ///
+  /// Gated like every Supplements route: the Gate below on the Navigator
+  /// stack can't cover a route pushed over it, so without its own Gate the
+  /// list stays visible when the app re-locks.
   void _openCompoundList(BuildContext context) {
     final protocolDay = ref.read(selectedProtocolDayProvider);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => CompoundListScreen(protocolDay: protocolDay),
+        builder: (_) => ProtocolsLockGate(
+          child: CompoundListScreen(protocolDay: protocolDay),
+        ),
       ),
     );
   }
@@ -165,7 +172,11 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
   void _openProtocolList(BuildContext context) {
     Navigator.of(
       context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const ProtocolListScreen()));
+    ).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ProtocolsLockGate(child: ProtocolListScreen()),
+      ),
+    );
   }
 }
 
