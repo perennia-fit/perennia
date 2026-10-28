@@ -455,6 +455,124 @@ void main() {
     );
 
     testWidgets(
+      'tapping a Logged row opens the Dose that fills it for edit, and saving '
+      'it adds no Dose',
+      (tester) async {
+        final dose = _honoluluTrtDose();
+        // A second TRT Dose that day, at 20:00 there, listed first: the
+        // 08:40 Dose fills the one 09:00 slot and this one is an extra. The
+        // row must open the Dose its fill names, not the day's first Dose or
+        // the first of its Compound.
+        final extra = DoseRecord(
+          id: 'dose-trt-extra',
+          compoundId: 'c-trt',
+          compoundName: 'TRT',
+          amountValue: 0.3,
+          amountEntered: '0.3',
+          unit: DoseUnit.milliliter,
+          route: DoseRoute.intramuscular,
+          tookAt: DateTime.utc(2026, 10, 28, 6),
+          timezone: 'HST',
+          localDate: _today,
+          provenance: DoseProvenance.manual,
+          updatedAt: DateTime.utc(2026, 10, 28, 6),
+          timezoneOffsetMinutes: -600,
+        );
+        final day = ProtocolDayRecord(
+          localDate: _today,
+          doses: <DoseRecord>[extra, dose],
+        );
+        final controller = _FakeProtocolDayController(
+          day,
+          plannedDay: _plannedDay(
+            _today,
+            day: day,
+            doses: <PlanDose>[
+              PlanDose(
+                doseId: extra.id,
+                compoundId: 'c-trt',
+                localDate: _today,
+                localTime: extra.localTime,
+                sequence: 0,
+              ),
+              PlanDose(
+                doseId: dose.id,
+                compoundId: 'c-trt',
+                localDate: _today,
+                localTime: dose.localTime,
+                sequence: 1,
+              ),
+            ],
+          ),
+        );
+        await _pumpView(tester, day, controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+        expect(_rowLabel(tester, 'protocol-daily', 'c-trt'), 'Logged');
+
+        await tester.tap(_rowFinder('protocol-daily', 'c-trt'));
+        await tester.pumpAndSettle();
+
+        // The edit sheet, on the Dose's own snapshot: Delete is offered only
+        // in edit mode.
+        expect(find.byType(LogDoseSheet), findsOneWidget);
+        expect(find.byKey(LogDoseSheet.deleteButtonKey), findsOneWidget);
+        expect(find.text('0.5'), findsOneWidget);
+
+        await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+        await tester.pump();
+
+        expect(controller.editedDoseIds, <String>[dose.id]);
+        expect(controller.loggedDoses, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'a Dose logged at another offset shows its own clock time, in its row '
+      'and in its edit sheet',
+      (tester) async {
+        final dose = _honoluluTrtDose();
+        final day = ProtocolDayRecord(
+          localDate: _today,
+          doses: <DoseRecord>[dose],
+        );
+        await _pumpView(tester, day);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.doseRowKey(dose.id)),
+        );
+
+        // 08:40 where it was taken (UTC−10:00), whatever the device's zone.
+        // `DateFormat.jm` may put a narrow no-break space before "AM".
+        expect(
+          find.descendant(
+            of: find.byKey(ProtocolsDayView.doseRowKey(dose.id)),
+            matching: find.textContaining(RegExp(r'8:40\sAM')),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byKey(ProtocolsDayView.doseRowKey(dose.id)));
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(
+            of: find.byKey(LogDoseSheet.timeFieldKey),
+            matching: find.text('8:40 AM'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(LogDoseSheet.dateFieldKey),
+            matching: find.text('Oct 27, 2026'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
       'every row label is a word beside its icon: color is never the only '
       'signal',
       (tester) async {
@@ -946,6 +1064,7 @@ PlannedDay _plannedDay(
   ProtocolDayDate localDate, {
   List<PlanDose> doses = const <PlanDose>[],
   List<PlanProtocol>? protocols,
+  ProtocolDayRecord? day,
 }) {
   final days = planDays(protocols ?? _protocols(), localDate, localDate);
   final isFuture = localDate.compareTo(_today) > 0;
@@ -954,7 +1073,7 @@ PlannedDay _plannedDay(
   return PlannedDay(
     localDate: localDate,
     today: _today,
-    day: _emptyDay(localDate),
+    day: day ?? _emptyDay(localDate),
     planDays: days,
     dayStatuses: statuses,
     rowStatuses:
@@ -981,6 +1100,28 @@ PlannedDay _plannedDay(
       'protocol-night':
           ProtocolOptionRecord(id: 'protocol-night', name: 'Night'),
     },
+  );
+}
+
+/// A TRT Dose logged in Honolulu (UTC−10:00) at 08:40 on [_today] there,
+/// which is 18:40 UTC.
+DoseRecord _honoluluTrtDose() {
+  return DoseRecord(
+    id: 'dose-trt-honolulu',
+    compoundId: 'c-trt',
+    compoundName: 'TRT',
+    amountValue: 0.5,
+    amountEntered: '0.5',
+    unit: DoseUnit.milliliter,
+    route: DoseRoute.intramuscular,
+    tookAt: DateTime.utc(2026, 10, 27, 18, 40),
+    timezone: 'HST',
+    localDate: _today,
+    provenance: DoseProvenance.manual,
+    updatedAt: DateTime.utc(2026, 10, 27, 18, 40),
+    protocolId: 'protocol-daily',
+    protocolName: 'Daily',
+    timezoneOffsetMinutes: -600,
   );
 }
 

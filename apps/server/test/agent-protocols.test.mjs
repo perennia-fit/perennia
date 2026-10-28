@@ -2543,6 +2543,92 @@ test(
 );
 
 test(
+  "moving the start earlier gives no copy to a member archived before its earliest version, and still gives one to a member the same write archives",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-start-move-removed-early-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    // The start is still ahead, so every member's first version is dated
+    // from it (D1).
+    const futureStart = addDays(today, 10);
+    const protocolId = createUuidV7();
+    const member = (position) => ({ id: createUuidV7(), compoundId: createUuidV7(), position });
+    const kept = member(0);
+    const removedEarly = member(1);
+    const removedNow = member(2);
+    const schedule = (memberRow, times) => ({
+      id: createUuidV7(),
+      protocolCompoundId: memberRow.id,
+      rule: timedDailyRule(times),
+      ...creatineAmount
+    });
+    const write = (startLocalDate, members, schedules = []) =>
+      post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `start-move-removed-early-${randomUUID()}`,
+        today,
+        protocols: [{ id: protocolId, name: "Daily", startLocalDate, members, schedules }]
+      });
+    const datesOf = async (memberRow) =>
+      (
+        await database.sql`
+          select payload from schedules
+          where user_id = ${userId}
+            and payload->>'protocol_compound_id' = ${memberRow.id}
+          order by payload->>'effective_from', id
+        `
+      ).map((row) => row.payload.effective_from);
+
+    try {
+      await insertUser(database, userId);
+      assert.equal(
+        (
+          await write(futureStart, [kept, removedEarly, removedNow], [
+            schedule(kept, ["09:00"]),
+            schedule(removedEarly, ["12:00"]),
+            schedule(removedNow, ["18:00"])
+          ])
+        ).status,
+        200
+      );
+      // Removed before the start came: its archived_on (today) is before its
+      // earliest version (the future start), so it planned no day.
+      assert.equal(
+        (
+          await write(futureStart, [kept, { ...removedEarly, archived: true }, removedNow])
+        ).status,
+        200
+      );
+
+      // Move the start earlier, archiving another member in the same write.
+      const earlierStart = addDays(today, -20);
+      assert.equal(
+        (await write(earlierStart, [kept, { ...removedNow, archived: true }])).status,
+        200
+      );
+
+      assert.deepEqual(await datesOf(kept), [earlierStart, futureStart]);
+      // Its archived_on is read as stored before the write, so the member
+      // this write archives still gets its copy, and is then archived.
+      assert.deepEqual(await datesOf(removedNow), [earlierStart, futureStart]);
+      const [removedNowRow] = await database.sql`
+        select payload from protocol_compounds where id = ${removedNow.id}
+      `;
+      assert.equal(removedNowRow.payload.archived_on, today);
+      // Removed before it planned anything: no copy.
+      assert.deepEqual(await datesOf(removedEarly), [futureStart]);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
   "an archived Protocol is read-only, an archived member is re-sent but never restored, and an equal Schedule is still inserted",
   { skip },
   async () => {

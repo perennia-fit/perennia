@@ -3779,6 +3779,73 @@ void main() {
     });
 
     test(
+        'moving the start earlier gives no copy to a member archived before '
+        'its earliest version, and still gives one to a member the same save '
+        'removes', () async {
+      final kept = await createCompoundId('Creatine');
+      final removedEarly = await createCompoundId('Magnesium');
+      final removedNow = await createCompoundId('Zinc');
+      // The start is still ahead, so every member's first version is dated
+      // from it (D1).
+      const futureStart = ProtocolDayDate(year: 2026, month: 8, day: 1);
+      final created = await repositories.protocols.createProtocol(
+        draft(
+          <String>[kept, removedEarly, removedNow],
+          startLocalDate: futureStart,
+          schedules: <String, ScheduleDraft?>{
+            kept: timed(<String>['09:00']),
+            removedEarly: timed(<String>['12:00']),
+            removedNow: timed(<String>['18:00']),
+          },
+        ),
+        today: today,
+      );
+      // Removed before the start came: archived_on (today) is before its
+      // earliest version (the future start), so it planned no day.
+      await repositories.protocols.editProtocol(
+        created.protocolId,
+        draft(
+          <String>[kept, removedNow],
+          startLocalDate: futureStart,
+          schedules: <String, ScheduleDraft?>{
+            kept: timed(<String>['09:00']),
+            removedNow: timed(<String>['18:00']),
+          },
+        ),
+        today: today,
+      );
+      expect((await memberRow(removedEarly)).archivedOn, today.storageValue);
+
+      // Move the start earlier, removing another member in the same save.
+      await repositories.protocols.editProtocol(
+        created.protocolId,
+        draft(
+          <String>[kept],
+          schedules: <String, ScheduleDraft?>{
+            kept: timed(<String>['09:00']),
+          },
+        ),
+        today: today,
+      );
+
+      Future<List<String>> datesOf(String compoundId) async => [
+            for (final row in await versionRows(
+              memberId: (await memberRow(compoundId)).id,
+            ))
+              row.effectiveFrom,
+          ];
+
+      final copied = <String>[start.storageValue, futureStart.storageValue];
+      expect(await datesOf(kept), copied);
+      // Its archived_on is read as stored before the save, so the member
+      // this save removes still gets its copy, and is then archived.
+      expect(await datesOf(removedNow), copied);
+      expect((await memberRow(removedNow)).archivedOn, today.storageValue);
+      // Removed before it planned anything: no copy.
+      expect(await datesOf(removedEarly), <String>[futureStart.storageValue]);
+    });
+
+    test(
         'a hard-reject throws and persists nothing — the planned amount runs '
         'the SAME shared two-tier validator as a logged Dose', () async {
       final creatineId = await createCompoundId('Creatine');
@@ -4985,6 +5052,61 @@ void main() {
       expect(row.localDate, '2026-06-30');
       expect(row.timezoneOffsetMinutes, moved.timeZoneOffset.inMinutes);
       expect(row.timezone, moved.timeZoneName);
+    });
+
+    test(
+        'editing the time of a Dose logged at another offset keeps that '
+        'offset and its label, and freezes the local date from it', () async {
+      final logged = await repositories.protocols.logDose(
+        creatineAt(DateTime(2026, 7, 1, 21, 5)),
+      );
+      // Logged in Honolulu (UTC−10:00): 08:30 on 2026-07-01 there.
+      const offset = -600;
+      await (database.update(database.doses)
+            ..where((r) => r.id.equals(logged.doseId)))
+          .write(
+        DosesCompanion(
+          tookAt: Value<DateTime>(DateTime.utc(2026, 7, 1, 18, 30)),
+          timezoneOffsetMinutes: const Value<int?>(offset),
+          timezone: const Value<String>('HST'),
+          localDate: const Value<String>('2026-07-01'),
+        ),
+      );
+
+      // 23:30 that evening in Honolulu is 09:30 UTC the next day, a later
+      // date in UTC and in every zone east of UTC−10:00.
+      await repositories.protocols.editDose(
+        logged.doseId,
+        creatineAt(DateTime.utc(2026, 7, 2, 9, 30)),
+      );
+      var row = await doseRow(logged.doseId);
+      expect(row.tookAt.toUtc(), DateTime.utc(2026, 7, 2, 9, 30));
+      expect(row.timezoneOffsetMinutes, offset);
+      expect(row.timezone, 'HST');
+      expect(row.localDate, '2026-07-01');
+      var dose = (await repositories.protocols.protocolDay(
+        const ProtocolDayDate(year: 2026, month: 7, day: 1),
+      ))
+          .doses
+          .single;
+      expect(dose.localTime, '23:30');
+
+      // Past midnight in Honolulu: the local date moves to the next day
+      // there, at the same offset.
+      await repositories.protocols.editDose(
+        logged.doseId,
+        creatineAt(DateTime.utc(2026, 7, 2, 10, 15)),
+      );
+      row = await doseRow(logged.doseId);
+      expect(row.timezoneOffsetMinutes, offset);
+      expect(row.timezone, 'HST');
+      expect(row.localDate, '2026-07-02');
+      dose = (await repositories.protocols.protocolDay(
+        const ProtocolDayDate(year: 2026, month: 7, day: 2),
+      ))
+          .doses
+          .single;
+      expect(dose.localTime, '00:15');
     });
 
     test('a Dose sync image without an offset applies with a null offset',
