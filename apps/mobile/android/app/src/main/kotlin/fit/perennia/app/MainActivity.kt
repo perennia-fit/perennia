@@ -117,7 +117,10 @@ class MainActivity : FlutterActivity() {
 
     // Read-only: reports the permission without ever prompting. On Android 13
     // and later, a permission that isn't granted and was never requested is
-    // `notDetermined`: asking would still show the system prompt.
+    // `notDetermined`: asking would still show the system prompt. "Never
+    // requested" is this build's record of a request, and also no pending
+    // rationale: Android asks for one after a single denial, which covers a
+    // user an earlier build asked once, before the record existed.
     private fun notificationPermissionStatus(): String {
         if (NotificationManagerCompat.from(this).areNotificationsEnabled()) {
             return STATUS_GRANTED
@@ -125,6 +128,9 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED &&
+            !shouldShowRequestPermissionRationale(
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) &&
             !getSharedPreferences(PERMISSION_PREFERENCES, MODE_PRIVATE)
                 .getBoolean(NOTIFICATION_PERMISSION_REQUESTED, false)
         ) {

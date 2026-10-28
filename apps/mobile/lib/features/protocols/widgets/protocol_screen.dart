@@ -22,6 +22,7 @@ import '../controllers/protocols_day_controller.dart';
 import '../services/protocol_reminder_scheduler.dart';
 import 'consistency_screen.dart';
 import 'effect_screen.dart';
+import 'protocol_reminders_settings.dart';
 import 'protocols_lock_screen.dart';
 
 /// The `Protocol` list (PROTOCOLS.md §1.4, §5): the Routine analog. Lists the
@@ -1347,12 +1348,9 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     if (!enabled) {
       return;
     }
-    final permission = await ref
-        .read(timerBackgroundSchedulerProvider)
-        .notificationPermissionStatus();
-    if (permission == TimerBackgroundPermissionStatus.notDetermined) {
-      await ref.read(protocolReminderSchedulerProvider).requestPermission();
-    }
+    await ref
+        .read(protocolReminderSchedulerProvider)
+        .requestPermissionIfNotAsked();
   }
 
   Future<void> _archive() async {
@@ -1424,42 +1422,20 @@ class _RemindersField extends ConsumerWidget {
           onChanged: onChanged,
         ),
         if (enabled && denied)
-          Row(
+          ProtocolReminderNotice(
             key: ProtocolFormScreen.remindersDeniedKey,
-            children: [
-              ExcludeSemantics(
-                child: Icon(
-                  Icons.notifications_off_outlined,
-                  color: colors.textSecondary,
-                ),
-              ),
-              const SizedBox(width: AppDimens.dense),
-              Expanded(
-                child: Text(
-                  l10n.protocolRemindersPermissionDenied,
-                  style: TextStyle(color: colors.textPrimary),
-                ),
-              ),
-              TextButton(
-                key: ProtocolFormScreen.remindersOpenSettingsKey,
-                style: TextButton.styleFrom(
-                  foregroundColor: colors.textPrimary,
-                  minimumSize: const Size(0, AppDimens.touchTarget),
-                ),
-                onPressed: () => unawaited(
-                  ref
-                      .read(protocolReminderSchedulerProvider)
-                      .openNotificationSettings(),
-                ),
-                child: Text(l10n.protocolRemindersOpenSettings),
-              ),
-            ],
+            message: l10n.protocolRemindersPermissionDenied,
+            actionLabel: l10n.protocolRemindersOpenSettings,
+            actionKey: ProtocolFormScreen.remindersOpenSettingsKey,
+            onAction: () => unawaited(
+              ref
+                  .read(protocolReminderSchedulerProvider)
+                  .openNotificationSettings(),
+            ),
           )
         else if (enabled && savedEnabled && horizonEnd != null)
           Text(
-            l10n.protocolRemindersScheduledThrough(
-              DateFormat.yMMMd().format(horizonEnd.toLocalDateTime()),
-            ),
+            protocolRemindersScheduledThroughLabel(l10n, horizonEnd),
             key: ProtocolFormScreen.remindersHorizonKey,
             style: TextStyle(color: colors.textSecondary),
           ),

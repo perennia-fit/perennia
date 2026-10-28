@@ -521,9 +521,8 @@ final class ProtocolPlanRepository {
       from,
     );
     for (final status in todays) {
-      final fills = List<PlanSlotFill>.of(status.fills)
-        ..sort((a, b) => a.slot.compareTo(b.slot));
-      for (final fill in fills) {
+      // The core builds each Day Status's fills in slot order.
+      for (final fill in status.fills) {
         final time = fill.plannedLocalTime;
         if (time == null) {
           continue;
@@ -562,6 +561,22 @@ final class ProtocolPlanRepository {
       }
     }
     return List<ProtocolReminderInput>.unmodifiable(inputs);
+  }
+
+  /// Whether any Protocol not archived has reminders on: the "a Protocol
+  /// has reminders on" condition of the reminder banner (file 57, CUJ 12),
+  /// read from the Protocol itself rather than from [reminderInputs], so it
+  /// holds even when none of that Protocol's timed doses falls inside the
+  /// scheduling horizon (a later start, a Pause, an off-cycle stretch, or
+  /// only untimed Schedules).
+  Future<bool> anyProtocolRemindersOn() async {
+    final protocols = _database.protocols;
+    final query = _database.selectOnly(protocols)
+      ..addColumns([protocols.id])
+      ..where(protocols.deletedAt.isNull() &
+          protocols.remindersEnabled.equals(true))
+      ..limit(1);
+    return (await query.get()).isNotEmpty;
   }
 
   /// Fires after any write to the tables [reminderInputs] reads: Protocols,

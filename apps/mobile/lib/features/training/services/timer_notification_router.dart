@@ -135,7 +135,7 @@ class TimerNotificationRouter {
     }
 
     final routeName = timerExerciseRouteName(workoutExerciseId);
-    if (_isTopRoute(navigator, routeName)) {
+    if (isTopRoute(navigator, routeName)) {
       // Duplicate tap for the exercise already on top: no-op.
       return;
     }
@@ -149,15 +149,18 @@ class TimerNotificationRouter {
       ),
     );
   }
+}
 
-  bool _isTopRoute(NavigatorState navigator, String routeName) {
-    var isTop = false;
-    navigator.popUntil((route) {
-      isTop = route.settings.name == routeName;
-      return true; // Inspect the top route only; never actually pop.
-    });
-    return isTop;
-  }
+/// Whether [navigator]'s top route is named [routeName]. A notification tap
+/// for the screen already on top opens nothing new: the rest timer's tap
+/// here, and a Supplement reminder's tap in `app.dart`.
+bool isTopRoute(NavigatorState navigator, String routeName) {
+  var isTop = false;
+  navigator.popUntil((route) {
+    isTop = route.settings.name == routeName;
+    return true; // Inspect the top route only; never actually pop.
+  });
+  return isTop;
 }
 
 /// Overridable so tests can inject a fake router.

@@ -252,7 +252,23 @@ void main() {
       expect(taps, <ProtocolDayDate>[today, tomorrow]);
     });
 
-    test('with no notification system, it listens to nothing and schedules '
+    test('a first permission read that fails still starts every trigger',
+        () async {
+      permissions.failingReads = 1;
+      await scheduler.start(onReminderTapped: taps.add);
+
+      expect(planChanges.hasListener, isTrue);
+      expect(syncs.hasListener, isTrue);
+      expect(platform.runs, 1);
+      expect(platform.scheduledIds, <int>{protocolReminderId(today, '09:00')});
+
+      planChanges.add(null);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(platform.runs, 2);
+    });
+
+    test(
+        'with no notification system, it listens to nothing and schedules '
         'nothing', () async {
       permissions.status = TimerBackgroundPermissionStatus.unsupported;
       await scheduler.start(onReminderTapped: taps.add);
@@ -287,6 +303,7 @@ void main() {
         ],
         clock: () => now,
         deviceSwitchOn: () => deviceOn,
+        anyProtocolRemindersOn: () => remindersOn,
       );
     });
 
@@ -337,6 +354,31 @@ void main() {
       expect(scheduler.status.needsPermission, isFalse);
     });
 
+    test(
+        'CUJ 12: the banner shows for a Protocol with reminders on even '
+        'when none of its timed doses falls in the horizon', () async {
+      final platform = _FakePlatform(newYork);
+      final permissions = _FakePermissions()
+        ..status = TimerBackgroundPermissionStatus.notDetermined;
+      // "Daily" starts in 3 weeks, so the horizon holds none of its doses.
+      final later = _scheduler(
+        platform: platform,
+        permissions: permissions,
+        inputs: () => <ProtocolReminderInput>[
+          _input('trt', today.addDays(21), '09:00'),
+        ],
+        clock: () => now,
+        anyProtocolRemindersOn: () => true,
+      );
+      addTearDown(later.dispose);
+
+      await later.reconcile();
+
+      expect(later.status.remindersRequested, isTrue);
+      expect(later.status.needsPermission, isTrue);
+      expect(platform.scheduledIds, isEmpty);
+    });
+
     test('permission denied schedules none', () async {
       permissions.status = TimerBackgroundPermissionStatus.denied;
       await scheduler.reconcile();
@@ -367,6 +409,7 @@ void main() {
       final notification =
           platform.notifications[protocolReminderId(today, '09:00')]!;
       expect(notification.title, 'Supplements');
+      expect(notification.channelName, 'Reminders');
       expect(
         notification.body,
         'Planned for ${DateFormat.jm().format(DateTime(2000, 1, 1, 9))}',
@@ -571,6 +614,102 @@ void main() {
     });
   });
 
+  group('over the repository: planned days and reminders-on Protocols', () {
+    late AppDatabase database;
+    late ProviderContainer container;
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      container = ProviderContainer(
+        overrides: [appDatabaseProvider.overrideWith((ref) => database)],
+      );
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await database.close();
+    });
+
+    test(
+        'reminderInputs leaves out off-cycle and paused days (CUJs 3 and '
+        '5)', () async {
+      final repositories = container.read(trainingRepositoriesProvider);
+      // On today and tomorrow, off the day after, then on again; the fourth
+      // day is paused.
+      final stack = await _seedDailyStack(
+        repositories,
+        today,
+        period: ProtocolPeriod(
+          cycle: ProtocolCycle(
+            onDays: 2,
+            offDays: 1,
+            anchor: today,
+            anchorIsDefault: false,
+          ),
+          pauses: <ProtocolPause>[
+            ProtocolPause(from: today.addDays(3), to: today.addDays(3)),
+          ],
+        ),
+      );
+
+      final inputs = await repositories.protocolPlan
+          .reminderInputs(today, today.addDays(4));
+
+      expect(
+        inputs.map((input) => input.localDate).toSet(),
+        <ProtocolDayDate>{today, tomorrow, today.addDays(4)},
+      );
+      expect(
+        inputs.where((input) => input.compoundId == stack.ids['trt']),
+        hasLength(3),
+      );
+    });
+
+    test(
+        'anyProtocolRemindersOn reads the Reminders switch of every '
+        'Protocol not archived', () async {
+      final repositories = container.read(trainingRepositoriesProvider);
+      expect(await repositories.protocolPlan.anyProtocolRemindersOn(), isFalse);
+
+      final stack = await _seedDailyStack(repositories, today);
+      expect(await repositories.protocolPlan.anyProtocolRemindersOn(), isTrue);
+
+      await repositories.protocols.archiveProtocol(
+        stack.protocolId,
+        today: today,
+      );
+      expect(await repositories.protocolPlan.anyProtocolRemindersOn(), isFalse);
+    });
+  });
+
+  group('the zone', () {
+    test('a zone id the database has is that zone', () {
+      expect(
+        protocolReminderLocation('America/New_York', Duration.zero).name,
+        'America/New_York',
+      );
+    });
+
+    test(
+        'a zone id the database lacks falls back to the phone\'s current '
+        'offset, named by it', () {
+      final location = protocolReminderLocation(
+        'Vendor/Unknown',
+        const Duration(hours: 5, minutes: 30),
+      );
+      final instant = protocolReminderInstant(location, today, '09:00');
+
+      expect(instant.toUtc(), DateTime.utc(2026, 10, 28, 3, 30));
+      expect(
+        location.name,
+        isNot(
+          protocolReminderLocation('Vendor/Unknown', const Duration(hours: 5))
+              .name,
+        ),
+      );
+    });
+  });
+
   group('the plugin boundary', () {
     const channel = MethodChannel('dexterous.com/flutter/local_notifications');
     late List<MethodCall> calls;
@@ -604,7 +743,6 @@ void main() {
     FlutterLocalNotificationsReminderPlatform boundary() {
       return FlutterLocalNotificationsReminderPlatform(
         plugin: FlutterLocalNotificationsPlugin(),
-        localizations: () => lookupAppLocalizations(const Locale('en')),
       );
     }
 
@@ -659,6 +797,7 @@ void main() {
           payload: protocolReminderPayload(
             const ProtocolDayDate(year: 2030, month: 1, day: 2),
           ),
+          channelName: 'Reminders',
         ),
       );
       final schedule = calls.last;
@@ -717,6 +856,7 @@ ProtocolReminderScheduler _scheduler({
   Stream<void> Function()? planChanges,
   Stream<DateTime?> Function()? syncs,
   bool Function()? deviceSwitchOn,
+  bool Function()? anyProtocolRemindersOn,
 }) {
   return ProtocolReminderScheduler(
     platform: platform,
@@ -728,6 +868,9 @@ ProtocolReminderScheduler _scheduler({
               input.localDate.compareTo(to) <= 0,
         )
         .toList(),
+    anyProtocolRemindersOn: () async =>
+        anyProtocolRemindersOn?.call() ??
+        inputs().any((input) => input.remindersEnabled),
     planChanges: planChanges ?? () => const Stream<void>.empty(),
     lastSuccessfulSyncAt:
         syncs ?? () => const Stream<DateTime?>.empty(),
@@ -835,9 +978,16 @@ class _FakePermissions implements TimerBackgroundScheduler {
   int requests = 0;
   int reads = 0;
 
+  /// How many of the next reads throw, as a failed channel call does.
+  int failingReads = 0;
+
   @override
   Future<TimerBackgroundPermissionStatus> notificationPermissionStatus() async {
     reads += 1;
+    if (failingReads > 0) {
+      failingReads -= 1;
+      throw PlatformException(code: 'unavailable');
+    }
     return status;
   }
 
@@ -886,6 +1036,7 @@ Future<_Stack> _seedDailyStack(
   TrainingRepositories repositories,
   ProtocolDayDate today, {
   bool untimed = false,
+  ProtocolPeriod? period,
 }) async {
   final compounds = <String, CompoundRecord>{};
   Future<void> compound(String key, String name, DoseUnit unit) async {
@@ -924,6 +1075,7 @@ Future<_Stack> _seedDailyStack(
     ProtocolDraft(
       name: 'Daily',
       startLocalDate: today,
+      period: period,
       remindersEnabled: true,
       compoundIds: <String>[for (final record in compounds.values) record.id],
       schedulesByCompoundId: <String, ScheduleDraft?>{

@@ -208,12 +208,7 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
     if (navigator == null) {
       return;
     }
-    var onTop = false;
-    navigator.popUntil((route) {
-      onTop = route.settings.name == ProtocolsDayView.routeName;
-      return true; // Inspect the top route only; never actually pop.
-    });
-    if (!onTop) {
+    if (!isTopRoute(navigator, ProtocolsDayView.routeName)) {
       unawaited(navigator.pushNamed<void>(ProtocolsDayView.routeName));
     }
   }

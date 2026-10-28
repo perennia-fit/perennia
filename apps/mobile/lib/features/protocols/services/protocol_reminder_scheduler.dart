@@ -59,6 +59,7 @@ final class ProtocolReminderNotification {
     required this.body,
     required this.scheduledAt,
     required this.payload,
+    required this.channelName,
   });
 
   final int id;
@@ -66,6 +67,9 @@ final class ProtocolReminderNotification {
   final String body;
   final tz.TZDateTime scheduledAt;
   final String payload;
+
+  /// The Android channel's user-visible name, "Reminders" (D5).
+  final String channelName;
 }
 
 /// One notification the plugin reports as pending: its id and payload. The
@@ -113,9 +117,7 @@ final class FlutterLocalNotificationsReminderPlatform
     implements ProtocolReminderPlatform {
   FlutterLocalNotificationsReminderPlatform({
     FlutterLocalNotificationsPlugin? plugin,
-    AppLocalizations Function()? localizations,
-  })  : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
-        _localizations = localizations ?? protocolReminderLocalizations;
+  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   /// The Android channel's id. Its user-visible name is "Reminders".
   static const String androidChannelId = 'protocol_reminders';
@@ -124,7 +126,6 @@ final class FlutterLocalNotificationsReminderPlatform
   static const String androidIcon = '@mipmap/ic_launcher';
 
   final FlutterLocalNotificationsPlugin _plugin;
-  final AppLocalizations Function() _localizations;
   static bool _timeZonesLoaded = false;
 
   @override
@@ -168,7 +169,10 @@ final class FlutterLocalNotificationsReminderPlatform
       _timeZonesLoaded = true;
     }
     final zone = await FlutterTimezone.getLocalTimezone();
-    final location = tz.getLocation(zone.identifier);
+    final location = protocolReminderLocation(
+      zone.identifier,
+      DateTime.now().timeZoneOffset,
+    );
     tz.setLocalLocation(location);
     return location;
   }
@@ -194,7 +198,7 @@ final class FlutterLocalNotificationsReminderPlatform
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           androidChannelId,
-          _localizations().protocolReminderChannelName,
+          notification.channelName,
           icon: androidIcon,
           visibility: NotificationVisibility.private,
         ),
@@ -209,6 +213,32 @@ final class FlutterLocalNotificationsReminderPlatform
   @override
   Future<void> openNotificationSettings() async {
     await _plugin.openAppNotificationSettings();
+  }
+}
+
+/// The zone the phone reports as [identifier], from the bundled timezone
+/// database. When the database lacks that id (a vendor-specific or newly
+/// added name), a run would otherwise throw every time and schedule nothing,
+/// so it falls back to a fixed zone at the phone's [currentOffset]: today's
+/// wall times stay right, and only a daylight-saving change inside the
+/// horizon is missed until a run after it. The fallback's name carries the
+/// offset, so a changed offset reschedules every reminder, as a changed
+/// zone does.
+tz.Location protocolReminderLocation(
+  String identifier,
+  Duration currentOffset,
+) {
+  try {
+    return tz.getLocation(identifier);
+  } on tz.LocationNotFoundException {
+    return tz.Location(
+      'Fixed/$identifier/${currentOffset.inMinutes}',
+      const <int>[],
+      const <int>[],
+      <tz.TimeZone>[
+        tz.TimeZone(currentOffset, isDst: false, abbreviation: identifier),
+      ],
+    );
   }
 }
 
@@ -243,8 +273,10 @@ final class ProtocolReminderStatus {
   /// "Reminders on this device" (file 55).
   final bool deviceSwitchOn;
 
-  /// Whether a Protocol with reminders on plans a timed dose in the
-  /// scheduling horizon.
+  /// Whether a Protocol has reminders on: any Protocol not archived with
+  /// its Reminders switch on, or one that still plans a reminders-on timed
+  /// dose in the scheduling horizon (a Protocol archived today keeps
+  /// today's planned doses).
   final bool remindersRequested;
 
   /// The last day reminders are scheduled through (CUJ 11), or null when
@@ -301,6 +333,7 @@ class ProtocolReminderScheduler {
     required ProtocolReminderPlatform platform,
     required TimerBackgroundScheduler permissions,
     required ProtocolReminderInputReader readInputs,
+    required Future<bool> Function() anyProtocolRemindersOn,
     required Stream<void> Function() planChanges,
     required Stream<DateTime?> Function() lastSuccessfulSyncAt,
     required Future<bool> Function() deviceSwitchOn,
@@ -310,6 +343,7 @@ class ProtocolReminderScheduler {
   })  : _platform = platform,
         _permissions = permissions,
         _readInputs = readInputs,
+        _anyProtocolRemindersOn = anyProtocolRemindersOn,
         _planChanges = planChanges,
         _lastSuccessfulSyncAt = lastSuccessfulSyncAt,
         _deviceSwitchOn = deviceSwitchOn,
@@ -320,6 +354,7 @@ class ProtocolReminderScheduler {
   final ProtocolReminderPlatform _platform;
   final TimerBackgroundScheduler _permissions;
   final ProtocolReminderInputReader _readInputs;
+  final Future<bool> Function() _anyProtocolRemindersOn;
   final Stream<void> Function() _planChanges;
   final Stream<DateTime?> Function() _lastSuccessfulSyncAt;
   final Future<bool> Function() _deviceSwitchOn;
@@ -373,30 +408,32 @@ class ProtocolReminderScheduler {
     if (_disposed) {
       return;
     }
-    final permission = await _readPermission();
+    // Only the platform answering "unsupported" (no handler for the
+    // channel, as in tests or on an unsupported OS) means no notification
+    // system will appear. A read that fails is not that answer: the triggers
+    // still start, and each run reads the permission again.
+    TimerBackgroundPermissionStatus? permission;
+    try {
+      permission = await _permissions.notificationPermissionStatus();
+    } on Object {
+      permission = null;
+    }
+    if (_disposed) {
+      return;
+    }
     if (permission == TimerBackgroundPermissionStatus.unsupported) {
-      // No notification system here (tests, an unsupported platform), and
-      // none will appear: nothing to listen for or reconcile.
       _publish(ProtocolReminderStatus(permission: permission));
       return;
     }
     _subscriptions.add(
       _planChanges().listen((_) => _scheduleDebounced(), onError: _ignore),
     );
-    var sawFirstSync = false;
-    DateTime? lastSync;
     _subscriptions.add(
-      _lastSuccessfulSyncAt().listen(
-        (at) {
-          // The first emission is the stored value, not a sync completing.
-          if (sawFirstSync && at != lastSync) {
-            unawaited(reconcile());
-          }
-          sawFirstSync = true;
-          lastSync = at;
-        },
-        onError: _ignore,
-      ),
+      // The first emission is the stored value, not a sync completing.
+      _lastSuccessfulSyncAt().distinct().skip(1).listen(
+            (_) => unawaited(reconcile()),
+            onError: _ignore,
+          ),
     );
     try {
       _handleTap(await _platform.launchPayload());
@@ -436,6 +473,16 @@ class ProtocolReminderScheduler {
     }
     await reconcile();
     return status;
+  }
+
+  /// Asks for the notification permission only while it has never been
+  /// asked (CUJ 10): the Protocol screen's Reminders switch turning on.
+  /// Any other answer, or a read that fails, asks nothing.
+  Future<void> requestPermissionIfNotAsked() async {
+    final permission = await _readPermission();
+    if (permission == TimerBackgroundPermissionStatus.notDetermined) {
+      await requestPermission();
+    }
   }
 
   /// Opens the system notification settings. Returning to the app resumes
@@ -517,7 +564,8 @@ class ProtocolReminderScheduler {
       today,
       today.addDays(protocolReminderHorizonDays - 1),
     );
-    final remindersRequested = inputs.any((input) => input.remindersEnabled);
+    final remindersRequested = inputs.any((input) => input.remindersEnabled) ||
+        await _anyProtocolRemindersOn();
     final scheduling = deviceSwitchOn &&
         remindersRequested &&
         permission == TimerBackgroundPermissionStatus.granted;
@@ -579,6 +627,7 @@ class ProtocolReminderScheduler {
       body: l10n.protocolReminderBody(time),
       scheduledAt: reminder.scheduledAt,
       payload: protocolReminderPayload(reminder.localDate),
+      channelName: l10n.protocolReminderChannelName,
     );
   }
 
@@ -607,6 +656,10 @@ final protocolReminderSchedulerProvider =
         .read(trainingRepositoriesProvider)
         .protocolPlan
         .reminderInputs(from, to),
+    anyProtocolRemindersOn: () => ref
+        .read(trainingRepositoriesProvider)
+        .protocolPlan
+        .anyProtocolRemindersOn(),
     planChanges: () => ref
         .read(trainingRepositoriesProvider)
         .protocolPlan

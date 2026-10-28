@@ -250,6 +250,7 @@ void main() {
             filled: false,
           ),
         ],
+        anyProtocolRemindersOn: () async => remindersOn,
         planChanges: () => const Stream<void>.empty(),
         lastSuccessfulSyncAt: () => const Stream<DateTime?>.empty(),
         deviceSwitchOn: () async => deviceSwitchOn,

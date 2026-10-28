@@ -159,16 +159,12 @@ DesiredReminders desiredReminders(
   int cap = protocolReminderCap,
 }) {
   final today = ProtocolDayDate(year: now.year, month: now.month, day: now.day);
-  final lastDay = today.addDays(horizonDays - 1);
 
-  // The times that get a reminder, by date.
+  // The times that get a reminder, by date. Only the horizon's dates are
+  // read below, so inputs outside it drop out there.
   final timesByDate = <ProtocolDayDate, Set<String>>{};
   for (final input in inputs) {
     if (!input.remindersEnabled || input.filled) {
-      continue;
-    }
-    if (input.localDate.compareTo(today) < 0 ||
-        input.localDate.compareTo(lastDay) > 0) {
       continue;
     }
     timesByDate.putIfAbsent(input.localDate, () => <String>{}).add(
@@ -184,16 +180,20 @@ DesiredReminders desiredReminders(
       ..sort((a, b) => planLocalTimeMinutes(a).compareTo(
             planLocalTimeMinutes(b),
           ));
-    final day = <ReminderSpec>[
-      for (final time in times)
-        if (protocolReminderInstant(now.location, date, time).isAfter(now))
+    final day = <ReminderSpec>[];
+    for (final time in times) {
+      final at = protocolReminderInstant(now.location, date, time);
+      if (at.isAfter(now)) {
+        day.add(
           ReminderSpec(
             id: protocolReminderId(date, time),
             localDate: date,
             localTime: time,
-            scheduledAt: protocolReminderInstant(now.location, date, time),
+            scheduledAt: at,
           ),
-    ];
+        );
+      }
+    }
     if (reminders.length + day.length > cap) {
       break;
     }

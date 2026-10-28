@@ -11,6 +11,7 @@ import '../controllers/protocol_controller.dart';
 import '../controllers/protocols_day_controller.dart';
 import '../services/protocol_reminder_scheduler.dart';
 import 'compound_list_screen.dart';
+import 'protocol_reminders_settings.dart';
 import 'protocol_screen.dart';
 
 /// The Protocol Day view: a derived `Protocol Day` list, topped by the
@@ -273,33 +274,13 @@ class _ReminderPermissionBanner extends ConsumerWidget {
             horizontal: AppDimens.base,
             vertical: AppDimens.dense / 2,
           ),
-          child: Row(
-            children: [
-              ExcludeSemantics(
-                child: Icon(
-                  Icons.notifications_off_outlined,
-                  color: colors.textSecondary,
-                ),
-              ),
-              const SizedBox(width: AppDimens.dense),
-              Expanded(
-                child: Text(
-                  l10n.protocolRemindersBanner,
-                  style: TextStyle(color: colors.textPrimary),
-                ),
-              ),
-              TextButton(
-                key: ProtocolsDayView.reminderPermissionAllowKey,
-                style: TextButton.styleFrom(
-                  foregroundColor: colors.textPrimary,
-                  minimumSize: const Size(0, AppDimens.touchTarget),
-                ),
-                onPressed: () => unawaited(
-                  ref.read(protocolReminderSchedulerProvider).requestPermission(),
-                ),
-                child: Text(l10n.protocolRemindersAllow),
-              ),
-            ],
+          child: ProtocolReminderNotice(
+            message: l10n.protocolRemindersBanner,
+            actionLabel: l10n.protocolRemindersAllow,
+            actionKey: ProtocolsDayView.reminderPermissionAllowKey,
+            onAction: () => unawaited(
+              ref.read(protocolReminderSchedulerProvider).requestPermission(),
+            ),
           ),
         ),
       ),

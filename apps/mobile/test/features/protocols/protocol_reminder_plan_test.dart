@@ -139,33 +139,10 @@ void main() {
       expect(desired.reminders.map((r) => r.localTime), <String>['09:00']);
     });
 
-    test('untimed planned doses never get a reminder', () {
-      final protocol = PlanProtocol(
-        protocolId: 'daily',
-        startLocalDate: today,
-        remindersEnabled: true,
-        members: <PlanMember>[
-          PlanMember(
-            memberId: 'member-magnesium',
-            compoundId: 'magnesium',
-            versions: <ScheduleVersion>[
-              ScheduleVersion(
-                id: 'version-magnesium',
-                effectiveFrom: today,
-                rule: UntimedScheduleRule(
-                  days: const DailyScheduleDays(),
-                  count: 2,
-                ),
-              ),
-            ],
-          ),
-        ],
-      );
-      final inputs = _futureInputs(<PlanProtocol>[protocol], today, 14);
-      expect(inputs, isEmpty);
-      expect(desiredReminders(inputs, at(2026, 10, 28, 0, 1)).reminders,
-          isEmpty);
-    });
+    // Untimed planned doses never reach `desiredReminders`: an input always
+    // has a time, and `reminderInputs` leaves untimed doses out. That, and
+    // its off-cycle and paused filtering, is tested against the repository
+    // in protocol_reminder_scheduler_test.dart.
 
     test('times already past get no reminder', () {
       final desired = desiredReminders(
@@ -416,8 +393,10 @@ ScheduleRule _dailyAt(String time) => TimedScheduleRule(
       times: <String>[time],
     );
 
-/// The reminder inputs `reminderInputs` reads for dates with no Doses: each
-/// timed planned dose the core plans, unfilled.
+/// A fixture for `desiredReminders`: each timed planned dose the core plans
+/// on dates with no Doses, unfilled, as `reminderInputs` builds them. It is
+/// not the repository read, which is tested over in-memory SQLite in
+/// protocol_reminder_scheduler_test.dart.
 List<ProtocolReminderInput> _futureInputs(
   List<PlanProtocol> protocols,
   ProtocolDayDate from,
