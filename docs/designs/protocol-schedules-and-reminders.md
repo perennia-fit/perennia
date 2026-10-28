@@ -2,7 +2,7 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, and to record the decisions made building file 40a and Phase 4)
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, and to record the decisions made building file 46a and Phase 5)
 
 --------------------------------------------------------------------------------
 
@@ -283,6 +283,30 @@ Building file 40a and Phase 4 raised more. They are settled the same way:
 Two findings change what was built and land as file 46a: one helper for
 a Dose's clock time at its frozen offset, where three copies exist, and
 the day's Dose rows in matching's order rather than instant order.
+
+Building file 46a and Phase 5 raised more. They are settled the same way:
+
+*   what "clock order" means for the day's Dose rows and the Consistency
+    read, the helper's name, and the edit sheet's "today" → D6 and file
+    46a;
+*   how iOS routes a notification, and the options a reminder shows with
+    in the foreground → D5 and file 53;
+*   when the reconciler runs, when a run schedules every reminder again,
+    what makes it schedule none, a run that fails, and an unknown zone id
+    → D5 and file 49;
+*   the horizon's days, a planned time a daylight-saving change skips or
+    repeats, and the archive day → D5 and file 48;
+*   what "a Protocol has reminders on" and "the first time" mean, where
+    "Reminders scheduled through" shows, a tap for the Protocol Day
+    already open, and the time format → D5 and files 52 and 56 to 58;
+*   the files and repository reads no entry listed, and the tests file 60
+    leaves out → files 50 to 52 and 60.
+
+Two findings change what was built and land as file 60a. On iOS, the
+plugin's list of pending notifications likely fails while a rest-timer
+notification is pending, which leaves reminders stale until a later run.
+And `willPresent` uses presentation options that need iOS 14 in an app
+whose deployment target is iOS 13.0.
 
 ## Critical User Journeys (CUJs)
 
@@ -791,12 +815,25 @@ How a date is decided for one Protocol and Protocol Member, in order:
     `flutter_timezone` to schedule wall-clock times in the phone's own zone. The
     plugin is initialized with every permission request turned off, so it never
     asks at startup. The rest timer keeps its existing native channel unchanged.
-*   **iOS routing.** `AppDelegate.swift` routes each notification by whether its
-    `userInfo["timerId"]` is present. The timer already sets that field, so
-    timer notifications keep today's handling. Every other notification is
-    forwarded to `super`, in both `didReceive` and `willPresent`, so the plugin
-    receives it. A reminder that fires while the app is in the foreground shows
-    as a banner and in the notification list.
+    *   **An unknown zone id.** When the bundled timezone database lacks the
+        id the phone reports (a vendor-specific or newly added name), the
+        reconciler uses a fixed zone at the phone's current offset, named
+        after that offset. Today's wall times stay right; only a
+        daylight-saving change inside the horizon is missed, until a run
+        after it. Without the fallback, every run would throw and schedule
+        nothing. (Settled after Phase 5's build.)
+*   **iOS routing.** `AppDelegate.swift` is the notification center's
+    delegate, and it answers every notification itself. Nothing is forwarded
+    to `super`, so the plugin never receives a tap or a foreground
+    presentation. In `didReceive`, a notification whose `userInfo["timerId"]`
+    is present keeps today's timer handling; one whose plugin payload has
+    kind `protocolReminder` is sent to Dart as a reminder tap (see **Tap**);
+    any other is ignored. In `willPresent`, a reminder that fires while the
+    app is in the foreground shows as a banner and in the notification list
+    (`[.banner, .list]`), and every other notification keeps the timer's
+    banner only (file 53). (Phase 5 follows file 53; this bullet said
+    non-timer notifications were forwarded to `super`, which file 53
+    contradicted. Settled after Phase 5's build.)
 *   **Android:** inexact delivery (`inexactAllowWhileIdle`), with no
     exact-alarm permission. Delivery is usually within minutes, and up to about
     an hour late under Doze or battery saver. Exact alarms need a user-granted
@@ -810,27 +847,59 @@ How a date is decided for one Protocol and Protocol Member, in order:
 *   **Text is always generic:** title "Supplements", body "Planned for
     9:00 AM". This holds whether or not the lock is on, so turning the lock on
     later can't leave named reminders queued. Android notifications are
-    `VISIBILITY_PRIVATE`, and the channel is named "Reminders".
+    `VISIBILITY_PRIVATE`, and the channel is named "Reminders". The time is
+    formatted with `DateFormat.jm()` in the phone's language, as the day's
+    Dose rows are, so in `en_US` a narrow no-break space comes before
+    "AM" or "PM". (Settled after Phase 5's build.)
 *   **What gets a reminder.** The reconciler's input is a list of
     `{protocolId, compoundId, localDate, localTime, remindersEnabled, filled}`,
     one per timed planned dose, from the Protocol Plan core. A time gets a
     reminder only if at least one unfilled timed planned dose at that time
     belongs to a Protocol with reminders on. Past times never do, and untimed
     planned doses never do.
+    *   **The archive day.** A Protocol or member archived today still gets
+        reminders for today's later planned times, because the archive day
+        itself is still planned (D1), and nothing here overrides that. Its
+        reminders stop from the next day. (Settled after Phase 5's build.)
+    *   **Daylight-saving changes.** A planned time that a spring-forward
+        change skips fires at the first valid minute after the gap, so
+        02:30 fires at 03:00. Distinct planned times inside one gap keep
+        their own reminders, because each (date, time) has its own id, so
+        they fire together at that minute. A time that a fall-back change
+        repeats fires once, at its first occurrence. (Settled after Phase
+        5's build.)
 *   **When it runs.** On app start, on resume, after any change to Protocols,
-    Schedules or Doses (debounced 500 ms), and after sync completes. There are
+    Schedules or Doses (debounced 500 ms), and after sync completes. It also
+    runs when the reminder status screen opens and when its device switch
+    is flipped (file 58), so the screen shows a fresh status. There are
     no background or timezone-change triggers: travel takes effect on the next
     open or resume (CUJ 8).
 *   **One run at a time.** A trigger during a run marks the reconciler dirty,
     and exactly one more run follows. The logging path never waits for it.
+    A run that fails part way, such as when the plugin's pending list can't
+    be read, changes nothing: what was pending stays pending, and the next
+    trigger tries again. (Settled after Phase 5's build.)
+*   **Rescheduling everything.** A pending reminder's id says its date and
+    time, but not the zone it was scheduled in, so a pending reminder from
+    another zone can't be told apart from a current one. The first run in
+    each process, and any run after the phone's zone has changed, therefore
+    schedules every wanted reminder again, each replacing the pending one
+    with its id. Other runs schedule only the reminders missing from the
+    pending list. (Settled after Phase 5's build.)
 *   **Cancelling.** It cancels only notifications whose payload kind is
     `protocolReminder`, and never calls `cancelAll`. When the device switch is
-    off, or no Protocol has reminders on, it cancels all of its own
-    notifications and schedules none.
+    off, no Protocol has reminders on, or the notification permission isn't
+    granted, it cancels all of its own notifications and schedules none.
 *   **The scheduling horizon** is `min(14 days, as many days as fit in 48
     pending notifications)`. That leaves 16 of iOS's 64 pending notifications
     for the rest timer, which uses 2 per timer. The Protocol screen shows the
     resulting date next to the Reminders switch (CUJ 11).
+    *   **Its days.** The 14 days are today through today + 13, with today
+        read in the phone's current zone. If today's own reminders already
+        exceed 48, nothing is scheduled, and the horizon's end is yesterday.
+        One horizon covers every Protocol, so "Reminders scheduled through
+        <date>" is the same date on every Protocol screen and on the status
+        screen. (Settled after Phase 5's build.)
 *   **Moving a time earlier.** When a same-day edit moves a time to one that
     has already passed, today gets no reminder at that time (CUJ 6). This is
     accepted.
@@ -845,15 +914,29 @@ How a date is decided for one Protocol and Protocol Member, in order:
     notification permission, so there is one permission path, not two. A new
     read-only `notificationPermissionStatus()` on the same channel reports the
     state, including "not asked yet", without prompting (file 51). On a device where any Protocol has
-    reminders on and the device switch is on, but permission was never granted,
-    the Protocol Day view shows a banner that requests it (CUJ 12).
+    reminders on and the device switch is on, but permission was never asked
+    for, the Protocol Day view shows a banner that requests it (CUJ 12).
+    *   **"The first time"** (CUJ 10) means `notificationPermissionStatus()`
+        reads `notDetermined` when the switch turns on. Any other answer,
+        or a read that fails, asks nothing. (Settled after Phase 5's
+        build.)
+    *   **"A Protocol has reminders on"** (CUJ 12 and the status screen)
+        means a Protocol that isn't archived has its Reminders switch on,
+        or a reminders-on timed planned dose still falls in the horizon (a
+        Protocol archived today keeps today's). It is read from the
+        Protocols themselves, not only from the horizon, so the banner
+        shows even when none of that Protocol's timed doses falls in the
+        next 14 days. (Settled after Phase 5's build.)
 *   **Tap:** the payload carries only `{kind: "protocolReminder", localDate}`.
     On iOS, `AppDelegate` handles a reminder tap itself and sends
     `onProtocolReminderTapped(localDate)` over the existing
     `perennia/timer_background` channel, reusing its cold-start buffering. On
     Android the plugin's own tap callback delivers it.
     The app opens through `ProtocolsLockGate`, the widget that shows the PIN or
-    biometric prompt when the lock is on, to that date's Protocol Day.
+    biometric prompt when the lock is on, to that date's Protocol Day. When
+    the Protocol Day view is already on top, a tap only selects its date
+    and pushes nothing, as a rest-timer tap for the exercise already on top
+    opens nothing. (Settled after Phase 5's build.)
 
 ### D6. Matching, statuses, the Planned list and the Agent surface
 
@@ -998,7 +1081,10 @@ its Protocol group headers and row labels say what it is.
         offset, the frame its fields show; otherwise in the device's zone.
         Read in the device's zone, a Dose logged far from it could be
         moved to a day that hasn't happened where it was taken, or kept
-        from one that has. (Settled after file 40a's build.)
+        from one that has. (Settled after file 40a's build.) That "today"
+        reads the clock through the same helper as the Dose's own fields
+        (`clockAtOffset`, file 46a), so the picker and the fields can't
+        disagree. (Settled after file 46a's build.)
     *   When an existing Dose is edited, the sheet shows its date and time
         at its frozen `timezoneOffsetMinutes` (D2), in the device's zone
         only when the offset is null. Its date and time may change. A
@@ -1022,7 +1108,21 @@ its Protocol group headers and row labels say what it is.
     them by instant, then id. On a Protocol Day that holds Doses logged at
     different offsets, their clock times can then read out of order, and
     the order differs from matching's (local time, then id; step 2). File
-    46a orders them as matching does.
+    46a orders them by clock instead.
+    *   **What "clock order" is.** The rows sort by each Dose's clock where
+        it was taken (`DoseRecord.clock`), date and time to the minute,
+        then id. The clock's date leads. When every Dose's clock falls on
+        the Protocol Day, that is matching's order, so the day's log and
+        the Planned list take the day's Doses in the same order. A Dose can
+        be filed under a date its clock doesn't fall on: its draft named
+        its own `localDate`, or it has no offset and is read in a device
+        zone it wasn't logged in. That Dose stays in clock order, and there
+        the two orders can differ. Sorting by time of day alone, as
+        matching does, would list 08:00 the next morning before 17:00 the
+        day before. (Settled after file 46a's build.)
+    *   **Matching is unchanged.** It still numbers a Compound's Doses on a
+        date by time of day (`HH:MM`), then id, as step 2 and the m36
+        vectors define. (Settled after file 46a's build.)
 *   **A future Protocol Day** shows its Planned list with times and amounts,
     but no log action and no status label.
 *   **Day Status labels.** Phase 3 adds the strings for the seven Day
@@ -1087,7 +1187,11 @@ amounts. Building Phase 4 settled the rest:
     the name of its Protocol, then the Dose that filled it, or "Pending"
     on today and "Not logged" before it. The extra Doses follow, marked
     "Extra". A Compound in no Protocol shows a line saying it has no Day
-    Statuses, then its Doses by date with no label.
+    Statuses, then its Doses by date with no label. The read returns the
+    range's Doses sorted by frozen `localDate` first, then each date's in
+    the day log's clock order ("The day's Dose rows"), so a date's Doses
+    and extras read as that day's log does. (Settled after file 46a's
+    build.)
 
 **The Effect view.** Its window input moves to `effectBoundsFromLocalDates`
 (D2); its math is unchanged. For a Protocol with a cycle or Pauses, it shows
@@ -3153,32 +3257,53 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
         `training_repositories.dart`. A fix to one would leave the others
         reading a Dose differently, which is the disagreement between a
         row and its edit sheet that file 40a removed. No behavior changes.
+        *   **Names.** The helper is
+            `clockAtOffset(DateTime instant, int? timezoneOffsetMinutes)`,
+            and the getter is `DoseRecord.clock`. (Settled after file
+            46a's build.)
     *   `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart`:
         `_doseClock` is removed, and the day's Dose rows and the edit
-        sheet read the helper.
+        sheet read the helper. A fourth copy of the arithmetic, the edit
+        sheet's `_pickDate` "today" (D6, "The log sheet"), reads it too,
+        with the same behavior. (Settled after file 46a's build.)
     *   `apps/mobile/lib/data/repositories/training_repositories.dart`:
         *   `editDose` reads the helper to freeze the local date at the
             Dose's offset.
-        *   `watchProtocolDay` lists the day's Doses by local time (the
-            helper's clock), then id: matching's order (D6 step 2). The
-            query keeps its instant order, and the rows are sorted after
-            the read, because the clock depends on each row's offset.
-            Doses logged at different offsets on one Protocol Day then
-            read in clock order, and the day's log and the Planned list
-            take them in the same order (D6, "The day's Dose rows").
+        *   `watchProtocolDay` lists the day's Doses in clock order: the
+            helper's clock, date and time to the minute, then id. That is
+            matching's order (D6 step 2) whenever every clock falls on the
+            Protocol Day; D6, "The day's Dose rows", says where it differs
+            and why the date leads. The query keeps its instant order, and
+            the rows are sorted after the read, because the clock depends
+            on each row's offset. Doses logged at different offsets on one
+            Protocol Day then read in clock order. The comparator,
+            `_compareDosesByClock`, is shared with the Consistency read.
+        *   Matching's own order is unchanged: `_planDoses` in
+            `protocol_plan_repository.dart` still sorts by `HH:MM`, then
+            id, because D6 step 2 and the m36 vectors define it. (Settled
+            after file 46a's build.)
     *   `apps/mobile/lib/data/repositories/protocol_plan_repository.dart`:
         the Consistency read's Doses (`watchConsistency`, which reads them
         through `ProtocolsRepository._activeDoseQuery` in
-        `training_repositories.dart`) are sorted the same way, so a day
-        list's Doses and extras read in clock order.
+        `training_repositories.dart`) are sorted by frozen `localDate`
+        first, because a range spans many dates, and then each date's by
+        the day log's comparator, so a day list's Doses and extras read in
+        clock order. The sort runs after the read and is a total order,
+        so the query's own instant order never shows. (Settled after file
+        46a's build.)
 *   **Tests:**
     *   `apps/mobile/test/features/protocols/protocols_repository_test.dart`:
         two Doses on one Protocol Day, the later instant at an earlier
-        clock time through its offset, are listed in clock order.
+        clock time through its offset, are listed in clock order, by
+        `watchProtocolDay` and by `watchConsistency`. Two Doses at the same
+        clock minute through different offsets, with the larger id at the
+        earlier instant, are listed in id order.
     *   `apps/mobile/test/features/protocols/protocols_day_view_test.dart`:
         the same two Doses show in clock order.
     *   The existing tests for the edit sheet's offset and for `editDose`
-        pass unchanged.
+        pass unchanged. `consistency_screen_test.dart` is unchanged: the
+        Consistency read's order is covered in the repository test.
+        (Settled after file 46a's build.)
 *   **Not in this entry:** the Consistency view's day boundary, which
     stays as built (D6, "The day boundary").
 
@@ -3200,7 +3325,16 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
         (date, time).
     *   **Horizon:** whole days only. Days are added in date order while the
         total stays at or under the cap, up to `horizonDays`, and
-        `horizonEnd` is the last day added.
+        `horizonEnd` is the last day added. The days are today through
+        today + (`horizonDays` - 1), with today read from `now` in its zone.
+        When today's own reminders exceed the cap, no day is added and
+        `horizonEnd` is yesterday (D5, "Its days"). (Settled after Phase
+        5's build.)
+    *   **Instants:** a planned time becomes an instant in `now`'s zone. A
+        time a spring-forward change skips is the first valid minute after
+        the gap, and a time a fall-back change repeats is its first
+        occurrence (D5, "Daylight-saving changes"). Distinct times inside
+        one gap stay separate reminders. (Settled after Phase 5's build.)
     *   **Ids:** `ReminderSpec.id = -(daysBetween(2000-01-01, localDate) * 1440 + minuteOfDay) - 1`,
         a negative int32 for every date before 6000.
 
@@ -3209,20 +3343,39 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
 *   **Proposed Changes**: The reminder reconciler, wrapping the plugin.
     *   **Start:** it initializes the plugin with every permission request
         turned off, and the timezone database with the local zone from
-        `flutter_timezone`.
+        `flutter_timezone`. The zone is read again on every run, and an id
+        the database lacks falls back to a fixed zone at the phone's
+        current offset (D5, "An unknown zone id"). (Settled after Phase 5's
+        build.)
     *   **`reconcile()`** diffs `desiredReminders` against the pending
         notifications whose payload kind is `protocolReminder`, then cancels
         and schedules. It never calls `cancelAll`.
+        *   The first run in the process, and any run whose zone differs
+            from the last run's, schedules every wanted reminder again;
+            other runs schedule only the missing ones (D5, "Rescheduling
+            everything").
+        *   It schedules only while the device switch is on, a Protocol has
+            reminders on (D5), and the permission reads `granted`.
+        *   A run that throws is caught and changes nothing; the next
+            trigger runs again. (Settled after Phase 5's build.)
     *   **Notifications** use `zonedSchedule` with `inexactAllowWhileIdle`,
         title "Supplements", body "Planned for <localized time>", channel
         "Reminders", `VISIBILITY_PRIVATE`, and small icon `@mipmap/ic_launcher`.
+        The time is `DateFormat.jm()` of the planned time (D5, "Text is
+        always generic").
     *   **Triggers:**
         *   app start;
         *   resume, from `didChangeAppLifecycleState` in `apps/mobile/lib/app.dart`;
         *   Drift `tableUpdates` on `protocols`, `protocol_compounds`,
             `schedules` and `doses`, debounced 500 ms;
         *   a change of `lastSuccessfulSyncAt` from
-            `SyncStatusRepository.watchStatus()`.
+            `SyncStatusRepository.watchStatus()`;
+        *   the reminder status screen opening, and its device switch being
+            flipped (file 58). (Settled after Phase 5's build.)
+    *   **Start's permission read.** Only an `unsupported` answer (no
+        notification system, as in tests) skips the plan-change and sync
+        triggers. A first read that fails starts them anyway, and each run
+        reads the permission again. (Settled after Phase 5's build.)
     *   **Runs:** one at a time, with a dirty flag for triggers that arrive
         during a run. When the device switch is off or no Protocol has
         reminders on, it cancels its own notifications and schedules none.
@@ -3238,6 +3391,20 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
     *   future dates come from `planDays` and are always unfilled;
     *   `remindersEnabled` comes from `PlanProtocol`.
 
+    Phase 5 needed two more reads here, which this entry didn't list. Both
+    live in the repository because repositories are the only layer that
+    touches Drift (AGENTS.md):
+
+    *   `watchReminderInputChanges()`: a `Stream<void>` over Drift
+        `tableUpdates` on `protocols`, `protocol_compounds`, `schedules` and
+        `doses`, the tables `reminderInputs` reads. It is the reconciler's
+        plan-change trigger (file 49), which debounces it.
+    *   `anyProtocolRemindersOn()`: whether any Protocol that isn't archived
+        has `remindersEnabled` on. With `reminderInputs`, it gives "a
+        Protocol has reminders on" (D5) for the banner (file 57).
+
+    (Settled after Phase 5's build.)
+
 ##### 51. `apps/mobile/lib/features/training/services/timer_background_scheduler.dart`, `apps/mobile/ios/Runner/AppDelegate.swift` and `apps/mobile/android/app/src/main/kotlin/fit/perennia/app/MainActivity.kt` (Modify)
 
 *   **Proposed Changes**: A read-only `notificationPermissionStatus()` on the
@@ -3248,6 +3415,14 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
         On Android 13 and later, it reports `notDetermined` when the
         permission isn't granted and has never been requested.
         `MainActivity` records the first request in its `SharedPreferences`.
+        *   **"Never requested"** means both no record of a request and no
+            pending rationale (`shouldShowRequestPermissionRationale`).
+            Android asks for a rationale after one denial, so a user an
+            earlier build asked once, before the record existed, reads as
+            `denied`. A user who declined twice under an earlier build
+            still reads as `notDetermined`, because Android then shows no
+            rationale and the record doesn't exist yet. Nothing has
+            shipped, so this is accepted. (Settled after Phase 5's build.)
     *   Requesting still goes through `requestPermissionIfNeeded()`.
 
 ##### 52. `apps/mobile/lib/app.dart` (Modify)
@@ -3259,7 +3434,17 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
         Android the plugin's tap callback, and its launch details on a cold
         start): call `selectedProtocolDayProvider.select(localDate)`, then
         push `ProtocolsDayView.routeName`, which `ProtocolsLockGate` already
-        wraps.
+        wraps. When that route is already on top, it only selects the date
+        and pushes nothing (D5, "Tap").
+    *   **`apps/mobile/lib/features/training/services/timer_notification_router.dart`
+        (Modify).** A method channel has one handler, and
+        `TimerNotificationRouter` already owns `perennia/timer_background`'s.
+        So the router gains an optional `onProtocolReminderTapped(String
+        localDate)` callback and hands the iOS `onProtocolReminderTapped`
+        call to it; `app.dart` passes a callback that parses the date and
+        routes as above. The router's private top-route check becomes a
+        shared `isTopRoute(navigator, routeName)`, which both taps use.
+        (This file was not listed before; settled after Phase 5's build.)
 
 ##### 53. `apps/mobile/ios/Runner/AppDelegate.swift` (Modify, reminders)
 
@@ -3268,9 +3453,16 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
         keeps today's timer handling. Otherwise, a response whose plugin
         payload has `kind == "protocolReminder"` sends
         `onProtocolReminderTapped(localDate)` over the timer channel, buffered
-        until `signalReady` as timer taps are. Nothing calls `super`.
+        until `signalReady` as timer taps are. Any other response is
+        ignored. Nothing calls `super`, so the plugin never sees a tap on
+        iOS, and D5's iOS routing says the same. (Settled after Phase 5's
+        build.)
     *   **`willPresent`:** returns `[.banner, .list]` for a reminder. The timer
-        keeps its current options.
+        keeps its current options (`[.banner]`), as does any other
+        notification. Both `.banner` and `.list` need iOS 14, and the
+        Runner target's deployment target is iOS 13.0; the existing
+        `.banner` has no availability check either. File 60a guards them.
+        (Settled after Phase 5's build.)
     *   The plugin needs no other registration than the existing
         `GeneratedPluginRegistrant`.
 
@@ -3298,15 +3490,30 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
 
 *   **Proposed Changes**: The Reminders switch, bound to `remindersEnabled`.
     *   Turning it on calls `requestPermissionIfNeeded()` the first time
-        (CUJ 10).
+        (CUJ 10): only when `notificationPermissionStatus()` reads
+        `notDetermined` (D5, "The first time"). The reconciler's
+        `requestPermissionIfNotAsked()` makes that check, then runs. A
+        denial leaves the switch on. (Settled after Phase 5's build.)
     *   Next to it: the denied state with a button to the system settings, and
         "Reminders scheduled through <horizonEnd>".
+        *   The denied state shows while the switch is on and the permission
+            reads `denied`, and it takes the place of the date.
+        *   Otherwise the date shows only for a saved Protocol whose
+            reminders are on, both as saved and in the form, and only while
+            the reconciler has a `horizonEnd`. It describes what is stored,
+            not the form's unsaved edits. The horizon is one for all
+            Protocols (D5, "Its days"), so the date is the same on every
+            Protocol screen. (Settled after Phase 5's build.)
 
 ##### 57. `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart` (Modify, Phase 5 part)
 
 *   **Proposed Changes**: The "Reminders are off on this device" banner with
     "Allow" (CUJ 12). It shows when a Protocol has reminders on, the device
     setting is on, and `notificationPermissionStatus()` is `notDetermined`.
+    "A Protocol has reminders on" is D5's reading, from
+    `anyProtocolRemindersOn()` and `reminderInputs` (file 50), so the banner
+    shows even when none of that Protocol's timed doses falls in the
+    horizon. (Settled after Phase 5's build.)
 
 ##### 58. `apps/mobile/lib/features/protocols/widgets/protocol_reminders_settings.dart` (Create) and `apps/mobile/lib/features/settings/widgets/privacy_settings_screen.dart` (Modify)
 
@@ -3314,6 +3521,13 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
     `ProtocolsLockSettingsTile`, following its pattern. The tile opens a
     screen with the device setting's switch, the notification permission, and
     "Reminders scheduled through <horizonEnd>".
+    *   Opening the screen runs the reconciler, so what it shows is read
+        from a fresh run rather than from the last one, which may be from
+        before a change in the system settings.
+    *   Flipping the device switch saves the setting and then runs the
+        reconciler, so turning it off cancels this phone's reminders at
+        once. File 49 lists both triggers. (Settled after Phase 5's
+        build.)
 
 ##### 59. `apps/mobile/lib/l10n/app_en.arb` and generated `app_localizations*.dart` (Modify/Regenerate)
 
@@ -3347,6 +3561,87 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
     (Modify): `notificationPermissionStatus()` maps every channel value.
 *   `apps/mobile/test/features/protocols/protocols_day_view_test.dart`
     (Modify): the CUJ 12 banner.
+
+Building Phase 5 settled the rest of this list:
+
+*   **"Untimed doses excluded"** is not a plan test. Untimed planned doses
+    can't reach `desiredReminders`, because `reminderInputs` leaves them
+    out, so a plan test of it could never fail. A repository test covers
+    it instead, in `protocol_reminder_scheduler_test.dart`: over in-memory
+    SQLite, `reminderInputs` carries today's fills, leaves later dates
+    unfilled, leaves out untimed doses, and leaves out off-cycle and
+    paused days.
+*   The iOS tap through the router's new callback (file 52) is covered by
+    `protocol_reminder_tap_test.dart`, which also checks that a second
+    tap for the Protocol Day on top only selects its date.
+*   `apps/mobile/test/features/training/training_screen_test.dart`
+    (Modify): its fake `TimerBackgroundScheduler` gains a one-method stub
+    for `notificationPermissionStatus()`.
+*   **Not tested:** this list has no tests for the Protocol screen's
+    Reminders switch (file 56) or the reminder status screen (file 58), so
+    Phase 5 added none. Their behaviour is covered only by the manual
+    checks in the Verification Plan.
+
+(Settled after Phase 5's build.)
+
+##### 60a. Findings settled after Phase 5's build (Modify)
+
+This entry is lettered so the numbers of every later file stay as they were.
+It changes what Phase 5 built, so it lands as its own pull request after
+Phase 5's. Nothing in Phase 6 depends on it.
+
+*   **The iOS pending list.** On iOS, `flutter_local_notifications`'
+    `pendingNotificationRequests()` reports every pending request the app
+    has, including the rest timer's, which `AppDelegate` schedules itself.
+    The plugin's native side copies each request's id from its own
+    `userInfo["NotificationId"]`, which the rest timer's requests don't
+    have. The Dart side then builds a `PendingNotificationRequest` with a
+    null id, which its non-nullable `id` refuses. This was found by
+    reading the plugin's source (22.3.3); no iOS build has run it. So while
+    a rest-timer notification is pending, the read most likely throws, the
+    run changes nothing (D5, "One run at a time"), and reminders stay as
+    they were until a run after the rest timer's notifications are gone.
+    Android isn't affected: the plugin there lists only what it scheduled
+    itself.
+    *   **The fix:** on iOS, read the pending reminders without the
+        plugin's list. `AppDelegate.swift` answers a new
+        `pendingProtocolReminders` method on the
+        `perennia/timer_background` channel from
+        `UNUserNotificationCenter.getPendingNotificationRequests`. It
+        returns `{id, payload}` only for requests whose `userInfo` holds
+        the plugin's `NotificationId` and a `payload` string, so requests
+        the plugin didn't create are skipped.
+        `FlutterLocalNotificationsReminderPlatform.pendingNotifications()`
+        in `protocol_reminder_scheduler.dart` calls it on iOS, and keeps
+        the plugin's `pendingNotificationRequests()` on Android.
+    *   **Rejected:** patching or forking the plugin, which would make
+        this app carry a modified dependency; and giving the rest timer's
+        requests a `NotificationId`, which would make the plugin treat
+        them as its own.
+*   **iOS 14 presentation options.** `willPresent` in `AppDelegate.swift`
+    returns `.banner` and `.list`, which iOS introduced in 14, and the
+    Runner target's deployment target is iOS 13.0. Swift reports an API
+    newer than the deployment target, used outside an `#available` check,
+    as an error, so the target is not expected to compile until this is
+    guarded. The guard is `if #available(iOS 14.0, *)`, with `[.alert]` as
+    the iOS 13 fallback for both the reminder and the rest timer. The
+    deployment target stays 13.0.
+*   **Files:**
+    *   `apps/mobile/ios/Runner/AppDelegate.swift`: the
+        `pendingProtocolReminders` method and the `#available` guard.
+    *   `apps/mobile/lib/features/protocols/services/protocol_reminder_scheduler.dart`:
+        the iOS read in `FlutterLocalNotificationsReminderPlatform`.
+*   **Tests:**
+    *   `apps/mobile/test/features/protocols/protocol_reminder_scheduler_test.dart`:
+        with the platform's target set to iOS and the timer channel mocked,
+        `pendingNotifications()` reads `pendingProtocolReminders` and maps
+        its entries. On Android it reads the plugin.
+    *   **Manual, on an iPhone:** start a rest timer, then turn a
+        Protocol's reminders on; its reminder is scheduled while the rest
+        timer's notification is pending. Run the iOS simulator build from
+        the Verification Plan.
+*   **Not in this entry:** the tests file 60 leaves out for files 56 and
+    58.
 
 #### Phase 6: Agent planned-day and status reads
 
