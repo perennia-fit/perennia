@@ -14,3 +14,13 @@ const recordedColdStartHomeInteractiveBaselineHarness =
 /// typed search must return within this after the 300 ms typing pause.
 const openFoodFactsLocalSearchRowCount = 41000;
 const openFoodFactsLocalSearchBudget = Duration(milliseconds: 100);
+
+/// The Consistency view's worst case (Phase 4 of
+/// docs/designs/protocol-schedules-and-reminders.md): `planDays` plus
+/// `dayStatuses` over its longest range, for one Compound in 3 Protocols
+/// with 5 Schedule Versions each and 800 logged Doses.
+const protocolConsistencyRangeDays = 366;
+const protocolConsistencyProtocolCount = 3;
+const protocolConsistencyVersionsPerProtocol = 5;
+const protocolConsistencyDoseCount = 800;
+const protocolConsistencyBudget = Duration(milliseconds: 50);

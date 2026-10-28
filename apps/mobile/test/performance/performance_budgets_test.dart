@@ -8,6 +8,7 @@ import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/local/food_reference_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/nutrition/open_food_facts.dart';
+import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/analytics/repositories/exercise_overview_repository.dart';
@@ -59,6 +60,51 @@ void main() {
         lessThan(openFoodFactsLocalSearchBudget),
         reason: 'A two-word prefix search must return within the typing '
             'budget.',
+      );
+    });
+
+    test(
+        'Consistency plans and matches 366 days for one Compound in 3 '
+        'Protocols under 50 ms', () {
+      final fixture = _consistencyFixture();
+      final stopwatch = Stopwatch()..start();
+
+      final days = planDays(fixture.protocols, fixture.from, fixture.to);
+      final statuses = dayStatuses(days, fixture.doses, fixture.to);
+      stopwatch.stop();
+
+      expect(fixture.protocols, hasLength(protocolConsistencyProtocolCount));
+      expect(
+        fixture.protocols.every(
+          (protocol) =>
+              protocol.members.single.versions.length ==
+              protocolConsistencyVersionsPerProtocol,
+        ),
+        isTrue,
+      );
+      expect(fixture.doses, hasLength(protocolConsistencyDoseCount));
+      // The whole workload ran: a PlanDay per Protocol and date, a Day Status
+      // per date, and every Dose matched into a slot or counted as an extra.
+      expect(
+        days,
+        hasLength(
+          protocolConsistencyRangeDays * protocolConsistencyProtocolCount,
+        ),
+      );
+      expect(statuses, hasLength(protocolConsistencyRangeDays));
+      expect(
+        statuses.fold<int>(
+          0,
+          (sum, status) => sum + status.loggedCount + status.extraCount,
+        ),
+        protocolConsistencyDoseCount,
+      );
+      expect(statuses.any((status) => status.loggedCount > 0), isTrue);
+      expect(
+        stopwatch.elapsed,
+        lessThan(protocolConsistencyBudget),
+        reason: 'The Consistency view must plan and match its longest range '
+            'within the budget the spec pins.',
       );
     });
 
@@ -283,4 +329,101 @@ List<String> _syntheticOpenFoodFactsLines(int count) {
         ),
       ),
   ];
+}
+
+/// The Consistency view's worst case: one Compound in 3 Protocols over 366
+/// days, each Protocol with 5 Schedule Versions of mixed rules (several
+/// times a day, chosen weekdays, every N days, untimed), one with a cycle
+/// and Pauses, and 800 Doses spread over the range at varied times.
+({
+  List<PlanProtocol> protocols,
+  List<PlanDose> doses,
+  ProtocolDayDate from,
+  ProtocolDayDate to,
+}) _consistencyFixture() {
+  const compoundId = 'compound-consistency';
+  const from = ProtocolDayDate(year: 2025, month: 10, day: 28);
+  final to = from.addDays(protocolConsistencyRangeDays - 1);
+  const amount = PlanAmount(
+    amountValue: 1,
+    amountEntered: '1',
+    unit: DoseUnit.milligram,
+    route: DoseRoute.oral,
+  );
+  final rules = <ScheduleRule>[
+    TimedScheduleRule(
+      days: const DailyScheduleDays(),
+      times: const <String>['07:00', '13:00', '21:00'],
+    ),
+    TimedScheduleRule(
+      days: WeekdayScheduleDays(const <int>[1, 3, 5]),
+      times: const <String>['08:30'],
+    ),
+    TimedScheduleRule(
+      days: EveryNDaysScheduleDays(n: 3, anchor: from, anchorIsDefault: true),
+      times: const <String>['06:00', '18:00'],
+    ),
+    UntimedScheduleRule(days: const DailyScheduleDays(), count: 2),
+    TimedScheduleRule(
+      days: const DailyScheduleDays(),
+      times: const <String>['09:00', '12:00', '15:00', '18:00', '21:00'],
+    ),
+  ];
+  final versionSpacing =
+      protocolConsistencyRangeDays ~/ protocolConsistencyVersionsPerProtocol;
+  final protocols = <PlanProtocol>[
+    for (var p = 0; p < protocolConsistencyProtocolCount; p += 1)
+      PlanProtocol(
+        protocolId: 'protocol-$p',
+        startLocalDate: from,
+        period: p == 0
+            ? ProtocolPeriod(
+                cycle: ProtocolCycle(
+                  onDays: 60,
+                  offDays: 30,
+                  anchor: from,
+                  anchorIsDefault: true,
+                ),
+                pauses: <ProtocolPause>[
+                  ProtocolPause(from: from.addDays(20), to: from.addDays(26)),
+                  ProtocolPause(from: from.addDays(200), to: from.addDays(210)),
+                ],
+              )
+            : null,
+        members: <PlanMember>[
+          PlanMember(
+            memberId: 'member-$p',
+            compoundId: compoundId,
+            versions: <ScheduleVersion>[
+              for (var v = 0; v < protocolConsistencyVersionsPerProtocol; v += 1)
+                ScheduleVersion(
+                  id: 'version-$p-$v',
+                  effectiveFrom: from.addDays(v * versionSpacing),
+                  rule: rules[(p + v) % rules.length],
+                  amount: amount,
+                ),
+            ],
+          ),
+        ],
+      ),
+  ];
+
+  final sequenceByDate = <ProtocolDayDate, int>{};
+  final doses = <PlanDose>[];
+  for (var index = 0; index < protocolConsistencyDoseCount; index += 1) {
+    final date = from.addDays((index * 37) % protocolConsistencyRangeDays);
+    final minutes = (index * 173) % (24 * 60);
+    final sequence = sequenceByDate[date] ?? 0;
+    sequenceByDate[date] = sequence + 1;
+    doses.add(
+      PlanDose(
+        doseId: 'dose-${index.toString().padLeft(4, '0')}',
+        compoundId: compoundId,
+        localDate: date,
+        localTime: planLocalTime(minutes ~/ 60, minutes % 60),
+        sequence: sequence,
+      ),
+    );
+  }
+  return (protocols: protocols, doses: doses, from: from, to: to);
 }
