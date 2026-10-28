@@ -197,13 +197,177 @@ final class PlannedDay {
       compounds[compoundId]?.name ?? compoundId;
 }
 
-/// Read-only local repository deriving the Planned list from the plan rows
-/// and the day's Doses (D6), the way [RoutineUpNextRepository] derives Up
-/// next: nothing is stored, so there is nothing here to write, batch or
-/// Activity-Log. Two Drift watches (the plan; the day's Doses, read through
+/// The longest range the Consistency view reads, inclusive of both ends: a
+/// year and a day, so a leap year's 366 days fit (Phase 4, file 41).
+const int maxConsistencyRangeDays = 366;
+
+void _checkConsistencyRange(ProtocolDayDate from, ProtocolDayDate to) {
+  if (from.compareTo(to) > 0) {
+    throw ArgumentError('A Consistency range starts on or before its end.');
+  }
+  if (to.daysBetween(from) + 1 > maxConsistencyRangeDays) {
+    throw ArgumentError(
+      'A Consistency range holds at most $maxConsistencyRangeDays days.',
+    );
+  }
+}
+
+/// One planned dose (a slot) of a Consistency day, with the logged Dose that
+/// fills it, or null when it is unfilled. Which slot a Dose filled is
+/// matching's answer (D6), shown so a Dose logged nearer a later planned time
+/// is seen filling that one.
+final class ConsistencySlot {
+  const ConsistencySlot({required this.fill, required this.dose});
+
+  final PlanSlotFill fill;
+
+  /// The Dose that fills the slot, or null when it is unfilled.
+  final DoseRecord? dose;
+}
+
+/// One date of the Consistency view's day list: its Day Status, if it has
+/// one, each slot with the Dose that fills it, and the Doses that filled
+/// nothing. Derived, never stored.
+final class ConsistencyDay {
+  ConsistencyDay({
+    required this.localDate,
+    required this.status,
+    required Iterable<ConsistencySlot> slots,
+    required Iterable<DoseRecord> extraDoses,
+    required Iterable<DoseRecord> doses,
+  })  : slots = List<ConsistencySlot>.unmodifiable(slots),
+        extraDoses = List<DoseRecord>.unmodifiable(extraDoses),
+        doses = List<DoseRecord>.unmodifiable(doses);
+
+  final ProtocolDayDate localDate;
+
+  /// The date's Day Status, or null when it has none: the Compound is in no
+  /// Protocol, or the date is after today (D6). Its Doses are then listed
+  /// with no status label, and none of them is an extra.
+  final DayStatus? status;
+
+  /// Every slot of the date, in slot order.
+  final List<ConsistencySlot> slots;
+
+  /// The Doses that filled no slot (`extraCount` of them), in log order.
+  /// Empty when [status] is null: a Dose with no PlanDay is never an extra.
+  final List<DoseRecord> extraDoses;
+
+  /// Every Dose of the Compound on the date, in log order.
+  final List<DoseRecord> doses;
+}
+
+/// What the Consistency view shows for one Compound over a date range (D6):
+/// the range's [PlanDay]s, its [DayStatus]es and the Compound's logged
+/// Doses, read together so the chart and the day list never disagree.
+/// Derived on read, never stored.
+final class ConsistencyRange {
+  ConsistencyRange({
+    required this.compoundId,
+    required this.from,
+    required this.to,
+    required this.today,
+    required Iterable<PlanDay> planDays,
+    required Iterable<DayStatus> dayStatuses,
+    required Iterable<DoseRecord> doses,
+    required this.compound,
+    required Map<String, ProtocolOptionRecord> protocols,
+  })  : planDays = List<PlanDay>.unmodifiable(planDays),
+        dayStatuses = List<DayStatus>.unmodifiable(dayStatuses),
+        doses = List<DoseRecord>.unmodifiable(doses),
+        protocols = Map<String, ProtocolOptionRecord>.unmodifiable(protocols);
+
+  final String compoundId;
+
+  /// The first and last dates of the range, both inclusive.
+  final ProtocolDayDate from;
+  final ProtocolDayDate to;
+
+  /// The caller's local date when this was read.
+  final ProtocolDayDate today;
+
+  /// The Compound's PlanDays, one per Protocol it is a member of and date.
+  final List<PlanDay> planDays;
+
+  /// One per date through [today]; empty for a Compound in no Protocol.
+  final List<DayStatus> dayStatuses;
+
+  /// The Compound's non-archived Doses in the range, in log order.
+  final List<DoseRecord> doses;
+
+  /// The Compound's record, read with the plan, or null when it is in no
+  /// Protocol. Its strength resolves a planned amount's active mass.
+  final CompoundRecord? compound;
+
+  /// Each Protocol the Compound is a member of, by id.
+  final Map<String, ProtocolOptionRecord> protocols;
+
+  /// Whether the Compound is in any Protocol, so its dates have Day Statuses.
+  bool get isPlanned => planDays.isNotEmpty;
+
+  /// The day list, newest date first. A Compound in a Protocol lists every
+  /// date through [today]; dates with no Day Status (a Compound in no
+  /// Protocol, or a date after today) are listed only when they hold a Dose.
+  late final List<ConsistencyDay> days = _days();
+
+  /// The ids of every Dose that filled no slot of its day: each day's
+  /// [ConsistencyDay.extraDoses]. The one reading of an extra, which the
+  /// chart marks and the day list lists, so the two never disagree.
+  late final Set<String> extraDoseIds = Set<String>.unmodifiable(<String>{
+    for (final day in days)
+      for (final dose in day.extraDoses) dose.id,
+  });
+
+  List<ConsistencyDay> _days() {
+    final dosesByDate = <ProtocolDayDate, List<DoseRecord>>{};
+    final doseById = <String, DoseRecord>{};
+    for (final dose in doses) {
+      dosesByDate.putIfAbsent(dose.localDate, () => <DoseRecord>[]).add(dose);
+      doseById[dose.id] = dose;
+    }
+    final statusByDate = <ProtocolDayDate, DayStatus>{
+      for (final status in dayStatuses) status.localDate: status,
+    };
+    final dates = <ProtocolDayDate>{...statusByDate.keys, ...dosesByDate.keys}
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+    return List<ConsistencyDay>.unmodifiable(
+      dates.map((date) {
+        final status = statusByDate[date];
+        final dayDoses = dosesByDate[date] ?? const <DoseRecord>[];
+        final fills = status?.fills ?? const <PlanSlotFill>[];
+        final filledIds = {
+          for (final fill in fills)
+            if (fill.doseId != null) fill.doseId!,
+        };
+        return ConsistencyDay(
+          localDate: date,
+          status: status,
+          slots: fills.map(
+            (fill) => ConsistencySlot(
+              fill: fill,
+              dose: fill.doseId == null ? null : doseById[fill.doseId],
+            ),
+          ),
+          extraDoses: status == null
+              ? const <DoseRecord>[]
+              : dayDoses.where((dose) => !filledIds.contains(dose.id)),
+          doses: dayDoses,
+        );
+      }),
+    );
+  }
+}
+
+/// Read-only local repository deriving the Planned list and the Consistency
+/// view from the plan rows and the Doses (D6), the way
+/// [RoutineUpNextRepository] derives Up next: nothing is stored, so there is
+/// nothing here to write, batch or Activity-Log. Each read combines two Drift
+/// watches (the plan; the Doses it is matched against) and re-derives through
+/// the shared core (`planDays`, `dayStatuses`) on every emission from either.
+/// The Planned list reads the day's Doses through
 /// `ProtocolsRepository.watchProtocolDay`, the same watch the day's log
-/// shows) are combined and re-derived through the shared core (`planDays`,
-/// `dayStatuses`) on every emission from either.
+/// shows.
 ///
 /// It builds `PlanProtocol`s and `PlanDose`s from Drift. Rows tombstoned by
 /// undo are left out, and archived Protocols and Protocol Members are kept
@@ -271,6 +435,104 @@ final class ProtocolPlanRepository {
       compounds: plan.compounds,
       protocols: plan.protocolOptions,
     );
+  }
+
+  /// The Consistency view's read (D6) for one Compound over [from] through
+  /// [to], inclusive: the range's PlanDays, its Day Statuses (none after
+  /// [today]) and the Compound's logged Doses in it. [today] is the caller's
+  /// local date, read from its clock, as [watchPlannedDay] takes it: it
+  /// decides "Pending" against "Not logged", and the repository never reads
+  /// a clock.
+  ///
+  /// The plan is read for every Protocol the Compound is a member of, and
+  /// only that Compound's PlanDays are kept, so the PlanDays and Day
+  /// Statuses are exactly the ones a read of the whole plan would give for
+  /// it: matching and statuses are per Compound and date (D6). A Compound in no Protocol
+  /// has no PlanDays, so it has no Day Statuses, and its Doses are still
+  /// returned for the view to list by date.
+  ///
+  /// Re-emits when a Protocol, Protocol Member, Schedule Version, Compound or
+  /// Dose changes, like [watchPlannedDay]. Throws an [ArgumentError] when
+  /// [from] is after [to], or the range is longer than
+  /// [maxConsistencyRangeDays].
+  Stream<ConsistencyRange> watchConsistency(
+    String compoundId,
+    ProtocolDayDate from,
+    ProtocolDayDate to, {
+    required ProtocolDayDate today,
+  }) {
+    _checkConsistencyRange(from, to);
+    return _combineLatest2(
+      _planQuery().watch().map(_planFromJoinedRows),
+      _consistencyDoseQuery(compoundId, from, to)
+          .watch()
+          .map((rows) => rows.map(_repositories.protocols._doseFromRow)),
+      (_PlanRows plan, Iterable<DoseRecord> doses) => _consistencyRange(
+        compoundId,
+        from,
+        to,
+        today,
+        plan,
+        doses.toList(growable: false),
+      ),
+    );
+  }
+
+  ConsistencyRange _consistencyRange(
+    String compoundId,
+    ProtocolDayDate from,
+    ProtocolDayDate to,
+    ProtocolDayDate today,
+    _PlanRows plan,
+    List<DoseRecord> doses,
+  ) {
+    // Every Protocol the Compound is a member of, as read, and only this
+    // Compound's PlanDays from them: `planDays` decides each Compound and
+    // date on its own, so these are the PlanDays a read of the whole plan
+    // gives it.
+    final protocols = <PlanProtocol>[
+      for (final protocol in plan.protocols)
+        if (protocol.members.any((member) => member.compoundId == compoundId))
+          protocol,
+    ];
+    final days = <PlanDay>[
+      for (final day in planDays(protocols, from, to))
+        if (day.compoundId == compoundId) day,
+    ];
+    return ConsistencyRange(
+      compoundId: compoundId,
+      from: from,
+      to: to,
+      today: today,
+      planDays: days,
+      dayStatuses: dayStatuses(days, _planDoses(doses), today),
+      doses: doses,
+      compound: plan.compounds[compoundId],
+      protocols: <String, ProtocolOptionRecord>{
+        for (final protocol in protocols)
+          protocol.protocolId: plan.protocolOptions[protocol.protocolId]!,
+      },
+    );
+  }
+
+  /// The Compound's non-archived Doses whose frozen local date falls in the
+  /// range, in the day log's order (time, then id).
+  SimpleSelectStatement<$DosesTable, DoseRow> _consistencyDoseQuery(
+    String compoundId,
+    ProtocolDayDate from,
+    ProtocolDayDate to,
+  ) {
+    return _database.select(_database.doses)
+      ..where(
+        (row) =>
+            row.deletedAt.isNull() &
+            row.compoundId.equals(compoundId) &
+            row.localDate.isBetweenValues(from.storageValue, to.storageValue),
+      )
+      ..orderBy([
+        (row) => OrderingTerm.asc(row.tookAt),
+        (row) => OrderingTerm.asc(row.id),
+      ]);
   }
 
   JoinedSelectStatement<HasResultSet, dynamic> _planQuery() {
@@ -363,21 +625,24 @@ final class ProtocolPlanRepository {
     );
   }
 
-  /// The day's Doses as matching reads them (D6 step 2): every Dose not
-  /// archived, tagged or not, of a catalogue Compound, numbered by local
-  /// time and then id. A Dose logged without a Compound can fill no slot.
+  /// The Doses as matching reads them (D6 step 2): every Dose not archived,
+  /// tagged or not, of a catalogue Compound, numbered among its Compound's
+  /// Doses on its local date by local time and then id. A Dose logged
+  /// without a Compound can fill no slot. One day's Doses (the Planned list)
+  /// and a range's (the Consistency view) are numbered the same way.
   List<PlanDose> _planDoses(Iterable<DoseRecord> doses) {
     final records = doses.where((dose) => dose.compoundId != null).toList()
       ..sort((a, b) {
         final byTime = a.localTime.compareTo(b.localTime);
         return byTime != 0 ? byTime : a.id.compareTo(b.id);
       });
-    final sequenceByCompound = <String, int>{};
+    final sequenceByCompoundDate = <(String, ProtocolDayDate), int>{};
     return List<PlanDose>.unmodifiable(
       records.map((dose) {
         final compoundId = dose.compoundId!;
-        final sequence = sequenceByCompound[compoundId] ?? 0;
-        sequenceByCompound[compoundId] = sequence + 1;
+        final key = (compoundId, dose.localDate);
+        final sequence = sequenceByCompoundDate[key] ?? 0;
+        sequenceByCompoundDate[key] = sequence + 1;
         return PlanDose(
           doseId: dose.id,
           compoundId: compoundId,

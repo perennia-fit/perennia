@@ -2629,4 +2629,59 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get notPlannedReasonOutside => 'Outside the Protocol\'s dates';
+
+  @override
+  String get consistencyButton => 'Consistency';
+
+  @override
+  String consistencyScreenTitle(String name) {
+    return 'Consistency · $name';
+  }
+
+  @override
+  String consistencyRangeDays(int count) {
+    return '$count days';
+  }
+
+  @override
+  String get consistencyRangeCustom => 'Custom';
+
+  @override
+  String get consistencyPlanned => 'Planned';
+
+  @override
+  String get consistencyExtra => 'Extra';
+
+  @override
+  String consistencyExtraCount(int count) {
+    return '$count extra';
+  }
+
+  @override
+  String get consistencyNotInProtocol =>
+      'Not in a Protocol, so its days have no Day Status. Its Doses are listed by date.';
+
+  @override
+  String get consistencyNoDoses => 'No Doses logged in this range.';
+
+  @override
+  String get consistencyLoadError => 'Could not load this range.';
+
+  @override
+  String get consistencyChartEmpty =>
+      'Nothing planned or logged in this range.';
+
+  @override
+  String get consistencyChartLoggedLegend => 'Logged Dose';
+
+  @override
+  String get consistencyChartExtraLegend => 'Extra Dose';
+
+  @override
+  String get consistencyChartPlannedLegend => 'Planned time';
+
+  @override
+  String consistencyChartSemantics(String from, String to) {
+    return 'Dose times against planned times, $from – $to';
+  }
 }
