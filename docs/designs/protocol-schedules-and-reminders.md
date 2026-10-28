@@ -1156,7 +1156,11 @@ amounts. Building Phase 4 settled the rest:
     Protocols in effect. Each tab is named by its own read, so an archived
     Compound keeps its name. The Protocol's button shows only on a saved
     Protocol with members, and the tabs are its members as saved, not the
-    form's unsaved edits; a new Protocol has nothing stored to show.
+    form's unsaved edits; a new Protocol has nothing stored to show. The
+    selected tab reads in the primary text color over an indicator of the
+    same color, and the others in the secondary text color: the theme's
+    default tab color, the brand primary, fails WCAG AA on the light
+    chrome.
 *   **The lock.** From both entry points, the view sits inside its own
     `ProtocolsLockGate`, so if the app locks while it is on top, it is
     covered like the rest of the section.
@@ -3012,8 +3016,11 @@ plan these rules shape.
     *   the Planned list's three row labels, "Any time" and "Log all planned";
     *   the log sheet's date field label;
     *   the seven Day Status labels;
-    *   the five not-planned reasons: "Not scheduled today", "As needed",
-        "No schedule", "Removed" and "Outside the Protocol's dates".
+    *   the five not-planned reasons: "Not scheduled that day", "As needed",
+        "No schedule", "Removed" and "Outside the Protocol's dates". The
+        first reads right on any date, past ones in the Consistency view
+        included (CUJ 6). (Phase 3 wrote "Not scheduled today"; changed
+        after Phase 4's review.)
 
     No string uses a word D6 bans. The Planned list has no heading string
     (D6). The Day Status and reason strings land in Phase 3 but nothing
@@ -3178,6 +3185,10 @@ land before Phase 4's Consistency view shows these Doses.
     *   A custom pick is clamped before it reaches the repository: an end
         after today becomes today, and a range longer than
         `maxConsistencyRangeDays` (366) keeps its last 366 days.
+    *   The controller exposes `mounted`. The custom picker reads the
+        controller before its dialog opens and checks `mounted` after,
+        because the picker's own `ref` can be disposed by a remount while
+        the dialog is open.
 
 ##### 44. `apps/mobile/lib/data/repositories/protocol_plan_repository.dart` (Modify, Phase 4 part)
 
@@ -3195,8 +3206,10 @@ land before Phase 4's Consistency view shows these Doses.
         controller clamps a pick first (file 43), so the view never
         throws.
     *   **What it reads.** Every Protocol the Compound is a member of,
-        keeping only that Compound's PlanDays, so its Day Statuses are the
-        ones a read of the whole plan would give. It re-emits when a
+        each narrowed to that Compound's members before `planDays` runs,
+        so only that Compound's PlanDays are planned. Its Day Statuses are
+        the ones a read of the whole plan would give, because a Day Status
+        is one per Compound and date. It re-emits when a
         Protocol, Protocol Member, Schedule Version, Compound or Dose
         changes, like `watchPlannedDay`.
     *   **`ConsistencyRange`** carries the PlanDays, Day Statuses and
@@ -3226,7 +3239,8 @@ land before Phase 4's Consistency view shows these Doses.
 
 *   `apps/mobile/test/features/protocols/consistency_screen_test.dart`: labels
     and reasons, the range picker, both entry points, and none of the words D6
-    bans.
+    bans. Text contrast and tap targets are checked on both entry points in
+    both themes, the Protocol view's tabs included.
 *   `apps/mobile/test/features/protocols/consistency_chart_data_test.dart`:
     planned segments across a version change (CUJ 6), the untimed band, and
     shading (CUJ 3 and 5).

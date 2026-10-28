@@ -2616,7 +2616,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dayStatusNotLogged => 'Not logged';
 
   @override
-  String get notPlannedReasonNotScheduledToday => 'Not scheduled today';
+  String get notPlannedReasonNotScheduledToday => 'Not scheduled that day';
 
   @override
   String get notPlannedReasonAsNeeded => 'As needed';

@@ -56,7 +56,7 @@ void main() {
       );
       expect(
         _dayText(tester, _date(2026, 10, 9)),
-        contains('Not scheduled today'),
+        contains('Not scheduled that day'),
       );
       expect(_dayText(tester, _date(2026, 10, 8)), contains('No schedule'));
       // An as-needed Dose fills nothing, so it is an extra next to the status,
@@ -136,6 +136,70 @@ void main() {
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        semantics.dispose();
+      });
+    }
+
+    for (final (name, theme) in <(String, ThemeData)>[
+      ('light', AppTheme.light()),
+      ('dark', AppTheme.dark()),
+    ]) {
+      testWidgets(
+          "a Protocol's view labels its tabs in readable colors and meets "
+          'contrast and tap-target guidelines ($name theme)', (tester) async {
+        _useTallView(tester);
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              protocolsClockProvider.overrideWithValue(() => _now),
+              // TRT's tab reads the fixture; AgeMate's read never arrives, so
+              // its tab keeps the name it was opened with.
+              consistencyProvider.overrideWith(
+                (ref, compoundId) => compoundId == _trt
+                    ? Stream<ConsistencyRange>.value(
+                        _labelsRange(
+                          ref.watch(consistencyRangeControllerProvider),
+                        ),
+                      )
+                    : const Stream<ConsistencyRange>.empty(),
+              ),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: theme,
+              home: ConsistencyScreen.protocol(
+                protocolName: 'Daily',
+                members: const <ConsistencyTab>[
+                  ConsistencyTab(compoundId: _trt, label: 'TRT'),
+                  ConsistencyTab(compoundId: _ageMate, label: 'AgeMate'),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byKey(ConsistencyChart.chartKey), findsOneWidget);
+
+        // The guideline does not measure the tab labels, so their colors are
+        // read directly: never the theme's primary, which fails AA on the
+        // light chrome.
+        final colors = theme.extension<AppColors>()!;
+        Color? tabColor(String compoundId, String label) => DefaultTextStyle.of(
+              tester.element(
+                find.descendant(
+                  of: find.byKey(ConsistencyScreen.tabKey(compoundId)),
+                  matching: find.text(label),
+                ),
+              ),
+            ).style.color;
+        expect(tabColor(_trt, 'TRT'), colors.textPrimary);
+        expect(tabColor(_ageMate, 'AgeMate'), colors.textSecondary);
+
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         semantics.dispose();
       });
     }
@@ -721,6 +785,7 @@ void main() {
 }
 
 const _trt = 'c-trt';
+const _ageMate = 'c-agemate';
 const _today = ProtocolDayDate(year: 2026, month: 10, day: 14);
 final DateTime _now = DateTime(2026, 10, 14, 12);
 const _start = ProtocolDayDate(year: 2026, month: 10, day: 10);
