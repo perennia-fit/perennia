@@ -145,12 +145,13 @@ void main() {
       final data = _build(<PlanProtocol>[protocol], from, to);
 
       expect(data.shades, hasLength(1));
-      expect(data.shades.single.kind, ConsistencyShadeKind.offCycle);
+      expect(data.shades.single.kind, DayStatusKind.offCycle);
+      // From day 3, 31 October.
       expect(
         data.shades.single.run,
         const ConsistencyDayRun(startIndex: 3, endIndex: 8),
       );
-      expect(data.dateAt(3), _date(2026, 10, 31));
+      expect(from.addDays(3), _date(2026, 10, 31));
       expect(_segments(data), <(String, int, int)>[('21:00', 0, 2)]);
     });
 
@@ -167,7 +168,7 @@ void main() {
       final data = _build(<PlanProtocol>[protocol], from, to);
 
       expect(data.shades, hasLength(1));
-      expect(data.shades.single.kind, ConsistencyShadeKind.paused);
+      expect(data.shades.single.kind, DayStatusKind.paused);
       // The seven paused days, 10 to 16 October.
       expect(
         data.shades.single.run,
@@ -191,6 +192,7 @@ void main() {
         planDays: days,
         dayStatuses: dayStatuses(days, const <PlanDose>[], _date(2026, 10, 31)),
         doses: const <DoseRecord>[],
+        extraDoseIds: const <String>{},
       );
 
       // Only the 31st, today, reads "Off cycle"; the 1st and 2nd are after it.
@@ -241,15 +243,170 @@ void main() {
     });
 
     test(
+        'a Dose is drawn at its frozen local date and time, not at its '
+        "instant in the device's zone", () {
+      // Logged in Los Angeles (UTC-7) at 08:30 on 2 October: 15:30 UTC.
+      final tookAt = DateTime.utc(2026, 10, 2, 15, 30);
+      final abroad = DoseRecord(
+        id: 'd-abroad',
+        compoundId: 'c-trt',
+        compoundName: 'TRT',
+        amountValue: 1,
+        amountEntered: '1',
+        unit: DoseUnit.milligram,
+        route: DoseRoute.oral,
+        tookAt: tookAt,
+        timezone: 'America/Los_Angeles',
+        localDate: _date(2026, 10, 2),
+        timezoneOffsetMinutes: -7 * 60,
+        provenance: DoseProvenance.manual,
+        updatedAt: tookAt,
+      );
+      final data = _build(
+        const <PlanProtocol>[],
+        _date(2026, 10, 1),
+        _date(2026, 10, 3),
+        doses: <DoseRecord>[abroad],
+      );
+
+      expect(
+        data.points.map((point) => (point.x, point.y)),
+        <(double, double)>[(1.5, 8 * 60 + 30)],
+      );
+    });
+
+    test("planned segments end on the Protocol's end date", () {
+      final protocol = PlanProtocol(
+        protocolId: 'p-daily',
+        startLocalDate: _date(2026, 10, 1),
+        endLocalDate: _date(2026, 10, 4),
+        members: <PlanMember>[
+          PlanMember(
+            memberId: 'm-trt',
+            compoundId: 'c-trt',
+            versions: <ScheduleVersion>[
+              _version('v-1', _date(2026, 10, 1), _daily(<String>['09:00'])),
+            ],
+          ),
+        ],
+      );
+      final data = _build(
+        <PlanProtocol>[protocol],
+        _date(2026, 9, 29),
+        _date(2026, 10, 7),
+      );
+
+      // 1 to 4 October, both included: days 2 to 5. Nothing is shaded
+      // outside the Protocol's dates: they are "Not planned".
+      expect(_segments(data), <(String, int, int)>[('09:00', 2, 5)]);
+      expect(data.shades, isEmpty);
+    });
+
+    test(
+        'planned segments end on the day a member is removed, and on the day '
+        'a Protocol is archived', () {
+      PlanProtocol protocol({
+        ProtocolDayDate? memberArchivedOn,
+        ProtocolDayDate? protocolArchivedOn,
+      }) =>
+          PlanProtocol(
+            protocolId: 'p-daily',
+            startLocalDate: _date(2026, 10, 1),
+            archivedOn: protocolArchivedOn,
+            members: <PlanMember>[
+              PlanMember(
+                memberId: 'm-trt',
+                compoundId: 'c-trt',
+                archivedOn: memberArchivedOn,
+                versions: <ScheduleVersion>[
+                  _version(
+                    'v-1',
+                    _date(2026, 10, 1),
+                    _daily(<String>['09:00', '21:00']),
+                  ),
+                ],
+              ),
+            ],
+          );
+      final from = _date(2026, 10, 1);
+      final to = _date(2026, 10, 8);
+
+      // Removed on the 3rd: the archive day itself is still planned (D1).
+      final removed = _build(
+        <PlanProtocol>[protocol(memberArchivedOn: _date(2026, 10, 3))],
+        from,
+        to,
+      );
+      expect(
+        _segments(removed),
+        <(String, int, int)>[('09:00', 0, 2), ('21:00', 0, 2)],
+      );
+      expect(removed.shades, isEmpty);
+
+      final archived = _build(
+        <PlanProtocol>[protocol(protocolArchivedOn: _date(2026, 10, 5))],
+        from,
+        to,
+      );
+      expect(
+        _segments(archived),
+        <(String, int, int)>[('09:00', 0, 4), ('21:00', 0, 4)],
+      );
+    });
+
+    test(
+        'a Dose is an extra exactly when the day list counts it as one: the '
+        "chart reads the range's own extras", () {
+      final protocol = PlanProtocol(
+        protocolId: 'p-daily',
+        startLocalDate: _date(2026, 10, 1),
+        members: <PlanMember>[
+          PlanMember(
+            memberId: 'm-trt',
+            compoundId: 'c-trt',
+            versions: <ScheduleVersion>[
+              _version('v-1', _date(2026, 10, 1), _daily(<String>['09:00'])),
+            ],
+          ),
+        ],
+      );
+      final range = _range(
+        <PlanProtocol>[protocol],
+        _date(2026, 10, 1),
+        _date(2026, 10, 2),
+        <DoseRecord>[
+          _dose('d-1', _date(2026, 10, 1), 9, 0),
+          _dose('d-2', _date(2026, 10, 1), 9, 30),
+          _dose('d-3', _date(2026, 10, 2), 22, 0),
+        ],
+      );
+      final data = ConsistencyChartData.of(range);
+
+      final listed = <String>{
+        for (final day in range.days)
+          for (final dose in day.extraDoses) dose.id,
+      };
+      expect(listed, <String>{'d-2'});
+      expect(
+        {
+          for (final point in data.points)
+            if (point.isExtra) point.dose.id,
+        },
+        listed,
+      );
+      // Built once per range: the same emission gives the same model.
+      expect(identical(ConsistencyChartData.of(range), data), isTrue);
+    });
+
+    test(
         'a Compound in no Protocol has no PlanDays: its Doses are drawn, and '
         'none is an extra', () {
       final from = _date(2026, 10, 1);
       final to = _date(2026, 10, 2);
-      final data = ConsistencyChartData.build(
-        from: from,
-        to: to,
-        planDays: const <PlanDay>[],
-        dayStatuses: const <DayStatus>[],
+      final data = _build(
+        const <PlanProtocol>[],
+        from,
+        to,
         doses: <DoseRecord>[
           _dose('d-1', from, 7, 0),
           _dose('d-2', from, 7, 30),
@@ -269,6 +426,7 @@ void main() {
         planDays: const <PlanDay>[],
         dayStatuses: const <DayStatus>[],
         doses: const <DoseRecord>[],
+        extraDoseIds: const <String>{},
       );
 
       expect(data.hasAnyData, isFalse);
@@ -283,6 +441,7 @@ void main() {
           planDays: const <PlanDay>[],
           dayStatuses: const <DayStatus>[],
           doses: const <DoseRecord>[],
+          extraDoseIds: const <String>{},
         ),
         throwsArgumentError,
       );
@@ -290,40 +449,71 @@ void main() {
   });
 }
 
+/// The chart of [protocols] over [from] through [to], with today on [to],
+/// built as the screen builds it: from the range the repository would emit,
+/// so its extras are the day list's.
 ConsistencyChartData _build(
   List<PlanProtocol> protocols,
   ProtocolDayDate from,
   ProtocolDayDate to, {
   List<DoseRecord> doses = const <DoseRecord>[],
 }) {
+  return ConsistencyChartData.of(_range(protocols, from, to, doses));
+}
+
+/// One Compound's Consistency read over [from] through [to], with today on
+/// [to]. Each Dose is numbered among its date's Doses, as matching does.
+ConsistencyRange _range(
+  List<PlanProtocol> protocols,
+  ProtocolDayDate from,
+  ProtocolDayDate to,
+  List<DoseRecord> doses,
+) {
   final days = planDays(protocols, from, to);
+  final sequenceByDate = <ProtocolDayDate, int>{};
   final planDoses = <PlanDose>[
-    for (final (index, dose) in doses.indexed)
+    for (final dose in doses)
       PlanDose(
         doseId: dose.id,
         compoundId: dose.compoundId!,
         localDate: dose.localDate,
         localTime: dose.localTime,
-        sequence: index,
+        sequence: sequenceByDate.update(
+          dose.localDate,
+          (sequence) => sequence + 1,
+          ifAbsent: () => 0,
+        ),
       ),
   ];
-  return ConsistencyChartData.build(
+  return ConsistencyRange(
+    compoundId: 'c-trt',
     from: from,
     to: to,
+    today: to,
     planDays: days,
     dayStatuses: dayStatuses(days, planDoses, to),
     doses: doses,
+    compound: null,
+    protocols: const <String, ProtocolOptionRecord>{},
   );
 }
 
-List<(String, int, int)> _segments(ConsistencyChartData data) => <(
-      String,
-      int,
-      int
-    )>[
+/// Each planned segment as its `HH:MM` time and its first and last day.
+List<(String, int, int)> _segments(ConsistencyChartData data) =>
+    <(String, int, int)>[
       for (final segment in data.plannedSegments)
-        (segment.localTime, segment.run.startIndex, segment.run.endIndex),
+        (
+          _hhmm(segment.y),
+          segment.run.startIndex,
+          segment.run.endIndex,
+        ),
     ];
+
+String _hhmm(double minutes) {
+  final value = minutes.round();
+  String two(int part) => part.toString().padLeft(2, '0');
+  return '${two(value ~/ 60)}:${two(value % 60)}';
+}
 
 /// "Skin": GHK-Cu at 21:00 daily, 60 days on and 30 off, anchored on 1
 /// September 2026 (CUJ 3).

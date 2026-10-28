@@ -6,6 +6,7 @@ import '../../../data/repositories/training_repositories.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../models/consistency_chart_data.dart';
+import 'consistency_screen.dart' show dayStatusLabel;
 
 /// The Consistency chart (D6, Phase 4 file 42): each logged Dose's time of
 /// day (Y) on its date (X), against the planned times. Rendered with
@@ -16,13 +17,19 @@ import '../models/consistency_chart_data.dart';
 /// shaded ranges, so this is a `LineChart` drawn as a scatter: the Doses are
 /// a series of dots with no line, each planned time is a two-point segment
 /// over the days it applies, the untimed planned doses are segments in a
-/// band along the top, and paused and off-cycle days are shaded ranges.
+/// band along the top, and paused and off-cycle days are shaded ranges
+/// painted behind the chart.
 ///
 /// Strictly descriptive: no verdict, no ratio. Color is never the only
 /// signal. A Dose that filled a slot is a filled dot and an extra Dose is a
-/// ring; the planned line, the untimed band and both shadings are named in
-/// the legend; and each shaded run is labelled under the chart when it is
-/// wide enough for its word. Every color is a theme token.
+/// ring. Paused and off-cycle days share one shade and differ by pattern:
+/// off-cycle days are hatched, and every run, however short, has a marker
+/// under the plot, solid for paused and dashed for off cycle, drawn in the
+/// secondary text token so it holds its contrast in both themes. The
+/// planned line, the untimed band and both shadings are named in the
+/// legend with the same patterns, and each run is labelled under its
+/// marker when it is wide enough for its word. Every color is a theme
+/// token.
 class ConsistencyChart extends StatelessWidget {
   const ConsistencyChart({super.key, required this.range});
 
@@ -47,13 +54,7 @@ class ConsistencyChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final l10n = context.l10n;
-    final data = ConsistencyChartData.build(
-      from: range.from,
-      to: range.to,
-      planDays: range.planDays,
-      dayStatuses: range.dayStatuses,
-      doses: range.doses,
-    );
+    final data = ConsistencyChartData.of(range);
     if (!data.hasAnyData) {
       return Text(
         key: emptyKey,
@@ -78,7 +79,18 @@ class ConsistencyChart extends StatelessWidget {
             child: SizedBox(
               key: chartKey,
               height: 220,
-              child: LineChart(_chartData(context, data, colors)),
+              child: Stack(
+                children: <Widget>[
+                  // The shading, behind the chart's lines and dots.
+                  Positioned.fill(
+                    left: _leftTitlesWidth,
+                    child: CustomPaint(
+                      painter: _ShadePainter(data: data, colors: colors),
+                    ),
+                  ),
+                  LineChart(_chartData(context, data, colors)),
+                ],
+              ),
             ),
           ),
         ),
@@ -151,16 +163,6 @@ class ConsistencyChart extends StatelessWidget {
         getDrawingHorizontalLine: (_) =>
             FlLine(color: colors.divider, strokeWidth: 1),
       ),
-      rangeAnnotations: RangeAnnotations(
-        verticalRangeAnnotations: <VerticalRangeAnnotation>[
-          for (final shade in data.shades)
-            VerticalRangeAnnotation(
-              x1: shade.run.startX,
-              x2: shade.run.endX,
-              color: _shadeColor(shade.kind, colors),
-            ),
-        ],
-      ),
       titlesData: FlTitlesData(
         topTitles: const AxisTitles(),
         rightTitles: const AxisTitles(),
@@ -225,25 +227,171 @@ class ConsistencyChart extends StatelessWidget {
   }
 }
 
-Color _shadeColor(ConsistencyShadeKind kind, AppColors colors) =>
-    switch (kind) {
-      ConsistencyShadeKind.paused => colors.divider,
-      ConsistencyShadeKind.offCycle => colors.divider.withValues(alpha: 0.5),
-    };
+/// A shaded run's area: the divider shade for both kinds, hatched for
+/// off-cycle days so the two differ by pattern, not only by color.
+void _paintShade(
+  Canvas canvas,
+  Rect rect,
+  DayStatusKind kind,
+  AppColors colors,
+) {
+  canvas.drawRect(rect, Paint()..color = colors.divider);
+  if (kind != DayStatusKind.offCycle) {
+    return;
+  }
+  const spacing = 6.0;
+  final hatch = Paint()
+    ..color = colors.textSecondary.withValues(alpha: 0.5)
+    ..strokeWidth = 1;
+  canvas
+    ..save()
+    ..clipRect(rect);
+  // Lines rising at 45°, every [spacing] px along the bottom edge.
+  for (var x = rect.left - rect.height; x < rect.right; x += spacing) {
+    canvas.drawLine(
+      Offset(x, rect.bottom),
+      Offset(x + rect.height, rect.top),
+      hatch,
+    );
+  }
+  canvas.restore();
+}
 
-String _shadeLabel(ConsistencyShadeKind kind, AppLocalizations l10n) =>
-    switch (kind) {
-      ConsistencyShadeKind.paused => l10n.dayStatusPaused,
-      ConsistencyShadeKind.offCycle => l10n.dayStatusOffCycle,
-    };
+/// A shaded run's marker: a bar in the secondary text token, solid for
+/// paused days and dashed for off-cycle days, so even a one-day run is
+/// told apart without its word.
+void _paintShadeMarker(
+  Canvas canvas,
+  Rect rect,
+  DayStatusKind kind,
+  AppColors colors,
+) {
+  final paint = Paint()..color = colors.textSecondary;
+  if (kind != DayStatusKind.offCycle) {
+    canvas.drawRect(rect, paint);
+    return;
+  }
+  const dash = 3.0;
+  const gap = 2.0;
+  canvas
+    ..save()
+    ..clipRect(rect);
+  for (var x = rect.left; x < rect.right; x += dash + gap) {
+    canvas.drawRect(
+      Rect.fromLTWH(x, rect.top, dash, rect.height),
+      paint,
+    );
+  }
+  canvas.restore();
+}
 
-/// Each shaded run's word under the chart, aligned with the run, when the
-/// run is wide enough to hold it.
+/// The paused and off-cycle runs, over the plot's full height.
+class _ShadePainter extends CustomPainter {
+  _ShadePainter({required this.data, required this.colors});
+
+  final ConsistencyChartData data;
+  final AppColors colors;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (data.shades.isEmpty || size.width <= 0) {
+      return;
+    }
+    final dayWidth = size.width / data.dayCount;
+    for (final shade in data.shades) {
+      _paintShade(
+        canvas,
+        Rect.fromLTRB(
+          shade.run.startX * dayWidth,
+          0,
+          shade.run.endX * dayWidth,
+          size.height,
+        ),
+        shade.kind,
+        colors,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ShadePainter oldDelegate) =>
+      !identical(oldDelegate.data, data) || oldDelegate.colors != colors;
+}
+
+/// Every shaded run's marker under the plot, with the run's word below it
+/// when the run is wide enough to hold it.
+class _ShadeMarkerPainter extends CustomPainter {
+  _ShadeMarkerPainter({required this.data, required this.colors});
+
+  final ConsistencyChartData data;
+  final AppColors colors;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0) {
+      return;
+    }
+    final dayWidth = size.width / data.dayCount;
+    for (final shade in data.shades) {
+      _paintShadeMarker(
+        canvas,
+        Rect.fromLTRB(
+          shade.run.startX * dayWidth,
+          0,
+          shade.run.endX * dayWidth,
+          size.height,
+        ),
+        shade.kind,
+        colors,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ShadeMarkerPainter oldDelegate) =>
+      !identical(oldDelegate.data, data) || oldDelegate.colors != colors;
+}
+
+/// A legend swatch for one shading: its area and its marker, as drawn.
+class _ShadeSwatchPainter extends CustomPainter {
+  _ShadeSwatchPainter({required this.kind, required this.colors});
+
+  final DayStatusKind kind;
+  final AppColors colors;
+
+  static const double markerHeight = 3;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final areaBottom = size.height - markerHeight - 1;
+    _paintShade(
+      canvas,
+      Rect.fromLTRB(0, 0, size.width, areaBottom),
+      kind,
+      colors,
+    );
+    _paintShadeMarker(
+      canvas,
+      Rect.fromLTRB(0, size.height - markerHeight, size.width, size.height),
+      kind,
+      colors,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ShadeSwatchPainter oldDelegate) =>
+      oldDelegate.kind != kind || oldDelegate.colors != colors;
+}
+
+/// Each shaded run's marker under the chart, aligned with the run, and its
+/// word when the run is wide enough to hold it.
 class _ShadeLabels extends StatelessWidget {
   const _ShadeLabels({required this.data, required this.colors});
 
   final ConsistencyChartData data;
   final AppColors colors;
+
+  static const double _markerHeight = 4;
 
   @override
   Widget build(BuildContext context) {
@@ -252,7 +400,7 @@ class _ShadeLabels extends StatelessWidget {
     }
     final l10n = context.l10n;
     return SizedBox(
-      height: 20,
+      height: _markerHeight + 2 + 20,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final plotWidth =
@@ -263,6 +411,15 @@ class _ShadeLabels extends StatelessWidget {
           final dayWidth = plotWidth / data.dayCount;
           return Stack(
             children: <Widget>[
+              Positioned(
+                left: ConsistencyChart._leftTitlesWidth,
+                right: 0,
+                top: 0,
+                height: _markerHeight,
+                child: CustomPaint(
+                  painter: _ShadeMarkerPainter(data: data, colors: colors),
+                ),
+              ),
               for (final shade in data.shades)
                 if (shade.run.dayCount * dayWidth >=
                     ConsistencyChart._minShadeLabelWidth)
@@ -271,10 +428,10 @@ class _ShadeLabels extends StatelessWidget {
                     left: ConsistencyChart._leftTitlesWidth +
                         shade.run.startX * dayWidth,
                     width: shade.run.dayCount * dayWidth,
-                    top: 0,
+                    top: _markerHeight + 2,
                     bottom: 0,
                     child: Text(
-                      _shadeLabel(shade.kind, l10n),
+                      dayStatusLabel(l10n, shade.kind),
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.clip,
@@ -326,6 +483,11 @@ class _Legend extends StatelessWidget {
     Widget block(Color color, {double height = 12}) =>
         Container(width: 12, height: height, color: color);
 
+    Widget shadeSwatch(DayStatusKind kind) => CustomPaint(
+          size: const Size(16, 14),
+          painter: _ShadeSwatchPainter(kind: kind, colors: colors),
+        );
+
     return Wrap(
       spacing: AppDimens.base,
       runSpacing: AppDimens.dense / 2,
@@ -344,9 +506,12 @@ class _Legend extends StatelessWidget {
             block(colors.textSecondary, height: 6),
             l10n.plannedListAnyTime,
           ),
-        for (final kind in ConsistencyShadeKind.values)
+        for (final kind in const <DayStatusKind>[
+          DayStatusKind.paused,
+          DayStatusKind.offCycle,
+        ])
           if (shadeKinds.contains(kind))
-            item(block(_shadeColor(kind, colors)), _shadeLabel(kind, l10n)),
+            item(shadeSwatch(kind), dayStatusLabel(l10n, kind)),
       ],
     );
   }

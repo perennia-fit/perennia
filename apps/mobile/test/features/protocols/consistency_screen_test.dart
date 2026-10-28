@@ -155,11 +155,11 @@ void main() {
 
       expect(_rangeSummary(tester), 'Sep 15, 2026 – Oct 14, 2026');
       expect(_chipSelected(tester, ConsistencyRangePreset.last30), isTrue);
-      expect(
-          requested.last, (_date(2026, 9, 15), _date(2026, 10, 14), _today));
+      expect(requested.last, (_date(2026, 9, 15), _date(2026, 10, 14), _today));
 
       await tester.tap(
-        find.byKey(ConsistencyScreen.rangeChipKey(ConsistencyRangePreset.last7)),
+        find.byKey(
+            ConsistencyScreen.rangeChipKey(ConsistencyRangePreset.last7)),
       );
       await tester.pump();
       expect(_rangeSummary(tester), 'Oct 8, 2026 – Oct 14, 2026');
@@ -204,8 +204,7 @@ void main() {
       expect(_rangeSummary(tester), 'Sep 15, 2026 – Oct 14, 2026');
     });
 
-    test(
-        'a custom range ends today at the latest and holds at most 366 days',
+    test('a custom range ends today at the latest and holds at most 366 days',
         () {
       final container = ProviderContainer(
         overrides: [
@@ -229,11 +228,117 @@ void main() {
       controller.selectCustom(_date(2024, 1, 1), _date(2026, 10, 10));
       selection = container.read(consistencyRangeControllerProvider);
       expect(selection.to, _date(2026, 10, 10));
-      expect(selection.dayCount, maxConsistencyRangeDays);
+      expect(
+        selection.to.daysBetween(selection.from) + 1,
+        maxConsistencyRangeDays,
+      );
       expect(selection.from, _date(2025, 10, 10));
     });
 
-    test('the repository refuses a range over 366 days or ending before it '
+    testWidgets(
+        'a read that fails after it has shown a range says so, and no stale '
+        'days stay on screen', (tester) async {
+      _useTallView(tester);
+      final reads = StreamController<ConsistencyRange>();
+      addTearDown(reads.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            protocolsClockProvider.overrideWithValue(() => _now),
+            consistencyProvider.overrideWith((ref, compoundId) => reads.stream),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: AppTheme.light(),
+            home: ConsistencyScreen.compound(
+              compoundId: _trt,
+              compoundName: 'TRT',
+            ),
+          ),
+        ),
+      );
+      reads.add(
+        _labelsRange(
+          ConsistencyRangeSelection.preset(
+            ConsistencyRangePreset.last30,
+            _today,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.byKey(ConsistencyScreen.dayStatusKey(_trt, _today)),
+        findsOneWidget,
+      );
+
+      reads.addError(StateError('The plan could not be read.'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Could not load this range.'), findsOneWidget);
+      expect(
+        find.byKey(ConsistencyScreen.dayStatusKey(_trt, _today)),
+        findsNothing,
+      );
+      expect(find.byKey(ConsistencyChart.chartKey), findsNothing);
+    });
+
+    test(
+        'each preset holds exactly its days, ending today, on a day the '
+        'clocks change', () {
+      // Daylight saving starts or ends on each of these dates somewhere
+      // (the US, Europe, Australia), whichever zone the test runs in.
+      for (final now in <DateTime>[
+        DateTime(2026, 3, 8, 12),
+        DateTime(2026, 3, 29, 12),
+        DateTime(2026, 4, 5, 12),
+        DateTime(2026, 10, 4, 12),
+        DateTime(2026, 10, 25, 12),
+        DateTime(2026, 11, 1, 12),
+      ]) {
+        final container = ProviderContainer(
+          overrides: [
+            protocolsClockProvider.overrideWithValue(() => now),
+          ],
+        );
+        addTearDown(container.dispose);
+        final subscription = container.listen(
+          consistencyRangeControllerProvider,
+          (_, __) {},
+        );
+        addTearDown(subscription.close);
+        final today = ProtocolDayDate.fromDateTime(now);
+
+        for (final preset in ConsistencyRangePreset.values) {
+          final days = preset.days;
+          if (days == null) {
+            continue;
+          }
+          container
+              .read(consistencyRangeControllerProvider.notifier)
+              .selectPreset(preset);
+          final selection = container.read(consistencyRangeControllerProvider);
+          final first = DateTime.utc(now.year, now.month, now.day)
+              .subtract(Duration(days: days - 1));
+          expect(selection.to, today, reason: '$now $preset');
+          expect(
+            selection.from,
+            _date(first.year, first.month, first.day),
+            reason: '$now $preset',
+          );
+          expect(
+            selection.to.daysBetween(selection.from) + 1,
+            days,
+            reason: '$now $preset',
+          );
+        }
+      }
+    });
+
+    test(
+        'the repository refuses a range over 366 days or ending before it '
         'starts', () {
       final database = AppDatabase.inMemory();
       addTearDown(database.close);
@@ -267,6 +372,150 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
+  });
+
+  group('watchConsistency against the database', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    late _StackIds ids;
+
+    setUp(() async {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+      ids = await _seedStack(repositories);
+    });
+
+    tearDown(() => database.close());
+
+    Future<ConsistencyRange> read(String compoundId) {
+      return repositories.protocolPlan
+          .watchConsistency(compoundId, _start, _today, today: _today)
+          .first;
+    }
+
+    DayStatus statusOn(ConsistencyRange range, ProtocolDayDate date) =>
+        range.dayStatuses.singleWhere((status) => status.localDate == date);
+
+    test(
+        'a Dose tombstoned by undo or archived is left out, and fills no '
+        'slot', () async {
+      final undone =
+          await _logTrt(repositories, ids, DateTime(2026, 10, 12, 9));
+      await repositories.activityLog.undoBatch(undone.batchId);
+      final archived =
+          await _logTrt(repositories, ids, DateTime(2026, 10, 12, 21));
+      await repositories.protocols.deleteDose(archived.doseId);
+
+      final range = await read(ids.trt);
+
+      expect(
+        range.doses.map((dose) => dose.id),
+        isNot(anyElement(anyOf(undone.doseId, archived.doseId))),
+      );
+      // The 13th and 14th keep their seeded 09:05 Doses; nothing is left on
+      // the 12th.
+      expect(range.doses.map((dose) => dose.localDate), <ProtocolDayDate>[
+        _date(2026, 10, 13),
+        _date(2026, 10, 14),
+      ]);
+      expect(
+          statusOn(range, _date(2026, 10, 12)).status, DayStatusKind.notLogged);
+    });
+
+    test(
+        'a member removed by an edit reads Removed after its archive day; '
+        'one whose adding was undone never existed', () async {
+      // AgeMate is removed on the 12th.
+      await repositories.protocols.editProtocol(
+        ids.protocolId,
+        _dailyDraft(ids, <String>[ids.trt]),
+        today: _date(2026, 10, 12),
+      );
+      // Melatonin is added on the 13th, then the edit is undone.
+      final added = await repositories.protocols.editProtocol(
+        ids.protocolId,
+        _dailyDraft(ids, <String>[ids.trt, ids.melatonin]),
+        today: _date(2026, 10, 13),
+      );
+      await repositories.activityLog.undoBatch(added);
+
+      final ageMate = await read(ids.ageMate);
+      // The archive day itself is still planned (D1).
+      expect(
+        statusOn(ageMate, _date(2026, 10, 12)).status,
+        DayStatusKind.notLogged,
+      );
+      final removed = statusOn(ageMate, _date(2026, 10, 13));
+      expect(removed.status, DayStatusKind.notPlanned);
+      expect(removed.notPlannedReason, NotPlannedReason.removed);
+
+      final melatonin = await read(ids.melatonin);
+      expect(melatonin.isPlanned, isFalse);
+      expect(melatonin.planDays, isEmpty);
+      expect(melatonin.dayStatuses, isEmpty);
+      // Its Dose is still listed by date, with no Day Status.
+      expect(melatonin.days.single.status, isNull);
+      expect(melatonin.days.single.localDate, _today);
+    });
+
+    test(
+        'an archived Protocol still plans its past days through its archive '
+        'day', () async {
+      await repositories.protocols.archiveProtocol(
+        ids.protocolId,
+        today: _date(2026, 10, 12),
+      );
+
+      final range = await read(ids.trt);
+
+      expect(range.isPlanned, isTrue);
+      expect(range.protocols[ids.protocolId]?.name, 'Daily');
+      expect(
+        statusOn(range, _date(2026, 10, 12)).status,
+        DayStatusKind.notLogged,
+      );
+      final after = statusOn(range, _date(2026, 10, 13));
+      expect(after.status, DayStatusKind.notPlanned);
+      expect(after.notPlannedReason, NotPlannedReason.removed);
+      // The 13th's Dose is kept, and with no slot to fill it is an extra.
+      expect(after.extraCount, 1);
+    });
+
+    test('logging a Dose or adding a Schedule Version re-emits the range',
+        () async {
+      final emissions = <ConsistencyRange>[];
+      final subscription = repositories.protocolPlan
+          .watchConsistency(ids.trt, _start, _today, today: _today)
+          .listen(emissions.add);
+      addTearDown(subscription.cancel);
+      await _until(() => emissions.isNotEmpty);
+      expect(statusOn(emissions.last, _today).status, DayStatusKind.pending);
+
+      // Today's 21:00 slot is filled: the day reads "Logged".
+      await _logTrt(repositories, ids, DateTime(2026, 10, 14, 21, 2));
+      await _until(
+        () => statusOn(emissions.last, _today).status == DayStatusKind.logged,
+      );
+
+      // TRT moves to 07:00 only from today: a new Schedule Version.
+      await repositories.protocols.editProtocol(
+        ids.protocolId,
+        _dailyDraft(
+          ids,
+          <String>[ids.trt, ids.ageMate],
+          trtTimes: const <String>['07:00'],
+        ),
+        today: _today,
+      );
+      List<String?> plannedOn(ProtocolDayDate date) => emissions.last.planDays
+          .singleWhere((day) => day.localDate == date)
+          .planned
+          .map((planned) => planned.localTime)
+          .toList();
+      await _until(() => plannedOn(_today).contains('07:00'));
+      expect(plannedOn(_today), <String?>['07:00']);
+      expect(plannedOn(_today.addDays(-1)), <String?>['09:00', '21:00']);
     });
   });
 
@@ -339,7 +588,9 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(CompoundListScreen.consistencyButtonKey(ids.melatonin)).first,
+        find
+            .byKey(CompoundListScreen.consistencyButtonKey(ids.melatonin))
+            .first,
       );
       await _pumpUntilFound(
         tester,
@@ -372,6 +623,12 @@ void main() {
       final database = AppDatabase.inMemory();
       final repositories = TrainingRepositories(database);
       final ids = await _onFakeTime(tester, () => _seedStack(repositories));
+      // AgeMate is archived from the catalogue; it stays a member, and its
+      // tab still carries its name.
+      await _onFakeTime(
+        tester,
+        () => repositories.protocols.archiveCompound(ids.ageMate),
+      );
       // The stored Protocol as the Protocol list hands it to the screen: its
       // name and members are what the button reads. (Its detail stream is
       // not read here: it doesn't settle on the widget test's fake clock.)
@@ -415,6 +672,22 @@ void main() {
       expect(find.byKey(ConsistencyScreen.tabKey(ids.trt)), findsOneWidget);
       expect(
         find.byKey(ConsistencyScreen.tabKey(ids.ageMate)),
+        findsOneWidget,
+      );
+      // Each tab is named from its own read, which an archived Compound
+      // keeps.
+      await _pumpUntilFound(
+        tester,
+        find.descendant(
+          of: find.byKey(ConsistencyScreen.tabKey(ids.ageMate)),
+          matching: find.text('AgeMate'),
+        ),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ConsistencyScreen.tabKey(ids.trt)),
+          matching: find.text('TRT'),
+        ),
         findsOneWidget,
       );
 
@@ -799,6 +1072,76 @@ Future<_StackIds> _seedStack(TrainingRepositories repositories) async {
     ageMate: ageMate,
     melatonin: melatonin,
   );
+}
+
+/// "Daily" as stored by [_seedStack], with [compoundIds] as its members.
+/// TRT is at 09:00 and 21:00 unless [trtTimes] says otherwise; a member's
+/// unchanged Schedule gets no new version.
+ProtocolDraft _dailyDraft(
+  _StackIds ids,
+  List<String> compoundIds, {
+  List<String> trtTimes = const <String>['09:00', '21:00'],
+}) {
+  ScheduleDraft dailyAt(List<String> times, DoseUnit unit, DoseRoute route) {
+    return ScheduleDraft(
+      rule: TimedScheduleRule(days: const DailyScheduleDays(), times: times),
+      doseAmountValue: 1,
+      doseAmountEntered: '1',
+      doseUnit: unit,
+      route: route,
+    );
+  }
+
+  final schedules = <String, ScheduleDraft?>{
+    ids.trt: dailyAt(trtTimes, DoseUnit.milliliter, DoseRoute.intramuscular),
+    ids.ageMate: dailyAt(
+      const <String>['09:00'],
+      DoseUnit.capsule,
+      DoseRoute.oral,
+    ),
+    ids.melatonin: dailyAt(
+      const <String>['22:00'],
+      DoseUnit.milligram,
+      DoseRoute.oral,
+    ),
+  };
+  return ProtocolDraft(
+    name: 'Daily',
+    startLocalDate: _start,
+    compoundIds: compoundIds,
+    schedulesByCompoundId: <String, ScheduleDraft?>{
+      for (final id in compoundIds) id: schedules[id],
+    },
+  );
+}
+
+Future<LogDoseResult> _logTrt(
+  TrainingRepositories repositories,
+  _StackIds ids,
+  DateTime tookAt,
+) {
+  return repositories.protocols.logDose(
+    DoseSnapshotDraft(
+      compoundId: ids.trt,
+      compoundName: 'TRT',
+      amountValue: 1,
+      amountEntered: '1',
+      unit: DoseUnit.milliliter,
+      route: DoseRoute.intramuscular,
+      tookAt: tookAt,
+    ),
+  );
+}
+
+/// Waits, on real time, until [condition] holds.
+Future<void> _until(bool Function() condition) async {
+  for (var attempt = 0; attempt < 200; attempt += 1) {
+    if (condition()) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('The condition never held.');
 }
 
 /// Runs [work] in the test's own zone, pumping frames until it lands, so the

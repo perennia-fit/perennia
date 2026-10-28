@@ -11,7 +11,9 @@ import '../controllers/consistency_controller.dart';
 import 'consistency_chart.dart';
 import 'effect_screen.dart';
 
-/// One tab of the Consistency view: the Compound it shows, and its name.
+/// One tab of the Consistency view: the Compound it shows, and the name its
+/// tab starts with. Once the tab's read arrives, the tab shows the Compound's
+/// name from it, which an archived Compound keeps.
 final class ConsistencyTab {
   const ConsistencyTab({required this.compoundId, required this.label});
 
@@ -124,8 +126,9 @@ class ConsistencyScreen extends StatelessWidget {
             tabs: <Widget>[
               for (final tab in tabs)
                 Tab(
-                    key: ConsistencyScreen.tabKey(tab.compoundId),
-                    text: tab.label),
+                  key: ConsistencyScreen.tabKey(tab.compoundId),
+                  child: _TabLabel(tab: tab),
+                ),
             ],
           ),
         ),
@@ -140,6 +143,24 @@ class ConsistencyScreen extends StatelessWidget {
   }
 }
 
+/// A Protocol view's tab label: the Compound's name as its own read gives
+/// it (the plan read joins every member's Compound, archived or not), or
+/// the name the tab was opened with until that read arrives.
+class _TabLabel extends ConsumerWidget {
+  const _TabLabel({required this.tab});
+
+  final ConsistencyTab tab;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final name = ref.watch(
+      consistencyProvider(tab.compoundId)
+          .select((range) => range.value?.compound?.name),
+    );
+    return Text(name ?? tab.label);
+  }
+}
+
 class _ConsistencyBody extends ConsumerWidget {
   const _ConsistencyBody({required this.compoundId});
 
@@ -150,7 +171,13 @@ class _ConsistencyBody extends ConsumerWidget {
     final colors = context.colors;
     final l10n = context.l10n;
     final rangeAsync = ref.watch(consistencyProvider(compoundId));
-    final range = rangeAsync.value;
+    // Only a settled read is shown. While a newly picked range loads (the
+    // provider reloads, keeping the last range's value), or after a read
+    // fails, the previous read's days never stand under the new dates or
+    // hide the error. A Dose or plan change re-emits on the same stream, so
+    // it never passes through loading.
+    final range =
+        rangeAsync.hasError || rangeAsync.isLoading ? null : rangeAsync.value;
     final secondary = TextStyle(color: colors.textSecondary);
 
     final header = <Widget>[
@@ -340,6 +367,7 @@ class _ConsistencyDayTile extends StatelessWidget {
     final dateLabel =
         DateFormat.yMMMEd().format(day.localDate.toLocalDateTime());
     final secondary = TextStyle(color: colors.textSecondary);
+    final detail = status == null ? null : _statusDetail(l10n, status);
 
     final lines = <Widget>[];
     if (status == null) {
@@ -394,10 +422,10 @@ class _ConsistencyDayTile extends StatelessWidget {
                 ),
             ],
           ),
-          if (status != null && _statusDetail(l10n, status) != null)
+          if (detail != null)
             Align(
               alignment: AlignmentDirectional.centerEnd,
-              child: Text(_statusDetail(l10n, status)!, style: secondary),
+              child: Text(detail, style: secondary),
             ),
           for (final line in lines) ...<Widget>[
             const SizedBox(height: 2),

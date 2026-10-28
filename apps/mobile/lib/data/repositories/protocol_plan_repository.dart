@@ -310,6 +310,14 @@ final class ConsistencyRange {
   /// Protocol, or a date after today) are listed only when they hold a Dose.
   late final List<ConsistencyDay> days = _days();
 
+  /// The ids of every Dose that filled no slot of its day: each day's
+  /// [ConsistencyDay.extraDoses]. The one reading of an extra, which the
+  /// chart marks and the day list lists, so the two never disagree.
+  late final Set<String> extraDoseIds = Set<String>.unmodifiable(<String>{
+    for (final day in days)
+      for (final dose in day.extraDoses) dose.id,
+  });
+
   List<ConsistencyDay> _days() {
     final dosesByDate = <ProtocolDayDate, List<DoseRecord>>{};
     final doseById = <String, DoseRecord>{};
@@ -436,10 +444,10 @@ final class ProtocolPlanRepository {
   /// decides "Pending" against "Not logged", and the repository never reads
   /// a clock.
   ///
-  /// The plan is read for every Protocol the Compound is a member of, with
-  /// only that Compound's member rows, so the PlanDays and Day Statuses are
-  /// exactly the ones a read of the whole plan would give for it: matching
-  /// and statuses are per Compound and date (D6). A Compound in no Protocol
+  /// The plan is read for every Protocol the Compound is a member of, and
+  /// only that Compound's PlanDays are kept, so the PlanDays and Day
+  /// Statuses are exactly the ones a read of the whole plan would give for
+  /// it: matching and statuses are per Compound and date (D6). A Compound in no Protocol
   /// has no PlanDays, so it has no Day Statuses, and its Doses are still
   /// returned for the view to list by date.
   ///
@@ -478,21 +486,19 @@ final class ProtocolPlanRepository {
     _PlanRows plan,
     List<DoseRecord> doses,
   ) {
+    // Every Protocol the Compound is a member of, as read, and only this
+    // Compound's PlanDays from them: `planDays` decides each Compound and
+    // date on its own, so these are the PlanDays a read of the whole plan
+    // gives it.
     final protocols = <PlanProtocol>[
       for (final protocol in plan.protocols)
         if (protocol.members.any((member) => member.compoundId == compoundId))
-          PlanProtocol(
-            protocolId: protocol.protocolId,
-            startLocalDate: protocol.startLocalDate,
-            endLocalDate: protocol.endLocalDate,
-            period: protocol.period,
-            archivedOn: protocol.archivedOn,
-            remindersEnabled: protocol.remindersEnabled,
-            members: protocol.members
-                .where((member) => member.compoundId == compoundId),
-          ),
+          protocol,
     ];
-    final days = planDays(protocols, from, to);
+    final days = <PlanDay>[
+      for (final day in planDays(protocols, from, to))
+        if (day.compoundId == compoundId) day,
+    ];
     return ConsistencyRange(
       compoundId: compoundId,
       from: from,

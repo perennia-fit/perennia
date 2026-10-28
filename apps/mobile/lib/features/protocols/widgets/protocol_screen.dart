@@ -707,7 +707,8 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
               for (final member in members)
                 ConsistencyTab(
                   compoundId: member.compoundId,
-                  label: names[member.compoundId] ?? 'Compound',
+                  label: names[member.compoundId] ??
+                      context.l10n.protocolEditorCompoundFallback,
                 ),
             ],
           ),
@@ -759,8 +760,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
                 foregroundColor: colors.textPrimary,
                 minimumSize: const Size(0, AppDimens.touchTarget),
               ),
-              onPressed: () =>
-                  unawaited(_openConsistency(protocol, compounds)),
+              onPressed: () => unawaited(_openConsistency(protocol, compounds)),
               icon: const Icon(Icons.timeline),
               label: Text(l10n.consistencyButton),
             ),

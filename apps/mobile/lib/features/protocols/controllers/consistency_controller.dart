@@ -54,8 +54,6 @@ final class ConsistencyRangeSelection {
   /// `today`, which decides "Pending" against "Not logged" (D6).
   final ProtocolDayDate today;
 
-  int get dayCount => to.daysBetween(from) + 1;
-
   @override
   bool operator ==(Object other) =>
       other is ConsistencyRangeSelection &&

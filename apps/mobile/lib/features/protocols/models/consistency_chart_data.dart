@@ -15,8 +15,10 @@ import '../../../data/repositories/training_repositories.dart';
 ///
 /// **What is drawn.**
 /// * Each logged Dose of the range is a point at its frozen local date and
-///   time. A Dose that filled no slot of a day with a Day Status is an extra
-///   ([ConsistencyDosePoint.isExtra]); every other Dose is not.
+///   time. It is an extra ([ConsistencyDosePoint.isExtra]) when its id is in
+///   `extraDoseIds`: the day list's own extras
+///   (`ConsistencyRange.extraDoseIds`), so the chart and the list never
+///   disagree about which Doses filled nothing.
 /// * Each planned time is a horizontal segment over the run of consecutive
 ///   days it is planned on, read from the PlanDays, so a Schedule Version
 ///   change moves the line on the day it applies from (CUJ 6). Two Protocols
@@ -25,6 +27,9 @@ import '../../../data/repositories/training_repositories.dart';
 /// * Paused and off-cycle days, by their Day Status, are shaded runs that
 ///   carry their kind for the widget to label (CUJ 3 and 5). A day after
 ///   today has no Day Status, so it is never shaded.
+///
+/// [ConsistencyChartData.of] builds it once per [ConsistencyRange] the
+/// repository emits, so a rebuild of the widget never re-derives it.
 class ConsistencyChartData {
   ConsistencyChartData._({
     required this.from,
@@ -40,16 +45,34 @@ class ConsistencyChartData {
         untimedRuns = List<ConsistencyDayRun>.unmodifiable(untimedRuns),
         shades = List<ConsistencyShade>.unmodifiable(shades);
 
+  /// The chart of one [ConsistencyRange], built on its first use and kept
+  /// with that range object: every rebuild of the widget for the same
+  /// emission reads the same model.
+  factory ConsistencyChartData.of(ConsistencyRange range) =>
+      _byRange[range] ??= ConsistencyChartData.build(
+        from: range.from,
+        to: range.to,
+        planDays: range.planDays,
+        dayStatuses: range.dayStatuses,
+        doses: range.doses,
+        extraDoseIds: range.extraDoseIds,
+      );
+
+  static final Expando<ConsistencyChartData> _byRange =
+      Expando<ConsistencyChartData>('ConsistencyChartData');
+
   /// Builds the chart for [from] through [to], inclusive, from one
   /// Compound's [planDays], [dayStatuses] and [doses]: the same read the day
-  /// list shows. Anything dated outside the range is left out; nothing is
-  /// re-queried here.
+  /// list shows. [extraDoseIds] are the Doses the day list counts as extras.
+  /// Anything dated outside the range is left out; nothing is re-queried
+  /// here.
   factory ConsistencyChartData.build({
     required ProtocolDayDate from,
     required ProtocolDayDate to,
     required Iterable<PlanDay> planDays,
     required Iterable<DayStatus> dayStatuses,
     required Iterable<DoseRecord> doses,
+    required Set<String> extraDoseIds,
   }) {
     if (from.compareTo(to) > 0) {
       throw ArgumentError('A chart range starts on or before its end.');
@@ -58,24 +81,6 @@ class ConsistencyChartData {
     int? indexOf(ProtocolDayDate date) {
       final index = date.daysBetween(from);
       return index < 0 || index >= dayCount ? null : index;
-    }
-
-    // Which statuses exist, so a Dose is an extra only on a day that has
-    // slots to fill (D6: a Dose with no PlanDay is never an extra).
-    final statusByIndex = <int, DayStatus>{};
-    final filledDoseIds = <String>{};
-    for (final status in dayStatuses) {
-      final index = indexOf(status.localDate);
-      if (index == null) {
-        continue;
-      }
-      statusByIndex[index] = status;
-      for (final fill in status.fills) {
-        final doseId = fill.doseId;
-        if (doseId != null) {
-          filledDoseIds.add(doseId);
-        }
-      }
     }
 
     final points = <ConsistencyDosePoint>[];
@@ -89,8 +94,7 @@ class ConsistencyChartData {
           x: index + 0.5,
           y: planLocalTimeMinutes(dose.localTime).toDouble(),
           dose: dose,
-          isExtra: statusByIndex.containsKey(index) &&
-              !filledDoseIds.contains(dose.id),
+          isExtra: extraDoseIds.contains(dose.id),
         ),
       );
     }
@@ -126,7 +130,6 @@ class ConsistencyChartData {
         for (final run in _runs(entry.value))
           ConsistencyPlannedSegment(
             run: run,
-            localTime: entry.key,
             y: planLocalTimeMinutes(entry.key).toDouble(),
           ),
     ]..sort((a, b) {
@@ -134,15 +137,11 @@ class ConsistencyChartData {
         return byStart != 0 ? byStart : a.y.compareTo(b.y);
       });
 
-    final shadeKinds = <ConsistencyShadeKind, Set<int>>{};
-    for (final entry in statusByIndex.entries) {
-      final kind = switch (entry.value.status) {
-        DayStatusKind.paused => ConsistencyShadeKind.paused,
-        DayStatusKind.offCycle => ConsistencyShadeKind.offCycle,
-        _ => null,
-      };
-      if (kind != null) {
-        shadeKinds.putIfAbsent(kind, () => <int>{}).add(entry.key);
+    final shadeKinds = <DayStatusKind, Set<int>>{};
+    for (final status in dayStatuses) {
+      final index = indexOf(status.localDate);
+      if (index != null && ConsistencyShade.isShaded(status.status)) {
+        shadeKinds.putIfAbsent(status.status, () => <int>{}).add(index);
       }
     }
     final shades = <ConsistencyShade>[
@@ -208,9 +207,6 @@ class ConsistencyChartData {
       plannedSegments.isNotEmpty ||
       untimedRuns.isNotEmpty ||
       shades.isNotEmpty;
-
-  /// The date of day [index] of the range.
-  ProtocolDayDate dateAt(int index) => from.addDays(index);
 }
 
 /// A run of consecutive days of the range, `startIndex` through `endIndex`,
@@ -251,34 +247,36 @@ class ConsistencyDosePoint {
   final double y;
   final DoseRecord dose;
 
-  /// True when the Dose filled no slot of a day that has a Day Status.
+  /// True when the Dose filled no slot of a day that has a Day Status: one
+  /// of the day list's extras.
   final bool isExtra;
 }
 
 /// One planned time over a run of consecutive days it is planned on.
 class ConsistencyPlannedSegment {
-  const ConsistencyPlannedSegment({
-    required this.run,
-    required this.localTime,
-    required this.y,
-  });
+  const ConsistencyPlannedSegment({required this.run, required this.y});
 
   final ConsistencyDayRun run;
 
-  /// The planned `HH:MM` time.
-  final String localTime;
+  /// The planned time, in minutes after local midnight.
   final double y;
 }
 
-/// Why a run of days is shaded: its Day Status.
-enum ConsistencyShadeKind { paused, offCycle }
-
 /// A run of paused or off-cycle days.
 class ConsistencyShade {
-  const ConsistencyShade({required this.run, required this.kind});
+  ConsistencyShade({required this.run, required this.kind})
+      : assert(isShaded(kind), 'Only paused and off-cycle days are shaded.');
+
+  /// Whether days with this Day Status are shaded: paused and off-cycle
+  /// days, the two breaks in a plan (CUJ 3 and 5).
+  static bool isShaded(DayStatusKind status) =>
+      status == DayStatusKind.paused || status == DayStatusKind.offCycle;
 
   final ConsistencyDayRun run;
-  final ConsistencyShadeKind kind;
+
+  /// The run's Day Status: [DayStatusKind.paused] or
+  /// [DayStatusKind.offCycle].
+  final DayStatusKind kind;
 }
 
 /// The runs of consecutive indexes in [indexes], in order.
