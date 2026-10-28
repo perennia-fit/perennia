@@ -5120,7 +5120,12 @@ void main() {
         ),
       );
       const day = ProtocolDayDate(year: 2026, month: 7, day: 1);
-      Future<String> logAt(DateTime tookAtUtc, int offset) async {
+      const nextDay = ProtocolDayDate(year: 2026, month: 7, day: 2);
+      Future<String> logAt(
+        DateTime tookAtUtc,
+        int offset, {
+        ProtocolDayDate on = day,
+      }) async {
         final logged = await repositories.protocols.logDose(
           DoseSnapshotDraft(
             compoundId: compound.compoundId,
@@ -5136,9 +5141,8 @@ void main() {
               ..where((r) => r.id.equals(logged.doseId)))
             .write(
           DosesCompanion(
-            tookAt: Value<DateTime>(tookAtUtc),
             timezoneOffsetMinutes: Value<int?>(offset),
-            localDate: Value<String>(day.storageValue),
+            localDate: Value<String>(on.storageValue),
           ),
         );
         return logged.doseId;
@@ -5162,12 +5166,28 @@ void main() {
       );
       final read = await repositories.protocols.protocolDay(day);
       expect(read.doses.map((dose) => dose.id), <String>[honolulu, tokyo]);
+
+      // The next day, two Doses at the same clock minute through different
+      // offsets: 21:00 in Tokyo (UTC+09:00, 12:00 UTC), logged first, then
+      // 21:00 at UTC+10:00 (11:00 UTC). The larger id has the earlier
+      // instant, so only the id tie-break lists them in log order.
+      final first = await logAt(DateTime.utc(2026, 7, 2, 12), 540, on: nextDay);
+      final second =
+          await logAt(DateTime.utc(2026, 7, 2, 11), 600, on: nextDay);
+      expect(second.compareTo(first), greaterThan(0));
+      final tied = await repositories.protocols.protocolDay(nextDay);
+      expect(tied.doses.map((dose) => dose.localTime), <String>[
+        '21:00',
+        '21:00',
+      ]);
+      expect(tied.doses.map((dose) => dose.id), <String>[first, second]);
+
       final consistency = await repositories.protocolPlan
-          .watchConsistency(compound.compoundId, day, day, today: day)
+          .watchConsistency(compound.compoundId, day, nextDay, today: nextDay)
           .first;
       expect(
         consistency.doses.map((dose) => dose.id),
-        <String>[honolulu, tokyo],
+        <String>[honolulu, tokyo, first, second],
       );
     });
 

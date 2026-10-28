@@ -5953,9 +5953,10 @@ class ProtocolsRepository {
 
   /// Reactive variant of [protocolDay]: re-emits whenever any `Dose` changes,
   /// so the derived day-view invalidates mechanically (no recalculate path).
-  /// The day's Doses are listed in matching's order (D6 step 2), local time
-  /// and then id, so the day's log and the Planned list take them in the same
-  /// order.
+  /// The day's Doses are listed in clock order, then id
+  /// ([_compareDosesByClock]): matching's order (D6 step 2) whenever every
+  /// Dose's clock falls on the Protocol Day, so the day's log and the Planned
+  /// list then take them in the same order.
   Stream<ProtocolDayRecord> watchProtocolDay(ProtocolDayDate localDate) {
     return _activeDoseQuery(localDate: localDate).watch().map(
           (rows) => _protocolDayFromRows(localDate, rows),
@@ -5997,11 +5998,12 @@ class ProtocolsRepository {
     return query;
   }
 
-  /// The day's Doses, sorted after the read into matching's order (D6 step
-  /// 2): local time, then id. The query keeps its instant order, because a
-  /// Dose's clock depends on its own frozen offset, which SQL doesn't apply;
-  /// Doses logged at different offsets on one Protocol Day then read in
-  /// clock order, not instant order.
+  /// The day's Doses, sorted after the read into clock order, then id
+  /// ([_compareDosesByClock]), which is matching's order (D6 step 2) whenever
+  /// every Dose's clock falls on the Protocol Day. The query keeps its instant
+  /// order, because a Dose's clock depends on its own frozen offset, which
+  /// SQL doesn't apply; Doses logged at different offsets on one Protocol Day
+  /// then read in clock order, not instant order.
   ProtocolDayRecord _protocolDayFromRows(
     ProtocolDayDate localDate,
     List<DoseRow> rows,
@@ -7781,18 +7783,20 @@ class ProtocolsRepository {
   }
 }
 
-/// The day's log order for Doses on one Protocol Day: matching's order (D6
-/// step 2), local time and then id, with the local time read from the
-/// Dose's clock where it was taken ([DoseRecord.clock]) to the minute, as
-/// [DoseRecord.localTime] reads it. The day's log and the Consistency view's
-/// day list sort by it, so the rows read in clock order and take one day's
-/// Doses in the order matching numbers them.
+/// The day's log order for Doses on one Protocol Day: the Dose's clock where
+/// it was taken ([DoseRecord.clock]), date and time to the minute, then id.
+/// The day's log and the Consistency view's day list sort by it, so the rows
+/// read in clock order.
 ///
-/// The clock's date leads, which is matching's order whenever every clock
-/// falls on the Protocol Day. A Dose whose clock falls on another date (a
-/// draft that named its own local date, or a Dose with no offset read in a
-/// device zone it wasn't logged in) then stays in clock order instead of
-/// being placed by its time of day alone.
+/// The clock's date leads. That is matching's order (D6 step 2: local time,
+/// then id) whenever every clock falls on the Protocol Day, so the rows then
+/// take one day's Doses in the order matching numbers them. A Dose whose
+/// clock falls on another date (a draft that named its own local date, or a
+/// Dose with no offset read in a device zone it wasn't logged in) stays in
+/// clock order instead of being placed by its time of day alone, and there
+/// the two orders can differ; matching is left as D6 defines it. Sorting by
+/// time of day alone would list such a Dose out of clock order (08:00 the
+/// next morning before 17:00 the day before).
 int _compareDosesByClock(DoseRecord a, DoseRecord b) {
   final byClock = _clockToTheMinute(a).compareTo(_clockToTheMinute(b));
   return byClock != 0 ? byClock : a.id.compareTo(b.id);

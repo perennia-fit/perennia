@@ -465,16 +465,18 @@ final class ProtocolPlanRepository {
     return _combineLatest2(
       _planQuery().watch().map(_planFromJoinedRows),
       _consistencyDoseQuery(compoundId, from, to).watch().map(
-            (rows) => rows.map(_repositories.protocols._doseFromRow).toList()
+            (rows) => rows
+                .map(_repositories.protocols._doseFromRow)
+                .toList(growable: false)
               ..sort(_compareConsistencyDoses),
           ),
-      (_PlanRows plan, Iterable<DoseRecord> doses) => _consistencyRange(
+      (_PlanRows plan, List<DoseRecord> doses) => _consistencyRange(
         compoundId,
         from,
         to,
         today,
         plan,
-        doses.toList(growable: false),
+        doses,
       ),
     );
   }
@@ -517,9 +519,10 @@ final class ProtocolPlanRepository {
   }
 
   /// The Compound's non-archived Doses whose frozen local date falls in the
-  /// range, in instant order. [watchConsistency] sorts them after the read
-  /// ([_compareConsistencyDoses]), because a Dose's clock depends on its own
-  /// frozen offset, which SQL doesn't apply.
+  /// range, in no set order. [watchConsistency] sorts them after the read
+  /// ([_compareConsistencyDoses], a total order), because a Dose's clock
+  /// depends on its own frozen offset, which SQL doesn't apply, so an
+  /// `ORDER BY` here would never be observed.
   SimpleSelectStatement<$DosesTable, DoseRow> _consistencyDoseQuery(
     String compoundId,
     ProtocolDayDate from,
@@ -531,11 +534,7 @@ final class ProtocolPlanRepository {
             row.deletedAt.isNull() &
             row.compoundId.equals(compoundId) &
             row.localDate.isBetweenValues(from.storageValue, to.storageValue),
-      )
-      ..orderBy([
-        (row) => OrderingTerm.asc(row.tookAt),
-        (row) => OrderingTerm.asc(row.id),
-      ]);
+      );
   }
 
   JoinedSelectStatement<HasResultSet, dynamic> _planQuery() {

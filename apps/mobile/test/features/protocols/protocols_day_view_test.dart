@@ -262,7 +262,6 @@ void main() {
               ..where((row) => row.id.equals(logged.doseId)))
             .write(
           DosesCompanion(
-            tookAt: Value<DateTime>(tookAtUtc),
             timezoneOffsetMinutes: Value<int?>(offset),
             localDate: Value<String>(day.storageValue),
           ),
@@ -270,21 +269,15 @@ void main() {
         return logged.doseId;
       }
 
-      // Seeded on fake time, as `_seedOnFakeTime` does. First in Tokyo
-      // (UTC+09:00): 21:00 there, 12:00 UTC. Then in Honolulu (UTC−10:00):
-      // 08:30 there, 18:30 UTC, the later instant at the earlier clock time.
+      // Seeded on fake time. First in Tokyo (UTC+09:00): 21:00 there,
+      // 12:00 UTC. Then in Honolulu (UTC−10:00): 08:30 there, 18:30 UTC, the
+      // later instant at the earlier clock time.
       late final String tokyo;
       late final String honolulu;
-      var seeded = false;
-      unawaited(() async {
+      await _runOnFakeTime(tester, () async {
         tokyo = await logAt(DateTime.utc(2026, 10, 27, 12), 540);
         honolulu = await logAt(DateTime.utc(2026, 10, 27, 18, 30), -600);
-      }()
-          .then((_) => seeded = true));
-      for (var frame = 0; frame < 100 && !seeded; frame += 1) {
-        await tester.pump(const Duration(milliseconds: 10));
-      }
-      expect(seeded, isTrue);
+      });
 
       await _pumpLiveView(tester, repositories, () => _cuj1Now);
       await _pumpUntilFound(
@@ -730,14 +723,7 @@ void main() {
       (tester) async {
         final database = AppDatabase.inMemory();
         final repositories = TrainingRepositories(database);
-        // Seeded in the test's own zone, with frames pumped until it lands,
-        // so the database's queue and stream timers all run on fake time.
-        var seeded = false;
-        unawaited(_seedDailyStack(repositories).then((_) => seeded = true));
-        for (var frame = 0; frame < 100 && !seeded; frame += 1) {
-          await tester.pump(const Duration(milliseconds: 10));
-        }
-        expect(seeded, isTrue);
+        await _seedOnFakeTime(tester, repositories);
 
         await tester.pumpWidget(
           ProviderScope(
@@ -866,9 +852,18 @@ void main() {
 Future<void> _seedOnFakeTime(
   WidgetTester tester,
   TrainingRepositories repositories,
+) {
+  return _runOnFakeTime(tester, () => _seedDailyStack(repositories));
+}
+
+/// Runs [seed] in the test's own zone, with frames pumped until it lands, so
+/// the database's queue and stream timers all run on fake time.
+Future<void> _runOnFakeTime(
+  WidgetTester tester,
+  Future<void> Function() seed,
 ) async {
   var seeded = false;
-  unawaited(_seedDailyStack(repositories).then((_) => seeded = true));
+  unawaited(seed().then((_) => seeded = true));
   for (var frame = 0; frame < 100 && !seeded; frame += 1) {
     await tester.pump(const Duration(milliseconds: 10));
   }
