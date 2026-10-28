@@ -3,16 +3,20 @@ import 'dart:async';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
+import 'package:perennia/features/protocols/services/protocol_reminder_scheduler.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
 import 'package:perennia/features/protocols/widgets/protocols_day_view.dart';
+import 'package:perennia/features/training/services/timer_background_scheduler.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 void main() {
   testWidgets('Protocol Day view lists the day\'s doses', (tester) async {
@@ -222,6 +226,123 @@ void main() {
       }
     },
   );
+
+  group('the reminder permission banner (CUJ 12)', () {
+    Future<(ProtocolReminderScheduler, _BannerPermissions)> pumpWithReminders(
+      WidgetTester tester, {
+      TimerBackgroundPermissionStatus permission =
+          TimerBackgroundPermissionStatus.notDetermined,
+      bool deviceSwitchOn = true,
+      bool remindersOn = true,
+      ThemeData? theme,
+    }) async {
+      final permissions = _BannerPermissions(permission);
+      final scheduler = ProtocolReminderScheduler(
+        platform: _BannerPlatform(),
+        permissions: permissions,
+        readInputs: (from, to) async => <ProtocolReminderInput>[
+          ProtocolReminderInput(
+            protocolId: 'protocol-daily',
+            compoundId: 'compound-trt',
+            localDate: from,
+            localTime: '23:59',
+            remindersEnabled: remindersOn,
+            filled: false,
+          ),
+        ],
+        planChanges: () => const Stream<void>.empty(),
+        lastSuccessfulSyncAt: () => const Stream<DateTime?>.empty(),
+        deviceSwitchOn: () async => deviceSwitchOn,
+        clock: () => _now,
+      );
+      addTearDown(scheduler.dispose);
+      await tester.runAsync(scheduler.reconcile);
+      await _pumpView(
+        tester,
+        _dayWithDoses(),
+        theme: theme,
+        overrides: <Override>[
+          protocolReminderSchedulerProvider.overrideWithValue(scheduler),
+        ],
+      );
+      await _pumpUntilFound(tester, find.byKey(ProtocolsDayView.dayHeaderKey));
+      return (scheduler, permissions);
+    }
+
+    testWidgets(
+      'shows "Reminders are off on this device" with Allow while this phone '
+      'was never asked, and Allow asks once through the one permission path',
+      (tester) async {
+        final (_, permissions) = await pumpWithReminders(tester);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.reminderPermissionBannerKey),
+        );
+
+        expect(find.text('Reminders are off on this device'), findsOneWidget);
+        expect(permissions.requests, 0, reason: 'showing it asks nothing');
+
+        await tester.tap(find.byKey(ProtocolsDayView.reminderPermissionAllowKey));
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        await tester.pump();
+
+        expect(permissions.requests, 1);
+        expect(
+          find.byKey(ProtocolsDayView.reminderPermissionBannerKey),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('stays hidden once asked, with the device switch off, or '
+        'with no Protocol asking for reminders', (tester) async {
+      for (final (permission, device, reminders) in <(
+        TimerBackgroundPermissionStatus,
+        bool,
+        bool,
+      )>[
+        (TimerBackgroundPermissionStatus.granted, true, true),
+        (TimerBackgroundPermissionStatus.denied, true, true),
+        (TimerBackgroundPermissionStatus.notDetermined, false, true),
+        (TimerBackgroundPermissionStatus.notDetermined, true, false),
+      ]) {
+        await pumpWithReminders(
+          tester,
+          permission: permission,
+          deviceSwitchOn: device,
+          remindersOn: reminders,
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(
+          find.byKey(ProtocolsDayView.reminderPermissionBannerKey),
+          findsNothing,
+          reason: '$permission, device $device, reminders $reminders',
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
+    testWidgets('meets accessibility guidelines in both themes',
+        (tester) async {
+      for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+        final semantics = tester.ensureSemantics();
+        await pumpWithReminders(tester, theme: theme);
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.reminderPermissionBannerKey),
+        );
+
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+
+        semantics.dispose();
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+  });
 
   testWidgets('Protocol Day view meets accessibility guidelines in both themes',
       (tester) async {
@@ -910,10 +1031,12 @@ Future<void> _pumpView(
   ThemeData? theme,
   _FakeProtocolDayController? controller,
   List<CompoundRecord> compounds = const <CompoundRecord>[],
+  List<Override> overrides = const <Override>[],
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...overrides,
         protocolDayControllerProvider.overrideWith(
           () => controller ?? _FakeProtocolDayController(day),
         ),
@@ -940,6 +1063,62 @@ Future<void> _pumpView(
       ),
     ),
   );
+}
+
+class _BannerPermissions implements TimerBackgroundScheduler {
+  _BannerPermissions(this.status);
+
+  TimerBackgroundPermissionStatus status;
+  int requests = 0;
+
+  @override
+  Future<TimerBackgroundPermissionStatus> notificationPermissionStatus() async {
+    return status;
+  }
+
+  @override
+  Future<TimerBackgroundPermissionStatus> requestPermissionIfNeeded() async {
+    requests += 1;
+    status = TimerBackgroundPermissionStatus.granted;
+    return status;
+  }
+
+  @override
+  Future<TimerBackgroundPermissionStatus> schedule(
+    TimerBackgroundSchedule schedule,
+  ) async {
+    return status;
+  }
+
+  @override
+  Future<void> cancel(String timerId) async {}
+}
+
+class _BannerPlatform implements ProtocolReminderPlatform {
+  @override
+  Future<void> initialize({
+    required void Function(String? payload) onTap,
+  }) async {}
+
+  @override
+  Future<String?> launchPayload() async => null;
+
+  @override
+  Future<tz.Location> localLocation() async => tz.UTC;
+
+  @override
+  Future<List<PendingProtocolNotification>> pendingNotifications() async {
+    return const <PendingProtocolNotification>[];
+  }
+
+  @override
+  Future<void> schedule(ProtocolReminderNotification notification) async {}
+
+  @override
+  Future<void> cancel(int id) async {}
+
+  @override
+  Future<void> openNotificationSettings() async {}
 }
 
 List<CompoundRecord> _seededCompounds() {

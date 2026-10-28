@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.NotificationManagerCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -30,6 +31,8 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "requestNotificationPermissionIfNeeded" ->
                     requestNotificationPermission(result)
+                "notificationPermissionStatus" ->
+                    result.success(notificationPermissionStatus())
                 "scheduleTimer" -> scheduleTimer(call, result)
                 "cancelTimer" -> cancelTimer(call, result)
                 "timerNotificationsReady" -> {
@@ -112,6 +115,24 @@ class MainActivity : FlutterActivity() {
         methodChannel?.invokeMethod("onTimerNotificationTapped", payload)
     }
 
+    // Read-only: reports the permission without ever prompting. On Android 13
+    // and later, a permission that isn't granted and was never requested is
+    // `notDetermined`: asking would still show the system prompt.
+    private fun notificationPermissionStatus(): String {
+        if (NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+            return STATUS_GRANTED
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED &&
+            !getSharedPreferences(PERMISSION_PREFERENCES, MODE_PRIVATE)
+                .getBoolean(NOTIFICATION_PERMISSION_REQUESTED, false)
+        ) {
+            return STATUS_NOT_DETERMINED
+        }
+        return STATUS_DENIED
+    }
+
     private fun requestNotificationPermission(result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             result.success(STATUS_GRANTED)
@@ -129,6 +150,12 @@ class MainActivity : FlutterActivity() {
         }
 
         pendingNotificationPermissionResult = result
+        // Recorded so `notificationPermissionStatus` can tell "never asked"
+        // from "declined".
+        getSharedPreferences(PERMISSION_PREFERENCES, MODE_PRIVATE)
+            .edit()
+            .putBoolean(NOTIFICATION_PERMISSION_REQUESTED, true)
+            .apply()
         requestPermissions(
             arrayOf(Manifest.permission.POST_NOTIFICATIONS),
             NOTIFICATION_PERMISSION_REQUEST_CODE,
@@ -186,5 +213,9 @@ class MainActivity : FlutterActivity() {
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4207
         private const val STATUS_GRANTED = "granted"
         private const val STATUS_DENIED = "denied"
+        private const val STATUS_NOT_DETERMINED = "notDetermined"
+        private const val PERMISSION_PREFERENCES = "perennia_notification_permission"
+        private const val NOTIFICATION_PERMISSION_REQUESTED =
+            "notification_permission_requested"
     }
 }

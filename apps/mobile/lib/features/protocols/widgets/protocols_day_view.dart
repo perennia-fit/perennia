@@ -9,6 +9,7 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/protocol_controller.dart';
 import '../controllers/protocols_day_controller.dart';
+import '../services/protocol_reminder_scheduler.dart';
 import 'compound_list_screen.dart';
 import 'protocol_screen.dart';
 
@@ -35,6 +36,10 @@ class ProtocolsDayView extends ConsumerStatefulWidget {
   static const protocolsButtonKey = Key('protocols.day.protocols');
   static const plannedListKey = Key('protocols.day.plannedList');
   static const logAllPlannedButtonKey = Key('protocols.day.logAllPlanned');
+  static const reminderPermissionBannerKey =
+      Key('protocols.day.reminderPermissionBanner');
+  static const reminderPermissionAllowKey =
+      Key('protocols.day.reminderPermissionAllow');
 
   static Key doseRowKey(String id) => Key('protocols.day.dose-$id');
 
@@ -186,6 +191,7 @@ class _ProtocolDayBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _ProtocolDayHeader(localDate: day.localDate),
+        const _ReminderPermissionBanner(),
         Expanded(
           child: !showPlanned && day.isEmpty
               ? Center(
@@ -228,6 +234,75 @@ class _ProtocolDayBody extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// "Reminders are off on this device" with "Allow" (CUJ 12): shown while a
+/// Protocol has reminders on, the device switch is on, and this phone has
+/// never been asked for the notification permission, so it schedules
+/// none. "Allow" asks through the one permission path (D5), and the
+/// reconciler runs on the answer.
+class _ReminderPermissionBanner extends ConsumerWidget {
+  const _ReminderPermissionBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(protocolReminderStatusProvider).value;
+    if (status == null || !status.needsPermission) {
+      return const SizedBox.shrink();
+    }
+    final colors = context.colors;
+    final l10n = context.l10n;
+
+    return Padding(
+      key: ProtocolsDayView.reminderPermissionBannerKey,
+      padding: const EdgeInsets.fromLTRB(
+        AppDimens.base,
+        0,
+        AppDimens.base,
+        AppDimens.dense,
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: AppRadii.cardMd,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimens.base,
+            vertical: AppDimens.dense / 2,
+          ),
+          child: Row(
+            children: [
+              ExcludeSemantics(
+                child: Icon(
+                  Icons.notifications_off_outlined,
+                  color: colors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: AppDimens.dense),
+              Expanded(
+                child: Text(
+                  l10n.protocolRemindersBanner,
+                  style: TextStyle(color: colors.textPrimary),
+                ),
+              ),
+              TextButton(
+                key: ProtocolsDayView.reminderPermissionAllowKey,
+                style: TextButton.styleFrom(
+                  foregroundColor: colors.textPrimary,
+                  minimumSize: const Size(0, AppDimens.touchTarget),
+                ),
+                onPressed: () => unawaited(
+                  ref.read(protocolReminderSchedulerProvider).requestPermission(),
+                ),
+                child: Text(l10n.protocolRemindersAllow),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

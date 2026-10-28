@@ -2290,6 +2290,11 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
   }
 
   @override
+  Future<TimerBackgroundPermissionStatus> notificationPermissionStatus() async {
+    return status;
+  }
+
+  @override
   Future<TimerBackgroundPermissionStatus> schedule(
     TimerBackgroundSchedule schedule,
   ) async {

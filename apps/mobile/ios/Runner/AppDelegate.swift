@@ -14,6 +14,8 @@ import UserNotifications
   // Buffer the payload until `timerNotificationsReady` drains it.
   private var flutterReady = false
   private var bufferedTapPayload: [String: Any?]?
+  // A Supplement reminder tap's local date, buffered the same way.
+  private var bufferedReminderDate: String?
 
   override func application(
     _ application: UIApplication,
@@ -59,6 +61,8 @@ import UserNotifications
     switch call.method {
     case "requestNotificationPermissionIfNeeded":
       requestNotificationPermission(result: result)
+    case "notificationPermissionStatus":
+      notificationPermissionStatus(result: result)
     case "scheduleTimer":
       scheduleTimer(call: call, result: result)
     case "cancelTimer":
@@ -86,6 +90,19 @@ import UserNotifications
 
       center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
         self.complete(result, with: granted ? "granted" : "denied")
+      }
+    }
+  }
+
+  // Read-only: reports the permission without ever prompting.
+  private func notificationPermissionStatus(result: @escaping FlutterResult) {
+    UNUserNotificationCenter.current().getNotificationSettings { settings in
+      if self.isNotificationAuthorized(settings.authorizationStatus) {
+        self.complete(result, with: "granted")
+      } else if settings.authorizationStatus == .notDetermined {
+        self.complete(result, with: "notDetermined")
+      } else {
+        self.complete(result, with: "denied")
       }
     }
   }
@@ -217,6 +234,11 @@ import UserNotifications
     withCompletionHandler completionHandler:
       @escaping (UNNotificationPresentationOptions) -> Void
   ) {
+    // A Supplement reminder shows as a banner and stays in the list.
+    if protocolReminderDate(notification.request.content.userInfo) != nil {
+      completionHandler([.banner, .list])
+      return
+    }
     // Foreground: show a banner only. The in-app cue already covers sound, so
     // passing [.sound] here would double the audio.
     completionHandler([.banner])
@@ -228,13 +250,45 @@ import UserNotifications
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     let userInfo = response.notification.request.content.userInfo
-    let payload: [String: Any?] = [
-      "timerId": userInfo["timerId"] as? String,
-      "workoutId": userInfo["workoutId"] as? String,
-      "workoutExerciseId": userInfo["workoutExerciseId"] as? String,
-    ]
-    forwardTap(payload)
+    // Routed here, never to super: a timer notification carries `timerId`,
+    // and a Supplement reminder scheduled by flutter_local_notifications
+    // carries the plugin's `payload` with kind "protocolReminder".
+    if userInfo["timerId"] != nil {
+      let payload: [String: Any?] = [
+        "timerId": userInfo["timerId"] as? String,
+        "workoutId": userInfo["workoutId"] as? String,
+        "workoutExerciseId": userInfo["workoutExerciseId"] as? String,
+      ]
+      forwardTap(payload)
+    } else if let localDate = protocolReminderDate(userInfo) {
+      forwardReminderTap(localDate)
+    }
     completionHandler()
+  }
+
+  // The local date a Supplement reminder's plugin payload carries, or nil when
+  // the notification isn't one. The payload is JSON:
+  // {"kind": "protocolReminder", "localDate": "YYYY-MM-DD"}.
+  private func protocolReminderDate(_ userInfo: [AnyHashable: Any]) -> String? {
+    guard
+      let payload = userInfo["payload"] as? String,
+      let data = payload.data(using: .utf8),
+      let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+      let kind = object["kind"] as? String,
+      kind == "protocolReminder",
+      let localDate = object["localDate"] as? String
+    else {
+      return nil
+    }
+    return localDate
+  }
+
+  private func forwardReminderTap(_ localDate: String) {
+    if flutterReady {
+      timerBackgroundChannel?.invokeMethod("onProtocolReminderTapped", arguments: localDate)
+    } else {
+      bufferedReminderDate = localDate
+    }
   }
 
   private func forwardTap(_ payload: [String: Any?]) {
@@ -246,6 +300,10 @@ import UserNotifications
   }
 
   private func drainBufferedTap() {
+    if let localDate = bufferedReminderDate {
+      bufferedReminderDate = nil
+      timerBackgroundChannel?.invokeMethod("onProtocolReminderTapped", arguments: localDate)
+    }
     guard let payload = bufferedTapPayload else { return }
     bufferedTapPayload = nil
     timerBackgroundChannel?.invokeMethod("onTimerNotificationTapped", arguments: payload)
