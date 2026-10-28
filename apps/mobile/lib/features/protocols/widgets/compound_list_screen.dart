@@ -7,6 +7,7 @@ import '../../../data/repositories/training_repositories.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/protocols_day_controller.dart';
+import 'consistency_screen.dart';
 import 'protocols_day_view.dart';
 import 'protocols_lock_screen.dart';
 
@@ -50,6 +51,9 @@ class CompoundListScreen extends ConsumerStatefulWidget {
 
   static Key favoriteButtonKey(String id) =>
       Key('protocols.compoundList.favorite-$id');
+
+  static Key consistencyButtonKey(String id) =>
+      Key('protocols.compoundList.consistency-$id');
 
   @override
   ConsumerState<CompoundListScreen> createState() =>
@@ -321,6 +325,15 @@ class _CompoundRow extends ConsumerWidget {
                 ),
               ),
             ),
+            // Opens the Compound's Consistency view (file 45). An
+            // IconButton keeps the 48 dp target, and its tooltip is its label.
+            IconButton(
+              key: CompoundListScreen.consistencyButtonKey(compound.id),
+              tooltip: context.l10n.consistencyButton,
+              color: colors.textSecondary,
+              icon: const Icon(Icons.timeline),
+              onPressed: () => unawaited(_openConsistency(context)),
+            ),
             IconButton(
               key: CompoundListScreen.favoriteButtonKey(compound.id),
               tooltip: compound.isFavorite ? 'Remove favorite' : 'Add favorite',
@@ -336,6 +349,21 @@ class _CompoundRow extends ConsumerWidget {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// The Compound's Consistency view, behind the same lock as this list:
+  /// if the app locks while it is on top, its own gate reacts.
+  Future<void> _openConsistency(BuildContext context) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProtocolsLockGate(
+          child: ConsistencyScreen.compound(
+            compoundId: compound.id,
+            compoundName: compound.name,
+          ),
         ),
       ),
     );

@@ -1406,5 +1406,51 @@
   "notPlannedReasonAsNeeded": "As needed",
   "notPlannedReasonNoSchedule": "No schedule",
   "notPlannedReasonRemoved": "Removed",
-  "notPlannedReasonOutside": "Outside the Protocol's dates"
+  "notPlannedReasonOutside": "Outside the Protocol's dates",
+  "consistencyButton": "Consistency",
+  "consistencyScreenTitle": "Consistency · {name}",
+  "@consistencyScreenTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "consistencyRangeDays": "{count} days",
+  "@consistencyRangeDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "consistencyRangeCustom": "Custom",
+  "consistencyPlanned": "Planned",
+  "consistencyExtra": "Extra",
+  "consistencyExtraCount": "{count} extra",
+  "@consistencyExtraCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "consistencyNotInProtocol": "Not in a Protocol, so its days have no Day Status. Its Doses are listed by date.",
+  "consistencyNoDoses": "No Doses logged in this range.",
+  "consistencyLoadError": "Could not load this range.",
+  "consistencyChartEmpty": "Nothing planned or logged in this range.",
+  "consistencyChartLoggedLegend": "Logged Dose",
+  "consistencyChartExtraLegend": "Extra Dose",
+  "consistencyChartPlannedLegend": "Planned time",
+  "consistencyChartSemantics": "Dose times against planned times, {from} – {to}",
+  "@consistencyChartSemantics": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  }
 }
