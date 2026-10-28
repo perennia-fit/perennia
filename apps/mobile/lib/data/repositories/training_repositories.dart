@@ -5070,9 +5070,13 @@ class ProtocolsRepository {
   /// [draft.localDate]/[draft.timezone] are omitted, the ALREADY-FROZEN values
   /// on the existing row carry over untouched (a null offset stays null), so
   /// editing a Dose can never silently move it to a different `Protocol Day`
-  /// after the device travels. When the time changes, the edit records a new
-  /// moment, so all three are frozen again from the new time, as a new log
-  /// would freeze them. One reversible Activity Log batch; never bypasses it.
+  /// after the device travels. When the time changes on a Dose with a frozen
+  /// UTC offset, the new time is read at that offset, which is kept with the
+  /// timezone label, and only the local date is frozen again from it (D6):
+  /// an edit corrects when the Dose was taken where it was taken. A Dose
+  /// with a null offset has all three frozen again from the device's zone,
+  /// as a new log would freeze them. One reversible Activity Log batch;
+  /// never bypasses it.
   Future<String> editDose(
     String doseId,
     DoseSnapshotDraft draft, {
@@ -5581,9 +5585,22 @@ class ProtocolsRepository {
       timezone = _normalizeOptionalText(draft.timezone) ?? before.timezone;
       localDate = draft.localDate ?? ProtocolDayDate.parse(before.localDate);
       timezoneOffsetMinutes = before.timezoneOffsetMinutes;
+    } else if (before.timezoneOffsetMinutes case final offset?) {
+      // A new time on a Dose with a frozen offset corrects when it was taken
+      // WHERE it was taken (D6): the time is read at that offset, which the
+      // Dose keeps, as it keeps its timezone label, and only the local date
+      // is frozen again, from the new time at that offset. Reading it in
+      // the device's current zone would move a Dose logged abroad by the
+      // difference between the two zones.
+      timezone = _normalizeOptionalText(draft.timezone) ?? before.timezone;
+      final local = tookAtUtc.add(Duration(minutes: offset));
+      localDate = draft.localDate ??
+          ProtocolDayDate(year: local.year, month: local.month, day: local.day);
+      timezoneOffsetMinutes = offset;
     } else {
-      // A new time is a new moment: freeze all three again from it, exactly
-      // as logging it would.
+      // A new time on a Dose with no frozen offset (logged before offsets
+      // were recorded): freeze all three again from the device's zone,
+      // exactly as logging it would.
       timezone = _normalizeOptionalText(draft.timezone) ??
           draft.tookAt.toLocal().timeZoneName;
       localDate = draft.localDate ?? ProtocolDayDate.fromDateTime(draft.tookAt);
@@ -6931,7 +6948,14 @@ class ProtocolsRepository {
   /// - members with no versions, which already cover every date;
   /// - members whose earliest version is after [previousStart]: a Compound
   ///   added mid-course keeps its own first date, so the days before it was
-  ///   added don't turn into "Not logged".
+  ///   added don't turn into "Not logged";
+  /// - members removed before they planned anything: a stored `archived_on`
+  ///   before the earliest version, such as a member added while the start
+  ///   was still ahead and removed before it came. A copy would turn days
+  ///   that were never in its plan into "Not logged". `archived_on` is read
+  ///   as stored before the save, so a member this same save removes still
+  ///   gets its copy. The server's `finalizeProtocolPlanRows` skips exactly
+  ///   the same members.
   ///
   /// A copy is dated before every version its member has, and the save's
   /// own edits on or after the latest, so a copy never shares a date with an
@@ -6968,6 +6992,14 @@ class ProtocolsRepository {
       final firstDate = ProtocolDayDate.parse(versions.first.effectiveFrom);
       if (firstDate.compareTo(previousStart) > 0 ||
           firstDate.compareTo(start) <= 0) {
+        continue;
+      }
+      // A member removed before it planned anything: its stored
+      // `archived_on` is before its earliest version, so it planned no day
+      // and was never planned from the old start (D1).
+      final archivedOn = member.archivedOn;
+      if (archivedOn != null &&
+          ProtocolDayDate.parse(archivedOn).compareTo(firstDate) < 0) {
         continue;
       }
       final copy = _scheduleVersionFromRow(

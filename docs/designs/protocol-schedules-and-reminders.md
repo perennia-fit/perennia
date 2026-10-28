@@ -2,7 +2,7 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3)
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, and to close the question on nearest-time matching)
 
 --------------------------------------------------------------------------------
 
@@ -240,14 +240,20 @@ Building file 34a and Phase 3 raised more. They are settled the same way:
 The decisions that change what file 34a and Phase 3 built land as file
 40a.
 
-One question is open. Matching fills the timed slot nearest a Dose's time
-(D6), and a Dose logged from the Planned list on today is timed now. So a
-Dose logged at 12:00 against a 09:00 row fills a 13:00 slot instead, and
-the 09:00 row stays "Pending". "Log all planned" does the same: at 12:00 it
-logs the due 09:00 dose, which then fills 13:00. Phase 3 follows D6 as
-written. The fix changes either matching (and its vectors) or the time a
-planned Dose is logged at, so it is decided before Phase 4, whose
-Consistency view shows which slot each Dose filled.
+Building Phase 3 raised one more question, settled before Phase 4 was
+built: nearest-time matching stays as built, with no change to its code or
+vectors. A Dose logged from the Planned list on today is timed now, and it
+fills the timed slot nearest that time (D6). So it can fill a later slot
+than the row that was tapped: a Dose logged at 12:00 against a 09:00 row
+fills a 13:00 slot instead, and the 09:00 row stays "Pending". "Log all
+planned" does the same: at 12:00 it logs the due 09:00 dose, which then
+fills 13:00. This is accepted. Recorded times stay true, and the Effect
+estimate reads them. Moving a late Dose onto an earlier slot would reverse
+the case D6 argues for, where a Dose at 20:50 fills a 21:00 slot rather
+than an unfilled 09:00 one. The 13:00 reminder doesn't fire, because its
+slot is filled, and that is accepted as part of the same rule (see Risks).
+Phase 4's Consistency view shows which slot each Dose filled, which makes
+the outcome visible.
 
 ## Critical User Journeys (CUJs)
 
@@ -837,8 +843,8 @@ Filling by nearest time means a Dose at 20:50 fills a 21:00 slot, not an
 unfilled 09:00 one. So the 21:00 reminder doesn't fire after the Dose, and the
 morning reads "Not logged", which is what happened. The same rule can
 surprise when a Dose is logged from the Planned list at the current time:
-it may fill a later slot than the row that was tapped. That is the one open
-question (see Open Questions). The Protocol tag only
+it may fill a later slot than the row that was tapped. This is accepted
+(see Open Questions). The Protocol tag only
 records which Protocol a Dose was logged under; it never decides whether the
 Dose counts. A Template Link works the same way in Training: it records
 provenance, never adherence.
@@ -1430,6 +1436,7 @@ date; that is the server's write path (D6).
 
 | Risk | Impact | Mitigation | Where |
 | :--- | :----- | :--------- | :---- |
+| A Dose logged now from an earlier Planned list row fills a later slot | The earlier row stays "Pending", and the later slot's reminder doesn't fire | Accepted, and nearest-time matching is kept: recorded times stay true, and the Effect estimate reads them. The earlier row still shows as "Pending", and the Consistency view shows which slot each Dose filled | Open Questions, D6 |
 | A reminder prompts a second dose | A duplicate TRT or GLP-1 Dose | Reduced, not removed: nearest-time matching assigns each Dose to the planned time it was nearest, and "Log all planned" never logs doses that aren't due. A dose taken but not logged is still followed by its reminder | D6, m36 vectors |
 | Stale or duplicate reminders across devices | A reminder for a dose already logged elsewhere | Generic text; the Planned list is correct after sync; a per-device switch | CUJ 9, D5 |
 | The scheduling horizon runs out | Reminders stop silently | The horizon date shows on the Protocol screen and the status screen | CUJ 11, D5 |
@@ -2758,9 +2765,9 @@ land before Phase 4's Consistency view shows these Doses.
     *   `apps/mobile/test/features/protocols/compound_list_screen_test.dart`:
         opened as from Library after browsing a past day, the sheet opens on
         today; opened from the Protocol Day view, on the selected day.
-*   **Not in this entry:** the open question on nearest-time matching and
-    logging at the current time (Open Questions). It is decided before
-    Phase 4, and its changes, if any, get their own entry.
+*   **Not in this entry:** nearest-time matching, and the time a Dose
+    logged from the Planned list is logged at. Both stay as built (Open
+    Questions).
 
 #### Phase 4: the Consistency view
 

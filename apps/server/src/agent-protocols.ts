@@ -3079,13 +3079,19 @@ async function finalizeProtocolPlanRows(
   // members too, which still cover those days up to their archived_on, and so
   // a member this request archives. Rows tombstoned by undo never existed,
   // members with no versions already cover every date, and a member added
-  // after the old start keeps its own first date. As in the app, the copies
-  // come only from what was stored before this request, and this request's
-  // edits are dated after them: a copy is dated before every version its
-  // member has and an edit on or after the latest, so the two never share a
-  // date ("No ties"). Default anchors are read as the start (D4), so they
-  // need no rewriting; a copy and the period still store the new start there,
-  // as the app's writes do.
+  // after the old start keeps its own first date. A member removed before it
+  // planned anything (its stored archived_on is before its earliest version)
+  // gets no copy either: it was never planned from the old start, and a copy
+  // would turn days that were never in its plan into "Not logged". Its
+  // archived_on is read as stored before this request, so a member this
+  // request archives still gets its copy. The app's
+  // _redateVersionsForStartMove skips exactly the same members. As in the
+  // app, the copies come only from what was stored before this request, and
+  // this request's edits are dated after them: a copy is dated before every
+  // version its member has and an edit on or after the latest, so the two
+  // never share a date ("No ties"). Default anchors are read as the start
+  // (D4), so they need no rewriting; a copy and the period still store the
+  // new start there, as the app's writes do.
   const startMoveCopies: PreparedRow[] = [];
   for (const protocol of protocols) {
     const stored = storedProtocols.get(protocol.id);
@@ -3114,7 +3120,8 @@ async function finalizeProtocolPlanRows(
       if (
         earliest === undefined ||
         earliest.effectiveFrom > oldStart ||
-        earliest.effectiveFrom <= newStart
+        earliest.effectiveFrom <= newStart ||
+        removedBeforePlanning(storedMembers.get(memberId)!, earliest.effectiveFrom)
       ) {
         continue;
       }
@@ -3220,6 +3227,16 @@ function stampArchive(
     });
   }
   return null;
+}
+
+/**
+ * A member removed before it planned anything (D1): its stored `archived_on`
+ * is before `earliestEffectiveFrom`, its earliest version's date. Such a
+ * member planned no day, so a start move gives it no copy.
+ */
+function removedBeforePlanning(member: StoredPlanRow, earliestEffectiveFrom: string) {
+  const archivedOn = nullableString(member.payload.archived_on);
+  return archivedOn !== null && isValidLocalDate(archivedOn) && archivedOn < earliestEffectiveFrom;
 }
 
 /** A member row tombstoned by undo: `deleted_at` with no frozen `archived_on`. */

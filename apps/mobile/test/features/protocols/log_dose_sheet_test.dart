@@ -553,6 +553,52 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the edit sheet shows a Dose\'s date and time at its frozen offset, and '
+    'reads a changed date at that offset',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      // Logged in Honolulu (UTC−10:00) at 09:00 on 2026-10-27 there, which
+      // is 19:00 UTC: the sheet shows it as it was there, whatever the
+      // device's zone.
+      final dose = DoseRecord(
+        id: 'dose-honolulu',
+        compoundId: 'compound-vitamin-d',
+        compoundName: 'Vitamin D',
+        amountValue: 1,
+        amountEntered: '1',
+        unit: DoseUnit.internationalUnit,
+        route: DoseRoute.oral,
+        tookAt: DateTime.utc(2026, 10, 27, 19),
+        timezone: 'HST',
+        localDate: _today,
+        provenance: DoseProvenance.manual,
+        updatedAt: DateTime.utc(2026, 10, 27, 19),
+        timezoneOffsetMinutes: -600,
+      );
+      await _pumpEditSheet(tester, dose: dose, controller: controller);
+
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 27, 2026');
+      expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '9:00 AM');
+
+      await _pickDay(tester, '26');
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 26, 2026');
+      expect(_fieldValue(tester, LogDoseSheet.timeFieldKey), '9:00 AM');
+
+      await _save(tester);
+      final edited = controller.editedDoses.single;
+      // 09:00 on 2026-10-26 at UTC−10:00.
+      expect(
+        edited.draft.tookAt.isAtSameMomentAs(DateTime.utc(2026, 10, 26, 19)),
+        isTrue,
+      );
+      // Left out: the repository keeps the offset and label, and freezes the
+      // local date again from the new time at that offset.
+      expect(edited.draft.localDate, isNull);
+      expect(edited.draft.timezone, isNull);
+    },
+  );
+
   testWidgets('Log Dose sheet meets accessibility guidelines in both themes', (
     tester,
   ) async {
