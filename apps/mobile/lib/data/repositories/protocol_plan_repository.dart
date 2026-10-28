@@ -464,7 +464,13 @@ final class ProtocolPlanRepository {
     _checkConsistencyRange(from, to);
     return _combineLatest2(
       _planQuery().watch().map(_planFromJoinedRows),
-      _consistencyDoseQuery(compoundId, from, to)
+      _repositories.protocols
+          ._activeDoseQuery(
+            (row) =>
+                row.compoundId.equals(compoundId) &
+                row.localDate
+                    .isBetweenValues(from.storageValue, to.storageValue),
+          )
           .watch()
           .map((rows) => rows.map(_repositories.protocols._doseFromRow)),
       (_PlanRows plan, Iterable<DoseRecord> doses) => _consistencyRange(
@@ -513,26 +519,6 @@ final class ProtocolPlanRepository {
           protocol.protocolId: plan.protocolOptions[protocol.protocolId]!,
       },
     );
-  }
-
-  /// The Compound's non-archived Doses whose frozen local date falls in the
-  /// range, in the day log's order (time, then id).
-  SimpleSelectStatement<$DosesTable, DoseRow> _consistencyDoseQuery(
-    String compoundId,
-    ProtocolDayDate from,
-    ProtocolDayDate to,
-  ) {
-    return _database.select(_database.doses)
-      ..where(
-        (row) =>
-            row.deletedAt.isNull() &
-            row.compoundId.equals(compoundId) &
-            row.localDate.isBetweenValues(from.storageValue, to.storageValue),
-      )
-      ..orderBy([
-        (row) => OrderingTerm.asc(row.tookAt),
-        (row) => OrderingTerm.asc(row.id),
-      ]);
   }
 
   JoinedSelectStatement<HasResultSet, dynamic> _planQuery() {

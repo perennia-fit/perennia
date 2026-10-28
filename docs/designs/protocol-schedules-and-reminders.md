@@ -3167,9 +3167,10 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
             read in clock order, and the day's log and the Planned list
             take them in the same order (D6, "The day's Dose rows").
     *   `apps/mobile/lib/data/repositories/protocol_plan_repository.dart`:
-        the Consistency read's Doses (`_consistencyDoseQuery`) are sorted
-        the same way, so a day list's Doses and extras read in clock
-        order.
+        the Consistency read's Doses (`watchConsistency`, which reads them
+        through `ProtocolsRepository._activeDoseQuery` in
+        `training_repositories.dart`) are sorted the same way, so a day
+        list's Doses and extras read in clock order.
 *   **Tests:**
     *   `apps/mobile/test/features/protocols/protocols_repository_test.dart`:
         two Doses on one Protocol Day, the later instant at an earlier

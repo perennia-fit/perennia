@@ -10,6 +10,7 @@ import '../../../theme/theme.dart';
 import '../controllers/consistency_controller.dart';
 import 'consistency_chart.dart';
 import 'effect_screen.dart';
+import 'plan_labels.dart';
 
 /// One tab of the Consistency view: the Compound it shows, and the name its
 /// tab starts with. Once the tab's read arrives, the tab shows the Compound's
@@ -460,7 +461,7 @@ class _ConsistencyDayTile extends StatelessWidget {
     final fill = slot.fill;
     final dose = slot.dose;
     final plannedTime = fill.plannedLocalTime;
-    final plannedAmount = _plannedAmountLabel(fill.amount);
+    final plannedAmount = plannedAmountLabel(fill.amount);
     final plannedMass = _plannedMass(fill.amount);
     final loggedMass = dose?.resolvedActiveMass;
     final showMasses = plannedMass != null && loggedMass != null;
@@ -472,7 +473,7 @@ class _ConsistencyDayTile extends StatelessWidget {
         l10n.consistencyPlanned,
         plannedTime == null
             ? l10n.plannedListAnyTime
-            : _timeOfDay(plannedTime).format(context),
+            : planTimeOfDay(plannedTime).format(context),
         if (plannedAmount.isNotEmpty) plannedAmount,
         if (showMasses) '≈ ${plannedMass.label}',
         if (protocolName != null) protocolName,
@@ -556,31 +557,13 @@ class _DayStatusLabel extends StatelessWidget {
           colors.textSecondary,
         ),
     };
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        ExcludeSemantics(child: Icon(icon, size: 18, color: iconColor)),
-        const SizedBox(width: 4),
-        Text(
-          dayStatusLabel(l10n, status.status),
-          style: context.textStyles.label.copyWith(color: colors.textPrimary),
-        ),
-      ],
+    return StatusWordLabel(
+      icon: icon,
+      iconColor: iconColor,
+      label: dayStatusLabel(l10n, status.status),
     );
   }
 }
-
-/// The text label of each Day Status (D6).
-String dayStatusLabel(AppLocalizations l10n, DayStatusKind status) =>
-    switch (status) {
-      DayStatusKind.notPlanned => l10n.dayStatusNotPlanned,
-      DayStatusKind.paused => l10n.dayStatusPaused,
-      DayStatusKind.offCycle => l10n.dayStatusOffCycle,
-      DayStatusKind.pending => l10n.dayStatusPending,
-      DayStatusKind.logged => l10n.dayStatusLogged,
-      DayStatusKind.partlyLogged => l10n.dayStatusPartlyLogged,
-      DayStatusKind.notLogged => l10n.dayStatusNotLogged,
-    };
 
 String _reasonLabel(AppLocalizations l10n, NotPlannedReason reason) =>
     switch (reason) {
@@ -592,21 +575,8 @@ String _reasonLabel(AppLocalizations l10n, NotPlannedReason reason) =>
       NotPlannedReason.outside => l10n.notPlannedReasonOutside,
     };
 
-String _plannedAmountLabel(PlanAmount amount) {
-  final unit = amount.unit;
-  return <String>[
-    if (amount.amountEntered != null) amount.amountEntered!,
-    if (unit != null) doseUnitLabel(unit),
-  ].join(' ');
-}
-
 /// A Dose's clock time where it was taken: its frozen local time (D2).
 String _doseTime(BuildContext context, DoseRecord dose) =>
-    _timeOfDay(dose.localTime).format(context);
-
-TimeOfDay _timeOfDay(String localTime) {
-  final minutes = planLocalTimeMinutes(localTime);
-  return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
-}
+    planTimeOfDay(dose.localTime).format(context);
 
 String _join(List<String> parts) => parts.join(' · ');

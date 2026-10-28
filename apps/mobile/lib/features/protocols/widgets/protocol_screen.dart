@@ -20,6 +20,7 @@ import '../controllers/protocol_controller.dart';
 import '../controllers/protocols_day_controller.dart';
 import 'consistency_screen.dart';
 import 'effect_screen.dart';
+import 'plan_labels.dart';
 import 'protocols_lock_screen.dart';
 
 /// The `Protocol` list (PROTOCOLS.md §1.4, §5): the Routine analog. Lists the
@@ -1657,11 +1658,11 @@ class _ScheduleEditor extends StatelessWidget {
   Future<void> _pickTime(BuildContext context, {int? index}) async {
     final TimeOfDay initial;
     if (index != null) {
-      initial = _timeOfDay(field.times[index]);
+      initial = planTimeOfDay(field.times[index]);
     } else if (field.times.isEmpty) {
-      initial = _timeOfDay(_defaultPlannedTime);
+      initial = planTimeOfDay(_defaultPlannedTime);
     } else {
-      final last = _timeOfDay(field.times.last);
+      final last = planTimeOfDay(field.times.last);
       initial = TimeOfDay(hour: (last.hour + 1) % 24, minute: last.minute);
     }
     final picked = await showTimePicker(context: context, initialTime: initial);
@@ -1708,16 +1709,11 @@ Future<ProtocolDayDate?> _pickProtocolDay(
   return ProtocolDayDate.fromDateTime(picked);
 }
 
-TimeOfDay _timeOfDay(String localTime) {
-  final minutes = planLocalTimeMinutes(localTime);
-  return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
-}
-
 String _formatTime(BuildContext context, String localTime) {
   if (!isPlanLocalTime(localTime)) {
     return localTime;
   }
-  return _timeOfDay(localTime).format(context);
+  return planTimeOfDay(localTime).format(context);
 }
 
 /// The locale's short weekday name for ISO [weekday] (1 = Monday).

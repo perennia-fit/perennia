@@ -6,7 +6,7 @@ import '../../../data/repositories/training_repositories.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../models/consistency_chart_data.dart';
-import 'consistency_screen.dart' show dayStatusLabel;
+import 'plan_labels.dart' show dayStatusLabel;
 
 /// The Consistency chart (D6, Phase 4 file 42): each logged Dose's time of
 /// day (Y) on its date (X), against the planned times. Rendered with
