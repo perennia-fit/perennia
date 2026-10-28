@@ -1003,6 +1003,8 @@ export {
 } from "./agent-validation.js";
 export {
   ProtocolPlanCodecError,
+  applyingScheduleVersion,
+  compareScheduleVersions,
   dayStatuses,
   decodeProtocolPeriod,
   decodeScheduleRule,

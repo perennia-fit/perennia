@@ -87,6 +87,10 @@ test("server validation matches the shared golden vectors", async () => {
       );
     }
     if (vector.domain === "protocol-plan-validation") {
+      // The schema version this runner reads; it moves together with the
+      // vector file's `schemaVersion` and the Dart runner's constant
+      // (packages/golden-vectors/vectors/README.md).
+      assert.equal(vector.schemaVersion, 1, `${filename} schemaVersion`);
       assert.deepEqual(
         vector.limits,
         PROTOCOL_PLAN_VALIDATION_LIMITS,

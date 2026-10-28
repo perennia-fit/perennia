@@ -696,6 +696,46 @@ test("protocol batch-write passes today to the store and returns the plan valida
   assert.equal(writes[0].today, body.today);
 });
 
+test("a protocol batch-write the store refuses still returns the plan validators' warnings", async () => {
+  const app = createProtocolsApp({
+    store: stubStore({
+      async writeProtocolBatch() {
+        return {
+          duplicate: false,
+          idempotencyConflict: false,
+          receiptUnavailable: false,
+          serverClock: new Date().toISOString(),
+          accepted: [],
+          applied: [],
+          validationErrors: [
+            {
+              itemIndex: 0,
+              entityId: null,
+              field: "protocols[0]",
+              rule: "protocol_archived",
+              message: "Protocol is archived."
+            }
+          ]
+        };
+      }
+    })
+  });
+  const body = withSchedule(protocolWriteRequest(), {
+    rule: timedDailyRule(["06:00", "08:00", "10:00", "12:00", "14:00", "16:00", "18:00"])
+  });
+  const response = await post(app, "/agent/protocols/batch-write", body);
+  assert.equal(response.status, 422);
+  const responseBody = await response.json();
+  assert.deepEqual(
+    responseBody.errors.map((issue) => issue.rule),
+    ["protocol_archived"]
+  );
+  assert.deepEqual(
+    responseBody.warnings.map((issue) => [issue.rule, issue.field]),
+    [["times_many", "protocols[0].schedules[0].rule.times"]]
+  );
+});
+
 test("effect-window route rejects an offset outside -720 to +840 with 400 before the store", async () => {
   const reads = [];
   const app = createProtocolsApp({
@@ -2708,6 +2748,28 @@ test(
       assert.equal(undone.payload.start_local_date, start);
       assert.equal(undone.payload.archived_on, null);
       assert.equal((await versionsOf(undoneMember.id)).length, 1);
+
+      // Reads ignore undo tombstones entirely, archived rows included: the
+      // undone Protocol is not listed, and a member undo tombstoned is not
+      // listed under its Protocol.
+      await database.sql`
+        update protocol_compounds
+        set payload = payload || jsonb_build_object('archived_on', null)
+        where id = ${removed.id}
+      `;
+      const read = await app.request("/agent/protocols?includeArchived=true", {
+        headers: authHeaders()
+      });
+      assert.equal(read.status, 200);
+      const listed = (await read.json()).protocols;
+      assert.deepEqual(
+        listed.map((candidate) => candidate.id),
+        [protocolId]
+      );
+      assert.deepEqual(
+        listed[0].members.map((member) => member.id),
+        [kept.id]
+      );
     } finally {
       await database.close();
     }

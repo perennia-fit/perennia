@@ -13,7 +13,7 @@
     { "name": "thirteen-digits-starting-with-zero-drops-it", "input": "0818290014313", "expected": ["0818290014313", "818290014313"] },
     { "name": "spaces-inside-a-code", "input": " 9 300633 603427 ", "expected": ["9300633603427"] },
     { "name": "tab-inside-a-code", "input": "9300633\t603427", "expected": ["9300633603427"] },
-    { "name": "newline-inside-a-code", "input": "9300633603427\n", "expected": ["9300633603427"] },
+    { "name": "newline-inside-a-code", "input": "9300633\n603427", "expected": ["9300633603427"] },
     { "name": "hyphens-inside-a-code", "input": "0-818290-01431-3", "expected": ["0818290014313", "818290014313"] },
     { "name": "letters-not-a-barcode", "input": "93006336O3427", "expected": [] },
     { "name": "product-name-not-a-barcode", "input": "greek yogurt", "expected": [] },

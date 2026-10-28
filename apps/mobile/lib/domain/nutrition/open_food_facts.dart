@@ -516,7 +516,9 @@ Map<NutrientId, double> _aggregatedValues(Map<Object?, Object?> aggregated) {
 }
 
 /// Converts [value] from [unit] (trimmed, matched exactly) into [target], or
-/// returns `null` when the unit is not accepted for it.
+/// returns `null` when the unit is not accepted for it or the converted value
+/// is not finite: a huge gram value scaled to micrograms can overflow to
+/// infinity, and a value must be finite to be kept.
 double? _convertUnit(double value, String unit, NutrientUnit target) {
   if (target == NutrientUnit.kilocalorie) {
     return unit == 'kcal' ? value : null;
@@ -533,7 +535,8 @@ double? _convertUnit(double value, String unit, NutrientUnit target) {
   }
   // Multiply or divide by an exact power of ten, so 0.5 g is exactly 500 mg.
   final scale = math.pow(10, (from - to).abs()).toDouble();
-  return from >= to ? value * scale : value / scale;
+  final converted = from >= to ? value * scale : value / scale;
+  return converted.isFinite ? converted : null;
 }
 
 Map<NutrientId, double> _nutrimentsValues(Map<String, Object?> product) {
@@ -548,7 +551,9 @@ Map<NutrientId, double> _nutrimentsValues(Map<String, Object?> product) {
       if (value != null) {
         // Legacy values are in grams, except energy in kilocalories.
         final unit = id.defaultUnit == NutrientUnit.kilocalorie ? 'kcal' : 'g';
-        values[id] = _convertUnit(value, unit, id.defaultUnit)!;
+        if (_convertUnit(value, unit, id.defaultUnit) case final converted?) {
+          values[id] = converted;
+        }
         break;
       }
     }

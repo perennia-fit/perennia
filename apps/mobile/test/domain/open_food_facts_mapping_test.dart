@@ -470,6 +470,26 @@ void main() {
       );
     });
 
+    test('treats a value that overflows its unit conversion as unknown', () {
+      final legacy = _mapped(<String, Object?>{
+        ..._base,
+        'nutriments': <String, Object?>{'sodium_100g': 1e306, 'fat_100g': 1},
+      });
+      expect(legacy.nutrientText, <NutrientId, String>{NutrientId.fat: '1'});
+
+      final aggregated = _mapped(<String, Object?>{
+        ..._base,
+        'nutrition': _aggregated(<String, Object?>{
+          'caffeine': _entry(1e306, 'g'),
+          'fat': _entry(1, 'g'),
+        }),
+      });
+      expect(
+        aggregated.nutrientText,
+        <NutrientId, String>{NutrientId.fat: '1'},
+      );
+    });
+
     test('writes a negative zero value as 0', () {
       final product = _mapped(<String, Object?>{
         ..._base,

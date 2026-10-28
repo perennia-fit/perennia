@@ -642,15 +642,40 @@ test("searchAgentPlatformFoods({ limit: 20 }) still returns USDA, unchanged, wit
 
 test("searchAgentPlatformFoods finds Open Food Facts products by barcode, as their bundle lines say", () => {
   const { header, lines } = committedBundle();
-  const line = lines.find((candidate) => candidate.brand !== null && candidate.servingSize !== null);
+  // A sample across the bundle, plus one with a brand and a serving size so
+  // those fields are compared with values, not only nulls.
+  const step = Math.floor(lines.length / 25);
+  const sample = [
+    lines.find((candidate) => candidate.brand !== null && candidate.servingSize !== null),
+    ...lines.filter((_, index) => index % step === 0)
+  ];
+  assert.ok(sample.length > 25);
 
-  const result = searchAgentPlatformFoods({
+  let result;
+  for (const line of sample) {
+    result = searchAgentPlatformFoods({
+      source: "openFoodFacts",
+      search: line.code,
+      limit: 20
+    });
+    assertFoodMatchesLine(result.foods[0], line);
+  }
+
+  assert.deepEqual(result.attribution, {
     source: "openFoodFacts",
-    search: line.code,
-    limit: 20
+    datasetVersion: header.datasetVersion,
+    sourceName: header.sourceName,
+    sourceUrl: header.sourceUrl,
+    licenseName: header.licenseName,
+    attributionText: header.attributionText,
+    disclaimer:
+      "Values come from Open Food Facts contributors and may be incomplete or wrong. Check the label. Not for medical use."
   });
+});
 
-  const [food] = result.foods;
+// The agent's food for a barcode carries the decoded values of its bundle line.
+function assertFoodMatchesLine(food, line) {
+  assert.ok(food, `code ${line.code} was not found`);
   assert.equal(food.id, line.code);
   assert.equal(food.name, line.name);
   assert.equal(food.foodSource, "openFoodFacts");
@@ -669,18 +694,7 @@ test("searchAgentPlatformFoods finds Open Food Facts products by barcode, as the
       unit: NUTRIENT_DEFAULT_UNITS[id]
     });
   }
-
-  assert.deepEqual(result.attribution, {
-    source: "openFoodFacts",
-    datasetVersion: header.datasetVersion,
-    sourceName: header.sourceName,
-    sourceUrl: header.sourceUrl,
-    licenseName: header.licenseName,
-    attributionText: header.attributionText,
-    disclaimer:
-      "Values come from Open Food Facts contributors and may be incomplete or wrong. Check the label. Not for medical use."
-  });
-});
+}
 
 test("searchAgentPlatformFoods finds Open Food Facts products by name, bounded by the limit", () => {
   const result = searchAgentPlatformFoods({

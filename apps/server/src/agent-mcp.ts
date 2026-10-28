@@ -2556,7 +2556,7 @@ async function writeDoseBatchToolResult({
     deviceId: sourceDeviceId,
     doses: prepared.doses
   });
-  const writeFailure = agentProtocolsWriteFailure(writeResult);
+  const writeFailure = agentProtocolsWriteFailure(writeResult, []);
   if (writeFailure !== null) {
     return errorResult(writeFailure.body);
   }
@@ -2616,7 +2616,7 @@ async function writeCompoundBatchToolResult({
     deviceId: sourceDeviceId,
     compounds: prepared.compounds
   });
-  const writeFailure = agentProtocolsWriteFailure(writeResult);
+  const writeFailure = agentProtocolsWriteFailure(writeResult, []);
   if (writeFailure !== null) {
     return errorResult(writeFailure.body);
   }
@@ -2680,7 +2680,7 @@ async function writeProtocolBatchToolResult({
     schedules: prepared.schedules,
     targetOutcomes: prepared.targetOutcomes
   });
-  const writeFailure = agentProtocolsWriteFailure(writeResult);
+  const writeFailure = agentProtocolsWriteFailure(writeResult, prepared.warnings);
   if (writeFailure !== null) {
     return errorResult(writeFailure.body);
   }

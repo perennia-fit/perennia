@@ -3405,7 +3405,7 @@ export function createApp(options: CreateAppOptions = {}) {
       deviceId: `agent:${agent.keyId}`,
       doses: prepared.doses
     });
-    const writeFailure = agentProtocolsWriteFailure(writeResult);
+    const writeFailure = agentProtocolsWriteFailure(writeResult, []);
     if (writeFailure !== null) {
       return writeFailure.status === 422
         ? context.json(writeFailure.body, 422)
@@ -3494,7 +3494,7 @@ export function createApp(options: CreateAppOptions = {}) {
       deviceId: `agent:${agent.keyId}`,
       compounds: prepared.compounds
     });
-    const writeFailure = agentProtocolsWriteFailure(writeResult);
+    const writeFailure = agentProtocolsWriteFailure(writeResult, []);
     if (writeFailure !== null) {
       return writeFailure.status === 422
         ? context.json(writeFailure.body, 422)
@@ -3587,7 +3587,7 @@ export function createApp(options: CreateAppOptions = {}) {
       schedules: prepared.schedules,
       targetOutcomes: prepared.targetOutcomes
     });
-    const writeFailure = agentProtocolsWriteFailure(writeResult);
+    const writeFailure = agentProtocolsWriteFailure(writeResult, prepared.warnings);
     if (writeFailure !== null) {
       return writeFailure.status === 422
         ? context.json(writeFailure.body, 422)

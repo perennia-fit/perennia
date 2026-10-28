@@ -1998,8 +1998,16 @@ export function agentProtocolsBatchRequestFingerprint(request: unknown) {
   return agentBatchRequestFingerprint(request);
 }
 
+/**
+ * The response for a write the store refused, or `null` when it was accepted.
+ * A refusal still returns the soft warnings the pure step judged (spec D6:
+ * a refused write returns its `warnings` beside its `errors`), so pass them
+ * through. Compound and Dose writes pass `[]`: a Dose carries its warnings in
+ * its own result, in a shape this response doesn't hold.
+ */
 export function agentProtocolsWriteFailure(
-  result: AgentProtocolsStoreWriteResult
+  result: AgentProtocolsStoreWriteResult,
+  warnings: z.infer<typeof AgentProtocolsBatchWriteErrorResponseSchema>["warnings"]
 ):
   | {
       status: 422;
@@ -2039,7 +2047,7 @@ export function agentProtocolsWriteFailure(
       code: "agent_protocols_batch_write_failed",
       message: "Batch contains one or more hard validation failures.",
       errors,
-      warnings: []
+      warnings
     })
   };
 }
@@ -2313,6 +2321,10 @@ export function createDrizzleAgentProtocolsStore(
       const search = query.search?.toLowerCase();
       const filteredProtocols = protocolRows
         .filter((row) => {
+          // A row tombstoned by undo never existed (D1), archived or not.
+          if (isUndoTombstone(row)) {
+            return false;
+          }
           if (!query.includeArchived && row.deletedAt !== null) {
             return false;
           }
@@ -2327,8 +2339,9 @@ export function createDrizzleAgentProtocolsStore(
         .sort((left, right) => left.id.localeCompare(right.id));
 
       // Group plan rows by their owning protocol/protocol_compound.
-      const membersByProtocol = groupBy(memberRows, (row) =>
-        String(row.payload.protocol_id ?? "")
+      const membersByProtocol = groupBy(
+        memberRows.filter((row) => !isUndoTombstone(row)),
+        (row) => String(row.payload.protocol_id ?? "")
       );
       const outcomesByProtocol = groupBy(outcomeRows, (row) =>
         String(row.payload.protocol_id ?? "")
@@ -3222,7 +3235,10 @@ function stampArchive(
   return null;
 }
 
-/** A member row tombstoned by undo: `deleted_at` with no frozen `archived_on`. */
+/**
+ * A Protocol or member row tombstoned by undo: `deleted_at` with no frozen
+ * `archived_on`.
+ */
 function isUndoTombstone(row: StoredPlanRow) {
   return row.deletedAt !== null && nullableString(row.payload.archived_on) === null;
 }
