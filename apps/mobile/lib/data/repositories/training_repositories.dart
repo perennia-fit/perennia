@@ -15780,6 +15780,12 @@ bool _activityImagesEqualForEntity(
   Map<String, Object?> left,
   Map<String, Object?> right,
 ) {
+  if (entityTable == AppDatabase.protocolTargetOutcomesTable) {
+    return _activityImagesEqual(
+      _protocolTargetOutcomeImageNormalized(left),
+      _protocolTargetOutcomeImageNormalized(right),
+    );
+  }
   if (entityTable != AppDatabase.templateLinksTable) {
     return _activityImagesEqual(left, right);
   }
@@ -16210,17 +16216,79 @@ Object? _planImageJson(String encoded, String key) {
   }
 }
 
+/// One target outcome's image, as the app writes it or as an Agent stored it.
+/// Before docs/designs/protocol-target-outcome-sync-shape.md an Agent write
+/// stored the kind as `outcome_kind` and no `position`, and an Agent undo on
+/// the server can restore such a payload, so the kind and position are read
+/// through [_protocolTargetOutcomeImageKind] and
+/// [_protocolTargetOutcomeImagePosition]. A kind outside the registry throws
+/// an [ArgumentError] and a missing one a [FormatException], so a sync pull
+/// quarantines that one change instead of storing a row no Protocol read can
+/// resolve, or failing the whole page.
 ProtocolTargetOutcomesCompanion _protocolTargetOutcomeCompanionFromImage(
   Map<String, Object?> image,
 ) {
+  final kindName = _protocolTargetOutcomeImageKind(image);
+  if (kindName == null) {
+    throw const FormatException(
+      'Protocol target outcome image field kind is missing.',
+    );
+  }
   return ProtocolTargetOutcomesCompanion(
     protocolId: Value<String>(_activityRequiredString(image, 'protocol_id')),
-    kind: Value<String>(_activityRequiredString(image, 'kind')),
+    kind: Value<String>(protocolOutcomeKindFromName(kindName).name),
     metricId: Value<String?>(_activityNullableString(image, 'metric_id')),
-    position: Value<int>(_activityRequiredInt(image, 'position')),
+    position: Value<int>(_protocolTargetOutcomeImagePosition(image)),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
+}
+
+/// The image's `kind` when it is a string, else the `outcome_kind` an Agent
+/// write stored before the app's shape was used, else null.
+String? _protocolTargetOutcomeImageKind(Map<String, Object?> image) {
+  final kind = image['kind'];
+  if (kind is String) {
+    return kind;
+  }
+  final legacyKind = image['outcome_kind'];
+  return legacyKind is String ? legacyKind : null;
+}
+
+/// The image's `position`, or 0 when it has none (an Agent write stored none
+/// before the app's shape was used). Any other non-integer throws a
+/// [FormatException], which a sync pull quarantines.
+int _protocolTargetOutcomeImagePosition(Map<String, Object?> image) {
+  final position = image['position'];
+  if (position == null) {
+    return 0;
+  }
+  if (position is int) {
+    return position;
+  }
+  if (position is num && position.toInt() == position) {
+    return position.toInt();
+  }
+  throw FormatException(
+    'Protocol target outcome image field position must be an integer.',
+    position,
+  );
+}
+
+/// [image] with an old Agent-written kind and position read as the decoder
+/// reads them, so undo compares it with the row the decoder stored.
+Map<String, Object?> _protocolTargetOutcomeImageNormalized(
+  Map<String, Object?> image,
+) {
+  final normalized = Map<String, Object?>.from(image)..remove('outcome_kind');
+  final kind = _protocolTargetOutcomeImageKind(image);
+  if (kind != null) {
+    normalized['kind'] = kind;
+  }
+  if (image['position'] == null) {
+    normalized['position'] = 0;
+  }
+  return normalized;
 }
 
 CompoundsCompanion _compoundSyncCompanionFromImage(

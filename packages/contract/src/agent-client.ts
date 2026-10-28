@@ -1566,7 +1566,8 @@ export type AgentProtocolBatchWriteSchedule = {
 export type AgentProtocolBatchWriteTargetOutcome = {
   "id": AgentProtocolsClientRowId & unknown;
   "metricId"?: string | null;
-  "outcomeKind"?: string;
+  "outcomeKind"?: "metric" | "performance";
+  "position"?: number;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
 };
@@ -1671,6 +1672,7 @@ export type AgentProtocolTargetOutcome = {
   "id": string;
   "metricId": string | null;
   "outcomeKind": string;
+  "position": number;
   "updatedAt": string;
   "deletedAt": string | null;
 };

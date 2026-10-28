@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
+import { eq } from "drizzle-orm";
+
 import {
   applyMigrations,
   createApp,
@@ -186,6 +188,85 @@ test("prepareAgentProtocolBatchWrite builds protocol + members + Schedule Versio
   // The store dates the version from stored data (D1).
   assert.equal(schedule.effective_from, null);
   assert.equal(prepared.targetOutcomes[0].payload.metric_id, "metric-weight");
+});
+
+test("prepareAgentProtocolBatchWrite stores a target outcome in the app's sync shape", () => {
+  const prepared = prepareAgentProtocolBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      today: "2026-10-27",
+      protocols: [
+        {
+          id: "p1",
+          name: "Recovery",
+          startLocalDate: "2026-06-01",
+          endLocalDate: null,
+          period: null,
+          remindersEnabled: false,
+          archived: false,
+          members: [{ id: "m1", compoundId: "c1", position: 0, archived: false }],
+          schedules: [],
+          targetOutcomes: [
+            { id: "t1", metricId: "metric-weight", outcomeKind: "metric" },
+            { id: "t2", metricId: null, outcomeKind: "performance", position: 7 }
+          ]
+        }
+      ]
+    },
+    now: new Date("2026-10-27T09:00:00.000Z")
+  });
+  assert.equal(prepared.accepted, true);
+  const [metric, performance] = prepared.targetOutcomes.map((row) => row.payload);
+  // Exactly the app's image (_protocolTargetOutcomeImage): the pull hands
+  // this payload to the app's decoder unchanged.
+  assert.deepEqual(Object.keys(metric).sort(), [
+    "deleted_at",
+    "id",
+    "kind",
+    "metric_id",
+    "position",
+    "protocol_id",
+    "updated_at"
+  ]);
+  assert.equal(metric.kind, "metric");
+  assert.equal("outcome_kind" in metric, false);
+  // Left out, the store assigns it from stored rows (D3).
+  assert.equal(metric.position, null);
+  assert.equal(performance.kind, "performance");
+  assert.equal(performance.position, 7);
+});
+
+test("prepareAgentProtocolBatchWrite refuses a target outcome whose metricId doesn't match its kind", () => {
+  const request = (outcome) => ({
+    idempotencyKey: "k",
+    today: "2026-10-27",
+    protocols: [
+      {
+        id: "p1",
+        name: "Recovery",
+        startLocalDate: "2026-06-01",
+        endLocalDate: null,
+        period: null,
+        remindersEnabled: false,
+        archived: false,
+        members: [{ id: "m1", compoundId: "c1", position: 0, archived: false }],
+        schedules: [],
+        targetOutcomes: [{ id: "t1", ...outcome }]
+      }
+    ]
+  });
+  const now = new Date("2026-10-27T09:00:00.000Z");
+  for (const outcome of [
+    { metricId: null, outcomeKind: "metric" },
+    { metricId: "metric-weight", outcomeKind: "performance" }
+  ]) {
+    const prepared = prepareAgentProtocolBatchWrite({ request: request(outcome), now });
+    assert.equal(prepared.accepted, false, outcome.outcomeKind);
+    assert.deepEqual(
+      prepared.errors.map((issue) => [issue.rule, issue.field, issue.entityId]),
+      [["target_outcome_metric_id", "protocols[0].targetOutcomes", "t1"]]
+    );
+  }
 });
 
 test("prepareAgentProtocolBatchWrite rejects and warns through the shared plan validators (D7)", () => {
@@ -654,7 +735,15 @@ test("protocol batch-write is strict: frequency, deletedAt, effectiveFrom, a mis
     "unknown rule version": withSchedule(base, {
       rule: { ...timedDailyRule(["09:00"]), v: 2 }
     }),
-    "unknown rule kind": withSchedule(base, { rule: { v: 1, kind: "daily" } })
+    "unknown rule kind": withSchedule(base, { rule: { v: 1, kind: "daily" } }),
+    "unknown target outcome kind": withProtocol(base, {
+      targetOutcomes: [{ id: createUuidV7(), metricId: null, outcomeKind: "mood" }]
+    }),
+    "negative target outcome position": withProtocol(base, {
+      targetOutcomes: [
+        { id: createUuidV7(), metricId: null, outcomeKind: "performance", position: -1 }
+      ]
+    })
   };
   for (const [name, body] of Object.entries(variants)) {
     const response = await post(app, "/agent/protocols/batch-write", body);
@@ -1823,6 +1912,168 @@ test(
       assert.equal("schedules" in protocol, false);
       assert.equal(protocol.targetOutcomes.length, 1);
       assert.equal(protocol.targetOutcomes[0].metricId, "metric-weight");
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "target outcomes store the app's shape: the store assigns the next position, and rows from either writer read with their kind in position order",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-outcomes-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const compoundId = createUuidV7();
+    const protocolId = createUuidV7();
+    const memberId = createUuidV7();
+    const appOutcomeId = createUuidV7();
+    const legacyOutcomeId = createUuidV7();
+    const moodOutcomeId = createUuidV7();
+    const [firstId, secondId, sentId] = [createUuidV7(), createUuidV7(), createUuidV7()];
+    const protocolRow = {
+      id: protocolId,
+      name: "Recovery",
+      startLocalDate: "2026-06-01",
+      members: [{ id: memberId, compoundId, position: 0 }],
+      schedules: []
+    };
+    const writeOutcomes = async (targetOutcomes) => {
+      const response = await post(app, "/agent/protocols/batch-write", {
+        idempotencyKey: `o-${randomUUID()}`,
+        today: utcToday(),
+        protocols: [{ ...protocolRow, targetOutcomes }]
+      });
+      assert.equal(response.status, 200);
+    };
+    const storedPayload = async (id) => {
+      const [row] = await database.db
+        .select({ payload: schema.protocolTargetOutcomes.payload })
+        .from(schema.protocolTargetOutcomes)
+        .where(eq(schema.protocolTargetOutcomes.id, id));
+      return row.payload;
+    };
+    const readOutcomes = async () => {
+      const response = await app.request("/agent/protocols", { headers: authHeaders() });
+      const body = await response.json();
+      return body.protocols
+        .find((protocol) => protocol.id === protocolId)
+        .targetOutcomes.map((outcome) => [outcome.id, outcome.outcomeKind, outcome.position]);
+    };
+
+    try {
+      await insertUser(database, userId);
+      await post(app, "/agent/protocols/compounds/batch-write", {
+        idempotencyKey: `c-${randomUUID()}`,
+        compounds: [
+          { id: compoundId, name: "Magnesium", defaultUnit: "milligram", defaultRoute: "oral", strength: null }
+        ]
+      });
+      await writeOutcomes([]);
+
+      // One row as the app pushes it, and two as an Agent stored them before
+      // the app's shape was used (outcome_kind, no position or a free-text
+      // kind).
+      const updatedAt = new Date("2026-06-02T00:00:00.000Z");
+      await database.db.insert(schema.protocolTargetOutcomes).values([
+        {
+          id: appOutcomeId,
+          userId,
+          deviceId: "device-a",
+          payload: {
+            id: appOutcomeId,
+            protocol_id: protocolId,
+            kind: "performance",
+            metric_id: null,
+            position: 1,
+            updated_at: updatedAt.toISOString(),
+            deleted_at: null
+          },
+          updatedAt
+        },
+        {
+          id: legacyOutcomeId,
+          userId,
+          deviceId: "agent",
+          payload: {
+            id: legacyOutcomeId,
+            protocol_id: protocolId,
+            metric_id: "metric-legacy",
+            outcome_kind: "metric",
+            updated_at: updatedAt.toISOString(),
+            deleted_at: null
+          },
+          updatedAt
+        },
+        {
+          id: moodOutcomeId,
+          userId,
+          deviceId: "agent",
+          payload: {
+            id: moodOutcomeId,
+            protocol_id: protocolId,
+            metric_id: null,
+            outcome_kind: "mood",
+            position: 9,
+            updated_at: updatedAt.toISOString(),
+            deleted_at: null
+          },
+          updatedAt
+        }
+      ]);
+      // A kind outside the two still reads, as stored: the read doesn't fail
+      // the whole account over one old row.
+      assert.deepEqual(await readOutcomes(), [
+        [legacyOutcomeId, "metric", 0],
+        [appOutcomeId, "performance", 1],
+        [moodOutcomeId, "mood", 9]
+      ]);
+
+      // Left out, a new outcome goes after the Protocol's others, in batch
+      // order.
+      await writeOutcomes([
+        { id: firstId, metricId: "metric-a", outcomeKind: "metric" },
+        { id: secondId, metricId: "metric-b", outcomeKind: "metric" }
+      ]);
+      const first = await storedPayload(firstId);
+      assert.equal(first.kind, "metric");
+      assert.equal("outcome_kind" in first, false);
+      assert.equal(first.position, 10);
+      assert.equal((await storedPayload(secondId)).position, 11);
+
+      // Archiving one by re-sending it with deletedAt keeps its position, and
+      // a sent position is stored as sent. An old row with a kind the app
+      // can't read is archived by re-sending it with a kind it can.
+      await writeOutcomes([
+        {
+          id: moodOutcomeId,
+          metricId: null,
+          outcomeKind: "performance",
+          deletedAt: new Date().toISOString()
+        },
+        {
+          id: firstId,
+          metricId: "metric-a",
+          outcomeKind: "metric",
+          deletedAt: new Date().toISOString()
+        },
+        { id: sentId, metricId: null, outcomeKind: "performance", position: 7 }
+      ]);
+      assert.equal((await storedPayload(firstId)).position, 10);
+      assert.equal((await storedPayload(sentId)).position, 7);
+      assert.deepEqual(await readOutcomes(), [
+        [legacyOutcomeId, "metric", 0],
+        [appOutcomeId, "performance", 1],
+        [sentId, "performance", 7],
+        [moodOutcomeId, "performance", 9],
+        [firstId, "metric", 10],
+        [secondId, "metric", 11]
+      ]);
     } finally {
       await database.close();
     }

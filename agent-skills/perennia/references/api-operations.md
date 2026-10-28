@@ -646,6 +646,17 @@ judged by the shared two-tier plan validators; soft warnings come back in
 `warnings[]`. Plan writes never touch logged Doses — archiving a Protocol never
 cascades.
 
+A target outcome's `outcomeKind` is `metric` (the default) or `performance`;
+any other value is a 400. A `metric` outcome needs a `metricId`, and a
+`performance` outcome takes `metricId: null`; otherwise the batch is refused
+with `target_outcome_metric_id`. So an outcome sent as just `{ "id": … }` is
+refused, and so is an archive sent as `{ "id": …, "deletedAt": … }`: a write
+replaces the whole outcome, so send it as read, with its kind and Metric. `position` orders a Protocol's outcomes, as
+the app shows them. Leave it out and the server keeps an existing outcome's
+position, or puts a new one after the Protocol's other outcomes, in the order
+you send them. `GET /agent/protocols` returns each outcome's `position` and
+lists them in that order.
+
 ```json
 {
   "idempotencyKey": "stable-protocol-batch-key",

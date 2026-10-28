@@ -712,7 +712,6 @@ class SyncRepository implements SyncCycleRepository {
     );
   }
 
-
   Future<SyncPushResult> _pushPendingExercisesWithClient({
     required PerenniaApiClient client,
     required AuthSession session,
@@ -1528,10 +1527,12 @@ class SyncRepository implements SyncCycleRepository {
       );
       appliedCount += retried.appliedCount;
       userSettingsApplied = userSettingsApplied || retried.userSettingsApplied;
-      appliedCount += await _applyDeferredChangesNowApplicable(
+      final deferred = await _applyDeferredChangesNowApplicable(
         deviceId: deviceId,
         syncBatchId: syncBatchId,
       );
+      appliedCount += deferred.appliedCount;
+      quarantinedIds.addAll(deferred.quarantinedIds);
       if (persistCursor) {
         await _savePullCursor(cursorToSave);
       }
@@ -2345,8 +2346,9 @@ class SyncRepository implements SyncCycleRepository {
 
   /// Applies every held change whose missing row now exists on this device,
   /// however that row arrived (this batch, an earlier one, or a restore).
-  /// Returns how many were applied.
-  Future<int> _applyDeferredChangesNowApplicable({
+  /// Returns how many were applied, and the ids of any it quarantined.
+  Future<({int appliedCount, Set<int> quarantinedIds})>
+      _applyDeferredChangesNowApplicable({
     required String deviceId,
     required String syncBatchId,
   }) async {
@@ -2364,27 +2366,48 @@ class SyncRepository implements SyncCycleRepository {
           ))
         .get();
     var appliedCount = 0;
+    final quarantinedIds = <int>{};
     for (final row in ready) {
       await _dropDeferredChange(row.entityTable, row.entityId);
-      final change = SyncPulledChange.fromJson(
-        jsonDecode(row.changeJson) as Map<String, Object?>,
-      );
-      final applied = switch (row.entityTable) {
-        AppDatabase.protocolTargetOutcomesTable =>
-          await _applyPulledProtocolTargetOutcomeChange(
-            change,
-            deviceId: deviceId,
-            syncBatchId: syncBatchId,
+      // A held change is decoded only now, so one this build can't read is
+      // quarantined here exactly as in [_applyPulledSyncChanges]: in its own
+      // savepoint, so it fails alone instead of failing the page.
+      try {
+        final applied = await _database.transaction(() async {
+          final change = SyncPulledChange.fromJson(
+            jsonDecode(row.changeJson) as Map<String, Object?>,
+          );
+          return switch (row.entityTable) {
+            AppDatabase.protocolTargetOutcomesTable =>
+              await _applyPulledProtocolTargetOutcomeChange(
+                change,
+                deviceId: deviceId,
+                syncBatchId: syncBatchId,
+              ),
+            _ => throw StateError(
+                'Unsupported deferred sync entity: ${row.entityTable}.',
+              ),
+          };
+        });
+        if (applied) {
+          appliedCount += 1;
+        }
+      } on Object catch (error) {
+        final failureKind = _quarantineFailureKind(error);
+        if (failureKind == null) {
+          rethrow;
+        }
+        quarantinedIds.add(
+          await _quarantinePulledChange(
+            changeJson: jsonDecode(row.changeJson),
+            entityTable: row.entityTable,
+            entityId: row.entityId,
+            failureKind: failureKind,
           ),
-        _ => throw StateError(
-            'Unsupported deferred sync entity: ${row.entityTable}.',
-          ),
-      };
-      if (applied) {
-        appliedCount += 1;
+        );
       }
     }
-    return appliedCount;
+    return (appliedCount: appliedCount, quarantinedIds: quarantinedIds);
   }
 
   /// Drops held changes for rows absent from a full re-sync snapshot: the
@@ -2549,7 +2572,6 @@ class SyncRepository implements SyncCycleRepository {
     return true;
   }
 
-
   Future<bool> _applyPulledExerciseChange(
     SyncPulledChange change, {
     required String deviceId,
@@ -2710,7 +2732,6 @@ class SyncRepository implements SyncCycleRepository {
       );
     }
   }
-
 
   Future<void> _markPreviouslySyncedExerciseRowsAbsentFromSnapshotDeleted(
     Set<String> liveSnapshotIds,
@@ -3184,7 +3205,6 @@ class SyncRepository implements SyncCycleRepository {
           ..limit(_syncPushBatchLimit))
         .get();
   }
-
 
   Future<List<ActivityLogRow>> _loadPendingExerciseRows() {
     return (_database.select(_database.activityLog)

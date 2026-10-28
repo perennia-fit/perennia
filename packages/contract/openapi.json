@@ -8009,7 +8009,13 @@
           },
           "outcomeKind": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "metric (a Metric, named by metricId) or performance (Workout analytics broadly). An outcome an Agent stored before the kind was checked may hold another value; the app ignores it."
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The outcome's place in the Protocol's list, as the app orders it. Outcomes are listed by position, then id."
           },
           "updatedAt": {
             "type": "string",
@@ -8029,6 +8035,7 @@
           "id",
           "metricId",
           "outcomeKind",
+          "position",
           "updatedAt",
           "deletedAt"
         ]
@@ -9722,8 +9729,17 @@
           },
           "outcomeKind": {
             "type": "string",
-            "minLength": 1,
-            "default": "metric"
+            "enum": [
+              "metric",
+              "performance"
+            ],
+            "default": "metric",
+            "description": "metric (a Metric, named by metricId) or performance (Workout analytics broadly; metricId null). A metric outcome without a metricId, or a performance outcome with one, is refused with target_outcome_metric_id."
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The outcome's place in the Protocol's list. Left out, an existing outcome keeps its position and a new one goes after the Protocol's other outcomes, in the order sent."
           },
           "updatedAt": {
             "type": "string",
