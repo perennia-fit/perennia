@@ -4355,7 +4355,7 @@ abstract class AppLocalizations {
   /// No description provided for @notPlannedReasonNotScheduledToday.
   ///
   /// In en, this message translates to:
-  /// **'Not scheduled today'**
+  /// **'Not scheduled that day'**
   String get notPlannedReasonNotScheduledToday;
 
   /// No description provided for @notPlannedReasonAsNeeded.

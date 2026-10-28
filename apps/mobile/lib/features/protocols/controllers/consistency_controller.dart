@@ -83,6 +83,11 @@ class ConsistencyRangeController extends Notifier<ConsistencyRangeSelection> {
         _today(),
       );
 
+  /// Whether this controller is still alive. The view checks it after an
+  /// await (the custom range picker), because `ref` is protected and a
+  /// disposed controller throws on use.
+  bool get mounted => ref.mounted;
+
   ProtocolDayDate _today() =>
       ProtocolDayDate.fromDateTime(ref.read(protocolsClockProvider)());
 

@@ -1402,7 +1402,7 @@
   "dayStatusLogged": "Logged",
   "dayStatusPartlyLogged": "Partly logged",
   "dayStatusNotLogged": "Not logged",
-  "notPlannedReasonNotScheduledToday": "Not scheduled today",
+  "notPlannedReasonNotScheduledToday": "Not scheduled that day",
   "notPlannedReasonAsNeeded": "As needed",
   "notPlannedReasonNoSchedule": "No schedule",
   "notPlannedReasonRemoved": "Removed",

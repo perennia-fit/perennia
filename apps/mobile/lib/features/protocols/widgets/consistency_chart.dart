@@ -85,7 +85,11 @@ class ConsistencyChart extends StatelessWidget {
                   Positioned.fill(
                     left: _leftTitlesWidth,
                     child: CustomPaint(
-                      painter: _ShadePainter(data: data, colors: colors),
+                      painter: _ShadeRunPainter(
+                        data: data,
+                        colors: colors,
+                        paintRun: _paintShade,
+                      ),
                     ),
                   ),
                   LineChart(_chartData(context, data, colors)),
@@ -285,12 +289,23 @@ void _paintShadeMarker(
   canvas.restore();
 }
 
-/// The paused and off-cycle runs, over the plot's full height.
-class _ShadePainter extends CustomPainter {
-  _ShadePainter({required this.data, required this.colors});
+/// Paints each paused or off-cycle run with [paintRun], one rect per run
+/// over the painter's full height: the shading behind the plot
+/// ([_paintShade]) and the markers under it ([_paintShadeMarker]). One
+/// projection of runs onto X serves both, so a marker always lines up with
+/// its shade.
+class _ShadeRunPainter extends CustomPainter {
+  _ShadeRunPainter({
+    required this.data,
+    required this.colors,
+    required this.paintRun,
+  });
 
   final ConsistencyChartData data;
   final AppColors colors;
+
+  /// A top-level function, so comparing it with `==` is stable.
+  final void Function(Canvas, Rect, DayStatusKind, AppColors) paintRun;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -299,7 +314,7 @@ class _ShadePainter extends CustomPainter {
     }
     final dayWidth = size.width / data.dayCount;
     for (final shade in data.shades) {
-      _paintShade(
+      paintRun(
         canvas,
         Rect.fromLTRB(
           shade.run.startX * dayWidth,
@@ -314,42 +329,10 @@ class _ShadePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ShadePainter oldDelegate) =>
-      !identical(oldDelegate.data, data) || oldDelegate.colors != colors;
-}
-
-/// Every shaded run's marker under the plot, with the run's word below it
-/// when the run is wide enough to hold it.
-class _ShadeMarkerPainter extends CustomPainter {
-  _ShadeMarkerPainter({required this.data, required this.colors});
-
-  final ConsistencyChartData data;
-  final AppColors colors;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.width <= 0) {
-      return;
-    }
-    final dayWidth = size.width / data.dayCount;
-    for (final shade in data.shades) {
-      _paintShadeMarker(
-        canvas,
-        Rect.fromLTRB(
-          shade.run.startX * dayWidth,
-          0,
-          shade.run.endX * dayWidth,
-          size.height,
-        ),
-        shade.kind,
-        colors,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_ShadeMarkerPainter oldDelegate) =>
-      !identical(oldDelegate.data, data) || oldDelegate.colors != colors;
+  bool shouldRepaint(_ShadeRunPainter oldDelegate) =>
+      !identical(oldDelegate.data, data) ||
+      oldDelegate.colors != colors ||
+      oldDelegate.paintRun != paintRun;
 }
 
 /// A legend swatch for one shading: its area and its marker, as drawn.
@@ -417,7 +400,11 @@ class _ShadeLabels extends StatelessWidget {
                 top: 0,
                 height: _markerHeight,
                 child: CustomPaint(
-                  painter: _ShadeMarkerPainter(data: data, colors: colors),
+                  painter: _ShadeRunPainter(
+                    data: data,
+                    colors: colors,
+                    paintRun: _paintShadeMarker,
+                  ),
                 ),
               ),
               for (final shade in data.shades)
