@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -107,7 +108,8 @@ void main() {
     'tapping a Dose row opens it for edit, prefilled from its own snapshot',
     (tester) async {
       await _pumpView(tester, _dayWithDoses());
-      await _pumpUntilFound(tester, find.byKey(ProtocolsDayView.doseRowKey('dose-1')));
+      await _pumpUntilFound(
+          tester, find.byKey(ProtocolsDayView.doseRowKey('dose-1')));
 
       await tester.tap(find.byKey(ProtocolsDayView.doseRowKey('dose-1')));
       await tester.pumpAndSettle();
@@ -153,7 +155,8 @@ void main() {
       expect(controller.editedDoseIds, <String>['dose-1']);
       final draft = controller.editedDrafts.single;
       expect(draft.amountEntered, '3');
-      expect(draft.localDate, const ProtocolDayDate(year: 2026, month: 6, day: 30));
+      expect(draft.localDate,
+          const ProtocolDayDate(year: 2026, month: 6, day: 30));
       expect(draft.provenance, DoseProvenance.manual);
     },
   );
@@ -236,6 +239,81 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });
+
+  testWidgets(
+    "the day's Doses show in clock order: a later instant at an earlier clock "
+    'time through its offset is listed first',
+    (tester) async {
+      final database = AppDatabase.inMemory();
+      final repositories = TrainingRepositories(database);
+      final day = ProtocolDayDate.fromDateTime(_cuj1Now);
+      Future<String> logAt(DateTime tookAtUtc, int offset) async {
+        final logged = await repositories.protocols.logDose(
+          DoseSnapshotDraft(
+            compoundName: 'Creatine',
+            amountValue: 5,
+            amountEntered: '5',
+            unit: DoseUnit.gram,
+            route: DoseRoute.oral,
+            tookAt: tookAtUtc,
+          ),
+        );
+        await (database.update(database.doses)
+              ..where((row) => row.id.equals(logged.doseId)))
+            .write(
+          DosesCompanion(
+            timezoneOffsetMinutes: Value<int?>(offset),
+            localDate: Value<String>(day.storageValue),
+          ),
+        );
+        return logged.doseId;
+      }
+
+      // Seeded on fake time. First in Tokyo (UTC+09:00): 21:00 there,
+      // 12:00 UTC. Then in Honolulu (UTC−10:00): 08:30 there, 18:30 UTC, the
+      // later instant at the earlier clock time.
+      late final String tokyo;
+      late final String honolulu;
+      await _runOnFakeTime(tester, () async {
+        tokyo = await logAt(DateTime.utc(2026, 10, 27, 12), 540);
+        honolulu = await logAt(DateTime.utc(2026, 10, 27, 18, 30), -600);
+      });
+
+      await _pumpLiveView(tester, repositories, () => _cuj1Now);
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolsDayView.doseRowKey(honolulu)),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolsDayView.doseRowKey(tokyo)),
+      );
+
+      // `DateFormat.jm` may put a narrow no-break space before "AM".
+      expect(
+        find.descendant(
+          of: find.byKey(ProtocolsDayView.doseRowKey(honolulu)),
+          matching: find.textContaining(RegExp(r'8:30\sAM')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ProtocolsDayView.doseRowKey(tokyo)),
+          matching: find.textContaining(RegExp(r'9:00\sPM')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.getTopLeft(find.byKey(ProtocolsDayView.doseRowKey(honolulu))).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(ProtocolsDayView.doseRowKey(tokyo))).dy,
+        ),
+      );
+
+      await _closeLive(tester, database);
+    },
+  );
 
   group('the Planned list (D6)', () {
     testWidgets(
@@ -645,14 +723,7 @@ void main() {
       (tester) async {
         final database = AppDatabase.inMemory();
         final repositories = TrainingRepositories(database);
-        // Seeded in the test's own zone, with frames pumped until it lands,
-        // so the database's queue and stream timers all run on fake time.
-        var seeded = false;
-        unawaited(_seedDailyStack(repositories).then((_) => seeded = true));
-        for (var frame = 0; frame < 100 && !seeded; frame += 1) {
-          await tester.pump(const Duration(milliseconds: 10));
-        }
-        expect(seeded, isTrue);
+        await _seedOnFakeTime(tester, repositories);
 
         await tester.pumpWidget(
           ProviderScope(
@@ -781,9 +852,18 @@ void main() {
 Future<void> _seedOnFakeTime(
   WidgetTester tester,
   TrainingRepositories repositories,
+) {
+  return _runOnFakeTime(tester, () => _seedDailyStack(repositories));
+}
+
+/// Runs [seed] in the test's own zone, with frames pumped until it lands, so
+/// the database's queue and stream timers all run on fake time.
+Future<void> _runOnFakeTime(
+  WidgetTester tester,
+  Future<void> Function() seed,
 ) async {
   var seeded = false;
-  unawaited(_seedDailyStack(repositories).then((_) => seeded = true));
+  unawaited(seed().then((_) => seeded = true));
   for (var frame = 0; frame < 100 && !seeded; frame += 1) {
     await tester.pump(const Duration(milliseconds: 10));
   }

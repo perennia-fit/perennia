@@ -5109,6 +5109,88 @@ void main() {
       expect(dose.localTime, '00:15');
     });
 
+    test(
+        "a Protocol Day's Doses are listed in clock order, local time and then "
+        'id, not instant order', () async {
+      final compound = await repositories.protocols.createCompound(
+        const CompoundDraft(
+          name: 'Creatine',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      );
+      const day = ProtocolDayDate(year: 2026, month: 7, day: 1);
+      const nextDay = ProtocolDayDate(year: 2026, month: 7, day: 2);
+      Future<String> logAt(
+        DateTime tookAtUtc,
+        int offset, {
+        ProtocolDayDate on = day,
+      }) async {
+        final logged = await repositories.protocols.logDose(
+          DoseSnapshotDraft(
+            compoundId: compound.compoundId,
+            compoundName: 'Creatine',
+            amountValue: 5,
+            amountEntered: '5',
+            unit: DoseUnit.gram,
+            route: DoseRoute.oral,
+            tookAt: tookAtUtc,
+          ),
+        );
+        await (database.update(database.doses)
+              ..where((r) => r.id.equals(logged.doseId)))
+            .write(
+          DosesCompanion(
+            timezoneOffsetMinutes: Value<int?>(offset),
+            localDate: Value<String>(on.storageValue),
+          ),
+        );
+        return logged.doseId;
+      }
+
+      // Logged first, in Tokyo (UTC+09:00): 21:00 there, 12:00 UTC.
+      final tokyo = await logAt(DateTime.utc(2026, 7, 1, 12), 540);
+      // Logged later, in Honolulu (UTC−10:00): 08:30 there, 18:30 UTC. The
+      // later instant and the later id, at the earlier clock time.
+      final honolulu = await logAt(DateTime.utc(2026, 7, 1, 18, 30), -600);
+      expect(honolulu.compareTo(tokyo), greaterThan(0));
+
+      final watched = await repositories.protocols.watchProtocolDay(day).first;
+      expect(
+        watched.doses.map((dose) => dose.localTime),
+        <String>['08:30', '21:00'],
+      );
+      expect(
+        watched.doses.map((dose) => dose.id),
+        <String>[honolulu, tokyo],
+      );
+      final read = await repositories.protocols.protocolDay(day);
+      expect(read.doses.map((dose) => dose.id), <String>[honolulu, tokyo]);
+
+      // The next day, two Doses at the same clock minute through different
+      // offsets: 21:00 in Tokyo (UTC+09:00, 12:00 UTC), logged first, then
+      // 21:00 at UTC+10:00 (11:00 UTC). The larger id has the earlier
+      // instant, so only the id tie-break lists them in log order.
+      final first = await logAt(DateTime.utc(2026, 7, 2, 12), 540, on: nextDay);
+      final second =
+          await logAt(DateTime.utc(2026, 7, 2, 11), 600, on: nextDay);
+      expect(second.compareTo(first), greaterThan(0));
+      final tied = await repositories.protocols.protocolDay(nextDay);
+      expect(tied.doses.map((dose) => dose.localTime), <String>[
+        '21:00',
+        '21:00',
+      ]);
+      expect(tied.doses.map((dose) => dose.id), <String>[first, second]);
+
+      final consistency = await repositories.protocolPlan
+          .watchConsistency(compound.compoundId, day, nextDay, today: nextDay)
+          .first;
+      expect(
+        consistency.doses.map((dose) => dose.id),
+        <String>[honolulu, tokyo, first, second],
+      );
+    });
+
     test('a Dose sync image without an offset applies with a null offset',
         () async {
       final updatedAt = DateTime.utc(2026, 7, 1, 12);

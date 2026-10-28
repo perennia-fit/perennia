@@ -713,6 +713,22 @@ class CompoundScheduleOptionRecord {
   final DoseRoute defaultRoute;
 }
 
+/// The clock reading of [instant] where it was taken (D2): the instant at the
+/// frozen [timezoneOffsetMinutes], as a UTC `DateTime` whose fields are that
+/// clock, so formatting and date parts read them as they are. With a null
+/// offset (a Dose logged before offsets were recorded) it is [instant] in the
+/// device's current zone, as a local `DateTime`.
+///
+/// The one place a Dose's clock is worked out. A Dose's row, its edit sheet
+/// and the local date `editDose` freezes all read it here, so a fix here
+/// reaches every reader at once and a row can never disagree with its edit
+/// sheet about when the Dose was taken.
+DateTime clockAtOffset(DateTime instant, int? timezoneOffsetMinutes) {
+  return timezoneOffsetMinutes == null
+      ? instant.toLocal()
+      : instant.toUtc().add(Duration(minutes: timezoneOffsetMinutes));
+}
+
 /// A persisted `Dose` (self-describing logged event read model). Renders from
 /// its own snapshot fields, so no `Compound` lookup is required. The
 /// [compoundName] and [compoundStrength] are frozen at log time and never
@@ -766,15 +782,17 @@ class DoseRecord {
   /// recorded.
   final int? timezoneOffsetMinutes;
 
-  /// The Dose's local clock time, `HH:MM`, derived on read, never stored:
-  /// [tookAt] shifted by its frozen [timezoneOffsetMinutes]. A Dose with no
-  /// frozen offset reads in the device's current zone instead, so the app and
-  /// the server (which reads it in UTC) can disagree on those older Doses.
+  /// The Dose's date and clock time where it was taken, derived on read,
+  /// never stored: [tookAt] at its frozen [timezoneOffsetMinutes]
+  /// ([clockAtOffset]). A Dose with no frozen offset reads in the device's
+  /// current zone instead, so the app and the server (which reads it in UTC)
+  /// can disagree on those older Doses.
+  DateTime get clock => clockAtOffset(tookAt, timezoneOffsetMinutes);
+
+  /// The Dose's local clock time, `HH:MM`: [clock] formatted. Matching reads
+  /// it (D6 step 2), and the day's Dose rows are listed by it.
   String get localTime {
-    final offset = timezoneOffsetMinutes;
-    final local = offset == null
-        ? tookAt.toLocal()
-        : tookAt.toUtc().add(Duration(minutes: offset));
+    final local = clock;
     return planLocalTime(local.hour, local.minute);
   }
 

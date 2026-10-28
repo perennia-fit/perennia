@@ -114,10 +114,8 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
         ],
       ),
       body: dayState.when(
-        data: (state) => _ProtocolDayBody(
-          day: state.day,
-          plannedDay: state.plannedDay,
-        ),
+        data: (state) =>
+            _ProtocolDayBody(day: state.day, plannedDay: state.plannedDay),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
           child: Padding(
@@ -159,11 +157,9 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
   /// stack). A secondary surface reached from the app bar, never primary
   /// navigation.
   void _openProtocolList(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const ProtocolListScreen(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const ProtocolListScreen()));
   }
 }
 
@@ -283,9 +279,8 @@ class _PlannedListState extends ConsumerState<_PlannedList> {
     final plannedDay = widget.plannedDay;
     final groups = plannedDay.groups;
     final anyPending = groups.any(
-      (group) => group.rows.any(
-        (row) => row.status == PlannedRowStatus.pending,
-      ),
+      (group) =>
+          group.rows.any((row) => row.status == PlannedRowStatus.pending),
     );
 
     return Padding(
@@ -313,9 +308,7 @@ class _PlannedListState extends ConsumerState<_PlannedList> {
                   height: AppDimens.touchTarget,
                   child: FilledButton(
                     key: ProtocolsDayView.logAllPlannedButtonKey,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: colors.save,
-                    ),
+                    style: FilledButton.styleFrom(backgroundColor: colors.save),
                     onPressed:
                         _loggingAll ? null : () => unawaited(_logAllPlanned()),
                     child: Text(l10n.plannedListLogAll),
@@ -346,9 +339,7 @@ class _PlannedGroup extends StatelessWidget {
       children: [
         Text(
           group.protocol.name,
-          style: context.textStyles.label.copyWith(
-            color: colors.textSecondary,
-          ),
+          style: context.textStyles.label.copyWith(color: colors.textSecondary),
         ),
         for (final row in group.rows)
           _PlannedRowTile(
@@ -519,19 +510,6 @@ class _PlannedRowLabel extends StatelessWidget {
   }
 }
 
-/// A Dose's date and clock time where it was taken (D2, D6): its instant at
-/// its frozen `timezoneOffsetMinutes`, as a UTC `DateTime` whose fields are
-/// that clock, so formatting reads them as they are. A Dose with a null
-/// offset reads in the device's zone. The day's Dose rows and the edit sheet
-/// both read it here, so a row and its edit sheet agree, and a Dose logged
-/// abroad shows the time it was taken there.
-DateTime _doseClock(DoseRecord dose) {
-  final offset = dose.timezoneOffsetMinutes;
-  return offset == null
-      ? dose.tookAt.toLocal()
-      : dose.tookAt.toUtc().add(Duration(minutes: offset));
-}
-
 /// The date header: a swipe/arrow-navigable strip mirroring
 /// `NutritionDayView`'s `_NutritionDayHeader` and the Training Day
 /// Home's date navigation. Moves the derived `Protocol Day` — never a stored
@@ -544,8 +522,9 @@ class _ProtocolDayHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
-    final dateLabel =
-        DateFormat.yMMMMEEEEd().format(localDate.toLocalDateTime());
+    final dateLabel = DateFormat.yMMMMEEEEd().format(
+      localDate.toLocalDateTime(),
+    );
 
     return GestureDetector(
       key: ProtocolsDayView.dayHeaderKey,
@@ -604,7 +583,10 @@ class _DoseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timeLabel = DateFormat.jm().format(_doseClock(dose));
+    // The Dose's clock where it was taken (D2, D6), read from the one helper
+    // the edit sheet reads too, so a row and its edit sheet agree and a Dose
+    // logged abroad shows the time it was taken there.
+    final timeLabel = DateFormat.jm().format(dose.clock);
     // Every part of the detail line reads from the Dose's OWN snapshot — the
     // amount, the route (always paired with text; color is never the sole
     // signal), the frozen Compound strength when captured (§1.1), and the
@@ -666,10 +648,7 @@ class _DayRowText extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Text(
-          detail,
-          style: TextStyle(color: colors.textSecondary),
-        ),
+        Text(detail, style: TextStyle(color: colors.textSecondary)),
       ],
     );
   }
@@ -923,7 +902,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   DateTime _seedTookAt() {
     final editingDose = widget.editingDose;
     if (editingDose != null) {
-      return _doseClock(editingDose);
+      return editingDose.clock;
     }
     final now = _now();
     final date = widget.initialDate;
@@ -955,8 +934,9 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
                 Expanded(
                   child: Text(
                     title,
-                    style: context.textStyles.h1
-                        .copyWith(color: colors.textPrimary),
+                    style: context.textStyles.h1.copyWith(
+                      color: colors.textPrimary,
+                    ),
                   ),
                 ),
                 if (editingDose != null)
@@ -964,8 +944,10 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
                     key: LogDoseSheet.deleteButtonKey,
                     tooltip: 'Delete dose',
                     onPressed: _saving ? null : _confirmDelete,
-                    icon:
-                        Icon(Icons.delete_outline, color: colors.textSecondary),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: colors.textSecondary,
+                    ),
                   ),
               ],
             ),
@@ -1074,9 +1056,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   /// or kept from a day that has.
   Future<void> _pickDate() async {
     final current = DateTime(_tookAt.year, _tookAt.month, _tookAt.day);
-    final offset = _offsetMinutes;
-    final now =
-        offset == null ? _now() : _now().toUtc().add(Duration(minutes: offset));
+    final now = clockAtOffset(_now(), _offsetMinutes);
     final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
@@ -1372,9 +1352,7 @@ class _MomentField extends StatelessWidget {
       borderRadius: AppRadii.cardMd,
       onTap: onTap,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          minHeight: AppDimens.touchTarget,
-        ),
+        constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
         child: Row(
           children: [
             Icon(icon, color: colors.textSecondary),

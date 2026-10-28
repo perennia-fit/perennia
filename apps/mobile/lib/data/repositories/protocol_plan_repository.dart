@@ -47,10 +47,8 @@ final class PlannedRow {
 
 /// One Protocol's rows on the Planned list, in display order.
 final class PlannedRowGroup {
-  PlannedRowGroup({
-    required this.protocol,
-    required Iterable<PlannedRow> rows,
-  }) : rows = List<PlannedRow>.unmodifiable(rows);
+  PlannedRowGroup({required this.protocol, required Iterable<PlannedRow> rows})
+      : rows = List<PlannedRow>.unmodifiable(rows);
 
   /// The Protocol's id and name, also the tag a Dose logged from its rows
   /// carries.
@@ -180,9 +178,8 @@ final class PlannedDay {
         return byTime;
       }
     }
-    final byName = _compoundName(a.compoundId).compareTo(
-      _compoundName(b.compoundId),
-    );
+    final byName =
+        _compoundName(a.compoundId).compareTo(_compoundName(b.compoundId));
     if (byName != 0) {
       return byName;
     }
@@ -328,8 +325,10 @@ final class ConsistencyRange {
     final statusByDate = <ProtocolDayDate, DayStatus>{
       for (final status in dayStatuses) status.localDate: status,
     };
-    final dates = <ProtocolDayDate>{...statusByDate.keys, ...dosesByDate.keys}
-        .toList()
+    final dates = <ProtocolDayDate>{
+      ...statusByDate.keys,
+      ...dosesByDate.keys,
+    }.toList()
       ..sort((a, b) => b.compareTo(a));
     return List<ConsistencyDay>.unmodifiable(
       dates.map((date) {
@@ -468,18 +467,25 @@ final class ProtocolPlanRepository {
           ._activeDoseQuery(
             (row) =>
                 row.compoundId.equals(compoundId) &
-                row.localDate
-                    .isBetweenValues(from.storageValue, to.storageValue),
+                row.localDate.isBetweenValues(
+                  from.storageValue,
+                  to.storageValue,
+                ),
           )
           .watch()
-          .map((rows) => rows.map(_repositories.protocols._doseFromRow)),
-      (_PlanRows plan, Iterable<DoseRecord> doses) => _consistencyRange(
+          .map(
+            (rows) => rows
+                .map(_repositories.protocols._doseFromRow)
+                .toList(growable: false)
+              ..sort(_compareConsistencyDoses),
+          ),
+      (_PlanRows plan, List<DoseRecord> doses) => _consistencyRange(
         compoundId,
         from,
         to,
         today,
         plan,
-        doses.toList(growable: false),
+        doses,
       ),
     );
   }
@@ -541,7 +547,9 @@ final class ProtocolPlanRepository {
             schedules.deletedAt.isNull(),
       ),
     ])
-      ..where(protocols.deletedAt.isNull() | protocols.archivedOn.isNotNull())
+      ..where(
+        protocols.deletedAt.isNull() | protocols.archivedOn.isNotNull(),
+      )
       ..orderBy([
         OrderingTerm.asc(protocols.id),
         OrderingTerm.asc(members.id),
@@ -569,8 +577,10 @@ final class ProtocolPlanRepository {
         compound.id,
         () => _repositories.protocols._compoundFromRow(compound),
       );
-      final versions =
-          versionsByMember.putIfAbsent(member.id, () => <ScheduleVersion>[]);
+      final versions = versionsByMember.putIfAbsent(
+        member.id,
+        () => <ScheduleVersion>[],
+      );
       if (schedule != null) {
         versions.add(_scheduleVersionFromRow(schedule));
       }
@@ -609,6 +619,14 @@ final class ProtocolPlanRepository {
       compounds: compounds,
       protocolOptions: protocolOptions,
     );
+  }
+
+  /// A range's Doses by local date, and each date's in the day log's order
+  /// ([_compareDosesByClock]), so a day list's Doses and extras read in clock
+  /// order, as the day's log does.
+  static int _compareConsistencyDoses(DoseRecord a, DoseRecord b) {
+    final byDate = a.localDate.compareTo(b.localDate);
+    return byDate != 0 ? byDate : _compareDosesByClock(a, b);
   }
 
   /// The Doses as matching reads them (D6 step 2): every Dose not archived,
