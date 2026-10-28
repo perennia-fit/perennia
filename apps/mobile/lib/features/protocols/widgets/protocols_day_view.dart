@@ -10,6 +10,7 @@ import '../../../theme/theme.dart';
 import '../controllers/protocol_controller.dart';
 import '../controllers/protocols_day_controller.dart';
 import 'compound_list_screen.dart';
+import 'plan_labels.dart';
 import 'protocol_screen.dart';
 
 /// The Protocol Day view: a derived `Protocol Day` list, topped by the
@@ -72,7 +73,9 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
         return;
       }
       unawaited(
-        ref.read(protocolDayControllerProvider.notifier).ensureOtcLibrarySeeded(),
+        ref
+            .read(protocolDayControllerProvider.notifier)
+            .ensureOtcLibrarySeeded(),
       );
     });
   }
@@ -376,13 +379,8 @@ class _PlannedRowTile extends ConsumerWidget {
     final plannedTime = row.plannedLocalTime;
     final timeLabel = plannedTime == null
         ? l10n.plannedListAnyTime
-        : _timeOfDay(plannedTime).format(context);
-    final amount = row.amount;
-    final unit = amount.unit;
-    final amountLabel = <String>[
-      if (amount.amountEntered != null) amount.amountEntered!,
-      if (unit != null) doseUnitLabel(unit),
-    ].join(' ');
+        : planTimeOfDay(plannedTime).format(context);
+    final amountLabel = plannedAmountLabel(row.amount);
     final detail = <String>[
       if (amountLabel.isNotEmpty) amountLabel,
       timeLabel,
@@ -474,7 +472,7 @@ class _PlannedRowTile extends ConsumerWidget {
       LogDoseSheet(
         compound: compound,
         initialDate: plannedDay.localDate,
-        initialTime: plannedTime == null ? null : _timeOfDay(plannedTime),
+        initialTime: plannedTime == null ? null : planTimeOfDay(plannedTime),
         plannedAmount: row.amount,
         plannedRoute: row.amount.route,
         protocol: protocol,
@@ -517,25 +515,8 @@ class _PlannedRowLabel extends StatelessWidget {
       PlannedRowStatus.none => throw StateError('A future row has no label.'),
     };
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ExcludeSemantics(child: Icon(icon, size: 18, color: iconColor)),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: context.textStyles.label.copyWith(
-            color: colors.textPrimary,
-          ),
-        ),
-      ],
-    );
+    return StatusWordLabel(icon: icon, iconColor: iconColor, label: label);
   }
-}
-
-TimeOfDay _timeOfDay(String localTime) {
-  final minutes = planLocalTimeMinutes(localTime);
-  return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 }
 
 /// A Dose's date and clock time where it was taken (D2, D6): its instant at
@@ -571,8 +552,7 @@ class _ProtocolDayHeader extends ConsumerWidget {
       behavior: HitTestBehavior.opaque,
       onHorizontalDragEnd: (details) {
         final velocity = details.primaryVelocity ?? 0;
-        final controller =
-            ref.read(protocolDayControllerProvider.notifier);
+        final controller = ref.read(protocolDayControllerProvider.notifier);
         if (velocity > 0) {
           controller.showPreviousDay();
         } else if (velocity < 0) {
@@ -1095,9 +1075,8 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   Future<void> _pickDate() async {
     final current = DateTime(_tookAt.year, _tookAt.month, _tookAt.day);
     final offset = _offsetMinutes;
-    final now = offset == null
-        ? _now()
-        : _now().toUtc().add(Duration(minutes: offset));
+    final now =
+        offset == null ? _now() : _now().toUtc().add(Duration(minutes: offset));
     final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
