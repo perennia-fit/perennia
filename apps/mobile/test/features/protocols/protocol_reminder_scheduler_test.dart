@@ -712,10 +712,26 @@ void main() {
 
   group('the plugin boundary', () {
     const channel = MethodChannel('dexterous.com/flutter/local_notifications');
+    const timerChannel = MethodChannel('perennia/timer_background');
     late List<MethodCall> calls;
+    late List<MethodCall> timerCalls;
 
     setUp(() {
       calls = <MethodCall>[];
+      timerCalls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(timerChannel, (call) async {
+        timerCalls.add(call);
+        return switch (call.method) {
+          'pendingProtocolReminders' => <Object?>[
+              <String, Object?>{
+                'id': -7,
+                'payload': protocolReminderPayload(protocolReminderIdEpoch),
+              },
+            ],
+          _ => null,
+        };
+      });
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
         calls.add(call);
@@ -737,6 +753,8 @@ void main() {
     tearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(timerChannel, null);
       debugDefaultTargetPlatformOverride = null;
     });
 
@@ -768,6 +786,25 @@ void main() {
       expect(
         calls.map((call) => call.method),
         isNot(contains('requestPermissions')),
+      );
+    });
+
+    test('on iOS, the pending reminders are read over the timer channel, '
+        'not the plugin', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      IOSFlutterLocalNotificationsPlugin.registerWith();
+
+      final pending = await boundary().pendingNotifications();
+
+      expect(timerCalls.single.method, 'pendingProtocolReminders');
+      expect(pending.single.id, -7);
+      expect(
+        protocolReminderDateFromPayload(pending.single.payload),
+        protocolReminderIdEpoch,
+      );
+      expect(
+        calls.map((call) => call.method),
+        isNot(contains('pendingNotificationRequests')),
       );
     });
 
@@ -813,6 +850,8 @@ void main() {
 
       await platform.cancel(-5);
       final pending = await platform.pendingNotifications();
+      expect(calls.last.method, 'pendingNotificationRequests');
+      expect(timerCalls, isEmpty);
       expect(pending.single.id, -1);
       expect(
         protocolReminderDateFromPayload(pending.single.payload),

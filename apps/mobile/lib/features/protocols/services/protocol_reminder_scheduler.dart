@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter/widgets.dart' show basicLocaleListResolution;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -117,7 +118,11 @@ final class FlutterLocalNotificationsReminderPlatform
     implements ProtocolReminderPlatform {
   FlutterLocalNotificationsReminderPlatform({
     FlutterLocalNotificationsPlugin? plugin,
-  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+    MethodChannel timerChannel = const MethodChannel(
+      'perennia/timer_background',
+    ),
+  })  : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
+        _timerChannel = timerChannel;
 
   /// The Android channel's id. Its user-visible name is "Reminders".
   static const String androidChannelId = 'protocol_reminders';
@@ -126,6 +131,10 @@ final class FlutterLocalNotificationsReminderPlatform
   static const String androidIcon = '@mipmap/ic_launcher';
 
   final FlutterLocalNotificationsPlugin _plugin;
+
+  /// The rest timer's channel, which `AppDelegate` also answers
+  /// `pendingProtocolReminders` on (file 60a).
+  final MethodChannel _timerChannel;
   static bool _timeZonesLoaded = false;
 
   @override
@@ -179,6 +188,23 @@ final class FlutterLocalNotificationsReminderPlatform
 
   @override
   Future<List<PendingProtocolNotification>> pendingNotifications() async {
+    // On iOS the plugin's list also holds the rest timer's requests, which
+    // carry no plugin id, and the plugin fails to read them. `AppDelegate`
+    // lists only the requests the plugin scheduled instead (file 60a).
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final pending = await _timerChannel
+              .invokeListMethod<Map<Object?, Object?>>(
+            'pendingProtocolReminders',
+          ) ??
+          const <Map<Object?, Object?>>[];
+      return <PendingProtocolNotification>[
+        for (final request in pending)
+          PendingProtocolNotification(
+            id: request['id']! as int,
+            payload: request['payload']! as String,
+          ),
+      ];
+    }
     final pending = await _plugin.pendingNotificationRequests();
     return <PendingProtocolNotification>[
       for (final request in pending)
