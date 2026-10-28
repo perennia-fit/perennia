@@ -2458,13 +2458,12 @@ export function createAgentMcpServer({
           })
         );
       }
+      // The store parses its response against the output schema already.
       return successResult(
-        AgentProtocolPlannedDaysResponseSchema.parse(
-          await agentProtocolsStore.listProtocolPlannedDays({
-            userId: auth.agent.userId,
-            query
-          })
-        )
+        await agentProtocolsStore.listProtocolPlannedDays({
+          userId: auth.agent.userId,
+          query
+        })
       );
     }
   );
@@ -2507,13 +2506,12 @@ export function createAgentMcpServer({
           })
         );
       }
+      // The store parses its response against the output schema already.
       return successResult(
-        AgentProtocolDayStatusesResponseSchema.parse(
-          await agentProtocolsStore.listProtocolDayStatuses({
-            userId: auth.agent.userId,
-            query
-          })
-        )
+        await agentProtocolsStore.listProtocolDayStatuses({
+          userId: auth.agent.userId,
+          query
+        })
       );
     }
   );

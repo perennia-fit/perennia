@@ -110,10 +110,8 @@ import {
   agentProtocolListRoute,
   agentProtocolPlannedDaysRoute,
   AgentProtocolBatchWriteResponseSchema,
-  AgentProtocolDayStatusesResponseSchema,
   AgentProtocolDaysInvalidRequestResponseSchema,
   AgentProtocolListResponseSchema,
-  AgentProtocolPlannedDaysResponseSchema,
   AgentProtocolsBatchWriteErrorResponseSchema,
   AgentProtocolsUnavailableResponseSchema,
   agentProtocolsBatchRequestFingerprint,
@@ -3400,11 +3398,12 @@ export function createApp(options: CreateAppOptions = {}) {
         400
       );
     }
+    // The store parses its response against the route's schema already.
     const result = await agentProtocolsStore.listProtocolPlannedDays({
       userId: agentAuth.agent.userId,
       query
     });
-    return context.json(AgentProtocolPlannedDaysResponseSchema.parse(result), 200);
+    return context.json(result, 200);
   });
 
   app.openapi(agentProtocolDayStatusesRoute, async (context) => {
@@ -3455,11 +3454,12 @@ export function createApp(options: CreateAppOptions = {}) {
         400
       );
     }
+    // The store parses its response against the route's schema already.
     const result = await agentProtocolsStore.listProtocolDayStatuses({
       userId: agentAuth.agent.userId,
       query
     });
-    return context.json(AgentProtocolDayStatusesResponseSchema.parse(result), 200);
+    return context.json(result, 200);
   });
 
   app.openapi(agentDoseBatchWriteRoute, async (context) => {

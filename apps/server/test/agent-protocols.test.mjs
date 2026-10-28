@@ -856,6 +856,11 @@ test("planned-day and Day Status reads refuse a date that is not a real YYYY-MM-
         headers: authHeaders()
       });
       assert.equal(response.status, 400, `${read} ${JSON.stringify(params)}`);
+      // The request validator refuses it in its own body, as the route's 400
+      // description says, not with the range checks' code.
+      const body = await response.json();
+      assert.equal(body.success, false, `${read} ${JSON.stringify(params)}`);
+      assert.equal(body.code, undefined, `${read} ${JSON.stringify(params)}`);
     }
   }
   // Both range bounds are required.
@@ -3421,32 +3426,46 @@ function storedPlanFixture(today) {
     // A Dose logged without a Compound fills nothing.
     loose: dose(null, day(-1), `${day(-1)}T09:00:00.000Z`)
   };
-  return { ids, protocols, members, schedules, planProtocols, doses };
+  // The member rows' Compounds. The app's plan query inner-joins them, archived
+  // or not, so C, archived with its Protocol, still plans P4's past days.
+  const compounds = [ids.compoundA, ids.compoundB, ids.compoundC].map((id) =>
+    storedCompound(id, id === ids.compoundC ? archivedAt : null)
+  );
+  return { ids, compounds, protocols, members, schedules, planProtocols, doses };
 }
 
+function storedCompound(id, deletedAt = null) {
+  return { id, payload: { id, name: "Compound", default_unit: "gram" }, deletedAt };
+}
+
+/**
+ * Stores plan fixture rows as a sync push leaves them: the payload's
+ * `updated_at` and `deleted_at` match the row's columns.
+ */
 async function insertStoredRows(database, table, userId, rows) {
   if (rows.length === 0) {
     return;
   }
   const updatedAt = new Date();
-  await database.db.insert(table).values(
+  await insertOpaqueFixture(
+    database,
+    table,
     rows.map((row) => ({
       id: row.id,
       userId,
-      deviceId: "plan-device",
+      updatedAt,
+      deletedAt: row.deletedAt ?? null,
       payload: {
         ...row.payload,
         updated_at: updatedAt.toISOString(),
         deleted_at: row.deletedAt?.toISOString() ?? null
-      },
-      updatedAt,
-      deletedAt: row.deletedAt ?? null,
-      receivedAt: updatedAt
+      }
     }))
   );
 }
 
 async function insertStoredPlan(database, userId, fixture) {
+  await insertStoredRows(database, schema.compounds, userId, fixture.compounds);
   await insertStoredRows(database, schema.protocols, userId, fixture.protocols);
   await insertStoredRows(database, schema.protocolCompounds, userId, fixture.members);
   await insertStoredRows(database, schema.schedules, userId, fixture.schedules);
@@ -3742,6 +3761,68 @@ test(
           ["09:00", "21:00"]
         ]
       );
+
+      // A member whose Compound row hasn't synced plans nothing, as in the
+      // app, whose plan query inner-joins compounds.
+      const unsyncedCompoundId = createUuidV7();
+      const unsyncedMemberId = createUuidV7();
+      const unsyncedVersionId = createUuidV7();
+      await insertStoredRows(database, schema.protocolCompounds, userId, [
+        {
+          id: unsyncedMemberId,
+          payload: {
+            id: unsyncedMemberId,
+            protocol_id: ids.p1,
+            compound_id: unsyncedCompoundId,
+            position: 2,
+            archived_on: null
+          },
+          deletedAt: null
+        }
+      ]);
+      await insertStoredRows(database, schema.schedules, userId, [
+        {
+          id: unsyncedVersionId,
+          payload: {
+            id: unsyncedVersionId,
+            protocol_compound_id: unsyncedMemberId,
+            effective_from: day(-10),
+            rule: JSON.stringify({ v: 1, kind: "timed", days: { kind: "daily" }, times: ["08:00"] }),
+            dose_amount_value: 1,
+            dose_amount_entered: "1",
+            dose_unit: "gram",
+            route: "oral"
+          },
+          deletedAt: null
+        }
+      ]);
+      const withUnsynced = await getJson(app, "planned-days", range);
+      assert.deepEqual(withUnsynced.plannedDays, allDays.map(plannedDayJson));
+      for (const params of [
+        { compoundId: unsyncedCompoundId },
+        { protocolId: ids.p1, compoundId: unsyncedCompoundId }
+      ]) {
+        const plannedDays = await getJson(app, "planned-days", { ...range, ...params });
+        assert.deepEqual(plannedDays.plannedDays, [], JSON.stringify(params));
+        const statuses = await getJson(app, "day-statuses", { ...range, today, ...params });
+        assert.deepEqual(statuses.dayStatuses, [], JSON.stringify(params));
+      }
+      // Once its Compound row arrives, it plans like any other member.
+      await insertStoredRows(database, schema.compounds, userId, [
+        storedCompound(unsyncedCompoundId)
+      ]);
+      const synced = await getJson(app, "planned-days", {
+        ...range,
+        compoundId: unsyncedCompoundId
+      });
+      assert.deepEqual(
+        synced.plannedDays.map((planDay) => [
+          planDay.protocolId,
+          planDay.state,
+          planDay.planned.map((planned) => planned.localTime)
+        ]),
+        Array.from({ length: 5 }, () => [ids.p1, "planned", ["08:00"]])
+      );
     } finally {
       await database.close();
     }
@@ -3876,6 +3957,12 @@ test(
 
     try {
       await insertUser(database, userId);
+      await insertStoredRows(
+        database,
+        schema.compounds,
+        userId,
+        compoundIds.map((id) => storedCompound(id))
+      );
       await insertStoredRows(database, schema.protocols, userId, protocols);
       await insertStoredRows(database, schema.protocolCompounds, userId, members);
       await insertStoredRows(database, schema.schedules, userId, schedules);
@@ -4088,18 +4175,19 @@ async function insertUser(database, userId) {
   });
 }
 
-function insertOpaqueFixture(
-  database,
-  table,
-  { id, userId, updatedAt, payload }
-) {
-  return database.db.insert(table).values({
-    id,
-    userId,
-    deviceId: "legacy-agent-device",
-    payload,
-    updatedAt,
-    deletedAt: null,
-    receivedAt: updatedAt
-  });
+/** Inserts one opaque row, or several in one statement, with its payload as given. */
+function insertOpaqueFixture(database, table, rows) {
+  return database.db.insert(table).values(
+    (Array.isArray(rows) ? rows : [rows]).map(
+      ({ id, userId, updatedAt, payload, deletedAt = null }) => ({
+        id,
+        userId,
+        deviceId: "legacy-agent-device",
+        payload,
+        updatedAt,
+        deletedAt,
+        receivedAt: updatedAt
+      })
+    )
+  );
 }

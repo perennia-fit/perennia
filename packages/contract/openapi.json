@@ -8697,7 +8697,7 @@
               "partly_logged",
               "not_logged"
             ],
-            "description": "One per Compound and date, summed across the Protocols in effect. pending is today with planned doses still unfilled."
+            "description": "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled."
           },
           "notPlannedReason": {
             "type": "string",
@@ -21030,7 +21030,7 @@
             }
           },
           "400": {
-            "description": "The query is malformed: a date that is not a real YYYY-MM-DD date, fromLocalDate after toLocalDate, or a range of more than 366 days.",
+            "description": "The range is refused, with this body: fromLocalDate after toLocalDate, or a range of more than 366 days. A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -21210,7 +21210,7 @@
             }
           },
           "400": {
-            "description": "The query is malformed: a date that is not a real YYYY-MM-DD date, fromLocalDate after toLocalDate, a range of more than 366 days, toLocalDate after today, or a today more than one day from the server's UTC date.",
+            "description": "The range is refused, with this body: fromLocalDate after toLocalDate, a range of more than 366 days, toLocalDate after today, or a today more than one day from the server's UTC date. A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.",
             "content": {
               "application/json": {
                 "schema": {

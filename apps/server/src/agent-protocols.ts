@@ -41,8 +41,11 @@ import {
   planDays,
   pushToGroup,
   type DayStatus,
+  type DayStatusValue,
+  type NotPlannedReason,
   type PlanAmount,
   type PlanDay,
+  type PlanDayState,
   type PlanDose,
   type PlanProtocol,
   type ProtocolPeriod,
@@ -1051,6 +1054,49 @@ export const AgentEffectWindowErrorResponseSchema = z
  */
 export const AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS = 366;
 
+/**
+ * Every value of the string union `T`, as a tuple `z.enum` takes. It is
+ * checked both ways at compile time: a value the union lacks fails the
+ * element type, and a union value the tuple leaves out fails the `missing`
+ * check. So when the shared core gains a state or status, this module stops
+ * compiling instead of the response schema refusing the core's output with a
+ * 500 at run time.
+ */
+function unionValues<T extends string>() {
+  return <const V extends readonly [T, ...T[]]>(
+    values: V & ([Exclude<T, V[number]>] extends [never] ? unknown : { missing: Exclude<T, V[number]> })
+  ): V => values;
+}
+
+const PLAN_DAY_STATES = unionValues<PlanDayState>()([
+  "planned",
+  "not_scheduled_today",
+  "as_needed",
+  "no_schedule",
+  "removed",
+  "outside",
+  "paused",
+  "off_cycle"
+]);
+
+const DAY_STATUS_VALUES = unionValues<DayStatusValue>()([
+  "not_planned",
+  "paused",
+  "off_cycle",
+  "pending",
+  "logged",
+  "partly_logged",
+  "not_logged"
+]);
+
+const NOT_PLANNED_REASONS = unionValues<NotPlannedReason>()([
+  "not_scheduled_today",
+  "as_needed",
+  "no_schedule",
+  "removed",
+  "outside"
+]);
+
 const AgentProtocolDaysRangeQuerySchema = z.object({
   fromLocalDate: LocalDateSchema.openapi({
     param: { name: "fromLocalDate", in: "query" },
@@ -1118,16 +1164,7 @@ const AgentProtocolPlannedDaySchema = z
     compoundId: z.string().min(1),
     localDate: z.string().min(1),
     state: z
-      .enum([
-        "planned",
-        "not_scheduled_today",
-        "as_needed",
-        "no_schedule",
-        "removed",
-        "outside",
-        "paused",
-        "off_cycle"
-      ])
+      .enum(PLAN_DAY_STATES)
       .openapi({
         description:
           "What the Protocol planned for the Compound that day: planned, or why nothing was (not scheduled that day, as needed, no Schedule, member removed, outside the Protocol's dates, paused, or off cycle)."
@@ -1168,21 +1205,13 @@ const AgentProtocolDayStatusSchema = z
     compoundId: z.string().min(1),
     localDate: z.string().min(1),
     status: z
-      .enum([
-        "not_planned",
-        "paused",
-        "off_cycle",
-        "pending",
-        "logged",
-        "partly_logged",
-        "not_logged"
-      ])
+      .enum(DAY_STATUS_VALUES)
       .openapi({
         description:
-          "One per Compound and date, summed across the Protocols in effect. pending is today with planned doses still unfilled."
+          "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled."
       }),
     notPlannedReason: z
-      .enum(["not_scheduled_today", "as_needed", "no_schedule", "removed", "outside"])
+      .enum(NOT_PLANNED_REASONS)
       .optional()
       .openapi({ description: "Present exactly when status is not_planned." }),
     plannedCount: z.number().int().min(0),
@@ -1469,6 +1498,11 @@ export const agentEffectWindowRoute = createRoute({
   }
 });
 
+// The app sets no validation hook, so a query the request schema refuses
+// never reaches the route or its checks, as for every route here.
+const PROTOCOL_DAYS_SCHEMA_400_NOTE =
+  "A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.";
+
 function protocolDaysInvalidResponse(description: string) {
   return {
     400: {
@@ -1497,7 +1531,7 @@ export const agentProtocolPlannedDaysRoute = createRoute({
       }
     },
     ...protocolDaysInvalidResponse(
-      `The query is malformed: a date that is not a real YYYY-MM-DD date, fromLocalDate after toLocalDate, or a range of more than ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days.`
+      `The range is refused, with this body: fromLocalDate after toLocalDate, or a range of more than ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days. ${PROTOCOL_DAYS_SCHEMA_400_NOTE}`
     ),
     ...readResponses401_503()
   }
@@ -1520,7 +1554,7 @@ export const agentProtocolDayStatusesRoute = createRoute({
       }
     },
     ...protocolDaysInvalidResponse(
-      `The query is malformed: a date that is not a real YYYY-MM-DD date, fromLocalDate after toLocalDate, a range of more than ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days, toLocalDate after today, or a today more than one day from the server's UTC date.`
+      `The range is refused, with this body: fromLocalDate after toLocalDate, a range of more than ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days, toLocalDate after today, or a today more than one day from the server's UTC date. ${PROTOCOL_DAYS_SCHEMA_400_NOTE}`
     ),
     ...readResponses401_503()
   }
@@ -1631,13 +1665,15 @@ export type AgentProtocolsStore = {
   >;
   /**
    * The range's planned days. The query is already checked by
-   * `checkAgentProtocolDaysQuery`, so the store never sees a bad range.
+   * `checkAgentProtocolDaysQuery`, so the store never sees a bad range. The
+   * store parses its own response against the response schema, and REST and
+   * MCP return it as is, so a large range is schema-checked once.
    */
   listProtocolPlannedDays(input: {
     userId: string;
     query: AgentProtocolPlannedDaysQuery;
   }): Promise<AgentProtocolPlannedDaysResponse>;
-  /** The range's Day Statuses, the query already checked as above. */
+  /** The range's Day Statuses, the query checked and the response parsed as above. */
   listProtocolDayStatuses(input: {
     userId: string;
     query: AgentProtocolDayStatusesQuery;
@@ -1889,13 +1925,13 @@ export function prepareAgentProtocolBatchWrite({
 
   // `today` dates versions and archives, so it must be a date a person using
   // the app could have: every real zone is within a day of UTC.
-  const serverUtcDate = nowIso.slice(0, 10);
-  if (Math.abs(epochDay(request.today) - epochDay(serverUtcDate)) > AGENT_TODAY_MAX_SKEW_DAYS) {
+  const todayMessage = todayOutOfRangeMessage(request.today, now);
+  if (todayMessage !== null) {
     errors.push(
       entityIssue(0, null, {
         field: "today",
         rule: "today_out_of_range",
-        message: `today must be within ${AGENT_TODAY_MAX_SKEW_DAYS} day of the server's UTC date (${serverUtcDate}).`
+        message: todayMessage
       })
     );
   }
@@ -2120,6 +2156,19 @@ export function prepareAgentProtocolBatchWrite({
 const AGENT_TODAY_MAX_SKEW_DAYS = 1;
 
 /**
+ * Why `today` is refused, or null when it is within
+ * {@link AGENT_TODAY_MAX_SKEW_DAYS} of the server's UTC date. The Protocol
+ * batch write and the Day Status read share it, so one `today` is accepted or
+ * refused, with one message, by both.
+ */
+function todayOutOfRangeMessage(today: string, now: Date): string | null {
+  const serverUtcDate = now.toISOString().slice(0, 10);
+  return Math.abs(epochDay(today) - epochDay(serverUtcDate)) > AGENT_TODAY_MAX_SKEW_DAYS
+    ? `today must be within ${AGENT_TODAY_MAX_SKEW_DAYS} day of the server's UTC date (${serverUtcDate}).`
+    : null;
+}
+
+/**
  * The checks the planned-day and Day Status reads make before any storage
  * read, shared by REST and MCP so both refuse the same queries with the same
  * message (D6): `fromLocalDate` after `toLocalDate`, a range of more than
@@ -2151,12 +2200,9 @@ export function checkAgentProtocolDaysQuery(
     };
   }
   if (query.today !== undefined) {
-    const serverUtcDate = now.toISOString().slice(0, 10);
-    if (Math.abs(epochDay(query.today) - epochDay(serverUtcDate)) > AGENT_TODAY_MAX_SKEW_DAYS) {
-      return {
-        ok: false,
-        message: `today must be within ${AGENT_TODAY_MAX_SKEW_DAYS} day of the server's UTC date (${serverUtcDate}).`
-      };
+    const todayMessage = todayOutOfRangeMessage(query.today, now);
+    if (todayMessage !== null) {
+      return { ok: false, message: todayMessage };
     }
     if (to > epochDay(query.today)) {
       return {
@@ -3925,10 +3971,13 @@ async function selectOpaque(
  * (`ProtocolPlanRepository._planQuery`): every Protocol and Protocol Member
  * except rows tombstoned by undo (archived ones are kept with their frozen
  * dates, so past days still count them, D1), and every Schedule Version not
- * tombstoned. Each query is scoped to the user; with a `protocolId` only that
- * Protocol, its members and their versions are read. A `compoundId` keeps
- * only that Compound's member rows, which leaves its PlanDays exactly as a
- * read of the whole plan gives them, because `planDays` decides each Protocol,
+ * tombstoned. As there, a member counts only while the user holds a row for
+ * its Compound (archived or not): the app's query inner-joins `compounds`, so
+ * a member synced before its Compound plans nothing in either. Each query is
+ * scoped to the user; with a `protocolId` only that Protocol, its members and
+ * their versions are read. A `compoundId` keeps only that Compound's member
+ * rows (and their versions), which leaves its PlanDays exactly as a read of
+ * the whole plan gives them, because `planDays` decides each Protocol,
  * Compound and date on its own.
  *
  * A row the codecs can't read is left out rather than failing the read, as
@@ -3943,7 +3992,12 @@ async function readPlanProtocols(
   query: { protocolId?: string; compoundId?: string }
 ): Promise<PlanProtocol[]> {
   const { protocolId, compoundId } = query;
-  const [protocolRows, memberRows] = await Promise.all([
+  const memberPayload = schema.protocolCompounds.payload;
+  const memberFilter = and(
+    protocolId === undefined ? undefined : sql`${memberPayload}->>'protocol_id' = ${protocolId}`,
+    compoundId === undefined ? undefined : sql`${memberPayload}->>'compound_id' = ${compoundId}`
+  );
+  const [protocolRows, memberRows, scheduleRows] = await Promise.all([
     selectOpaque(
       db,
       schema.protocols,
@@ -3954,35 +4008,37 @@ async function readPlanProtocols(
       db,
       schema.protocolCompounds,
       userId,
-      protocolId === undefined
-        ? undefined
-        : sql`${schema.protocolCompounds.payload}->>'protocol_id' = ${protocolId}`
-    )
-  ]);
-  const members = memberRows.filter(
-    (row) =>
-      !isUndoTombstone(row) &&
-      typeof row.payload.compound_id === "string" &&
-      (compoundId === undefined || row.payload.compound_id === compoundId)
-  );
-  // A Schedule Version names its member, not its Protocol, so a Protocol's
-  // versions are the ones naming its members.
-  let scheduleRows: OpaqueRow[];
-  if (protocolId === undefined) {
-    scheduleRows = await selectOpaque(db, schema.schedules, userId);
-  } else if (members.length === 0) {
-    scheduleRows = [];
-  } else {
-    scheduleRows = await selectOpaque(
+      and(
+        memberFilter,
+        inArray(
+          sql`${memberPayload}->>'compound_id'`,
+          db
+            .select({ id: schema.compounds.id })
+            .from(schema.compounds)
+            .where(eq(schema.compounds.userId, userId))
+        )
+      )
+    ),
+    // A Schedule Version names its member, not its Protocol or Compound, so
+    // a filtered read's versions are the ones naming its filtered members.
+    selectOpaque(
       db,
       schema.schedules,
       userId,
-      inArray(
-        sql`${schema.schedules.payload}->>'protocol_compound_id'`,
-        members.map((member) => member.id)
-      )
-    );
-  }
+      memberFilter === undefined
+        ? undefined
+        : inArray(
+            sql`${schema.schedules.payload}->>'protocol_compound_id'`,
+            db
+              .select({ id: schema.protocolCompounds.id })
+              .from(schema.protocolCompounds)
+              .where(and(eq(schema.protocolCompounds.userId, userId), memberFilter))
+          )
+    )
+  ]);
+  const members = memberRows.filter(
+    (row) => !isUndoTombstone(row) && typeof row.payload.compound_id === "string"
+  );
 
   const membersByProtocol = groupBy(members, (row) => String(row.payload.protocol_id ?? ""));
   const versionsByMember = groupBy(
