@@ -656,19 +656,26 @@ final class ProtocolPlanRepository {
     _PlanRows plan,
     List<DoseRecord> doses,
   ) {
-    // Every Protocol the Compound is a member of, as read, and only this
-    // Compound's PlanDays from them: `planDays` decides each Compound and
-    // date on its own, so these are the PlanDays a read of the whole plan
-    // gives it.
+    // Every Protocol the Compound is a member of, narrowed to this
+    // Compound's member rows. `planDays` decides each Compound and date from
+    // the Protocol's own fields and that Compound's rows alone, so these are
+    // exactly the PlanDays a read of the whole plan gives it, without
+    // planning the other members only to drop them.
     final protocols = <PlanProtocol>[
       for (final protocol in plan.protocols)
         if (protocol.members.any((member) => member.compoundId == compoundId))
-          protocol,
+          PlanProtocol(
+            protocolId: protocol.protocolId,
+            startLocalDate: protocol.startLocalDate,
+            endLocalDate: protocol.endLocalDate,
+            period: protocol.period,
+            archivedOn: protocol.archivedOn,
+            remindersEnabled: protocol.remindersEnabled,
+            members: protocol.members
+                .where((member) => member.compoundId == compoundId),
+          ),
     ];
-    final days = <PlanDay>[
-      for (final day in planDays(protocols, from, to))
-        if (day.compoundId == compoundId) day,
-    ];
+    final days = planDays(protocols, from, to);
     return ConsistencyRange(
       compoundId: compoundId,
       from: from,

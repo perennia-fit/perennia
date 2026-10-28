@@ -121,9 +121,17 @@ class ConsistencyScreen extends StatelessWidget {
         appBar: AppBar(
           backgroundColor: colors.chrome,
           title: appBarTitle,
+          // The theme's default tab color is the primary, which fails WCAG
+          // AA on the light chrome (about 2.4:1). The selected tab reads in
+          // textPrimary over an indicator of the same color, whose shape,
+          // not its hue, marks the selection; the others read in
+          // textSecondary.
           bottom: TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
+            labelColor: colors.textPrimary,
+            unselectedLabelColor: colors.textSecondary,
+            indicatorColor: colors.textPrimary,
             tabs: <Widget>[
               for (final tab in tabs)
                 Tab(
@@ -325,11 +333,21 @@ class _RangePicker extends ConsumerWidget {
   /// A custom range ends today at the latest: the view never shows a day
   /// still to come. One longer than [maxConsistencyRangeDays] keeps its last
   /// [maxConsistencyRangeDays] days, and the summary shows the dates read.
+  ///
+  /// The controller is read before the picker opens, never through `ref`
+  /// after it: while the picker is open the body can switch between its
+  /// loading list and the chart's scroll view (a first read settling, say),
+  /// which remounts this picker and disposes the
+  /// `ref` that opened it. The Notifier outlives that remount, because
+  /// `consistencyProvider` and the new picker both watch it; when the whole
+  /// view was popped instead, the controller is no longer `mounted` and the
+  /// pick is dropped.
   Future<void> _pickCustomRange(
     BuildContext context,
     WidgetRef ref,
     ConsistencyRangeSelection selection,
   ) async {
+    final controller = ref.read(consistencyRangeControllerProvider.notifier);
     final today = selection.today.toLocalDateTime();
     final picked = await showDateRangePicker(
       context: context,
@@ -340,13 +358,13 @@ class _RangePicker extends ConsumerWidget {
         end: selection.to.toLocalDateTime(),
       ),
     );
-    if (picked == null) {
+    if (picked == null || !controller.mounted) {
       return;
     }
-    ref.read(consistencyRangeControllerProvider.notifier).selectCustom(
-          ProtocolDayDate.fromDateTime(picked.start),
-          ProtocolDayDate.fromDateTime(picked.end),
-        );
+    controller.selectCustom(
+      ProtocolDayDate.fromDateTime(picked.start),
+      ProtocolDayDate.fromDateTime(picked.end),
+    );
   }
 }
 
