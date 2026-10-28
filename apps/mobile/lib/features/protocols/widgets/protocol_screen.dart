@@ -87,14 +87,18 @@ class ProtocolListScreen extends ConsumerWidget {
   Future<void> _openForm(BuildContext context, {ProtocolRecord? protocol}) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ProtocolFormScreen(protocol: protocol),
+        builder: (_) => ProtocolsLockGate(
+          child: ProtocolFormScreen(protocol: protocol),
+        ),
       ),
     );
   }
 
   Future<void> _openEffectView(BuildContext context) {
     return Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const EffectScreen()),
+      MaterialPageRoute<void>(
+        builder: (_) => const ProtocolsLockGate(child: EffectScreen()),
+      ),
     );
   }
 }
@@ -214,7 +218,9 @@ class _ProtocolRow extends ConsumerWidget {
     }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ProtocolFormScreen(protocol: detail),
+        builder: (_) => ProtocolsLockGate(
+          child: ProtocolFormScreen(protocol: detail),
+        ),
       ),
     );
   }
@@ -1401,8 +1407,7 @@ class _RemindersField extends ConsumerWidget {
     final l10n = context.l10n;
     final status = ref.watch(protocolReminderStatusProvider).value ??
         ProtocolReminderStatus.unknown;
-    final denied =
-        status.permission == TimerBackgroundPermissionStatus.denied;
+    final denied = status.permission == TimerBackgroundPermissionStatus.denied;
     final horizonEnd = status.horizonEnd;
 
     return Column(
