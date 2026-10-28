@@ -1571,6 +1571,36 @@ export type AgentProtocolBatchWriteTargetOutcome = {
   "deletedAt"?: string | null;
 };
 
+export type AgentProtocolDayStatus = {
+  "compoundId": string;
+  "localDate": string;
+  "status": "not_planned" | "paused" | "off_cycle" | "pending" | "logged" | "partly_logged" | "not_logged";
+  "notPlannedReason"?: "not_scheduled_today" | "as_needed" | "no_schedule" | "removed" | "outside";
+  "plannedCount": number;
+  "loggedCount": number;
+  "extraCount": number;
+  "fills"?: Array<AgentProtocolDayStatusFill>;
+};
+
+export type AgentProtocolDayStatusFill = {
+  "slot": number;
+  "protocolId": string;
+  "plannedLocalTime": string | null;
+  "amountValue": number | null;
+  "amountEntered": string | null;
+  "unit": "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
+  "route": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
+  "doseId": string | null;
+};
+
+export type AgentProtocolDayStatusesResponse = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "today": string;
+  "detail": "summary" | "doses";
+  "dayStatuses": Array<AgentProtocolDayStatus>;
+};
+
 export type AgentProtocolListResponse = {
   "protocols": Array<AgentProtocol>;
   "limit": number;
@@ -1602,6 +1632,28 @@ export type AgentProtocolPeriod = {
   "to": string;
 }>;
 } | null;
+
+export type AgentProtocolPlannedDay = {
+  "protocolId": string;
+  "compoundId": string;
+  "localDate": string;
+  "state": "planned" | "not_scheduled_today" | "as_needed" | "no_schedule" | "removed" | "outside" | "paused" | "off_cycle";
+  "planned": Array<AgentProtocolPlannedDose>;
+};
+
+export type AgentProtocolPlannedDaysResponse = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "plannedDays": Array<AgentProtocolPlannedDay>;
+};
+
+export type AgentProtocolPlannedDose = {
+  "localTime": string | null;
+  "amountValue": number | null;
+  "amountEntered": string | null;
+  "unit": "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
+  "route": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
+};
 
 export type AgentProtocolScheduleVersion = {
   "id": string;
@@ -2194,6 +2246,22 @@ export type ListAgentMetricsInput = {
   "fields"?: string;
 };
 
+export type ListAgentProtocolDayStatusesInput = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "compoundId"?: string;
+  "protocolId"?: string;
+  "today": string;
+  "detail"?: "summary" | "doses";
+};
+
+export type ListAgentProtocolPlannedDaysInput = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "compoundId"?: string;
+  "protocolId"?: string;
+};
+
 export type ListAgentProtocolsInput = {
   "search"?: string;
   "includeArchived"?: boolean | null;
@@ -2286,6 +2354,8 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentMetricReadings",
   "listAgentMetrics",
   "listAgentNutritionGoals",
+  "listAgentProtocolDayStatuses",
+  "listAgentProtocolPlannedDays",
   "listAgentProtocols",
   "listAgentRoutines",
   "listAgentWorkoutTemplates",
@@ -2680,6 +2750,26 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/nutrition/goals",
       expectedStatus: 200,
+      signal: options.signal
+    });
+  }
+
+  async listAgentProtocolDayStatuses(input: ListAgentProtocolDayStatusesInput, options: AgentClientRequestOptions = {}): Promise<AgentProtocolDayStatusesResponse> {
+    return this.request<AgentProtocolDayStatusesResponse>({
+      method: "GET",
+      path: "/agent/protocols/day-statuses",
+      expectedStatus: 200,
+      query: { "fromLocalDate": input.fromLocalDate, "toLocalDate": input.toLocalDate, "compoundId": input.compoundId, "protocolId": input.protocolId, "today": input.today, "detail": input.detail },
+      signal: options.signal
+    });
+  }
+
+  async listAgentProtocolPlannedDays(input: ListAgentProtocolPlannedDaysInput, options: AgentClientRequestOptions = {}): Promise<AgentProtocolPlannedDaysResponse> {
+    return this.request<AgentProtocolPlannedDaysResponse>({
+      method: "GET",
+      path: "/agent/protocols/planned-days",
+      expectedStatus: 200,
+      query: { "fromLocalDate": input.fromLocalDate, "toLocalDate": input.toLocalDate, "compoundId": input.compoundId, "protocolId": input.protocolId },
       signal: options.signal
     });
   }

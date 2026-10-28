@@ -612,6 +612,33 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async listAgentProtocolDayStatuses(input, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/protocols/day-statuses",
+      expectedStatus: 200,
+      query: pick(input, [
+        "fromLocalDate",
+        "toLocalDate",
+        "compoundId",
+        "protocolId",
+        "today",
+        "detail"
+      ]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentProtocolPlannedDays(input, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/protocols/planned-days",
+      expectedStatus: 200,
+      query: pick(input, ["fromLocalDate", "toLocalDate", "compoundId", "protocolId"]),
+      signal: options.signal
+    });
+  }
+
   async listAgentProtocols(input = {}, options = {}) {
     return this.request({
       method: "GET",

@@ -106,13 +106,19 @@ import {
   AgentEffectWindowErrorResponseSchema,
   AgentEffectWindowResponseSchema,
   agentProtocolBatchWriteRoute,
+  agentProtocolDayStatusesRoute,
   agentProtocolListRoute,
+  agentProtocolPlannedDaysRoute,
   AgentProtocolBatchWriteResponseSchema,
+  AgentProtocolDayStatusesResponseSchema,
+  AgentProtocolDaysInvalidRequestResponseSchema,
   AgentProtocolListResponseSchema,
+  AgentProtocolPlannedDaysResponseSchema,
   AgentProtocolsBatchWriteErrorResponseSchema,
   AgentProtocolsUnavailableResponseSchema,
   agentProtocolsBatchRequestFingerprint,
   agentProtocolsWriteFailure,
+  checkAgentProtocolDaysQuery,
   finalizeAgentDoseBatchWriteResults,
   finalizeAgentProtocolsEntityBatchWriteResults,
   prepareAgentCompoundBatchWrite,
@@ -3344,6 +3350,116 @@ export function createApp(options: CreateAppOptions = {}) {
       AgentEffectWindowResponseSchema.parse(result.value),
       200
     );
+  });
+
+  app.openapi(agentProtocolPlannedDaysRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const query = context.req.valid("query");
+    const checked = checkAgentProtocolDaysQuery(query);
+    if (!checked.ok) {
+      return context.json(
+        AgentProtocolDaysInvalidRequestResponseSchema.parse({
+          code: "agent_protocol_days_invalid_request",
+          message: checked.message
+        }),
+        400
+      );
+    }
+    const result = await agentProtocolsStore.listProtocolPlannedDays({
+      userId: agentAuth.agent.userId,
+      query
+    });
+    return context.json(AgentProtocolPlannedDaysResponseSchema.parse(result), 200);
+  });
+
+  app.openapi(agentProtocolDayStatusesRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const query = context.req.valid("query");
+    const checked = checkAgentProtocolDaysQuery(query);
+    if (!checked.ok) {
+      return context.json(
+        AgentProtocolDaysInvalidRequestResponseSchema.parse({
+          code: "agent_protocol_days_invalid_request",
+          message: checked.message
+        }),
+        400
+      );
+    }
+    const result = await agentProtocolsStore.listProtocolDayStatuses({
+      userId: agentAuth.agent.userId,
+      query
+    });
+    return context.json(AgentProtocolDayStatusesResponseSchema.parse(result), 200);
   });
 
   app.openapi(agentDoseBatchWriteRoute, async (context) => {
