@@ -2,7 +2,7 @@
 
 *   **Author:** Leonardo Pinheiro
 *   **Status:** Approved
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, and to record the decisions made building file 46a and Phase 5)
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, to record the decisions made building file 46a and Phase 5, and to record the decisions made building Phase 6)
 
 --------------------------------------------------------------------------------
 
@@ -307,6 +307,25 @@ plugin's list of pending notifications likely fails while a rest-timer
 notification is pending, which leaves reminders stale until a later run.
 And `willPresent` uses presentation options that need iOS 14 in an app
 whose deployment target is iOS 13.0.
+
+Building Phase 6 raised more. They are settled the same way:
+
+*   the two reads' response envelopes, field names and enums, their 400
+    body, how the range is counted, and the `today` bound on the Day
+    Status read → D6;
+*   what the Day Status read returns with a `protocolId`, and how that can
+    differ from the app → D6;
+*   rows the reads can't use, and a member whose Compound row is missing
+    → D6 and file 61;
+*   the filter keys, which file 61 named wrongly → file 61;
+*   the server's read-latency budget, which file 65 assumed but didn't
+    exist → file 65 and [Non-Functional Requirements](#non-functional-requirements);
+*   the observability deny-list keys, and the files no entry listed →
+    files 64 and 65 and [Non-Functional Requirements](#non-functional-requirements);
+*   when Status becomes Current → file 66.
+
+None of them changes what Phase 6 built, so there is no lettered entry
+after file 65.
 
 ## Critical User Journeys (CUJs)
 
@@ -1346,7 +1365,19 @@ amounts. Building Phase 4 settled the rest:
         *   Parameters: `fromLocalDate` and `toLocalDate` (inclusive, at most
             366 days apart; future dates allowed), plus optional `compoundId`
             and `protocolId`.
-        *   Returns the `PlanDay` records of the core API.
+        *   Returns the `PlanDay` records of the core API, in the envelope
+            `{fromLocalDate, toLocalDate, plannedDays}`. Each entry of
+            `plannedDays` is `{protocolId, compoundId, localDate, state, planned}`:
+            one per Protocol, Compound with a member row in it, and date,
+            ordered by date, then Protocol id, then Compound id. `planned`
+            is non-empty exactly when `state` is `planned`, in the rule's
+            stored order. Each planned dose is
+            `{localTime, amountValue, amountEntered, unit, route}`.
+            `localTime` is null for an untimed dose. The four amount fields
+            are always present, and null when unset. They keep the core's
+            names, not the Schedule's Agent names (`doseAmountValue` and so
+            on, under Naming above), because this read returns the core's
+            records. (Settled after Phase 6's build.)
     *   `listAgentProtocolDayStatuses`: `GET /agent/protocols/day-statuses`, MCP
         tool `agent_list_protocol_day_statuses`.
         *   Parameters: the same as the first, plus a required `today` and
@@ -1355,9 +1386,76 @@ amounts. Building Phase 4 settled the rest:
         *   With `summary`, returns
             `{compoundId, localDate, status, notPlannedReason?, plannedCount, loggedCount, extraCount}`.
             With `doses`, it also returns `fills`.
+        *   **Its envelope** is
+            `{fromLocalDate, toLocalDate, today, detail, dayStatuses}`,
+            echoing the query, with `detail` at its default when left out.
+            `dayStatuses` holds one Day Status per Compound and date that
+            has at least one planned day in the plan read, ordered by
+            date, then Compound id. A Compound in no Protocol read has
+            none. `notPlannedReason` is present only when `status` is
+            `not_planned`. `fills` is present only with `detail=doses`:
+            every slot, in slot order, as
+            `{slot, protocolId, plannedLocalTime, amountValue, amountEntered, unit, route, doseId}`,
+            with `doseId` null for an unfilled slot and the amount fields
+            as in the planned-day read. (Settled after Phase 6's build.)
+        *   **With `protocolId`, it reads one Protocol's plan.** The read
+            plans only that Protocol (file 61) and matches the Compound's
+            Doses against its planned doses alone. Doses are never filtered
+            by Protocol, because a Dose's tag never decides what it fills
+            (step 2). So for a Compound that is also in another Protocol,
+            the answer can differ from the app's Day Status, which sums
+            every Protocol in effect. Say Protocol A plans the Compound at
+            09:00 and Protocol B at 21:00, and one Dose is logged at 20:50
+            on a past day. The app fills B's 21:00 slot and shows "Partly
+            logged". With A's `protocolId`, the read has only the 09:00
+            slot, the Dose fills it, and the day reads `logged`. The app
+            has no Day Status for one Protocol, so an Agent that needs the
+            app's answer for a Compound filters by `compoundId` and leaves
+            `protocolId` out. The schema's description says so. (Recorded
+            as built after Phase 6's build.)
+    *   **Response enums** are the core's `PlanDayState`, `DayStatusValue`
+        and `NotPlannedReason`, checked against them at compile time both
+        ways. A value added to the core stops the server compiling, rather
+        than the response schema refusing the core's output with a 500.
+        (Settled after Phase 6's build.)
     *   Errors: 400 for a range over 366 days, for `fromLocalDate` after
         `toLocalDate`, and for `toLocalDate` after `today`. Unknown ids return
-        an empty list.
+        an empty list. Building Phase 6 settled the rest:
+        *   **The range counts both ends**, as the Consistency view counts
+            it (file 44): 2026-01-01 to 2026-12-31 is 365 days, and the
+            most either read takes is 366.
+        *   **`today` is bounded on the Day Status read too.** It must be
+            within one day of the server's UTC date, the bound the Protocol
+            batch write puts on its `today` (above), with the same message;
+            one check serves both. Every real UTC offset puts the user's
+            date there (D2). Without the bound, a `today` a year ahead
+            would read every planned day before it as Not logged, which no
+            person using the app could see.
+        *   **The 400 body** for these checks is
+            `{code: "agent_protocol_days_invalid_request", message}`. REST
+            and MCP run the same checks, through one function, before any
+            storage read; MCP returns the same body as an error result. In
+            order: `fromLocalDate` after `toLocalDate`, the range, the
+            `today` bound, then `toLocalDate` after `today`.
+        *   **A query the request schema refuses**, such as a date that
+            isn't a real `YYYY-MM-DD` date or a missing `today`, is
+            answered 400 before authentication, with the request
+            validator's own error body, as on every other route. The route
+            descriptions say so.
+        *   (Settled after Phase 6's build.)
+    *   **Rows the reads can't use** are skipped rather than failing the
+        read, as the Protocol list read skips them (Reads, below):
+        *   a Protocol with no readable start date plans nothing;
+        *   a Schedule Version whose `effectiveFrom` or rule the codec
+            can't read is left out, and a period it can't read reads as
+            none;
+        *   a Dose with no readable Compound id, local date or `tookAt`
+            fills nothing.
+
+        A Protocol Member plans only while the user holds a row for its
+        Compound, archived or not, because the app's plan query inner-joins
+        `compounds`. A member synced before its Compound plans nothing in
+        either until the Compound arrives. (Settled after Phase 6's build.)
 *   **Reads** return each Protocol Member's full version history as
     `versions`, sorted by `effectiveFrom` and then id, plus `currentVersion`,
     the version the editor would show (the latest `effectiveFrom`, then the
@@ -1711,7 +1809,14 @@ date; that is the server's write path (D6).
     *   The server's observability deny-list already covers the parent keys
         that hold every new field, so no keys are added. A test (file 31)
         proves a logged Protocol or Schedule write carries none of the plan
-        values.
+        values. That held for the writes, except `today` (file 31). Phase
+        6's reads add four keys that sit under no denied parent:
+        `fromLocalDate` and `toLocalDate` at the top level of the query,
+        and `plannedDays` and `dayStatuses` at the top level of the
+        responses. They join the deny-list in
+        `apps/server/src/observability.ts`, with a test in
+        `apps/server/test/observability.test.mjs` that failed before they
+        did (file 65). (Settled after Phase 6's build.)
     *   CSV export keeps excluding all Protocols data, including the new
         fields.
     *   Reminder state never leaves the device.
@@ -1724,7 +1829,10 @@ date; that is the server's write path (D6).
 *   **Performance.** The Planned list computes one day for the user's Protocols
     in effect. The Consistency view computes at most 366 days for one Compound.
     The reminder reconciler computes at most 14 days. A new performance test
-    (Phase 4) pins the worst case of these.
+    (Phase 4) pins the worst case of these. On the server, the Agent's
+    planned-day and Day Status reads compute at most 366 days of one user's
+    Protocols. The server had no read-latency budget, so file 65 sets one
+    for them: 250 ms per request. (Settled after Phase 6's build.)
 *   **Rollout and rollback.** One-way. Rollback is a forward fix: a build that
     still speaks sync protocol 2 and hides the plan features. A migrated Drift
     schema can't be downgraded on the device. There is no feature flag. A new
@@ -3665,42 +3773,114 @@ Phase 5's. Nothing in Phase 6 depends on it.
     response shapes and errors.
     *   **Doses** are queried with SQL predicates on the user,
         `payload->>'local_date'` within the range, and
-        `payload->>'compound_id'` when given.
-    *   **Protocols, Protocol Members and Schedules** use the user and
-        `payload->>'protocol_id'` when given.
+        `payload->>'compound_id'` when given. Archived Doses
+        (`deleted_at` set) are left out, as matching leaves them out in the
+        app. The range compares `local_date` with `collate "C"`, so
+        `YYYY-MM-DD` text compares in byte order whatever the database's
+        collation. `protocolId` never filters Doses (D6, "With
+        `protocolId`, it reads one Protocol's plan"). A Dose's local time
+        is its `tookAt` at its frozen offset, or in UTC when it has none
+        (D2). (Settled after Phase 6's build.)
+    *   **Protocols, Protocol Members and Schedules** are scoped to the
+        user. This entry first said all three filter on
+        `payload->>'protocol_id'` when given, but only the member payload
+        has that key. As built:
+        *   Protocols by `id`;
+        *   members by `payload->>'protocol_id'`, and by
+            `payload->>'compound_id'` when `compoundId` is given;
+        *   Schedule Versions by `payload->>'protocol_compound_id'` among
+            the ids of the members those filters keep, because a version
+            names its member, not its Protocol or Compound.
+
+        With only `compoundId`, every Protocol is read, and one with no
+        member of that Compound plans nothing. A member is read only while
+        the user holds a row for its Compound (a subquery on `compounds`;
+        D6, "Rows the reads can't use"). The three selects run together.
+        (Settled after Phase 6's build.)
     *   No expression index is added in v1; the performance budget in file 65
         decides whether one is needed later.
     *   Responses carry statuses and counts only.
+    *   **Shared pieces.** `checkAgentProtocolDaysQuery` makes D6's 400
+        checks for REST and MCP before any storage read.
+        `AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS` is 366. The `today` bound is
+        one helper, which the Protocol batch write's `today_out_of_range`
+        check reads too, so both refuse the same `today` with the same
+        message. The store's `listProtocolPlannedDays` and
+        `listProtocolDayStatuses` parse their own response against the
+        response schema, and REST and MCP return it as is, so a large
+        range is checked once. (Settled after Phase 6's build.)
 
 ##### 62. `apps/server/src/app.ts` and `apps/server/src/index.ts` (Modify, Phase 6 part)
 
 *   **Proposed Changes**: `app.openapi(...)` registrations for both GET
-    routes, next to the existing Protocols reads, and their exports.
+    routes, next to the existing Protocols reads, and their exports. Each
+    handler authenticates, runs the shared check (file 61), and returns
+    the store's response. (Settled after Phase 6's build.)
 
 ##### 63. `apps/server/src/agent-mcp.ts` (Modify)
 
 *   **Proposed Changes**: The MCP tools `agent_list_protocol_planned_days` and
-    `agent_list_protocol_day_statuses`, with the same parameters.
+    `agent_list_protocol_day_statuses`, with the same parameters. Each
+    tool runs the same check as REST, returns the same
+    `agent_protocol_days_invalid_request` body as an error result, and
+    calls the same store method. (Settled after Phase 6's build.)
 
 ##### 64. Generated contract (Regenerate)
 
-*   **Proposed Changes**: As file 32, for the new routes.
+*   **Proposed Changes**: As file 32, for the new routes. The generated
+    command-map block of `agent-skills/perennia/references/api-operations.md`
+    gains `list-protocol-planned-days` and `list-protocol-day-statuses`.
+    (Settled after Phase 6's build.)
 
 ##### 65. Tests (Modify)
 
 *   `apps/server/test/agent-protocols.test.mjs`:
     *   range limits and each 400 error;
-    *   the required `today`;
+    *   the required `today`, and its one-day bound;
     *   future dates allowed on planned days and rejected on Day Statuses;
-    *   filters;
+    *   filters, and an empty list for an unknown id;
     *   summary vs `doses` detail;
+    *   the reads give the shared core's answer for a stored plan, scoped
+        to the user, including a member whose Compound row hasn't synced,
+        which plans nothing until it does;
     *   a 366-day request for a user with 2,000 Doses answering within the
-        existing read-latency budget.
+        read-latency budget.
+        *   **The budget.** This entry assumed an existing read-latency
+            budget, but the server had none. It is 250 ms per request,
+            end to end through the route against a real Postgres: the
+            storage reads, the shared core and the response's schema check.
+            Each read is run once to warm up, then three times, and the
+            median must be under 250 ms. The constant,
+            `AGENT_PROTOCOL_DAYS_READ_BUDGET_MS`, is defined next to its
+            test. (Settled after Phase 6's build.)
 *   `apps/server/test/agent-mcp-parity.test.mjs`: the new tools match REST.
+*   `apps/server/test/observability.test.mjs`: a logged planned-day or Day
+    Status read, its query and its response, carries none of the plan
+    values. It failed before the four new keys joined the deny-list
+    (Non-Functional Requirements). (Settled after Phase 6's build.)
+*   **Files no entry listed.** Existing drift and parity tests hold every
+    Agent operation to the skill and the MCP tool list, so Phase 6 also
+    changed:
+    *   `packages/contract/src/agent-skill-reference.ts`: each operation's
+        skill command and MCP tool name;
+    *   `agent-skills/perennia/scripts/prn-agent.mjs`: the skill's two
+        commands, with their method, path and operation id;
+    *   `agent-skills/perennia/scripts/prn-code.mjs`: the skill's client
+        methods for the two reads;
+    *   `apps/server/test/agent-mcp.test.mjs`: the expected list of MCP
+        tools;
+    *   `apps/server/src/observability.ts`: the four deny-list keys.
+
+    (Settled after Phase 6's build.)
 
 ##### 66. `docs/designs/SITEMAP.md` and this spec (Modify)
 
-*   **Proposed Changes**: Status → Current once Phase 6 merges.
+*   **Proposed Changes**: Status → Current, here and in the spec's
+    SITEMAP.md entry, once every entry is built. That needs Phase 6 and
+    file 60a, which can merge in either order. Whichever of their pull
+    requests merges last sets it; if both merge without setting it, a
+    one-line follow-up does. (Settled after Phase 6's build; this entry
+    first said "once Phase 6 merges", before file 60a existed.)
 
 ### Verification Plan
 
