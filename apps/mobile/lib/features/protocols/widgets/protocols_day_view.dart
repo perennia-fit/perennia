@@ -1087,10 +1087,17 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
 
   /// Moves the Dose to another date, keeping its time of day (CUJ 7). The
   /// picker ends at today, or at the Dose's own date when that is later, so
-  /// it never offers a day that hasn't happened.
+  /// it never offers a day that hasn't happened. "Today" is read in the same
+  /// frame as the fields: at the edited Dose's frozen offset when it has one,
+  /// else in the device's zone. Read in the device's zone, a Dose logged far
+  /// from it could be moved to a day that hasn't happened where it was taken,
+  /// or kept from a day that has.
   Future<void> _pickDate() async {
     final current = DateTime(_tookAt.year, _tookAt.month, _tookAt.day);
-    final now = _now();
+    final offset = _offsetMinutes;
+    final now = offset == null
+        ? _now()
+        : _now().toUtc().add(Duration(minutes: offset));
     final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,

@@ -3110,18 +3110,17 @@ async function finalizeProtocolPlanRows(
       continue;
     }
 
-    const protocolMemberIds = [...storedMembers.values()]
+    const protocolMembers = [...storedMembers.values()]
       .filter((member) => member.payload.protocol_id === protocol.id && !isUndoTombstone(member))
-      .map((member) => member.id)
-      .sort(compareIds);
-    for (const memberId of protocolMemberIds) {
-      const versions = versionsByMember.get(memberId) ?? [];
+      .sort((a, b) => compareIds(a.id, b.id));
+    for (const member of protocolMembers) {
+      const versions = versionsByMember.get(member.id) ?? [];
       const earliest = versions[0];
       if (
         earliest === undefined ||
         earliest.effectiveFrom > oldStart ||
         earliest.effectiveFrom <= newStart ||
-        removedBeforePlanning(storedMembers.get(memberId)!, earliest.effectiveFrom)
+        removedBeforePlanning(member, earliest.effectiveFrom)
       ) {
         continue;
       }
@@ -3144,7 +3143,7 @@ async function finalizeProtocolPlanRows(
         payload
       });
       insertVersion(versions, { id, effectiveFrom: newStart, payload });
-      versionsByMember.set(memberId, versions);
+      versionsByMember.set(member.id, versions);
     }
   }
 

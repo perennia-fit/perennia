@@ -599,6 +599,70 @@ void main() {
     },
   );
 
+  testWidgets(
+    'editing a Dose logged at a western offset, the date picker ends at '
+    'today where it was taken, not the device\'s today',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      // Now is 11:30 UTC on 2026-10-28: 23:30 on 2026-10-27 at UTC−12:00,
+      // where the Dose was logged, and 2026-10-28 in almost every device
+      // zone. Picking 2026-10-28 would move the Dose to a moment that has
+      // not happened where it was taken.
+      final dose = _offsetDose(
+        tookAt: DateTime.utc(2026, 10, 27, 21),
+        localDate: _today,
+        offsetMinutes: -720,
+      );
+      await _pumpEditSheet(
+        tester,
+        dose: dose,
+        controller: controller,
+        now: DateTime.utc(2026, 10, 28, 11, 30),
+      );
+
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 27, 2026');
+      await tester.tap(find.byKey(LogDoseSheet.dateFieldKey));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byType(CalendarDatePicker),
+      );
+      expect(picker.lastDate, DateTime(2026, 10, 27));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'editing a Dose logged at an eastern offset, the date picker offers '
+    'today where it was taken, even when the device is still a day behind',
+    (tester) async {
+      final controller = _FakeProtocolDayController();
+      // Now is 10:30 UTC on 2026-10-28: 00:30 on 2026-10-29 at UTC+14:00,
+      // where the Dose was logged (09:00 on 2026-10-28 there).
+      final dose = _offsetDose(
+        tookAt: DateTime.utc(2026, 10, 27, 19),
+        localDate: _tomorrow,
+        offsetMinutes: 840,
+      );
+      await _pumpEditSheet(
+        tester,
+        dose: dose,
+        controller: controller,
+        now: DateTime.utc(2026, 10, 28, 10, 30),
+      );
+
+      expect(_fieldValue(tester, LogDoseSheet.dateFieldKey), 'Oct 28, 2026');
+      await tester.tap(find.byKey(LogDoseSheet.dateFieldKey));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byType(CalendarDatePicker),
+      );
+      expect(picker.lastDate, DateTime(2026, 10, 29));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets('Log Dose sheet meets accessibility guidelines in both themes', (
     tester,
   ) async {
@@ -660,6 +724,29 @@ Future<void> _pickDay(WidgetTester tester, String day) async {
   await tester.pump();
   await tester.tap(find.text('OK'));
   await tester.pumpAndSettle();
+}
+
+/// A Vitamin D Dose logged at a frozen UTC offset of [offsetMinutes].
+DoseRecord _offsetDose({
+  required DateTime tookAt,
+  required ProtocolDayDate localDate,
+  required int offsetMinutes,
+}) {
+  return DoseRecord(
+    id: 'dose-offset',
+    compoundId: 'compound-vitamin-d',
+    compoundName: 'Vitamin D',
+    amountValue: 1,
+    amountEntered: '1',
+    unit: DoseUnit.internationalUnit,
+    route: DoseRoute.oral,
+    tookAt: tookAt,
+    timezone: 'UTC${offsetMinutes < 0 ? '-' : '+'}${offsetMinutes.abs() ~/ 60}',
+    localDate: localDate,
+    provenance: DoseProvenance.manual,
+    updatedAt: tookAt,
+    timezoneOffsetMinutes: offsetMinutes,
+  );
 }
 
 DoseRecord _editableDose({required DateTime tookAt}) {
@@ -822,7 +909,9 @@ Future<void> _pumpEditSheet(
   required _FakeProtocolDayController controller,
   ThemeData? theme,
   List<ProtocolOptionRecord> protocolOptions = const <ProtocolOptionRecord>[],
+  DateTime? now,
 }) async {
+  final clock = now ?? _now;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -830,7 +919,7 @@ Future<void> _pumpEditSheet(
         protocolOptionListProvider.overrideWith(
           (ref) => Stream<List<ProtocolOptionRecord>>.value(protocolOptions),
         ),
-        protocolsClockProvider.overrideWithValue(() => _now),
+        protocolsClockProvider.overrideWithValue(() => clock),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,

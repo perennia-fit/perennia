@@ -459,9 +459,28 @@ void main() {
       'it adds no Dose',
       (tester) async {
         final dose = _honoluluTrtDose();
+        // A second TRT Dose that day, at 20:00 there, listed first: the
+        // 08:40 Dose fills the one 09:00 slot and this one is an extra. The
+        // row must open the Dose its fill names, not the day's first Dose or
+        // the first of its Compound.
+        final extra = DoseRecord(
+          id: 'dose-trt-extra',
+          compoundId: 'c-trt',
+          compoundName: 'TRT',
+          amountValue: 0.3,
+          amountEntered: '0.3',
+          unit: DoseUnit.milliliter,
+          route: DoseRoute.intramuscular,
+          tookAt: DateTime.utc(2026, 10, 28, 6),
+          timezone: 'HST',
+          localDate: _today,
+          provenance: DoseProvenance.manual,
+          updatedAt: DateTime.utc(2026, 10, 28, 6),
+          timezoneOffsetMinutes: -600,
+        );
         final day = ProtocolDayRecord(
           localDate: _today,
-          doses: <DoseRecord>[dose],
+          doses: <DoseRecord>[extra, dose],
         );
         final controller = _FakeProtocolDayController(
           day,
@@ -470,11 +489,18 @@ void main() {
             day: day,
             doses: <PlanDose>[
               PlanDose(
+                doseId: extra.id,
+                compoundId: 'c-trt',
+                localDate: _today,
+                localTime: extra.localTime,
+                sequence: 0,
+              ),
+              PlanDose(
                 doseId: dose.id,
                 compoundId: 'c-trt',
                 localDate: _today,
                 localTime: dose.localTime,
-                sequence: 0,
+                sequence: 1,
               ),
             ],
           ),
