@@ -67,6 +67,8 @@ import UserNotifications
       scheduleTimer(call: call, result: result)
     case "cancelTimer":
       cancelTimer(call: call, result: result)
+    case "pendingProtocolReminders":
+      pendingProtocolReminders(result: result)
     case "timerNotificationsReady":
       flutterReady = true
       drainBufferedTap()
@@ -226,6 +228,26 @@ import UserNotifications
     result(nil)
   }
 
+  // The Supplement reminders still pending, as `{id, payload}`. Read here,
+  // not through flutter_local_notifications' own list, which also reports the
+  // rest timer's requests with no id and fails on them. Only a request the
+  // plugin scheduled carries its `NotificationId` and `payload` keys.
+  private func pendingProtocolReminders(result: @escaping FlutterResult) {
+    UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+      let reminders = requests.compactMap { request -> [String: Any]? in
+        let userInfo = request.content.userInfo
+        guard
+          let id = userInfo["NotificationId"] as? NSNumber,
+          let payload = userInfo["payload"] as? String
+        else {
+          return nil
+        }
+        return ["id": id, "payload": payload]
+      }
+      self.complete(result, with: reminders)
+    }
+  }
+
   // MARK: - UNUserNotificationCenterDelegate
 
   func userNotificationCenter(
@@ -235,13 +257,15 @@ import UserNotifications
       @escaping (UNNotificationPresentationOptions) -> Void
   ) {
     // A Supplement reminder shows as a banner and stays in the list.
-    if protocolReminderDate(notification.request.content.userInfo) != nil {
-      completionHandler([.banner, .list])
-      return
+    // Foreground: the rest timer shows a banner only. The in-app cue already
+    // covers sound, so passing [.sound] here would double the audio.
+    // `.banner` and `.list` need iOS 14; iOS 13 shows both as an alert.
+    let isReminder = protocolReminderDate(notification.request.content.userInfo) != nil
+    if #available(iOS 14.0, *) {
+      completionHandler(isReminder ? [.banner, .list] : [.banner])
+    } else {
+      completionHandler([.alert])
     }
-    // Foreground: show a banner only. The in-app cue already covers sound, so
-    // passing [.sound] here would double the audio.
-    completionHandler([.banner])
   }
 
   func userNotificationCenter(
