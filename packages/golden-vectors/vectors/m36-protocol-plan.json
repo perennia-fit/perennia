@@ -2632,7 +2632,7 @@
     {
       "name": "start-moved-later-past-an-edit",
       "function": "plan_days",
-      "note": "D1: the start moved from 2026-09-01 to 2026-09-12, past the 2026-09-10 edit; ver-x-3 copies the version in effect on 2026-09-12 (ver-x-2). Dates before the new start are outside although versions cover them.",
+      "note": "D1: the start moved from 2026-09-01 to 2026-09-12, past the 2026-09-10 edit. ver-x-3 is a version equal to the one in effect on 2026-09-12 (ver-x-2), dated on the new start, as a writer before file 34a or an Agent could store; no writer makes it on a start move any more. It plans the same as start-moved-later-needs-no-copy. Dates before the new start are outside although versions cover them.",
       "input": {
         "protocols": [
           {

@@ -239,8 +239,8 @@ void main() {
   );
 
   testWidgets(
-    'the sheet opens on the selected Protocol Day: a past day defaults to '
-    '12:00 on that date, today to now',
+    'opened from the Protocol Day view, the sheet opens on the selected '
+    'Protocol Day: a past day defaults to 12:00 on that date',
     (tester) async {
       final harness = _Harness(
         compounds: <CompoundRecord>[_compound('c-1', 'Ashwagandha')],
@@ -264,6 +264,19 @@ void main() {
         ),
       );
       await _pumpUntilFound(tester, find.text('Ashwagandha'));
+
+      // Library's list → the Protocol Day view → its add button → the list
+      // opened for the selected Protocol Day (file 38).
+      await tester.tap(find.byKey(CompoundListScreen.viewDayButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ProtocolsDayView.logDoseButtonKey));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<CompoundListScreen>(find.byType(CompoundListScreen))
+            .protocolDay,
+        const ProtocolDayDate(year: 2026, month: 10, day: 25),
+      );
 
       await tester.tap(find.byKey(CompoundListScreen.compoundRowKey('c-1')));
       await tester.pumpAndSettle();
@@ -293,6 +306,45 @@ void main() {
         harness.controller.loggedDoses.single.tookAt,
         DateTime(2026, 10, 25, 12),
       );
+    },
+  );
+
+  testWidgets(
+    'opened as from Library after browsing a past day, the sheet opens on '
+    'today, at now',
+    (tester) async {
+      final harness = _Harness(
+        compounds: <CompoundRecord>[_compound('c-1', 'Ashwagandha')],
+      );
+
+      // The selected Protocol Day outlives the view that set it; the list
+      // reached from Library or Settings never reads it (file 38).
+      await _pumpCompoundList(
+        tester,
+        harness: harness,
+        selectedProtocolDay: const ProtocolDayDate(
+          year: 2026,
+          month: 10,
+          day: 25,
+        ),
+      );
+      await _pumpUntilFound(tester, find.text('Ashwagandha'));
+
+      await tester.tap(find.byKey(CompoundListScreen.compoundRowKey('c-1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(LogDoseSheet.dateFieldKey),
+          matching: find.text('Oct 27, 2026'),
+        ),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(find.byKey(LogDoseSheet.saveButtonKey));
+      await tester.tap(find.byKey(LogDoseSheet.saveButtonKey));
+      await tester.pump();
+
+      expect(harness.controller.loggedDoses.single.tookAt, _now);
     },
   );
 
@@ -572,7 +624,8 @@ class _FakeProtocolDayController extends ProtocolDayController {
   }
 
   @override
-  Future<void> setFavorite(String compoundId, {required bool isFavorite}) async {
+  Future<void> setFavorite(String compoundId,
+      {required bool isFavorite}) async {
     favoriteCalls.add((compoundId, isFavorite));
     _harness.emitCompounds(<CompoundRecord>[
       for (final compound in _harness._compounds)
