@@ -8,7 +8,16 @@ final timerBackgroundSchedulerProvider = Provider<TimerBackgroundScheduler>(
 );
 
 abstract interface class TimerBackgroundScheduler {
+  /// Asks for the system notification permission when it can still be
+  /// asked, and answers [TimerBackgroundPermissionStatus.granted] or
+  /// [TimerBackgroundPermissionStatus.denied] (or unsupported). The one
+  /// permission path: Supplement reminders reuse it (D5).
   Future<TimerBackgroundPermissionStatus> requestPermissionIfNeeded();
+
+  /// Reads the system notification permission without prompting (D5,
+  /// file 51), including [TimerBackgroundPermissionStatus.notDetermined]
+  /// when the user has never been asked.
+  Future<TimerBackgroundPermissionStatus> notificationPermissionStatus();
 
   Future<TimerBackgroundPermissionStatus> schedule(
     TimerBackgroundSchedule schedule,
@@ -20,6 +29,11 @@ abstract interface class TimerBackgroundScheduler {
 enum TimerBackgroundPermissionStatus {
   granted,
   denied,
+
+  /// Not granted, and never asked for: requesting it would show the system
+  /// prompt. Only [TimerBackgroundScheduler.notificationPermissionStatus]
+  /// reports it.
+  notDetermined,
   unsupported,
 }
 
@@ -110,6 +124,11 @@ class MethodChannelTimerBackgroundScheduler
   }
 
   @override
+  Future<TimerBackgroundPermissionStatus> notificationPermissionStatus() {
+    return _invokeStatus('notificationPermissionStatus');
+  }
+
+  @override
   Future<TimerBackgroundPermissionStatus> schedule(
     TimerBackgroundSchedule schedule,
   ) async {
@@ -154,6 +173,7 @@ TimerBackgroundPermissionStatus _statusFromPlatform(String? value) {
   return switch (value) {
     'granted' => TimerBackgroundPermissionStatus.granted,
     'denied' => TimerBackgroundPermissionStatus.denied,
+    'notDetermined' => TimerBackgroundPermissionStatus.notDetermined,
     _ => TimerBackgroundPermissionStatus.unsupported,
   };
 }

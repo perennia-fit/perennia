@@ -1452,5 +1452,38 @@
         "type": "String"
       }
     }
-  }
+  },
+  "protocolReminderTitle": "Supplements",
+  "protocolReminderBody": "Planned for {time}",
+  "@protocolReminderBody": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolReminderChannelName": "Reminders",
+  "protocolRemindersSwitchLabel": "Reminders",
+  "protocolRemindersSwitchSubtitle": "A notification at each planned time",
+  "protocolRemindersPermissionDenied": "Notifications are off for Perennia",
+  "protocolRemindersOpenSettings": "Open settings",
+  "protocolRemindersScheduledThrough": "Reminders scheduled through {date}",
+  "@protocolRemindersScheduledThrough": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolRemindersBanner": "Reminders are off on this device",
+  "protocolRemindersAllow": "Allow",
+  "protocolRemindersSettingsTile": "Supplement reminders",
+  "protocolRemindersSettingsTileSubtitle": "Reminders on this device and notification permission",
+  "protocolRemindersSettingsTitle": "Supplement reminders",
+  "protocolRemindersDeviceSwitch": "Reminders on this device",
+  "protocolRemindersDeviceSwitchSubtitle": "Applies to this device only",
+  "protocolRemindersPermissionLabel": "Notifications",
+  "protocolRemindersPermissionGranted": "Allowed",
+  "protocolRemindersPermissionNotDetermined": "Not asked yet",
+  "protocolRemindersPermissionUnsupported": "Not available on this device"
 }

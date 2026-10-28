@@ -2684,4 +2684,70 @@ class AppLocalizationsEn extends AppLocalizations {
   String consistencyChartSemantics(String from, String to) {
     return 'Dose times against planned times, $from – $to';
   }
+
+  @override
+  String get protocolReminderTitle => 'Supplements';
+
+  @override
+  String protocolReminderBody(String time) {
+    return 'Planned for $time';
+  }
+
+  @override
+  String get protocolReminderChannelName => 'Reminders';
+
+  @override
+  String get protocolRemindersSwitchLabel => 'Reminders';
+
+  @override
+  String get protocolRemindersSwitchSubtitle =>
+      'A notification at each planned time';
+
+  @override
+  String get protocolRemindersPermissionDenied =>
+      'Notifications are off for Perennia';
+
+  @override
+  String get protocolRemindersOpenSettings => 'Open settings';
+
+  @override
+  String protocolRemindersScheduledThrough(String date) {
+    return 'Reminders scheduled through $date';
+  }
+
+  @override
+  String get protocolRemindersBanner => 'Reminders are off on this device';
+
+  @override
+  String get protocolRemindersAllow => 'Allow';
+
+  @override
+  String get protocolRemindersSettingsTile => 'Supplement reminders';
+
+  @override
+  String get protocolRemindersSettingsTileSubtitle =>
+      'Reminders on this device and notification permission';
+
+  @override
+  String get protocolRemindersSettingsTitle => 'Supplement reminders';
+
+  @override
+  String get protocolRemindersDeviceSwitch => 'Reminders on this device';
+
+  @override
+  String get protocolRemindersDeviceSwitchSubtitle =>
+      'Applies to this device only';
+
+  @override
+  String get protocolRemindersPermissionLabel => 'Notifications';
+
+  @override
+  String get protocolRemindersPermissionGranted => 'Allowed';
+
+  @override
+  String get protocolRemindersPermissionNotDetermined => 'Not asked yet';
+
+  @override
+  String get protocolRemindersPermissionUnsupported =>
+      'Not available on this device';
 }

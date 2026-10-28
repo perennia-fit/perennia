@@ -121,5 +121,58 @@ void main() {
         <String>['requestNotificationPermissionIfNeeded'],
       );
     });
+
+    group('notificationPermissionStatus (read-only, D5)', () {
+      Future<(TimerBackgroundPermissionStatus, List<MethodCall>)> statusFor(
+        Future<Object?> Function(MethodCall call) handler,
+      ) async {
+        final calls = <MethodCall>[];
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) {
+          calls.add(call);
+          return handler(call);
+        });
+        final scheduler =
+            MethodChannelTimerBackgroundScheduler(channel: channel);
+        return (await scheduler.notificationPermissionStatus(), calls);
+      }
+
+      test('maps every channel value, and never asks', () async {
+        final cases = <Object?, TimerBackgroundPermissionStatus>{
+          'granted': TimerBackgroundPermissionStatus.granted,
+          'denied': TimerBackgroundPermissionStatus.denied,
+          'notDetermined': TimerBackgroundPermissionStatus.notDetermined,
+          'unsupported': TimerBackgroundPermissionStatus.unsupported,
+          'something-new': TimerBackgroundPermissionStatus.unsupported,
+          null: TimerBackgroundPermissionStatus.unsupported,
+        };
+        for (final entry in cases.entries) {
+          final (status, calls) = await statusFor((_) async => entry.key);
+          expect(status, entry.value, reason: 'channel value ${entry.key}');
+          expect(
+            calls.map((call) => call.method),
+            <String>['notificationPermissionStatus'],
+            reason: 'a status read is one read-only call',
+          );
+        }
+      });
+
+      test('reads a denial error as denied', () async {
+        final (status, _) = await statusFor((_) async {
+          throw PlatformException(code: 'notification_permission_denied');
+        });
+        expect(status, TimerBackgroundPermissionStatus.denied);
+      });
+
+      test('reads a missing native side as unsupported', () async {
+        final scheduler = MethodChannelTimerBackgroundScheduler(
+          channel: const MethodChannel('test_timer_background_missing'),
+        );
+        expect(
+          await scheduler.notificationPermissionStatus(),
+          TimerBackgroundPermissionStatus.unsupported,
+        );
+      });
+    });
   });
 }

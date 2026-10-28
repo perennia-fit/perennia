@@ -194,6 +194,60 @@ final class PlannedDay {
       compounds[compoundId]?.name ?? compoundId;
 }
 
+/// One timed planned dose as the reminder reconciler reads it (D5, file 50):
+/// what the Protocol Plan core plans at a clock time on a date, whether its
+/// Protocol has reminders on, and whether a Dose fills it. Derived on read,
+/// never stored; untimed planned doses never get one.
+final class ProtocolReminderInput {
+  const ProtocolReminderInput({
+    required this.protocolId,
+    required this.compoundId,
+    required this.localDate,
+    required this.localTime,
+    required this.remindersEnabled,
+    required this.filled,
+  });
+
+  final String protocolId;
+  final String compoundId;
+  final ProtocolDayDate localDate;
+
+  /// The planned `HH:MM` wall-clock time.
+  final String localTime;
+
+  /// The planning Protocol's reminders flag (`PlanProtocol.remindersEnabled`).
+  final bool remindersEnabled;
+
+  /// Whether a logged Dose fills this planned dose. Only today's can be:
+  /// a later date has no Day Status, so its planned doses are unfilled.
+  final bool filled;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProtocolReminderInput &&
+      other.protocolId == protocolId &&
+      other.compoundId == compoundId &&
+      other.localDate == localDate &&
+      other.localTime == localTime &&
+      other.remindersEnabled == remindersEnabled &&
+      other.filled == filled;
+
+  @override
+  int get hashCode => Object.hash(
+        protocolId,
+        compoundId,
+        localDate,
+        localTime,
+        remindersEnabled,
+        filled,
+      );
+
+  @override
+  String toString() => 'ProtocolReminderInput($protocolId, $compoundId, '
+      '${localDate.storageValue} $localTime, '
+      'reminders: $remindersEnabled, filled: $filled)';
+}
+
 /// The longest range the Consistency view reads, inclusive of both ends: a
 /// year and a day, so a leap year's 366 days fit (Phase 4, file 41).
 const int maxConsistencyRangeDays = 366;
@@ -434,6 +488,110 @@ final class ProtocolPlanRepository {
       compounds: plan.compounds,
       protocols: plan.protocolOptions,
     );
+  }
+
+  /// The reminder reconciler's read (D5, file 50): one
+  /// [ProtocolReminderInput] per timed planned dose from [from] through [to],
+  /// inclusive. [from] is the caller's today, read from its clock: today's
+  /// planned doses carry `filled` from today's Day Status fills (matching,
+  /// D6), so a Dose logged before its time stops that reminder; later dates
+  /// come from `planDays` and are always unfilled. `remindersEnabled` is the
+  /// planning Protocol's flag. Untimed planned doses are left out, because
+  /// they never get a reminder.
+  ///
+  /// Ordered by date, then the core's PlanDay and slot order. Reads the plan
+  /// and today's Doses once; the reconciler re-reads on
+  /// [watchReminderInputChanges].
+  Future<List<ProtocolReminderInput>> reminderInputs(
+    ProtocolDayDate from,
+    ProtocolDayDate to,
+  ) async {
+    final plan = _planFromJoinedRows(await _planQuery().get());
+    final today = await _repositories.protocols.protocolDay(from);
+    final remindersByProtocol = <String, bool>{
+      for (final protocol in plan.protocols)
+        protocol.protocolId: protocol.remindersEnabled,
+    };
+    final days = planDays(plan.protocols, from, to);
+    final inputs = <ProtocolReminderInput>[];
+    final todays = dayStatuses(
+      days.where((day) => day.localDate == from),
+      _planDoses(today.doses),
+      from,
+    );
+    for (final status in todays) {
+      // The core builds each Day Status's fills in slot order.
+      for (final fill in status.fills) {
+        final time = fill.plannedLocalTime;
+        if (time == null) {
+          continue;
+        }
+        inputs.add(
+          ProtocolReminderInput(
+            protocolId: fill.protocolId,
+            compoundId: status.compoundId,
+            localDate: from,
+            localTime: time,
+            remindersEnabled: remindersByProtocol[fill.protocolId] ?? false,
+            filled: fill.isFilled,
+          ),
+        );
+      }
+    }
+    for (final day in days) {
+      if (day.localDate == from || day.state != PlanDayState.planned) {
+        continue;
+      }
+      for (final dose in day.planned) {
+        final time = dose.localTime;
+        if (time == null) {
+          continue;
+        }
+        inputs.add(
+          ProtocolReminderInput(
+            protocolId: day.protocolId,
+            compoundId: day.compoundId,
+            localDate: day.localDate,
+            localTime: time,
+            remindersEnabled: remindersByProtocol[day.protocolId] ?? false,
+            filled: false,
+          ),
+        );
+      }
+    }
+    return List<ProtocolReminderInput>.unmodifiable(inputs);
+  }
+
+  /// Whether any Protocol not archived has reminders on: the "a Protocol
+  /// has reminders on" condition of the reminder banner (file 57, CUJ 12),
+  /// read from the Protocol itself rather than from [reminderInputs], so it
+  /// holds even when none of that Protocol's timed doses falls inside the
+  /// scheduling horizon (a later start, a Pause, an off-cycle stretch, or
+  /// only untimed Schedules).
+  Future<bool> anyProtocolRemindersOn() async {
+    final protocols = _database.protocols;
+    final query = _database.selectOnly(protocols)
+      ..addColumns([protocols.id])
+      ..where(protocols.deletedAt.isNull() &
+          protocols.remindersEnabled.equals(true))
+      ..limit(1);
+    return (await query.get()).isNotEmpty;
+  }
+
+  /// Fires after any write to the tables [reminderInputs] reads: Protocols,
+  /// Protocol Members, Schedule Versions and Doses. The reconciler debounces
+  /// it (D5) and re-reads; nothing about the change is passed on.
+  Stream<void> watchReminderInputChanges() {
+    return _database
+        .tableUpdates(
+          TableUpdateQuery.onAllTables(<ResultSetImplementation<Object?, Object?>>[
+            _database.protocols,
+            _database.protocolCompounds,
+            _database.schedules,
+            _database.doses,
+          ]),
+        )
+        .map((_) {});
   }
 
   /// The Consistency view's read (D6) for one Compound over [from] through

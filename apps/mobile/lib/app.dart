@@ -15,6 +15,8 @@ import 'features/home/services/workout_auto_finish_service.dart';
 import 'features/home/widgets/home_screen.dart';
 import 'features/metrics/widgets/metrics_screen.dart';
 import 'features/nutrition/widgets/nutrition_day_view.dart';
+import 'features/protocols/controllers/protocols_day_controller.dart';
+import 'features/protocols/services/protocol_reminder_scheduler.dart';
 import 'features/protocols/widgets/compound_list_screen.dart';
 import 'features/protocols/widgets/protocols_day_view.dart';
 import 'features/protocols/widgets/protocols_lock_screen.dart';
@@ -174,9 +176,49 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
                 .read(trainingRepositoriesProvider)
                 .workoutExercises
                 .getById(id),
+            // An iOS reminder tap arrives on the timer channel (file 53).
+            onProtocolReminderTapped: (localDate) {
+              final date = _protocolDayFrom(localDate);
+              if (date != null) {
+                _openProtocolReminderDay(date);
+              }
+            },
           );
       router.start();
+      // The Supplement reminder reconciler (D5): its Android taps, cold
+      // start included, arrive through the plugin it starts here.
+      unawaited(
+        ref
+            .read(protocolReminderSchedulerProvider)
+            .start(onReminderTapped: _openProtocolReminderDay),
+      );
     });
+  }
+
+  /// Opens [localDate]'s Protocol Day for a tapped Supplement reminder
+  /// (file 52), through the named route `ProtocolsLockGate` wraps, so the
+  /// lock prompts first when it is on. A reminder for the day already on
+  /// top only selects its date.
+  void _openProtocolReminderDay(ProtocolDayDate localDate) {
+    if (!mounted) {
+      return;
+    }
+    ref.read(selectedProtocolDayProvider.notifier).select(localDate);
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null) {
+      return;
+    }
+    if (!isTopRoute(navigator, ProtocolsDayView.routeName)) {
+      unawaited(navigator.pushNamed<void>(ProtocolsDayView.routeName));
+    }
+  }
+
+  static ProtocolDayDate? _protocolDayFrom(String localDate) {
+    try {
+      return ProtocolDayDate.parse(localDate);
+    } on FormatException {
+      return null;
+    }
   }
 
   @override
@@ -196,6 +238,8 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
       final coordinator = ref.read(syncCoordinatorProvider);
       coordinator.resumePeriodic();
       coordinator.requestSync(SyncTrigger.appResume);
+      // Travel and permission changes take effect here (CUJ 8, CUJ 10).
+      unawaited(ref.read(protocolReminderSchedulerProvider).reconcile());
       return;
     }
     ref.read(syncCoordinatorProvider).pausePeriodic();

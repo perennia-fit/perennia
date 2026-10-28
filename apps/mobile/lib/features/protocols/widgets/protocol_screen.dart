@@ -16,11 +16,14 @@ import '../../../domain/protocols/protocol_plan_validation.dart'
     show validateProtocolPeriod, validateScheduleRule;
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
+import '../../training/services/timer_background_scheduler.dart';
 import '../controllers/protocol_controller.dart';
 import '../controllers/protocols_day_controller.dart';
+import '../services/protocol_reminder_scheduler.dart';
 import 'consistency_screen.dart';
 import 'effect_screen.dart';
 import 'plan_labels.dart';
+import 'protocol_reminders_settings.dart';
 import 'protocols_lock_screen.dart';
 
 /// The `Protocol` list (PROTOCOLS.md §1.4, §5): the Routine analog. Lists the
@@ -276,6 +279,11 @@ class ProtocolFormScreen extends ConsumerStatefulWidget {
   static const archiveButtonKey = Key('protocols.form.archive');
   static const errorTextKey = Key('protocols.form.error');
   static const consistencyButtonKey = Key('protocols.form.consistency');
+  static const remindersSwitchKey = Key('protocols.form.reminders');
+  static const remindersDeniedKey = Key('protocols.form.reminders.denied');
+  static const remindersOpenSettingsKey =
+      Key('protocols.form.reminders.openSettings');
+  static const remindersHorizonKey = Key('protocols.form.reminders.horizon');
 
   static Key compoundChipKey(String id) => Key('protocols.form.compound-$id');
 
@@ -631,6 +639,9 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
   final Set<String> _selectedMetricIds = <String>{};
   bool _performanceSelected = false;
 
+  /// The Reminders switch (D5): off until the user turns it on.
+  late bool _remindersEnabled;
+
   /// Hard rejects show once the user has tried to save, so a half-filled
   /// Schedule doesn't open with errors; warnings show as soon as they apply.
   bool _showErrors = false;
@@ -647,6 +658,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     _startDate = protocol?.startLocalDate ??
         ProtocolDayDate.fromDateTime(DateTime.now());
     _endDate = protocol?.endLocalDate;
+    _remindersEnabled = protocol?.remindersEnabled ?? false;
 
     final cycle = protocol?.period?.cycle;
     _cycleEnabled = cycle != null;
@@ -967,6 +979,12 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
                   onChanged: () => setState(() {}),
                 ),
             ],
+            const SizedBox(height: AppDimens.base),
+            _RemindersField(
+              enabled: _remindersEnabled,
+              savedEnabled: widget.protocol?.remindersEnabled ?? false,
+              onChanged: (enabled) => unawaited(_setRemindersEnabled(enabled)),
+            ),
             const SizedBox(height: AppDimens.base),
             Text(l10n.protocolEditorTargetOutcomesHeading, style: headingStyle),
             const SizedBox(height: 2),
@@ -1290,9 +1308,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
       startLocalDate: _startDate,
       endLocalDate: _endDate,
       period: _decodedPeriod(),
-      // Reminders get their own switch in a later phase; a save keeps the
-      // flag as it was.
-      remindersEnabled: widget.protocol?.remindersEnabled ?? false,
+      remindersEnabled: _remindersEnabled,
       compoundIds: _compoundIds,
       schedulesByCompoundId: <String, ScheduleDraft?>{
         for (final entry in fields.entries) entry.key: entry.value.toDraft(),
@@ -1324,6 +1340,20 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     }
   }
 
+  /// Turns the Reminders switch. Turning it on asks for the notification
+  /// permission the first time, while it has never been asked (CUJ 10),
+  /// through the one permission path the rest timer also uses (D5). A
+  /// denial leaves the switch on and shows the denied state beside it.
+  Future<void> _setRemindersEnabled(bool enabled) async {
+    setState(() => _remindersEnabled = enabled);
+    if (!enabled) {
+      return;
+    }
+    await ref
+        .read(protocolReminderSchedulerProvider)
+        .requestPermissionIfNotAsked();
+  }
+
   Future<void> _archive() async {
     final protocol = widget.protocol;
     if (protocol == null) {
@@ -1345,6 +1375,73 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
         ProtocolTargetOutcomeDraft.metric(metricId),
       if (_performanceSelected) ProtocolTargetOutcomeDraft.performance,
     ];
+  }
+}
+
+/// The Reminders switch, bound to the Protocol's `remindersEnabled` (D5,
+/// file 56), with what the phone does about it beside the switch: the
+/// denied state with a way to the system settings (CUJ 10), or how far
+/// ahead reminders are scheduled (CUJ 11). The horizon shows only for a
+/// saved Protocol whose reminders are on, because it describes what is
+/// stored, not this form's edits.
+class _RemindersField extends ConsumerWidget {
+  const _RemindersField({
+    required this.enabled,
+    required this.savedEnabled,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final bool savedEnabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.colors;
+    final l10n = context.l10n;
+    final status = ref.watch(protocolReminderStatusProvider).value ??
+        ProtocolReminderStatus.unknown;
+    final denied =
+        status.permission == TimerBackgroundPermissionStatus.denied;
+    final horizonEnd = status.horizonEnd;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SwitchListTile(
+          key: ProtocolFormScreen.remindersSwitchKey,
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            l10n.protocolRemindersSwitchLabel,
+            style: TextStyle(color: colors.textPrimary),
+          ),
+          subtitle: Text(
+            l10n.protocolRemindersSwitchSubtitle,
+            style: TextStyle(color: colors.textSecondary),
+          ),
+          value: enabled,
+          onChanged: onChanged,
+        ),
+        if (enabled && denied)
+          ProtocolReminderNotice(
+            key: ProtocolFormScreen.remindersDeniedKey,
+            message: l10n.protocolRemindersPermissionDenied,
+            actionLabel: l10n.protocolRemindersOpenSettings,
+            actionKey: ProtocolFormScreen.remindersOpenSettingsKey,
+            onAction: () => unawaited(
+              ref
+                  .read(protocolReminderSchedulerProvider)
+                  .openNotificationSettings(),
+            ),
+          )
+        else if (enabled && savedEnabled && horizonEnd != null)
+          Text(
+            protocolRemindersScheduledThroughLabel(l10n, horizonEnd),
+            key: ProtocolFormScreen.remindersHorizonKey,
+            style: TextStyle(color: colors.textSecondary),
+          ),
+      ],
+    );
   }
 }
 

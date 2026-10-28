@@ -36,6 +36,11 @@ MaterialPageRoute<void> buildExercisePageRoute(
 /// over the timer-background method channel as `onTimerNotificationTapped`
 /// with the ids captured at scheduling time. A cold-start tap is buffered
 /// natively until [signalReady] tells the platform Flutter is up.
+///
+/// The same channel carries the iOS Supplement reminder tap,
+/// `onProtocolReminderTapped` with the reminder's local date (D5, file 53),
+/// buffered the same way. A channel has one handler, so this router hands
+/// that call to [onProtocolReminderTapped].
 class TimerNotificationRouter {
   TimerNotificationRouter({
     required GlobalKey<NavigatorState> navigatorKey,
@@ -46,6 +51,7 @@ class TimerNotificationRouter {
       'perennia/timer_background',
     ),
     WidgetBuilder Function(String workoutExerciseId)? pageBuilder,
+    this.onProtocolReminderTapped,
   })  : _navigatorKey = navigatorKey,
         _scaffoldMessengerKey = scaffoldMessengerKey,
         _resolveWorkoutExercise = resolveWorkoutExercise,
@@ -58,6 +64,10 @@ class TimerNotificationRouter {
       _resolveWorkoutExercise;
   final MethodChannel _channel;
   final WidgetBuilder Function(String workoutExerciseId) _pageBuilder;
+
+  /// Receives the `YYYY-MM-DD` local date of a tapped iOS Supplement
+  /// reminder. Null leaves the call unhandled.
+  final void Function(String localDate)? onProtocolReminderTapped;
 
   static WidgetBuilder _defaultPageBuilder(String workoutExerciseId) {
     return (_) => ExercisePage(workoutExerciseId: workoutExerciseId);
@@ -82,6 +92,13 @@ class TimerNotificationRouter {
   }
 
   Future<Object?> _handleCall(MethodCall call) async {
+    if (call.method == 'onProtocolReminderTapped') {
+      final localDate = call.arguments;
+      if (localDate is String) {
+        onProtocolReminderTapped?.call(localDate);
+      }
+      return null;
+    }
     if (call.method != 'onTimerNotificationTapped') {
       return null;
     }
@@ -118,7 +135,7 @@ class TimerNotificationRouter {
     }
 
     final routeName = timerExerciseRouteName(workoutExerciseId);
-    if (_isTopRoute(navigator, routeName)) {
+    if (isTopRoute(navigator, routeName)) {
       // Duplicate tap for the exercise already on top: no-op.
       return;
     }
@@ -132,15 +149,18 @@ class TimerNotificationRouter {
       ),
     );
   }
+}
 
-  bool _isTopRoute(NavigatorState navigator, String routeName) {
-    var isTop = false;
-    navigator.popUntil((route) {
-      isTop = route.settings.name == routeName;
-      return true; // Inspect the top route only; never actually pop.
-    });
-    return isTop;
-  }
+/// Whether [navigator]'s top route is named [routeName]. A notification tap
+/// for the screen already on top opens nothing new: the rest timer's tap
+/// here, and a Supplement reminder's tap in `app.dart`.
+bool isTopRoute(NavigatorState navigator, String routeName) {
+  var isTop = false;
+  navigator.popUntil((route) {
+    isTop = route.settings.name == routeName;
+    return true; // Inspect the top route only; never actually pop.
+  });
+  return isTop;
 }
 
 /// Overridable so tests can inject a fake router.

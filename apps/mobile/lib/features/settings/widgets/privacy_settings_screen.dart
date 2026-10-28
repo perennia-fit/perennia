@@ -5,13 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/theme.dart';
+import '../../protocols/widgets/protocol_reminders_settings.dart';
 import '../../protocols/widgets/protocols_lock_settings.dart';
 import '../repositories/settings_repository.dart';
 import '../services/client_crash_reporting.dart';
 import 'settings_shared.dart';
 
-/// Settings → Privacy & security: crash-reporting opt-in and the
-/// Supplements lock.
+/// Settings → Privacy & security: crash-reporting opt-in, the Supplements
+/// lock, and the Supplement reminders on this device.
 class PrivacySettingsScreen extends ConsumerWidget {
   const PrivacySettingsScreen({super.key});
 
@@ -37,6 +38,7 @@ class PrivacySettingsScreen extends ConsumerWidget {
               onChanged: controller.setCrashReportingEnabled,
             ),
             const ProtocolsLockSettingsTile(),
+            const ProtocolRemindersSettingsTile(),
             if (kDebugMode)
               _DebugCrashReportButton(
                 enabled: settings.crashReportingEnabled,

@@ -4471,6 +4471,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dose times against planned times, {from} – {to}'**
   String consistencyChartSemantics(String from, String to);
+
+  /// No description provided for @protocolReminderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplements'**
+  String get protocolReminderTitle;
+
+  /// No description provided for @protocolReminderBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Planned for {time}'**
+  String protocolReminderBody(String time);
+
+  /// No description provided for @protocolReminderChannelName.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders'**
+  String get protocolReminderChannelName;
+
+  /// No description provided for @protocolRemindersSwitchLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders'**
+  String get protocolRemindersSwitchLabel;
+
+  /// No description provided for @protocolRemindersSwitchSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A notification at each planned time'**
+  String get protocolRemindersSwitchSubtitle;
+
+  /// No description provided for @protocolRemindersPermissionDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications are off for Perennia'**
+  String get protocolRemindersPermissionDenied;
+
+  /// No description provided for @protocolRemindersOpenSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get protocolRemindersOpenSettings;
+
+  /// No description provided for @protocolRemindersScheduledThrough.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders scheduled through {date}'**
+  String protocolRemindersScheduledThrough(String date);
+
+  /// No description provided for @protocolRemindersBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders are off on this device'**
+  String get protocolRemindersBanner;
+
+  /// No description provided for @protocolRemindersAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get protocolRemindersAllow;
+
+  /// No description provided for @protocolRemindersSettingsTile.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplement reminders'**
+  String get protocolRemindersSettingsTile;
+
+  /// No description provided for @protocolRemindersSettingsTileSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders on this device and notification permission'**
+  String get protocolRemindersSettingsTileSubtitle;
+
+  /// No description provided for @protocolRemindersSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplement reminders'**
+  String get protocolRemindersSettingsTitle;
+
+  /// No description provided for @protocolRemindersDeviceSwitch.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders on this device'**
+  String get protocolRemindersDeviceSwitch;
+
+  /// No description provided for @protocolRemindersDeviceSwitchSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Applies to this device only'**
+  String get protocolRemindersDeviceSwitchSubtitle;
+
+  /// No description provided for @protocolRemindersPermissionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get protocolRemindersPermissionLabel;
+
+  /// No description provided for @protocolRemindersPermissionGranted.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed'**
+  String get protocolRemindersPermissionGranted;
+
+  /// No description provided for @protocolRemindersPermissionNotDetermined.
+  ///
+  /// In en, this message translates to:
+  /// **'Not asked yet'**
+  String get protocolRemindersPermissionNotDetermined;
+
+  /// No description provided for @protocolRemindersPermissionUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available on this device'**
+  String get protocolRemindersPermissionUnsupported;
 }
 
 class _AppLocalizationsDelegate

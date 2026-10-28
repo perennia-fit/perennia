@@ -200,6 +200,12 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     });
   }
 
+  Future<void> setProtocolRemindersOnThisDevice(bool enabled) {
+    return _update((settings) {
+      return settings.copyWith(protocolRemindersOnThisDevice: enabled);
+    });
+  }
+
   Future<void> setKeepScreenOn(bool enabled) {
     return _update((settings) {
       return settings.copyWith(keepScreenOn: enabled);
@@ -274,6 +280,7 @@ class AppSettings {
     this.autoBackupLastSuccessfulRunAt,
     this.autoBackupLastStatus = AutoBackupStatus.idle,
     this.onlineFoodLookups = true,
+    this.protocolRemindersOnThisDevice = true,
   }) : assert(defaultWeightIncrement > 0);
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -335,6 +342,10 @@ class AppSettings {
       onlineFoodLookups: json['onlineFoodLookups'] is bool
           ? json['onlineFoodLookups']! as bool
           : true,
+      protocolRemindersOnThisDevice:
+          json['protocolRemindersOnThisDevice'] is bool
+              ? json['protocolRemindersOnThisDevice']! as bool
+              : true,
     );
   }
 
@@ -367,6 +378,12 @@ class AppSettings {
   /// user's search text or barcode to Open Food Facts. The offline food list
   /// works either way.
   final bool onlineFoodLookups;
+
+  /// Device-level (never synced): "Reminders on this device", the device
+  /// switch of D5. When off, this phone holds no Supplement reminders,
+  /// whatever each Protocol's Reminders switch says, so a user with two
+  /// phones can keep them on one.
+  final bool protocolRemindersOnThisDevice;
 
   bool get autoBackupNeedsFolderGrant =>
       autoBackupEnabled &&
@@ -411,6 +428,7 @@ class AppSettings {
           autoBackupLastSuccessfulRunAt?.toUtc().toIso8601String(),
       'autoBackupLastStatus': autoBackupLastStatus.name,
       'onlineFoodLookups': onlineFoodLookups,
+      'protocolRemindersOnThisDevice': protocolRemindersOnThisDevice,
     };
   }
 
@@ -434,6 +452,7 @@ class AppSettings {
     Object? autoBackupLastSuccessfulRunAt = _copyWithSentinel,
     AutoBackupStatus? autoBackupLastStatus,
     bool? onlineFoodLookups,
+    bool? protocolRemindersOnThisDevice,
   }) {
     return AppSettings(
       themePreference: themePreference ?? this.themePreference,
@@ -471,6 +490,8 @@ class AppSettings {
               : autoBackupLastSuccessfulRunAt as DateTime?,
       autoBackupLastStatus: autoBackupLastStatus ?? this.autoBackupLastStatus,
       onlineFoodLookups: onlineFoodLookups ?? this.onlineFoodLookups,
+      protocolRemindersOnThisDevice:
+          protocolRemindersOnThisDevice ?? this.protocolRemindersOnThisDevice,
     );
   }
 
@@ -548,7 +569,9 @@ class AppSettings {
             autoBackupLastSuccessfulRunAt ==
                 other.autoBackupLastSuccessfulRunAt &&
             autoBackupLastStatus == other.autoBackupLastStatus &&
-            onlineFoodLookups == other.onlineFoodLookups;
+            onlineFoodLookups == other.onlineFoodLookups &&
+            protocolRemindersOnThisDevice ==
+                other.protocolRemindersOnThisDevice;
   }
 
   @override
@@ -572,6 +595,7 @@ class AppSettings {
         autoBackupLastSuccessfulRunAt,
         autoBackupLastStatus,
         onlineFoodLookups,
+        protocolRemindersOnThisDevice,
       );
 }
 
