@@ -4381,6 +4381,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Outside the Protocol\'s dates'**
   String get notPlannedReasonOutside;
+
+  /// No description provided for @consistencyButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Consistency'**
+  String get consistencyButton;
+
+  /// No description provided for @consistencyScreenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Consistency · {name}'**
+  String consistencyScreenTitle(String name);
+
+  /// No description provided for @consistencyRangeDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} days'**
+  String consistencyRangeDays(int count);
+
+  /// No description provided for @consistencyRangeCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get consistencyRangeCustom;
+
+  /// No description provided for @consistencyPlanned.
+  ///
+  /// In en, this message translates to:
+  /// **'Planned'**
+  String get consistencyPlanned;
+
+  /// No description provided for @consistencyExtra.
+  ///
+  /// In en, this message translates to:
+  /// **'Extra'**
+  String get consistencyExtra;
+
+  /// No description provided for @consistencyExtraCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} extra'**
+  String consistencyExtraCount(int count);
+
+  /// No description provided for @consistencyNotInProtocol.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in a Protocol, so its days have no Day Status. Its Doses are listed by date.'**
+  String get consistencyNotInProtocol;
+
+  /// No description provided for @consistencyNoDoses.
+  ///
+  /// In en, this message translates to:
+  /// **'No Doses logged in this range.'**
+  String get consistencyNoDoses;
+
+  /// No description provided for @consistencyLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load this range.'**
+  String get consistencyLoadError;
+
+  /// No description provided for @consistencyChartEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing planned or logged in this range.'**
+  String get consistencyChartEmpty;
+
+  /// No description provided for @consistencyChartLoggedLegend.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged Dose'**
+  String get consistencyChartLoggedLegend;
+
+  /// No description provided for @consistencyChartExtraLegend.
+  ///
+  /// In en, this message translates to:
+  /// **'Extra Dose'**
+  String get consistencyChartExtraLegend;
+
+  /// No description provided for @consistencyChartPlannedLegend.
+  ///
+  /// In en, this message translates to:
+  /// **'Planned time'**
+  String get consistencyChartPlannedLegend;
+
+  /// No description provided for @consistencyChartSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Dose times against planned times, {from} – {to}'**
+  String consistencyChartSemantics(String from, String to);
 }
 
 class _AppLocalizationsDelegate

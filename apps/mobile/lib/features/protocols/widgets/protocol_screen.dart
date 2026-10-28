@@ -18,7 +18,9 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/protocol_controller.dart';
 import '../controllers/protocols_day_controller.dart';
+import 'consistency_screen.dart';
 import 'effect_screen.dart';
+import 'protocols_lock_screen.dart';
 
 /// The `Protocol` list (PROTOCOLS.md §1.4, §5): the Routine analog. Lists the
 /// active named, time-bounded Protocols (a multi-Compound Protocol is a
@@ -272,6 +274,7 @@ class ProtocolFormScreen extends ConsumerStatefulWidget {
   static const saveButtonKey = Key('protocols.form.save');
   static const archiveButtonKey = Key('protocols.form.archive');
   static const errorTextKey = Key('protocols.form.error');
+  static const consistencyButtonKey = Key('protocols.form.consistency');
 
   static Key compoundChipKey(String id) => Key('protocols.form.compound-$id');
 
@@ -683,6 +686,37 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     }
   }
 
+  /// Opens the stored Protocol's Consistency view, with a tab per member in
+  /// the Protocol's member order, behind the Protocols lock like the rest of
+  /// the section. It reads the members as saved, not this form's edits.
+  Future<void> _openConsistency(
+    ProtocolRecord protocol,
+    List<CompoundScheduleOptionRecord> compounds,
+  ) {
+    final names = <String, String>{
+      for (final compound in compounds) compound.id: compound.name,
+    };
+    final members = List<ProtocolMemberRecord>.of(protocol.members)
+      ..sort((a, b) => a.position.compareTo(b.position));
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProtocolsLockGate(
+          child: ConsistencyScreen.protocol(
+            protocolName: protocol.name,
+            members: <ConsistencyTab>[
+              for (final member in members)
+                ConsistencyTab(
+                  compoundId: member.compoundId,
+                  label: names[member.compoundId] ??
+                      context.l10n.protocolEditorCompoundFallback,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -715,6 +749,22 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
               ? l10n.protocolEditorEditTitle
               : l10n.protocolEditorNewTitle,
         ),
+        actions: <Widget>[
+          // A saved Protocol's Consistency view, a tab per member (file 45).
+          // A new one has nothing stored to show yet.
+          if (widget.protocol case final protocol?
+              when protocol.members.isNotEmpty)
+            TextButton.icon(
+              key: ProtocolFormScreen.consistencyButtonKey,
+              style: TextButton.styleFrom(
+                foregroundColor: colors.textPrimary,
+                minimumSize: const Size(0, AppDimens.touchTarget),
+              ),
+              onPressed: () => unawaited(_openConsistency(protocol, compounds)),
+              icon: const Icon(Icons.timeline),
+              label: Text(l10n.consistencyButton),
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppDimens.base),
