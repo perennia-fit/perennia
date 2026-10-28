@@ -5593,7 +5593,7 @@ class ProtocolsRepository {
       // the device's current zone would move a Dose logged abroad by the
       // difference between the two zones.
       timezone = _normalizeOptionalText(draft.timezone) ?? before.timezone;
-      final local = tookAtUtc.add(Duration(minutes: offset));
+      final local = clockAtOffset(tookAtUtc, offset);
       localDate = draft.localDate ??
           ProtocolDayDate(year: local.year, month: local.month, day: local.day);
       timezoneOffsetMinutes = offset;
@@ -5953,6 +5953,9 @@ class ProtocolsRepository {
 
   /// Reactive variant of [protocolDay]: re-emits whenever any `Dose` changes,
   /// so the derived day-view invalidates mechanically (no recalculate path).
+  /// The day's Doses are listed in matching's order (D6 step 2), local time
+  /// and then id, so the day's log and the Planned list take them in the same
+  /// order.
   Stream<ProtocolDayRecord> watchProtocolDay(ProtocolDayDate localDate) {
     return _activeDoseQuery(localDate: localDate).watch().map(
           (rows) => _protocolDayFromRows(localDate, rows),
@@ -5994,13 +5997,19 @@ class ProtocolsRepository {
     return query;
   }
 
+  /// The day's Doses, sorted after the read into matching's order (D6 step
+  /// 2): local time, then id. The query keeps its instant order, because a
+  /// Dose's clock depends on its own frozen offset, which SQL doesn't apply;
+  /// Doses logged at different offsets on one Protocol Day then read in
+  /// clock order, not instant order.
   ProtocolDayRecord _protocolDayFromRows(
     ProtocolDayDate localDate,
     List<DoseRow> rows,
   ) {
     return ProtocolDayRecord(
       localDate: localDate,
-      doses: rows.map(_doseFromRow).toList(growable: false),
+      doses: rows.map(_doseFromRow).toList(growable: false)
+        ..sort(_compareDosesByClock),
     );
   }
 
@@ -7770,6 +7779,34 @@ class ProtocolsRepository {
     }
     return row;
   }
+}
+
+/// The day's log order for Doses on one Protocol Day: matching's order (D6
+/// step 2), local time and then id, with the local time read from the
+/// Dose's clock where it was taken ([DoseRecord.clock]) to the minute, as
+/// [DoseRecord.localTime] reads it. The day's log and the Consistency view's
+/// day list sort by it, so the rows read in clock order and take one day's
+/// Doses in the order matching numbers them.
+///
+/// The clock's date leads, which is matching's order whenever every clock
+/// falls on the Protocol Day. A Dose whose clock falls on another date (a
+/// draft that named its own local date, or a Dose with no offset read in a
+/// device zone it wasn't logged in) then stays in clock order instead of
+/// being placed by its time of day alone.
+int _compareDosesByClock(DoseRecord a, DoseRecord b) {
+  final byClock = _clockToTheMinute(a).compareTo(_clockToTheMinute(b));
+  return byClock != 0 ? byClock : a.id.compareTo(b.id);
+}
+
+DateTime _clockToTheMinute(DoseRecord dose) {
+  final clock = dose.clock;
+  return DateTime.utc(
+    clock.year,
+    clock.month,
+    clock.day,
+    clock.hour,
+    clock.minute,
+  );
 }
 
 /// Which entity an `Effect` window is anchored to (PROTOCOLS.md §1.4, §4,

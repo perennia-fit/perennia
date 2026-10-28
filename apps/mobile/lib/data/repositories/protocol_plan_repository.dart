@@ -464,9 +464,10 @@ final class ProtocolPlanRepository {
     _checkConsistencyRange(from, to);
     return _combineLatest2(
       _planQuery().watch().map(_planFromJoinedRows),
-      _consistencyDoseQuery(compoundId, from, to)
-          .watch()
-          .map((rows) => rows.map(_repositories.protocols._doseFromRow)),
+      _consistencyDoseQuery(compoundId, from, to).watch().map(
+            (rows) => rows.map(_repositories.protocols._doseFromRow).toList()
+              ..sort(_compareConsistencyDoses),
+          ),
       (_PlanRows plan, Iterable<DoseRecord> doses) => _consistencyRange(
         compoundId,
         from,
@@ -516,7 +517,9 @@ final class ProtocolPlanRepository {
   }
 
   /// The Compound's non-archived Doses whose frozen local date falls in the
-  /// range, in the day log's order (time, then id).
+  /// range, in instant order. [watchConsistency] sorts them after the read
+  /// ([_compareConsistencyDoses]), because a Dose's clock depends on its own
+  /// frozen offset, which SQL doesn't apply.
   SimpleSelectStatement<$DosesTable, DoseRow> _consistencyDoseQuery(
     String compoundId,
     ProtocolDayDate from,
@@ -623,6 +626,14 @@ final class ProtocolPlanRepository {
       compounds: compounds,
       protocolOptions: protocolOptions,
     );
+  }
+
+  /// A range's Doses by local date, and each date's in the day log's order
+  /// ([_compareDosesByClock]), so a day list's Doses and extras read in clock
+  /// order, as the day's log does.
+  static int _compareConsistencyDoses(DoseRecord a, DoseRecord b) {
+    final byDate = a.localDate.compareTo(b.localDate);
+    return byDate != 0 ? byDate : _compareDosesByClock(a, b);
   }
 
   /// The Doses as matching reads them (D6 step 2): every Dose not archived,

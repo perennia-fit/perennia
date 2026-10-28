@@ -5109,6 +5109,68 @@ void main() {
       expect(dose.localTime, '00:15');
     });
 
+    test(
+        "a Protocol Day's Doses are listed in clock order, local time and then "
+        'id, not instant order', () async {
+      final compound = await repositories.protocols.createCompound(
+        const CompoundDraft(
+          name: 'Creatine',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      );
+      const day = ProtocolDayDate(year: 2026, month: 7, day: 1);
+      Future<String> logAt(DateTime tookAtUtc, int offset) async {
+        final logged = await repositories.protocols.logDose(
+          DoseSnapshotDraft(
+            compoundId: compound.compoundId,
+            compoundName: 'Creatine',
+            amountValue: 5,
+            amountEntered: '5',
+            unit: DoseUnit.gram,
+            route: DoseRoute.oral,
+            tookAt: tookAtUtc,
+          ),
+        );
+        await (database.update(database.doses)
+              ..where((r) => r.id.equals(logged.doseId)))
+            .write(
+          DosesCompanion(
+            tookAt: Value<DateTime>(tookAtUtc),
+            timezoneOffsetMinutes: Value<int?>(offset),
+            localDate: Value<String>(day.storageValue),
+          ),
+        );
+        return logged.doseId;
+      }
+
+      // Logged first, in Tokyo (UTC+09:00): 21:00 there, 12:00 UTC.
+      final tokyo = await logAt(DateTime.utc(2026, 7, 1, 12), 540);
+      // Logged later, in Honolulu (UTC−10:00): 08:30 there, 18:30 UTC. The
+      // later instant and the later id, at the earlier clock time.
+      final honolulu = await logAt(DateTime.utc(2026, 7, 1, 18, 30), -600);
+      expect(honolulu.compareTo(tokyo), greaterThan(0));
+
+      final watched = await repositories.protocols.watchProtocolDay(day).first;
+      expect(
+        watched.doses.map((dose) => dose.localTime),
+        <String>['08:30', '21:00'],
+      );
+      expect(
+        watched.doses.map((dose) => dose.id),
+        <String>[honolulu, tokyo],
+      );
+      final read = await repositories.protocols.protocolDay(day);
+      expect(read.doses.map((dose) => dose.id), <String>[honolulu, tokyo]);
+      final consistency = await repositories.protocolPlan
+          .watchConsistency(compound.compoundId, day, day, today: day)
+          .first;
+      expect(
+        consistency.doses.map((dose) => dose.id),
+        <String>[honolulu, tokyo],
+      );
+    });
+
     test('a Dose sync image without an offset applies with a null offset',
         () async {
       final updatedAt = DateTime.utc(2026, 7, 1, 12);

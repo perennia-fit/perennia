@@ -72,7 +72,9 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
         return;
       }
       unawaited(
-        ref.read(protocolDayControllerProvider.notifier).ensureOtcLibrarySeeded(),
+        ref
+            .read(protocolDayControllerProvider.notifier)
+            .ensureOtcLibrarySeeded(),
       );
     });
   }
@@ -538,19 +540,6 @@ TimeOfDay _timeOfDay(String localTime) {
   return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 }
 
-/// A Dose's date and clock time where it was taken (D2, D6): its instant at
-/// its frozen `timezoneOffsetMinutes`, as a UTC `DateTime` whose fields are
-/// that clock, so formatting reads them as they are. A Dose with a null
-/// offset reads in the device's zone. The day's Dose rows and the edit sheet
-/// both read it here, so a row and its edit sheet agree, and a Dose logged
-/// abroad shows the time it was taken there.
-DateTime _doseClock(DoseRecord dose) {
-  final offset = dose.timezoneOffsetMinutes;
-  return offset == null
-      ? dose.tookAt.toLocal()
-      : dose.tookAt.toUtc().add(Duration(minutes: offset));
-}
-
 /// The date header: a swipe/arrow-navigable strip mirroring
 /// `NutritionDayView`'s `_NutritionDayHeader` and the Training Day
 /// Home's date navigation. Moves the derived `Protocol Day` — never a stored
@@ -571,8 +560,7 @@ class _ProtocolDayHeader extends ConsumerWidget {
       behavior: HitTestBehavior.opaque,
       onHorizontalDragEnd: (details) {
         final velocity = details.primaryVelocity ?? 0;
-        final controller =
-            ref.read(protocolDayControllerProvider.notifier);
+        final controller = ref.read(protocolDayControllerProvider.notifier);
         if (velocity > 0) {
           controller.showPreviousDay();
         } else if (velocity < 0) {
@@ -624,7 +612,10 @@ class _DoseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timeLabel = DateFormat.jm().format(_doseClock(dose));
+    // The Dose's clock where it was taken (D2, D6), read from the one helper
+    // the edit sheet reads too, so a row and its edit sheet agree and a Dose
+    // logged abroad shows the time it was taken there.
+    final timeLabel = DateFormat.jm().format(dose.clock);
     // Every part of the detail line reads from the Dose's OWN snapshot — the
     // amount, the route (always paired with text; color is never the sole
     // signal), the frozen Compound strength when captured (§1.1), and the
@@ -943,7 +934,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   DateTime _seedTookAt() {
     final editingDose = widget.editingDose;
     if (editingDose != null) {
-      return _doseClock(editingDose);
+      return editingDose.clock;
     }
     final now = _now();
     final date = widget.initialDate;
@@ -1094,10 +1085,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   /// or kept from a day that has.
   Future<void> _pickDate() async {
     final current = DateTime(_tookAt.year, _tookAt.month, _tookAt.day);
-    final offset = _offsetMinutes;
-    final now = offset == null
-        ? _now()
-        : _now().toUtc().add(Duration(minutes: offset));
+    final now = clockAtOffset(_now(), _offsetMinutes);
     final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
