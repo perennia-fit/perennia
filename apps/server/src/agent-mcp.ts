@@ -187,12 +187,18 @@ import {
   AgentEffectWindowResponseSchema,
   AgentProtocolBatchWriteRequestSchema,
   AgentProtocolBatchWriteResponseSchema,
+  AgentProtocolDayStatusesQuerySchema,
+  AgentProtocolDayStatusesResponseSchema,
+  AgentProtocolDaysInvalidRequestResponseSchema,
   AgentProtocolListQuerySchema,
   AgentProtocolListResponseSchema,
+  AgentProtocolPlannedDaysQuerySchema,
+  AgentProtocolPlannedDaysResponseSchema,
   AgentProtocolsBatchWriteErrorResponseSchema,
   AgentProtocolsUnavailableResponseSchema,
   agentProtocolsBatchRequestFingerprint,
   agentProtocolsWriteFailure,
+  checkAgentProtocolDaysQuery,
   finalizeAgentDoseBatchWriteResults,
   finalizeAgentProtocolsEntityBatchWriteResults,
   prepareAgentCompoundBatchWrite,
@@ -463,6 +469,14 @@ export const AgentMcpDoseListInputSchema = AgentMcpAuthFieldsSchema.extend({
 export const AgentMcpEffectWindowInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentEffectWindowQuerySchema
 }).openapi("AgentMcpEffectWindowInput");
+
+export const AgentMcpProtocolPlannedDaysInputSchema = AgentMcpAuthFieldsSchema.extend({
+  query: AgentProtocolPlannedDaysQuerySchema
+}).openapi("AgentMcpProtocolPlannedDaysInput");
+
+export const AgentMcpProtocolDayStatusesInputSchema = AgentMcpAuthFieldsSchema.extend({
+  query: AgentProtocolDayStatusesQuerySchema
+}).openapi("AgentMcpProtocolDayStatusesInput");
 
 export const AgentMcpDoseBatchWriteInputSchema = AgentMcpAuthFieldsSchema.extend({
   request: AgentDoseBatchWriteRequestSchema
@@ -2402,6 +2416,102 @@ export function createAgentMcpServer({
       }
       return successResult(
         AgentEffectWindowResponseSchema.parse(result.value)
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_protocol_planned_days",
+    {
+      title: "List Agent Protocol Planned Days",
+      description:
+        "List what the caller's Protocols planned for each Compound on each local date of a range (both ends included, at most 366 days; future dates allowed), through the same REST read path: the planned doses with times and amounts, or why nothing was planned. Computed on read by the plan core the app uses; never stored.",
+      inputSchema: AgentMcpProtocolPlannedDaysInputSchema,
+      outputSchema: AgentProtocolPlannedDaysResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      const query = AgentProtocolPlannedDaysQuerySchema.parse(input.query);
+      const checked = checkAgentProtocolDaysQuery(query);
+      if (!checked.ok) {
+        return errorResult(
+          AgentProtocolDaysInvalidRequestResponseSchema.parse({
+            code: "agent_protocol_days_invalid_request",
+            message: checked.message
+          })
+        );
+      }
+      // The store parses its response against the output schema already.
+      return successResult(
+        await agentProtocolsStore.listProtocolPlannedDays({
+          userId: auth.agent.userId,
+          query
+        })
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_protocol_day_statuses",
+    {
+      title: "List Agent Protocol Day Statuses",
+      description:
+        "List the Day Status of each Compound on each local date of a range (both ends included, at most 366 days, ending no later than the required today), through the same REST read path: logged Doses matched to planned doses exactly as the app matches them, with detail=doses adding each slot's fill. Statuses and counts only; computed on read, never stored.",
+      inputSchema: AgentMcpProtocolDayStatusesInputSchema,
+      outputSchema: AgentProtocolDayStatusesResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      const query = AgentProtocolDayStatusesQuerySchema.parse(input.query);
+      const checked = checkAgentProtocolDaysQuery(query);
+      if (!checked.ok) {
+        return errorResult(
+          AgentProtocolDaysInvalidRequestResponseSchema.parse({
+            code: "agent_protocol_days_invalid_request",
+            message: checked.message
+          })
+        );
+      }
+      // The store parses its response against the output schema already.
+      return successResult(
+        await agentProtocolsStore.listProtocolDayStatuses({
+          userId: auth.agent.userId,
+          query
+        })
       );
     }
   );

@@ -44,6 +44,8 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `list-metric-readings` | GET | `/agent/metrics/readings` |
 | `list-metrics` | GET | `/agent/metrics` |
 | `list-nutrition-goals` | GET | `/agent/nutrition/goals` |
+| `list-protocol-day-statuses` | GET | `/agent/protocols/day-statuses` |
+| `list-protocol-planned-days` | GET | `/agent/protocols/planned-days` |
 | `list-protocols` | GET | `/agent/protocols` |
 | `list-routines` | GET | `/agent/routines` |
 | `list-workout-templates` | GET | `/agent/workout-templates` |

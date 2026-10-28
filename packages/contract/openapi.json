@@ -8475,6 +8475,364 @@
           "message"
         ]
       },
+      "AgentProtocolPlannedDaysResponse": {
+        "type": "object",
+        "properties": {
+          "fromLocalDate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "toLocalDate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "plannedDays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolPlannedDay"
+            },
+            "description": "One entry per Protocol, Compound and date of the range, for every Compound with a member row in that Protocol, ordered by date, then Protocol id, then Compound id."
+          }
+        },
+        "required": [
+          "fromLocalDate",
+          "toLocalDate",
+          "plannedDays"
+        ]
+      },
+      "AgentProtocolPlannedDay": {
+        "type": "object",
+        "properties": {
+          "protocolId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "compoundId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "localDate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "not_scheduled_today",
+              "as_needed",
+              "no_schedule",
+              "removed",
+              "outside",
+              "paused",
+              "off_cycle"
+            ],
+            "description": "What the Protocol planned for the Compound that day: planned, or why nothing was (not scheduled that day, as needed, no Schedule, member removed, outside the Protocol's dates, paused, or off cycle)."
+          },
+          "planned": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolPlannedDose"
+            },
+            "description": "The planned doses, non-empty exactly when state is planned, in the rule's stored order."
+          }
+        },
+        "required": [
+          "protocolId",
+          "compoundId",
+          "localDate",
+          "state",
+          "planned"
+        ]
+      },
+      "AgentProtocolPlannedDose": {
+        "type": "object",
+        "properties": {
+          "localTime": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The planned wall-clock time, HH:MM; null for an untimed planned dose (any time that day)."
+          },
+          "amountValue": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "amountEntered": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Dose amount unit drawn from the curated registry.",
+            "enum": [
+              "milligram",
+              "microgram",
+              "gram",
+              "internationalUnit",
+              "milliliter",
+              "tablet",
+              "capsule",
+              "drop",
+              "spray",
+              "puff",
+              "patch",
+              "unit"
+            ]
+          },
+          "route": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Dose administration route drawn from the curated registry.",
+            "enum": [
+              "oral",
+              "sublingual",
+              "subcutaneous",
+              "intramuscular",
+              "transdermal",
+              "intranasal",
+              "inhaled",
+              "topical",
+              "other"
+            ]
+          }
+        },
+        "required": [
+          "localTime",
+          "amountValue",
+          "amountEntered",
+          "unit",
+          "route"
+        ]
+      },
+      "AgentProtocolDaysInvalidRequestResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "agent_protocol_days_invalid_request"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "AgentProtocolDayStatusesResponse": {
+        "type": "object",
+        "properties": {
+          "fromLocalDate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "toLocalDate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "today": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "doses"
+            ]
+          },
+          "dayStatuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolDayStatus"
+            },
+            "description": "One per Compound and date that has at least one planned day in the plan read, ordered by date, then Compound id. A Compound in no Protocol read has none."
+          }
+        },
+        "required": [
+          "fromLocalDate",
+          "toLocalDate",
+          "today",
+          "detail",
+          "dayStatuses"
+        ]
+      },
+      "AgentProtocolDayStatus": {
+        "type": "object",
+        "properties": {
+          "compoundId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "localDate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_planned",
+              "paused",
+              "off_cycle",
+              "pending",
+              "logged",
+              "partly_logged",
+              "not_logged"
+            ],
+            "description": "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled."
+          },
+          "notPlannedReason": {
+            "type": "string",
+            "enum": [
+              "not_scheduled_today",
+              "as_needed",
+              "no_schedule",
+              "removed",
+              "outside"
+            ],
+            "description": "Present exactly when status is not_planned."
+          },
+          "plannedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "loggedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Filled planned doses; never more than plannedCount."
+          },
+          "extraCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Logged Doses that filled no planned dose. Extras never change the status."
+          },
+          "fills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolDayStatusFill"
+            },
+            "description": "Only with detail=doses: every planned dose (slot), in slot order, with the Dose that filled it."
+          }
+        },
+        "required": [
+          "compoundId",
+          "localDate",
+          "status",
+          "plannedCount",
+          "loggedCount",
+          "extraCount"
+        ]
+      },
+      "AgentProtocolDayStatusFill": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "protocolId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "plannedLocalTime": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The slot's planned time, HH:MM; null for an untimed slot."
+          },
+          "amountValue": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "amountEntered": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Dose amount unit drawn from the curated registry.",
+            "enum": [
+              "milligram",
+              "microgram",
+              "gram",
+              "internationalUnit",
+              "milliliter",
+              "tablet",
+              "capsule",
+              "drop",
+              "spray",
+              "puff",
+              "patch",
+              "unit"
+            ]
+          },
+          "route": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Dose administration route drawn from the curated registry.",
+            "enum": [
+              "oral",
+              "sublingual",
+              "subcutaneous",
+              "intramuscular",
+              "transdermal",
+              "intranasal",
+              "inhaled",
+              "topical",
+              "other"
+            ]
+          },
+          "doseId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The logged Dose that filled this slot; null when it is unfilled."
+          }
+        },
+        "required": [
+          "slot",
+          "protocolId",
+          "plannedLocalTime",
+          "amountValue",
+          "amountEntered",
+          "unit",
+          "route",
+          "doseId"
+        ]
+      },
       "AgentDoseBatchWriteResponse": {
         "type": "object",
         "properties": {
@@ -20533,6 +20891,340 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentEffectWindowErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or Protocols storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProtocolsUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/protocols/planned-days": {
+      "get": {
+        "operationId": "listAgentProtocolPlannedDays",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "List what the caller's Protocols planned on each day of a range.",
+        "description": "Returns one planned day per Protocol, Compound and local date from fromLocalDate through toLocalDate (both included, at most 366 days; future dates allowed): the planned doses with their times and amounts, or why nothing was planned. Archived Protocols and removed members still plan the days before their archive. Computed on read by the same plan core the app uses, never stored.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "Inclusive first local date (YYYY-MM-DD) of the range. The range holds at most 366 days, both ends included.",
+              "example": "2026-10-26"
+            },
+            "required": true,
+            "description": "Inclusive first local date (YYYY-MM-DD) of the range. The range holds at most 366 days, both ends included.",
+            "name": "fromLocalDate",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Inclusive last local date (YYYY-MM-DD) of the range; not before fromLocalDate.",
+              "example": "2026-10-26"
+            },
+            "required": true,
+            "description": "Inclusive last local date (YYYY-MM-DD) of the range; not before fromLocalDate.",
+            "name": "toLocalDate",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional Compound id: only this Compound's days. An unknown id returns an empty list."
+            },
+            "required": false,
+            "description": "Optional Compound id: only this Compound's days. An unknown id returns an empty list.",
+            "name": "compoundId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional Protocol id: only this Protocol's plan is read. An unknown id returns an empty list."
+            },
+            "required": false,
+            "description": "Optional Protocol id: only this Protocol's plan is read. An unknown id returns an empty list.",
+            "name": "protocolId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The planned days of the range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProtocolPlannedDaysResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The range is refused, with this body: fromLocalDate after toLocalDate, or a range of more than 366 days. A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProtocolDaysInvalidRequestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or Protocols storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProtocolsUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/protocols/day-statuses": {
+      "get": {
+        "operationId": "listAgentProtocolDayStatuses",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "List the Day Status of each Compound on each day of a range.",
+        "description": "Returns one Day Status per Compound and local date from fromLocalDate through toLocalDate (both included, at most 366 days, ending no later than today), matching the logged Doses against the planned doses exactly as the app's Planned list and Consistency view do. A Dose's Protocol tag never decides what it fills. With detail=doses each Day Status also lists its fills. Statuses and counts only, computed on read and never stored.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "Inclusive first local date (YYYY-MM-DD) of the range. The range holds at most 366 days, both ends included.",
+              "example": "2026-10-26"
+            },
+            "required": true,
+            "description": "Inclusive first local date (YYYY-MM-DD) of the range. The range holds at most 366 days, both ends included.",
+            "name": "fromLocalDate",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Inclusive last local date (YYYY-MM-DD) of the range; not before fromLocalDate.",
+              "example": "2026-10-26"
+            },
+            "required": true,
+            "description": "Inclusive last local date (YYYY-MM-DD) of the range; not before fromLocalDate.",
+            "name": "toLocalDate",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional Compound id: only this Compound's days. An unknown id returns an empty list."
+            },
+            "required": false,
+            "description": "Optional Compound id: only this Compound's days. An unknown id returns an empty list.",
+            "name": "compoundId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional Protocol id: only this Protocol's plan is read. An unknown id returns an empty list."
+            },
+            "required": false,
+            "description": "Optional Protocol id: only this Protocol's plan is read. An unknown id returns an empty list.",
+            "name": "protocolId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The user's local date (YYYY-MM-DD), within one day of the server's UTC date. It decides Pending against Not logged, and toLocalDate must not be after it: a day still to come has no Day Status.",
+              "example": "2026-10-26"
+            },
+            "required": true,
+            "description": "The user's local date (YYYY-MM-DD), within one day of the server's UTC date. It decides Pending against Not logged, and toLocalDate must not be after it: a day still to come has no Day Status.",
+            "name": "today",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "doses"
+              ],
+              "default": "summary",
+              "description": "summary (the default) returns each Day Status's status and counts; doses also returns its fills, the planned dose each logged Dose filled."
+            },
+            "required": false,
+            "description": "summary (the default) returns each Day Status's status and counts; doses also returns its fills, the planned dose each logged Dose filled.",
+            "name": "detail",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Day Statuses of the range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProtocolDayStatusesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The range is refused, with this body: fromLocalDate after toLocalDate, a range of more than 366 days, toLocalDate after today, or a today more than one day from the server's UTC date. A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProtocolDaysInvalidRequestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
                 }
               }
             }

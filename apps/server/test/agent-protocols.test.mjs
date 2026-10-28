@@ -15,6 +15,7 @@ import {
   prepareAgentProtocolBatchWrite,
   schema
 } from "../src/index.ts";
+import { dayStatuses, planDays } from "../src/protocol-plan.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -619,7 +620,9 @@ test("unauthorized requests are rejected on every protocols path", async () => {
   for (const path of [
     "/agent/protocols/compounds",
     "/agent/protocols",
-    "/agent/protocols/doses"
+    "/agent/protocols/doses",
+    `/agent/protocols/planned-days?fromLocalDate=${utcToday()}&toLocalDate=${utcToday()}`,
+    `/agent/protocols/day-statuses?fromLocalDate=${utcToday()}&toLocalDate=${utcToday()}&today=${utcToday()}`
   ]) {
     const response = await app.request(path);
     assert.equal(response.status, 401);
@@ -760,6 +763,226 @@ test("effect-window route rejects an offset outside -720 to +840 with 400 before
     assert.equal(response.status, 422, String(offset));
   }
   assert.deepEqual(reads, [0, -720, 840]);
+});
+
+// ---------------------------------------------------------------------------
+// Planned-day and Day Status reads (D6): the query checks, before the store
+// ---------------------------------------------------------------------------
+
+function protocolDaysApp() {
+  const calls = [];
+  const app = createProtocolsApp({
+    store: stubStore({
+      async listProtocolPlannedDays(input) {
+        calls.push({ read: "planned-days", ...input });
+        return {
+          fromLocalDate: input.query.fromLocalDate,
+          toLocalDate: input.query.toLocalDate,
+          plannedDays: []
+        };
+      },
+      async listProtocolDayStatuses(input) {
+        calls.push({ read: "day-statuses", ...input });
+        return {
+          fromLocalDate: input.query.fromLocalDate,
+          toLocalDate: input.query.toLocalDate,
+          today: input.query.today,
+          detail: input.query.detail,
+          dayStatuses: []
+        };
+      }
+    })
+  });
+  return { app, calls };
+}
+
+function protocolDaysPath(read, params) {
+  return `/agent/protocols/${read}?${new URLSearchParams(params).toString()}`;
+}
+
+test("planned-day and Day Status reads refuse a backwards range and one over 366 days with 400 before the store", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  const refused = [
+    // fromLocalDate after toLocalDate.
+    { fromLocalDate: today, toLocalDate: addDays(today, -1) },
+    // 367 days, both ends included.
+    { fromLocalDate: addDays(today, -366), toLocalDate: today }
+  ];
+  for (const range of refused) {
+    for (const [read, params] of [
+      ["planned-days", range],
+      ["day-statuses", { ...range, today }]
+    ]) {
+      const response = await app.request(protocolDaysPath(read, params), {
+        headers: authHeaders()
+      });
+      assert.equal(response.status, 400, `${read} ${JSON.stringify(range)}`);
+      const body = await response.json();
+      assert.equal(body.code, "agent_protocol_days_invalid_request");
+      assert.ok(body.message.length > 0);
+    }
+  }
+  assert.deepEqual(calls, []);
+
+  // 366 days, both ends included, and a single day are accepted.
+  for (const range of [
+    { fromLocalDate: addDays(today, -365), toLocalDate: today },
+    { fromLocalDate: today, toLocalDate: today }
+  ]) {
+    const planned = await app.request(protocolDaysPath("planned-days", range), {
+      headers: authHeaders()
+    });
+    assert.equal(planned.status, 200);
+    const statuses = await app.request(
+      protocolDaysPath("day-statuses", { ...range, today }),
+      { headers: authHeaders() }
+    );
+    assert.equal(statuses.status, 200);
+  }
+  assert.equal(calls.length, 4);
+});
+
+test("planned-day and Day Status reads refuse a date that is not a real YYYY-MM-DD date with 400", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  for (const bad of ["2026-02-30", "2026-13-01", "26-10-01", "today", ""]) {
+    for (const [read, params] of [
+      ["planned-days", { fromLocalDate: bad, toLocalDate: today }],
+      ["planned-days", { fromLocalDate: today, toLocalDate: bad }],
+      ["day-statuses", { fromLocalDate: today, toLocalDate: today, today: bad }]
+    ]) {
+      const response = await app.request(protocolDaysPath(read, params), {
+        headers: authHeaders()
+      });
+      assert.equal(response.status, 400, `${read} ${JSON.stringify(params)}`);
+      // The request validator refuses it in its own body, as the route's 400
+      // description says, not with the range checks' code.
+      const body = await response.json();
+      assert.equal(body.success, false, `${read} ${JSON.stringify(params)}`);
+      assert.equal(body.code, undefined, `${read} ${JSON.stringify(params)}`);
+    }
+  }
+  // Both range bounds are required.
+  for (const read of ["planned-days", "day-statuses"]) {
+    const response = await app.request(
+      protocolDaysPath(read, { fromLocalDate: today, today }),
+      { headers: authHeaders() }
+    );
+    assert.equal(response.status, 400, read);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("the Day Status read requires today, holds it within one day of the server's UTC date, and defaults detail to summary", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  const range = { fromLocalDate: addDays(today, -7), toLocalDate: addDays(today, -1) };
+
+  const missing = await app.request(protocolDaysPath("day-statuses", range), {
+    headers: authHeaders()
+  });
+  assert.equal(missing.status, 400);
+
+  for (const skewed of [addDays(today, -2), addDays(today, 2)]) {
+    const response = await app.request(
+      protocolDaysPath("day-statuses", {
+        fromLocalDate: addDays(skewed, -3),
+        toLocalDate: skewed,
+        today: skewed
+      }),
+      { headers: authHeaders() }
+    );
+    assert.equal(response.status, 400, skewed);
+    assert.equal((await response.json()).code, "agent_protocol_days_invalid_request");
+  }
+
+  const badDetail = await app.request(
+    protocolDaysPath("day-statuses", { ...range, today, detail: "everything" }),
+    { headers: authHeaders() }
+  );
+  assert.equal(badDetail.status, 400);
+  assert.deepEqual(calls, []);
+
+  // A today one day either side of the server's UTC date is a real timezone's.
+  for (const nearby of [addDays(today, -1), today, addDays(today, 1)]) {
+    const response = await app.request(
+      protocolDaysPath("day-statuses", {
+        fromLocalDate: addDays(nearby, -3),
+        toLocalDate: nearby,
+        today: nearby
+      }),
+      { headers: authHeaders() }
+    );
+    assert.equal(response.status, 200, nearby);
+  }
+  assert.deepEqual(
+    calls.map((call) => call.query.detail),
+    ["summary", "summary", "summary"]
+  );
+  // The planned-day read takes no today at all.
+  const planned = await app.request(protocolDaysPath("planned-days", range), {
+    headers: authHeaders()
+  });
+  assert.equal(planned.status, 200);
+  assert.equal("today" in calls.at(-1).query, false);
+});
+
+test("planned days may lie in the future; a Day Status range may not end after today", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  const future = { fromLocalDate: today, toLocalDate: addDays(today, 30) };
+
+  const planned = await app.request(protocolDaysPath("planned-days", future), {
+    headers: authHeaders()
+  });
+  assert.equal(planned.status, 200);
+  assert.deepEqual(await planned.json(), { ...future, plannedDays: [] });
+
+  for (const toLocalDate of [addDays(today, 1), addDays(today, 30)]) {
+    const statuses = await app.request(
+      protocolDaysPath("day-statuses", { fromLocalDate: today, toLocalDate, today }),
+      { headers: authHeaders() }
+    );
+    assert.equal(statuses.status, 400, toLocalDate);
+    assert.match((await statuses.json()).message, /today/);
+  }
+  assert.equal(calls.length, 1);
+
+  const throughToday = await app.request(
+    protocolDaysPath("day-statuses", { fromLocalDate: today, toLocalDate: today, today }),
+    { headers: authHeaders() }
+  );
+  assert.equal(throughToday.status, 200);
+});
+
+test("planned-day and Day Status reads pass the filters and detail to the store as sent", async () => {
+  const { app, calls } = protocolDaysApp();
+  const today = utcToday();
+  const range = { fromLocalDate: addDays(today, -3), toLocalDate: today };
+  await app.request(
+    protocolDaysPath("planned-days", { ...range, compoundId: "c1", protocolId: "p1" }),
+    { headers: authHeaders() }
+  );
+  await app.request(
+    protocolDaysPath("day-statuses", { ...range, today, compoundId: "c1", detail: "doses" }),
+    { headers: authHeaders() }
+  );
+  assert.deepEqual(
+    calls.map(({ read, userId, query }) => ({ read, userId, query })),
+    [
+      {
+        read: "planned-days",
+        userId: "user-1",
+        query: { ...range, compoundId: "c1", protocolId: "p1" }
+      },
+      {
+        read: "day-statuses",
+        userId: "user-1",
+        query: { ...range, today, compoundId: "c1", detail: "doses" }
+      }
+    ]
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -2982,6 +3205,817 @@ test(
 );
 
 // ---------------------------------------------------------------------------
+// DB-backed planned-day and Day Status reads (D6)
+// ---------------------------------------------------------------------------
+
+/**
+ * A plan stored as the app syncs it, relative to the server's UTC date T:
+ *
+ *   P1 (from T-10): Compound A timed 09:00 and 21:00 (a later version tombstoned
+ *       by undo), Compound B untimed once a day.
+ *   P2 (from T-5, paused T-3..T-2): Compound A timed 12:00.
+ *   P3: tombstoned by undo, so it never existed (D1).
+ *   P4 (archived on T-6): Compound C timed 07:00.
+ *
+ * `planProtocols` is what `planDays` must be given for it: what the app's plan
+ * query reads (D1), so a read that matches the core on it matches the app.
+ */
+function storedPlanFixture(today) {
+  const day = (offset) => addDays(today, offset);
+  const ids = {
+    compoundA: createUuidV7(),
+    compoundB: createUuidV7(),
+    compoundC: createUuidV7(),
+    p1: createUuidV7(),
+    p2: createUuidV7(),
+    p3: createUuidV7(),
+    p4: createUuidV7()
+  };
+  const timed = (times) => ({ v: 1, kind: "timed", days: { kind: "daily" }, times });
+  const amount = (value, unit = "gram") => ({
+    amountValue: value,
+    amountEntered: String(value),
+    unit,
+    route: "oral"
+  });
+  const protocol = (id, startLocalDate, fields = {}) => ({
+    id,
+    payload: {
+      id,
+      name: "Plan",
+      start_local_date: startLocalDate,
+      end_local_date: null,
+      period: null,
+      reminders_enabled: false,
+      archived_on: null,
+      ...fields.payload
+    },
+    deletedAt: fields.deletedAt ?? null
+  });
+  const member = (protocolId, compoundId, position, fields = {}) => {
+    const id = createUuidV7();
+    return {
+      id,
+      payload: {
+        id,
+        protocol_id: protocolId,
+        compound_id: compoundId,
+        position,
+        archived_on: null,
+        ...fields.payload
+      },
+      deletedAt: fields.deletedAt ?? null
+    };
+  };
+  const version = (memberRow, effectiveFrom, rule, planAmount, deletedAt = null) => {
+    const id = createUuidV7();
+    return {
+      id,
+      payload: {
+        id,
+        protocol_compound_id: memberRow.id,
+        effective_from: effectiveFrom,
+        rule: JSON.stringify(rule),
+        dose_amount_value: planAmount.amountValue,
+        dose_amount_entered: planAmount.amountEntered,
+        dose_unit: planAmount.unit,
+        route: planAmount.route
+      },
+      deletedAt
+    };
+  };
+
+  const archivedAt = new Date(`${day(-6)}T12:00:00.000Z`);
+  const protocols = [
+    protocol(ids.p1, day(-10)),
+    protocol(ids.p2, day(-5), {
+      payload: {
+        period: JSON.stringify({
+          v: 1,
+          cycle: null,
+          pauses: [{ from: day(-3), to: day(-2) }]
+        })
+      }
+    }),
+    protocol(ids.p3, day(-10), { deletedAt: archivedAt }),
+    protocol(ids.p4, day(-10), {
+      payload: { archived_on: day(-6) },
+      deletedAt: archivedAt
+    })
+  ];
+  const m1 = member(ids.p1, ids.compoundA, 0);
+  const m2 = member(ids.p1, ids.compoundB, 1);
+  const m3 = member(ids.p2, ids.compoundA, 0);
+  const m5 = member(ids.p3, ids.compoundA, 0);
+  const m6 = member(ids.p4, ids.compoundC, 0);
+  const members = [m1, m2, m3, m5, m6];
+  const v1 = version(m1, day(-10), timed(["09:00", "21:00"]), amount(5));
+  const v1Undone = version(m1, day(-2), timed(["10:00"]), amount(5), archivedAt);
+  const v2 = version(
+    m2,
+    day(-10),
+    { v: 1, kind: "untimed", days: { kind: "daily" }, count: 1 },
+    amount(1, "tablet")
+  );
+  const v3 = version(m3, day(-5), timed(["12:00"]), amount(2.5));
+  const v5 = version(m5, day(-10), timed(["15:00"]), amount(5));
+  const v6 = version(m6, day(-10), timed(["07:00"]), amount(3));
+  const schedules = [v1, v1Undone, v2, v3, v5, v6];
+
+  const planVersion = (row, rule, planAmount) => ({
+    id: row.id,
+    effectiveFrom: row.payload.effective_from,
+    rule,
+    ...planAmount
+  });
+  const planProtocols = [
+    {
+      protocolId: ids.p1,
+      startLocalDate: day(-10),
+      remindersEnabled: false,
+      members: [
+        {
+          memberId: m1.id,
+          compoundId: ids.compoundA,
+          versions: [planVersion(v1, timed(["09:00", "21:00"]), amount(5))]
+        },
+        {
+          memberId: m2.id,
+          compoundId: ids.compoundB,
+          versions: [
+            planVersion(
+              v2,
+              { v: 1, kind: "untimed", days: { kind: "daily" }, count: 1 },
+              amount(1, "tablet")
+            )
+          ]
+        }
+      ]
+    },
+    {
+      protocolId: ids.p2,
+      startLocalDate: day(-5),
+      period: { v: 1, cycle: null, pauses: [{ from: day(-3), to: day(-2) }] },
+      remindersEnabled: false,
+      members: [
+        {
+          memberId: m3.id,
+          compoundId: ids.compoundA,
+          versions: [planVersion(v3, timed(["12:00"]), amount(2.5))]
+        }
+      ]
+    },
+    {
+      protocolId: ids.p4,
+      startLocalDate: day(-10),
+      archivedOn: day(-6),
+      remindersEnabled: false,
+      members: [
+        {
+          memberId: m6.id,
+          compoundId: ids.compoundC,
+          versions: [planVersion(v6, timed(["07:00"]), amount(3))]
+        }
+      ]
+    }
+  ];
+
+  const dose = (compoundId, localDate, tookAt, fields = {}) => {
+    const id = createUuidV7();
+    return {
+      id,
+      payload: {
+        id,
+        compound_id: compoundId,
+        compound_name: "Compound",
+        amount_value: 5,
+        amount_entered: "5",
+        unit: "gram",
+        route: "oral",
+        took_at: tookAt,
+        timezone: "UTC",
+        timezone_offset_minutes: 0,
+        local_date: localDate,
+        provenance: "agent",
+        protocol_id: null,
+        protocol_name: null,
+        ...fields.payload
+      },
+      deletedAt: fields.deletedAt ?? null
+    };
+  };
+  const doses = {
+    // T-1: fills A's 09:00 and 21:00; the 12:00 stays unfilled.
+    a1: dose(ids.compoundA, day(-1), `${day(-1)}T08:50:00.000Z`),
+    a2: dose(ids.compoundA, day(-1), `${day(-1)}T21:05:00.000Z`),
+    // T-4 at UTC+10: 02:00Z is 12:00 where it was taken, so it fills P2's 12:00.
+    a3: dose(ids.compoundA, day(-4), `${day(-4)}T02:00:00.000Z`, {
+      payload: { timezone: "Australia/Brisbane", timezone_offset_minutes: 600 }
+    }),
+    // Archived: never counted.
+    a4: dose(ids.compoundA, day(-1), `${day(-1)}T12:00:00.000Z`, {
+      deletedAt: new Date(`${day(-1)}T13:00:00.000Z`)
+    }),
+    // T-2, tagged with P2 while P2 is paused: the tag never decides what it fills.
+    a5: dose(ids.compoundA, day(-2), `${day(-2)}T12:00:00.000Z`, {
+      payload: { protocol_id: ids.p2, protocol_name: "Plan" }
+    }),
+    // T-1: B's one untimed dose, then an extra.
+    b1: dose(ids.compoundB, day(-1), `${day(-1)}T13:00:00.000Z`),
+    b2: dose(ids.compoundB, day(-1), `${day(-1)}T14:00:00.000Z`),
+    // A Dose logged without a Compound fills nothing.
+    loose: dose(null, day(-1), `${day(-1)}T09:00:00.000Z`)
+  };
+  // The member rows' Compounds. The app's plan query inner-joins them, archived
+  // or not, so C, archived with its Protocol, still plans P4's past days.
+  const compounds = [ids.compoundA, ids.compoundB, ids.compoundC].map((id) =>
+    storedCompound(id, id === ids.compoundC ? archivedAt : null)
+  );
+  return { ids, compounds, protocols, members, schedules, planProtocols, doses };
+}
+
+function storedCompound(id, deletedAt = null) {
+  return { id, payload: { id, name: "Compound", default_unit: "gram" }, deletedAt };
+}
+
+/**
+ * Stores plan fixture rows as a sync push leaves them: the payload's
+ * `updated_at` and `deleted_at` match the row's columns.
+ */
+async function insertStoredRows(database, table, userId, rows) {
+  if (rows.length === 0) {
+    return;
+  }
+  const updatedAt = new Date();
+  await insertOpaqueFixture(
+    database,
+    table,
+    rows.map((row) => ({
+      id: row.id,
+      userId,
+      updatedAt,
+      deletedAt: row.deletedAt ?? null,
+      payload: {
+        ...row.payload,
+        updated_at: updatedAt.toISOString(),
+        deleted_at: row.deletedAt?.toISOString() ?? null
+      }
+    }))
+  );
+}
+
+async function insertStoredPlan(database, userId, fixture) {
+  await insertStoredRows(database, schema.compounds, userId, fixture.compounds);
+  await insertStoredRows(database, schema.protocols, userId, fixture.protocols);
+  await insertStoredRows(database, schema.protocolCompounds, userId, fixture.members);
+  await insertStoredRows(database, schema.schedules, userId, fixture.schedules);
+  await insertStoredRows(database, schema.doses, userId, Object.values(fixture.doses));
+}
+
+/** The core's PlanDoses for fixture Doses, numbered as matching numbers them (D6 step 2). */
+function expectedPlanDoses(doseRows) {
+  const doses = doseRows
+    .filter((row) => row.deletedAt === null && row.payload.compound_id !== null)
+    .map((row) => {
+      const at = new Date(
+        Date.parse(row.payload.took_at) + row.payload.timezone_offset_minutes * 60_000
+      );
+      return {
+        doseId: row.id,
+        compoundId: row.payload.compound_id,
+        localDate: row.payload.local_date,
+        localTime: at.toISOString().slice(11, 16)
+      };
+    })
+    .sort((left, right) =>
+      left.localTime === right.localTime
+        ? left.doseId < right.doseId ? -1 : 1
+        : left.localTime < right.localTime ? -1 : 1
+    );
+  const sequences = new Map();
+  return doses.map((dose) => {
+    const key = `${dose.compoundId}|${dose.localDate}`;
+    const sequence = sequences.get(key) ?? 0;
+    sequences.set(key, sequence + 1);
+    return { ...dose, sequence };
+  });
+}
+
+/** The read's JSON for core output: every amount present, null when absent. */
+function plannedDayJson(day) {
+  return {
+    ...day,
+    planned: day.planned.map((planned) => ({
+      localTime: planned.localTime,
+      amountValue: planned.amountValue ?? null,
+      amountEntered: planned.amountEntered ?? null,
+      unit: planned.unit ?? null,
+      route: planned.route ?? null
+    }))
+  };
+}
+
+function dayStatusJson(status, detail) {
+  const { fills, ...summary } = status;
+  if (detail === "summary") {
+    return summary;
+  }
+  return {
+    ...summary,
+    fills: fills.map((fill) => ({
+      slot: fill.slot,
+      protocolId: fill.protocolId,
+      plannedLocalTime: fill.plannedLocalTime,
+      amountValue: fill.amountValue ?? null,
+      amountEntered: fill.amountEntered ?? null,
+      unit: fill.unit ?? null,
+      route: fill.route ?? null,
+      doseId: fill.doseId
+    }))
+  };
+}
+
+async function getJson(app, read, params) {
+  const response = await app.request(protocolDaysPath(read, params), {
+    headers: authHeaders()
+  });
+  assert.equal(response.status, 200, `${read} ${JSON.stringify(params)}`);
+  return response.json();
+}
+
+test(
+  "planned-day and Day Status reads give the shared core's answer for the stored plan, scoped to the user",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-days-${randomUUID()}`;
+    const otherUserId = `agent-protocol-days-other-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const day = (offset) => addDays(today, offset);
+    const fixture = storedPlanFixture(today);
+    const { ids, doses } = fixture;
+
+    try {
+      await insertUser(database, userId);
+      await insertUser(database, otherUserId);
+      await insertStoredPlan(database, userId, fixture);
+      // Another account's plan and Dose for the same Compound id never leak in.
+      const other = storedPlanFixture(today);
+      const otherDose = {
+        ...other.doses.a1,
+        payload: { ...other.doses.a1.payload, compound_id: ids.compoundA }
+      };
+      await insertStoredPlan(database, otherUserId, {
+        ...other,
+        doses: { otherDose }
+      });
+
+      const range = { fromLocalDate: day(-4), toLocalDate: today };
+      const expectedDays = planDays(fixture.planProtocols, range.fromLocalDate, range.toLocalDate);
+      const expectedStatuses = dayStatuses(
+        expectedDays,
+        expectedPlanDoses(Object.values(doses)),
+        today
+      );
+
+      const planned = await getJson(app, "planned-days", range);
+      assert.deepEqual(planned, { ...range, plannedDays: expectedDays.map(plannedDayJson) });
+      // 5 dates of P1 (A, B), P2 (A) and P4 (C); the undone P3 never existed.
+      assert.equal(planned.plannedDays.length, 5 * 4);
+      assert.ok(planned.plannedDays.every((planDay) => planDay.protocolId !== ids.p3));
+
+      const summary = await getJson(app, "day-statuses", { ...range, today });
+      assert.deepEqual(summary, {
+        ...range,
+        today,
+        detail: "summary",
+        dayStatuses: expectedStatuses.map((status) => dayStatusJson(status, "summary"))
+      });
+      assert.ok(summary.dayStatuses.every((status) => !("fills" in status)));
+
+      const detailed = await getJson(app, "day-statuses", { ...range, today, detail: "doses" });
+      assert.deepEqual(
+        detailed.dayStatuses,
+        expectedStatuses.map((status) => dayStatusJson(status, "doses"))
+      );
+
+      // The days themselves, read as D6 decides them.
+      const statusOf = (compoundId, localDate) =>
+        detailed.dayStatuses.find(
+          (status) => status.compoundId === compoundId && status.localDate === localDate
+        );
+      const counts = (status) => [
+        status.status,
+        status.plannedCount,
+        status.loggedCount,
+        status.extraCount
+      ];
+      // P2 is paused, so only P1's two doses are planned.
+      assert.deepEqual(counts(statusOf(ids.compoundA, day(-3))), ["not_logged", 2, 0, 0]);
+      // The 12:00 Dose tagged with the paused P2 fills P1's nearer 09:00.
+      const pausedDay = statusOf(ids.compoundA, day(-2));
+      assert.deepEqual(counts(pausedDay), ["partly_logged", 2, 1, 0]);
+      assert.equal(pausedDay.fills[0].doseId, doses.a5.id);
+      // The archived 12:00 Dose is not counted, so P2's 12:00 stays unfilled.
+      const yesterday = statusOf(ids.compoundA, day(-1));
+      assert.deepEqual(counts(yesterday), ["partly_logged", 3, 2, 0]);
+      assert.deepEqual(
+        yesterday.fills.map((fill) => [fill.plannedLocalTime, fill.protocolId, fill.doseId]),
+        [
+          ["09:00", ids.p1, doses.a1.id],
+          ["12:00", ids.p2, null],
+          ["21:00", ids.p1, doses.a2.id]
+        ]
+      );
+      assert.deepEqual(
+        yesterday.fills.map((fill) => [fill.amountValue, fill.amountEntered, fill.unit, fill.route]),
+        [
+          [5, "5", "gram", "oral"],
+          [2.5, "2.5", "gram", "oral"],
+          [5, "5", "gram", "oral"]
+        ]
+      );
+      assert.deepEqual(counts(statusOf(ids.compoundA, today)), ["pending", 3, 0, 0]);
+      // A Dose's local time is read at its frozen offset: 02:00Z at UTC+10 is 12:00.
+      assert.equal(
+        statusOf(ids.compoundA, day(-4)).fills.find((fill) => fill.plannedLocalTime === "12:00")
+          .doseId,
+        doses.a3.id
+      );
+      assert.deepEqual(counts(statusOf(ids.compoundB, day(-1))), ["logged", 1, 1, 1]);
+      // An archived Protocol still plans the days before its archive, and reads
+      // removed after it.
+      const removed = statusOf(ids.compoundC, day(-1));
+      assert.deepEqual(counts(removed), ["not_planned", 0, 0, 0]);
+      assert.equal(removed.notPlannedReason, "removed");
+      for (const status of detailed.dayStatuses) {
+        assert.equal("notPlannedReason" in status, status.status === "not_planned");
+      }
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "planned-day and Day Status reads filter by Protocol and Compound, and return an empty list for an unknown id",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-days-filters-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const day = (offset) => addDays(today, offset);
+    const fixture = storedPlanFixture(today);
+    const { ids, doses } = fixture;
+    const range = { fromLocalDate: day(-4), toLocalDate: today };
+    const planDoses = expectedPlanDoses(Object.values(doses));
+
+    try {
+      await insertUser(database, userId);
+      await insertStoredPlan(database, userId, fixture);
+
+      // A Protocol filter reads only that Protocol's plan: P2 alone plans A's
+      // 12:00, so on T-1 the 08:50 Dose fills it and the 21:05 is an extra.
+      const p2Only = fixture.planProtocols.filter((protocol) => protocol.protocolId === ids.p2);
+      const p2Days = planDays(p2Only, range.fromLocalDate, range.toLocalDate);
+      const p2Planned = await getJson(app, "planned-days", { ...range, protocolId: ids.p2 });
+      assert.deepEqual(p2Planned.plannedDays, p2Days.map(plannedDayJson));
+      const p2Statuses = await getJson(app, "day-statuses", {
+        ...range,
+        today,
+        protocolId: ids.p2
+      });
+      assert.deepEqual(
+        p2Statuses.dayStatuses,
+        dayStatuses(p2Days, planDoses, today).map((status) => dayStatusJson(status, "summary"))
+      );
+      const p2Yesterday = p2Statuses.dayStatuses.find((status) => status.localDate === day(-1));
+      assert.deepEqual(
+        [p2Yesterday.status, p2Yesterday.plannedCount, p2Yesterday.loggedCount, p2Yesterday.extraCount],
+        ["logged", 1, 1, 1]
+      );
+      assert.equal(
+        p2Statuses.dayStatuses.find((status) => status.localDate === day(-3)).status,
+        "paused"
+      );
+
+      // A Compound filter gives that Compound's days exactly as the whole plan does.
+      const allDays = planDays(fixture.planProtocols, range.fromLocalDate, range.toLocalDate);
+      const bPlanned = await getJson(app, "planned-days", { ...range, compoundId: ids.compoundB });
+      assert.deepEqual(
+        bPlanned.plannedDays,
+        allDays.filter((planDay) => planDay.compoundId === ids.compoundB).map(plannedDayJson)
+      );
+      const bStatuses = await getJson(app, "day-statuses", {
+        ...range,
+        today,
+        compoundId: ids.compoundB,
+        detail: "doses"
+      });
+      assert.deepEqual(
+        bStatuses.dayStatuses,
+        dayStatuses(allDays, planDoses, today)
+          .filter((status) => status.compoundId === ids.compoundB)
+          .map((status) => dayStatusJson(status, "doses"))
+      );
+      assert.equal(bStatuses.dayStatuses.length, 5);
+
+      // Both filters together, and the undone P3: nothing.
+      const both = await getJson(app, "planned-days", {
+        ...range,
+        protocolId: ids.p2,
+        compoundId: ids.compoundB
+      });
+      assert.deepEqual(both.plannedDays, []);
+      for (const params of [{ protocolId: ids.p3 }, { protocolId: createUuidV7() }, { compoundId: createUuidV7() }]) {
+        const plannedDays = await getJson(app, "planned-days", { ...range, ...params });
+        assert.deepEqual(plannedDays.plannedDays, [], JSON.stringify(params));
+        const statuses = await getJson(app, "day-statuses", { ...range, today, ...params });
+        assert.deepEqual(statuses.dayStatuses, [], JSON.stringify(params));
+      }
+
+      // Planned days run into the future, where Day Statuses never go.
+      const ahead = { fromLocalDate: day(1), toLocalDate: day(3) };
+      const future = await getJson(app, "planned-days", ahead);
+      assert.deepEqual(
+        future.plannedDays,
+        planDays(fixture.planProtocols, ahead.fromLocalDate, ahead.toLocalDate).map(plannedDayJson)
+      );
+      assert.deepEqual(
+        future.plannedDays
+          .filter((planDay) => planDay.protocolId === ids.p1 && planDay.compoundId === ids.compoundA)
+          .map((planDay) => planDay.planned.map((planned) => planned.localTime)),
+        [
+          ["09:00", "21:00"],
+          ["09:00", "21:00"],
+          ["09:00", "21:00"]
+        ]
+      );
+
+      // A member whose Compound row hasn't synced plans nothing, as in the
+      // app, whose plan query inner-joins compounds.
+      const unsyncedCompoundId = createUuidV7();
+      const unsyncedMemberId = createUuidV7();
+      const unsyncedVersionId = createUuidV7();
+      await insertStoredRows(database, schema.protocolCompounds, userId, [
+        {
+          id: unsyncedMemberId,
+          payload: {
+            id: unsyncedMemberId,
+            protocol_id: ids.p1,
+            compound_id: unsyncedCompoundId,
+            position: 2,
+            archived_on: null
+          },
+          deletedAt: null
+        }
+      ]);
+      await insertStoredRows(database, schema.schedules, userId, [
+        {
+          id: unsyncedVersionId,
+          payload: {
+            id: unsyncedVersionId,
+            protocol_compound_id: unsyncedMemberId,
+            effective_from: day(-10),
+            rule: JSON.stringify({ v: 1, kind: "timed", days: { kind: "daily" }, times: ["08:00"] }),
+            dose_amount_value: 1,
+            dose_amount_entered: "1",
+            dose_unit: "gram",
+            route: "oral"
+          },
+          deletedAt: null
+        }
+      ]);
+      const withUnsynced = await getJson(app, "planned-days", range);
+      assert.deepEqual(withUnsynced.plannedDays, allDays.map(plannedDayJson));
+      for (const params of [
+        { compoundId: unsyncedCompoundId },
+        { protocolId: ids.p1, compoundId: unsyncedCompoundId }
+      ]) {
+        const plannedDays = await getJson(app, "planned-days", { ...range, ...params });
+        assert.deepEqual(plannedDays.plannedDays, [], JSON.stringify(params));
+        const statuses = await getJson(app, "day-statuses", { ...range, today, ...params });
+        assert.deepEqual(statuses.dayStatuses, [], JSON.stringify(params));
+      }
+      // Once its Compound row arrives, it plans like any other member.
+      await insertStoredRows(database, schema.compounds, userId, [
+        storedCompound(unsyncedCompoundId)
+      ]);
+      const synced = await getJson(app, "planned-days", {
+        ...range,
+        compoundId: unsyncedCompoundId
+      });
+      assert.deepEqual(
+        synced.plannedDays.map((planDay) => [
+          planDay.protocolId,
+          planDay.state,
+          planDay.planned.map((planned) => planned.localTime)
+        ]),
+        Array.from({ length: 5 }, () => [ids.p1, "planned", ["08:00"]])
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+/**
+ * The read-latency budget for one 366-day planned-day or Day Status request
+ * against a real Postgres, end to end through the route: the storage reads,
+ * the shared core and the response's schema check. No read-latency budget
+ * existed on the server before this read, so this one is set here
+ * (docs/designs/protocol-schedules-and-reminders.md, file 65).
+ */
+const AGENT_PROTOCOL_DAYS_READ_BUDGET_MS = 250;
+
+test(
+  "a 366-day planned-day and Day Status read for a user with 2,000 Doses answers within the read-latency budget",
+  { skip },
+  async (t) => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-days-budget-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const today = utcToday();
+    const from = addDays(today, -365);
+
+    // 3 Protocols of 2 Compounds each, 5 Schedule Versions per member, one
+    // Protocol with a cycle and two Pauses: the Consistency budget's shape
+    // (file 46), for six Compounds at once.
+    const protocols = [];
+    const members = [];
+    const schedules = [];
+    const compoundIds = [];
+    for (let p = 0; p < 3; p += 1) {
+      const protocolId = createUuidV7();
+      protocols.push({
+        id: protocolId,
+        payload: {
+          id: protocolId,
+          name: `Plan ${p}`,
+          start_local_date: from,
+          end_local_date: null,
+          period:
+            p === 0
+              ? JSON.stringify({
+                  v: 1,
+                  cycle: { on_days: 20, off_days: 8, anchor: from, anchor_is_default: true },
+                  pauses: [
+                    { from: addDays(from, 40), to: addDays(from, 47) },
+                    { from: addDays(from, 200), to: addDays(from, 203) }
+                  ]
+                })
+              : null,
+          reminders_enabled: true,
+          archived_on: null
+        },
+        deletedAt: null
+      });
+      for (let m = 0; m < 2; m += 1) {
+        const compoundId = createUuidV7();
+        compoundIds.push(compoundId);
+        const memberId = createUuidV7();
+        members.push({
+          id: memberId,
+          payload: {
+            id: memberId,
+            protocol_id: protocolId,
+            compound_id: compoundId,
+            position: m,
+            archived_on: null
+          },
+          deletedAt: null
+        });
+        for (let v = 0; v < 5; v += 1) {
+          const versionId = createUuidV7();
+          schedules.push({
+            id: versionId,
+            payload: {
+              id: versionId,
+              protocol_compound_id: memberId,
+              effective_from: addDays(from, v * 70),
+              rule: JSON.stringify(
+                v % 2 === 0
+                  ? { v: 1, kind: "timed", days: { kind: "daily" }, times: ["08:00", "20:00"] }
+                  : {
+                      v: 1,
+                      kind: "timed",
+                      days: { kind: "weekdays", weekdays: [1, 3, 5] },
+                      times: ["07:30"]
+                    }
+              ),
+              dose_amount_value: 5,
+              dose_amount_entered: "5",
+              dose_unit: "milligram",
+              route: "oral"
+            },
+            deletedAt: null
+          });
+        }
+      }
+    }
+    const doseRows = [];
+    for (let index = 0; index < 2000; index += 1) {
+      const localDate = addDays(from, index % 366);
+      const id = createUuidV7();
+      const minutes = 7 * 60 + ((index * 37) % (14 * 60));
+      const time = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+      doseRows.push({
+        id,
+        payload: {
+          id,
+          compound_id: compoundIds[index % compoundIds.length],
+          compound_name: "Compound",
+          amount_value: 5,
+          amount_entered: "5",
+          unit: "milligram",
+          route: "oral",
+          took_at: `${localDate}T${time}:00.000Z`,
+          timezone: "UTC",
+          timezone_offset_minutes: 0,
+          local_date: localDate,
+          provenance: "agent",
+          protocol_id: null,
+          protocol_name: null
+        },
+        deletedAt: null
+      });
+    }
+
+    try {
+      await insertUser(database, userId);
+      await insertStoredRows(
+        database,
+        schema.compounds,
+        userId,
+        compoundIds.map((id) => storedCompound(id))
+      );
+      await insertStoredRows(database, schema.protocols, userId, protocols);
+      await insertStoredRows(database, schema.protocolCompounds, userId, members);
+      await insertStoredRows(database, schema.schedules, userId, schedules);
+      for (let start = 0; start < doseRows.length; start += 500) {
+        await insertStoredRows(database, schema.doses, userId, doseRows.slice(start, start + 500));
+      }
+
+      const range = { fromLocalDate: from, toLocalDate: today };
+      const reads = [
+        ["planned-days", range],
+        ["day-statuses", { ...range, today, detail: "doses" }]
+      ];
+      for (const [read, params] of reads) {
+        // One untimed read first, so the measured ones aren't paying for the
+        // first connection and the route's first compile.
+        const warm = await getJson(app, read, params);
+        if (read === "planned-days") {
+          assert.equal(warm.plannedDays.length, 366 * compoundIds.length);
+        } else {
+          // Every Dose was read and matched: each fills a slot or is an extra.
+          assert.equal(warm.dayStatuses.length, 366 * compoundIds.length);
+          assert.equal(
+            warm.dayStatuses.reduce(
+              (sum, status) => sum + status.loggedCount + status.extraCount,
+              0
+            ),
+            doseRows.length
+          );
+        }
+        const elapsed = [];
+        for (let run = 0; run < 3; run += 1) {
+          const started = performance.now();
+          await getJson(app, read, params);
+          elapsed.push(performance.now() - started);
+        }
+        const median = elapsed.sort((left, right) => left - right)[1];
+        t.diagnostic(
+          `${read}: 366 days, ${doseRows.length} Doses, median ${median.toFixed(0)} ms of ${elapsed
+            .map((ms) => ms.toFixed(0))
+            .join(", ")} (budget ${AGENT_PROTOCOL_DAYS_READ_BUDGET_MS} ms).`
+        );
+        assert.ok(
+          median < AGENT_PROTOCOL_DAYS_READ_BUDGET_MS,
+          `${read} took ${median.toFixed(0)} ms, over the ${AGENT_PROTOCOL_DAYS_READ_BUDGET_MS} ms budget.`
+        );
+      }
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -3075,6 +4109,8 @@ function stubStore(overrides) {
     listProtocols: notImplemented("listProtocols"),
     listDoses: notImplemented("listDoses"),
     readEffectWindow: notImplemented("readEffectWindow"),
+    listProtocolPlannedDays: notImplemented("listProtocolPlannedDays"),
+    listProtocolDayStatuses: notImplemented("listProtocolDayStatuses"),
     writeDoseBatch: notImplemented("writeDoseBatch"),
     writeCompoundBatch: notImplemented("writeCompoundBatch"),
     writeProtocolBatch: notImplemented("writeProtocolBatch"),
@@ -3139,18 +4175,19 @@ async function insertUser(database, userId) {
   });
 }
 
-function insertOpaqueFixture(
-  database,
-  table,
-  { id, userId, updatedAt, payload }
-) {
-  return database.db.insert(table).values({
-    id,
-    userId,
-    deviceId: "legacy-agent-device",
-    payload,
-    updatedAt,
-    deletedAt: null,
-    receivedAt: updatedAt
-  });
+/** Inserts one opaque row, or several in one statement, with its payload as given. */
+function insertOpaqueFixture(database, table, rows) {
+  return database.db.insert(table).values(
+    (Array.isArray(rows) ? rows : [rows]).map(
+      ({ id, userId, updatedAt, payload, deletedAt = null }) => ({
+        id,
+        userId,
+        deviceId: "legacy-agent-device",
+        payload,
+        updatedAt,
+        deletedAt,
+        receivedAt: updatedAt
+      })
+    )
+  );
 }

@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 
 import {
   agentBatchRequestFingerprint,
@@ -31,13 +31,23 @@ import {
   applyingScheduleVersion,
   compareIds,
   compareScheduleVersions,
+  dayStatuses,
   decodeProtocolPeriod,
   decodeScheduleRule,
   encodeScheduleRule,
   epochDay,
   isJsonObject,
   isValidLocalDate,
+  planDays,
   pushToGroup,
+  type DayStatus,
+  type DayStatusValue,
+  type NotPlannedReason,
+  type PlanAmount,
+  type PlanDay,
+  type PlanDayState,
+  type PlanDose,
+  type PlanProtocol,
   type ProtocolPeriod,
   type ScheduleRule
 } from "./protocol-plan.js";
@@ -1029,6 +1039,215 @@ export const AgentEffectWindowErrorResponseSchema = z
   .openapi("AgentEffectWindowErrorResponse");
 
 // ---------------------------------------------------------------------------
+// Planned-day and Day Status reads (docs/designs/protocol-schedules-and-
+// reminders.md, D6 "Later stage"). Both are computed on read by the shared
+// plan core (protocol-plan.ts, the twin of the app's Dart core, pinned by the
+// m36 vectors), so an Agent and the app give the same answer for a day.
+// Nothing here is stored, and the responses carry statuses and counts only:
+// no ratio, streak or percentage.
+// ---------------------------------------------------------------------------
+
+/**
+ * The longest range either read accepts, in days, both ends included: the
+ * same 366 the app's Consistency view reads at most
+ * (`maxConsistencyRangeDays`).
+ */
+export const AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS = 366;
+
+/**
+ * Every value of the string union `T`, as a tuple `z.enum` takes. It is
+ * checked both ways at compile time: a value the union lacks fails the
+ * element type, and a union value the tuple leaves out fails the `missing`
+ * check. So when the shared core gains a state or status, this module stops
+ * compiling instead of the response schema refusing the core's output with a
+ * 500 at run time.
+ */
+function unionValues<T extends string>() {
+  return <const V extends readonly [T, ...T[]]>(
+    values: V & ([Exclude<T, V[number]>] extends [never] ? unknown : { missing: Exclude<T, V[number]> })
+  ): V => values;
+}
+
+const PLAN_DAY_STATES = unionValues<PlanDayState>()([
+  "planned",
+  "not_scheduled_today",
+  "as_needed",
+  "no_schedule",
+  "removed",
+  "outside",
+  "paused",
+  "off_cycle"
+]);
+
+const DAY_STATUS_VALUES = unionValues<DayStatusValue>()([
+  "not_planned",
+  "paused",
+  "off_cycle",
+  "pending",
+  "logged",
+  "partly_logged",
+  "not_logged"
+]);
+
+const NOT_PLANNED_REASONS = unionValues<NotPlannedReason>()([
+  "not_scheduled_today",
+  "as_needed",
+  "no_schedule",
+  "removed",
+  "outside"
+]);
+
+const AgentProtocolDaysRangeQuerySchema = z.object({
+  fromLocalDate: LocalDateSchema.openapi({
+    param: { name: "fromLocalDate", in: "query" },
+    description: `Inclusive first local date (YYYY-MM-DD) of the range. The range holds at most ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days, both ends included.`
+  }),
+  toLocalDate: LocalDateSchema.openapi({
+    param: { name: "toLocalDate", in: "query" },
+    description: "Inclusive last local date (YYYY-MM-DD) of the range; not before fromLocalDate."
+  }),
+  compoundId: z.string().trim().min(1).optional().openapi({
+    param: { name: "compoundId", in: "query" },
+    description:
+      "Optional Compound id: only this Compound's days. An unknown id returns an empty list."
+  }),
+  protocolId: z.string().trim().min(1).optional().openapi({
+    param: { name: "protocolId", in: "query" },
+    description:
+      "Optional Protocol id: only this Protocol's plan is read. An unknown id returns an empty list."
+  })
+});
+
+export const AgentProtocolPlannedDaysQuerySchema = AgentProtocolDaysRangeQuerySchema.openapi(
+  "AgentProtocolPlannedDaysQuery"
+);
+
+export const AgentProtocolDayStatusesQuerySchema = AgentProtocolDaysRangeQuerySchema.extend({
+  today: LocalDateSchema.openapi({
+    param: { name: "today", in: "query" },
+    description:
+      "The user's local date (YYYY-MM-DD), within one day of the server's UTC date. It decides Pending against Not logged, and toLocalDate must not be after it: a day still to come has no Day Status."
+  }),
+  detail: z
+    .enum(["summary", "doses"])
+    .default("summary")
+    .openapi({
+      param: { name: "detail", in: "query" },
+      description:
+        "summary (the default) returns each Day Status's status and counts; doses also returns its fills, the planned dose each logged Dose filled."
+    })
+}).openapi("AgentProtocolDayStatusesQuery");
+
+const PlanLocalTimeReadSchema = z.string().min(1).openapi({
+  description: "A wall-clock time, HH:MM."
+});
+
+const PlanAmountReadFields = {
+  amountValue: z.number().nullable(),
+  amountEntered: z.string().nullable(),
+  unit: DoseUnitSchema.nullable(),
+  route: DoseRouteSchema.nullable()
+};
+
+const AgentProtocolPlannedDoseSchema = z
+  .object({
+    localTime: PlanLocalTimeReadSchema.nullable().openapi({
+      description: "The planned wall-clock time, HH:MM; null for an untimed planned dose (any time that day)."
+    }),
+    ...PlanAmountReadFields
+  })
+  .openapi("AgentProtocolPlannedDose");
+
+const AgentProtocolPlannedDaySchema = z
+  .object({
+    protocolId: z.string().min(1),
+    compoundId: z.string().min(1),
+    localDate: z.string().min(1),
+    state: z
+      .enum(PLAN_DAY_STATES)
+      .openapi({
+        description:
+          "What the Protocol planned for the Compound that day: planned, or why nothing was (not scheduled that day, as needed, no Schedule, member removed, outside the Protocol's dates, paused, or off cycle)."
+      }),
+    planned: z.array(AgentProtocolPlannedDoseSchema).openapi({
+      description: "The planned doses, non-empty exactly when state is planned, in the rule's stored order."
+    })
+  })
+  .openapi("AgentProtocolPlannedDay");
+
+export const AgentProtocolPlannedDaysResponseSchema = z
+  .object({
+    fromLocalDate: z.string().min(1),
+    toLocalDate: z.string().min(1),
+    plannedDays: z.array(AgentProtocolPlannedDaySchema).openapi({
+      description:
+        "One entry per Protocol, Compound and date of the range, for every Compound with a member row in that Protocol, ordered by date, then Protocol id, then Compound id."
+    })
+  })
+  .openapi("AgentProtocolPlannedDaysResponse");
+
+const AgentProtocolDayStatusFillSchema = z
+  .object({
+    slot: z.number().int().min(0),
+    protocolId: z.string().min(1),
+    plannedLocalTime: PlanLocalTimeReadSchema.nullable().openapi({
+      description: "The slot's planned time, HH:MM; null for an untimed slot."
+    }),
+    ...PlanAmountReadFields,
+    doseId: z.string().min(1).nullable().openapi({
+      description: "The logged Dose that filled this slot; null when it is unfilled."
+    })
+  })
+  .openapi("AgentProtocolDayStatusFill");
+
+const AgentProtocolDayStatusSchema = z
+  .object({
+    compoundId: z.string().min(1),
+    localDate: z.string().min(1),
+    status: z
+      .enum(DAY_STATUS_VALUES)
+      .openapi({
+        description:
+          "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled."
+      }),
+    notPlannedReason: z
+      .enum(NOT_PLANNED_REASONS)
+      .optional()
+      .openapi({ description: "Present exactly when status is not_planned." }),
+    plannedCount: z.number().int().min(0),
+    loggedCount: z.number().int().min(0).openapi({
+      description: "Filled planned doses; never more than plannedCount."
+    }),
+    extraCount: z.number().int().min(0).openapi({
+      description: "Logged Doses that filled no planned dose. Extras never change the status."
+    }),
+    fills: z.array(AgentProtocolDayStatusFillSchema).optional().openapi({
+      description: "Only with detail=doses: every planned dose (slot), in slot order, with the Dose that filled it."
+    })
+  })
+  .openapi("AgentProtocolDayStatus");
+
+export const AgentProtocolDayStatusesResponseSchema = z
+  .object({
+    fromLocalDate: z.string().min(1),
+    toLocalDate: z.string().min(1),
+    today: z.string().min(1),
+    detail: z.enum(["summary", "doses"]),
+    dayStatuses: z.array(AgentProtocolDayStatusSchema).openapi({
+      description:
+        "One per Compound and date that has at least one planned day in the plan read, ordered by date, then Compound id. A Compound in no Protocol read has none."
+    })
+  })
+  .openapi("AgentProtocolDayStatusesResponse");
+
+export const AgentProtocolDaysInvalidRequestResponseSchema = z
+  .object({
+    code: z.literal("agent_protocol_days_invalid_request"),
+    message: z.string().min(1)
+  })
+  .openapi("AgentProtocolDaysInvalidRequestResponse");
+
+// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
@@ -1279,6 +1498,68 @@ export const agentEffectWindowRoute = createRoute({
   }
 });
 
+// The app sets no validation hook, so a query the request schema refuses
+// never reaches the route or its checks, as for every route here.
+const PROTOCOL_DAYS_SCHEMA_400_NOTE =
+  "A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.";
+
+function protocolDaysInvalidResponse(description: string) {
+  return {
+    400: {
+      description,
+      content: {
+        "application/json": { schema: AgentProtocolDaysInvalidRequestResponseSchema }
+      }
+    }
+  };
+}
+
+export const agentProtocolPlannedDaysRoute = createRoute({
+  method: "get",
+  path: "/agent/protocols/planned-days",
+  operationId: "listAgentProtocolPlannedDays",
+  tags: ["Agent Reads"],
+  summary: "List what the caller's Protocols planned on each day of a range.",
+  description: `Returns one planned day per Protocol, Compound and local date from fromLocalDate through toLocalDate (both included, at most ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days; future dates allowed): the planned doses with their times and amounts, or why nothing was planned. Archived Protocols and removed members still plan the days before their archive. Computed on read by the same plan core the app uses, never stored.`,
+  security: [{ bearerAuth: [] }],
+  request: { query: AgentProtocolPlannedDaysQuerySchema },
+  responses: {
+    200: {
+      description: "The planned days of the range.",
+      content: {
+        "application/json": { schema: AgentProtocolPlannedDaysResponseSchema }
+      }
+    },
+    ...protocolDaysInvalidResponse(
+      `The range is refused, with this body: fromLocalDate after toLocalDate, or a range of more than ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days. ${PROTOCOL_DAYS_SCHEMA_400_NOTE}`
+    ),
+    ...readResponses401_503()
+  }
+});
+
+export const agentProtocolDayStatusesRoute = createRoute({
+  method: "get",
+  path: "/agent/protocols/day-statuses",
+  operationId: "listAgentProtocolDayStatuses",
+  tags: ["Agent Reads"],
+  summary: "List the Day Status of each Compound on each day of a range.",
+  description: `Returns one Day Status per Compound and local date from fromLocalDate through toLocalDate (both included, at most ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days, ending no later than today), matching the logged Doses against the planned doses exactly as the app's Planned list and Consistency view do. A Dose's Protocol tag never decides what it fills. With detail=doses each Day Status also lists its fills. Statuses and counts only, computed on read and never stored.`,
+  security: [{ bearerAuth: [] }],
+  request: { query: AgentProtocolDayStatusesQuerySchema },
+  responses: {
+    200: {
+      description: "The Day Statuses of the range.",
+      content: {
+        "application/json": { schema: AgentProtocolDayStatusesResponseSchema }
+      }
+    },
+    ...protocolDaysInvalidResponse(
+      `The range is refused, with this body: fromLocalDate after toLocalDate, a range of more than ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days, toLocalDate after today, or a today more than one day from the server's UTC date. ${PROTOCOL_DAYS_SCHEMA_400_NOTE}`
+    ),
+    ...readResponses401_503()
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Inferred types
 // ---------------------------------------------------------------------------
@@ -1287,6 +1568,14 @@ export type AgentCompoundListQuery = z.infer<typeof AgentCompoundListQuerySchema
 export type AgentProtocolListQuery = z.infer<typeof AgentProtocolListQuerySchema>;
 export type AgentDoseListQuery = z.infer<typeof AgentDoseListQuerySchema>;
 export type AgentEffectWindowQuery = z.infer<typeof AgentEffectWindowQuerySchema>;
+export type AgentProtocolPlannedDaysQuery = z.infer<typeof AgentProtocolPlannedDaysQuerySchema>;
+export type AgentProtocolDayStatusesQuery = z.infer<typeof AgentProtocolDayStatusesQuerySchema>;
+export type AgentProtocolPlannedDaysResponse = z.infer<
+  typeof AgentProtocolPlannedDaysResponseSchema
+>;
+export type AgentProtocolDayStatusesResponse = z.infer<
+  typeof AgentProtocolDayStatusesResponseSchema
+>;
 export type AgentCompoundBatchWriteRequest = z.infer<
   typeof AgentCompoundBatchWriteRequestSchema
 >;
@@ -1374,6 +1663,21 @@ export type AgentProtocolsStore = {
     | { ok: true; value: z.infer<typeof AgentEffectWindowResponseSchema> }
     | { ok: false; message: string }
   >;
+  /**
+   * The range's planned days. The query is already checked by
+   * `checkAgentProtocolDaysQuery`, so the store never sees a bad range. The
+   * store parses its own response against the response schema, and REST and
+   * MCP return it as is, so a large range is schema-checked once.
+   */
+  listProtocolPlannedDays(input: {
+    userId: string;
+    query: AgentProtocolPlannedDaysQuery;
+  }): Promise<AgentProtocolPlannedDaysResponse>;
+  /** The range's Day Statuses, the query checked and the response parsed as above. */
+  listProtocolDayStatuses(input: {
+    userId: string;
+    query: AgentProtocolDayStatusesQuery;
+  }): Promise<AgentProtocolDayStatusesResponse>;
   writeDoseBatch(input: {
     userId: string;
     batchId: string;
@@ -1621,13 +1925,13 @@ export function prepareAgentProtocolBatchWrite({
 
   // `today` dates versions and archives, so it must be a date a person using
   // the app could have: every real zone is within a day of UTC.
-  const serverUtcDate = nowIso.slice(0, 10);
-  if (Math.abs(epochDay(request.today) - epochDay(serverUtcDate)) > AGENT_TODAY_MAX_SKEW_DAYS) {
+  const todayMessage = todayOutOfRangeMessage(request.today, now);
+  if (todayMessage !== null) {
     errors.push(
       entityIssue(0, null, {
         field: "today",
         rule: "today_out_of_range",
-        message: `today must be within ${AGENT_TODAY_MAX_SKEW_DAYS} day of the server's UTC date (${serverUtcDate}).`
+        message: todayMessage
       })
     );
   }
@@ -1850,6 +2154,65 @@ export function prepareAgentProtocolBatchWrite({
 
 /** How far the request's `today` may be from the server's UTC date (D6). */
 const AGENT_TODAY_MAX_SKEW_DAYS = 1;
+
+/**
+ * Why `today` is refused, or null when it is within
+ * {@link AGENT_TODAY_MAX_SKEW_DAYS} of the server's UTC date. The Protocol
+ * batch write and the Day Status read share it, so one `today` is accepted or
+ * refused, with one message, by both.
+ */
+function todayOutOfRangeMessage(today: string, now: Date): string | null {
+  const serverUtcDate = now.toISOString().slice(0, 10);
+  return Math.abs(epochDay(today) - epochDay(serverUtcDate)) > AGENT_TODAY_MAX_SKEW_DAYS
+    ? `today must be within ${AGENT_TODAY_MAX_SKEW_DAYS} day of the server's UTC date (${serverUtcDate}).`
+    : null;
+}
+
+/**
+ * The checks the planned-day and Day Status reads make before any storage
+ * read, shared by REST and MCP so both refuse the same queries with the same
+ * message (D6): `fromLocalDate` after `toLocalDate`, a range of more than
+ * {@link AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days (both ends included, as the
+ * app's Consistency view counts), and, for Day Statuses only, `toLocalDate`
+ * after `today`. Planned days may lie in the future; a Day Status may not,
+ * because a day still to come has no status.
+ *
+ * `today` is also held within one day of the server's UTC date, the bound the
+ * Protocol batch write puts on its own `today`, because every real UTC offset
+ * (-12:00 to +14:00, D2) puts the user's date there. Without it a `today` of
+ * a later year would read every planned day up to it as Not logged, a status
+ * no person using the app could see.
+ */
+export function checkAgentProtocolDaysQuery(
+  query: { fromLocalDate: string; toLocalDate: string; today?: string },
+  now: Date = new Date()
+): { ok: true } | { ok: false; message: string } {
+  const from = epochDay(query.fromLocalDate);
+  const to = epochDay(query.toLocalDate);
+  if (from > to) {
+    return { ok: false, message: "fromLocalDate must not be after toLocalDate." };
+  }
+  const dayCount = to - from + 1;
+  if (dayCount > AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS) {
+    return {
+      ok: false,
+      message: `The range spans ${dayCount} days, more than the ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS}-day maximum.`
+    };
+  }
+  if (query.today !== undefined) {
+    const todayMessage = todayOutOfRangeMessage(query.today, now);
+    if (todayMessage !== null) {
+      return { ok: false, message: todayMessage };
+    }
+    if (to > epochDay(query.today)) {
+      return {
+        ok: false,
+        message: "toLocalDate must not be after today: a day still to come has no Day Status."
+      };
+    }
+  }
+  return { ok: true };
+}
 
 /**
  * The stored period, as JSON text in the codec's encoding (Data shapes), the
@@ -2612,6 +2975,36 @@ export function createDrizzleAgentProtocolsStore(
           descriptiveOnly: true
         })
       };
+    },
+
+    async listProtocolPlannedDays({ userId, query }) {
+      const protocols = await readPlanProtocols(db, userId, query);
+      return AgentProtocolPlannedDaysResponseSchema.parse({
+        fromLocalDate: query.fromLocalDate,
+        toLocalDate: query.toLocalDate,
+        plannedDays: planDays(protocols, query.fromLocalDate, query.toLocalDate).map(
+          serializePlanDay
+        )
+      });
+    },
+
+    async listProtocolDayStatuses({ userId, query }) {
+      const [protocols, doses] = await Promise.all([
+        readPlanProtocols(db, userId, query),
+        readPlanDoses(db, userId, query)
+      ]);
+      const statuses = dayStatuses(
+        planDays(protocols, query.fromLocalDate, query.toLocalDate),
+        doses,
+        query.today
+      );
+      return AgentProtocolDayStatusesResponseSchema.parse({
+        fromLocalDate: query.fromLocalDate,
+        toLocalDate: query.toLocalDate,
+        today: query.today,
+        detail: query.detail,
+        dayStatuses: statuses.map((status) => serializeDayStatus(status, query.detail))
+      });
     },
 
     async writeDoseBatch({
@@ -3558,7 +3951,8 @@ async function readBeforeImage(
 async function selectOpaque(
   db: ServerDatabase,
   table: OpaqueTable,
-  userId: string
+  userId: string,
+  condition?: SQL
 ): Promise<OpaqueRow[]> {
   return db
     .select({
@@ -3568,8 +3962,203 @@ async function selectOpaque(
       deletedAt: table.deletedAt
     })
     .from(table)
-    .where(eq(table.userId, userId))
+    .where(and(eq(table.userId, userId), condition))
     .orderBy(asc(table.id));
+}
+
+/**
+ * The plan rows `planDays` reads, as the app's plan query reads them
+ * (`ProtocolPlanRepository._planQuery`): every Protocol and Protocol Member
+ * except rows tombstoned by undo (archived ones are kept with their frozen
+ * dates, so past days still count them, D1), and every Schedule Version not
+ * tombstoned. As there, a member counts only while the user holds a row for
+ * its Compound (archived or not): the app's query inner-joins `compounds`, so
+ * a member synced before its Compound plans nothing in either. Each query is
+ * scoped to the user; with a `protocolId` only that Protocol, its members and
+ * their versions are read. A `compoundId` keeps only that Compound's member
+ * rows (and their versions), which leaves its PlanDays exactly as a read of
+ * the whole plan gives them, because `planDays` decides each Protocol,
+ * Compound and date on its own.
+ *
+ * A row the codecs can't read is left out rather than failing the read, as
+ * the Protocol list read leaves it out: a Protocol with no real start date
+ * (synced before local dates, D3) plans nothing, a version whose
+ * `effectiveFrom` or rule the codec can't read is skipped, and a period it
+ * can't read reads as none.
+ */
+async function readPlanProtocols(
+  db: ServerDatabase,
+  userId: string,
+  query: { protocolId?: string; compoundId?: string }
+): Promise<PlanProtocol[]> {
+  const { protocolId, compoundId } = query;
+  const memberPayload = schema.protocolCompounds.payload;
+  const memberFilter = and(
+    protocolId === undefined ? undefined : sql`${memberPayload}->>'protocol_id' = ${protocolId}`,
+    compoundId === undefined ? undefined : sql`${memberPayload}->>'compound_id' = ${compoundId}`
+  );
+  const [protocolRows, memberRows, scheduleRows] = await Promise.all([
+    selectOpaque(
+      db,
+      schema.protocols,
+      userId,
+      protocolId === undefined ? undefined : eq(schema.protocols.id, protocolId)
+    ),
+    selectOpaque(
+      db,
+      schema.protocolCompounds,
+      userId,
+      and(
+        memberFilter,
+        inArray(
+          sql`${memberPayload}->>'compound_id'`,
+          db
+            .select({ id: schema.compounds.id })
+            .from(schema.compounds)
+            .where(eq(schema.compounds.userId, userId))
+        )
+      )
+    ),
+    // A Schedule Version names its member, not its Protocol or Compound, so
+    // a filtered read's versions are the ones naming its filtered members.
+    selectOpaque(
+      db,
+      schema.schedules,
+      userId,
+      memberFilter === undefined
+        ? undefined
+        : inArray(
+            sql`${schema.schedules.payload}->>'protocol_compound_id'`,
+            db
+              .select({ id: schema.protocolCompounds.id })
+              .from(schema.protocolCompounds)
+              .where(and(eq(schema.protocolCompounds.userId, userId), memberFilter))
+          )
+    )
+  ]);
+  const members = memberRows.filter(
+    (row) => !isUndoTombstone(row) && typeof row.payload.compound_id === "string"
+  );
+
+  const membersByProtocol = groupBy(members, (row) => String(row.payload.protocol_id ?? ""));
+  const versionsByMember = groupBy(
+    scheduleRows.filter((row) => row.deletedAt === null),
+    (row) => String(row.payload.protocol_compound_id ?? "")
+  );
+  const protocols: PlanProtocol[] = [];
+  for (const row of protocolRows) {
+    const startLocalDate = localDateOrNull(row.payload.start_local_date);
+    const protocolMembers = membersByProtocol.get(row.id) ?? [];
+    if (isUndoTombstone(row) || startLocalDate === null || protocolMembers.length === 0) {
+      continue;
+    }
+    protocols.push({
+      protocolId: row.id,
+      startLocalDate,
+      endLocalDate: localDateOrNull(row.payload.end_local_date),
+      period: readStoredPeriod(row.payload.period),
+      archivedOn: localDateOrNull(row.payload.archived_on),
+      remindersEnabled: row.payload.reminders_enabled === true,
+      members: protocolMembers.map((member) => ({
+        memberId: member.id,
+        compoundId: String(member.payload.compound_id),
+        archivedOn: localDateOrNull(member.payload.archived_on),
+        versions: (versionsByMember.get(member.id) ?? []).flatMap((version) => {
+          const serialized = serializeScheduleVersion(version);
+          return serialized === null
+            ? []
+            : [
+                {
+                  id: serialized.id,
+                  effectiveFrom: serialized.effectiveFrom,
+                  rule: serialized.rule,
+                  amountValue: serialized.doseAmountValue,
+                  amountEntered: serialized.doseAmountEntered,
+                  unit: serialized.doseUnit,
+                  route: serialized.route
+                }
+              ];
+        })
+      }))
+    });
+  }
+  return protocols;
+}
+
+/**
+ * The range's logged Doses as matching reads them (D6 step 2), the same set
+ * the app numbers (`ProtocolPlanRepository._planDoses`): every Dose not
+ * archived, tagged or not, of a Compound, on its frozen local date. Its local
+ * time is its instant at its frozen UTC offset; a Dose logged before offsets
+ * were frozen has none and is read in UTC (D2). `sequence` numbers a
+ * Compound's Doses on a date by local time, then id. The Protocol filter does
+ * not apply: a Dose's tag never decides what it fills, and Doses of a
+ * Compound the plan read doesn't plan are ignored by `dayStatuses`.
+ */
+async function readPlanDoses(
+  db: ServerDatabase,
+  userId: string,
+  query: { fromLocalDate: string; toLocalDate: string; compoundId?: string }
+): Promise<PlanDose[]> {
+  // Byte order ("C"), so the range compares YYYY-MM-DD dates whatever the
+  // database's default collation.
+  const localDate = sql`(${schema.doses.payload}->>'local_date') collate "C"`;
+  const rows = await selectOpaque(
+    db,
+    schema.doses,
+    userId,
+    and(
+      isNull(schema.doses.deletedAt),
+      sql`${localDate} between ${query.fromLocalDate} and ${query.toLocalDate}`,
+      query.compoundId === undefined
+        ? undefined
+        : sql`${schema.doses.payload}->>'compound_id' = ${query.compoundId}`
+    )
+  );
+
+  const doses: Omit<PlanDose, "sequence">[] = [];
+  for (const row of rows) {
+    const compoundId = nullableString(row.payload.compound_id);
+    const doseLocalDate = localDateOrNull(row.payload.local_date);
+    const localTime = doseLocalTime(row.payload);
+    if (compoundId === null || doseLocalDate === null || localTime === null) {
+      continue;
+    }
+    doses.push({ doseId: row.id, compoundId, localDate: doseLocalDate, localTime });
+  }
+  doses.sort(
+    (left, right) =>
+      compareIds(left.localTime, right.localTime) || compareIds(left.doseId, right.doseId)
+  );
+  const sequenceByGroup = new Map<string, number>();
+  return doses.map((dose) => {
+    const key = `${dose.compoundId}\u0000${dose.localDate}`;
+    const sequence = sequenceByGroup.get(key) ?? 0;
+    sequenceByGroup.set(key, sequence + 1);
+    return { ...dose, sequence };
+  });
+}
+
+/**
+ * A Dose's local clock time, `HH:MM`: its `took_at` at its frozen
+ * `timezone_offset_minutes`, or in UTC when it has none (D2). Null when
+ * `took_at` is not a timestamp.
+ */
+function doseLocalTime(payload: Record<string, unknown>): string | null {
+  const tookAt = parseOptionalDate(
+    typeof payload.took_at === "string" ? payload.took_at : undefined
+  );
+  if (tookAt === null) {
+    return null;
+  }
+  const offset = payload.timezone_offset_minutes;
+  const offsetMinutes = typeof offset === "number" && Number.isInteger(offset) ? offset : 0;
+  const clock = new Date(tookAt.getTime() + offsetMinutes * 60_000);
+  return `${String(clock.getUTCHours()).padStart(2, "0")}:${String(clock.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+function localDateOrNull(value: unknown): string | null {
+  return typeof value === "string" && isValidLocalDate(value) ? value : null;
 }
 
 async function resolveMetric(
@@ -3713,6 +4302,53 @@ function readStoredPeriod(value: unknown): ProtocolPeriod | null {
     }
     throw error;
   }
+}
+
+function serializePlanDay(day: PlanDay) {
+  return {
+    protocolId: day.protocolId,
+    compoundId: day.compoundId,
+    localDate: day.localDate,
+    state: day.state,
+    planned: day.planned.map((planned) => ({
+      localTime: planned.localTime,
+      ...readPlanAmount(planned)
+    }))
+  };
+}
+
+function serializeDayStatus(status: DayStatus, detail: "summary" | "doses") {
+  return {
+    compoundId: status.compoundId,
+    localDate: status.localDate,
+    status: status.status,
+    ...(status.notPlannedReason === undefined
+      ? {}
+      : { notPlannedReason: status.notPlannedReason }),
+    plannedCount: status.plannedCount,
+    loggedCount: status.loggedCount,
+    extraCount: status.extraCount,
+    ...(detail === "doses"
+      ? {
+          fills: status.fills.map((fill) => ({
+            slot: fill.slot,
+            protocolId: fill.protocolId,
+            plannedLocalTime: fill.plannedLocalTime,
+            ...readPlanAmount(fill),
+            doseId: fill.doseId
+          }))
+        }
+      : {})
+  };
+}
+
+function readPlanAmount(amount: PlanAmount) {
+  return {
+    amountValue: amount.amountValue ?? null,
+    amountEntered: amount.amountEntered ?? null,
+    unit: amount.unit ?? null,
+    route: amount.route ?? null
+  };
 }
 
 function serializeTargetOutcome(row: OpaqueRow) {

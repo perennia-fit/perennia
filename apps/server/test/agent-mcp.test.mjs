@@ -274,6 +274,8 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_list_metric_readings",
         "agent_list_metrics",
         "agent_list_nutrition_goals",
+        "agent_list_protocol_day_statuses",
+        "agent_list_protocol_planned_days",
         "agent_list_protocols",
         "agent_list_routines",
         "agent_list_workout_templates",

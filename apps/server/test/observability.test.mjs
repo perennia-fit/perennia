@@ -161,6 +161,83 @@ test("privacy logger strips the Protocol plan values of a logged Agent Protocol 
   }
 });
 
+test("privacy logger strips the plan values of a logged planned-day or Day Status read", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  // A logged Day Status read: its query spread as it arrives, and its response.
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/agent/protocols/day-statuses",
+      fromLocalDate: "2026-09-01",
+      toLocalDate: "2026-10-27",
+      today: "2026-10-27",
+      compoundId: "compound-ghk",
+      protocolId: "protocol-skin",
+      detail: "doses",
+      dayStatuses: [
+        {
+          compoundId: "compound-ghk",
+          localDate: "2026-10-20",
+          status: "partly_logged",
+          plannedCount: 2,
+          loggedCount: 1,
+          extraCount: 0,
+          fills: [{ slot: 0, plannedLocalTime: "21:00", amountEntered: "0.1", doseId: "dose-1" }]
+        }
+      ]
+    },
+    "synthetic Day Status read"
+  );
+  // A logged planned-day read's response.
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/agent/protocols/planned-days",
+      plannedDays: [
+        {
+          protocolId: "protocol-skin",
+          compoundId: "compound-ghk",
+          localDate: "2026-11-02",
+          state: "off_cycle",
+          planned: [{ localTime: "06:45", amountEntered: "0.2", route: "subcutaneous" }]
+        }
+      ]
+    },
+    "synthetic planned-day read"
+  );
+
+  assert.equal(logEvents.length, 2);
+  for (const event of logEvents) {
+    assert.equal(event.payload.userId, "user-1");
+    const serialized = JSON.stringify(event.payload);
+    for (const key of ["fromLocalDate", "toLocalDate", "today", "dayStatuses", "plannedDays"]) {
+      assert.doesNotMatch(serialized, new RegExp(`"${key}":(?!"\\[Filtered\\]")`), key);
+    }
+    for (const value of [
+      "2026-09-01",
+      "2026-10-27",
+      "2026-10-20",
+      "2026-11-02",
+      "compound-ghk",
+      "protocol-skin",
+      "partly_logged",
+      "off_cycle",
+      "21:00",
+      "06:45",
+      "subcutaneous",
+      "dose-1"
+    ]) {
+      assert.doesNotMatch(serialized, new RegExp(value), value);
+    }
+  }
+});
+
 test("Sentry crash reporting is opt-in and requires a DSN", () => {
   const sdk = createFakeSentrySdk();
 

@@ -205,6 +205,16 @@ const COMMANDS = {
     path: "/agent/protocols/effect-window",
     operationId: "readAgentEffectWindow"
   },
+  "list-protocol-planned-days": {
+    method: "GET",
+    path: "/agent/protocols/planned-days",
+    operationId: "listAgentProtocolPlannedDays"
+  },
+  "list-protocol-day-statuses": {
+    method: "GET",
+    path: "/agent/protocols/day-statuses",
+    operationId: "listAgentProtocolDayStatuses"
+  },
   "log-doses": {
     method: "POST",
     path: "/agent/protocols/doses/batch-write",

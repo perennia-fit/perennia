@@ -385,5 +385,12 @@ const TRAINING_DATA_KEYS = new Set([
   // An Agent Protocol batch write carries the user's local date as a
   // top-level `today` (docs/designs/protocol-schedules-and-reminders.md, D6),
   // outside the `protocols` key that covers the plan's own fields.
-  "today"
+  "today",
+  // The Agent planned-day and Day Status reads (same spec, D6): their range
+  // bounds sit at the top level of the query, and their results under these
+  // parent keys.
+  "fromlocaldate",
+  "tolocaldate",
+  "planneddays",
+  "daystatuses"
 ]);

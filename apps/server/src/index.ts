@@ -902,6 +902,7 @@ export {
   type AgentActivityUndoBatchResponse
 } from "./agent-activity.js";
 export {
+  AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS,
   AgentCompoundBatchWriteResponseSchema,
   AgentCompoundListResponseSchema,
   AgentDoseBatchWriteErrorResponseSchema,
@@ -909,7 +910,12 @@ export {
   AgentDoseListResponseSchema,
   AgentEffectWindowResponseSchema,
   AgentProtocolBatchWriteResponseSchema,
+  AgentProtocolDayStatusesQuerySchema,
+  AgentProtocolDayStatusesResponseSchema,
+  AgentProtocolDaysInvalidRequestResponseSchema,
   AgentProtocolListResponseSchema,
+  AgentProtocolPlannedDaysQuerySchema,
+  AgentProtocolPlannedDaysResponseSchema,
   AgentProtocolsBatchWriteErrorResponseSchema,
   agentCompoundBatchWriteRoute,
   agentCompoundListRoute,
@@ -917,15 +923,22 @@ export {
   agentDoseListRoute,
   agentEffectWindowRoute,
   agentProtocolBatchWriteRoute,
+  agentProtocolDayStatusesRoute,
   agentProtocolListRoute,
+  agentProtocolPlannedDaysRoute,
   agentProtocolsBatchMarkerId,
   agentProtocolsWriteFailure,
+  checkAgentProtocolDaysQuery,
   computeEffectWindowSegments,
   deriveEffectWindow,
   createDrizzleAgentProtocolsStore,
   prepareAgentCompoundBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
+  type AgentProtocolDayStatusesQuery,
+  type AgentProtocolDayStatusesResponse,
+  type AgentProtocolPlannedDaysQuery,
+  type AgentProtocolPlannedDaysResponse,
   type AgentProtocolsStore,
   type AgentProtocolsStoreWriteResult
 } from "./agent-protocols.js";
