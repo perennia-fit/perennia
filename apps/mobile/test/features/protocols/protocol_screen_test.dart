@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
+import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/protocol_screen.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
@@ -1535,6 +1536,9 @@ Future<void> _pumpListScreen(
         ).overrideWith(
           (ref) => Stream<Map<String, String>>.value(compoundNames),
         ),
+        // The editor and the Effect view open behind `ProtocolsLockGate`; a
+        // store with no lock keeps them off the secure-storage plugin.
+        protocolsLockStoreProvider.overrideWith((ref) => _NoLockStore()),
       ],
       child: MaterialApp(
         theme: theme ?? AppTheme.light(),
@@ -1951,4 +1955,24 @@ ProtocolSummaryRecord _protocolSummaryFromProtocol(ProtocolRecord protocol) {
         .map((member) => member.compoundId)
         .toList(growable: false),
   );
+}
+
+/// An in-memory `ProtocolsLockStore` fake that never reports a configured
+/// lock — keeps `ProtocolsLockGate` off the real secure-storage plugin
+/// channel in widget tests that don't care about the lock itself.
+class _NoLockStore implements ProtocolsLockStore {
+  @override
+  Future<bool> isEnabled() async => false;
+
+  @override
+  Future<void> setEnabled(bool enabled) async {}
+
+  @override
+  Future<String?> readPinHash() async => null;
+
+  @override
+  Future<void> writePinHash(String hash) async {}
+
+  @override
+  Future<void> clearPin() async {}
 }

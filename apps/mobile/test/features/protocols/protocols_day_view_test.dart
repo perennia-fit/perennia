@@ -10,8 +10,13 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
+import 'package:perennia/features/protocols/controllers/protocols_lock_controller.dart';
+import 'package:perennia/features/protocols/services/biometric_authenticator.dart';
 import 'package:perennia/features/protocols/services/protocol_reminder_scheduler.dart';
+import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
+import 'package:perennia/features/protocols/services/protocols_pin_hasher.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
+import 'package:perennia/features/protocols/widgets/protocols_lock_screen.dart';
 import 'package:perennia/features/protocols/widgets/protocols_day_view.dart';
 import 'package:perennia/features/training/services/timer_background_scheduler.dart';
 import 'package:perennia/l10n/l10n.dart';
@@ -76,6 +81,54 @@ void main() {
       // logging always starts from an existing Compound in this reused
       // surface, never from a duplicate picker on the Day view itself.
       expect(find.byType(CompoundListScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'the Compound list the FAB opens is gated: re-locking while it is on '
+    'top covers it with the lock screen',
+    (tester) async {
+      final lockStore = _FakeLockStore()
+        ..enabled = true
+        ..pinHash = await const ProtocolsPinHasher(iterations: 10).hash('1234');
+      await _pumpView(
+        tester,
+        _emptyDay(),
+        compounds: _seededCompounds(),
+        lockStore: lockStore,
+        home: const ProtocolsLockGate(child: ProtocolsDayView()),
+        overrides: [
+          biometricAuthenticatorProvider.overrideWith(
+            (ref) => _NoBiometrics(),
+          ),
+          protocolsLockControllerProvider.overrideWith(
+            () => ProtocolsLockController(
+              hasher: const ProtocolsPinHasher(iterations: 10),
+            ),
+          ),
+        ],
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(ProtocolsUnlockForm.pinFieldKey),
+        '1234',
+      );
+      await tester.tap(find.byKey(ProtocolsUnlockForm.unlockPinButtonKey));
+      await _pumpUntilFound(tester, find.byKey(ProtocolsDayView.emptyStateKey));
+
+      await tester.tap(find.byKey(ProtocolsDayView.logDoseButtonKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(CompoundListScreen), findsOneWidget);
+
+      // The app leaves the foreground: the lock controller re-locks.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+
+      expect(find.byKey(ProtocolsLockGate.lockScreenKey), findsOneWidget);
+      expect(find.byType(CompoundListScreen), findsNothing);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
     },
   );
 
@@ -283,7 +336,8 @@ void main() {
         expect(find.text('Reminders are off on this device'), findsOneWidget);
         expect(permissions.requests, 0, reason: 'showing it asks nothing');
 
-        await tester.tap(find.byKey(ProtocolsDayView.reminderPermissionAllowKey));
+        await tester
+            .tap(find.byKey(ProtocolsDayView.reminderPermissionAllowKey));
         await tester.runAsync(() => Future<void>.delayed(Duration.zero));
         await tester.pump();
         await tester.pump();
@@ -296,7 +350,8 @@ void main() {
       },
     );
 
-    testWidgets('stays hidden once asked, with the device switch off, or '
+    testWidgets(
+        'stays hidden once asked, with the device switch off, or '
         'with no Protocol asking for reminders', (tester) async {
       for (final (permission, device, reminders) in <(
         TimerBackgroundPermissionStatus,
@@ -1033,11 +1088,19 @@ Future<void> _pumpView(
   _FakeProtocolDayController? controller,
   List<CompoundRecord> compounds = const <CompoundRecord>[],
   List<Override> overrides = const <Override>[],
+  ProtocolsLockStore? lockStore,
+  Widget home = const ProtocolsDayView(),
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         ...overrides,
+        // The Compound list and Protocol list open behind
+        // `ProtocolsLockGate`; the default store has no lock, which keeps
+        // them off the secure-storage plugin.
+        protocolsLockStoreProvider.overrideWith(
+          (ref) => lockStore ?? _FakeLockStore(),
+        ),
         protocolDayControllerProvider.overrideWith(
           () => controller ?? _FakeProtocolDayController(day),
         ),
@@ -1060,10 +1123,45 @@ Future<void> _pumpView(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         theme: theme ?? AppTheme.light(),
-        home: const ProtocolsDayView(),
+        home: home,
       ),
     ),
   );
+}
+
+/// An in-memory `ProtocolsLockStore`: no lock unless a test sets one.
+class _FakeLockStore implements ProtocolsLockStore {
+  bool enabled = false;
+  String? pinHash;
+
+  @override
+  Future<bool> isEnabled() async => enabled;
+
+  @override
+  Future<void> setEnabled(bool value) async {
+    enabled = value;
+  }
+
+  @override
+  Future<String?> readPinHash() async => pinHash;
+
+  @override
+  Future<void> writePinHash(String hash) async {
+    pinHash = hash;
+  }
+
+  @override
+  Future<void> clearPin() async {
+    pinHash = null;
+  }
+}
+
+class _NoBiometrics implements BiometricAuthenticator {
+  @override
+  Future<bool> isSupported() async => false;
+
+  @override
+  Future<bool> authenticate({required String reason}) async => false;
 }
 
 class _BannerPermissions implements TimerBackgroundScheduler {
