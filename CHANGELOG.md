@@ -9,6 +9,23 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
-Nothing released yet. The repository has been public since its first commit; the
-first tagged version will describe what shipped in it rather than reconstructing
-history from before it existed.
+## [0.0.1] - 2026-10-29
+
+The first tagged release: an early build for installing by hand on Android, cut
+before any store listing. It describes what the app and server do at this tag
+rather than reconstructing history from before it.
+
+### Added
+
+- The offline-first logger for Android and iOS, fully usable with no account:
+  Workouts, Training Days, set entry for any mix of load, reps, duration, and
+  distance, personal records, history, graphs, and the calendar.
+- Nutrition, Supplements and Protocols, and Body Tracker logging alongside
+  Training.
+- Workout Templates and Routines, with materialize and capture.
+- Portable archive export and merge-only import.
+- Optional account sign-in (email, Google, Apple) with silent last-writer-wins
+  sync to a Perennia server.
+- The server: REST API, sync, and the agent surface (REST under `/agent` and an
+  MCP server at `/mcp`), published as a Docker image.
+- `/healthz` reports the release version the server was built from.

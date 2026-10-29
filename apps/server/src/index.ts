@@ -12,6 +12,7 @@ import {
   createSentryCrashReporterFromEnv,
   type CrashReporter
 } from "./observability.js";
+import { SERVER_VERSION } from "./server-version.js";
 import { createDrizzleAgentApiKeyStore } from "./agent-api-keys.js";
 import { createDrizzleActivityLinkMutationStore } from "./activity-links.js";
 import { createAgentMcpServer } from "./agent-mcp.js";
@@ -1601,7 +1602,7 @@ export async function createMigratedServerApp({
 }
 
 export async function startServer() {
-  const release = process.env.npm_package_version ?? DEFAULT_SERVER_VERSION;
+  const release = SERVER_VERSION;
   const logger = createPrivacyLogger(pino());
   const crashReporter = createSentryCrashReporterFromEnv(process.env, {
     release
@@ -1708,7 +1709,7 @@ if (isMainModule) {
   startServer().catch((error) => {
     const startupLogger = createPrivacyLogger(pino());
     const startupCrashReporter = createSentryCrashReporterFromEnv(process.env, {
-      release: process.env.npm_package_version ?? DEFAULT_SERVER_VERSION
+      release: SERVER_VERSION
     });
     startupCrashReporter?.captureException(error, {
       correlationId: "server-startup",
