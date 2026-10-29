@@ -167,6 +167,7 @@ const JOBS = {
       run('dart run melos bootstrap') &&
       run('dart run build_runner build', { cwd: MOBILE }) &&
       run('git diff --exit-code -- apps/mobile/lib/data/local/app_database.g.dart apps/mobile/lib/data/local/food_reference_database.g.dart') &&
+      run('dart run tool/drift_schema_snapshots.dart --check', { cwd: MOBILE }) &&
       run('dart run tool/generate_design_tokens.dart', { cwd: MOBILE }) &&
       run('git diff --exit-code -- apps/mobile/lib/theme/design_tokens.g.dart') &&
       run('flutter analyze', { cwd: MOBILE }) &&
