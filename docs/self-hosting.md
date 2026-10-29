@@ -15,13 +15,20 @@ Postgres database and a container.
 - A domain or stable address for the server. Sign-in providers need to redirect
   back to it.
 
-## Build and run
+## Get the image
 
-The image builds from the repository root:
+Each release publishes the server image to the GitHub Container Registry as
+`ghcr.io/perennia-fit/perennia-server:<version>` (for example `0.0.1`), plus
+`latest` for the newest release. Pin the exact version: it never changes, so you
+upgrade when you choose to, and `/healthz` tells you which one is running.
+
+Or build it yourself from the repository root, at a release tag:
 
 ```bash
 docker build -t perennia-server .
 ```
+
+## Run
 
 ```bash
 docker run -d --name perennia \
@@ -29,14 +36,11 @@ docker run -d --name perennia \
   -e DATABASE_URL="postgres://user:password@host:5432/perennia" \
   -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)" \
   -e PUBLIC_SERVER_URL="https://perennia.example.com" \
-  perennia-server
+  ghcr.io/perennia-fit/perennia-server:0.0.1
 ```
 
-Apply migrations against a new database before first start:
-
-```bash
-pnpm --filter @perennia/server db:migrate
-```
+The server applies any pending database migrations on startup, before it
+serves requests, so a new database needs no separate step.
 
 Some background work (retention, scheduled imports) runs in a separate worker
 process from the same image, started with `node dist/worker.js`. A single-user
@@ -46,7 +50,7 @@ deployment can skip it; scheduled jobs simply will not run.
 
 | Endpoint | Meaning |
 |---|---|
-| `GET /healthz` | The process is up |
+| `GET /healthz` | The process is up, and which release it runs (`version`) |
 | `GET /readyz` | The process is up **and** Postgres answers |
 
 Point your platform's health check at `/readyz`.
@@ -107,8 +111,9 @@ operations are identical everywhere — there is no hosted-only capability.
 - **Back up Postgres.** It holds everything the server knows. The app keeps its
   own replica, so a device can restore a lost account's data by syncing up, but
   do not rely on that as a backup strategy.
-- **Migrate before you deploy a new image.** Run `db:migrate` against the new
-  version first; the server does not migrate on boot.
+- **Upgrading migrates the database.** A newer image applies its migrations
+  when it starts, and migrations only move forward, so back up before you
+  upgrade. Moving back to an older image after that is not supported.
 - **Your data goes nowhere else.** A self-hosted deployment contacts no
   infrastructure belonging to the maintainers, and the app contains no analytics
   in any mode.
