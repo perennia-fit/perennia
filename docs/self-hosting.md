@@ -80,6 +80,27 @@ Register the redirect URI with the provider, then supply the credentials:
 - Apple: `${PUBLIC_SERVER_URL}/api/auth/callback/apple` —
   `APPLE_OAUTH_CLIENT_ID`, `APPLE_OAUTH_CLIENT_SECRET`
 
+On the server, `GOOGLE_OAUTH_CLIENT_ID` is your Google **Web** client. The
+server checks every Google ID token against it.
+
+The app ships with no Google identity, so a build that should offer Google
+sign-in needs your client IDs compiled in. For iOS, create an **iOS** OAuth
+client for your bundle identifier in the same Google Cloud project, then build
+with both IDs:
+
+```bash
+flutter build ipa \
+  --dart-define=GOOGLE_OAUTH_CLIENT_ID=<ios-client-id>.apps.googleusercontent.com \
+  --dart-define=GOOGLE_OAUTH_SERVER_CLIENT_ID=<web-client-id>.apps.googleusercontent.com
+```
+
+The app-side `GOOGLE_OAUTH_CLIENT_ID` is the iOS client. A build phase derives
+Google's callback URL scheme (`com.googleusercontent.apps.<id>`) from it and
+registers it in the built `Info.plist`, so there is nothing to edit in Xcode.
+`GOOGLE_OAUTH_SERVER_CLIENT_ID` is the Web client, so the ID token is issued
+for your server. If you leave both out, the build still succeeds and the app
+shows Google sign-in as not configured. Email and Apple sign-in keep working.
+
 ### Push notifications and tracker integrations
 
 Optional, and each needs its own credentials: `FCM_*` for Android push, `APNS_*`
