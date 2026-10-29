@@ -151,6 +151,13 @@ const JOBS = {
     run: () => run('node tools/check-dependency-hygiene.mjs'),
   },
 
+  release_version: {
+    title: 'Release version consistency',
+    paths: ['apps/mobile/pubspec.yaml', 'apps/server/package.json',
+      'CHANGELOG.md', 'tools/check-release.mjs', '.github/workflows/ci.yml'],
+    run: () => run('node tools/check-release.mjs'),
+  },
+
   mobile: {
     title: 'Flutter analyze and test',
     paths: ['apps/mobile/**', 'pubspec.yaml', 'pubspec.lock',

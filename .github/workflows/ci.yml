@@ -17,6 +17,7 @@ jobs:
       mobile: ${{ steps.filter.outputs.mobile }}
       js: ${{ steps.filter.outputs.js }}
       dependency_hygiene: ${{ steps.filter.outputs.dependency_hygiene }}
+      release_version: ${{ steps.filter.outputs.release_version }}
       workflow_lint: ${{ steps.filter.outputs.workflow_lint }}
     steps:
       - name: Checkout
@@ -113,6 +114,12 @@ jobs:
               - 'pubspec.lock'
               - 'apps/mobile/pubspec.yaml'
               - '.github/workflows/ci.yml'
+            release_version:
+              - 'apps/mobile/pubspec.yaml'
+              - 'apps/server/package.json'
+              - 'CHANGELOG.md'
+              - 'tools/check-release.mjs'
+              - '.github/workflows/ci.yml'
             workflow_lint:
               - '.github/workflows/**'
 
@@ -132,6 +139,23 @@ jobs:
 
       - name: Check dependency update coverage
         run: node tools/check-dependency-hygiene.mjs
+
+  release_version:
+    name: Release version consistency
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.release_version == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: Check app, server, and CHANGELOG versions agree
+        run: node tools/check-release.mjs
 
   workflow_lint:
     name: Workflow lint
@@ -378,6 +402,7 @@ jobs:
       - mobile
       - workflow_lint
       - dependency_hygiene
+      - release_version
       - js
       - sync-convergence
     if: always()
@@ -390,6 +415,7 @@ jobs:
           echo "mobile:  ${{ needs.mobile.result }}"
           echo "workflow-lint: ${{ needs.workflow_lint.result }}"
           echo "dependency-hygiene: ${{ needs.dependency_hygiene.result }}"
+          echo "release-version: ${{ needs.release_version.result }}"
           echo "js:      ${{ needs.js.result }}"
           echo "sync-convergence: ${{ needs.sync-convergence.result }}"
 
@@ -397,7 +423,7 @@ jobs:
             exit 1
           fi
 
-          for result in "${{ needs.contract-drift.result }}" "${{ needs.golden_vectors.result }}" "${{ needs.mobile.result }}" "${{ needs.workflow_lint.result }}" "${{ needs.dependency_hygiene.result }}" "${{ needs.js.result }}" "${{ needs.sync-convergence.result }}"; do
+          for result in "${{ needs.contract-drift.result }}" "${{ needs.golden_vectors.result }}" "${{ needs.mobile.result }}" "${{ needs.workflow_lint.result }}" "${{ needs.dependency_hygiene.result }}" "${{ needs.release_version.result }}" "${{ needs.js.result }}" "${{ needs.sync-convergence.result }}"; do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               exit 1
             fi

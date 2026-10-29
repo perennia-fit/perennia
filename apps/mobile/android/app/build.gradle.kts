@@ -14,12 +14,22 @@ val androidKeyAlias =
     providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
 val androidKeyPassword =
     providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
-val hasReleaseSigning =
-    !androidUploadKeystorePath.isNullOrBlank() &&
-        !androidKeystorePassword.isNullOrBlank() &&
-        !androidKeyAlias.isNullOrBlank() &&
-        !androidKeyPassword.isNullOrBlank() &&
-        file(androidUploadKeystorePath).exists()
+val allowDebugSignedRelease =
+    providers.environmentVariable("PERENNIA_ALLOW_DEBUG_SIGNED_RELEASE").orNull == "true"
+val releaseSigningProblems = buildList {
+    if (androidUploadKeystorePath.isNullOrBlank()) {
+        add("ANDROID_UPLOAD_KEYSTORE_PATH is not set")
+    } else if (!file(androidUploadKeystorePath).isFile) {
+        add("ANDROID_UPLOAD_KEYSTORE_PATH is not a readable file: $androidUploadKeystorePath")
+    }
+    if (androidKeystorePassword.isNullOrBlank()) add("ANDROID_KEYSTORE_PASSWORD is not set")
+    if (androidKeyAlias.isNullOrBlank()) add("ANDROID_KEY_ALIAS is not set")
+    if (androidKeyPassword.isNullOrBlank()) add("ANDROID_KEY_PASSWORD is not set")
+}
+val hasReleaseSigning = releaseSigningProblems.isEmpty()
+val anyReleaseSigningSet =
+    listOf(androidUploadKeystorePath, androidKeystorePassword, androidKeyAlias, androidKeyPassword)
+        .any { !it.isNullOrBlank() }
 
 android {
     namespace = "fit.perennia.app"
@@ -78,6 +88,30 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+        }
+    }
+}
+
+// A release build must be signed with the real key, or it can never be updated.
+// Android only installs an update over an existing app when both carry the same
+// signing certificate, so a debug-signed release that reaches a phone strands
+// that install: the next real build cannot replace it, and uninstalling erases
+// the local database. The check runs when a release variant actually builds, not
+// at configuration time, so debug and profile builds never need signing keys.
+// A contributor who wants a throwaway release build on their own device opts in
+// with PERENNIA_ALLOW_DEBUG_SIGNED_RELEASE=true; a half-configured key (one
+// variable set, or a path that points nowhere) fails even then, because that is
+// a mistake, not a choice.
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        if (!hasReleaseSigning && (anyReleaseSigningSet || !allowDebugSignedRelease)) {
+            throw GradleException(
+                "Release signing is not configured:\n" +
+                    releaseSigningProblems.joinToString("\n") { "  - $it" } +
+                    "\nSet all four ANDROID_* signing variables, or, for a local build " +
+                    "that will never be updated, set PERENNIA_ALLOW_DEBUG_SIGNED_RELEASE=true " +
+                    "with none of them set.",
+            )
         }
     }
 }

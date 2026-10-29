@@ -89,6 +89,7 @@ sign-in providers, migrations, and connecting the app.
 | [DESIGN.md](DESIGN.md) | The visual design system |
 | [docs/development.md](docs/development.md) | Build and run from source; the CI gate |
 | [docs/self-hosting.md](docs/self-hosting.md) | Running your own server |
+| [docs/releasing.md](docs/releasing.md) | Cutting a release, and the rules that keep installs updatable |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | The CLA, the gate, and what a good pull request looks like |
 
 ## Contributing
