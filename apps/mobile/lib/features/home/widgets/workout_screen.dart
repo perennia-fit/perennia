@@ -17,6 +17,7 @@ import '../../focus/widgets/focus_visuals.dart';
 import '../../focus/widgets/focused_exercise_list.dart';
 import '../../template_divergence/repositories/template_divergence_feature_repository.dart';
 import '../../template_divergence/widgets/template_update_prompt_dialog.dart';
+import '../../template_materialize/widgets/template_guidance_card.dart';
 import '../../training/services/timer_notification_router.dart';
 import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
@@ -302,6 +303,7 @@ class _WorkoutContent extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: AppDimens.base),
+              TemplateGuidanceCard(workoutId: workout.id),
               // The focused list titles itself: its rows are suggestions, so
               // they never sit under the logged-exercises heading.
               if (workout.workoutExercises.isNotEmpty || focus == null) ...[

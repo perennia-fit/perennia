@@ -80,6 +80,7 @@ class TemplatePickerSheet extends ConsumerWidget {
     final routines = ref.watch(templatePickerRoutinesProvider);
     final templates = ref.watch(templatePickerFilteredTemplatesProvider);
     final searchQuery = ref.watch(templatePickerSearchQueryProvider);
+    final emptyTemplateIds = ref.watch(templatePickerEmptyTemplateIdsProvider);
 
     final upNextCards = upNext.asData?.value ?? const <UpNextSuggestionView>[];
     final routineViews =
@@ -130,7 +131,10 @@ class TemplatePickerSheet extends ConsumerWidget {
                           ),
                           const SizedBox(height: AppDimens.dense),
                           for (final suggestion in upNextCards) ...[
-                            _UpNextGroup(suggestion: suggestion),
+                            _UpNextGroup(
+                              suggestion: suggestion,
+                              emptyTemplateIds: emptyTemplateIds,
+                            ),
                             const SizedBox(height: AppDimens.dense),
                           ],
                           const SizedBox(height: AppDimens.base),
@@ -144,7 +148,10 @@ class TemplatePickerSheet extends ConsumerWidget {
                           ),
                           const SizedBox(height: AppDimens.dense),
                           for (final routine in routineViews)
-                            _RoutineGroup(routine: routine),
+                            _RoutineGroup(
+                              routine: routine,
+                              emptyTemplateIds: emptyTemplateIds,
+                            ),
                           const SizedBox(height: AppDimens.base),
                         ],
                         KeyedSubtree(
@@ -198,6 +205,7 @@ class TemplatePickerSheet extends ConsumerWidget {
                               result: TemplatePickerResult(
                                 workoutTemplateId: template.id,
                               ),
+                              isEmpty: template.exerciseCount == 0,
                             ),
                         const SizedBox(height: AppDimens.base),
                       ],
@@ -267,9 +275,13 @@ class _SectionHeading extends StatelessWidget {
 }
 
 class _UpNextGroup extends StatelessWidget {
-  const _UpNextGroup({required this.suggestion});
+  const _UpNextGroup({
+    required this.suggestion,
+    required this.emptyTemplateIds,
+  });
 
   final UpNextSuggestionView suggestion;
+  final Set<String> emptyTemplateIds;
 
   @override
   Widget build(BuildContext context) {
@@ -318,6 +330,9 @@ class _UpNextGroup extends StatelessWidget {
                         routineId: suggestion.routineId,
                         slot: suggestion.slot,
                       ),
+                      isEmpty: emptyTemplateIds.contains(
+                        card.workoutTemplateId,
+                      ),
                     ),
           ],
         ),
@@ -360,9 +375,13 @@ class _DoneUpNextRow extends StatelessWidget {
 }
 
 class _RoutineGroup extends StatelessWidget {
-  const _RoutineGroup({required this.routine});
+  const _RoutineGroup({
+    required this.routine,
+    required this.emptyTemplateIds,
+  });
 
   final TemplatePickerRoutineView routine;
+  final Set<String> emptyTemplateIds;
 
   @override
   Widget build(BuildContext context) {
@@ -408,6 +427,7 @@ class _RoutineGroup extends StatelessWidget {
                 routineId: routine.routineId,
                 slot: entry.slot,
               ),
+              isEmpty: emptyTemplateIds.contains(entry.workoutTemplateId),
             ),
         ],
       ),
@@ -428,6 +448,7 @@ class _PickableTemplateTile extends StatelessWidget {
     required this.tileKey,
     required this.customizeKey,
     required this.result,
+    required this.isEmpty,
   });
 
   final String templateId;
@@ -437,19 +458,26 @@ class _PickableTemplateTile extends StatelessWidget {
   final Key customizeKey;
   final TemplatePickerResult result;
 
+  /// The Template has no Template Exercises, so starting it gives an empty
+  /// Workout; labelled on every group so that never comes as a surprise.
+  final bool isEmpty;
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final shownSubtitle = isEmpty
+        ? [subtitle, l10n.templateStartNoExercises].nonNulls.join(' · ')
+        : subtitle;
     return Material(
       color: Colors.transparent,
       child: ListTile(
         key: tileKey,
         minTileHeight: AppDimens.rowHeight,
         title: Text(templateName, style: context.textStyles.h2),
-        subtitle: subtitle == null
+        subtitle: shownSubtitle == null
             ? null
             : Text(
-                subtitle!,
+                shownSubtitle,
                 style: context.textStyles.body.copyWith(
                   color: context.colors.textSecondary,
                 ),

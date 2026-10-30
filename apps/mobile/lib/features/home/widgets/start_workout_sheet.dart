@@ -9,6 +9,7 @@ import '../../focus/widgets/focus_manager_screen.dart';
 import '../../focus/widgets/focus_visuals.dart';
 import '../../routine_plans/widgets/routine_plan_list_screen.dart';
 import '../../routine_plans/widgets/localized_cadence_slot_label.dart';
+import '../../template_picker/controllers/template_picker_controller.dart';
 import '../../template_picker/repositories/template_picker_feature_repository.dart';
 import '../../up_next/controllers/up_next_controller.dart';
 import '../../../widgets/grouped_rows.dart';
@@ -90,6 +91,7 @@ class StartWorkoutSheet extends ConsumerWidget {
           if (!card.isDone) (suggestion, card),
     ];
     final hasTemplates = ref.watch(_hasAnyTemplateProvider).value ?? false;
+    final emptyTemplateIds = ref.watch(templatePickerEmptyTemplateIdsProvider);
     final focuses =
         ref.watch(activeFocusesProvider).value ?? const <FocusRecord>[];
 
@@ -124,14 +126,18 @@ class StartWorkoutSheet extends ConsumerWidget {
                         card.workoutTemplateId,
                       ),
                       templateName: card.templateName,
-                      subtitle: l10n.homeUpNextRoutineSubtitle(
-                        suggestion.routineName,
-                        localizedCadenceSlotLabel(
-                          l10n,
-                          kind: suggestion.cadenceKind,
-                          slot: suggestion.slot,
+                      subtitle: [
+                        l10n.homeUpNextRoutineSubtitle(
+                          suggestion.routineName,
+                          localizedCadenceSlotLabel(
+                            l10n,
+                            kind: suggestion.cadenceKind,
+                            slot: suggestion.slot,
+                          ),
                         ),
-                      ),
+                        if (emptyTemplateIds.contains(card.workoutTemplateId))
+                          l10n.templateStartNoExercises,
+                      ].join(' · '),
                       onTap: () => choose(
                         StartFromTemplate(
                           workoutTemplateId: card.workoutTemplateId,

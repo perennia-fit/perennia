@@ -33,6 +33,19 @@ final _templatePickerAllTemplatesRawProvider =
   return repository.watchAllTemplates();
 });
 
+/// Ids of active Templates with no Template Exercises, unaffected by the
+/// search text, so every group in the sheet can label the same Templates
+/// "No exercises" from the one stream the sheet already reads.
+final templatePickerEmptyTemplateIdsProvider =
+    Provider.autoDispose<Set<String>>((ref) {
+  final templates = ref.watch(_templatePickerAllTemplatesRawProvider).value ??
+      const <TemplatePickerTemplateView>[];
+  return {
+    for (final template in templates)
+      if (template.exerciseCount == 0) template.id,
+  };
+});
+
 /// The All Templates group's list, filtered by the live search text and
 /// ordered by the shared `filterAndSortTemplatesForPicker` derivation
 /// (search, recency as the sort fallback — ROUTINES.md §3.2).

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
+import '../../template_materialize/controllers/template_materialize_controller.dart';
 import '../controllers/routine_plan_controller.dart';
 import '../repositories/routine_plan_feature_repository.dart';
 import 'localized_cadence_slot_label.dart';
@@ -47,6 +48,8 @@ class RoutineStartSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final detail = ref.watch(routinePlanDetailControllerProvider(routineId));
+    final emptyTemplateIds =
+        ref.watch(emptyWorkoutTemplateIdsProvider).value ?? const <String>{};
 
     return SafeArea(
       key: sheetKey,
@@ -89,13 +92,23 @@ class RoutineStartSheet extends ConsumerWidget {
                         Builder(
                           builder: (itemContext) {
                             final slot = entry.slot;
-                            final subtitle = slot != null && cadenceKind != null
+                            final slotLabel =
+                                slot != null && cadenceKind != null
                                 ? localizedCadenceSlotLabel(
                                     l10n,
                                     kind: cadenceKind,
                                     slot: slot,
                                   )
                                 : null;
+                            final subtitle =
+                                emptyTemplateIds.contains(
+                                  entry.workoutTemplateId,
+                                )
+                                ? [
+                                    slotLabel,
+                                    l10n.templateStartNoExercises,
+                                  ].nonNulls.join(' · ')
+                                : slotLabel;
                             return ListTile(
                               key: RoutineStartSheet.entryKey(entry.id),
                               minTileHeight: AppDimens.rowHeight,

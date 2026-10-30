@@ -12,6 +12,7 @@ import 'package:perennia/features/routine_plans/widgets/routine_plan_editor_scre
 import 'package:perennia/features/routine_plans/widgets/routine_plan_list_screen.dart';
 import 'package:perennia/features/routine_plans/widgets/routine_start_sheet.dart';
 import 'package:perennia/features/template_materialize/repositories/template_materialize_feature_repository.dart';
+import 'package:perennia/features/template_materialize/widgets/empty_template_start_dialog.dart';
 import 'package:perennia/features/workout_templates/widgets/workout_template_editor_screen.dart';
 import 'package:perennia/l10n/app_localizations.dart';
 import 'package:perennia/theme/theme.dart';
@@ -288,6 +289,12 @@ void main() {
     await tester.tap(
       find.byKey(RoutineStartSheet.entryKey(fixture.strengthEntryId)),
     );
+    await tester.pumpAndSettle();
+
+    // The fixture's Templates have no Template Exercises, so the start asks
+    // first instead of silently opening an empty Workout.
+    expect(find.byType(EmptyTemplateStartDialog), findsOneWidget);
+    await tester.tap(find.byKey(EmptyTemplateStartDialog.confirmButtonKey));
     await tester.pumpAndSettle();
 
     expect(find.byKey(RoutineStartSheet.sheetKey), findsNothing);
@@ -963,6 +970,17 @@ class _UnusedTemplateMaterializeFeatureRepository
       'This test did not provide a TemplateMaterializeFeatureRepository.',
     );
   }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(const <String>{});
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async => null;
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
 }
 
 Widget _testApp({

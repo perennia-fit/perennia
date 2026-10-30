@@ -1931,6 +1931,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get templateUpdateNoChangesNote => 'No changes to update';
 
   @override
+  String get templateStartNoExercises => 'No exercises';
+
+  @override
+  String templateStartEmptyTitle(String name) {
+    return '\"$name\" has no exercises';
+  }
+
+  @override
+  String get templateStartEmptyMessage =>
+      'Starting it opens an empty workout. Add exercises to the Workout Template to have them load when you start it.';
+
+  @override
+  String get templateStartEmptyConfirmAction => 'Start empty workout';
+
+  @override
+  String get workoutTemplateNotesTitle => 'Plan notes';
+
+  @override
+  String workoutTemplateNotesSource(String name) {
+    return 'From $name';
+  }
+
+  @override
+  String get workoutTemplateNotesShowMore => 'Show more';
+
+  @override
+  String get workoutTemplateNotesShowLess => 'Show less';
+
+  @override
   String get activityBackupRestoreActor => 'Backup restore';
 
   @override

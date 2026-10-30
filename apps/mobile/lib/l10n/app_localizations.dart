@@ -3266,6 +3266,55 @@ abstract class AppLocalizations {
   /// **'No changes to update'**
   String get templateUpdateNoChangesNote;
 
+  /// No description provided for @templateStartNoExercises.
+  ///
+  /// In en, this message translates to:
+  /// **'No exercises'**
+  String get templateStartNoExercises;
+
+  /// No description provided for @templateStartEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{name}\" has no exercises'**
+  String templateStartEmptyTitle(String name);
+
+  /// No description provided for @templateStartEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting it opens an empty workout. Add exercises to the Workout Template to have them load when you start it.'**
+  String get templateStartEmptyMessage;
+
+  /// No description provided for @templateStartEmptyConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Start empty workout'**
+  String get templateStartEmptyConfirmAction;
+
+  /// No description provided for @workoutTemplateNotesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan notes'**
+  String get workoutTemplateNotesTitle;
+
+  /// No description provided for @workoutTemplateNotesSource.
+  ///
+  /// In en, this message translates to:
+  /// **'From {name}'**
+  String workoutTemplateNotesSource(String name);
+
+  /// No description provided for @workoutTemplateNotesShowMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Show more'**
+  String get workoutTemplateNotesShowMore;
+
+  /// No description provided for @workoutTemplateNotesShowLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Show less'**
+  String get workoutTemplateNotesShowLess;
+
+
   /// No description provided for @activityBackupRestoreActor.
   ///
   /// In en, this message translates to:
