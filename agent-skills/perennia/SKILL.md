@@ -167,6 +167,16 @@ validation warnings are returned on each affected item. Archive uses
 `deletedAt`, never cascades into child rows or history, and the resulting
 single Activity Log batch can be reverted with `undo-activity-batch`.
 
+Put every exercise the athlete should perform in a Template Exercise, with
+Prescriptions for its Sets. Template `notes` are plan guidance only:
+materialize never copies them onto the Workout, so a Template with no Template
+Exercises starts an empty Workout however detailed its notes are. Resolve each
+exercise first with `resolve-exercise` or `list-exercises`, and create any that
+are missing with `manage-exercise-catalog`. If the session isn't settled yet,
+tell the user so instead of attaching a notes-only placeholder Template to a
+Routine. The app labels a Template with no exercises "No exercises" and asks
+before starting it, but the user will still find nothing to log.
+
 Use `materialize-workout-template` to start a new Workout from one active
 Workout Template. Supply a stable `idempotencyKey`, the IANA `timezone`, and
 optionally `startedAt`; add `routineId` plus its `slot` when fulfilling a

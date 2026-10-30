@@ -8,6 +8,7 @@ import '../../../theme/theme.dart';
 import '../../home/widgets/workout_screen.dart';
 import '../../routine_plans/widgets/localized_cadence_slot_label.dart';
 import '../../template_materialize/controllers/template_materialize_controller.dart';
+import '../../template_materialize/widgets/empty_template_start_dialog.dart';
 import '../controllers/up_next_controller.dart';
 import '../repositories/up_next_feature_repository.dart';
 
@@ -148,6 +149,12 @@ class _UpNextCardTile extends ConsumerWidget {
       );
     }
 
+    final isEmpty =
+        ref
+            .watch(emptyWorkoutTemplateIdsProvider)
+            .value
+            ?.contains(card.workoutTemplateId) ??
+        false;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -168,9 +175,18 @@ class _UpNextCardTile extends ConsumerWidget {
                 ),
                 const SizedBox(width: AppDimens.dense),
                 Expanded(
-                  child: Text(
-                    card.templateName,
-                    style: context.textStyles.body,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(card.templateName, style: context.textStyles.body),
+                      if (isEmpty)
+                        Text(
+                          l10n.templateStartNoExercises,
+                          style: context.textStyles.label.copyWith(
+                            color: context.colors.textSecondary,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 Icon(
@@ -186,6 +202,14 @@ class _UpNextCardTile extends ConsumerWidget {
   }
 
   Future<void> _start(BuildContext context, WidgetRef ref) async {
+    final proceed = await confirmTemplateStart(
+      context,
+      ref,
+      workoutTemplateId: card.workoutTemplateId,
+    );
+    if (!proceed || !context.mounted) {
+      return;
+    }
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     final failureMessage = context.l10n.homeUpNextStartFailed;

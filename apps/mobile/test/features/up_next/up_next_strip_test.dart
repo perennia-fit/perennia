@@ -10,6 +10,7 @@ import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
 import 'package:perennia/features/home/widgets/workout_screen.dart';
 import 'package:perennia/features/template_materialize/repositories/template_materialize_feature_repository.dart';
+import 'package:perennia/features/template_materialize/widgets/empty_template_start_dialog.dart';
 import 'package:perennia/features/up_next/repositories/up_next_feature_repository.dart';
 import 'package:perennia/features/up_next/widgets/up_next_strip.dart';
 import 'package:perennia/l10n/app_localizations.dart';
@@ -154,6 +155,80 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 1));
   });
+
+  testWidgets(
+      'a card for a Template with no exercises says so and asks before '
+      'starting an empty Workout', (tester) async {
+    await _setLargePhone(tester);
+    final suggestion = _weeklySuggestion(doneSecondCard: false);
+    final repository = _repositoryWith(<UpNextSuggestionView>[suggestion]);
+    final materializeRepository = _EmptyTemplateMaterializeFeatureRepository(
+      emptyTemplateNames: const {'template-remaining': 'Push A'},
+    );
+    await tester.pumpWidget(
+      _testApp(
+        repository: repository,
+        materializeRepository: materializeRepository,
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    // The cards subscribe to the empty-Template ids once they are built, so
+    // the label lands one frame after the suggestions.
+    await tester.pump();
+
+    expect(find.text('No exercises'), findsOneWidget);
+
+    final card =
+        find.byKey(UpNextStrip.cardKey('routine-1', 'template-remaining'));
+    await tester.tap(card);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(EmptyTemplateStartDialog), findsOneWidget);
+    expect(find.text('"Push A" has no exercises'), findsOneWidget);
+
+    await tester.tap(find.byKey(EmptyTemplateStartDialog.cancelButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(EmptyTemplateStartDialog), findsNothing);
+    expect(materializeRepository.calls, isEmpty);
+
+    await tester.tap(card);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(EmptyTemplateStartDialog.confirmButtonKey));
+    await tester.pump();
+
+    expect(materializeRepository.calls, ['template-remaining']);
+  });
+
+  testWidgets('a card for a Template with exercises starts with no prompt',
+      (tester) async {
+    await _setLargePhone(tester);
+    final suggestion = _weeklySuggestion(doneSecondCard: false);
+    final repository = _repositoryWith(<UpNextSuggestionView>[suggestion]);
+    final materializeRepository = _EmptyTemplateMaterializeFeatureRepository(
+      emptyTemplateNames: const {},
+    );
+    await tester.pumpWidget(
+      _testApp(
+        repository: repository,
+        materializeRepository: materializeRepository,
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump();
+
+    expect(find.text('No exercises'), findsNothing);
+    await tester.tap(
+      find.byKey(UpNextStrip.cardKey('routine-1', 'template-remaining')),
+    );
+    await tester.pump();
+
+    expect(find.byType(EmptyTemplateStartDialog), findsNothing);
+    expect(materializeRepository.calls, ['template-remaining']);
+  });
 }
 
 UpNextSuggestionView _weeklySuggestion({required bool doneSecondCard}) {
@@ -223,6 +298,17 @@ class _RecordingTemplateMaterializeFeatureRepository
     );
     return _completer.future;
   }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(const <String>{});
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async => null;
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
 }
 
 /// Records materialize calls and resolves immediately with a fixed
@@ -251,6 +337,52 @@ class _ResolvingTemplateMaterializeFeatureRepository
     );
     return _workoutId;
   }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(const <String>{});
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async => null;
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
+}
+
+/// Reports the given Templates as empty and records, without resolving,
+/// every materialize call, so a test can assert the empty-Template prompt
+/// gates the start.
+class _EmptyTemplateMaterializeFeatureRepository
+    implements TemplateMaterializeFeatureRepository {
+  _EmptyTemplateMaterializeFeatureRepository({
+    required this.emptyTemplateNames,
+  });
+
+  final Map<String, String> emptyTemplateNames;
+  final List<String> calls = <String>[];
+
+  @override
+  Future<String> materializeTemplate({
+    required String workoutTemplateId,
+    String? routineId,
+    int? slot,
+  }) {
+    calls.add(workoutTemplateId);
+    return Completer<String>().future;
+  }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(emptyTemplateNames.keys.toSet());
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async =>
+      emptyTemplateNames[workoutTemplateId];
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
 }
 
 Widget _testApp({

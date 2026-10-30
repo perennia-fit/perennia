@@ -17,6 +17,7 @@ import '../../protocols/widgets/protocols_day_view.dart';
 import '../../protocols/widgets/protocols_lock_screen.dart';
 import '../../routine_plans/widgets/routine_plan_list_screen.dart';
 import '../../template_materialize/controllers/template_materialize_controller.dart';
+import '../../template_materialize/widgets/empty_template_start_dialog.dart';
 import '../../template_picker/widgets/template_picker_sheet.dart';
 import '../../up_next/widgets/up_next_strip.dart';
 import '../../workout_templates/widgets/workout_template_list_screen.dart';
@@ -174,6 +175,14 @@ class HomeScreen extends ConsumerWidget {
       String? routineId,
       int? slot,
     }) async {
+      final proceed = await confirmTemplateStart(
+        navigationContext,
+        ref,
+        workoutTemplateId: workoutTemplateId,
+      );
+      if (!proceed || !navigationContext.mounted) {
+        return;
+      }
       final messenger = ScaffoldMessenger.of(navigationContext);
       final navigator = Navigator.of(navigationContext);
       final failureMessage = navigationContext.l10n.homeUpNextStartFailed;

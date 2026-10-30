@@ -1073,6 +1073,17 @@ class _RecordingTemplateMaterializeFeatureRepository
     );
     return _completer.future;
   }
+
+  @override
+  Stream<Set<String>> watchEmptyTemplateIds() =>
+      Stream<Set<String>>.value(const <String>{});
+
+  @override
+  Future<String?> emptyTemplateName(String workoutTemplateId) async => null;
+
+  @override
+  Stream<WorkoutTemplateGuidance?> watchTemplateGuidance(String workoutId) =>
+      Stream<WorkoutTemplateGuidance?>.value(null);
 }
 
 Widget _testApp({

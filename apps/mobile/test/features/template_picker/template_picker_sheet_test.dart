@@ -93,6 +93,49 @@ void main() {
     );
   });
 
+  testWidgets(
+      'a Template with no exercises is labelled in every group that offers '
+      'it', (tester) async {
+    await _setLargePhone(tester);
+    await _openSheetForResult(
+      tester,
+      upNext: _upNextRepository(),
+      picker: _pickerRepository(
+        routines: _threeRoutines(),
+        templates: <TemplatePickerTemplateView>[
+          TemplatePickerTemplateView(
+            id: 'template-shared',
+            name: 'Push A',
+            exerciseCount: 0,
+            updatedAt: DateTime.utc(2026, 7, 1),
+          ),
+          TemplatePickerTemplateView(
+            id: 'template-old',
+            name: 'Legs A',
+            exerciseCount: 4,
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+      ),
+    );
+
+    await tester
+        .tap(find.byKey(TemplatePickerSheet.routineHeaderKey('routine-1')));
+    await _pumpUntilSettled(tester);
+
+    // Up next, the expanded cadenced Routine (after its slot label), and
+    // All Templates each mark the empty Template; the planned one is not.
+    expect(find.text('No exercises'), findsNWidgets(2));
+    expect(find.text('Monday · No exercises'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(TemplatePickerSheet.allTemplateTileKey('template-old')),
+        matching: find.textContaining('No exercises'),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('a cadenced Routine shows its slot label', (tester) async {
     await _setLargePhone(tester);
     await _openSheetForResult(

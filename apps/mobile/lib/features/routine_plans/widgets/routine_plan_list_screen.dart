@@ -7,6 +7,7 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../home/widgets/workout_screen.dart';
 import '../../template_materialize/controllers/template_materialize_controller.dart';
+import '../../template_materialize/widgets/empty_template_start_dialog.dart';
 import '../controllers/routine_plan_controller.dart';
 import '../repositories/routine_plan_feature_repository.dart';
 import 'routine_plan_editor_screen.dart';
@@ -188,6 +189,14 @@ class _RoutinePlanListScreenState extends ConsumerState<RoutinePlanListScreen> {
       routineName: routine.name,
     );
     if (selectedEntry == null || !mounted) {
+      return;
+    }
+    final proceed = await confirmTemplateStart(
+      context,
+      ref,
+      workoutTemplateId: selectedEntry.workoutTemplateId,
+    );
+    if (!proceed || !mounted) {
       return;
     }
     final messenger = ScaffoldMessenger.of(context);

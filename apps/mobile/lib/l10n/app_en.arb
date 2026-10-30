@@ -1003,6 +1003,20 @@
   "templateUpdateNotLinkedMessage": "This workout isn't linked to a Workout Template.",
   "templateUpdateGroupsChangedNote": "Exercise groups changed",
   "templateUpdateNoChangesNote": "No changes to update",
+  "templateStartNoExercises": "No exercises",
+  "templateStartEmptyTitle": "\"{name}\" has no exercises",
+  "@templateStartEmptyTitle": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "templateStartEmptyMessage": "Starting it opens an empty workout. Add exercises to the Workout Template to have them load when you start it.",
+  "templateStartEmptyConfirmAction": "Start empty workout",
+  "workoutTemplateNotesTitle": "Plan notes",
+  "workoutTemplateNotesSource": "From {name}",
+  "@workoutTemplateNotesSource": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "workoutTemplateNotesShowMore": "Show more",
+  "workoutTemplateNotesShowLess": "Show less",
   "activityBackupRestoreActor": "Backup restore",
   "backupRestoreSectionTitle": "Restore",
   "backupRestoreDescription": "Bring in workouts, food, and body readings from a Perennia backup file. Restoring only adds and updates; nothing on this device is erased.",
