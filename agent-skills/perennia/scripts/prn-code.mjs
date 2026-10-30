@@ -941,6 +941,7 @@ Usage:
 
 Environment:
   PRN_BASE_URL               API base URL, default ${DEFAULT_BASE_URL}
+                             (Official Service: https://api.perennia.fit)
   PRN_AGENT_API_KEY          Agent API key used as the bearer token
   PRN_AGENT_CLIENT_MODULE    Optional generated client module specifier
 

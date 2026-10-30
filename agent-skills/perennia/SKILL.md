@@ -36,7 +36,8 @@ not installed. Use `scripts/prn-agent.mjs` for raw one-command REST calls.
 When code execution is unavailable, an agent can reach the identical set of
 operations over Streamable HTTP MCP at `POST /mcp` (mounted in
 `apps/server/src/app.ts`, stateless — a fresh `McpServer` + transport per
-request, JSON responses enabled). Authenticate exactly like REST: an
+request, JSON responses enabled); on the Official Service that is
+`https://api.perennia.fit/mcp`. Authenticate exactly like REST: an
 `Authorization: Bearer <agent API key>` header, resolved through the same
 `authenticateToolCall`/`authenticateAgentOperation` path (including per-key
 rate limiting) — one key, one Activity Log accountability trail,
@@ -53,11 +54,22 @@ HTTP request to carry a header on.
 Set these environment variables in the code execution environment:
 
 ```bash
-export PRN_BASE_URL="https://perennia.example.com"
+export PRN_BASE_URL="https://api.perennia.fit"
 export PRN_AGENT_API_KEY="prn_agent_..."
 ```
 
-For local development, `PRN_BASE_URL` is commonly `http://localhost:3000`.
+`PRN_BASE_URL` is the server the user's app signs in to (the Server URL field on
+the app's sign-in screen):
+
+- `https://api.perennia.fit` — the Official Service. This is the default in the
+  app from the app stores, so use it unless the user says otherwise.
+- The user's own server's URL, for a Self-Hosted Deployment.
+- `http://localhost:3000` for local development against a server run from source.
+
+The scripts never assume the Official Service: when `PRN_BASE_URL` is unset they
+fall back to `http://localhost:3000`, so set it explicitly. The user creates the
+agent key in the app's account settings while signed in to that same server; a
+key from one server does not work on another.
 
 Run the script help before the first call:
 

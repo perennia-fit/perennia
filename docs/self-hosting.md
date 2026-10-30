@@ -1,8 +1,11 @@
 # Self-hosting
 
 Running your own Perennia server. The app can point at any server — that is not a
-concession, it is the design: a build ships with no default server, so you enter
-your own and nothing about the app treats yours as second class.
+concession, it is the design: a build from source ships with no default server, so
+you enter your own and nothing about the app treats yours as second class. (The
+app from the app stores is built with the Official Service,
+`https://api.perennia.fit`, as its default; you can still enter your own server's
+URL on its sign-in screen.)
 
 What self-hosting gives you: accounts, sync across your devices, and the full
 agent API and MCP surface. It is developer-grade — you will be operating a
@@ -124,7 +127,9 @@ flutter build apk --dart-define=PERENNIA_DEFAULT_SERVER_URL=https://perennia.exa
 
 Your deployment exposes the same agent surface as any other: the REST API under
 `/agent`, and an MCP server at `/mcp`. Create an agent key in the app under
-account settings, and give it to your agent as a bearer token. The tools and
+account settings, and give it to your agent as a bearer token, with your server's
+URL as the server URL (for the skill in `agent-skills/perennia`, that is
+`PRN_BASE_URL`). The tools and
 operations are identical everywhere — there is no hosted-only capability.
 
 ## Operating notes

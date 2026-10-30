@@ -14,6 +14,8 @@ hosted service.
    related daily summaries. Enable `GPS` only if you want FIT location streams.
 3. Copy `.env.example` to `.env` and fill in `PRN_BASE_URL`,
    `PRN_INTEGRATION_TOKEN`, `PRN_TIMEZONE`, and `GARMINDB_DATA_DIR`.
+   `PRN_BASE_URL` is the server your app signs in to: `https://api.perennia.fit`
+   for the app from the app stores, or your own server's URL.
 4. Install and run:
 
 ```bash
