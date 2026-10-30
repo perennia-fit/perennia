@@ -612,6 +612,7 @@ Usage:
 
 Environment:
   PRN_BASE_URL        API base URL, default http://localhost:3000
+                      (Official Service: https://api.perennia.fit)
   PRN_AGENT_API_KEY   Agent API key used as the bearer token
 
 Options:

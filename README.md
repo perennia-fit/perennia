@@ -71,14 +71,32 @@ through it; devices stay in sync.
   activity log.
 - **Agent surface**: the OpenAPI REST API, an in-process MCP server, and agent keys.
 
-## Self-hosting
+## Hosted or self-hosted
 
-A Docker image plus Postgres. The app can point at any server — a build carries no
-default server, so you enter your own — and a self-hosted deployment gets the same
-agent API and MCP surface as any other.
+The app from the app stores signs in to the **Official Service**,
+`https://api.perennia.fit`, operated by the maintainers. A build from this
+repository carries no default server: you enter your own on the sign-in screen,
+or bake one in at build time, so a self-built app never contacts the maintainers'
+infrastructure unless you point it there.
+
+Self-hosting is a Docker image plus Postgres, and a self-hosted deployment gets the
+same agent API and MCP surface as the Official Service.
 
 See **[docs/self-hosting.md](docs/self-hosting.md)** for the runbook: configuration,
 sign-in providers, migrations, and connecting the app.
+
+## Connecting an AI agent
+
+An agent needs a server URL and an agent key.
+
+- **Server URL**: the server your app signs in to — `https://api.perennia.fit` if
+  you use the app from the stores, or your own server's address if you self-host.
+- **Agent key**: create one in the app's account settings (you must be signed
+  in). It is shown once; give it to the agent as a bearer token.
+
+MCP clients connect to `<server URL>/mcp` with an `Authorization: Bearer <agent
+key>` header. Agents that run code can use the skill in
+[agent-skills/perennia](agent-skills/perennia/SKILL.md) instead.
 
 ## Documentation
 
