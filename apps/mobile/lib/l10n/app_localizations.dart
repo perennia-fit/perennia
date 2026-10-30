@@ -226,12 +226,6 @@ abstract class AppLocalizations {
   /// **'Manage account and sync'**
   String get homeManageAccountAndSync;
 
-  /// No description provided for @homeManageRoutines.
-  ///
-  /// In en, this message translates to:
-  /// **'Manage routines'**
-  String get homeManageRoutines;
-
   /// No description provided for @homeLogAction.
   ///
   /// In en, this message translates to:
@@ -301,13 +295,13 @@ abstract class AppLocalizations {
   /// No description provided for @homeStartNewWorkout.
   ///
   /// In en, this message translates to:
-  /// **'Start New Workout'**
+  /// **'Start workout'**
   String get homeStartNewWorkout;
 
   /// No description provided for @homeLoadRoutine.
   ///
   /// In en, this message translates to:
-  /// **'Load Routine'**
+  /// **'Routines'**
   String get homeLoadRoutine;
 
   /// No description provided for @homeAddExercise.
@@ -412,60 +406,6 @@ abstract class AppLocalizations {
   /// **'Could not start this session. Try again.'**
   String get homeUpNextStartFailed;
 
-  /// No description provided for @templatePickerTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Load a Template'**
-  String get templatePickerTitle;
-
-  /// No description provided for @templatePickerTodayUpNextHeading.
-  ///
-  /// In en, this message translates to:
-  /// **'Today / Up next'**
-  String get templatePickerTodayUpNextHeading;
-
-  /// No description provided for @templatePickerRoutinesHeading.
-  ///
-  /// In en, this message translates to:
-  /// **'Routines'**
-  String get templatePickerRoutinesHeading;
-
-  /// No description provided for @templatePickerAllTemplatesHeading.
-  ///
-  /// In en, this message translates to:
-  /// **'All Templates'**
-  String get templatePickerAllTemplatesHeading;
-
-  /// No description provided for @templatePickerSearchHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Search templates'**
-  String get templatePickerSearchHint;
-
-  /// No description provided for @templatePickerEmptyTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'No plans yet'**
-  String get templatePickerEmptyTitle;
-
-  /// No description provided for @templatePickerEmptyMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Finish a workout, then save it as a template.'**
-  String get templatePickerEmptyMessage;
-
-  /// No description provided for @templatePickerNoSearchResults.
-  ///
-  /// In en, this message translates to:
-  /// **'No templates match your search.'**
-  String get templatePickerNoSearchResults;
-
-  /// No description provided for @templatePickerCustomizeTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Customize {templateName}'**
-  String templatePickerCustomizeTooltip(String templateName);
-
   /// No description provided for @templatePickerPreviewStart.
   ///
   /// In en, this message translates to:
@@ -481,8 +421,98 @@ abstract class AppLocalizations {
   /// No description provided for @templatePickerPreviewEmptyExercises.
   ///
   /// In en, this message translates to:
-  /// **'No exercises in this template yet.'**
+  /// **'No exercises in this workout yet.'**
   String get templatePickerPreviewEmptyExercises;
+
+  /// No description provided for @routinesSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Routines'**
+  String get routinesSheetTitle;
+
+  /// No description provided for @routinesSheetManage.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage'**
+  String get routinesSheetManage;
+
+  /// No description provided for @routinesSheetEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get routinesSheetEdit;
+
+  /// No description provided for @routinesSheetBack.
+  ///
+  /// In en, this message translates to:
+  /// **'All routines'**
+  String get routinesSheetBack;
+
+  /// No description provided for @routinesSheetNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next: {name}'**
+  String routinesSheetNext(String name);
+
+  /// No description provided for @routinesSheetUpNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Up next'**
+  String get routinesSheetUpNext;
+
+  /// No description provided for @routinesSheetDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get routinesSheetDone;
+
+  /// No description provided for @routinesSheetWorkoutCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 workout} other{{count} workouts}}'**
+  String routinesSheetWorkoutCount(int count);
+
+  /// No description provided for @routinesSheetExerciseCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No exercises} =1{1 exercise} other{{count} exercises}}'**
+  String routinesSheetExerciseCount(int count);
+
+  /// No description provided for @routinesSheetOtherWorkouts.
+  ///
+  /// In en, this message translates to:
+  /// **'Other saved workouts'**
+  String get routinesSheetOtherWorkouts;
+
+  /// No description provided for @routinesSheetNotInRoutine.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in a routine'**
+  String get routinesSheetNotInRoutine;
+
+  /// No description provided for @routinesSheetPreviewTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview {name}'**
+  String routinesSheetPreviewTooltip(String name);
+
+  /// No description provided for @routinesSheetEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No routines yet'**
+  String get routinesSheetEmptyTitle;
+
+  /// No description provided for @routinesSheetEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a routine to start its workouts from here.'**
+  String get routinesSheetEmptyMessage;
+
+  /// No description provided for @routinesSheetEmptyAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a routine'**
+  String get routinesSheetEmptyAction;
 
   /// No description provided for @workoutTitle.
   ///
@@ -1972,37 +2002,37 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplatesTitle.
   ///
   /// In en, this message translates to:
-  /// **'Workout Templates'**
+  /// **'Saved workouts'**
   String get workoutTemplatesTitle;
 
   /// No description provided for @workoutTemplatesLibrarySubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Reusable plans for one Workout'**
+  /// **'Reusable plans for one workout'**
   String get workoutTemplatesLibrarySubtitle;
 
   /// No description provided for @workoutTemplatesNew.
   ///
   /// In en, this message translates to:
-  /// **'New Workout Template'**
+  /// **'New saved workout'**
   String get workoutTemplatesNew;
 
   /// No description provided for @workoutTemplatesCreateTitle.
   ///
   /// In en, this message translates to:
-  /// **'Create Workout Template'**
+  /// **'Create saved workout'**
   String get workoutTemplatesCreateTitle;
 
   /// No description provided for @workoutTemplatesCreate.
   ///
   /// In en, this message translates to:
-  /// **'Create Workout Template'**
+  /// **'Create saved workout'**
   String get workoutTemplatesCreate;
 
   /// No description provided for @workoutTemplatesNameLabel.
   ///
   /// In en, this message translates to:
-  /// **'Workout Template name'**
+  /// **'Workout name'**
   String get workoutTemplatesNameLabel;
 
   /// No description provided for @workoutTemplatesNotesLabel.
@@ -2020,31 +2050,31 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplatesActiveHeading.
   ///
   /// In en, this message translates to:
-  /// **'Active Workout Templates'**
+  /// **'Active'**
   String get workoutTemplatesActiveHeading;
 
   /// No description provided for @workoutTemplatesArchivedHeading.
   ///
   /// In en, this message translates to:
-  /// **'Archived Workout Templates'**
+  /// **'Archived'**
   String get workoutTemplatesArchivedHeading;
 
   /// No description provided for @workoutTemplatesShowArchived.
   ///
   /// In en, this message translates to:
-  /// **'Show archived Workout Templates'**
+  /// **'Show archived workouts'**
   String get workoutTemplatesShowArchived;
 
   /// No description provided for @workoutTemplatesHideArchived.
   ///
   /// In en, this message translates to:
-  /// **'Hide archived Workout Templates'**
+  /// **'Hide archived workouts'**
   String get workoutTemplatesHideArchived;
 
   /// No description provided for @workoutTemplatesEmptyTitle.
   ///
   /// In en, this message translates to:
-  /// **'No Workout Templates yet'**
+  /// **'No saved workouts yet'**
   String get workoutTemplatesEmptyTitle;
 
   /// No description provided for @workoutTemplatesEmptyMessage.
@@ -2056,13 +2086,13 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplatesArchivedEmpty.
   ///
   /// In en, this message translates to:
-  /// **'No archived Workout Templates.'**
+  /// **'No archived workouts.'**
   String get workoutTemplatesArchivedEmpty;
 
   /// No description provided for @workoutTemplatesExerciseCount.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =0{No Template Exercises} =1{1 Template Exercise} other{{count} Template Exercises}}'**
+  /// **'{count, plural, =0{No exercises} =1{1 exercise} other{{count} exercises}}'**
   String workoutTemplatesExerciseCount(int count);
 
   /// No description provided for @workoutTemplatesOpenTooltip.
@@ -2074,31 +2104,31 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplatesArchive.
   ///
   /// In en, this message translates to:
-  /// **'Archive Workout Template'**
+  /// **'Archive saved workout'**
   String get workoutTemplatesArchive;
 
   /// No description provided for @workoutTemplatesArchiveTitle.
   ///
   /// In en, this message translates to:
-  /// **'Archive Workout Template?'**
+  /// **'Archive saved workout?'**
   String get workoutTemplatesArchiveTitle;
 
   /// No description provided for @workoutTemplatesArchiveMessage.
   ///
   /// In en, this message translates to:
-  /// **'This hides the template from active lists and pickers. Logged Workouts remain unchanged.'**
+  /// **'This hides it from active lists and pickers. Logged workouts remain unchanged.'**
   String get workoutTemplatesArchiveMessage;
 
   /// No description provided for @workoutTemplatesRestore.
   ///
   /// In en, this message translates to:
-  /// **'Restore Workout Template'**
+  /// **'Restore saved workout'**
   String get workoutTemplatesRestore;
 
   /// No description provided for @workoutTemplatesActionFailed.
   ///
   /// In en, this message translates to:
-  /// **'The Workout Template could not be updated.'**
+  /// **'The saved workout could not be updated.'**
   String get workoutTemplatesActionFailed;
 
   /// No description provided for @workoutTemplatesStartTooltip.
@@ -2116,37 +2146,37 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateEditorTitle.
   ///
   /// In en, this message translates to:
-  /// **'Edit Workout Template'**
+  /// **'Edit saved workout'**
   String get workoutTemplateEditorTitle;
 
   /// No description provided for @workoutTemplateSaveDetails.
   ///
   /// In en, this message translates to:
-  /// **'Save Workout Template details'**
+  /// **'Save details'**
   String get workoutTemplateSaveDetails;
 
   /// No description provided for @workoutTemplateDetailsSaved.
   ///
   /// In en, this message translates to:
-  /// **'Workout Template details saved'**
+  /// **'Details saved'**
   String get workoutTemplateDetailsSaved;
 
   /// No description provided for @workoutTemplateExercisesHeading.
   ///
   /// In en, this message translates to:
-  /// **'Template Exercises'**
+  /// **'Exercises'**
   String get workoutTemplateExercisesHeading;
 
   /// No description provided for @workoutTemplateAddExercise.
   ///
   /// In en, this message translates to:
-  /// **'Add Template Exercise'**
+  /// **'Add exercise'**
   String get workoutTemplateAddExercise;
 
   /// No description provided for @workoutTemplateNoExercises.
   ///
   /// In en, this message translates to:
-  /// **'No Template Exercises. Add one to build the plan.'**
+  /// **'No exercises. Add one to build the plan.'**
   String get workoutTemplateNoExercises;
 
   /// No description provided for @workoutTemplateExerciseNotes.
@@ -2170,13 +2200,13 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateRemoveExercise.
   ///
   /// In en, this message translates to:
-  /// **'Remove Template Exercise'**
+  /// **'Remove exercise'**
   String get workoutTemplateRemoveExercise;
 
   /// No description provided for @workoutTemplateRemoveExerciseTitle.
   ///
   /// In en, this message translates to:
-  /// **'Remove Template Exercise?'**
+  /// **'Remove exercise?'**
   String get workoutTemplateRemoveExerciseTitle;
 
   /// No description provided for @workoutTemplateRemoveExerciseMessage.
@@ -2188,7 +2218,7 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateReorderExercise.
   ///
   /// In en, this message translates to:
-  /// **'Reorder Template Exercise'**
+  /// **'Reorder exercise'**
   String get workoutTemplateReorderExercise;
 
   /// No description provided for @workoutTemplatePrescriptionsHeading.
@@ -2236,7 +2266,7 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplatePrescriptionCopyPreviousHelp.
   ///
   /// In en, this message translates to:
-  /// **'Use the values from the previous session when this template is loaded.'**
+  /// **'Use the values from the previous session when this workout is started.'**
   String get workoutTemplatePrescriptionCopyPreviousHelp;
 
   /// No description provided for @workoutTemplatePrescriptionRepeat.
@@ -2308,13 +2338,13 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'Workout Template unavailable'**
+  /// **'Saved workout unavailable'**
   String get workoutTemplateUnavailable;
 
   /// No description provided for @workoutTemplateExercisePickerTitle.
   ///
   /// In en, this message translates to:
-  /// **'Add Template Exercise'**
+  /// **'Add exercise'**
   String get workoutTemplateExercisePickerTitle;
 
   /// No description provided for @workoutTemplateGroupsHeading.
@@ -2338,7 +2368,7 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateGroupNeedsExercises.
   ///
   /// In en, this message translates to:
-  /// **'Add at least two ungrouped Template Exercises first.'**
+  /// **'Add at least two ungrouped exercises first.'**
   String get workoutTemplateGroupNeedsExercises;
 
   /// No description provided for @workoutTemplateCreateGroup.
@@ -2386,25 +2416,25 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateGroupMembers.
   ///
   /// In en, this message translates to:
-  /// **'Template Exercises'**
+  /// **'Exercises'**
   String get workoutTemplateGroupMembers;
 
   /// No description provided for @workoutTemplateSelectedGroupMembers.
   ///
   /// In en, this message translates to:
-  /// **'Selected Template Exercises'**
+  /// **'Selected exercises'**
   String get workoutTemplateSelectedGroupMembers;
 
   /// No description provided for @workoutTemplateAvailableGroupMembers.
   ///
   /// In en, this message translates to:
-  /// **'Available Template Exercises'**
+  /// **'Available exercises'**
   String get workoutTemplateAvailableGroupMembers;
 
   /// No description provided for @workoutTemplateNoSelectedGroupMembers.
   ///
   /// In en, this message translates to:
-  /// **'Select at least two Template Exercises below.'**
+  /// **'Select at least two exercises below.'**
   String get workoutTemplateNoSelectedGroupMembers;
 
   /// No description provided for @workoutTemplateReorderGroupMember.
@@ -2452,7 +2482,7 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateGroupMembersInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Select at least two Template Exercises.'**
+  /// **'Select at least two exercises.'**
   String get workoutTemplateGroupMembersInvalid;
 
   /// No description provided for @workoutTemplateSaveGroup.
@@ -2476,7 +2506,7 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateGroupMemberCount.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 Template Exercise} other{{count} Template Exercises}}'**
+  /// **'{count, plural, =1{1 exercise} other{{count} exercises}}'**
   String workoutTemplateGroupMemberCount(int count);
 
   /// No description provided for @workoutTemplateGroupMembership.
@@ -2530,7 +2560,7 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateDissolveGroupMessage.
   ///
   /// In en, this message translates to:
-  /// **'Exercises and Prescriptions stay in this Workout Template.'**
+  /// **'Exercises and Prescriptions stay in this saved workout.'**
   String get workoutTemplateDissolveGroupMessage;
 
   /// No description provided for @workoutTemplateDissolveGroupSuccess.
@@ -2548,7 +2578,7 @@ abstract class AppLocalizations {
   /// No description provided for @workoutTemplateGroupedExerciseRemoveMessage.
   ///
   /// In en, this message translates to:
-  /// **'Edit or dissolve the Group before removing this Template Exercise.'**
+  /// **'Edit or dissolve the Group before removing this exercise.'**
   String get workoutTemplateGroupedExerciseRemoveMessage;
 
   /// No description provided for @routinePlansTitle.
@@ -2614,7 +2644,7 @@ abstract class AppLocalizations {
   /// No description provided for @routinePlansEmptyMessage.
   ///
   /// In en, this message translates to:
-  /// **'Create a Routine to keep an ordered collection of Workout Templates.'**
+  /// **'Create a Routine to keep the workouts of one plan together.'**
   String get routinePlansEmptyMessage;
 
   /// No description provided for @routinePlansActiveHeading.
@@ -2650,7 +2680,7 @@ abstract class AppLocalizations {
   /// No description provided for @routinePlansTemplateCount.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 Workout Template} other{{count} Workout Templates}}'**
+  /// **'{count, plural, =1{1 workout} other{{count} workouts}}'**
   String routinePlansTemplateCount(int count);
 
   /// No description provided for @routinePlansArchivedTemplateCount.
@@ -2683,30 +2713,6 @@ abstract class AppLocalizations {
   /// **'Restore Routine'**
   String get routinePlansRestore;
 
-  /// No description provided for @routinePlansStartTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Start {name}'**
-  String routinePlansStartTooltip(String name);
-
-  /// No description provided for @routinePlansStartSheetTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Start {name}'**
-  String routinePlansStartSheetTitle(String name);
-
-  /// No description provided for @routinePlansStartEmptyMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Add a Workout Template to this Routine first.'**
-  String get routinePlansStartEmptyMessage;
-
-  /// No description provided for @routinePlansStartFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'The Workout could not be started.'**
-  String get routinePlansStartFailed;
-
   /// No description provided for @routinePlansCancel.
   ///
   /// In en, this message translates to:
@@ -2722,7 +2728,7 @@ abstract class AppLocalizations {
   /// No description provided for @routinePlansArchiveMessage.
   ///
   /// In en, this message translates to:
-  /// **'Workout Templates and this Routine\'s references remain unchanged and restorable.'**
+  /// **'Its saved workouts remain unchanged, and the Routine can be restored.'**
   String get routinePlansArchiveMessage;
 
   /// No description provided for @routinePlansSaveDetails.
@@ -2734,37 +2740,37 @@ abstract class AppLocalizations {
   /// No description provided for @routinePlansTemplatesHeading.
   ///
   /// In en, this message translates to:
-  /// **'Workout Templates'**
+  /// **'Workouts'**
   String get routinePlansTemplatesHeading;
 
   /// No description provided for @routinePlansAddTemplate.
   ///
   /// In en, this message translates to:
-  /// **'Add Workout Template'**
+  /// **'Add workout'**
   String get routinePlansAddTemplate;
 
   /// No description provided for @routinePlansNoTemplates.
   ///
   /// In en, this message translates to:
-  /// **'No Workout Templates in this Routine yet.'**
+  /// **'No workouts in this Routine yet.'**
   String get routinePlansNoTemplates;
 
   /// No description provided for @routinePlansTemplateLabel.
   ///
   /// In en, this message translates to:
-  /// **'Workout Template'**
+  /// **'Workout'**
   String get routinePlansTemplateLabel;
 
   /// No description provided for @routinePlansArchivedTemplateLabel.
   ///
   /// In en, this message translates to:
-  /// **'Archived Workout Template'**
+  /// **'Archived workout'**
   String get routinePlansArchivedTemplateLabel;
 
   /// No description provided for @routinePlansRestoreTemplate.
   ///
   /// In en, this message translates to:
-  /// **'Restore Workout Template'**
+  /// **'Restore workout'**
   String get routinePlansRestoreTemplate;
 
   /// No description provided for @routinePlansReorderTemplate.
@@ -2806,19 +2812,19 @@ abstract class AppLocalizations {
   /// No description provided for @routinePlansRemoveReferenceMessage.
   ///
   /// In en, this message translates to:
-  /// **'This removes only the reference from {name}. The Workout Template remains available everywhere else.'**
+  /// **'This removes it only from {name}. The saved workout remains available everywhere else.'**
   String routinePlansRemoveReferenceMessage(String name);
 
   /// No description provided for @routinePlansTemplatePickerTitle.
   ///
   /// In en, this message translates to:
-  /// **'Add Workout Template'**
+  /// **'Add workout'**
   String get routinePlansTemplatePickerTitle;
 
   /// No description provided for @routinePlansNoAvailableTemplates.
   ///
   /// In en, this message translates to:
-  /// **'Create an active Workout Template in Library before adding one to this Routine.'**
+  /// **'Create a saved workout in Library before adding one to this Routine.'**
   String get routinePlansNoAvailableTemplates;
 
   /// No description provided for @routinePlansCadenceHeading.
@@ -2860,7 +2866,7 @@ abstract class AppLocalizations {
   /// No description provided for @routinePlansRotatingWindowHelp.
   ///
   /// In en, this message translates to:
-  /// **'Each position can contain more than one Workout Template.'**
+  /// **'Each position can hold more than one workout.'**
   String get routinePlansRotatingWindowHelp;
 
   /// No description provided for @routinePlansRotatingWindowError.
@@ -2950,7 +2956,7 @@ abstract class AppLocalizations {
   /// No description provided for @routinePlansAddTemplateToSlot.
   ///
   /// In en, this message translates to:
-  /// **'Add Workout Template to {slot}'**
+  /// **'Add workout to {slot}'**
   String routinePlansAddTemplateToSlot(String slot);
 
   /// No description provided for @routinePlansDropHere.
@@ -2992,13 +2998,13 @@ abstract class AppLocalizations {
   /// No description provided for @workoutCaptureMenuAction.
   ///
   /// In en, this message translates to:
-  /// **'Save as Workout Template'**
+  /// **'Save for reuse'**
   String get workoutCaptureMenuAction;
 
   /// No description provided for @workoutCaptureTitle.
   ///
   /// In en, this message translates to:
-  /// **'Save workout as template'**
+  /// **'Save workout for reuse'**
   String get workoutCaptureTitle;
 
   /// No description provided for @workoutCaptureLoading.
@@ -3059,13 +3065,13 @@ abstract class AppLocalizations {
   /// No description provided for @workoutCaptureNameLabel.
   ///
   /// In en, this message translates to:
-  /// **'Workout Template name'**
+  /// **'Workout name'**
   String get workoutCaptureNameLabel;
 
   /// No description provided for @workoutCaptureNameRequired.
   ///
   /// In en, this message translates to:
-  /// **'Enter a Workout Template name.'**
+  /// **'Enter a workout name.'**
   String get workoutCaptureNameRequired;
 
   /// No description provided for @workoutCaptureRoutineLabel.
@@ -3173,7 +3179,7 @@ abstract class AppLocalizations {
   /// No description provided for @workoutCaptureReferenceNote.
   ///
   /// In en, this message translates to:
-  /// **'This creates a new Workout Template from the workout facts. The workout and its existing Template Link stay unchanged; Routine placement adds only a reference.'**
+  /// **'This creates a new saved workout from what you logged. The logged workout stays unchanged; adding it to a Routine adds only a reference.'**
   String get workoutCaptureReferenceNote;
 
   /// No description provided for @workoutCaptureErrorsTitle.
@@ -3197,7 +3203,7 @@ abstract class AppLocalizations {
   /// No description provided for @workoutCaptureSave.
   ///
   /// In en, this message translates to:
-  /// **'Save Template'**
+  /// **'Save'**
   String get workoutCaptureSave;
 
   /// No description provided for @workoutCaptureSaving.
@@ -3209,19 +3215,19 @@ abstract class AppLocalizations {
   /// No description provided for @workoutCaptureSaveFailed.
   ///
   /// In en, this message translates to:
-  /// **'The Workout Template could not be saved. Review your choices and try again.'**
+  /// **'The saved workout could not be created. Review your choices and try again.'**
   String get workoutCaptureSaveFailed;
 
   /// No description provided for @workoutCaptureSaved.
   ///
   /// In en, this message translates to:
-  /// **'Workout Template saved.'**
+  /// **'Saved for reuse.'**
   String get workoutCaptureSaved;
 
   /// No description provided for @workoutUpdateTemplateMenuAction.
   ///
   /// In en, this message translates to:
-  /// **'Update template'**
+  /// **'Update saved workout'**
   String get workoutUpdateTemplateMenuAction;
 
   /// No description provided for @templateUpdatePromptTitle.
@@ -3239,19 +3245,19 @@ abstract class AppLocalizations {
   /// No description provided for @templateUpdateConfirmAction.
   ///
   /// In en, this message translates to:
-  /// **'Update template'**
+  /// **'Update saved workout'**
   String get templateUpdateConfirmAction;
 
   /// No description provided for @templateUpdateConfirmedMessage.
   ///
   /// In en, this message translates to:
-  /// **'Template updated.'**
+  /// **'Saved workout updated.'**
   String get templateUpdateConfirmedMessage;
 
   /// No description provided for @templateUpdateNotLinkedMessage.
   ///
   /// In en, this message translates to:
-  /// **'This workout isn\'t linked to a Workout Template.'**
+  /// **'This workout didn\'t start from a saved workout.'**
   String get templateUpdateNotLinkedMessage;
 
   /// No description provided for @templateUpdateGroupsChangedNote.
@@ -3281,7 +3287,7 @@ abstract class AppLocalizations {
   /// No description provided for @templateStartEmptyMessage.
   ///
   /// In en, this message translates to:
-  /// **'Starting it opens an empty workout. Add exercises to the Workout Template to have them load when you start it.'**
+  /// **'Starting it opens an empty workout. Add exercises to it to have them load when you start it.'**
   String get templateStartEmptyMessage;
 
   /// No description provided for @templateStartEmptyConfirmAction.
@@ -3313,7 +3319,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show less'**
   String get workoutTemplateNotesShowLess;
-
 
   /// No description provided for @activityBackupRestoreActor.
   ///
@@ -3578,18 +3583,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Start a workout'**
   String get startWorkoutSheetTitle;
-
-  /// No description provided for @startWorkoutFromPlan.
-  ///
-  /// In en, this message translates to:
-  /// **'From a routine or template'**
-  String get startWorkoutFromPlan;
-
-  /// No description provided for @startWorkoutSetUpRoutine.
-  ///
-  /// In en, this message translates to:
-  /// **'Set up a routine'**
-  String get startWorkoutSetUpRoutine;
 
   /// No description provided for @startWorkoutFocusSection.
   ///

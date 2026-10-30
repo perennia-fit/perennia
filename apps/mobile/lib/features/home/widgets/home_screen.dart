@@ -49,7 +49,6 @@ class HomeScreen extends ConsumerWidget {
   static const logWorkoutKey = Key('home.log.workout');
   static const logFoodKey = Key('home.log.food');
   static const logSupplementKey = Key('home.log.supplement');
-  static const manageRoutinesButtonKey = Key('home.manageRoutines');
   static const routinePlansButtonKey = Key('home.routinePlans');
   static const workoutTemplatesButtonKey = Key('home.workoutTemplates');
   static const focusesButtonKey = Key('home.focuses');
@@ -63,7 +62,7 @@ class HomeScreen extends ConsumerWidget {
   static const previousDayButtonKey = Key('home.previousDay');
   static const nextDayButtonKey = Key('home.nextDay');
   static const startWorkoutButtonKey = Key('home.startWorkout');
-  static const loadRoutineButtonKey = Key('home.loadRoutine');
+  static const routinesButtonKey = Key('home.routines');
   static const addExerciseButtonKey = Key('home.addExercise');
   static Key workoutDurationKey(String workoutId) {
     return Key('home.workoutDuration-$workoutId');
@@ -226,23 +225,7 @@ class HomeScreen extends ConsumerWidget {
       if (choice == null || !navigationContext.mounted) {
         return;
       }
-      switch (choice) {
-        case StartFromTemplate(
-            :final workoutTemplateId,
-            :final routineId,
-            :final slot,
-          ):
-          await startFromTemplate(
-            navigationContext,
-            workoutTemplateId: workoutTemplateId,
-            routineId: routineId,
-            slot: slot,
-          );
-        case BrowsePlans():
-          await loadRoutine(navigationContext);
-        case StartWithFocus(:final focusId):
-          await startWorkout(navigationContext, focusId: focusId);
-      }
+      await startWorkout(navigationContext, focusId: choice.focusId);
     }
 
     final todayBody = state.when<Widget>(
@@ -417,9 +400,10 @@ class _HomeContent extends StatelessWidget {
       ),
       SizedBox(height: sectionGap),
       const UpNextStrip(),
-      // One entry to starting a workout: Start opens the sheet that already
-      // holds the routine path, so it is the filled action whatever the day
-      // holds; Load Routine stays as the direct shortcut.
+      // Two jobs, two buttons: Start is the unplanned workout (a Focus or
+      // empty); Routines is the plan, one Routine and one workout away, with
+      // editing reached from inside it. Today's planned workout is the Up
+      // next strip above, so neither sheet repeats it.
       Wrap(
         spacing: AppDimens.dense,
         runSpacing: AppDimens.dense,
@@ -431,12 +415,12 @@ class _HomeContent extends StatelessWidget {
             label: Text(l10n.homeStartNewWorkout),
           ),
           OutlinedButton.icon(
-            key: HomeScreen.loadRoutineButtonKey,
+            key: HomeScreen.routinesButtonKey,
             style: OutlinedButton.styleFrom(
               foregroundColor: context.colors.textPrimary,
             ),
             onPressed: () => unawaited(onLoadRoutine(context)),
-            icon: const Icon(Icons.playlist_add_check),
+            icon: const Icon(Icons.assignment_outlined),
             label: Text(l10n.homeLoadRoutine),
           ),
         ],
@@ -453,18 +437,6 @@ class _HomeContent extends StatelessWidget {
           const SizedBox(height: AppDimens.dense),
         ],
       ],
-      const SizedBox(height: AppDimens.dense),
-      TextButton.icon(
-        key: HomeScreen.manageRoutinesButtonKey,
-        style: TextButton.styleFrom(
-          foregroundColor: context.colors.textPrimary,
-        ),
-        onPressed: () {
-          Navigator.of(context).pushNamed(RoutinePlanListScreen.routeName);
-        },
-        icon: const Icon(Icons.assignment_outlined),
-        label: Text(l10n.homeManageRoutines),
-      ),
     ];
   }
 

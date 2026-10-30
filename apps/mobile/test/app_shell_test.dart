@@ -318,7 +318,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('No meals logged yet'), findsNothing);
-    expect(find.text('Manage routines'), findsOneWidget);
+    expect(find.byKey(HomeScreen.routinesButtonKey), findsOneWidget);
 
     await tester.tap(find.text('Log'));
     await tester.pumpAndSettle();
@@ -743,11 +743,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The "Load Routine" affordance now opens the picker sheet (M34-03)
-    // rather than switching to the Library tab — that interim M33-06
-    // destination is retired.
-    expect(find.byKey(HomeScreen.loadRoutineButtonKey), findsOneWidget);
-    await tester.tap(find.byKey(HomeScreen.loadRoutineButtonKey));
+    // Routines opens the Routines sheet; with nothing yet it offers to
+    // create one, and managing Routines lives in Library, not on Today.
+    expect(find.byKey(HomeScreen.routinesButtonKey), findsOneWidget);
+    await tester.tap(find.byKey(HomeScreen.routinesButtonKey));
     await tester.pumpAndSettle();
     expect(find.byType(TemplatePickerSheet), findsOneWidget);
     expect(find.byKey(TemplatePickerSheet.emptyStateKey), findsOneWidget);
@@ -766,12 +765,6 @@ void main() {
     expect(find.byType(RoutinePlanListScreen), findsOneWidget);
     Navigator.of(tester.element(find.byType(RoutinePlanListScreen))).pop();
     await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(HomeScreen.todayDestinationKey));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(HomeScreen.manageRoutinesButtonKey));
-    await tester.pumpAndSettle();
-    expect(find.byType(RoutinePlanListScreen), findsOneWidget);
   });
 
   testWidgets('Library opens the New Exercise editor', (tester) async {
@@ -1073,7 +1066,7 @@ void main() {
 
     expect(find.byKey(HomeScreen.todayDestinationKey), findsOneWidget);
     expect(find.text('Controller state from repository'), findsOneWidget);
-    expect(find.text('Start New Workout'), findsOneWidget);
+    expect(find.text('Start workout'), findsOneWidget);
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(HomeScreen)),

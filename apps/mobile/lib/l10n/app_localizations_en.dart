@@ -79,9 +79,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeManageAccountAndSync => 'Manage account and sync';
 
   @override
-  String get homeManageRoutines => 'Manage routines';
-
-  @override
   String get homeLogAction => 'Log';
 
   @override
@@ -115,10 +112,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeNutritionUnavailable => 'Nutrition Day unavailable';
 
   @override
-  String get homeStartNewWorkout => 'Start New Workout';
+  String get homeStartNewWorkout => 'Start workout';
 
   @override
-  String get homeLoadRoutine => 'Load Routine';
+  String get homeLoadRoutine => 'Routines';
 
   @override
   String get homeAddExercise => 'Add exercise';
@@ -181,36 +178,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not start this session. Try again.';
 
   @override
-  String get templatePickerTitle => 'Load a Template';
-
-  @override
-  String get templatePickerTodayUpNextHeading => 'Today / Up next';
-
-  @override
-  String get templatePickerRoutinesHeading => 'Routines';
-
-  @override
-  String get templatePickerAllTemplatesHeading => 'All Templates';
-
-  @override
-  String get templatePickerSearchHint => 'Search templates';
-
-  @override
-  String get templatePickerEmptyTitle => 'No plans yet';
-
-  @override
-  String get templatePickerEmptyMessage =>
-      'Finish a workout, then save it as a template.';
-
-  @override
-  String get templatePickerNoSearchResults => 'No templates match your search.';
-
-  @override
-  String templatePickerCustomizeTooltip(String templateName) {
-    return 'Customize $templateName';
-  }
-
-  @override
   String get templatePickerPreviewStart => 'Start workout';
 
   @override
@@ -218,7 +185,74 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get templatePickerPreviewEmptyExercises =>
-      'No exercises in this template yet.';
+      'No exercises in this workout yet.';
+
+  @override
+  String get routinesSheetTitle => 'Routines';
+
+  @override
+  String get routinesSheetManage => 'Manage';
+
+  @override
+  String get routinesSheetEdit => 'Edit';
+
+  @override
+  String get routinesSheetBack => 'All routines';
+
+  @override
+  String routinesSheetNext(String name) {
+    return 'Next: $name';
+  }
+
+  @override
+  String get routinesSheetUpNext => 'Up next';
+
+  @override
+  String get routinesSheetDone => 'Done';
+
+  @override
+  String routinesSheetWorkoutCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count workouts',
+      one: '1 workout',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String routinesSheetExerciseCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count exercises',
+      one: '1 exercise',
+      zero: 'No exercises',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get routinesSheetOtherWorkouts => 'Other saved workouts';
+
+  @override
+  String get routinesSheetNotInRoutine => 'Not in a routine';
+
+  @override
+  String routinesSheetPreviewTooltip(String name) {
+    return 'Preview $name';
+  }
+
+  @override
+  String get routinesSheetEmptyTitle => 'No routines yet';
+
+  @override
+  String get routinesSheetEmptyMessage =>
+      'Create a routine to start its workouts from here.';
+
+  @override
+  String get routinesSheetEmptyAction => 'Create a routine';
 
   @override
   String get workoutTitle => 'Workout';
@@ -1090,23 +1124,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingUnitMile => 'mi';
 
   @override
-  String get workoutTemplatesTitle => 'Workout Templates';
+  String get workoutTemplatesTitle => 'Saved workouts';
 
   @override
   String get workoutTemplatesLibrarySubtitle =>
-      'Reusable plans for one Workout';
+      'Reusable plans for one workout';
 
   @override
-  String get workoutTemplatesNew => 'New Workout Template';
+  String get workoutTemplatesNew => 'New saved workout';
 
   @override
-  String get workoutTemplatesCreateTitle => 'Create Workout Template';
+  String get workoutTemplatesCreateTitle => 'Create saved workout';
 
   @override
-  String get workoutTemplatesCreate => 'Create Workout Template';
+  String get workoutTemplatesCreate => 'Create saved workout';
 
   @override
-  String get workoutTemplatesNameLabel => 'Workout Template name';
+  String get workoutTemplatesNameLabel => 'Workout name';
 
   @override
   String get workoutTemplatesNotesLabel => 'Standing notes';
@@ -1115,35 +1149,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutTemplatesCancel => 'Cancel';
 
   @override
-  String get workoutTemplatesActiveHeading => 'Active Workout Templates';
+  String get workoutTemplatesActiveHeading => 'Active';
 
   @override
-  String get workoutTemplatesArchivedHeading => 'Archived Workout Templates';
+  String get workoutTemplatesArchivedHeading => 'Archived';
 
   @override
-  String get workoutTemplatesShowArchived => 'Show archived Workout Templates';
+  String get workoutTemplatesShowArchived => 'Show archived workouts';
 
   @override
-  String get workoutTemplatesHideArchived => 'Hide archived Workout Templates';
+  String get workoutTemplatesHideArchived => 'Hide archived workouts';
 
   @override
-  String get workoutTemplatesEmptyTitle => 'No Workout Templates yet';
+  String get workoutTemplatesEmptyTitle => 'No saved workouts yet';
 
   @override
   String get workoutTemplatesEmptyMessage =>
       'Create a reusable plan for one Workout.';
 
   @override
-  String get workoutTemplatesArchivedEmpty => 'No archived Workout Templates.';
+  String get workoutTemplatesArchivedEmpty => 'No archived workouts.';
 
   @override
   String workoutTemplatesExerciseCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Template Exercises',
-      one: '1 Template Exercise',
-      zero: 'No Template Exercises',
+      other: '$count exercises',
+      one: '1 exercise',
+      zero: 'No exercises',
     );
     return '$_temp0';
   }
@@ -1154,21 +1188,21 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get workoutTemplatesArchive => 'Archive Workout Template';
+  String get workoutTemplatesArchive => 'Archive saved workout';
 
   @override
-  String get workoutTemplatesArchiveTitle => 'Archive Workout Template?';
+  String get workoutTemplatesArchiveTitle => 'Archive saved workout?';
 
   @override
   String get workoutTemplatesArchiveMessage =>
-      'This hides the template from active lists and pickers. Logged Workouts remain unchanged.';
+      'This hides it from active lists and pickers. Logged workouts remain unchanged.';
 
   @override
-  String get workoutTemplatesRestore => 'Restore Workout Template';
+  String get workoutTemplatesRestore => 'Restore saved workout';
 
   @override
   String get workoutTemplatesActionFailed =>
-      'The Workout Template could not be updated.';
+      'The saved workout could not be updated.';
 
   @override
   String workoutTemplatesStartTooltip(String name) {
@@ -1179,23 +1213,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutTemplatesStartFailed => 'The Workout could not be started.';
 
   @override
-  String get workoutTemplateEditorTitle => 'Edit Workout Template';
+  String get workoutTemplateEditorTitle => 'Edit saved workout';
 
   @override
-  String get workoutTemplateSaveDetails => 'Save Workout Template details';
+  String get workoutTemplateSaveDetails => 'Save details';
 
   @override
-  String get workoutTemplateDetailsSaved => 'Workout Template details saved';
+  String get workoutTemplateDetailsSaved => 'Details saved';
 
   @override
-  String get workoutTemplateExercisesHeading => 'Template Exercises';
+  String get workoutTemplateExercisesHeading => 'Exercises';
 
   @override
-  String get workoutTemplateAddExercise => 'Add Template Exercise';
+  String get workoutTemplateAddExercise => 'Add exercise';
 
   @override
   String get workoutTemplateNoExercises =>
-      'No Template Exercises. Add one to build the plan.';
+      'No exercises. Add one to build the plan.';
 
   @override
   String get workoutTemplateExerciseNotes => 'Exercise standing notes';
@@ -1207,17 +1241,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutTemplateSaveExerciseNotes => 'Save exercise notes';
 
   @override
-  String get workoutTemplateRemoveExercise => 'Remove Template Exercise';
+  String get workoutTemplateRemoveExercise => 'Remove exercise';
 
   @override
-  String get workoutTemplateRemoveExerciseTitle => 'Remove Template Exercise?';
+  String get workoutTemplateRemoveExerciseTitle => 'Remove exercise?';
 
   @override
   String get workoutTemplateRemoveExerciseMessage =>
       'Its Prescriptions are removed from this plan. Logged Workouts remain unchanged.';
 
   @override
-  String get workoutTemplateReorderExercise => 'Reorder Template Exercise';
+  String get workoutTemplateReorderExercise => 'Reorder exercise';
 
   @override
   String get workoutTemplatePrescriptionsHeading => 'Prescriptions';
@@ -1242,7 +1276,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplatePrescriptionCopyPreviousHelp =>
-      'Use the values from the previous session when this template is loaded.';
+      'Use the values from the previous session when this workout is started.';
 
   @override
   String get workoutTemplatePrescriptionRepeat => 'Repeat';
@@ -1281,10 +1315,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutTemplatePrescriptionSaveAnyway => 'Save anyway';
 
   @override
-  String get workoutTemplateUnavailable => 'Workout Template unavailable';
+  String get workoutTemplateUnavailable => 'Saved workout unavailable';
 
   @override
-  String get workoutTemplateExercisePickerTitle => 'Add Template Exercise';
+  String get workoutTemplateExercisePickerTitle => 'Add exercise';
 
   @override
   String get workoutTemplateGroupsHeading => 'Groups';
@@ -1298,7 +1332,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplateGroupNeedsExercises =>
-      'Add at least two ungrouped Template Exercises first.';
+      'Add at least two ungrouped exercises first.';
 
   @override
   String get workoutTemplateCreateGroup => 'Create Group';
@@ -1325,19 +1359,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'A round is one pass through every exercise in this Group.';
 
   @override
-  String get workoutTemplateGroupMembers => 'Template Exercises';
+  String get workoutTemplateGroupMembers => 'Exercises';
 
   @override
-  String get workoutTemplateSelectedGroupMembers =>
-      'Selected Template Exercises';
+  String get workoutTemplateSelectedGroupMembers => 'Selected exercises';
 
   @override
-  String get workoutTemplateAvailableGroupMembers =>
-      'Available Template Exercises';
+  String get workoutTemplateAvailableGroupMembers => 'Available exercises';
 
   @override
   String get workoutTemplateNoSelectedGroupMembers =>
-      'Select at least two Template Exercises below.';
+      'Select at least two exercises below.';
 
   @override
   String workoutTemplateReorderGroupMember(String name) {
@@ -1369,7 +1401,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplateGroupMembersInvalid =>
-      'Select at least two Template Exercises.';
+      'Select at least two exercises.';
 
   @override
   String get workoutTemplateSaveGroup => 'Save Group';
@@ -1394,8 +1426,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Template Exercises',
-      one: '1 Template Exercise',
+      other: '$count exercises',
+      one: '1 exercise',
     );
     return '$_temp0';
   }
@@ -1442,7 +1474,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplateDissolveGroupMessage =>
-      'Exercises and Prescriptions stay in this Workout Template.';
+      'Exercises and Prescriptions stay in this saved workout.';
 
   @override
   String get workoutTemplateDissolveGroupSuccess => 'Group dissolved';
@@ -1454,7 +1486,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutTemplateGroupedExerciseRemoveMessage =>
-      'Edit or dissolve the Group before removing this Template Exercise.';
+      'Edit or dissolve the Group before removing this exercise.';
 
   @override
   String get routinePlansTitle => 'Routines';
@@ -1488,7 +1520,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get routinePlansEmptyMessage =>
-      'Create a Routine to keep an ordered collection of Workout Templates.';
+      'Create a Routine to keep the workouts of one plan together.';
 
   @override
   String get routinePlansActiveHeading => 'ACTIVE';
@@ -1510,8 +1542,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Workout Templates',
-      one: '1 Workout Template',
+      other: '$count workouts',
+      one: '1 workout',
     );
     return '$_temp0';
   }
@@ -1544,23 +1576,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get routinePlansRestore => 'Restore Routine';
 
   @override
-  String routinePlansStartTooltip(String name) {
-    return 'Start $name';
-  }
-
-  @override
-  String routinePlansStartSheetTitle(String name) {
-    return 'Start $name';
-  }
-
-  @override
-  String get routinePlansStartEmptyMessage =>
-      'Add a Workout Template to this Routine first.';
-
-  @override
-  String get routinePlansStartFailed => 'The Workout could not be started.';
-
-  @override
   String get routinePlansCancel => 'Cancel';
 
   @override
@@ -1570,29 +1585,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get routinePlansArchiveMessage =>
-      'Workout Templates and this Routine\'s references remain unchanged and restorable.';
+      'Its saved workouts remain unchanged, and the Routine can be restored.';
 
   @override
   String get routinePlansSaveDetails => 'Save Routine';
 
   @override
-  String get routinePlansTemplatesHeading => 'Workout Templates';
+  String get routinePlansTemplatesHeading => 'Workouts';
 
   @override
-  String get routinePlansAddTemplate => 'Add Workout Template';
+  String get routinePlansAddTemplate => 'Add workout';
 
   @override
-  String get routinePlansNoTemplates =>
-      'No Workout Templates in this Routine yet.';
+  String get routinePlansNoTemplates => 'No workouts in this Routine yet.';
 
   @override
-  String get routinePlansTemplateLabel => 'Workout Template';
+  String get routinePlansTemplateLabel => 'Workout';
 
   @override
-  String get routinePlansArchivedTemplateLabel => 'Archived Workout Template';
+  String get routinePlansArchivedTemplateLabel => 'Archived workout';
 
   @override
-  String get routinePlansRestoreTemplate => 'Restore Workout Template';
+  String get routinePlansRestoreTemplate => 'Restore workout';
 
   @override
   String routinePlansReorderTemplate(String name) {
@@ -1620,15 +1634,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String routinePlansRemoveReferenceMessage(String name) {
-    return 'This removes only the reference from $name. The Workout Template remains available everywhere else.';
+    return 'This removes it only from $name. The saved workout remains available everywhere else.';
   }
 
   @override
-  String get routinePlansTemplatePickerTitle => 'Add Workout Template';
+  String get routinePlansTemplatePickerTitle => 'Add workout';
 
   @override
   String get routinePlansNoAvailableTemplates =>
-      'Create an active Workout Template in Library before adding one to this Routine.';
+      'Create a saved workout in Library before adding one to this Routine.';
 
   @override
   String get routinePlansCadenceHeading => 'Cadence';
@@ -1650,7 +1664,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get routinePlansRotatingWindowHelp =>
-      'Each position can contain more than one Workout Template.';
+      'Each position can hold more than one workout.';
 
   @override
   String get routinePlansRotatingWindowError =>
@@ -1700,7 +1714,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String routinePlansAddTemplateToSlot(String slot) {
-    return 'Add Workout Template to $slot';
+    return 'Add workout to $slot';
   }
 
   @override
@@ -1726,10 +1740,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get routinePlansCurrentSlot => 'Current slot';
 
   @override
-  String get workoutCaptureMenuAction => 'Save as Workout Template';
+  String get workoutCaptureMenuAction => 'Save for reuse';
 
   @override
-  String get workoutCaptureTitle => 'Save workout as template';
+  String get workoutCaptureTitle => 'Save workout for reuse';
 
   @override
   String get workoutCaptureLoading => 'Preparing capture preview';
@@ -1811,10 +1825,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get workoutCaptureNameLabel => 'Workout Template name';
+  String get workoutCaptureNameLabel => 'Workout name';
 
   @override
-  String get workoutCaptureNameRequired => 'Enter a Workout Template name.';
+  String get workoutCaptureNameRequired => 'Enter a workout name.';
 
   @override
   String get workoutCaptureRoutineLabel => 'Add to Routine';
@@ -1878,7 +1892,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workoutCaptureReferenceNote =>
-      'This creates a new Workout Template from the workout facts. The workout and its existing Template Link stay unchanged; Routine placement adds only a reference.';
+      'This creates a new saved workout from what you logged. The logged workout stays unchanged; adding it to a Routine adds only a reference.';
 
   @override
   String get workoutCaptureErrorsTitle => 'Cannot save yet';
@@ -1891,20 +1905,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'I reviewed these warnings and want to save anyway.';
 
   @override
-  String get workoutCaptureSave => 'Save Template';
+  String get workoutCaptureSave => 'Save';
 
   @override
   String get workoutCaptureSaving => 'Saving...';
 
   @override
   String get workoutCaptureSaveFailed =>
-      'The Workout Template could not be saved. Review your choices and try again.';
+      'The saved workout could not be created. Review your choices and try again.';
 
   @override
-  String get workoutCaptureSaved => 'Workout Template saved.';
+  String get workoutCaptureSaved => 'Saved for reuse.';
 
   @override
-  String get workoutUpdateTemplateMenuAction => 'Update template';
+  String get workoutUpdateTemplateMenuAction => 'Update saved workout';
 
   @override
   String templateUpdatePromptTitle(String name) {
@@ -1915,14 +1929,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get templateUpdateDismissAction => 'Not now';
 
   @override
-  String get templateUpdateConfirmAction => 'Update template';
+  String get templateUpdateConfirmAction => 'Update saved workout';
 
   @override
-  String get templateUpdateConfirmedMessage => 'Template updated.';
+  String get templateUpdateConfirmedMessage => 'Saved workout updated.';
 
   @override
   String get templateUpdateNotLinkedMessage =>
-      'This workout isn\'t linked to a Workout Template.';
+      'This workout didn\'t start from a saved workout.';
 
   @override
   String get templateUpdateGroupsChangedNote => 'Exercise groups changed';
@@ -1940,7 +1954,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get templateStartEmptyMessage =>
-      'Starting it opens an empty workout. Add exercises to the Workout Template to have them load when you start it.';
+      'Starting it opens an empty workout. Add exercises to it to have them load when you start it.';
 
   @override
   String get templateStartEmptyConfirmAction => 'Start empty workout';
@@ -2152,12 +2166,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get startWorkoutSheetTitle => 'Start a workout';
-
-  @override
-  String get startWorkoutFromPlan => 'From a routine or template';
-
-  @override
-  String get startWorkoutSetUpRoutine => 'Set up a routine';
 
   @override
   String get startWorkoutFocusSection => 'Focus';

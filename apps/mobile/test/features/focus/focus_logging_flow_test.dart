@@ -47,10 +47,6 @@ void main() {
 
       expect(find.text('Weights'), findsOneWidget);
       expect(find.text('Endurance'), findsOneWidget);
-      // With no routines and no templates the planned lane is one quiet link.
-      expect(find.byKey(StartWorkoutSheet.setUpRoutineKey), findsOneWidget);
-      expect(find.byKey(StartWorkoutSheet.browsePlansKey), findsNothing);
-
       // A screen reader can activate the tile, not just see it.
       expect(
         tester.getSemantics(
@@ -66,14 +62,13 @@ void main() {
       await tester.pumpAndSettle();
 
       final choice = await result;
-      expect(choice, isA<StartWithFocus>());
-      expect((choice! as StartWithFocus).focusId, _weightsId);
+      expect(choice?.focusId, _weightsId);
     });
 
-    testWidgets('puts the next programmed session first, one tap to start', (
-      tester,
-    ) async {
-      final result = await _openStartSheet(
+    testWidgets(
+        "leaves planned workouts to Today's Up next and Routines, so the "
+        'sheet is only the unplanned start', (tester) async {
+      await _openStartSheet(
         tester,
         upNext: _UpNextRepository(<UpNextSuggestionView>[
           UpNextSuggestionView(
@@ -93,20 +88,9 @@ void main() {
         ]),
       );
 
-      expect(find.text('Lower strength'), findsOneWidget);
-      expect(find.byKey(StartWorkoutSheet.browsePlansKey), findsOneWidget);
-
-      await tester.tap(
-        find.byKey(StartWorkoutSheet.upNextKey('routine-1', 'template-1')),
-      );
-      await tester.pumpAndSettle();
-
-      final choice = await result;
-      expect(choice, isA<StartFromTemplate>());
-      final start = choice! as StartFromTemplate;
-      expect(start.workoutTemplateId, 'template-1');
-      expect(start.routineId, 'routine-1');
-      expect(start.slot, 2);
+      expect(find.text('Lower strength'), findsNothing);
+      expect(find.text('Weights'), findsOneWidget);
+      expect(find.byKey(StartWorkoutSheet.emptyWorkoutKey), findsOneWidget);
     });
 
     testWidgets('still starts an empty workout without a Focus', (
@@ -118,8 +102,8 @@ void main() {
       await tester.pumpAndSettle();
 
       final choice = await result;
-      expect(choice, isA<StartWithFocus>());
-      expect((choice! as StartWithFocus).focusId, isNull);
+      expect(choice, isNotNull);
+      expect(choice!.focusId, isNull);
     });
 
     testWidgets('meets tap-target and contrast guidelines in both themes', (
@@ -188,12 +172,14 @@ void main() {
       find.byKey(FocusedExerciseList.exerciseRowKey(_squatId)),
       findsOneWidget,
     );
-    expect(find.byKey(FocusedExerciseList.exerciseRowKey(_rowId)), findsNothing);
+    expect(
+        find.byKey(FocusedExerciseList.exerciseRowKey(_rowId)), findsNothing);
     expect(find.text('Weights'), findsOneWidget);
     // The Focus control is its own button for a screen reader, not a part of
     // the header card's node.
     expect(
-      tester.getSemantics(find.byKey(WorkoutScreen.focusButtonKey('workout-1'))),
+      tester
+          .getSemantics(find.byKey(WorkoutScreen.focusButtonKey('workout-1'))),
       matchesSemantics(
         label: 'Focus: Weights. Change focus',
         isButton: true,
@@ -400,7 +386,8 @@ List<ExerciseCatalogSectionRecord> _catalogSections() {
       id: id,
       origin: ExerciseLibraryOrigin.platform,
       name: name,
-      type: ExerciseType(const <DimensionId>[DimensionId.load, DimensionId.reps]),
+      type:
+          ExerciseType(const <DimensionId>[DimensionId.load, DimensionId.reps]),
       defaultLoadUnit: TrainingUnit.kilogram,
       loadMode: ExerciseLoadMode.added,
       recordProfile: RecordProfile.repMax,

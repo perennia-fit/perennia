@@ -157,6 +157,9 @@ Referencing is never copying: an edit to a template is seen everywhere it is
 referenced; divergence is expressed by duplicating. A mutable plan; performing it
 produces an ordinary Workout, and editing or archiving a template never alters
 logged Workouts or Sets.
+Code and API say Workout Template; UI copy says "workout" inside a Routine and
+"saved workout" on its own, because athletes think of the plan for Monday as
+Monday's workout, not as a template. A performed session stays a Workout.
 
 ## Prescription
 One planned set-block within a Workout Template's exercise entry: the intended

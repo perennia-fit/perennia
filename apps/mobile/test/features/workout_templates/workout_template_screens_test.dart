@@ -133,8 +133,8 @@ void main() {
       find.byKey(WorkoutTemplateListScreen.archiveButtonKey(_templateId)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Archive Workout Template?'), findsOneWidget);
-    await tester.tap(find.text('Archive Workout Template').last);
+    expect(find.text('Archive saved workout?'), findsOneWidget);
+    await tester.tap(find.text('Archive saved workout').last);
     await tester.pumpAndSettle();
 
     expect(
