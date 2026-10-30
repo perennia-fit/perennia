@@ -17,9 +17,7 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/activity/widgets/activity_feed_screen.dart';
 import 'package:perennia/features/agent_keys/repositories/agent_api_key_repository.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
-import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
-import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
 import 'package:perennia/features/settings/services/auto_backup_service.dart';
 import 'package:perennia/features/settings/services/client_crash_reporting.dart';
 import 'package:perennia/features/sync/controllers/sync_status_controller.dart';
@@ -1537,63 +1535,6 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
       }
     });
-
-    testWidgets(
-      'the Supplements tile opens the discreet Compound list surface',
-      (tester) async {
-        // This is a NAVIGATION smoke test, not a Protocols data test (that's
-        // protocols_repository_test.dart + compound_list_screen_test.dart):
-        // stub the Compound-list providers so no real Drift `.watch()` stream
-        // is ever created here, keeping the assertion to "does the tile land
-        // on CompoundListScreen".
-        await _pumpSettings(
-          tester,
-          extraOverrides: [
-            compoundListProvider.overrideWith(
-              (ref) => Stream<List<CompoundRecord>>.value(
-                const <CompoundRecord>[],
-              ),
-            ),
-            recentCompoundIdsProvider.overrideWith(
-              (ref) => Stream<List<String>>.value(
-                const <String>[],
-              ),
-            ),
-            protocolDayControllerProvider.overrideWith(
-              _StubProtocolDayController.new,
-            ),
-          ],
-        );
-
-        await tester.scrollUntilVisible(
-          find.byKey(SettingsScreen.supplementsTileKey),
-          400,
-          scrollable: find.byType(Scrollable).first,
-        );
-        // Neutral capsule iconography, never a syringe.
-        expect(
-          find.descendant(
-            of: find.byKey(SettingsScreen.supplementsTileKey),
-            matching: find.byIcon(Icons.medication_outlined),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: find.byKey(SettingsScreen.supplementsTileKey),
-            matching: find.byIcon(Icons.vaccines),
-          ),
-          findsNothing,
-        );
-
-        await tester.ensureVisible(find.byKey(SettingsScreen.supplementsTileKey));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(SettingsScreen.supplementsTileKey));
-        await tester.pumpAndSettle();
-
-        expect(find.byType(CompoundListScreen), findsOneWidget);
-      },
-    );
   });
 }
 
@@ -1879,23 +1820,6 @@ class _StubSyncStatusController extends SyncStatusController {
 /// A stub for the Supplements-tile navigation smoke test: emits an empty
 /// derived Protocol Day without ever touching the real repository/Drift
 /// streams (mirrors protocols_day_view_test.dart's fake-controller pattern).
-class _StubProtocolDayController extends ProtocolDayController {
-  @override
-  Stream<ProtocolDayState> build() {
-    return Stream<ProtocolDayState>.value(
-      ProtocolDayState(
-        day: ProtocolDayRecord(
-          localDate: const ProtocolDayDate(year: 2026, month: 6, day: 30),
-          doses: <DoseRecord>[],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Future<void> ensureOtcLibrarySeeded() async {}
-}
-
 class _FakeClientCrashReporter implements ClientCrashReporter {
   final enabledValues = <bool>[];
   final capturedThrowables = <Object>[];

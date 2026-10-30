@@ -36,7 +36,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeLibraryTrainingSection => 'TRAINING';
 
   @override
-  String get homeLibrarySupplementsSection => 'SUPPLEMENTS';
+  String get homeLibraryProtocolsSection => 'PROTOCOLS';
 
   @override
   String get homeCreateExercise => 'Create exercise';
@@ -94,7 +94,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeLogFood => 'Food';
 
   @override
-  String get homeLogSupplement => 'Supplement';
+  String get homeLogDose => 'Dose';
 
   @override
   String get homeDomainToggleLabel => 'Home domain';
@@ -436,6 +436,59 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navRoutines => 'Routines';
 
   @override
+  String get navCompounds => 'Compounds';
+
+  @override
+  String get protocolsDomainTitle => 'Protocols';
+
+  @override
+  String get protocolsLibrarySubtitle =>
+      'What you take, when, and for how long';
+
+  @override
+  String get compoundsLibrarySubtitle =>
+      'Everything you take, and each one\'s history';
+
+  @override
+  String get protocolsYourProtocols => 'Your protocols';
+
+  @override
+  String get protocolsNewProtocol => 'New protocol';
+
+  @override
+  String get protocolsLogDose => 'Log a dose';
+
+  @override
+  String get protocolsLoggedHeading => 'Logged';
+
+  @override
+  String get protocolsNothingToday => 'Nothing planned or logged on this day.';
+
+  @override
+  String get protocolsIntroTitle => 'Plan what you take';
+
+  @override
+  String get protocolsIntroMessage =>
+      'A protocol lists what you take and when. With times set, it can remind you when each dose is due.';
+
+  @override
+  String get protocolsLockedTitle => 'Protocols are locked';
+
+  @override
+  String get protocolsLockUnavailableTitle => 'Protocols lock unavailable';
+
+  @override
+  String get protocolsLockUnavailableMessage =>
+      'Protocols stay hidden because the device\'s secure storage could not be read.';
+
+  @override
+  String get privacyShowProtocolsOnToday => 'Show Protocols on Today';
+
+  @override
+  String get privacyShowProtocolsOnTodaySubtitle =>
+      'Off hides the tab on this device. Protocols stay in Library.';
+
+  @override
   String get navSettings => 'Settings';
 
   @override
@@ -443,9 +496,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get navMetrics => 'Metrics';
-
-  @override
-  String get navSupplements => 'Supplements';
 
   @override
   String get agentKeysSignedOutTitle => 'Sign in to manage agent keys';
@@ -2723,7 +2773,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get protocolReminderTitle => 'Supplements';
+  String get protocolReminderTitle => 'Protocols';
 
   @override
   String protocolReminderBody(String time) {
@@ -2759,14 +2809,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get protocolRemindersAllow => 'Allow';
 
   @override
-  String get protocolRemindersSettingsTile => 'Supplement reminders';
+  String get protocolRemindersSettingsTile => 'Protocol reminders';
 
   @override
   String get protocolRemindersSettingsTileSubtitle =>
       'Reminders on this device and notification permission';
 
   @override
-  String get protocolRemindersSettingsTitle => 'Supplement reminders';
+  String get protocolRemindersSettingsTitle => 'Protocol reminders';
 
   @override
   String get protocolRemindersDeviceSwitch => 'Reminders on this device';

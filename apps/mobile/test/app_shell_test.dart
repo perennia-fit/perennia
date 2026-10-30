@@ -37,7 +37,6 @@ import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
-import 'package:perennia/features/protocols/widgets/protocols_day_view.dart';
 import 'package:perennia/features/routine_plans/controllers/routine_plan_controller.dart';
 import 'package:perennia/features/routine_plans/repositories/routine_plan_feature_repository.dart';
 import 'package:perennia/features/routine_plans/widgets/routine_plan_list_screen.dart';
@@ -189,7 +188,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Routines'), findsOneWidget);
-    expect(find.text('Supplements'), findsWidgets);
+    expect(find.byKey(HomeScreen.libraryProtocolsButtonKey), findsOneWidget);
+    expect(find.byKey(HomeScreen.libraryCompoundsButtonKey), findsOneWidget);
   });
 
   testWidgets('Progress and Library meet accessibility guidelines', (
@@ -326,7 +326,7 @@ void main() {
     expect(find.text('Log for this day'), findsOneWidget);
     expect(find.text('Workout'), findsOneWidget);
     expect(find.text('Food'), findsOneWidget);
-    expect(find.text('Supplement'), findsOneWidget);
+    expect(find.text('Dose'), findsOneWidget);
   });
 
   testWidgets('follows platform brightness', (tester) async {
@@ -834,7 +834,11 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.libraryDestinationKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Supplements').last);
+    await tester.ensureVisible(
+      find.byKey(HomeScreen.libraryCompoundsButtonKey),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(HomeScreen.libraryCompoundsButtonKey));
     await tester.pumpAndSettle();
 
     expect(find.byType(CompoundListScreen), findsOneWidget);
@@ -966,32 +970,34 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.logButtonKey));
     await tester.pumpAndSettle();
-    expect(find.byKey(HomeScreen.logSupplementKey), findsOneWidget);
+    expect(find.byKey(HomeScreen.logDoseKey), findsOneWidget);
     // Neutral capsule iconography — never a syringe.
     expect(
       find.descendant(
-        of: find.byKey(HomeScreen.logSupplementKey),
+        of: find.byKey(HomeScreen.logDoseKey),
         matching: find.byIcon(Icons.medication_outlined),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
-        of: find.byKey(HomeScreen.logSupplementKey),
+        of: find.byKey(HomeScreen.logDoseKey),
         matching: find.byIcon(Icons.vaccines),
       ),
       findsNothing,
     );
 
-    await tester.tap(find.byKey(HomeScreen.logSupplementKey));
+    await tester.tap(find.byKey(HomeScreen.logDoseKey));
     await tester.pump(const Duration(milliseconds: 300));
-    await _pumpUntilFound(tester, find.byType(ProtocolsDayView));
+    await _pumpUntilFound(tester, find.byType(CompoundListScreen));
 
-    expect(find.byType(ProtocolsDayView), findsOneWidget);
+    // Log → Dose goes straight to picking what was taken.
+    expect(find.byType(CompoundListScreen), findsOneWidget);
   });
 
   testWidgets(
-    'the Training|Nutrition domain toggle never carries a Supplements segment',
+    'the domain toggle offers Protocols, and drops it when hidden on this '
+    'device',
     (tester) async {
       final today = TrainingDayDate.fromDateTime(DateTime.now());
 
@@ -1013,6 +1019,9 @@ void main() {
             mealTypeListProvider.overrideWith(
               (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
             ),
+            settingsRepositoryProvider.overrideWith(
+              (ref) => InMemorySettingsRepository(),
+            ),
           ],
           child: const PerenniaApp(),
         ),
@@ -1028,6 +1037,26 @@ void main() {
       );
       expect(
         segmentedButton.segments.map((segment) => segment.value),
+        <HomeDomain>[
+          HomeDomain.training,
+          HomeDomain.nutrition,
+          HomeDomain.protocols,
+        ],
+      );
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byKey(HomeScreen.domainToggleKey)),
+      );
+      await container
+          .read(settingsControllerProvider.notifier)
+          .setShowProtocolsOnToday(false);
+      await tester.pump();
+
+      final hiddenToggle = tester.widget<SegmentedButton<HomeDomain>>(
+        find.byKey(HomeScreen.domainToggleKey),
+      );
+      expect(
+        hiddenToggle.segments.map((segment) => segment.value),
         <HomeDomain>[HomeDomain.training, HomeDomain.nutrition],
       );
     },

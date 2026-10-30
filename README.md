@@ -66,7 +66,8 @@ through it; devices stay in sync.
 - **Plan layer**: workout templates, routines with optional cadences, capture from a
   finished workout, an up-next suggestion.
 - **Nutrition**: foods, meals, nutrient targets, and file import from several trackers.
-- **Protocols**: a neutral logbook for supplements and their observed effect on metrics.
+- **Protocols**: plans for what you take (supplements, peptides, hormones, medications)
+  with reminders, a neutral dose log, and its observed effect on metrics.
 - **Sync**: offline-first replica, delta sync, last-writer-wins with a recoverable
   activity log.
 - **Agent surface**: the OpenAPI REST API, an in-process MCP server, and agent keys.

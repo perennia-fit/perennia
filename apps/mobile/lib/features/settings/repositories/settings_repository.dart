@@ -206,6 +206,12 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     });
   }
 
+  Future<void> setShowProtocolsOnToday(bool enabled) {
+    return _update((settings) {
+      return settings.copyWith(showProtocolsOnToday: enabled);
+    });
+  }
+
   Future<void> setKeepScreenOn(bool enabled) {
     return _update((settings) {
       return settings.copyWith(keepScreenOn: enabled);
@@ -281,6 +287,7 @@ class AppSettings {
     this.autoBackupLastStatus = AutoBackupStatus.idle,
     this.onlineFoodLookups = true,
     this.protocolRemindersOnThisDevice = true,
+    this.showProtocolsOnToday = true,
   }) : assert(defaultWeightIncrement > 0);
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -346,6 +353,9 @@ class AppSettings {
           json['protocolRemindersOnThisDevice'] is bool
               ? json['protocolRemindersOnThisDevice']! as bool
               : true,
+      showProtocolsOnToday: json['showProtocolsOnToday'] is bool
+          ? json['showProtocolsOnToday']! as bool
+          : true,
     );
   }
 
@@ -380,10 +390,16 @@ class AppSettings {
   final bool onlineFoodLookups;
 
   /// Device-level (never synced): "Reminders on this device", the device
-  /// switch of D5. When off, this phone holds no Supplement reminders,
+  /// switch of D5. When off, this phone holds no Protocol reminders,
   /// whatever each Protocol's Reminders switch says, so a user with two
   /// phones can keep them on one.
   final bool protocolRemindersOnThisDevice;
+
+  /// Device-level (never synced): whether Today shows the Protocols tab.
+  /// Discretion is about who holds this phone, not the account, so a user
+  /// can hide it on a phone others see and keep it on their own. Off, the
+  /// Protocols domain is still in Library, behind its lock as always.
+  final bool showProtocolsOnToday;
 
   bool get autoBackupNeedsFolderGrant =>
       autoBackupEnabled &&
@@ -429,6 +445,7 @@ class AppSettings {
       'autoBackupLastStatus': autoBackupLastStatus.name,
       'onlineFoodLookups': onlineFoodLookups,
       'protocolRemindersOnThisDevice': protocolRemindersOnThisDevice,
+      'showProtocolsOnToday': showProtocolsOnToday,
     };
   }
 
@@ -453,6 +470,7 @@ class AppSettings {
     AutoBackupStatus? autoBackupLastStatus,
     bool? onlineFoodLookups,
     bool? protocolRemindersOnThisDevice,
+    bool? showProtocolsOnToday,
   }) {
     return AppSettings(
       themePreference: themePreference ?? this.themePreference,
@@ -492,6 +510,7 @@ class AppSettings {
       onlineFoodLookups: onlineFoodLookups ?? this.onlineFoodLookups,
       protocolRemindersOnThisDevice:
           protocolRemindersOnThisDevice ?? this.protocolRemindersOnThisDevice,
+      showProtocolsOnToday: showProtocolsOnToday ?? this.showProtocolsOnToday,
     );
   }
 
@@ -571,11 +590,12 @@ class AppSettings {
             autoBackupLastStatus == other.autoBackupLastStatus &&
             onlineFoodLookups == other.onlineFoodLookups &&
             protocolRemindersOnThisDevice ==
-                other.protocolRemindersOnThisDevice;
+                other.protocolRemindersOnThisDevice &&
+            showProtocolsOnToday == other.showProtocolsOnToday;
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
         themePreference,
         unitSystem,
         weekStartDay,
@@ -596,7 +616,8 @@ class AppSettings {
         autoBackupLastStatus,
         onlineFoodLookups,
         protocolRemindersOnThisDevice,
-      );
+        showProtocolsOnToday,
+      ]);
 }
 
 enum AppThemePreference {

@@ -134,7 +134,7 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
       backgroundColor: colors.background,
       appBar: AppBar(
         backgroundColor: colors.chrome,
-        title: Text(l10n.navSupplements),
+        title: Text(l10n.navCompounds),
         actions: [
           IconButton(
             key: CompoundListScreen.viewDayButtonKey,

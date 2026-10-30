@@ -7,7 +7,7 @@ import '../../../theme/theme.dart';
 import '../controllers/protocols_lock_controller.dart';
 import 'protocols_lock_screen.dart';
 
-/// The Settings "Lock Supplements" control: a toggle that, when
+/// The Settings "Lock Protocols" control: a toggle that, when
 /// turned on, opens a PIN configure sheet (mirrors the `SwitchListTile` +
 /// configure-flow pattern used elsewhere in Settings); when turned off,
 /// requires the user to re-authenticate first (`ProtocolsUnlockForm`) before
@@ -33,11 +33,11 @@ class ProtocolsLockSettingsTile extends ConsumerWidget {
     return SwitchListTile(
       key: switchKey,
       contentPadding: EdgeInsets.zero,
-      title: const Text('Lock Supplements'),
+      title: const Text('Lock Protocols'),
       subtitle: Text(
         isUnavailable
-            ? 'Supplements stays hidden because secure storage is unavailable'
-            : 'Require biometrics or a PIN to open the Supplements section',
+            ? 'Protocols stay hidden because secure storage is unavailable'
+            : 'Require biometrics or a PIN to open Protocols',
       ),
       value: isEnabled,
       onChanged: lockState == null || isUnavailable
@@ -160,7 +160,7 @@ class _ProtocolsLockConfigureSheetState
             ),
             const SizedBox(height: AppDimens.dense),
             Text(
-              'Used to unlock Supplements when biometrics are unavailable. '
+              'Used to unlock Protocols when biometrics are unavailable. '
               '4-8 digits.',
               style:
                   context.textStyles.body.copyWith(color: colors.textSecondary),
@@ -238,7 +238,7 @@ class ProtocolsLockDisableSheet extends StatelessWidget {
             ),
             const SizedBox(height: AppDimens.base),
             ProtocolsUnlockForm(
-              message: 'Authenticate to turn off the Supplements lock.',
+              message: 'Authenticate to turn off the Protocols lock.',
               onUnlocked: onUnlocked,
             ),
           ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/protocols_lock_controller.dart';
 import '../services/biometric_authenticator.dart';
@@ -57,7 +58,7 @@ class _ProtocolsLockUnavailableScreen extends StatelessWidget {
       backgroundColor: colors.background,
       appBar: AppBar(
         backgroundColor: colors.chrome,
-        title: const Text('Supplements'),
+        title: Text(context.l10n.protocolsDomainTitle),
       ),
       body: SafeArea(
         child: Center(
@@ -73,15 +74,14 @@ class _ProtocolsLockUnavailableScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: AppDimens.base),
                 Text(
-                  'Supplements lock unavailable',
+                  context.l10n.protocolsLockUnavailableTitle,
                   textAlign: TextAlign.center,
                   style:
                       context.textStyles.h2.copyWith(color: colors.textPrimary),
                 ),
                 const SizedBox(height: AppDimens.base),
                 Text(
-                  'Supplements stays hidden because the device secure storage '
-                  'could not be read.',
+                  context.l10n.protocolsLockUnavailableMessage,
                   textAlign: TextAlign.center,
                   style: context.textStyles.body
                       .copyWith(color: colors.textSecondary),
@@ -105,7 +105,7 @@ class _ProtocolsLockScreen extends StatelessWidget {
       backgroundColor: colors.background,
       appBar: AppBar(
         backgroundColor: colors.chrome,
-        title: const Text('Supplements'),
+        title: Text(context.l10n.protocolsDomainTitle),
       ),
       // A locked surface renders NO Dose/Compound content whatsoever — only
       // this neutral unlock prompt (hide-at-a-glance: a lent phone, a
@@ -121,7 +121,7 @@ class _ProtocolsLockScreen extends StatelessWidget {
                 Icon(Icons.lock_outline, size: 48, color: colors.textSecondary),
                 const SizedBox(height: AppDimens.base),
                 Text(
-                  'Supplements is locked',
+                  context.l10n.protocolsLockedTitle,
                   style:
                       context.textStyles.h2.copyWith(color: colors.textPrimary),
                 ),

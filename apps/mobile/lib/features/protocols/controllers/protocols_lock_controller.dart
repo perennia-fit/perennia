@@ -127,7 +127,7 @@ class ProtocolsLockController extends AsyncNotifier<ProtocolsLockState>
     }
     final authenticator = ref.read(biometricAuthenticatorProvider);
     final success = await authenticator.authenticate(
-      reason: 'Unlock Supplements',
+      reason: 'Unlock Protocols',
     );
     if (success) {
       _setUnlocked();

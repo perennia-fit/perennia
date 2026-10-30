@@ -10,7 +10,8 @@
 
 Perennia's Protocols domain lets a user record what they take: supplements,
 vitamins, hormones, peptides, medications. In the app this section is labelled
-**Supplements**, and it can be locked. A **Compound** is an item in the user's
+**Protocols** (it was labelled **Supplements** when this spec was written), it is a
+tab on Today that a device setting can hide, and it can be locked. A **Compound** is an item in the user's
 own library. A **Dose** is one logged administration of it. A **Protocol** is a
 named course of one or more Compounds, each with an optional **Schedule** saying
 what the user intends to take. These terms are defined in
@@ -336,7 +337,7 @@ after file 65.
 *   **When**: It is 09:00, and later the user taps the notification.
 *   **Then**: One notification arrives, reading "Planned for 9:00 AM". On
     Android it can arrive later (D5). It names no Compound. Tapping it opens the
-    Supplements section (after the PIN or biometric prompt, if the lock is on)
+    Protocols section (after the PIN or biometric prompt, if the lock is on)
     on today's Protocol Day. The Planned list shows TRT, AgeMate and creatine as
     "Pending". One tap on "Log all planned" records TRT and AgeMate at their
     planned amounts, timed now. Their rows then read "Logged". Creatine stays
@@ -863,7 +864,7 @@ How a date is decided for one Protocol and Protocol Member, in order:
     (formula in file 48), so re-running the reconciler replaces rather than
     duplicates. Reminder ids are negative, and the timer's ids are
     non-negative, so the two never collide.
-*   **Text is always generic:** title "Supplements", body "Planned for
+*   **Text is always generic:** title "Protocols", body "Planned for
     9:00 AM". This holds whether or not the lock is on, so turning the lock on
     later can't leave named reminders queued. Android notifications are
     `VISIBILITY_PRIVATE`, and the channel is named "Reminders". The time is
@@ -3481,7 +3482,7 @@ request after Phase 4's. Nothing in Phase 5 depends on it.
         *   A run that throws is caught and changes nothing; the next
             trigger runs again. (Settled after Phase 5's build.)
     *   **Notifications** use `zonedSchedule` with `inexactAllowWhileIdle`,
-        title "Supplements", body "Planned for <localized time>", channel
+        title "Protocols", body "Planned for <localized time>", channel
         "Reminders", `VISIBILITY_PRIVATE`, and small icon `@mipmap/ic_launcher`.
         The time is `DateFormat.jm()` of the planned time (D5, "Text is
         always generic").

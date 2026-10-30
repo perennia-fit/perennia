@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../protocols/widgets/protocol_reminders_settings.dart';
 import '../../protocols/widgets/protocols_lock_settings.dart';
@@ -11,14 +12,17 @@ import '../repositories/settings_repository.dart';
 import '../services/client_crash_reporting.dart';
 import 'settings_shared.dart';
 
-/// Settings → Privacy & security: crash-reporting opt-in, the Supplements
-/// lock, and the Supplement reminders on this device.
+/// Settings → Privacy & security: crash-reporting opt-in, whether Today
+/// shows Protocols on this device, the Protocols lock, and Protocol
+/// reminders on this device.
 class PrivacySettingsScreen extends ConsumerWidget {
   const PrivacySettingsScreen({super.key});
 
   static const crashReportingSwitchKey = Key('settings.crashReporting');
   static const debugCrashReportButtonKey =
       Key('settings.crashReporting.debugCrash');
+  static const showProtocolsOnTodaySwitchKey =
+      Key('settings.showProtocolsOnToday');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,6 +40,13 @@ class PrivacySettingsScreen extends ConsumerWidget {
               title: const Text('Crash reporting'),
               value: settings.crashReportingEnabled,
               onChanged: controller.setCrashReportingEnabled,
+            ),
+            SwitchListTile(
+              key: showProtocolsOnTodaySwitchKey,
+              title: Text(context.l10n.privacyShowProtocolsOnToday),
+              subtitle: Text(context.l10n.privacyShowProtocolsOnTodaySubtitle),
+              value: settings.showProtocolsOnToday,
+              onChanged: controller.setShowProtocolsOnToday,
             ),
             const ProtocolsLockSettingsTile(),
             const ProtocolRemindersSettingsTile(),

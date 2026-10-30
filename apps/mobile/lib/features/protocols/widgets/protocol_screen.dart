@@ -144,7 +144,7 @@ class _ProtocolListBody extends ConsumerWidget {
       separatorBuilder: (_, __) => Divider(height: 1, color: colors.divider),
       itemBuilder: (context, index) {
         final protocol = protocols[index];
-        return _ProtocolRow(
+        return ProtocolRow(
           protocol: protocol,
           compoundNameById: compoundNameById,
         );
@@ -153,19 +153,33 @@ class _ProtocolListBody extends ConsumerWidget {
   }
 }
 
-class _ProtocolRow extends ConsumerWidget {
-  const _ProtocolRow({
+/// One Protocol: its name, how many Compounds over what window, and their
+/// names; tapping opens it for editing. Used by the Protocols list and by
+/// Today's Protocols tab, which passes no name map and lets the row look
+/// its own Compounds up.
+class ProtocolRow extends ConsumerWidget {
+  const ProtocolRow({
+    super.key,
     required this.protocol,
-    required this.compoundNameById,
+    this.compoundNameById,
   });
 
   final ProtocolSummaryRecord protocol;
-  final Map<String, String> compoundNameById;
+  final Map<String, String>? compoundNameById;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
     final windowLabel = protocolWindowLabel(protocol);
+    final compoundNameById = this.compoundNameById ??
+        ref
+            .watch(
+              protocolMemberCompoundNamesProvider(
+                CompoundNameLookupRequest(protocol.compoundIds),
+              ),
+            )
+            .value ??
+        const <String, String>{};
     final memberNames = protocol.compoundIds
         .map((compoundId) => compoundNameById[compoundId] ?? 'Compound')
         .join(', ');
@@ -224,6 +238,15 @@ class _ProtocolRow extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Opens a new Protocol's form, gated like every Protocols route.
+Future<void> openProtocolForm(BuildContext context, WidgetRef ref) {
+  return Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => const ProtocolsLockGate(child: ProtocolFormScreen()),
+    ),
+  );
 }
 
 /// The human-facing Protocol window label (e.g. "1 Jul 2026 – ongoing").
