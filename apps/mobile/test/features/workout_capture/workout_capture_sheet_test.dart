@@ -227,7 +227,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.getSemantics(failure).label,
-      'The Workout Template could not be saved. '
+      'The saved workout could not be created. '
       'Review your choices and try again.',
     );
     expect(find.byType(SnackBar), findsNothing);
@@ -419,7 +419,7 @@ void main() {
     expect(nameField.decoration?.filled, isTrue);
     final border = nameField.decoration?.enabledBorder as OutlineInputBorder;
     expect(border.borderRadius, AppRadii.cardMd);
-    expect(tester.getSemantics(nameFinder).label, contains('Workout Template'));
+    expect(tester.getSemantics(nameFinder).label, contains('Workout name'));
     expect(
       tester
           .getSemantics(find.byKey(WorkoutCaptureSheet.routineFieldKey))

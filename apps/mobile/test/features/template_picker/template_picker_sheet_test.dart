@@ -17,33 +17,40 @@ import '../workout_templates/workout_template_test_repository.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('Template picker sheet accessibility', () {
+  group('Routines sheet accessibility', () {
     for (final brightness in Brightness.values) {
-      testWidgets(
-          'meets contrast, Android target, and label guidelines in '
-          '${brightness.name}', (tester) async {
-        await _setLargePhone(tester);
-        await tester.pumpWidget(
-          _testApp(
-            brightness: brightness,
-            upNext: _upNextRepository(),
-            picker: _pickerRepository(
-              routines: _threeRoutines(),
-              templates: _fewTemplates(),
+      for (final level in <String>['list', 'routine']) {
+        testWidgets(
+            'the $level level meets contrast, Android target, and label '
+            'guidelines in ${brightness.name}', (tester) async {
+          await _setLargePhone(tester);
+          await tester.pumpWidget(
+            _testApp(
+              brightness: brightness,
+              upNext: _upNextRepository(),
+              picker: _pickerRepository(
+                routines: _threeRoutines(),
+                templates: _templates(),
+              ),
+              home: const Scaffold(body: TemplatePickerSheet()),
             ),
-            home: const Scaffold(body: TemplatePickerSheet()),
-          ),
-        );
-        await tester.pump(const Duration(milliseconds: 50));
+          );
+          await tester.pump(const Duration(milliseconds: 50));
+          if (level == 'routine') {
+            await tester.tap(
+                find.byKey(TemplatePickerSheet.routineRowKey('routine-1')));
+            await tester.pump(const Duration(milliseconds: 50));
+          }
 
-        await expectLater(tester, meetsGuideline(textContrastGuideline));
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-      });
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        });
+      }
     }
   });
 
-  testWidgets('shows the empty state teaching capture when nothing exists',
+  testWidgets('with nothing to start, offers to create a routine',
       (tester) async {
     await _setLargePhone(tester);
     await _openSheetForResult(
@@ -56,145 +63,61 @@ void main() {
     );
 
     expect(find.byKey(TemplatePickerSheet.emptyStateKey), findsOneWidget);
-    expect(find.byKey(TemplatePickerSheet.upNextSectionKey), findsNothing);
-    expect(find.byKey(TemplatePickerSheet.routinesSectionKey), findsNothing);
+    expect(
+      find.byKey(TemplatePickerSheet.createRoutineButtonKey),
+      findsOneWidget,
+    );
+    expect(find.text('Create a routine'), findsOneWidget);
   });
 
   testWidgets(
-      'a Template referenced by several Routines appears under each of '
-      'them — reference semantics made visible', (tester) async {
-    await _setLargePhone(tester);
-    await _openSheetForResult(
-      tester,
-      upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
-      picker: _pickerRepository(
-        routines: _threeRoutines(),
-        templates: const <TemplatePickerTemplateView>[],
-      ),
-    );
-
-    for (final routineId in <String>['routine-1', 'routine-2', 'routine-3']) {
-      await tester
-          .tap(find.byKey(TemplatePickerSheet.routineHeaderKey(routineId)));
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-
-    expect(
-      find.byKey(TemplatePickerSheet.routineEntryTileKey('entry-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(TemplatePickerSheet.routineEntryTileKey('entry-2')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(TemplatePickerSheet.routineEntryTileKey('entry-3')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets(
-      'a Template with no exercises is labelled in every group that offers '
-      'it', (tester) async {
+      'lists Routines with what comes next, then the saved workouts no '
+      'Routine holds, with no search and no repeated Up next section',
+      (tester) async {
     await _setLargePhone(tester);
     await _openSheetForResult(
       tester,
       upNext: _upNextRepository(),
       picker: _pickerRepository(
         routines: _threeRoutines(),
-        templates: <TemplatePickerTemplateView>[
-          TemplatePickerTemplateView(
-            id: 'template-shared',
-            name: 'Push A',
-            exerciseCount: 0,
-            updatedAt: DateTime.utc(2026, 7, 1),
-          ),
-          TemplatePickerTemplateView(
-            id: 'template-old',
-            name: 'Legs A',
-            exerciseCount: 4,
-            updatedAt: DateTime.utc(2026, 1, 1),
-          ),
-        ],
+        templates: _templates(),
       ),
     );
 
-    await tester
-        .tap(find.byKey(TemplatePickerSheet.routineHeaderKey('routine-1')));
-    await _pumpUntilSettled(tester);
-
-    // Up next, the expanded cadenced Routine (after its slot label), and
-    // All Templates each mark the empty Template; the planned one is not.
-    expect(find.text('No exercises'), findsNWidgets(2));
-    expect(find.text('Monday · No exercises'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(TemplatePickerSheet.allTemplateTileKey('template-old')),
-        matching: find.textContaining('No exercises'),
-      ),
-      findsNothing,
-    );
+    expect(find.text('Routines'), findsOneWidget);
+    expect(find.byKey(TemplatePickerSheet.manageButtonKey), findsOneWidget);
+    expect(find.text('Weekly · Next: Push A'), findsOneWidget);
+    expect(find.text('1 workout'), findsNWidgets(2));
+    expect(find.byKey(TemplatePickerSheet.otherWorkoutsRowKey), findsOneWidget);
+    expect(find.text('Not in a routine · 2 workouts'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(TemplatePickerSheet.backButtonKey), findsNothing);
   });
 
-  testWidgets('a cadenced Routine shows its slot label', (tester) async {
+  testWidgets(
+      'a Routine opens onto its workouts by day, marks Up next, and starts '
+      'with the Routine and slot context', (tester) async {
     await _setLargePhone(tester);
-    await _openSheetForResult(
+    final handle = await _openSheetForResult(
       tester,
-      upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
+      upNext: _upNextRepository(),
       picker: _pickerRepository(
         routines: _threeRoutines(),
-        templates: const <TemplatePickerTemplateView>[],
+        templates: _templates(),
       ),
     );
 
     await tester
-        .tap(find.byKey(TemplatePickerSheet.routineHeaderKey('routine-1')));
+        .tap(find.byKey(TemplatePickerSheet.routineRowKey('routine-1')));
     await _pumpUntilSettled(tester);
 
+    expect(find.text('Routine routine-1'), findsOneWidget);
     expect(find.text('Monday'), findsOneWidget);
-  });
+    expect(find.text('Up next · 5 exercises'), findsOneWidget);
+    expect(
+        find.byKey(TemplatePickerSheet.editRoutineButtonKey), findsOneWidget);
+    expect(find.byKey(TemplatePickerSheet.backButtonKey), findsOneWidget);
 
-  testWidgets(
-      'tapping an All Templates row pops the sheet with a bare '
-      'materialize request', (tester) async {
-    await _setLargePhone(tester);
-    final handle = await _openSheetForResult(
-      tester,
-      upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
-      picker: _pickerRepository(
-        routines: const <TemplatePickerRoutineView>[],
-        templates: _fewTemplates(),
-      ),
-    );
-
-    await tester.tap(
-      find.byKey(TemplatePickerSheet.allTemplateTileKey('template-recent')),
-    );
-    await tester.pump();
-    await tester.pump();
-
-    final picked = await handle.future;
-    expect(picked?.workoutTemplateId, 'template-recent');
-    expect(picked?.routineId, isNull);
-    expect(picked?.slot, isNull);
-  });
-
-  testWidgets(
-      'tapping a Routine entry pops the sheet with the Routine and '
-      'slot context', (tester) async {
-    await _setLargePhone(tester);
-    final handle = await _openSheetForResult(
-      tester,
-      upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
-      picker: _pickerRepository(
-        routines: _threeRoutines(),
-        templates: const <TemplatePickerTemplateView>[],
-      ),
-    );
-
-    await tester
-        .tap(find.byKey(TemplatePickerSheet.routineHeaderKey('routine-1')));
-    await _pumpUntilSettled(tester); // lets the ExpansionTile fully expand
     await tester
         .tap(find.byKey(TemplatePickerSheet.routineEntryTileKey('entry-1')));
     await tester.pump();
@@ -206,51 +129,148 @@ void main() {
     expect(picked?.slot, DateTime.monday);
   });
 
-  testWidgets('search filters the All Templates group', (tester) async {
+  testWidgets('back returns from a Routine to the list', (tester) async {
     await _setLargePhone(tester);
     await _openSheetForResult(
       tester,
       upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
       picker: _pickerRepository(
-        routines: const <TemplatePickerRoutineView>[],
-        templates: _fewTemplates(),
+        routines: _threeRoutines(),
+        templates: _templates(),
+      ),
+    );
+
+    await tester
+        .tap(find.byKey(TemplatePickerSheet.routineRowKey('routine-2')));
+    await _pumpUntilSettled(tester);
+    expect(find.byKey(TemplatePickerSheet.routineRowKey('routine-1')),
+        findsNothing);
+
+    await tester.tap(find.byKey(TemplatePickerSheet.backButtonKey));
+    await _pumpUntilSettled(tester);
+    expect(find.byKey(TemplatePickerSheet.routineRowKey('routine-1')),
+        findsOneWidget);
+  });
+
+  testWidgets(
+      'with one Routine and no other saved workouts, opens straight onto '
+      'that Routine', (tester) async {
+    await _setLargePhone(tester);
+    await _openSheetForResult(
+      tester,
+      upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
+      picker: _pickerRepository(
+        routines: _threeRoutines().take(1).toList(),
+        templates: <TemplatePickerTemplateView>[_templates().first],
       ),
     );
 
     expect(
-      find.byKey(TemplatePickerSheet.allTemplateTileKey('template-recent')),
+      find.byKey(TemplatePickerSheet.routineEntryTileKey('entry-1')),
       findsOneWidget,
     );
+    expect(find.byKey(TemplatePickerSheet.backButtonKey), findsNothing);
     expect(
-      find.byKey(TemplatePickerSheet.allTemplateTileKey('template-old')),
-      findsOneWidget,
+        find.byKey(TemplatePickerSheet.editRoutineButtonKey), findsOneWidget);
+  });
+
+  testWidgets(
+      'a workout referenced by several Routines appears under each of '
+      'them — reference semantics made visible', (tester) async {
+    await _setLargePhone(tester);
+    await _openSheetForResult(
+      tester,
+      upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
+      picker: _pickerRepository(
+        routines: _threeRoutines(),
+        templates: _templates(),
+      ),
     );
 
-    await tester.enterText(
-      find.byKey(TemplatePickerSheet.searchFieldKey),
-      'legs',
+    for (final id in <String>['1', '2', '3']) {
+      await tester
+          .tap(find.byKey(TemplatePickerSheet.routineRowKey('routine-$id')));
+      await _pumpUntilSettled(tester);
+      expect(
+        find.byKey(TemplatePickerSheet.routineEntryTileKey('entry-$id')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(TemplatePickerSheet.backButtonKey));
+      await _pumpUntilSettled(tester);
+    }
+  });
+
+  testWidgets('a workout with no exercises says so', (tester) async {
+    await _setLargePhone(tester);
+    await _openSheetForResult(
+      tester,
+      upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
+      picker: _pickerRepository(
+        routines: _threeRoutines(),
+        templates: <TemplatePickerTemplateView>[
+          TemplatePickerTemplateView(
+            id: 'template-shared',
+            name: 'Push A',
+            exerciseCount: 0,
+            updatedAt: DateTime.utc(2026, 7, 1),
+          ),
+        ],
+      ),
     );
-    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester
+        .tap(find.byKey(TemplatePickerSheet.routineRowKey('routine-2')));
+    await _pumpUntilSettled(tester);
 
     expect(
-      find.byKey(TemplatePickerSheet.allTemplateTileKey('template-recent')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(TemplatePickerSheet.allTemplateTileKey('template-old')),
+      find.descendant(
+        of: find.byKey(TemplatePickerSheet.routineEntryTileKey('entry-2')),
+        matching: find.text('No exercises'),
+      ),
       findsOneWidget,
     );
   });
 
   testWidgets(
-      'customize opens a read-only preview and Start still produces the '
-      'same materialize request as the default tap', (tester) async {
+      'an Other saved workouts pick pops a bare materialize request, '
+      'without a Routine', (tester) async {
+    await _setLargePhone(tester);
+    final handle = await _openSheetForResult(
+      tester,
+      upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
+      picker: _pickerRepository(
+        routines: _threeRoutines(),
+        templates: _templates(),
+      ),
+    );
+
+    await tester.tap(find.byKey(TemplatePickerSheet.otherWorkoutsRowKey));
+    await _pumpUntilSettled(tester);
+    expect(
+      find.byKey(TemplatePickerSheet.otherTemplateTileKey('template-shared')),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(TemplatePickerSheet.otherTemplateTileKey('template-recent')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final picked = await handle.future;
+    expect(picked?.workoutTemplateId, 'template-recent');
+    expect(picked?.routineId, isNull);
+    expect(picked?.slot, isNull);
+  });
+
+  testWidgets(
+      'preview opens a read-only look and Start still produces the same '
+      'materialize request as the default tap', (tester) async {
     await _setLargePhone(tester);
     final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository(
       details: <String, WorkoutTemplateDetail>{
         'template-recent': WorkoutTemplateDetail(
           id: 'template-recent',
-          name: 'Push A',
+          name: 'Upper B',
           exercises: <TemplateExerciseDetail>[],
         ),
       },
@@ -261,17 +281,18 @@ void main() {
       upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
       picker: _pickerRepository(
         routines: const <TemplatePickerRoutineView>[],
-        templates: _fewTemplates(),
+        templates: _templates().skip(1).toList(),
       ),
       workoutTemplateRepository: workoutTemplateRepository,
     );
 
+    // Only other saved workouts exist, so the sheet opens straight on them.
     await tester.tap(
       find.byKey(
-        TemplatePickerSheet.allTemplateCustomizeKey('template-recent'),
+        TemplatePickerSheet.otherTemplatePreviewKey('template-recent'),
       ),
     );
-    await _pumpUntilSettled(tester); // lets the nested preview sheet open
+    await _pumpUntilSettled(tester);
 
     expect(
       find.byKey(TemplatePickerPreviewSheet.startButtonKey),
@@ -313,11 +334,18 @@ List<TemplatePickerRoutineView> _threeRoutines() {
   ];
 }
 
-List<TemplatePickerTemplateView> _fewTemplates() {
+/// Push A sits in every Routine; Upper B and Legs A are in none.
+List<TemplatePickerTemplateView> _templates() {
   return <TemplatePickerTemplateView>[
     TemplatePickerTemplateView(
-      id: 'template-recent',
+      id: 'template-shared',
       name: 'Push A',
+      exerciseCount: 5,
+      updatedAt: DateTime.utc(2026, 7, 2),
+    ),
+    TemplatePickerTemplateView(
+      id: 'template-recent',
+      name: 'Upper B',
       exerciseCount: 3,
       updatedAt: DateTime.utc(2026, 7, 1),
     ),
@@ -338,12 +366,12 @@ _StubUpNextFeatureRepository _upNextRepository({
         <UpNextSuggestionView>[
           UpNextSuggestionView(
             routineId: 'routine-1',
-            routineName: 'Weekly split',
+            routineName: 'Routine routine-1',
             cadenceKind: CadenceKind.weekly,
             slot: DateTime.monday,
             cards: const <UpNextCardView>[
               UpNextCardView(
-                routineEntryId: 'entry-up-next',
+                routineEntryId: 'entry-1',
                 workoutTemplateId: 'template-shared',
                 templateName: 'Push A',
                 isDone: false,

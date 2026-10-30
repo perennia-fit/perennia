@@ -122,18 +122,25 @@ class _WorkoutCaptureSheetState extends ConsumerState<WorkoutCaptureSheet> {
         child: FractionallySizedBox(
           key: WorkoutCaptureSheet.sheetKey,
           heightFactor: 0.92,
-          child: Material(
-            color: context.colors.background,
-            child: preview.when(
-              data: (value) => _buildForm(
-                context,
-                preview: value,
-                routines: routineValues,
-                routinesLoading: routines.isLoading,
-                formState: formState,
+          // PopScope does not stop the sheet's own drag-to-dismiss, which
+          // only stayed blocked while the form overflowed and its scroll view
+          // took the drag. A short form would let a pending save be dragged
+          // away, so claim vertical drags here until the save settles.
+          child: GestureDetector(
+            onVerticalDragStart: formState.isSubmitting ? (_) {} : null,
+            child: Material(
+              color: context.colors.background,
+              child: preview.when(
+                data: (value) => _buildForm(
+                  context,
+                  preview: value,
+                  routines: routineValues,
+                  routinesLoading: routines.isLoading,
+                  formState: formState,
+                ),
+                loading: () => _buildLoading(context),
+                error: (_, __) => _buildPreviewError(context),
               ),
-              loading: () => _buildLoading(context),
-              error: (_, __) => _buildPreviewError(context),
             ),
           ),
         ),

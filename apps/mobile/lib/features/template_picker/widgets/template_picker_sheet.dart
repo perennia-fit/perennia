@@ -4,20 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/training/routine_cadence.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
+import '../../../widgets/grouped_rows.dart';
 import '../../routine_plans/widgets/localized_cadence_slot_label.dart';
+import '../../routine_plans/widgets/routine_plan_editor_screen.dart';
+import '../../routine_plans/widgets/routine_plan_list_screen.dart';
 import '../../up_next/controllers/up_next_controller.dart';
 import '../../up_next/repositories/up_next_feature_repository.dart';
 import '../../workout_templates/controllers/workout_template_controller.dart';
+import '../../workout_templates/widgets/workout_template_list_screen.dart';
 import '../controllers/template_picker_controller.dart';
 import '../repositories/template_picker_feature_repository.dart';
 
 /// One materialize request picked from the sheet: the default tap and the
-/// "customize" preview gesture both resolve to this same shape, because
-/// both start the whole Template the same way (ROUTINES.md §3.2) —
-/// customize only adds a look-before-you-start step, never a different
-/// materialize call. `routineId`/`slot` are set only when the pick was
-/// reached through a Routine (Up next or the Routines group); a bare
-/// All Templates pick leaves both null.
+/// preview gesture both resolve to this same shape, because both start the
+/// whole Template the same way — preview only adds a look-before-you-start
+/// step, never a different materialize call. `routineId`/`slot` are set
+/// when the pick was made inside a Routine; an "Other saved workouts" pick
+/// leaves both null.
 final class TemplatePickerResult {
   const TemplatePickerResult({
     required this.workoutTemplateId,
@@ -30,475 +33,578 @@ final class TemplatePickerResult {
   final int? slot;
 }
 
-/// Opens the "Load a Template" browse sheet (ROUTINES.md §3.2;).
+/// Opens the Routines sheet behind Today's Routines button.
 ///
 /// Returns the picked [TemplatePickerResult], or `null` when dismissed
-/// without picking. The caller performs the actual materialize + navigate,
-/// mirroring the existing `RoutineStartSheet`/`WorkoutTemplateListScreen`
-/// convention — this sheet is a pure picker.
+/// without picking. The caller performs the actual materialize + navigate;
+/// this sheet is a pure picker.
 Future<TemplatePickerResult?> showTemplatePickerSheet(BuildContext context) {
   return showModalBottomSheet<TemplatePickerResult>(
     context: context,
     isScrollControlled: true,
+    showDragHandle: true,
     useSafeArea: true,
     builder: (sheetContext) => const TemplatePickerSheet(),
   );
 }
 
-class TemplatePickerSheet extends ConsumerWidget {
+/// Where the athlete is inside the sheet: one Routine's workouts, or the
+/// saved workouts no Routine holds. The list of Routines is the null level.
+sealed class _Level {
+  const _Level();
+}
+
+final class _RoutineLevel extends _Level {
+  const _RoutineLevel(this.routineId);
+
+  final String routineId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _RoutineLevel && other.routineId == routineId;
+
+  @override
+  int get hashCode => routineId.hashCode;
+}
+
+final class _OtherWorkoutsLevel extends _Level {
+  const _OtherWorkoutsLevel();
+
+  @override
+  bool operator ==(Object other) => other is _OtherWorkoutsLevel;
+
+  @override
+  int get hashCode => 0;
+}
+
+/// The Routines sheet: pick a Routine, then one of its workouts.
+///
+/// Two levels instead of one long page, because the athlete's question
+/// comes in that order: which plan am I on, then which day of it. Up next
+/// is not repeated as a section here (Today's strip already offers it); it
+/// marks the suggested workout inside its Routine instead. With a single
+/// place to go (one Routine and no other saved workouts, or only other
+/// saved workouts) the sheet opens straight onto it, so a one-Routine
+/// athlete never sees a list of one. Editing lives one tap away (Manage,
+/// Edit) without competing with starting.
+class TemplatePickerSheet extends ConsumerStatefulWidget {
   const TemplatePickerSheet({super.key});
 
   static const emptyStateKey = Key('templatePicker.empty');
-  static const upNextSectionKey = Key('templatePicker.upNext');
-  static const routinesSectionKey = Key('templatePicker.routines');
-  static const allTemplatesSectionKey = Key('templatePicker.allTemplates');
-  static const searchFieldKey = Key('templatePicker.search');
+  static const createRoutineButtonKey = Key('templatePicker.createRoutine');
+  static const manageButtonKey = Key('templatePicker.manage');
+  static const editRoutineButtonKey = Key('templatePicker.editRoutine');
+  static const backButtonKey = Key('templatePicker.back');
+  static const otherWorkoutsRowKey = Key('templatePicker.otherWorkouts');
 
-  static Key upNextTileKey(String routineId, String workoutTemplateId) =>
-      Key('templatePicker.upNext.tile.$routineId.$workoutTemplateId');
-  static Key upNextDoneKey(String routineId, String workoutTemplateId) =>
-      Key('templatePicker.upNext.done.$routineId.$workoutTemplateId');
-  static Key upNextCustomizeKey(String routineId, String workoutTemplateId) =>
-      Key('templatePicker.upNext.customize.$routineId.$workoutTemplateId');
-
-  static Key routineHeaderKey(String routineId) =>
+  static Key routineRowKey(String routineId) =>
       Key('templatePicker.routine.$routineId');
   static Key routineEntryTileKey(String routineEntryId) =>
       Key('templatePicker.routineEntry.tile.$routineEntryId');
-  static Key routineEntryCustomizeKey(String routineEntryId) =>
-      Key('templatePicker.routineEntry.customize.$routineEntryId');
+  static Key routineEntryPreviewKey(String routineEntryId) =>
+      Key('templatePicker.routineEntry.preview.$routineEntryId');
 
-  static Key allTemplateTileKey(String templateId) =>
-      Key('templatePicker.allTemplates.tile.$templateId');
-  static Key allTemplateCustomizeKey(String templateId) =>
-      Key('templatePicker.allTemplates.customize.$templateId');
+  static Key otherTemplateTileKey(String templateId) =>
+      Key('templatePicker.otherTemplates.tile.$templateId');
+  static Key otherTemplatePreviewKey(String templateId) =>
+      Key('templatePicker.otherTemplates.preview.$templateId');
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TemplatePickerSheet> createState() =>
+      _TemplatePickerSheetState();
+}
+
+class _TemplatePickerSheetState extends ConsumerState<TemplatePickerSheet> {
+  _Level? _level;
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final upNext = ref.watch(upNextSuggestionsProvider);
     final routines = ref.watch(templatePickerRoutinesProvider);
-    final templates = ref.watch(templatePickerFilteredTemplatesProvider);
-    final searchQuery = ref.watch(templatePickerSearchQueryProvider);
-    final emptyTemplateIds = ref.watch(templatePickerEmptyTemplateIdsProvider);
+    final others = ref.watch(templatePickerOtherTemplatesProvider);
+    final exerciseCounts = ref.watch(templatePickerExerciseCountsProvider);
+    final upNext = ref.watch(upNextSuggestionsProvider).value ??
+        const <UpNextSuggestionView>[];
 
-    final upNextCards = upNext.asData?.value ?? const <UpNextSuggestionView>[];
-    final routineViews =
-        routines.asData?.value ?? const <TemplatePickerRoutineView>[];
-    final templateViews =
-        templates.asData?.value ?? const <TemplatePickerTemplateView>[];
-    final everythingLoadedEmpty = upNext.hasValue &&
-        routines.hasValue &&
-        templates.hasValue &&
-        upNextCards.isEmpty &&
-        routineViews.isEmpty &&
-        templateViews.isEmpty &&
-        searchQuery.isEmpty;
+    final routineViews = routines.value ?? const <TemplatePickerRoutineView>[];
+    final otherViews = others.value ?? const <TemplatePickerTemplateView>[];
+    final loaded = routines.hasValue && others.hasValue;
+    final destinations = <_Level>[
+      for (final routine in routineViews) _RoutineLevel(routine.routineId),
+      if (otherViews.isNotEmpty) const _OtherWorkoutsLevel(),
+    ];
+    final soleDestination =
+        destinations.length == 1 ? destinations.single : null;
+    // A level whose Routine disappeared (archived elsewhere) falls back.
+    final chosen = destinations.contains(_level) ? _level : null;
+    final level = chosen ?? soleDestination;
+    final canGoBack = chosen != null && destinations.length > 1;
+    final upNextByRoutine = {
+      for (final suggestion in upNext) suggestion.routineId: suggestion,
+    };
 
-    return FractionallySizedBox(
-      heightFactor: 0.92,
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppDimens.base,
-                AppDimens.base,
-                AppDimens.base,
-                AppDimens.dense,
-              ),
-              child:
-                  Text(l10n.templatePickerTitle, style: context.textStyles.h1),
-            ),
-            Expanded(
-              child: everythingLoadedEmpty
-                  ? _EmptyState(l10n: l10n)
-                  : ListView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppDimens.base,
-                      ),
-                      children: [
-                        if (upNextCards.isNotEmpty) ...[
-                          KeyedSubtree(
-                            key: TemplatePickerSheet.upNextSectionKey,
-                            child: _SectionHeading(
-                              title: l10n.templatePickerTodayUpNextHeading,
-                            ),
-                          ),
-                          const SizedBox(height: AppDimens.dense),
-                          for (final suggestion in upNextCards) ...[
-                            _UpNextGroup(
-                              suggestion: suggestion,
-                              emptyTemplateIds: emptyTemplateIds,
-                            ),
-                            const SizedBox(height: AppDimens.dense),
-                          ],
-                          const SizedBox(height: AppDimens.base),
-                        ],
-                        if (routineViews.isNotEmpty) ...[
-                          KeyedSubtree(
-                            key: TemplatePickerSheet.routinesSectionKey,
-                            child: _SectionHeading(
-                              title: l10n.templatePickerRoutinesHeading,
-                            ),
-                          ),
-                          const SizedBox(height: AppDimens.dense),
+    final Widget header;
+    final List<Widget> body;
+    switch (level) {
+      case null:
+        header = _SheetHeader(
+          title: l10n.routinesSheetTitle,
+          action: _HeaderAction(
+            key: TemplatePickerSheet.manageButtonKey,
+            label: l10n.routinesSheetManage,
+            onPressed: () => Navigator.of(context)
+                .pushNamed(RoutinePlanListScreen.routeName),
+          ),
+        );
+        body = !loaded
+            ? const <Widget>[]
+            : destinations.isEmpty
+                ? [const _EmptyState()]
+                : [
+                    if (routineViews.isNotEmpty)
+                      GroupedRows(
+                        children: [
                           for (final routine in routineViews)
-                            _RoutineGroup(
-                              routine: routine,
-                              emptyTemplateIds: emptyTemplateIds,
+                            _NavigationRow(
+                              key: TemplatePickerSheet.routineRowKey(
+                                routine.routineId,
+                              ),
+                              title: routine.routineName,
+                              subtitle: _routineSummary(
+                                context,
+                                routine,
+                                upNextByRoutine[routine.routineId],
+                              ),
+                              onTap: () => setState(
+                                () => _level = _RoutineLevel(routine.routineId),
+                              ),
                             ),
-                          const SizedBox(height: AppDimens.base),
                         ],
-                        KeyedSubtree(
-                          key: TemplatePickerSheet.allTemplatesSectionKey,
-                          child: _SectionHeading(
-                            title: l10n.templatePickerAllTemplatesHeading,
+                      ),
+                    if (routineViews.isNotEmpty && otherViews.isNotEmpty)
+                      const SizedBox(height: AppDimens.base),
+                    if (otherViews.isNotEmpty)
+                      GroupedRows(
+                        children: [
+                          _NavigationRow(
+                            key: TemplatePickerSheet.otherWorkoutsRowKey,
+                            title: l10n.routinesSheetOtherWorkouts,
+                            subtitle: [
+                              l10n.routinesSheetNotInRoutine,
+                              l10n.routinesSheetWorkoutCount(otherViews.length),
+                            ].join(' · '),
+                            onTap: () => setState(
+                              () => _level = const _OtherWorkoutsLevel(),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: AppDimens.dense),
-                        TextField(
-                          key: TemplatePickerSheet.searchFieldKey,
-                          onChanged: (value) {
-                            ref
-                                .read(
-                                  templatePickerSearchQueryProvider.notifier,
-                                )
-                                .changed(value);
-                          },
-                          decoration: InputDecoration(
-                            prefixIcon: const Icon(Icons.search),
-                            hintText: l10n.templatePickerSearchHint,
-                            isDense: true,
-                          ),
-                        ),
-                        const SizedBox(height: AppDimens.dense),
-                        if (templateViews.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: AppDimens.base,
-                            ),
-                            child: Text(
-                              l10n.templatePickerNoSearchResults,
-                              style: context.textStyles.body.copyWith(
-                                color: context.colors.textSecondary,
-                              ),
-                            ),
-                          )
-                        else
-                          for (final template in templateViews)
-                            _PickableTemplateTile(
-                              templateId: template.id,
-                              templateName: template.name,
-                              subtitle: null,
-                              tileKey: TemplatePickerSheet.allTemplateTileKey(
-                                template.id,
-                              ),
-                              customizeKey:
-                                  TemplatePickerSheet.allTemplateCustomizeKey(
-                                template.id,
-                              ),
-                              result: TemplatePickerResult(
-                                workoutTemplateId: template.id,
-                              ),
-                              isEmpty: template.exerciseCount == 0,
-                            ),
-                        const SizedBox(height: AppDimens.base),
-                      ],
-                    ),
+                        ],
+                      ),
+                  ];
+      case _RoutineLevel(:final routineId):
+        final routine = routineViews.firstWhere(
+          (candidate) => candidate.routineId == routineId,
+        );
+        final cadenceKind = routine.cadenceKind;
+        header = _SheetHeader(
+          title: routine.routineName,
+          subtitle:
+              cadenceKind == null ? null : _cadenceLabel(context, cadenceKind),
+          onBack: canGoBack ? () => setState(() => _level = null) : null,
+          action: _HeaderAction(
+            key: TemplatePickerSheet.editRoutineButtonKey,
+            label: l10n.routinesSheetEdit,
+            onPressed: () => Navigator.of(context).pushNamed(
+              RoutinePlanEditorScreen.routeName,
+              arguments: routineId,
             ),
-          ],
+          ),
+        );
+        body = _routineBody(
+          context,
+          routine: routine,
+          suggestion: upNextByRoutine[routineId],
+          exerciseCounts: exerciseCounts,
+        );
+      case _OtherWorkoutsLevel():
+        header = _SheetHeader(
+          title: l10n.routinesSheetOtherWorkouts,
+          subtitle: l10n.routinesSheetNotInRoutine,
+          onBack: canGoBack ? () => setState(() => _level = null) : null,
+          action: _HeaderAction(
+            key: TemplatePickerSheet.manageButtonKey,
+            label: l10n.routinesSheetManage,
+            onPressed: () => Navigator.of(context)
+                .pushNamed(WorkoutTemplateListScreen.routeName),
+          ),
+        );
+        body = [
+          GroupedRows(
+            children: [
+              for (final template in otherViews)
+                _WorkoutRow(
+                  templateId: template.id,
+                  name: template.name,
+                  exerciseCount: template.exerciseCount,
+                  tileKey:
+                      TemplatePickerSheet.otherTemplateTileKey(template.id),
+                  previewKey:
+                      TemplatePickerSheet.otherTemplatePreviewKey(template.id),
+                  result: TemplatePickerResult(workoutTemplateId: template.id),
+                ),
+            ],
+          ),
+        ];
+    }
+
+    return PopScope(
+      // System back steps out of a Routine before it closes the sheet.
+      canPop: !canGoBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          setState(() => _level = null);
+        }
+      },
+      child: SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.9,
+          ),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(
+              AppDimens.base,
+              0,
+              AppDimens.base,
+              AppDimens.base,
+            ),
+            children: [
+              header,
+              const SizedBox(height: AppDimens.base),
+              ...body,
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  List<Widget> _routineBody(
+    BuildContext context, {
+    required TemplatePickerRoutineView routine,
+    required UpNextSuggestionView? suggestion,
+    required Map<String, int> exerciseCounts,
+  }) {
+    final l10n = context.l10n;
+    final nextEntryIds = {
+      for (final card in suggestion?.cards ?? const <UpNextCardView>[])
+        if (!card.isDone) card.routineEntryId,
+    };
+    final doneEntryIds = {
+      for (final card in suggestion?.cards ?? const <UpNextCardView>[])
+        if (card.isDone) card.routineEntryId,
+    };
+
+    Widget row(TemplatePickerRoutineEntryView entry) {
+      return _WorkoutRow(
+        templateId: entry.workoutTemplateId,
+        name: entry.templateName,
+        exerciseCount: exerciseCounts[entry.workoutTemplateId],
+        isNext: nextEntryIds.contains(entry.routineEntryId),
+        isDone: doneEntryIds.contains(entry.routineEntryId),
+        tileKey: TemplatePickerSheet.routineEntryTileKey(entry.routineEntryId),
+        previewKey:
+            TemplatePickerSheet.routineEntryPreviewKey(entry.routineEntryId),
+        result: TemplatePickerResult(
+          workoutTemplateId: entry.workoutTemplateId,
+          routineId: routine.routineId,
+          slot: entry.slot,
+        ),
+      );
+    }
+
+    final cadenceKind = routine.cadenceKind;
+    if (cadenceKind == null) {
+      return [
+        GroupedRows(
+            children: [for (final entry in routine.entries) row(entry)]),
+      ];
+    }
+    // Grouped by day in slot order; empty slots (rest days) have no entries
+    // and so no heading. An entry without a slot, if any, closes the list.
+    final slots = <int?>[
+      ...{for (final entry in routine.entries) entry.slot},
+    ]..sort((a, b) => (a ?? 1 << 30).compareTo(b ?? 1 << 30));
+    return [
+      for (final slot in slots) ...[
+        if (slot != null) ...[
+          SectionLabel(
+            text:
+                localizedCadenceSlotLabel(l10n, kind: cadenceKind, slot: slot),
+          ),
+          const SizedBox(height: AppDimens.dense),
+        ],
+        GroupedRows(
+          children: [
+            for (final entry in routine.entries)
+              if (entry.slot == slot) row(entry),
+          ],
+        ),
+        const SizedBox(height: AppDimens.base),
+      ],
+    ];
+  }
+
+  String _routineSummary(
+    BuildContext context,
+    TemplatePickerRoutineView routine,
+    UpNextSuggestionView? suggestion,
+  ) {
+    final l10n = context.l10n;
+    final cadenceKind = routine.cadenceKind;
+    final next = suggestion?.cards.where((card) => !card.isDone).firstOrNull;
+    return [
+      if (cadenceKind != null) _cadenceLabel(context, cadenceKind),
+      if (next != null)
+        l10n.routinesSheetNext(next.templateName)
+      else
+        l10n.routinesSheetWorkoutCount(routine.entries.length),
+    ].join(' · ');
+  }
+
+  String _cadenceLabel(BuildContext context, CadenceKind kind) {
+    final l10n = context.l10n;
+    return switch (kind) {
+      CadenceKind.weekly => l10n.routinePlansCadenceWeekly,
+      CadenceKind.rotating => l10n.routinePlansCadenceRotating,
+    };
+  }
+}
+
+class _SheetHeader extends StatelessWidget {
+  const _SheetHeader({
+    required this.title,
+    required this.action,
+    this.subtitle,
+    this.onBack,
+  });
+
+  final String title;
+  final String? subtitle;
+  final VoidCallback? onBack;
+  final Widget action;
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = this.subtitle;
+    return Row(
+      // A one-line title centres the action on it; with a subtitle the
+      // action stays level with the title, not the pair.
+      crossAxisAlignment: subtitle == null
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
+      children: [
+        if (onBack != null) ...[
+          IconButton(
+            key: TemplatePickerSheet.backButtonKey,
+            tooltip: context.l10n.routinesSheetBack,
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back),
+          ),
+          const SizedBox(width: AppDimens.dense / 2),
+        ],
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(top: onBack == null ? 0 : 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: context.textStyles.h1),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    style: context.textStyles.body.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: AppDimens.dense),
+        action,
+      ],
+    );
+  }
+}
+
+class _HeaderAction extends StatelessWidget {
+  const _HeaderAction({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      style: TextButton.styleFrom(
+        foregroundColor: context.colors.textPrimary,
+        minimumSize: const Size(AppDimens.touchTarget, AppDimens.touchTarget),
+      ),
+      onPressed: onPressed,
+      child: Text(label),
+    );
+  }
+}
+
+class _NavigationRow extends StatelessWidget {
+  const _NavigationRow({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      minTileHeight: AppDimens.touchTarget + AppDimens.dense,
+      title: Text(title, style: context.textStyles.h2),
+      subtitle: Text(
+        subtitle,
+        style: context.textStyles.caption.copyWith(
+          color: context.colors.textSecondary,
+        ),
+      ),
+      trailing: Icon(Icons.chevron_right, color: context.colors.textSecondary),
+      onTap: onTap,
     );
   }
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.l10n});
-
-  final AppLocalizations l10n;
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    final l10n = context.l10n;
+    return Padding(
       key: TemplatePickerSheet.emptyStateKey,
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimens.base),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.playlist_add_check,
-              size: 40,
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.base),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.routinesSheetEmptyTitle, style: context.textStyles.h2),
+          const SizedBox(height: AppDimens.dense),
+          Text(
+            l10n.routinesSheetEmptyMessage,
+            style: context.textStyles.body.copyWith(
               color: context.colors.textSecondary,
             ),
-            const SizedBox(height: AppDimens.dense),
-            Text(
-              l10n.templatePickerEmptyTitle,
-              style: context.textStyles.h2,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppDimens.dense),
-            Text(
-              l10n.templatePickerEmptyMessage,
-              style: context.textStyles.body.copyWith(
-                color: context.colors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: context.textStyles.label.copyWith(
-        color: context.colors.textSecondary,
-      ),
-    );
-  }
-}
-
-class _UpNextGroup extends StatelessWidget {
-  const _UpNextGroup({
-    required this.suggestion,
-    required this.emptyTemplateIds,
-  });
-
-  final UpNextSuggestionView suggestion;
-  final Set<String> emptyTemplateIds;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final slotLabel = localizedCadenceSlotLabel(
-      l10n,
-      kind: suggestion.cadenceKind,
-      slot: suggestion.slot,
-    );
-    return Material(
-      color: context.colors.surface,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: context.colors.divider),
-        borderRadius: AppRadii.cardMd,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimens.dense),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              l10n.homeUpNextRoutineSubtitle(suggestion.routineName, slotLabel),
-              style: context.textStyles.label.copyWith(
-                color: context.colors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: AppDimens.dense),
-            for (final card in suggestion.cards)
-              card.isDone
-                  ? _DoneUpNextRow(routineId: suggestion.routineId, card: card)
-                  : _PickableTemplateTile(
-                      templateId: card.workoutTemplateId,
-                      templateName: card.templateName,
-                      subtitle: null,
-                      tileKey: TemplatePickerSheet.upNextTileKey(
-                        suggestion.routineId,
-                        card.workoutTemplateId,
-                      ),
-                      customizeKey: TemplatePickerSheet.upNextCustomizeKey(
-                        suggestion.routineId,
-                        card.workoutTemplateId,
-                      ),
-                      result: TemplatePickerResult(
-                        workoutTemplateId: card.workoutTemplateId,
-                        routineId: suggestion.routineId,
-                        slot: suggestion.slot,
-                      ),
-                      isEmpty: emptyTemplateIds.contains(
-                        card.workoutTemplateId,
-                      ),
-                    ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DoneUpNextRow extends StatelessWidget {
-  const _DoneUpNextRow({required this.routineId, required this.card});
-
-  final String routineId;
-  final UpNextCardView card;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return Semantics(
-      key: TemplatePickerSheet.upNextDoneKey(routineId, card.workoutTemplateId),
-      label: l10n.homeUpNextDoneLabel(card.templateName),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
-        child: Row(
-          children: [
-            Icon(Icons.check_circle, color: context.colors.save),
-            const SizedBox(width: AppDimens.dense),
-            Expanded(
-              child: Text(
-                card.templateName,
-                style: context.textStyles.body.copyWith(
-                  color: context.colors.textSecondary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RoutineGroup extends StatelessWidget {
-  const _RoutineGroup({
-    required this.routine,
-    required this.emptyTemplateIds,
-  });
-
-  final TemplatePickerRoutineView routine;
-  final Set<String> emptyTemplateIds;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final cadenceKind = routine.cadenceKind;
-    final subtitle = switch (cadenceKind) {
-      CadenceKind.weekly => l10n.routinePlansCadenceWeekly,
-      CadenceKind.rotating => l10n.routinePlansCadenceRotating,
-      null => l10n.routinePlansCadenceNone,
-    };
-    return Card(
-      key: TemplatePickerSheet.routineHeaderKey(routine.routineId),
-      margin: const EdgeInsets.only(bottom: AppDimens.dense),
-      elevation: 0,
-      shape: const RoundedRectangleBorder(borderRadius: AppRadii.cardMd),
-      child: ExpansionTile(
-        title: Text(routine.routineName, style: context.textStyles.h2),
-        subtitle: Text(
-          subtitle,
-          style: context.textStyles.body.copyWith(
-            color: context.colors.textSecondary,
           ),
-        ),
-        children: [
-          for (final entry in routine.entries)
-            _PickableTemplateTile(
-              templateId: entry.workoutTemplateId,
-              templateName: entry.templateName,
-              subtitle: entry.slot == null || cadenceKind == null
-                  ? null
-                  : localizedCadenceSlotLabel(
-                      l10n,
-                      kind: cadenceKind,
-                      slot: entry.slot!,
-                    ),
-              tileKey:
-                  TemplatePickerSheet.routineEntryTileKey(entry.routineEntryId),
-              customizeKey: TemplatePickerSheet.routineEntryCustomizeKey(
-                entry.routineEntryId,
-              ),
-              result: TemplatePickerResult(
-                workoutTemplateId: entry.workoutTemplateId,
-                routineId: routine.routineId,
-                slot: entry.slot,
-              ),
-              isEmpty: emptyTemplateIds.contains(entry.workoutTemplateId),
-            ),
+          const SizedBox(height: AppDimens.base),
+          FilledButton.icon(
+            key: TemplatePickerSheet.createRoutineButtonKey,
+            onPressed: () => Navigator.of(context)
+                .pushNamed(RoutinePlanListScreen.routeName),
+            icon: const Icon(Icons.add),
+            label: Text(l10n.routinesSheetEmptyAction),
+          ),
         ],
       ),
     );
   }
 }
 
-/// One row that can materialize a Template: the default tap pops the sheet
-/// immediately with [result]; the trailing "customize" affordance opens a
-/// read-only preview first and only pops the sheet if the athlete confirms
-/// Start there — both paths resolve the exact same [result], so both
-/// produce a Template Link identically (ROUTINES.md §3.2).
-class _PickableTemplateTile extends StatelessWidget {
-  const _PickableTemplateTile({
+/// One startable workout: the row tap pops the sheet with [result] at once;
+/// the trailing preview opens a read-only look at its exercises and pops
+/// with the same [result] only if the athlete confirms Start there, so both
+/// paths record the same Template Link.
+class _WorkoutRow extends StatelessWidget {
+  const _WorkoutRow({
     required this.templateId,
-    required this.templateName,
-    required this.subtitle,
+    required this.name,
+    required this.exerciseCount,
     required this.tileKey,
-    required this.customizeKey,
+    required this.previewKey,
     required this.result,
-    required this.isEmpty,
+    this.isNext = false,
+    this.isDone = false,
   });
 
   final String templateId;
-  final String templateName;
-  final String? subtitle;
+  final String name;
+
+  /// Null while the counts are still loading; the row then just omits it.
+  /// Zero is said out loud ("No exercises"): starting it gives an empty
+  /// Workout, which should never come as a surprise.
+  final int? exerciseCount;
   final Key tileKey;
-  final Key customizeKey;
+  final Key previewKey;
   final TemplatePickerResult result;
 
-  /// The Template has no Template Exercises, so starting it gives an empty
-  /// Workout; labelled on every group so that never comes as a surprise.
-  final bool isEmpty;
+  /// Today's Up next suggestion for its Routine, still to do.
+  final bool isNext;
+
+  /// Already done on the selected Training Day; still startable again.
+  final bool isDone;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final shownSubtitle = isEmpty
-        ? [subtitle, l10n.templateStartNoExercises].nonNulls.join(' · ')
-        : subtitle;
-    return Material(
-      color: Colors.transparent,
-      child: ListTile(
-        key: tileKey,
-        minTileHeight: AppDimens.rowHeight,
-        title: Text(templateName, style: context.textStyles.h2),
-        subtitle: shownSubtitle == null
-            ? null
-            : Text(
-                shownSubtitle,
-                style: context.textStyles.body.copyWith(
-                  color: context.colors.textSecondary,
-                ),
+    final exerciseCount = this.exerciseCount;
+    final subtitle = [
+      if (isNext) l10n.routinesSheetUpNext,
+      if (isDone) l10n.routinesSheetDone,
+      if (exerciseCount != null) l10n.routinesSheetExerciseCount(exerciseCount),
+    ].join(' · ');
+    return ListTile(
+      key: tileKey,
+      minTileHeight: AppDimens.touchTarget + AppDimens.dense,
+      leading: isDone
+          ? Icon(Icons.check_circle, color: context.colors.save)
+          : Icon(
+              Icons.play_circle_outline,
+              color: isNext
+                  ? Theme.of(context).colorScheme.primary
+                  : context.colors.textSecondary,
+            ),
+      title: Text(name, style: context.textStyles.h2),
+      subtitle: subtitle.isEmpty
+          ? null
+          : Text(
+              subtitle,
+              style: context.textStyles.caption.copyWith(
+                color: context.colors.textSecondary,
               ),
-        onTap: () => Navigator.of(context).pop(result),
-        trailing: IconButton(
-          key: customizeKey,
-          tooltip: l10n.templatePickerCustomizeTooltip(templateName),
-          icon: const Icon(Icons.tune),
-          onPressed: () => _customize(context),
+            ),
+      onTap: () => Navigator.of(context).pop(result),
+      trailing: IconButton(
+        key: previewKey,
+        tooltip: l10n.routinesSheetPreviewTooltip(name),
+        icon: Icon(
+          Icons.visibility_outlined,
+          color: context.colors.textSecondary,
         ),
+        onPressed: () => _preview(context),
       ),
     );
   }
 
-  Future<void> _customize(BuildContext context) async {
+  Future<void> _preview(BuildContext context) async {
     final navigator = Navigator.of(context);
     final confirmed = await showTemplatePickerPreviewSheet(
       context,
       templateId: templateId,
-      templateName: templateName,
+      templateName: name,
     );
     if (confirmed == true) {
       navigator.pop(result);
@@ -506,11 +612,9 @@ class _PickableTemplateTile extends StatelessWidget {
   }
 }
 
-/// Opens a read-only "look before you start" preview of one Workout
-/// Template's exercises (ROUTINES.md §3.2's "customize (preview/trim)"
-/// gesture). Trimming itself happens in-session, in the ordinary Workout
-/// screen, once materialized — this preview never edits the Template or the
-/// future Workout, it only lets the athlete confirm before committing.
+/// Opens a read-only "look before you start" preview of one workout's
+/// exercises. Trimming happens in the ordinary Workout screen once started;
+/// this preview never edits the Template or the future Workout.
 /// Returns `true` when the athlete taps Start, `null`/`false` otherwise.
 Future<bool?> showTemplatePickerPreviewSheet(
   BuildContext context, {

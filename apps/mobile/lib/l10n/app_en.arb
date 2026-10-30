@@ -29,7 +29,6 @@
   "homeLocalOnlyStatus": "Local only",
   "homeSignInToSync": "Sign in to sync",
   "homeManageAccountAndSync": "Manage account and sync",
-  "homeManageRoutines": "Manage routines",
   "homeLogAction": "Log",
   "homeLogSheetTitle": "Log for this day",
   "homeLogWorkout": "Workout",
@@ -41,8 +40,8 @@
   "homeNutritionDomain": "Nutrition",
   "homeUnavailable": "Home unavailable",
   "homeNutritionUnavailable": "Nutrition Day unavailable",
-  "homeStartNewWorkout": "Start New Workout",
-  "homeLoadRoutine": "Load Routine",
+  "homeStartNewWorkout": "Start workout",
+  "homeLoadRoutine": "Routines",
   "homeAddExercise": "Add exercise",
   "homeSessionHeader": "Session {time}",
   "@homeSessionHeader": {
@@ -91,25 +90,36 @@
     }
   },
   "homeUpNextStartFailed": "Could not start this session. Try again.",
-  "templatePickerTitle": "Load a Template",
-  "templatePickerTodayUpNextHeading": "Today / Up next",
-  "templatePickerRoutinesHeading": "Routines",
-  "templatePickerAllTemplatesHeading": "All Templates",
-  "templatePickerSearchHint": "Search templates",
-  "templatePickerEmptyTitle": "No plans yet",
-  "templatePickerEmptyMessage": "Finish a workout, then save it as a template.",
-  "templatePickerNoSearchResults": "No templates match your search.",
-  "templatePickerCustomizeTooltip": "Customize {templateName}",
-  "@templatePickerCustomizeTooltip": {
-    "placeholders": {
-      "templateName": {
-        "type": "String"
-      }
-    }
-  },
   "templatePickerPreviewStart": "Start workout",
   "templatePickerPreviewExercisesHeading": "Exercises",
-  "templatePickerPreviewEmptyExercises": "No exercises in this template yet.",
+  "templatePickerPreviewEmptyExercises": "No exercises in this workout yet.",
+  "routinesSheetTitle": "Routines",
+  "routinesSheetManage": "Manage",
+  "routinesSheetEdit": "Edit",
+  "routinesSheetBack": "All routines",
+  "routinesSheetNext": "Next: {name}",
+  "@routinesSheetNext": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinesSheetUpNext": "Up next",
+  "routinesSheetDone": "Done",
+  "routinesSheetWorkoutCount": "{count, plural, =1{1 workout} other{{count} workouts}}",
+  "@routinesSheetWorkoutCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "routinesSheetExerciseCount": "{count, plural, =0{No exercises} =1{1 exercise} other{{count} exercises}}",
+  "@routinesSheetExerciseCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "routinesSheetOtherWorkouts": "Other saved workouts",
+  "routinesSheetNotInRoutine": "Not in a routine",
+  "routinesSheetPreviewTooltip": "Preview {name}",
+  "@routinesSheetPreviewTooltip": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "routinesSheetEmptyTitle": "No routines yet",
+  "routinesSheetEmptyMessage": "Create a routine to start its workouts from here.",
+  "routinesSheetEmptyAction": "Create a routine",
   "workoutTitle": "Workout",
   "workoutUnavailable": "Workout unavailable",
   "workoutSummaryListTitle": "Workouts",
@@ -660,22 +670,22 @@
   "trainingUnitSecond": "sec",
   "trainingUnitKilometer": "km",
   "trainingUnitMile": "mi",
-  "workoutTemplatesTitle": "Workout Templates",
-  "workoutTemplatesLibrarySubtitle": "Reusable plans for one Workout",
-  "workoutTemplatesNew": "New Workout Template",
-  "workoutTemplatesCreateTitle": "Create Workout Template",
-  "workoutTemplatesCreate": "Create Workout Template",
-  "workoutTemplatesNameLabel": "Workout Template name",
+  "workoutTemplatesTitle": "Saved workouts",
+  "workoutTemplatesLibrarySubtitle": "Reusable plans for one workout",
+  "workoutTemplatesNew": "New saved workout",
+  "workoutTemplatesCreateTitle": "Create saved workout",
+  "workoutTemplatesCreate": "Create saved workout",
+  "workoutTemplatesNameLabel": "Workout name",
   "workoutTemplatesNotesLabel": "Standing notes",
   "workoutTemplatesCancel": "Cancel",
-  "workoutTemplatesActiveHeading": "Active Workout Templates",
-  "workoutTemplatesArchivedHeading": "Archived Workout Templates",
-  "workoutTemplatesShowArchived": "Show archived Workout Templates",
-  "workoutTemplatesHideArchived": "Hide archived Workout Templates",
-  "workoutTemplatesEmptyTitle": "No Workout Templates yet",
+  "workoutTemplatesActiveHeading": "Active",
+  "workoutTemplatesArchivedHeading": "Archived",
+  "workoutTemplatesShowArchived": "Show archived workouts",
+  "workoutTemplatesHideArchived": "Hide archived workouts",
+  "workoutTemplatesEmptyTitle": "No saved workouts yet",
   "workoutTemplatesEmptyMessage": "Create a reusable plan for one Workout.",
-  "workoutTemplatesArchivedEmpty": "No archived Workout Templates.",
-  "workoutTemplatesExerciseCount": "{count, plural, =0{No Template Exercises} =1{1 Template Exercise} other{{count} Template Exercises}}",
+  "workoutTemplatesArchivedEmpty": "No archived workouts.",
+  "workoutTemplatesExerciseCount": "{count, plural, =0{No exercises} =1{1 exercise} other{{count} exercises}}",
   "@workoutTemplatesExerciseCount": {
     "placeholders": {
       "count": {"type": "int"}
@@ -687,11 +697,11 @@
       "name": {"type": "String"}
     }
   },
-  "workoutTemplatesArchive": "Archive Workout Template",
-  "workoutTemplatesArchiveTitle": "Archive Workout Template?",
-  "workoutTemplatesArchiveMessage": "This hides the template from active lists and pickers. Logged Workouts remain unchanged.",
-  "workoutTemplatesRestore": "Restore Workout Template",
-  "workoutTemplatesActionFailed": "The Workout Template could not be updated.",
+  "workoutTemplatesArchive": "Archive saved workout",
+  "workoutTemplatesArchiveTitle": "Archive saved workout?",
+  "workoutTemplatesArchiveMessage": "This hides it from active lists and pickers. Logged workouts remain unchanged.",
+  "workoutTemplatesRestore": "Restore saved workout",
+  "workoutTemplatesActionFailed": "The saved workout could not be updated.",
   "workoutTemplatesStartTooltip": "Start {name}",
   "@workoutTemplatesStartTooltip": {
     "placeholders": {
@@ -699,19 +709,19 @@
     }
   },
   "workoutTemplatesStartFailed": "The Workout could not be started.",
-  "workoutTemplateEditorTitle": "Edit Workout Template",
-  "workoutTemplateSaveDetails": "Save Workout Template details",
-  "workoutTemplateDetailsSaved": "Workout Template details saved",
-  "workoutTemplateExercisesHeading": "Template Exercises",
-  "workoutTemplateAddExercise": "Add Template Exercise",
-  "workoutTemplateNoExercises": "No Template Exercises. Add one to build the plan.",
+  "workoutTemplateEditorTitle": "Edit saved workout",
+  "workoutTemplateSaveDetails": "Save details",
+  "workoutTemplateDetailsSaved": "Details saved",
+  "workoutTemplateExercisesHeading": "Exercises",
+  "workoutTemplateAddExercise": "Add exercise",
+  "workoutTemplateNoExercises": "No exercises. Add one to build the plan.",
   "workoutTemplateExerciseNotes": "Exercise standing notes",
   "workoutTemplateEditExerciseNotes": "Edit exercise notes",
   "workoutTemplateSaveExerciseNotes": "Save exercise notes",
-  "workoutTemplateRemoveExercise": "Remove Template Exercise",
-  "workoutTemplateRemoveExerciseTitle": "Remove Template Exercise?",
+  "workoutTemplateRemoveExercise": "Remove exercise",
+  "workoutTemplateRemoveExerciseTitle": "Remove exercise?",
   "workoutTemplateRemoveExerciseMessage": "Its Prescriptions are removed from this plan. Logged Workouts remain unchanged.",
-  "workoutTemplateReorderExercise": "Reorder Template Exercise",
+  "workoutTemplateReorderExercise": "Reorder exercise",
   "workoutTemplatePrescriptionsHeading": "Prescriptions",
   "workoutTemplateAddPrescription": "Add Prescription",
   "workoutTemplateNoPrescriptions": "No Prescriptions",
@@ -719,7 +729,7 @@
   "workoutTemplatePrescriptionMode": "Prescription mode",
   "workoutTemplatePrescriptionFixed": "Fixed values",
   "workoutTemplatePrescriptionCopyPrevious": "Copy previous",
-  "workoutTemplatePrescriptionCopyPreviousHelp": "Use the values from the previous session when this template is loaded.",
+  "workoutTemplatePrescriptionCopyPreviousHelp": "Use the values from the previous session when this workout is started.",
   "workoutTemplatePrescriptionRepeat": "Repeat",
   "workoutTemplatePrescriptionRestAfter": "Rest after",
   "workoutTemplatePrescriptionSeconds": "sec",
@@ -731,12 +741,12 @@
   "workoutTemplatePrescriptionInvalid": "Enter valid non-negative values, a repeat of at least 1, and optional non-negative rest.",
   "workoutTemplatePrescriptionWarningTitle": "Check Prescription values",
   "workoutTemplatePrescriptionSaveAnyway": "Save anyway",
-  "workoutTemplateUnavailable": "Workout Template unavailable",
-  "workoutTemplateExercisePickerTitle": "Add Template Exercise",
+  "workoutTemplateUnavailable": "Saved workout unavailable",
+  "workoutTemplateExercisePickerTitle": "Add exercise",
   "workoutTemplateGroupsHeading": "Groups",
   "workoutTemplateAddGroup": "Add Group",
   "workoutTemplateNoGroups": "No Groups. Add a superset or circuit to this plan.",
-  "workoutTemplateGroupNeedsExercises": "Add at least two ungrouped Template Exercises first.",
+  "workoutTemplateGroupNeedsExercises": "Add at least two ungrouped exercises first.",
   "workoutTemplateCreateGroup": "Create Group",
   "workoutTemplateEditGroup": "Edit Group",
   "workoutTemplateGroupName": "Group name",
@@ -747,10 +757,10 @@
   },
   "workoutTemplateGroupRounds": "Rounds",
   "workoutTemplateGroupRoundsHelp": "A round is one pass through every exercise in this Group.",
-  "workoutTemplateGroupMembers": "Template Exercises",
-  "workoutTemplateSelectedGroupMembers": "Selected Template Exercises",
-  "workoutTemplateAvailableGroupMembers": "Available Template Exercises",
-  "workoutTemplateNoSelectedGroupMembers": "Select at least two Template Exercises below.",
+  "workoutTemplateGroupMembers": "Exercises",
+  "workoutTemplateSelectedGroupMembers": "Selected exercises",
+  "workoutTemplateAvailableGroupMembers": "Available exercises",
+  "workoutTemplateNoSelectedGroupMembers": "Select at least two exercises below.",
   "workoutTemplateReorderGroupMember": "Reorder {name}",
   "@workoutTemplateReorderGroupMember": {
     "placeholders": {"name": {"type": "String"}}
@@ -767,14 +777,14 @@
   "workoutTemplateGroupNameRequired": "Enter a Group name.",
   "workoutTemplateGroupColorInvalid": "Enter a color as #RRGGBB.",
   "workoutTemplateGroupRoundsInvalid": "Rounds must be a whole number of at least 1.",
-  "workoutTemplateGroupMembersInvalid": "Select at least two Template Exercises.",
+  "workoutTemplateGroupMembersInvalid": "Select at least two exercises.",
   "workoutTemplateSaveGroup": "Save Group",
   "workoutTemplateGroupActionFailed": "The Group could not be updated.",
   "workoutTemplateGroupRoundsCount": "{rounds, plural, =1{1 round} other{{rounds} rounds}}",
   "@workoutTemplateGroupRoundsCount": {
     "placeholders": {"rounds": {"type": "int"}}
   },
-  "workoutTemplateGroupMemberCount": "{count, plural, =1{1 Template Exercise} other{{count} Template Exercises}}",
+  "workoutTemplateGroupMemberCount": "{count, plural, =1{1 exercise} other{{count} exercises}}",
   "@workoutTemplateGroupMemberCount": {
     "placeholders": {"count": {"type": "int"}}
   },
@@ -804,13 +814,13 @@
   "@workoutTemplateDissolveGroupTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "workoutTemplateDissolveGroupMessage": "Exercises and Prescriptions stay in this Workout Template.",
+  "workoutTemplateDissolveGroupMessage": "Exercises and Prescriptions stay in this saved workout.",
   "workoutTemplateDissolveGroupSuccess": "Group dissolved",
   "workoutTemplateGroupedExerciseRemoveTitle": "Remove from {name} first",
   "@workoutTemplateGroupedExerciseRemoveTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "workoutTemplateGroupedExerciseRemoveMessage": "Edit or dissolve the Group before removing this Template Exercise.",
+  "workoutTemplateGroupedExerciseRemoveMessage": "Edit or dissolve the Group before removing this exercise.",
   "routinePlansTitle": "Routines",
   "routinePlansNew": "New Routine",
   "routinePlansCreateTitle": "Create Routine",
@@ -821,13 +831,13 @@
   "routinePlansUnavailable": "Routines unavailable",
   "routinePlansActionFailed": "The Routine could not be updated.",
   "routinePlansEmptyTitle": "No Routines yet",
-  "routinePlansEmptyMessage": "Create a Routine to keep an ordered collection of Workout Templates.",
+  "routinePlansEmptyMessage": "Create a Routine to keep the workouts of one plan together.",
   "routinePlansActiveHeading": "ACTIVE",
   "routinePlansShowArchived": "Show archived Routines",
   "routinePlansHideArchived": "Hide archived Routines",
   "routinePlansArchivedHeading": "ARCHIVED",
   "routinePlansArchivedEmpty": "No archived Routines",
-  "routinePlansTemplateCount": "{count, plural, =1{1 Workout Template} other{{count} Workout Templates}}",
+  "routinePlansTemplateCount": "{count, plural, =1{1 workout} other{{count} workouts}}",
   "@routinePlansTemplateCount": {
     "placeholders": {"count": {"type": "int"}}
   },
@@ -845,29 +855,19 @@
   },
   "routinePlansArchive": "Archive Routine",
   "routinePlansRestore": "Restore Routine",
-  "routinePlansStartTooltip": "Start {name}",
-  "@routinePlansStartTooltip": {
-    "placeholders": {"name": {"type": "String"}}
-  },
-  "routinePlansStartSheetTitle": "Start {name}",
-  "@routinePlansStartSheetTitle": {
-    "placeholders": {"name": {"type": "String"}}
-  },
-  "routinePlansStartEmptyMessage": "Add a Workout Template to this Routine first.",
-  "routinePlansStartFailed": "The Workout could not be started.",
   "routinePlansCancel": "Cancel",
   "routinePlansArchiveTitle": "Archive {name}?",
   "@routinePlansArchiveTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "routinePlansArchiveMessage": "Workout Templates and this Routine's references remain unchanged and restorable.",
+  "routinePlansArchiveMessage": "Its saved workouts remain unchanged, and the Routine can be restored.",
   "routinePlansSaveDetails": "Save Routine",
-  "routinePlansTemplatesHeading": "Workout Templates",
-  "routinePlansAddTemplate": "Add Workout Template",
-  "routinePlansNoTemplates": "No Workout Templates in this Routine yet.",
-  "routinePlansTemplateLabel": "Workout Template",
-  "routinePlansArchivedTemplateLabel": "Archived Workout Template",
-  "routinePlansRestoreTemplate": "Restore Workout Template",
+  "routinePlansTemplatesHeading": "Workouts",
+  "routinePlansAddTemplate": "Add workout",
+  "routinePlansNoTemplates": "No workouts in this Routine yet.",
+  "routinePlansTemplateLabel": "Workout",
+  "routinePlansArchivedTemplateLabel": "Archived workout",
+  "routinePlansRestoreTemplate": "Restore workout",
   "routinePlansReorderTemplate": "Reorder {name}",
   "@routinePlansReorderTemplate": {
     "placeholders": {"name": {"type": "String"}}
@@ -883,19 +883,19 @@
   "@routinePlansRemoveReferenceTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "routinePlansRemoveReferenceMessage": "This removes only the reference from {name}. The Workout Template remains available everywhere else.",
+  "routinePlansRemoveReferenceMessage": "This removes it only from {name}. The saved workout remains available everywhere else.",
   "@routinePlansRemoveReferenceMessage": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "routinePlansTemplatePickerTitle": "Add Workout Template",
-  "routinePlansNoAvailableTemplates": "Create an active Workout Template in Library before adding one to this Routine.",
+  "routinePlansTemplatePickerTitle": "Add workout",
+  "routinePlansNoAvailableTemplates": "Create a saved workout in Library before adding one to this Routine.",
   "routinePlansCadenceHeading": "Cadence",
   "routinePlansCadenceLabel": "Routine cadence",
   "routinePlansCadenceNone": "None",
   "routinePlansCadenceWeekly": "Weekly",
   "routinePlansCadenceRotating": "Rotating",
   "routinePlansRotatingWindowLabel": "Number of positions",
-  "routinePlansRotatingWindowHelp": "Each position can contain more than one Workout Template.",
+  "routinePlansRotatingWindowHelp": "Each position can hold more than one workout.",
   "routinePlansRotatingWindowError": "Enter a whole number of 1 or more.",
   "routinePlansCadenceInvalid": "Choose a valid Cadence.",
   "routinePlansSaveCadence": "Save Cadence",
@@ -913,7 +913,7 @@
   "@routinePlansRotatingSlot": {
     "placeholders": {"slot": {"type": "int"}}
   },
-  "routinePlansAddTemplateToSlot": "Add Workout Template to {slot}",
+  "routinePlansAddTemplateToSlot": "Add workout to {slot}",
   "@routinePlansAddTemplateToSlot": {
     "placeholders": {"slot": {"type": "String"}}
   },
@@ -929,8 +929,8 @@
     "placeholders": {"name": {"type": "String"}}
   },
   "routinePlansCurrentSlot": "Current slot",
-  "workoutCaptureMenuAction": "Save as Workout Template",
-  "workoutCaptureTitle": "Save workout as template",
+  "workoutCaptureMenuAction": "Save for reuse",
+  "workoutCaptureTitle": "Save workout for reuse",
   "workoutCaptureLoading": "Preparing capture preview",
   "workoutCapturePreviewUnavailable": "This workout could not be prepared for capture. Try again.",
   "workoutCaptureRetry": "Try again",
@@ -956,8 +956,8 @@
   "@workoutCaptureGroupCount": {
     "placeholders": {"count": {"type": "int"}}
   },
-  "workoutCaptureNameLabel": "Workout Template name",
-  "workoutCaptureNameRequired": "Enter a Workout Template name.",
+  "workoutCaptureNameLabel": "Workout name",
+  "workoutCaptureNameRequired": "Enter a workout name.",
   "workoutCaptureRoutineLabel": "Add to Routine",
   "workoutCaptureRoutineHelp": "Optional. Collection Routines append the reference; Cadence Routines require a slot.",
   "workoutCaptureRoutineNone": "None",
@@ -984,23 +984,23 @@
   },
   "workoutCaptureSlotOutOfRange": "Enter an available slot number.",
   "workoutCaptureChooseSlotAction": "Choose slot",
-  "workoutCaptureReferenceNote": "This creates a new Workout Template from the workout facts. The workout and its existing Template Link stay unchanged; Routine placement adds only a reference.",
+  "workoutCaptureReferenceNote": "This creates a new saved workout from what you logged. The logged workout stays unchanged; adding it to a Routine adds only a reference.",
   "workoutCaptureErrorsTitle": "Cannot save yet",
   "workoutCaptureWarningsTitle": "Review before saving",
   "workoutCaptureAcceptWarnings": "I reviewed these warnings and want to save anyway.",
-  "workoutCaptureSave": "Save Template",
+  "workoutCaptureSave": "Save",
   "workoutCaptureSaving": "Saving...",
-  "workoutCaptureSaveFailed": "The Workout Template could not be saved. Review your choices and try again.",
-  "workoutCaptureSaved": "Workout Template saved.",
-  "workoutUpdateTemplateMenuAction": "Update template",
+  "workoutCaptureSaveFailed": "The saved workout could not be created. Review your choices and try again.",
+  "workoutCaptureSaved": "Saved for reuse.",
+  "workoutUpdateTemplateMenuAction": "Update saved workout",
   "templateUpdatePromptTitle": "Update \"{name}\"?",
   "@templateUpdatePromptTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
   "templateUpdateDismissAction": "Not now",
-  "templateUpdateConfirmAction": "Update template",
-  "templateUpdateConfirmedMessage": "Template updated.",
-  "templateUpdateNotLinkedMessage": "This workout isn't linked to a Workout Template.",
+  "templateUpdateConfirmAction": "Update saved workout",
+  "templateUpdateConfirmedMessage": "Saved workout updated.",
+  "templateUpdateNotLinkedMessage": "This workout didn't start from a saved workout.",
   "templateUpdateGroupsChangedNote": "Exercise groups changed",
   "templateUpdateNoChangesNote": "No changes to update",
   "templateStartNoExercises": "No exercises",
@@ -1008,7 +1008,7 @@
   "@templateStartEmptyTitle": {
     "placeholders": {"name": {"type": "String"}}
   },
-  "templateStartEmptyMessage": "Starting it opens an empty workout. Add exercises to the Workout Template to have them load when you start it.",
+  "templateStartEmptyMessage": "Starting it opens an empty workout. Add exercises to it to have them load when you start it.",
   "templateStartEmptyConfirmAction": "Start empty workout",
   "workoutTemplateNotesTitle": "Plan notes",
   "workoutTemplateNotesSource": "From {name}",
@@ -1068,8 +1068,6 @@
   "autoBackupFolderWarningLabel": "Auto-backup folder warning",
   "autoBackupGrantPrompt": "Choose a backup folder again to resume auto-backup.",
   "startWorkoutSheetTitle": "Start a workout",
-  "startWorkoutFromPlan": "From a routine or template",
-  "startWorkoutSetUpRoutine": "Set up a routine",
   "startWorkoutFocusSection": "Focus",
   "startWorkoutEditFocusesTooltip": "Edit focuses",
   "startWorkoutEmpty": "Empty workout",

@@ -7,49 +7,22 @@ import '../../../theme/theme.dart';
 import '../../focus/controllers/focus_providers.dart';
 import '../../focus/widgets/focus_manager_screen.dart';
 import '../../focus/widgets/focus_visuals.dart';
-import '../../routine_plans/widgets/routine_plan_list_screen.dart';
-import '../../routine_plans/widgets/localized_cadence_slot_label.dart';
-import '../../template_picker/controllers/template_picker_controller.dart';
-import '../../template_picker/repositories/template_picker_feature_repository.dart';
-import '../../up_next/controllers/up_next_controller.dart';
 import '../../../widgets/grouped_rows.dart';
 
-/// What the user chose to start in [showStartWorkoutSheet].
-sealed class StartWorkoutChoice {
-  const StartWorkoutChoice();
-}
-
-/// Materialize one Workout Template, from an Up next card.
-final class StartFromTemplate extends StartWorkoutChoice {
-  const StartFromTemplate({
-    required this.workoutTemplateId,
-    this.routineId,
-    this.slot,
-  });
-
-  final String workoutTemplateId;
-  final String? routineId;
-  final int? slot;
-}
-
-/// Open the routine and template picker.
-final class BrowsePlans extends StartWorkoutChoice {
-  const BrowsePlans();
-}
-
-/// Start an empty Workout, under a Focus or, with null, under none: the path
-/// that existed before.
-final class StartWithFocus extends StartWorkoutChoice {
-  const StartWithFocus(this.focusId);
+/// What the user chose to start in [showStartWorkoutSheet]: an empty
+/// Workout under a Focus or, with null, under none.
+final class StartWorkoutChoice {
+  const StartWorkoutChoice(this.focusId);
 
   final String? focusId;
 }
 
-/// The single decision point for a Workout: follow the plan, or say what
-/// today is. Programmed days come first and start in one tap; an unplanned
-/// day picks a Focus, which is what lets the empty Workout open on the
-/// exercises that matter instead of the whole library. Nothing here is
-/// required: "Empty workout" starts exactly as before.
+/// The unplanned start: say what today is, or start empty. Picking a Focus
+/// is what lets the empty Workout open on the exercises that matter instead
+/// of the whole library; "Empty workout" starts exactly as before. Planned
+/// workouts are not offered here: Today's Up next strip and its Routines
+/// button own that path, and repeating them here made one decision look
+/// like three.
 Future<StartWorkoutChoice?> showStartWorkoutSheet(BuildContext context) {
   return showModalBottomSheet<StartWorkoutChoice>(
     context: context,
@@ -59,24 +32,12 @@ Future<StartWorkoutChoice?> showStartWorkoutSheet(BuildContext context) {
   );
 }
 
-final _hasAnyTemplateProvider = StreamProvider.autoDispose<bool>((ref) {
-  return ref
-      .watch(templatePickerFeatureRepositoryProvider)
-      .watchAllTemplates()
-      .map((templates) => templates.isNotEmpty);
-});
-
 class StartWorkoutSheet extends ConsumerWidget {
   const StartWorkoutSheet({super.key});
 
   static const sheetKey = Key('start-workout.sheet');
-  static const browsePlansKey = Key('start-workout.browse-plans');
-  static const setUpRoutineKey = Key('start-workout.set-up-routine');
   static const editFocusesKey = Key('start-workout.edit-focuses');
   static const emptyWorkoutKey = Key('start-workout.empty');
-
-  static Key upNextKey(String routineId, String workoutTemplateId) =>
-      Key('start-workout.up-next.$routineId.$workoutTemplateId');
 
   static Key focusTileKey(String focusId) =>
       Key('start-workout.focus.$focusId');
@@ -84,14 +45,6 @@ class StartWorkoutSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final suggestions = ref.watch(upNextSuggestionsProvider).value ?? const [];
-    final pending = [
-      for (final suggestion in suggestions)
-        for (final card in suggestion.cards)
-          if (!card.isDone) (suggestion, card),
-    ];
-    final hasTemplates = ref.watch(_hasAnyTemplateProvider).value ?? false;
-    final emptyTemplateIds = ref.watch(templatePickerEmptyTemplateIdsProvider);
     final focuses =
         ref.watch(activeFocusesProvider).value ?? const <FocusRecord>[];
 
@@ -114,78 +67,6 @@ class StartWorkoutSheet extends ConsumerWidget {
           children: [
             Text(l10n.startWorkoutSheetTitle, style: context.textStyles.h1),
             const SizedBox(height: AppDimens.base),
-            if (pending.isNotEmpty) ...[
-              SectionLabel(text: l10n.homeUpNextTitle),
-              const SizedBox(height: AppDimens.dense),
-              GroupedRows(
-                children: [
-                  for (final (suggestion, card) in pending)
-                    _UpNextRow(
-                      key: upNextKey(
-                        suggestion.routineId,
-                        card.workoutTemplateId,
-                      ),
-                      templateName: card.templateName,
-                      subtitle: [
-                        l10n.homeUpNextRoutineSubtitle(
-                          suggestion.routineName,
-                          localizedCadenceSlotLabel(
-                            l10n,
-                            kind: suggestion.cadenceKind,
-                            slot: suggestion.slot,
-                          ),
-                        ),
-                        if (emptyTemplateIds.contains(card.workoutTemplateId))
-                          l10n.templateStartNoExercises,
-                      ].join(' · '),
-                      onTap: () => choose(
-                        StartFromTemplate(
-                          workoutTemplateId: card.workoutTemplateId,
-                          routineId: suggestion.routineId,
-                          slot: suggestion.slot,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: AppDimens.dense),
-            ],
-            if (pending.isNotEmpty || hasTemplates)
-              GroupedRows(
-                children: [
-                  ListTile(
-                    key: browsePlansKey,
-                    minTileHeight: AppDimens.touchTarget + AppDimens.dense,
-                    leading: const Icon(Icons.playlist_add_check),
-                    title: Text(
-                      l10n.startWorkoutFromPlan,
-                      style: context.textStyles.body,
-                    ),
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: context.colors.textSecondary,
-                    ),
-                    onTap: () => choose(const BrowsePlans()),
-                  ),
-                ],
-              )
-            else
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  key: setUpRoutineKey,
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(0, AppDimens.touchTarget),
-                    foregroundColor: context.colors.textSecondary,
-                  ),
-                  onPressed: () => Navigator.of(context).pushNamed(
-                    RoutinePlanListScreen.routeName,
-                  ),
-                  icon: const Icon(Icons.assignment_outlined),
-                  label: Text(l10n.startWorkoutSetUpRoutine),
-                ),
-              ),
-            const SizedBox(height: AppDimens.base),
             Row(
               children: [
                 Expanded(
@@ -206,7 +87,7 @@ class StartWorkoutSheet extends ConsumerWidget {
             const SizedBox(height: AppDimens.dense / 2),
             _FocusGrid(
               focuses: focuses,
-              onSelected: (focus) => choose(StartWithFocus(focus.id)),
+              onSelected: (focus) => choose(StartWorkoutChoice(focus.id)),
             ),
             const SizedBox(height: AppDimens.base),
             GroupedRows(
@@ -225,7 +106,7 @@ class StartWorkoutSheet extends ConsumerWidget {
                       color: context.colors.textSecondary,
                     ),
                   ),
-                  onTap: () => choose(const StartWithFocus(null)),
+                  onTap: () => choose(const StartWorkoutChoice(null)),
                 ),
               ],
             ),
@@ -304,8 +185,8 @@ class _FocusTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Neutral icons: on this sheet the one cyan mark is the
-                  // Up next start, so the programmed day reads first.
+                  // Neutral icons: the Focus name is the signal, the icon
+                  // only helps recognition.
                   Icon(
                     focusIcon(focus.id),
                     color: context.colors.textSecondary,
@@ -327,40 +208,3 @@ class _FocusTile extends StatelessWidget {
     );
   }
 }
-
-class _UpNextRow extends StatelessWidget {
-  const _UpNextRow({
-    super.key,
-    required this.templateName,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final String templateName;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      minTileHeight: AppDimens.touchTarget + AppDimens.dense,
-      leading: Icon(
-        Icons.play_circle_outline,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-      title: Text(templateName, style: context.textStyles.h2),
-      subtitle: Text(
-        subtitle,
-        style: context.textStyles.caption.copyWith(
-          color: context.colors.textSecondary,
-        ),
-      ),
-      trailing: Icon(
-        Icons.chevron_right,
-        color: context.colors.textSecondary,
-      ),
-      onTap: onTap,
-    );
-  }
-}
-

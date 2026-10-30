@@ -5,13 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
-import '../../home/widgets/workout_screen.dart';
-import '../../template_materialize/controllers/template_materialize_controller.dart';
-import '../../template_materialize/widgets/empty_template_start_dialog.dart';
 import '../controllers/routine_plan_controller.dart';
 import '../repositories/routine_plan_feature_repository.dart';
 import 'routine_plan_editor_screen.dart';
-import 'routine_start_sheet.dart';
 
 class RoutinePlanListScreen extends ConsumerStatefulWidget {
   const RoutinePlanListScreen({super.key});
@@ -26,7 +22,6 @@ class RoutinePlanListScreen extends ConsumerStatefulWidget {
   static Key routineTileKey(String id) => Key('routinePlans.tile.$id');
   static Key archiveButtonKey(String id) => Key('routinePlans.archive.$id');
   static Key restoreButtonKey(String id) => Key('routinePlans.restore.$id');
-  static Key startButtonKey(String id) => Key('routinePlans.start.$id');
 
   @override
   ConsumerState<RoutinePlanListScreen> createState() =>
@@ -66,7 +61,6 @@ class _RoutinePlanListScreenState extends ConsumerState<RoutinePlanListScreen> {
             onOpen: _openRoutine,
             onArchive: _confirmArchive,
             onRestore: _restoreRoutine,
-            onStart: _startRoutine,
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stackTrace) => Center(
@@ -181,47 +175,6 @@ class _RoutinePlanListScreenState extends ConsumerState<RoutinePlanListScreen> {
       SnackBar(content: Text(context.l10n.routinePlansActionFailed)),
     );
   }
-
-  Future<void> _startRoutine(RoutinePlanSummary routine) async {
-    final selectedEntry = await showRoutineStartSheet(
-      context,
-      routineId: routine.id,
-      routineName: routine.name,
-    );
-    if (selectedEntry == null || !mounted) {
-      return;
-    }
-    final proceed = await confirmTemplateStart(
-      context,
-      ref,
-      workoutTemplateId: selectedEntry.workoutTemplateId,
-    );
-    if (!proceed || !mounted) {
-      return;
-    }
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-    final failureMessage = context.l10n.routinePlansStartFailed;
-    try {
-      final workoutId = await ref.read(templateMaterializeControllerProvider).start(
-            workoutTemplateId: selectedEntry.workoutTemplateId,
-            routineId: selectedEntry.routineId,
-            slot: selectedEntry.slot,
-          );
-      if (!mounted) {
-        return;
-      }
-      await navigator.push(
-        MaterialPageRoute<void>(
-          builder: (_) => WorkoutScreen(workoutId: workoutId),
-        ),
-      );
-    } on Object {
-      if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text(failureMessage)));
-      }
-    }
-  }
 }
 
 class _RoutinePlanListBody extends StatelessWidget {
@@ -232,7 +185,6 @@ class _RoutinePlanListBody extends StatelessWidget {
     required this.onOpen,
     required this.onArchive,
     required this.onRestore,
-    required this.onStart,
   });
 
   final RoutinePlanListSnapshot snapshot;
@@ -241,7 +193,6 @@ class _RoutinePlanListBody extends StatelessWidget {
   final ValueChanged<RoutinePlanSummary> onOpen;
   final ValueChanged<RoutinePlanSummary> onArchive;
   final ValueChanged<RoutinePlanSummary> onRestore;
-  final ValueChanged<RoutinePlanSummary> onStart;
 
   @override
   Widget build(BuildContext context) {
@@ -272,7 +223,6 @@ class _RoutinePlanListBody extends StatelessWidget {
               routine: snapshot.active[index],
               onOpen: onOpen,
               onArchive: onArchive,
-              onStart: onStart,
             ),
           ],
         ],
@@ -338,14 +288,12 @@ class _RoutinePlanTile extends StatelessWidget {
     required this.onOpen,
     this.onArchive,
     this.onRestore,
-    this.onStart,
   });
 
   final RoutinePlanSummary routine;
   final ValueChanged<RoutinePlanSummary> onOpen;
   final ValueChanged<RoutinePlanSummary>? onArchive;
   final ValueChanged<RoutinePlanSummary>? onRestore;
-  final ValueChanged<RoutinePlanSummary>? onStart;
 
   @override
   Widget build(BuildContext context) {
@@ -374,31 +322,19 @@ class _RoutinePlanTile extends StatelessWidget {
             ),
           ),
           onTap: routine.isArchived ? null : () => onOpen(routine),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!routine.isArchived)
-                IconButton(
-                  key: RoutinePlanListScreen.startButtonKey(routine.id),
-                  tooltip: l10n.routinePlansStartTooltip(routine.name),
-                  onPressed: () => onStart?.call(routine),
-                  icon: const Icon(Icons.play_arrow),
+          trailing: routine.isArchived
+              ? IconButton(
+                  key: RoutinePlanListScreen.restoreButtonKey(routine.id),
+                  tooltip: l10n.routinePlansRestore,
+                  onPressed: () => onRestore?.call(routine),
+                  icon: const Icon(Icons.restore),
+                )
+              : IconButton(
+                  key: RoutinePlanListScreen.archiveButtonKey(routine.id),
+                  tooltip: l10n.routinePlansArchive,
+                  onPressed: () => onArchive?.call(routine),
+                  icon: const Icon(Icons.archive_outlined),
                 ),
-              routine.isArchived
-                  ? IconButton(
-                      key: RoutinePlanListScreen.restoreButtonKey(routine.id),
-                      tooltip: l10n.routinePlansRestore,
-                      onPressed: () => onRestore?.call(routine),
-                      icon: const Icon(Icons.restore),
-                    )
-                  : IconButton(
-                      key: RoutinePlanListScreen.archiveButtonKey(routine.id),
-                      tooltip: l10n.routinePlansArchive,
-                      onPressed: () => onArchive?.call(routine),
-                      icon: const Icon(Icons.archive_outlined),
-                    ),
-            ],
-          ),
         ),
       ),
     );
