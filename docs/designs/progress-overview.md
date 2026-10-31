@@ -1,7 +1,7 @@
 # Progress Overview
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Draft
+*   **Status:** Approved
 *   **Date:** 2026-10-31
 
 --------------------------------------------------------------------------------
