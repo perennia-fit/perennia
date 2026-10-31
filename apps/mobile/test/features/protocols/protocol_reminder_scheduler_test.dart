@@ -408,7 +408,7 @@ void main() {
 
       final notification =
           platform.notifications[protocolReminderId(today, '09:00')]!;
-      expect(notification.title, 'Supplements');
+      expect(notification.title, 'Protocols');
       expect(notification.channelName, 'Reminders');
       expect(
         notification.body,
@@ -740,7 +740,7 @@ void main() {
           'pendingNotificationRequests' => <Object?>[
               <String, Object?>{
                 'id': -1,
-                'title': 'Supplements',
+                'title': 'Protocols',
                 'body': 'Planned for 12:00 AM',
                 'payload': protocolReminderPayload(protocolReminderIdEpoch),
               },
@@ -828,7 +828,7 @@ void main() {
             const ProtocolDayDate(year: 2030, month: 1, day: 2),
             '09:00',
           ),
-          title: 'Supplements',
+          title: 'Protocols',
           body: 'Planned for 9:00 AM',
           scheduledAt: at,
           payload: protocolReminderPayload(

@@ -15,6 +15,8 @@ import 'plan_labels.dart';
 import 'protocol_reminders_settings.dart';
 import 'protocol_screen.dart';
 import 'protocols_lock_screen.dart';
+import '../../../widgets/grouped_rows.dart';
+import '../controllers/protocols_lock_controller.dart';
 
 /// The Protocol Day view: a derived `Protocol Day` list, topped by the
 /// Planned list (D6) when the day has anything planned. Its FAB hands off to
@@ -110,11 +112,11 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
       backgroundColor: colors.background,
       appBar: AppBar(
         backgroundColor: colors.chrome,
-        title: const Text('Supplements'),
+        title: Text(context.l10n.protocolsDomainTitle),
         actions: [
           IconButton(
             key: ProtocolsDayView.protocolsButtonKey,
-            tooltip: 'Protocols',
+            tooltip: context.l10n.protocolsYourProtocols,
             icon: const Icon(Icons.list_alt_outlined),
             onPressed: () => _openProtocolList(context),
           ),
@@ -139,7 +141,7 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
         backgroundColor: colors.save,
         onPressed: () => _openCompoundList(context),
         icon: const Icon(Icons.add),
-        label: const Text('Log a Dose'),
+        label: Text(context.l10n.protocolsLogDose),
       ),
     );
   }
@@ -151,7 +153,7 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
   /// existing discreet surface rather than duplicating a picker here. The
   /// list logs on the selected Protocol Day (file 38).
   ///
-  /// Gated like every Supplements route: the Gate below on the Navigator
+  /// Gated like every Protocols route: the Gate below on the Navigator
   /// stack can't cover a route pushed over it, so without its own Gate the
   /// list stays visible when the app re-locks.
   void _openCompoundList(BuildContext context) {
@@ -175,6 +177,290 @@ class _ProtocolsDayViewState extends ConsumerState<ProtocolsDayView> {
     ).push(
       MaterialPageRoute<void>(
         builder: (_) => const ProtocolsLockGate(child: ProtocolListScreen()),
+      ),
+    );
+  }
+}
+
+/// The Protocols tab on Today: the selected day's planned doses and logged
+/// Doses, then the user's Protocols, under Today's own date header.
+///
+/// Protocols used to sit behind Log → "Supplement" and an app-bar icon,
+/// which hid the one part of the domain people come back to every day:
+/// what is due now, and where to set up the plan that reminds them. It is
+/// the same Planned list and log as the Protocol Day view, laid out inline
+/// so Today's list scrolls it, and it keeps the domain's discretion: the
+/// lock renders an unlock prompt in place of any Compound or Dose, and a
+/// device setting hides the tab altogether.
+class ProtocolsTodayBody extends ConsumerStatefulWidget {
+  const ProtocolsTodayBody({super.key, required this.localDate});
+
+  /// Today's selected date, which this tab follows instead of keeping a
+  /// date of its own.
+  final ProtocolDayDate localDate;
+
+  static const bodyKey = Key('protocols.today.body');
+  static const lockedKey = Key('protocols.today.locked');
+  static const introKey = Key('protocols.today.intro');
+  static const loggedKey = Key('protocols.today.logged');
+  static const yourProtocolsKey = Key('protocols.today.yourProtocols');
+  static const newProtocolButtonKey = Key('protocols.today.newProtocol');
+  static const logDoseButtonKey = Key('protocols.today.logDose');
+
+  @override
+  ConsumerState<ProtocolsTodayBody> createState() => _ProtocolsTodayBodyState();
+}
+
+class _ProtocolsTodayBodyState extends ConsumerState<ProtocolsTodayBody> {
+  Timer? _dayBoundaryTimer;
+  AppLifecycleListener? _lifecycleListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _dayBoundaryTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _refreshIfDayChanged(),
+    );
+    _lifecycleListener = AppLifecycleListener(onResume: _refreshIfDayChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _followTodayDate();
+      unawaited(
+        ref
+            .read(protocolDayControllerProvider.notifier)
+            .ensureOtcLibrarySeeded(),
+      );
+    });
+  }
+
+  @override
+  void didUpdateWidget(ProtocolsTodayBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.localDate != widget.localDate) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _followTodayDate();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _dayBoundaryTimer?.cancel();
+    _lifecycleListener?.dispose();
+    super.dispose();
+  }
+
+  void _followTodayDate() {
+    final selected = ref.read(selectedProtocolDayProvider);
+    if (selected != widget.localDate) {
+      ref.read(selectedProtocolDayProvider.notifier).select(widget.localDate);
+    }
+  }
+
+  void _refreshIfDayChanged() {
+    if (mounted) {
+      ref.read(protocolDayControllerProvider.notifier).refreshIfDayChanged();
+    }
+  }
+
+  void _logDose() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProtocolsLockGate(
+          child: CompoundListScreen(protocolDay: widget.localDate),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final lockState = ref.watch(protocolsLockControllerProvider).value;
+    // Nothing until the lock state is known: never a frame of content ahead
+    // of finding out a lock is set.
+    if (lockState == null) {
+      return const SizedBox.shrink(key: ProtocolsTodayBody.bodyKey);
+    }
+    if (lockState.isUnavailable || lockState.isLocked) {
+      return _TodayLockedPanel(unavailable: lockState.isUnavailable);
+    }
+
+    final dayState = ref.watch(protocolDayControllerProvider).value;
+    final protocols = ref.watch(protocolListControllerProvider).value ??
+        const <ProtocolSummaryRecord>[];
+    // Until the selected Protocol Day has caught up with Today's header,
+    // show nothing rather than another day's doses under this date.
+    if (dayState == null || dayState.day.localDate != widget.localDate) {
+      return const SizedBox.shrink(key: ProtocolsTodayBody.bodyKey);
+    }
+    final day = dayState.day;
+    final planned = dayState.plannedDay;
+    final showPlanned = planned != null && planned.hasPlanned;
+    final isFirstRun = protocols.isEmpty && !showPlanned && day.isEmpty;
+
+    return Column(
+      key: ProtocolsTodayBody.bodyKey,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _ReminderPermissionBanner(
+          padding: EdgeInsets.only(bottom: AppDimens.dense),
+        ),
+        if (isFirstRun)
+          const _TodayIntro()
+        else ...[
+          if (showPlanned) _PlannedList(plannedDay: planned),
+          if (!day.isEmpty) ...[
+            SectionLabel(text: l10n.protocolsLoggedHeading),
+            const SizedBox(height: AppDimens.dense),
+            GroupedRows(
+              key: ProtocolsTodayBody.loggedKey,
+              children: [
+                for (final dose in day.doses)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDimens.base,
+                    ),
+                    child: _DoseRow(dose: dose),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppDimens.base),
+          ] else if (!showPlanned) ...[
+            Text(
+              l10n.protocolsNothingToday,
+              key: ProtocolsDayView.emptyStateKey,
+              style: context.textStyles.body.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: AppDimens.base),
+          ],
+        ],
+        // On first run the plan is the filled action; afterwards Your
+        // protocols below carries New protocol, and logging stays here.
+        Wrap(
+          spacing: AppDimens.dense,
+          runSpacing: AppDimens.dense,
+          children: [
+            if (isFirstRun)
+              FilledButton.icon(
+                key: ProtocolsTodayBody.newProtocolButtonKey,
+                onPressed: () => openProtocolForm(context, ref),
+                icon: const Icon(Icons.add),
+                label: Text(l10n.protocolsNewProtocol),
+              ),
+            OutlinedButton.icon(
+              key: ProtocolsTodayBody.logDoseButtonKey,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: context.colors.textPrimary,
+              ),
+              onPressed: _logDose,
+              icon: const Icon(Icons.medication_outlined),
+              label: Text(l10n.protocolsLogDose),
+            ),
+          ],
+        ),
+        if (protocols.isNotEmpty) ...[
+          const SizedBox(height: AppDimens.base),
+          SectionLabel(text: l10n.protocolsYourProtocols),
+          const SizedBox(height: AppDimens.dense),
+          GroupedRows(
+            key: ProtocolsTodayBody.yourProtocolsKey,
+            children: [
+              for (final protocol in protocols)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimens.base,
+                  ),
+                  child: ProtocolRow(protocol: protocol),
+                ),
+              ListTile(
+                key: ProtocolsTodayBody.newProtocolButtonKey,
+                minTileHeight: AppDimens.touchTarget,
+                leading: const Icon(Icons.add),
+                title: Text(l10n.protocolsNewProtocol),
+                onTap: () => openProtocolForm(context, ref),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// First run of the tab: what a Protocol is for, in one line. Its actions
+/// (New protocol, Log a dose) follow in the tab's one button row.
+class _TodayIntro extends StatelessWidget {
+  const _TodayIntro();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Padding(
+      key: ProtocolsTodayBody.introKey,
+      padding: const EdgeInsets.only(bottom: AppDimens.base),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.protocolsIntroTitle, style: context.textStyles.h2),
+          const SizedBox(height: AppDimens.dense),
+          Text(
+            l10n.protocolsIntroMessage,
+            style: context.textStyles.body.copyWith(
+              color: context.colors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The tab's stand-in while Protocols are locked: no Compound or Dose, only
+/// the shared unlock form, so a glance at a lent phone shows nothing.
+class _TodayLockedPanel extends StatelessWidget {
+  const _TodayLockedPanel({required this.unavailable});
+
+  final bool unavailable;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final colors = context.colors;
+    return Padding(
+      key: ProtocolsTodayBody.lockedKey,
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.base),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Icon(Icons.lock_outline, size: 40, color: colors.textSecondary),
+          const SizedBox(height: AppDimens.dense),
+          Text(
+            unavailable
+                ? l10n.protocolsLockUnavailableTitle
+                : l10n.protocolsLockedTitle,
+            textAlign: TextAlign.center,
+            style: context.textStyles.h2,
+          ),
+          const SizedBox(height: AppDimens.base),
+          if (unavailable)
+            Text(
+              l10n.protocolsLockUnavailableMessage,
+              textAlign: TextAlign.center,
+              style: context.textStyles.body.copyWith(
+                color: colors.textSecondary,
+              ),
+            )
+          else
+            const ProtocolsUnlockForm(),
+        ],
       ),
     );
   }
@@ -253,7 +539,17 @@ class _ProtocolDayBody extends StatelessWidget {
 /// none. "Allow" asks through the one permission path (D5), and the
 /// reconciler runs on the answer.
 class _ReminderPermissionBanner extends ConsumerWidget {
-  const _ReminderPermissionBanner();
+  const _ReminderPermissionBanner({
+    this.padding = const EdgeInsets.fromLTRB(
+      AppDimens.base,
+      0,
+      AppDimens.base,
+      AppDimens.dense,
+    ),
+  });
+
+  /// The day view pads it to its edges; Today's list already has gutters.
+  final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -266,12 +562,7 @@ class _ReminderPermissionBanner extends ConsumerWidget {
 
     return Padding(
       key: ProtocolsDayView.reminderPermissionBannerKey,
-      padding: const EdgeInsets.fromLTRB(
-        AppDimens.base,
-        0,
-        AppDimens.base,
-        AppDimens.dense,
-      ),
+      padding: padding,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: colors.surface,

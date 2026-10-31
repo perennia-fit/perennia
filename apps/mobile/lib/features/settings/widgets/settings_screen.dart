@@ -4,8 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../activity/widgets/activity_feed_screen.dart';
-import '../../protocols/widgets/compound_list_screen.dart';
-import '../../protocols/widgets/protocols_lock_screen.dart';
 import '../../sync/controllers/sync_status_controller.dart';
 import '../repositories/integration_consent_repository.dart';
 import '../repositories/settings_repository.dart';
@@ -64,7 +62,6 @@ class SettingsScreen extends ConsumerWidget {
 
   /// Deliberately a quiet root row, not a sub-screen setting: same neutral
   /// copy and lock gate as before the hub split (/0035).
-  static const supplementsTileKey = Key('settings.tracking.supplements.tile');
 
   // Compatibility aliases: these controls moved to focused sub-screens; the
   // key constants stay addressable here so tests and tooling keep one stable
@@ -264,16 +261,6 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: AppDimens.base),
             _HubGroup(
               children: [
-                SettingsNavTile(
-                  key: supplementsTileKey,
-                  icon: Icons.medication_outlined,
-                  title: 'Supplements',
-                  subtitle: 'Log what you take and review it by day',
-                  onTap: () => _push(
-                    context,
-                    const ProtocolsLockGate(child: CompoundListScreen()),
-                  ),
-                ),
                 SettingsNavTile(
                   key: aboutTileKey,
                   icon: Icons.info_outline,

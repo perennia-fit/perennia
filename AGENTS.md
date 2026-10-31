@@ -87,15 +87,17 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
 ### Screen map
 
 - **Today root** — the daily authored-log dashboard: date header with swipe/arrow
-  navigation, `Training | Nutrition` day views, contextual Routine access, and one
-  **Log** action for Workout, Food, and discreet Supplement logging. Training renders
+  navigation, `Training | Nutrition | Protocols` day views, contextual Routine access,
+  and one **Log** action for Workout, Food, and Dose. Protocols shows the day's
+  planned and logged doses behind its lock, and a device setting hides the tab for
+  users who want it out of sight. Training renders
   the exercise log as cards (exercise name + set rows of value × reps), with colored
   edge bars for groups. Root navigation is **Today | Progress | Library** —
   organized by user intent, not by data type.
 - **Progress root** — review and monitoring: training progress, Body Tracker's
   curated manual-entry view, and the wider Health Metrics explorer.
 - **Library root** — reusable plans and catalogues grouped by authored domain;
-  Routines live under Training and the discreet Compound list under Supplements.
+  Routines live under Training, and Protocols and Compounds under Protocols.
 - **Training Screen** — per-exercise set entry, three tabs: **Track | History |
   Graph**. Track = large value fields with ± stepper buttons, prefilled from the
   previous session; **Save/Clear** buttons that become **Update/Delete** when an

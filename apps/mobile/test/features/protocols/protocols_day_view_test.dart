@@ -1022,6 +1022,126 @@ void main() {
       },
     );
   });
+
+  group("Today's Protocols tab", () {
+    const today = ProtocolDayDate(year: 2026, month: 6, day: 30);
+    Widget tab() => const Scaffold(
+          body: SingleChildScrollView(
+            padding: EdgeInsets.all(16),
+            child: ProtocolsTodayBody(localDate: today),
+          ),
+        );
+
+    testWidgets(
+        'first run explains Protocols and offers New protocol and Log a dose',
+        (tester) async {
+      await _pumpView(
+        tester,
+        _emptyDay(),
+        home: tab(),
+        overrides: _protocolListOverrides(withProtocol: false),
+      );
+      await _pumpUntilFound(tester, find.byKey(ProtocolsTodayBody.introKey));
+
+      expect(find.text('Plan what you take'), findsOneWidget);
+      expect(
+        find.byKey(ProtocolsTodayBody.newProtocolButtonKey),
+        findsOneWidget,
+      );
+      expect(find.byKey(ProtocolsTodayBody.logDoseButtonKey), findsOneWidget);
+    });
+
+    testWidgets(
+        "shows the day's logged Doses and the user's Protocols, with New "
+        'protocol at the end of the list', (tester) async {
+      await _pumpView(
+        tester,
+        _dayWithDoses(),
+        home: tab(),
+        overrides: _protocolListOverrides(),
+      );
+      await _pumpUntilFound(tester, find.text('Magnesium'));
+
+      expect(find.byKey(ProtocolsDayView.doseRowKey('dose-1')), findsOneWidget);
+      expect(find.byKey(ProtocolsTodayBody.introKey), findsNothing);
+      expect(
+        find.byKey(ProtocolsTodayBody.yourProtocolsKey),
+        findsOneWidget,
+      );
+      expect(find.text('Sleep stack'), findsOneWidget);
+      expect(find.text('Magnesium'), findsOneWidget);
+      expect(find.text('New protocol'), findsOneWidget);
+    });
+
+    testWidgets('a set lock shows only the unlock form, never a Dose',
+        (tester) async {
+      final lockStore = _FakeLockStore()
+        ..enabled = true
+        ..pinHash = 'hash';
+      await _pumpView(
+        tester,
+        _dayWithDoses(),
+        home: tab(),
+        lockStore: lockStore,
+        overrides: [
+          ..._protocolListOverrides(),
+          biometricAuthenticatorProvider.overrideWith((ref) => _NoBiometrics()),
+        ],
+      );
+      await _pumpUntilFound(tester, find.byKey(ProtocolsTodayBody.lockedKey));
+
+      expect(find.text('Protocols are locked'), findsOneWidget);
+      expect(find.byKey(ProtocolsUnlockForm.pinFieldKey), findsOneWidget);
+      expect(find.text('Creatine'), findsNothing);
+      expect(find.byKey(ProtocolsTodayBody.logDoseButtonKey), findsNothing);
+    });
+
+    testWidgets('Log a dose opens the Compound list on the tab\'s date',
+        (tester) async {
+      await _pumpView(
+        tester,
+        _emptyDay(),
+        home: tab(),
+        compounds: _seededCompounds(),
+        overrides: _protocolListOverrides(withProtocol: false),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolsTodayBody.logDoseButtonKey),
+      );
+
+      await tester.tap(find.byKey(ProtocolsTodayBody.logDoseButtonKey));
+      await tester.pumpAndSettle();
+
+      final list = tester.widget<CompoundListScreen>(
+        find.byType(CompoundListScreen),
+      );
+      expect(list.protocolDay, today);
+    });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('meets accessibility guidelines in ${brightness.name}',
+          (tester) async {
+        await _pumpView(
+          tester,
+          _dayWithDoses(),
+          home: tab(),
+          theme: brightness == Brightness.dark
+              ? AppTheme.dark()
+              : AppTheme.light(),
+          overrides: _protocolListOverrides(),
+        );
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsTodayBody.yourProtocolsKey),
+        );
+
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      });
+    }
+  });
 }
 
 /// Seeds the CUJ 1 stack in the test's own zone, with frames pumped until it
@@ -1619,4 +1739,40 @@ Future<void> _pumpUntilFound(
     }
   }
   fail('Could not find $finder.');
+}
+
+/// The Protocols tab's list of Protocols, faked so it never reaches a real
+/// repository: one "Sleep stack" holding Magnesium, or none.
+List<Override> _protocolListOverrides({bool withProtocol = true}) {
+  return <Override>[
+    protocolListControllerProvider.overrideWith(
+      () => _StaticProtocolList(<ProtocolSummaryRecord>[
+        if (withProtocol)
+          ProtocolSummaryRecord(
+            id: 'protocol-sleep',
+            name: 'Sleep stack',
+            startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
+            compoundIds: const <String>['compound-magnesium'],
+          ),
+      ]),
+    ),
+    protocolMemberCompoundNamesProvider(
+      CompoundNameLookupRequest(const <String>['compound-magnesium']),
+    ).overrideWith(
+      (ref) => Stream<Map<String, String>>.value(
+        const <String, String>{'compound-magnesium': 'Magnesium'},
+      ),
+    ),
+  ];
+}
+
+class _StaticProtocolList extends ProtocolListController {
+  _StaticProtocolList(this.protocols);
+
+  final List<ProtocolSummaryRecord> protocols;
+
+  @override
+  Stream<List<ProtocolSummaryRecord>> build() {
+    return Stream<List<ProtocolSummaryRecord>>.value(protocols);
+  }
 }

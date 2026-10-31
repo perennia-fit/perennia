@@ -11,9 +11,9 @@ import '../../focus/controllers/focus_providers.dart';
 import '../../focus/widgets/focus_manager_screen.dart';
 import '../../focus/widgets/focus_visuals.dart';
 import '../../metrics/widgets/metrics_screen.dart';
-import '../../protocols/controllers/protocols_day_controller.dart';
 import '../../protocols/widgets/compound_list_screen.dart';
 import '../../protocols/widgets/protocols_day_view.dart';
+import '../../protocols/widgets/protocol_screen.dart';
 import '../../protocols/widgets/protocols_lock_screen.dart';
 import '../../routine_plans/widgets/routine_plan_list_screen.dart';
 import '../../template_materialize/controllers/template_materialize_controller.dart';
@@ -48,7 +48,7 @@ class HomeScreen extends ConsumerWidget {
   static const logButtonKey = Key('home.log');
   static const logWorkoutKey = Key('home.log.workout');
   static const logFoodKey = Key('home.log.food');
-  static const logSupplementKey = Key('home.log.supplement');
+  static const logDoseKey = Key('home.log.dose');
   static const routinePlansButtonKey = Key('home.routinePlans');
   static const workoutTemplatesButtonKey = Key('home.workoutTemplates');
   static const focusesButtonKey = Key('home.focuses');
@@ -56,8 +56,12 @@ class HomeScreen extends ConsumerWidget {
   static const domainToggleKey = Key('home.domainToggle');
   static const trainingDomainButtonKey = Key('home.domain.training');
   static const nutritionDomainButtonKey = Key('home.domain.nutrition');
+  static const protocolsDomainButtonKey = Key('home.domain.protocols');
   static const trainingDomainBodyKey = Key('home.domainBody.training');
   static const nutritionDomainBodyKey = Key('home.domainBody.nutrition');
+  static const protocolsDomainBodyKey = Key('home.domainBody.protocols');
+  static const libraryProtocolsButtonKey = Key('home.library.protocols');
+  static const libraryCompoundsButtonKey = Key('home.library.compounds');
   static const dayHeaderKey = Key('home.dayHeader');
   static const previousDayButtonKey = Key('home.previousDay');
   static const nextDayButtonKey = Key('home.nextDay');
@@ -108,9 +112,16 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(homeControllerProvider);
     final selectedDestination = ref.watch(selectedHomeDestinationProvider);
-    final selectedDomain = ref.watch(selectedHomeDomainProvider);
     final settings =
         ref.watch(settingsControllerProvider).value ?? AppSettings.defaults;
+    final showProtocols = settings.showProtocolsOnToday;
+    final pickedDomain = ref.watch(selectedHomeDomainProvider);
+    // Hiding the tab while it is selected falls back to Training rather
+    // than leaving Protocols showing behind a toggle that no longer offers it.
+    final selectedDomain =
+        !showProtocols && pickedDomain == HomeDomain.protocols
+            ? HomeDomain.training
+            : pickedDomain;
 
     Future<void> startWorkout(
       BuildContext navigationContext, {
@@ -140,19 +151,20 @@ class HomeScreen extends ConsumerWidget {
       }
     }
 
-    void openSupplements(BuildContext navigationContext) {
+    // Log → Dose goes straight to picking what was taken, on Today's date:
+    // the repeat-dose path, not a detour through a day view.
+    void openDoseLog(BuildContext navigationContext) {
       final selectedDate = ref.read(selectedTrainingDayProvider);
-      ref.read(selectedProtocolDayProvider.notifier).select(
-            ProtocolDayDate(
-              year: selectedDate.year,
-              month: selectedDate.month,
-              day: selectedDate.day,
-            ),
-          );
       Navigator.of(navigationContext).push(
         MaterialPageRoute<void>(
-          builder: (_) => const ProtocolsLockGate(
-            child: ProtocolsDayView(),
+          builder: (_) => ProtocolsLockGate(
+            child: CompoundListScreen(
+              protocolDay: ProtocolDayDate(
+                year: selectedDate.year,
+                month: selectedDate.month,
+                day: selectedDate.day,
+              ),
+            ),
           ),
         ),
       );
@@ -281,6 +293,7 @@ class HomeScreen extends ConsumerWidget {
                   ),
                   child: _HomeDomainToggle(
                     selectedDomain: selectedDomain,
+                    showProtocols: showProtocols,
                     onChanged: (domain) {
                       ref
                           .read(selectedHomeDomainProvider.notifier)
@@ -299,7 +312,7 @@ class HomeScreen extends ConsumerWidget {
                 context,
                 onStartWorkout: openStartSheet,
                 onOpenFood: openFood,
-                onOpenSupplements: openSupplements,
+                onOpenDose: openDoseLog,
               ),
               icon: const Icon(Icons.add),
               label: Text(l10n.homeLogAction),
@@ -376,9 +389,20 @@ class _HomeContent extends StatelessWidget {
                   ],
                 ),
               )
-            else
+            else if (selectedDomain == HomeDomain.nutrition)
               _NutritionHomeBody(
                 localDate: summary.selectedDate,
+              )
+            else
+              KeyedSubtree(
+                key: HomeScreen.protocolsDomainBodyKey,
+                child: ProtocolsTodayBody(
+                  localDate: ProtocolDayDate(
+                    year: summary.selectedDate.year,
+                    month: summary.selectedDate.month,
+                    day: summary.selectedDate.day,
+                  ),
+                ),
               ),
           ],
         ),
@@ -498,7 +522,7 @@ Future<void> _showLogSheet(
   BuildContext context, {
   required Future<void> Function(BuildContext context) onStartWorkout,
   required void Function(BuildContext context) onOpenFood,
-  required void Function(BuildContext context) onOpenSupplements,
+  required void Function(BuildContext context) onOpenDose,
 }) {
   final navigator = Navigator.of(context);
   return _showTitledActionSheet(
@@ -526,12 +550,12 @@ Future<void> _showLogSheet(
           },
         ),
         ListTile(
-          key: HomeScreen.logSupplementKey,
+          key: HomeScreen.logDoseKey,
           leading: const Icon(Icons.medication_outlined),
-          title: Text(l10n.homeLogSupplement),
+          title: Text(l10n.homeLogDose),
           onTap: () {
             Navigator.of(sheetContext).pop();
-            onOpenSupplements(navigator.context);
+            onOpenDose(navigator.context);
           },
         ),
       ];
@@ -679,16 +703,39 @@ class _LibraryHomeContent extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppDimens.base),
-          _LibrarySectionHeader(title: l10n.homeLibrarySupplementsSection),
+          _LibrarySectionHeader(title: l10n.homeLibraryProtocolsSection),
           const SizedBox(height: AppDimens.dense),
           Card(
             margin: EdgeInsets.zero,
-            child: SettingsNavTile(
-              icon: Icons.medication_outlined,
-              title: l10n.navSupplements,
-              onTap: () {
-                Navigator.of(context).pushNamed(CompoundListScreen.routeName);
-              },
+            child: Column(
+              children: [
+                SettingsNavTile(
+                  key: HomeScreen.libraryProtocolsButtonKey,
+                  icon: Icons.event_repeat_outlined,
+                  title: l10n.protocolsDomainTitle,
+                  subtitle: l10n.protocolsLibrarySubtitle,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ProtocolsLockGate(
+                          child: ProtocolListScreen(),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(),
+                SettingsNavTile(
+                  key: HomeScreen.libraryCompoundsButtonKey,
+                  icon: Icons.medication_outlined,
+                  title: l10n.navCompounds,
+                  subtitle: l10n.compoundsLibrarySubtitle,
+                  onTap: () {
+                    Navigator.of(context)
+                        .pushNamed(CompoundListScreen.routeName);
+                  },
+                ),
+              ],
             ),
           ),
         ],
@@ -806,10 +853,12 @@ class _AccountStatusTile extends ConsumerWidget {
 class _HomeDomainToggle extends StatelessWidget {
   const _HomeDomainToggle({
     required this.selectedDomain,
+    required this.showProtocols,
     required this.onChanged,
   });
 
   final HomeDomain selectedDomain;
+  final bool showProtocols;
   final ValueChanged<HomeDomain> onChanged;
 
   @override
@@ -819,7 +868,7 @@ class _HomeDomainToggle extends StatelessWidget {
     return Semantics(
       label: l10n.homeDomainToggleLabel,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
+        constraints: BoxConstraints(maxWidth: showProtocols ? 480 : 360),
         child: SegmentedButton<HomeDomain>(
           key: HomeScreen.domainToggleKey,
           selected: <HomeDomain>{selectedDomain},
@@ -839,6 +888,14 @@ class _HomeDomainToggle extends StatelessWidget {
                 key: HomeScreen.nutritionDomainButtonKey,
               ),
             ),
+            if (showProtocols)
+              ButtonSegment<HomeDomain>(
+                value: HomeDomain.protocols,
+                label: Text(
+                  l10n.protocolsDomainTitle,
+                  key: HomeScreen.protocolsDomainButtonKey,
+                ),
+              ),
           ],
           onSelectionChanged: (selection) {
             onChanged(selection.single);

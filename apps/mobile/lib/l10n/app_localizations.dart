@@ -148,11 +148,11 @@ abstract class AppLocalizations {
   /// **'TRAINING'**
   String get homeLibraryTrainingSection;
 
-  /// No description provided for @homeLibrarySupplementsSection.
+  /// No description provided for @homeLibraryProtocolsSection.
   ///
   /// In en, this message translates to:
-  /// **'SUPPLEMENTS'**
-  String get homeLibrarySupplementsSection;
+  /// **'PROTOCOLS'**
+  String get homeLibraryProtocolsSection;
 
   /// No description provided for @homeCreateExercise.
   ///
@@ -256,11 +256,11 @@ abstract class AppLocalizations {
   /// **'Food'**
   String get homeLogFood;
 
-  /// No description provided for @homeLogSupplement.
+  /// No description provided for @homeLogDose.
   ///
   /// In en, this message translates to:
-  /// **'Supplement'**
-  String get homeLogSupplement;
+  /// **'Dose'**
+  String get homeLogDose;
 
   /// No description provided for @homeDomainToggleLabel.
   ///
@@ -827,6 +827,102 @@ abstract class AppLocalizations {
   /// **'Routines'**
   String get navRoutines;
 
+  /// No description provided for @navCompounds.
+  ///
+  /// In en, this message translates to:
+  /// **'Compounds'**
+  String get navCompounds;
+
+  /// No description provided for @protocolsDomainTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Protocols'**
+  String get protocolsDomainTitle;
+
+  /// No description provided for @protocolsLibrarySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What you take, when, and for how long'**
+  String get protocolsLibrarySubtitle;
+
+  /// No description provided for @compoundsLibrarySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything you take, and each one\'s history'**
+  String get compoundsLibrarySubtitle;
+
+  /// No description provided for @protocolsYourProtocols.
+  ///
+  /// In en, this message translates to:
+  /// **'Your protocols'**
+  String get protocolsYourProtocols;
+
+  /// No description provided for @protocolsNewProtocol.
+  ///
+  /// In en, this message translates to:
+  /// **'New protocol'**
+  String get protocolsNewProtocol;
+
+  /// No description provided for @protocolsLogDose.
+  ///
+  /// In en, this message translates to:
+  /// **'Log a dose'**
+  String get protocolsLogDose;
+
+  /// No description provided for @protocolsLoggedHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged'**
+  String get protocolsLoggedHeading;
+
+  /// No description provided for @protocolsNothingToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing planned or logged on this day.'**
+  String get protocolsNothingToday;
+
+  /// No description provided for @protocolsIntroTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan what you take'**
+  String get protocolsIntroTitle;
+
+  /// No description provided for @protocolsIntroMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'A protocol lists what you take and when. With times set, it can remind you when each dose is due.'**
+  String get protocolsIntroMessage;
+
+  /// No description provided for @protocolsLockedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Protocols are locked'**
+  String get protocolsLockedTitle;
+
+  /// No description provided for @protocolsLockUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Protocols lock unavailable'**
+  String get protocolsLockUnavailableTitle;
+
+  /// No description provided for @protocolsLockUnavailableMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Protocols stay hidden because the device\'s secure storage could not be read.'**
+  String get protocolsLockUnavailableMessage;
+
+  /// No description provided for @privacyShowProtocolsOnToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Protocols on Today'**
+  String get privacyShowProtocolsOnToday;
+
+  /// No description provided for @privacyShowProtocolsOnTodaySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Off hides the tab on this device. Protocols stay in Library.'**
+  String get privacyShowProtocolsOnTodaySubtitle;
+
   /// No description provided for @navSettings.
   ///
   /// In en, this message translates to:
@@ -844,12 +940,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Metrics'**
   String get navMetrics;
-
-  /// No description provided for @navSupplements.
-  ///
-  /// In en, this message translates to:
-  /// **'Supplements'**
-  String get navSupplements;
 
   /// No description provided for @agentKeysSignedOutTitle.
   ///
@@ -4517,7 +4607,7 @@ abstract class AppLocalizations {
   /// No description provided for @protocolReminderTitle.
   ///
   /// In en, this message translates to:
-  /// **'Supplements'**
+  /// **'Protocols'**
   String get protocolReminderTitle;
 
   /// No description provided for @protocolReminderBody.
@@ -4577,7 +4667,7 @@ abstract class AppLocalizations {
   /// No description provided for @protocolRemindersSettingsTile.
   ///
   /// In en, this message translates to:
-  /// **'Supplement reminders'**
+  /// **'Protocol reminders'**
   String get protocolRemindersSettingsTile;
 
   /// No description provided for @protocolRemindersSettingsTileSubtitle.
@@ -4589,7 +4679,7 @@ abstract class AppLocalizations {
   /// No description provided for @protocolRemindersSettingsTitle.
   ///
   /// In en, this message translates to:
-  /// **'Supplement reminders'**
+  /// **'Protocol reminders'**
   String get protocolRemindersSettingsTitle;
 
   /// No description provided for @protocolRemindersDeviceSwitch.

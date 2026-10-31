@@ -8,6 +8,7 @@ import '../repositories/home_repository.dart';
 enum HomeDomain {
   training,
   nutrition,
+  protocols,
 }
 
 enum HomeDestination {
