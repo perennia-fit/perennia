@@ -1,7 +1,7 @@
 # Unified Food Search
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review
+*   **Status:** Approved
 *   **Date:** 2026-10-31
 
 --------------------------------------------------------------------------------

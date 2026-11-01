@@ -1,7 +1,7 @@
 # Food Aisles
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review
+*   **Status:** Approved
 *   **Date:** 2026-10-31 (first draft 2026-10-30; revised after review, and again for the definitions experiment)
 
 --------------------------------------------------------------------------------
