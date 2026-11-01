@@ -181,7 +181,7 @@ const DoseTimezoneOffsetReadSchema = z.number().int().nullable().openapi({
 const AGENT_PROTOCOLS_MIN_OFFSET_MINUTES = -720;
 const AGENT_PROTOCOLS_MAX_OFFSET_MINUTES = 840;
 
-const LocalDateSchema = z
+export const LocalDateSchema = z
   .string()
   .refine(isValidLocalDate, { message: "Must be a real YYYY-MM-DD date." })
   .openapi({
@@ -1079,7 +1079,7 @@ export const AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS = 366;
  * compiling instead of the response schema refusing the core's output with a
  * 500 at run time.
  */
-function unionValues<T extends string>() {
+export function unionValues<T extends string>() {
   return <const V extends readonly [T, ...T[]]>(
     values: V & ([Exclude<T, V[number]>] extends [never] ? unknown : { missing: Exclude<T, V[number]> })
   ): V => values;

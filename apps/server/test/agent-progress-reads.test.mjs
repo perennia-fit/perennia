@@ -1,0 +1,552 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import test from "node:test";
+
+import {
+  applyMigrations,
+  createAgentMcpServer,
+  createApp,
+  createDatabaseClient,
+  createDrizzleAgentProgressReadStore,
+  createDrizzleAgentSettingsStore,
+  schema
+} from "../src/index.ts";
+
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl && process.env.CI === "true") {
+  throw new Error("DATABASE_URL must be set for server Postgres integration tests.");
+}
+
+const skip = databaseUrl ? false : "DATABASE_URL is not set.";
+
+// CUJ 13 (docs/designs/progress-overview.md): the week of Monday 26 October to
+// Sunday 1 November 2026 against the weekly Routine "Hybrid block" (Monday
+// Lower, Tuesday Run intervals, Thursday Upper, Saturday Long run), asked
+// about October with today Sunday 1 November.
+test(
+  "CUJ 13: the training-days read returns October's Trained Days, time per Focus and this week's statuses",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    try {
+      await seedUser(database, userId);
+      await seedHybridBlock(database, userId);
+      await seedWorkouts(database, userId, [
+        // This week (CUJ 1).
+        workout("w-mon", "2026-10-26", "06:00", "07:00", "f-weights", "t-lower"),
+        workout("w-tue", "2026-10-27", "06:00", "06:45", "f-endurance", "t-run"),
+        workout("w-wed", "2026-10-28", "07:00", "07:30", null, null),
+        workout("w-sat", "2026-10-31", "08:00", "09:00", "f-endurance", "t-spin"),
+        // Earlier in October: two Focuses on one date, and an Open Workout.
+        workout("w-oct5-am", "2026-10-05", "06:00", "07:00", "f-weights", "t-lower"),
+        workout("w-oct5-pm", "2026-10-05", "18:00", "18:20", "f-mobility", null),
+        workout("w-oct20-open", "2026-10-20", "06:00", null, "f-weights", null),
+        // Started from a template and left with only incomplete Sets (CUJ 5).
+        workout("w-oct12-abandoned", "2026-10-12", "06:00", "06:05", "f-weights", "t-lower", {
+          sets: [{ is_completed: false }]
+        }),
+        // Its only completed Set is deleted.
+        workout("w-oct13-deleted-set", "2026-10-13", "06:00", "06:30", null, null, {
+          sets: [{ is_completed: true, deleted: true }]
+        }),
+        // Outside the range and outside the week.
+        workout("w-sep30", "2026-09-30", "06:00", "07:00", "f-weights", null)
+      ]);
+
+      const result = await progressStore(database).readTrainingDays({
+        userId,
+        from: "2026-10-01",
+        to: "2026-10-31",
+        today: "2026-11-01"
+      });
+
+      assert.equal(result.days.length, 31);
+      assert.equal(result.days[0].localDate, "2026-10-01");
+      assert.equal(result.days[30].localDate, "2026-10-31");
+      const trained = result.days.filter((day) => day.workoutCount > 0);
+      assert.deepEqual(trained, [
+        {
+          localDate: "2026-10-05",
+          workoutCount: 2,
+          secondsByFocus: { "f-weights": 3600, "f-mobility": 1200 }
+        },
+        // An Open Workout counts but adds no time and no key.
+        { localDate: "2026-10-20", workoutCount: 1, secondsByFocus: {} },
+        { localDate: "2026-10-26", workoutCount: 1, secondsByFocus: { "f-weights": 3600 } },
+        { localDate: "2026-10-27", workoutCount: 1, secondsByFocus: { "f-endurance": 2700 } },
+        { localDate: "2026-10-28", workoutCount: 1, secondsByFocus: { none: 1800 } },
+        { localDate: "2026-10-31", workoutCount: 1, secondsByFocus: { "f-endurance": 3600 } }
+      ]);
+      assert.ok(
+        result.days.every((day) => day.workoutCount > 0 || Object.keys(day.secondsByFocus).length === 0)
+      );
+      assert.equal(result.trainedDayCount, 6);
+
+      assert.deepEqual(result.week, {
+        weekStart: "2026-10-26",
+        comparedRoutineIds: [`${userId}-hybrid`],
+        days: [
+          weekDay("2026-10-26", "done", 1, 1, 1),
+          weekDay("2026-10-27", "done", 1, 1, 1),
+          weekDay("2026-10-28", "trained", 0, 0, 1),
+          weekDay("2026-10-29", "not_done", 1, 0, 0),
+          weekDay("2026-10-30", "rest", 0, 0, 0),
+          weekDay("2026-10-31", "done_differently", 1, 0, 1),
+          weekDay("2026-11-01", "rest", 0, 0, 0)
+        ],
+        counts: { done: 2, partlyDone: 0, doneDifferently: 1, notDone: 1, trained: 1 }
+      });
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "a Set payload without is_completed is not performed, and a Set in a deleted Workout is ignored",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    try {
+      await seedUser(database, userId);
+      await seedHybridBlock(database, userId);
+      await seedWorkouts(database, userId, [
+        // Linked to the planned template, so it would be Done if it counted.
+        workout("w-mon-no-flag", "2026-10-26", "06:00", "07:00", "f-weights", "t-lower", {
+          sets: [{}]
+        }),
+        workout("w-tue-deleted", "2026-10-27", "06:00", "06:45", "f-endurance", "t-run", {
+          deleted: true
+        })
+      ]);
+
+      const result = await progressStore(database).readTrainingDays({
+        userId,
+        from: "2026-10-26",
+        to: "2026-10-28",
+        today: "2026-10-28"
+      });
+
+      assert.deepEqual(
+        result.days.map((day) => [day.localDate, day.workoutCount, day.secondsByFocus]),
+        [
+          ["2026-10-26", 0, {}],
+          ["2026-10-27", 0, {}],
+          ["2026-10-28", 0, {}]
+        ]
+      );
+      assert.equal(result.trainedDayCount, 0);
+      assert.deepEqual(
+        result.week.days.slice(0, 3).map((day) => [day.localDate, day.status, day.workoutCount]),
+        [
+          ["2026-10-26", "not_done", 0],
+          ["2026-10-27", "not_done", 0],
+          ["2026-10-28", "rest", 0]
+        ]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "a Sunday weekStartDay starts the week on the Sunday holding today",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    try {
+      await seedUser(database, userId);
+      await seedHybridBlock(database, userId);
+      await database.db.insert(schema.userSettings).values(
+        opaqueRow({
+          id: `user-settings:${userId}`,
+          userId,
+          payload: { week_start_day: "sunday" }
+        })
+      );
+      await seedWorkouts(database, userId, [
+        workout("w-sun", "2026-11-01", "06:00", "07:00", "f-weights", null),
+        // Before the Sunday week, so only the range sees it.
+        workout("w-sat", "2026-10-31", "08:00", "09:00", "f-endurance", "t-long")
+      ]);
+
+      const result = await progressStore(database).readTrainingDays({
+        userId,
+        from: "2026-10-31",
+        to: "2026-11-01",
+        today: "2026-11-01"
+      });
+
+      assert.equal(result.trainedDayCount, 2);
+      assert.equal(result.week.weekStart, "2026-11-01");
+      assert.deepEqual(
+        result.week.days.map((day) => [day.localDate, day.status]),
+        [
+          ["2026-11-01", "trained"],
+          ["2026-11-02", "planned"],
+          ["2026-11-03", "planned"],
+          ["2026-11-04", "rest"],
+          ["2026-11-05", "planned"],
+          ["2026-11-06", "rest"],
+          ["2026-11-07", "planned"]
+        ]
+      );
+      assert.deepEqual(result.week.counts, {
+        done: 0,
+        partlyDone: 0,
+        doneDifferently: 0,
+        notDone: 0,
+        trained: 1
+      });
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test("the training-days read refuses a bad range with 400 before the store, as REST and MCP", async () => {
+  const { app, calls } = progressApp();
+  const today = utcToday();
+  const refused = [
+    // 367 dates, both ends included.
+    { fromLocalDate: addDays(today, -366), toLocalDate: today, today },
+    // fromLocalDate after toLocalDate.
+    { fromLocalDate: today, toLocalDate: addDays(today, -1), today },
+    // toLocalDate after today.
+    { fromLocalDate: today, toLocalDate: addDays(today, 1), today },
+    // today two days from the server's UTC date.
+    {
+      fromLocalDate: addDays(today, -1),
+      toLocalDate: addDays(today, 2),
+      today: addDays(today, 2)
+    }
+  ];
+  for (const query of refused) {
+    const response = await agentGet(app, trainingDaysPath(query));
+    assert.equal(response.status, 400, JSON.stringify(query));
+    const body = await response.json();
+    assert.equal(body.code, "agent_progress_read_invalid_range", JSON.stringify(query));
+    assert.ok(body.message.length > 0);
+
+    const tool = await callTrainingDaysTool(app, query);
+    assert.equal(tool.isError, true, JSON.stringify(query));
+    assert.equal(tool.structuredContent.code, "agent_progress_read_invalid_range");
+    assert.equal(tool.structuredContent.message, body.message);
+  }
+  assert.deepEqual(calls, []);
+
+  // 366 dates, both ends included, is accepted.
+  const accepted = { fromLocalDate: addDays(today, -365), toLocalDate: today, today };
+  const response = await agentGet(app, trainingDaysPath(accepted));
+  assert.equal(response.status, 200);
+  const tool = await callTrainingDaysTool(app, accepted);
+  assert.equal(tool.isError, undefined);
+  assert.deepEqual(tool.structuredContent, await response.json());
+  assert.deepEqual(calls, [
+    { userId: "user-1", from: accepted.fromLocalDate, to: today, today },
+    { userId: "user-1", from: accepted.fromLocalDate, to: today, today }
+  ]);
+});
+
+test("the training-days read refuses a date that is not a real YYYY-MM-DD date in the validator's own 400 body", async () => {
+  const { app, calls } = progressApp();
+  const today = utcToday();
+  for (const bad of ["2026-02-30", "2026-13-01", "26-10-01", ""]) {
+    for (const query of [
+      { fromLocalDate: bad, toLocalDate: today, today },
+      { fromLocalDate: today, toLocalDate: bad, today },
+      { fromLocalDate: today, toLocalDate: today, today: bad }
+    ]) {
+      const response = await agentGet(app, trainingDaysPath(query));
+      assert.equal(response.status, 400, JSON.stringify(query));
+      const body = await response.json();
+      assert.equal(body.success, false, JSON.stringify(query));
+      assert.equal(body.code, undefined, JSON.stringify(query));
+    }
+  }
+  // today is required.
+  const missing = await agentGet(
+    app,
+    trainingDaysPath({ fromLocalDate: today, toLocalDate: today })
+  );
+  assert.equal(missing.status, 400);
+  assert.deepEqual(calls, []);
+});
+
+test("the training-days read answers 503 when the progress store is not configured", async () => {
+  const agentApiKeyStore = createAgentKeyStore("user-1");
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore,
+    createMcpServer: () =>
+      createAgentMcpServer({ agentApiKeyStore, logger: { info() {}, error() {} } })
+  });
+  const today = utcToday();
+  const query = { fromLocalDate: today, toLocalDate: today, today };
+
+  const response = await agentGet(app, trainingDaysPath(query));
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    code: "agent_progress_read_unavailable",
+    message: "Agent progress read storage is not configured."
+  });
+
+  const tool = await callTrainingDaysTool(app, query);
+  assert.equal(tool.isError, true);
+  assert.equal(tool.structuredContent.code, "agent_progress_read_unavailable");
+});
+
+function progressApp() {
+  const calls = [];
+  const store = {
+    async readTrainingDays(input) {
+      calls.push(input);
+      return emptyResponse(input.today);
+    }
+  };
+  const agentApiKeyStore = createAgentKeyStore("user-1");
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore,
+    agentProgressReadStore: store,
+    createMcpServer: () =>
+      createAgentMcpServer({
+        agentApiKeyStore,
+        agentProgressReadStore: store,
+        logger: { info() {}, error() {} }
+      })
+  });
+  return { app, calls };
+}
+
+function emptyResponse(today) {
+  return {
+    days: [],
+    trainedDayCount: 0,
+    week: {
+      weekStart: today,
+      days: Array.from({ length: 7 }, (_, index) =>
+        weekDay(addDays(today, index), "no_plan", 0, 0, 0)
+      ),
+      counts: { done: 0, partlyDone: 0, doneDifferently: 0, notDone: 0, trained: 0 },
+      comparedRoutineIds: []
+    }
+  };
+}
+
+function progressStore(database) {
+  return createDrizzleAgentProgressReadStore({
+    db: database.db,
+    settingsStore: createDrizzleAgentSettingsStore(database.db),
+    catalogStore: {}
+  });
+}
+
+function weekDay(localDate, status, plannedCount, matchedCount, workoutCount) {
+  return { localDate, status, plannedCount, matchedCount, workoutCount };
+}
+
+async function seedUser(database, userId) {
+  await database.db.insert(schema.user).values({
+    id: userId,
+    name: "Agent Progress User",
+    email: `${userId}@example.com`,
+    emailVerified: true
+  });
+}
+
+/**
+ * "Hybrid block" (Monday Lower, Tuesday Run intervals, Thursday Upper,
+ * Saturday Long run) plus what must plan nothing: an archived entry, an entry
+ * with no slot, an entry of an archived template, and a rotating Routine.
+ * Row ids are prefixed per user because ids are global.
+ */
+async function seedHybridBlock(database, userId) {
+  const id = (suffix) => `${userId}-${suffix}`;
+  await database.db.insert(schema.workoutTemplates).values([
+    ...[
+      ["t-lower", "Lower"],
+      ["t-run", "Run intervals"],
+      ["t-upper", "Upper"],
+      ["t-long", "Long run"],
+      ["t-spin", "Easy spin"]
+    ].map(([suffix, name]) => opaqueRow({ id: id(suffix), userId, payload: { name } })),
+    opaqueRow({
+      id: id("t-archived"),
+      userId,
+      deleted: true,
+      payload: { name: "Archived" }
+    })
+  ]);
+  await database.db.insert(schema.routines).values([
+    opaqueRow({
+      id: id("hybrid"),
+      userId,
+      payload: { name: "Hybrid block", cadence_kind: "weekly", cadence_window: null }
+    }),
+    opaqueRow({
+      id: id("rotation"),
+      userId,
+      payload: { name: "Rotation", cadence_kind: "rotating", cadence_window: 4 }
+    })
+  ]);
+  const entry = (suffix, routine, template, position, slot, deleted = false) =>
+    opaqueRow({
+      id: id(suffix),
+      userId,
+      deleted,
+      payload: {
+        routine_id: id(routine),
+        workout_template_id: id(template),
+        position,
+        slot
+      }
+    });
+  await database.db.insert(schema.routineEntries).values([
+    entry("e-lower", "hybrid", "t-lower", 0, 1),
+    entry("e-run", "hybrid", "t-run", 1, 2),
+    entry("e-upper", "hybrid", "t-upper", 2, 4),
+    entry("e-long", "hybrid", "t-long", 3, 6),
+    entry("e-archived", "hybrid", "t-upper", 4, 3, true),
+    entry("e-no-slot", "hybrid", "t-upper", 5, null),
+    entry("e-archived-template", "hybrid", "t-archived", 6, 5),
+    entry("e-rotation", "rotation", "t-upper", 0, 7)
+  ]);
+}
+
+function workout(suffix, localDate, start, end, focusId, templateSuffix, options = {}) {
+  return { suffix, localDate, start, end, focusId, templateSuffix, ...options };
+}
+
+async function seedWorkouts(database, userId, workouts) {
+  const id = (suffix) => `${userId}-${suffix}`;
+  for (const entry of workouts) {
+    const workoutId = id(entry.suffix);
+    await database.db.insert(schema.workoutSessions).values(
+      opaqueRow({
+        id: workoutId,
+        userId,
+        deleted: entry.deleted ?? false,
+        payload: {
+          local_date: entry.localDate,
+          started_at: `${entry.localDate}T${entry.start}:00.000Z`,
+          ended_at: entry.end === null ? null : `${entry.localDate}T${entry.end}:00.000Z`,
+          focus_id: entry.focusId
+        }
+      })
+    );
+    const sets = entry.sets ?? [{ is_completed: true }];
+    await database.db.insert(schema.loggedSets).values(
+      sets.map(({ deleted = false, ...fields }, index) =>
+        opaqueRow({
+          id: `${workoutId}-set-${index}`,
+          userId,
+          deleted,
+          payload: { workout_id: workoutId, exercise_id: "exercise-1", position: index, ...fields }
+        })
+      )
+    );
+    if (entry.templateSuffix !== null) {
+      await database.db.insert(schema.templateLinks).values(
+        opaqueRow({
+          id: `${workoutId}-link`,
+          userId,
+          payload: {
+            workout_id: workoutId,
+            workout_template_id: id(entry.templateSuffix),
+            routine_id: null,
+            slot: null
+          }
+        })
+      );
+    }
+  }
+}
+
+function opaqueRow({ id, userId, payload, deleted = false }) {
+  const at = new Date("2026-11-01T08:00:00.000Z");
+  return {
+    id,
+    userId,
+    deviceId: "device-a",
+    payload: {
+      id,
+      ...payload,
+      updated_at: at.toISOString(),
+      deleted_at: deleted ? at.toISOString() : null
+    },
+    updatedAt: at,
+    deletedAt: deleted ? at : null,
+    receivedAt: at
+  };
+}
+
+function createAgentKeyStore(userId) {
+  return {
+    async authenticateAgentApiKey(secret) {
+      if (secret !== "prn_agent_secret") {
+        return null;
+      }
+      return { userId, keyId: "agent-key-1", keyName: "Progress coach" };
+    },
+    async createAgentApiKey() {
+      throw new Error("createAgentApiKey should not be called.");
+    },
+    async listAgentApiKeys() {
+      throw new Error("listAgentApiKeys should not be called.");
+    },
+    async revokeAgentApiKey() {
+      throw new Error("revokeAgentApiKey should not be called.");
+    },
+    async verifySessionBearerToken() {
+      throw new Error("verifySessionBearerToken should not be called.");
+    }
+  };
+}
+
+function trainingDaysPath(query) {
+  return `/agent/progress/training-days?${new URLSearchParams(query).toString()}`;
+}
+
+function agentGet(app, path) {
+  return app.request(path, {
+    headers: { authorization: "Bearer prn_agent_secret" }
+  });
+}
+
+async function callTrainingDaysTool(app, query) {
+  const response = await app.request("/mcp", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: "Bearer prn_agent_secret"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "agent_list_training_days", arguments: { query } }
+    })
+  });
+  assert.equal(response.status, 200);
+  return (await response.json()).result;
+}
+
+function utcToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(localDate, days) {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}

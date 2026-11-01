@@ -1118,7 +1118,7 @@ function routineDetail(row: OpaquePlanRow, rows: RoutineDetailRows, query: Agent
   };
 }
 
-function routineEntryFromRow(row: OpaquePlanRow, templatesById: Map<string, OpaquePlanRow>) {
+export function routineEntryFromRow(row: OpaquePlanRow, templatesById: Map<string, OpaquePlanRow>) {
   const workoutTemplateId = payloadRequiredString(row, "workout_template_id");
   const template = templatesById.get(workoutTemplateId);
   return {
@@ -1192,7 +1192,7 @@ function upNextCards(entries: readonly AgentUpNextRoutineEntry[], doneTemplateId
   }));
 }
 
-function isoWeekday(localDate: string) {
+export function isoWeekday(localDate: string) {
   const date = new Date(`${localDate}T00:00:00.000Z`);
   const weekday = date.getUTCDay();
   return weekday === 0 ? 7 : weekday;

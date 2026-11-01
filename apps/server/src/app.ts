@@ -174,6 +174,12 @@ import {
   type AgentPlanReadStore
 } from "./agent-plan-reads.js";
 import {
+  agentTrainingDaysRoute,
+  AgentProgressReadInvalidRangeResponseSchema,
+  AgentProgressReadUnavailableResponseSchema,
+  type AgentProgressReadStore
+} from "./agent-progress-reads.js";
+import {
   agentPlanTreeBatchWriteRoute,
   AgentPlanTreeBatchWriteUnavailableResponseSchema,
   runAgentPlanTreeBatchWrite,
@@ -475,6 +481,7 @@ export type CreateAppOptions = {
   agentNutritionGoalStore?: AgentNutritionGoalBatchWriteStore;
   agentSettingsStore?: AgentSettingsBatchWriteStore;
   agentPlanReadStore?: AgentPlanReadStore;
+  agentProgressReadStore?: AgentProgressReadStore;
   agentPlanTreeBatchWriteStore?: AgentPlanTreeBatchWriteStore;
   agentPlanMaterializeStore?: AgentPlanMaterializeStore;
   agentPlanCaptureStore?: AgentPlanCaptureStore;
@@ -637,6 +644,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const agentNutritionGoalStore = options.agentNutritionGoalStore;
   const agentSettingsStore = options.agentSettingsStore;
   const agentPlanReadStore = options.agentPlanReadStore;
+  const agentProgressReadStore = options.agentProgressReadStore;
   const agentPlanTreeBatchWriteStore = options.agentPlanTreeBatchWriteStore;
   const agentPlanMaterializeStore = options.agentPlanMaterializeStore;
   const agentPlanCaptureStore = options.agentPlanCaptureStore;
@@ -4582,6 +4590,64 @@ export function createApp(options: CreateAppOptions = {}) {
         404
       );
     }
+    return context.json(result, 200);
+  });
+
+  app.openapi(agentTrainingDaysRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProgressReadStore === undefined) {
+      return context.json(
+        AgentProgressReadUnavailableResponseSchema.parse({
+          code: "agent_progress_read_unavailable",
+          message: "Agent progress read storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const query = context.req.valid("query");
+    const checked = checkAgentProtocolDaysQuery(query);
+    if (!checked.ok) {
+      return context.json(
+        AgentProgressReadInvalidRangeResponseSchema.parse({
+          code: "agent_progress_read_invalid_range",
+          message: checked.message
+        }),
+        400
+      );
+    }
+    // The store parses its response against the route's schema already.
+    const result = await agentProgressReadStore.readTrainingDays({
+      userId: agentAuth.agent.userId,
+      from: query.fromLocalDate,
+      to: query.toLocalDate,
+      today: query.today
+    });
     return context.json(result, 200);
   });
 

@@ -112,6 +112,11 @@ const COMMANDS = {
     params: ["exerciseId"],
     operationId: "getAgentExerciseAnalytics"
   },
+  "progress-training-days": {
+    method: "GET",
+    path: "/agent/progress/training-days",
+    operationId: "listAgentTrainingDays"
+  },
   "monitoring-activity": {
     method: "GET",
     path: "/agent/monitoring/activities/{externalActivityId}",

@@ -1885,6 +1885,12 @@ export type AgentSettingsReadResponse = {
   "updatedAt": string | null;
 };
 
+export type AgentTrainingDay = {
+  "localDate": string;
+  "workoutCount": number;
+  "secondsByFocus": Record<string, unknown>;
+};
+
 export type AgentTrainingDayNutritionResponse = {
   "from": string;
   "to": string;
@@ -1903,6 +1909,33 @@ export type AgentTrainingDayNutritionResponse = {
   "workoutPointLimit": number;
   "truncated": boolean;
 };
+};
+
+export type AgentTrainingDayStatus = "done" | "partly_done" | "done_differently" | "not_done" | "pending" | "planned" | "trained" | "rest" | "no_plan";
+
+export type AgentTrainingDaysResponse = {
+  "days": Array<AgentTrainingDay>;
+  "trainedDayCount": number;
+  "week": {
+  "weekStart": string;
+  "days": Array<AgentTrainingWeekDay>;
+  "counts": {
+  "done": number;
+  "partlyDone": number;
+  "doneDifferently": number;
+  "notDone": number;
+  "trained": number;
+};
+  "comparedRoutineIds": Array<string>;
+};
+};
+
+export type AgentTrainingWeekDay = {
+  "localDate": string;
+  "status": AgentTrainingDayStatus;
+  "plannedCount": number;
+  "matchedCount": number;
+  "workoutCount": number;
 };
 
 export type AgentWorkoutBatchWriteRequest = {
@@ -2302,6 +2335,12 @@ export type ListAgentRoutinesInput = {
   "fields"?: string;
 };
 
+export type ListAgentTrainingDaysInput = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+  "today": string;
+};
+
 export type ListAgentWorkoutsInput = {
   "from"?: string;
   "to"?: string;
@@ -2384,6 +2423,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentProtocolPlannedDays",
   "listAgentProtocols",
   "listAgentRoutines",
+  "listAgentTrainingDays",
   "listAgentWorkoutTemplates",
   "listAgentWorkouts",
   "materializeAgentWorkoutTemplate",
@@ -2826,6 +2866,16 @@ export class PerenniaAgentClient {
       path: "/agent/routines",
       expectedStatus: 200,
       query: { "search": input.search, "includeArchived": input.includeArchived, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      signal: options.signal
+    });
+  }
+
+  async listAgentTrainingDays(input: ListAgentTrainingDaysInput, options: AgentClientRequestOptions = {}): Promise<AgentTrainingDaysResponse> {
+    return this.request<AgentTrainingDaysResponse>({
+      method: "GET",
+      path: "/agent/progress/training-days",
+      expectedStatus: 200,
+      query: { "fromLocalDate": input.fromLocalDate, "toLocalDate": input.toLocalDate, "today": input.today },
       signal: options.signal
     });
   }
