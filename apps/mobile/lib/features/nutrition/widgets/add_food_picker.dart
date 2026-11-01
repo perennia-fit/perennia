@@ -308,97 +308,102 @@ class _FoodResults extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final blank = isBlankFoodQuery(state.query);
-    final children = switch (state.filter) {
-      AddFoodPickerFilter.all when blank => [
-          if (state.results.isEmpty)
-            const _StatusLine(
-              key: AddFoodPicker.emptyStateKey,
-              text: 'Search by name or brand, or scan a barcode.',
-            )
-          else ...[
-            Semantics(
-              header: true,
-              child: Padding(
-                key: AddFoodPicker.yourFoodsLabelKey,
-                padding: const EdgeInsets.only(bottom: AppDimens.dense),
-                child: Text(
-                  'Your foods',
-                  style: context.textStyles.label.copyWith(
-                    color: context.colors.textSecondary,
+    final entries = <_Entry>[
+      ...switch (state.filter) {
+        AddFoodPickerFilter.all when blank => [
+            if (state.results.isEmpty)
+              (_) => const _StatusLine(
+                    key: AddFoodPicker.emptyStateKey,
+                    text: 'Search by name or brand, or scan a barcode.',
+                  )
+            else ...[
+              (context) => Semantics(
+                    header: true,
+                    child: Padding(
+                      key: AddFoodPicker.yourFoodsLabelKey,
+                      padding: const EdgeInsets.only(bottom: AppDimens.dense),
+                      child: Text(
+                        'Your foods',
+                        style: context.textStyles.label.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
+                      ),
+                    ),
                   ),
+              ..._rows(state.results),
+            ],
+          ],
+        AddFoodPickerFilter.all => [
+            ..._rowsOrNoMatch(),
+            ..._bundleLine(),
+            ..._online(),
+          ],
+        AddFoodPickerFilter.yours when blank && state.results.isEmpty => [
+            (_) => const _StatusLine(
+                  key: AddFoodPicker.emptyStateKey,
+                  text: 'Foods you log or create appear here.',
                 ),
-              ),
+          ],
+        AddFoodPickerFilter.yours ||
+        AddFoodPickerFilter.usda =>
+          _rowsOrNoMatch(),
+        AddFoodPickerFilter.openFoodFacts => [
+            ..._bundleLine(),
+            if (blank)
+              (_) => const _StatusLine(
+                    key: AddFoodPicker.emptyQueryLineKey,
+                    text: 'Search Open Food Facts by product name, brand or '
+                        'barcode.',
+                  )
+            else ...[
+              ..._rows(state.results),
+              ..._online(),
+            ],
+          ],
+      },
+      // One rule: any Open Food Facts row in the list, from the device or a
+      // live search, puts the compact notice after the last list item.
+      if (state.results.any(_isOpenFoodFacts) ||
+          state.onlineResults.any(_isOpenFoodFacts))
+        (_) => const Padding(
+              key: AddFoodPicker.attributionFooterKey,
+              padding: EdgeInsets.only(top: AppDimens.base),
+              child: OpenFoodFactsAttributionNotice(compact: true),
             ),
-            ..._rows(context, state.results),
-          ],
-        ],
-      AddFoodPickerFilter.all => [
-          ..._rowsOrNoMatch(context),
-          ..._bundleLine(),
-          ..._online(context),
-        ],
-      AddFoodPickerFilter.yours when blank && state.results.isEmpty => [
-          const _StatusLine(
-            key: AddFoodPicker.emptyStateKey,
-            text: 'Foods you log or create appear here.',
-          ),
-        ],
-      AddFoodPickerFilter.yours ||
-      AddFoodPickerFilter.usda =>
-        _rowsOrNoMatch(context),
-      AddFoodPickerFilter.openFoodFacts => [
-          ..._bundleLine(),
-          if (blank)
-            const _StatusLine(
-              key: AddFoodPicker.emptyQueryLineKey,
-              text: 'Search Open Food Facts by product name, brand or '
-                  'barcode.',
-            )
-          else ...[
-            ..._rows(context, state.results),
-            ..._online(context),
-          ],
-        ],
-    };
-    // One rule: any Open Food Facts row in the list, from the device or a
-    // live search, puts the compact notice after the last list item.
-    final hasOpenFoodFactsRow = [
-      ...state.results,
-      ...state.onlineResults,
-    ].any((item) => item.foodSource == FoodSource.openFoodFacts);
+    ];
 
-    return ListView(
-      children: [
-        ...children,
-        if (hasOpenFoodFactsRow)
-          const Padding(
-            key: AddFoodPicker.attributionFooterKey,
-            padding: EdgeInsets.only(top: AppDimens.base),
-            child: OpenFoodFactsAttributionNotice(compact: true),
-          ),
-      ],
+    // Built on demand: Your foods alone can hold 200 rows.
+    return ListView.builder(
+      itemCount: entries.length,
+      itemBuilder: (context, index) => entries[index](context),
     );
   }
 
-  List<Widget> _rows(BuildContext context, List<FoodPickerItem> items) {
+  static bool _isOpenFoodFacts(FoodPickerItem item) {
+    return item.foodSource == FoodSource.openFoodFacts;
+  }
+
+  List<_Entry> _rows(List<FoodPickerItem> items) {
     return [
       for (final item in items) ...[
-        _FoodResultRow(item: item, onOpen: onOpen),
-        Divider(height: 1, color: context.colors.divider),
+        (_) => _FoodResultRow(item: item, onOpen: onOpen),
+        (context) => Divider(height: 1, color: context.colors.divider),
       ],
     ];
   }
 
-  List<Widget> _rowsOrNoMatch(BuildContext context) {
+  List<_Entry> _rowsOrNoMatch() {
     return [
-      ..._rows(context, state.results),
+      ..._rows(state.results),
       if (state.results.isEmpty)
-        const _StatusLine(
-            key: AddFoodPicker.noMatchLineKey, text: _noMatchLine),
+        (_) => const _StatusLine(
+              key: AddFoodPicker.noMatchLineKey,
+              text: _noMatchLine,
+            ),
     ];
   }
 
-  List<Widget> _bundleLine() {
+  List<_Entry> _bundleLine() {
     final line = switch (state.bundleStatus) {
       BundleStatus.installing => 'Preparing the offline food list.',
       BundleStatus.failed => 'The offline food list could not be prepared. '
@@ -407,37 +412,41 @@ class _FoodResults extends StatelessWidget {
     };
     return [
       if (line != null)
-        _StatusLine(key: AddFoodPicker.bundleStatusLineKey, text: line),
+        (_) => _StatusLine(key: AddFoodPicker.bundleStatusLineKey, text: line),
     ];
   }
 
-  /// The online slot, then the live-only results.
-  List<Widget> _online(BuildContext context) {
+  /// The online slot, then the live-only results as one group: a live search
+  /// returns one page, so the group is built whole.
+  List<_Entry> _online() {
     return [
-      _OnlineSlot(state: state, onSearchOnline: onSearchOnline),
+      (_) => _OnlineSlot(state: state, onSearchOnline: onSearchOnline),
       if (state.onlineResults.isNotEmpty)
-        Column(
-          key: AddFoodPicker.onlineGroupKey,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(
-                top: AppDimens.base,
-                bottom: AppDimens.dense,
-              ),
-              child: Text(
-                'From Open Food Facts',
-                style: context.textStyles.label.copyWith(
-                  color: context.colors.textSecondary,
+        (context) => Column(
+              key: AddFoodPicker.onlineGroupKey,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(
+                    top: AppDimens.base,
+                    bottom: AppDimens.dense,
+                  ),
+                  child: Text(
+                    'From Open Food Facts',
+                    style: context.textStyles.label.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
                 ),
-              ),
+                for (final entry in _rows(state.onlineResults)) entry(context),
+              ],
             ),
-            ..._rows(context, state.onlineResults),
-          ],
-        ),
     ];
   }
 }
+
+/// One list item of [_FoodResults], built when it scrolls into view.
+typedef _Entry = Widget Function(BuildContext context);
 
 /// Exactly one of: the lookups-off line, the online search row (with a
 /// progress indicator while a live request runs), the last live request's
@@ -700,7 +709,7 @@ class _FoodResultRow extends StatelessWidget {
           style: context.textStyles.body,
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 6),
+          padding: const EdgeInsets.only(top: AppDimens.dense / 2),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -711,7 +720,7 @@ class _FoodResultRow extends StatelessWidget {
                 ),
               Wrap(
                 spacing: AppDimens.dense,
-                runSpacing: 6,
+                runSpacing: AppDimens.dense / 2,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   FoodSourceBadge(

@@ -13,6 +13,15 @@
 /** Food Entries whose Meal started this long before `now`, or later, count. */
 export const FOOD_HISTORY_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
+/**
+ * Times compare in whole seconds, rounded down: the app stores them as Unix
+ * seconds, so it cannot see milliseconds, and the two must agree on the
+ * latest entry, its Portion and the 90-day window.
+ */
+function toSecond(ms: number): number {
+  return Math.floor(ms / 1000) * 1000;
+}
+
 export type FoodHistoryPortion = {
   value: number;
   entered: string;
@@ -45,7 +54,7 @@ export type FoodHistoryRecord = {
   foodId: string;
   /** Entries whose Meal started in the 90 days before `now`. */
   recentCount: number;
-  /** The latest Meal start, ISO-8601 UTC. */
+  /** The latest Meal start, ISO-8601 UTC in whole seconds. */
   lastLoggedAt: string;
   /** The latest entry's position within its Meal. */
   latestPosition: number;
@@ -86,11 +95,11 @@ export function buildFoodHistory({
   archivedUserFoodIds: Iterable<string>;
   now: Date;
 }): FoodHistoryRecord[] {
-  const cutoff = now.getTime() - FOOD_HISTORY_WINDOW_MS;
+  const cutoff = toSecond(now.getTime() - FOOD_HISTORY_WINDOW_MS);
   const archived = new Set(archivedUserFoodIds);
   const mealStarts = new Map<string, number>();
   for (const meal of meals) {
-    const startedAt = Date.parse(meal.startedAt);
+    const startedAt = toSecond(Date.parse(meal.startedAt));
     if (meal.deletedAt === null && Number.isFinite(startedAt)) {
       mealStarts.set(meal.id, startedAt);
     }
@@ -108,7 +117,7 @@ export function buildFoodHistory({
   >();
   for (const entry of entries) {
     const startedAt = mealStarts.get(entry.mealId);
-    const updatedAt = Date.parse(entry.updatedAt);
+    const updatedAt = toSecond(Date.parse(entry.updatedAt));
     const { foodSource, foodId } = entry;
     if (
       entry.deletedAt !== null ||

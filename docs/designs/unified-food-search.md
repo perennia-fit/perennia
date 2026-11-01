@@ -293,6 +293,13 @@ order the user logged them. The order uses nothing but the Food Entries and
 Meals, so the app and the server compute the same order, and golden vectors
 check it (see [Validation and analytics](#validation-and-analytics)).
 
+**Precision.** Every time compares in whole seconds, rounded down: Meal
+`startedAt`, entry `updatedAt` and the 90-day cutoff. The app stores times as
+Unix seconds, so it cannot see milliseconds, and the server drops them before
+comparing so the two agree on the latest entry, its Last Portion and the
+window. `lastLoggedAt` is therefore a whole second (`…:00.000Z` on the
+server).
+
 **Shape.**
 
 ```dart
@@ -382,7 +389,7 @@ final class YourFoods {
     A resolved record becomes a `FoodPickerItem` with `origin`
     `FoodPickerOrigin.history`, the current Food's name, nutrients, liquid
     flag, serving, package size and (for Open Food Facts) brand, plus the
-    record's `lastPortion` and `lastLoggedAt`.
+    record's `lastPortion`.
 3.  **Unresolved records** (a User Food whose row is missing, a product no
     longer on the device, or a Food Source with no catalogue) fall back to the
     snapshot of their latest Food Entry: one
@@ -422,7 +429,9 @@ The `limit` parameter is removed. The limits are named constants in
 | `searchResultLimit` | 50 | Total rows in a typed All search; rows in the USDA and Open Food Facts filters |
 
 **Matching Your foods.** An item of `yourFoods.items` matches a typed query
-when `foodNameMatchesQuery(item.name, query)` is true, or when its
+when `foodNameMatchesQuery` is true for its name followed by its brand, when
+it has one (`'<name> <brand>'`), so a query can name the brand, the product
+or both, as the Open Food Facts search does; or when its
 `foodSource` is Open Food Facts and its id is one of `barcodeCandidates(query)`.
 On a blank query every item matches.
 
@@ -498,8 +507,9 @@ excluding live results that are already listed, and for widget keys.
 `Key('nutrition.addFood.result-${item.foodSource.name}-${item.id}')`.
 `filterChipKey` keeps its form (`nutrition.addFood.filter-<filter.name>`).
 
-`FoodPickerItem.lastLoggedAt` is the Food History record's `lastLoggedAt` for
-`history` rows and null otherwise. Only the picker reads it.
+`FoodPickerItem` has no last-logged time: the picker shows the Last Portion,
+and the order of Your foods already carries recency. The field the Recent
+filter filled is removed.
 
 ### Controller lifecycle
 
@@ -602,6 +612,12 @@ The keyboard's search action and the online row:
 *   It leaves out of the live group any live result whose picker key equals the
     key of a row in the list. Today it compares ids only.
 
+The controller keeps every item of the last live search until the live
+results are cleared (a new query or a new device search). When a bundle
+install finishes and the device's matches are searched again, it merges that
+whole list again, so a product that is now on the device is not listed twice
+and a newer live copy keeps the place it took.
+
 ### Agent surface
 
 Food History is a new read of the user's data, so agents get it, per
@@ -634,8 +650,10 @@ have (`listAgentFoods`, `searchAgentPlatformFoods`); see
     the shape of `AgentMealEntry.portion`).
 *   Errors: 401, 429 and 503 exactly as `listAgentMeals` declares them.
 *   Store: `AgentFoodHistoryReadStore.listFoodHistory({ userId, limit, now })`
-    reads the user's live `food_entries` and `meals` rows and the ids of
-    archived `foods`, reads each Food Entry payload with the same Portion
+    reads the user's live `meals` rows (their `started_at` only), the live
+    `food_entries` rows whose payload has `entry_kind` `food`, a
+    `food_source` and a `food_id` (only the fields Food History reads), and
+    the ids of archived `foods`, in three queries run together; it reads each Food Entry payload with the same Portion
     reader as `readFoodEntriesByMealId` (`parseRawPortion`, with
     `stringValue` and `numberValue`, exported from `agent-nutrition-reads.ts`),
     and calls the pure function below. It reads
@@ -703,6 +721,10 @@ operation changes.
     lastLoggedAt, lastPortion }` list. The cases cover:
     *   frequency over recency;
     *   the 90-day boundary (an entry exactly 90 days before `now` counts);
+    *   whole-second precision: a same-second tie on Meal `startedAt` and
+        entry `updatedAt` decided by entry `id`, and an entry 0.5 s before the
+        exact 90-day boundary that counts because it is in the boundary's
+        second;
     *   a tie on `lastLoggedAt` broken by position;
     *   the latest entry chosen by Meal `startedAt`, not `updatedAt`;
     *   Last Portion from an earlier entry when the latest has none;

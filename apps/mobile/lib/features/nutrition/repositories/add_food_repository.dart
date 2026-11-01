@@ -72,7 +72,6 @@ class FoodPickerItem {
     this.servingSize,
     this.packageSize,
     this.lastPortion,
-    this.lastLoggedAt,
     this.brand,
     this.sourceModifiedAt,
     this.scans,
@@ -89,10 +88,6 @@ class FoodPickerItem {
   final double? servingSize;
   final double? packageSize;
   final Portion? lastPortion;
-
-  /// The Food History record's last Meal start, for [FoodPickerOrigin.history]
-  /// rows only.
-  final DateTime? lastLoggedAt;
 
   /// The product's first brand, for Open Food Facts foods.
   final String? brand;
@@ -231,12 +226,18 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
       nutrition.listActiveUserFoods(),
     ).wait;
     final userFoodsById = {for (final food in userFoods) food.id: food};
+    final (offProducts, usdaFoods) = await (
+      _openFoodFacts
+          .localProductsByCodes(_idsFrom(history, FoodSource.openFoodFacts)),
+      // Every lookup starts before any is awaited.
+      Future.wait([
+        for (final id in _idsFrom(history, FoodSource.usda))
+          _repositories.platformFoods.getUsdaFoodById(id),
+      ]),
+    ).wait;
     final products = {
-      for (final product in await _openFoodFacts.localProductsByCodes([
-        for (final record in history)
-          if (record.foodSource == FoodSource.openFoodFacts) record.foodId,
-      ]))
-        product.id: product,
+      for (final product in [...offProducts, ...usdaFoods.nonNulls])
+        FoodPickerItem.keyOf(product.foodSource, product.id): product,
     };
 
     final resolved = <String, FoodPickerItem>{};
@@ -251,12 +252,10 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
               ),
             null => null,
           },
-        FoodSource.usda => _historyItem(
-            await _repositories.platformFoods.getUsdaFoodById(record.foodId),
+        FoodSource.usda || FoodSource.openFoodFacts => _historyItem(
+            products[FoodPickerItem.keyOf(record.foodSource, record.foodId)],
             record,
           ),
-        FoodSource.openFoodFacts =>
-          _historyItem(products[record.foodId], record),
         _ => null,
       };
       if (item == null) {
@@ -290,7 +289,6 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
         servingSize: entry.servingSize,
         packageSize: entry.packageSize,
         lastPortion: record.lastPortion,
-        lastLoggedAt: record.lastLoggedAt,
       );
     }
 
@@ -314,6 +312,16 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     ]);
   }
 
+  static List<String> _idsFrom(
+    List<FoodHistoryRecord> history,
+    FoodSource foodSource,
+  ) {
+    return [
+      for (final record in history)
+        if (record.foodSource == foodSource) record.foodId,
+    ];
+  }
+
   /// A Food History row from the current Catalogue Food, or `null` when the
   /// Food is not on the device.
   FoodPickerItem? _historyItem(
@@ -326,7 +334,6 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
             food,
             origin: FoodPickerOrigin.history,
             lastPortion: record.lastPortion,
-            lastLoggedAt: record.lastLoggedAt,
           );
   }
 
@@ -346,7 +353,6 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
       servingSize: food.servingSize,
       packageSize: food.packageSize,
       lastPortion: record?.lastPortion,
-      lastLoggedAt: record?.lastLoggedAt,
     );
   }
 
@@ -355,7 +361,6 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     PlatformFoodRecord food, {
     required FoodPickerOrigin origin,
     required Portion? lastPortion,
-    DateTime? lastLoggedAt,
     bool isLiveResult = false,
   }) {
     return FoodPickerItem(
@@ -369,7 +374,6 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
       servingSize: food.servingSize,
       packageSize: food.packageSize,
       lastPortion: lastPortion,
-      lastLoggedAt: lastLoggedAt,
       brand: food.brand,
       sourceModifiedAt: food.sourceModifiedAt,
       scans: food.scans,
@@ -484,8 +488,9 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     ].take(searchResultLimit).toList(growable: false);
   }
 
-  /// Your foods matching [query] by name, or for an Open Food Facts Food by
-  /// barcode; every item on a blank query.
+  /// Your foods matching [query] by name and brand, as the bundle search
+  /// does, or for an Open Food Facts Food by barcode; every item on a blank
+  /// query.
   Iterable<FoodPickerItem> _matchYourFoods(String query, YourFoods yourFoods) {
     if (isBlankFoodQuery(query)) {
       return yourFoods.items;
@@ -493,7 +498,13 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     final candidates = barcodeCandidates(query).toSet();
     return yourFoods.items.where(
       (item) =>
-          foodNameMatchesQuery(item.name, query) ||
+          foodNameMatchesQuery(
+            switch (item.brand) {
+              final brand? => '${item.name} $brand',
+              null => item.name,
+            },
+            query,
+          ) ||
           (item.foodSource == FoodSource.openFoodFacts &&
               candidates.contains(item.id)),
     );

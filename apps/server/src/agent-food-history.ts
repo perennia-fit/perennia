@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 import {
   AgentApiKeyUnavailableResponseSchema,
@@ -140,23 +140,43 @@ export function createDrizzleAgentFoodHistoryReadStore(
 ): AgentFoodHistoryReadStore {
   return {
     async listFoodHistory({ userId, limit, now }) {
+      const meal = schema.meals.payload;
+      const entry = schema.foodEntries.payload;
       const [mealRows, entryRows, archivedRows] = await Promise.all([
         db
-          .select({ id: schema.meals.id, payload: schema.meals.payload })
+          .select({
+            id: schema.meals.id,
+            startedAt: sql<string | null>`CASE WHEN jsonb_typeof(${meal} -> 'started_at') = 'string' THEN ${meal} ->> 'started_at' END`
+          })
           .from(schema.meals)
           .where(
             and(eq(schema.meals.userId, userId), isNull(schema.meals.deletedAt))
           ),
+        // Only the entries that can count, and only the fields Food History
+        // reads; buildFoodHistory still applies every rule.
         db
           .select({
             id: schema.foodEntries.id,
-            payload: schema.foodEntries.payload
+            payload: sql<Record<string, unknown>>`jsonb_build_object(
+              'meal_id', ${entry} -> 'meal_id',
+              'entry_kind', ${entry} -> 'entry_kind',
+              'position', ${entry} -> 'position',
+              'name', ${entry} -> 'name',
+              'food_source', ${entry} -> 'food_source',
+              'food_id', ${entry} -> 'food_id',
+              'is_liquid', ${entry} -> 'is_liquid',
+              'portion_json', ${entry} -> 'portion_json',
+              'updated_at', ${entry} -> 'updated_at'
+            )`
           })
           .from(schema.foodEntries)
           .where(
             and(
               eq(schema.foodEntries.userId, userId),
-              isNull(schema.foodEntries.deletedAt)
+              isNull(schema.foodEntries.deletedAt),
+              sql`${entry} ->> 'entry_kind' = 'food'`,
+              sql`${entry} ->> 'food_source' IS NOT NULL`,
+              sql`${entry} ->> 'food_id' IS NOT NULL`
             )
           ),
         db
@@ -170,12 +190,9 @@ export function createDrizzleAgentFoodHistoryReadStore(
           )
       ]);
 
-      const meals: FoodHistoryMeal[] = mealRows.flatMap((row) => {
-        const startedAt = row.payload.started_at;
-        return typeof startedAt === "string"
-          ? [{ id: row.id, startedAt, deletedAt: null }]
-          : [];
-      });
+      const meals: FoodHistoryMeal[] = mealRows.flatMap(({ id, startedAt }) =>
+        startedAt === null ? [] : [{ id, startedAt, deletedAt: null }]
+      );
       const names = new Map<string, string>();
       const entries: FoodHistoryEntry[] = entryRows.flatMap((row) => {
         const entry = foodHistoryEntryFromPayload(row.id, row.payload);

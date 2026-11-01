@@ -193,6 +193,43 @@
       ]
     },
     {
+      "name": "times-compare-in-whole-seconds-so-a-same-second-tie-falls-to-the-entry-id",
+      "input": {
+        "now": "2026-10-31T12:00:00.000Z",
+        "meals": [
+          {"id": "m-later-ms", "startedAt": "2026-10-20T08:00:00.900Z", "deletedAt": null},
+          {"id": "m-earlier-ms", "startedAt": "2026-10-20T08:00:00.100Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "tie-a", "mealId": "m-later-ms", "kind": "food", "position": 3, "foodSource": "usda", "foodId": "food-a", "isLiquid": false, "portion": {"value": 100, "entered": "100", "unit": "gram"}, "updatedAt": "2026-10-20T08:05:00.900Z", "deletedAt": null},
+          {"id": "tie-b", "mealId": "m-earlier-ms", "kind": "food", "position": 1, "foodSource": "usda", "foodId": "food-a", "isLiquid": false, "portion": {"value": 200, "entered": "200", "unit": "gram"}, "updatedAt": "2026-10-20T08:05:00.100Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "usda", "foodId": "food-a", "recentCount": 2, "lastLoggedAt": "2026-10-20T08:00:00.000Z", "lastPortion": {"value": 200, "entered": "200", "unit": "gram"}}
+      ]
+    },
+    {
+      "name": "the-90-day-window-starts-at-the-whole-second-of-now-minus-90-days",
+      "input": {
+        "now": "2026-10-31T12:00:00.600Z",
+        "meals": [
+          {"id": "m-half-second-before-boundary", "startedAt": "2026-08-02T12:00:00.100Z", "deletedAt": null},
+          {"id": "m-previous-second", "startedAt": "2026-08-02T11:59:59.900Z", "deletedAt": null}
+        ],
+        "entries": [
+          {"id": "e-in-window", "mealId": "m-half-second-before-boundary", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-in-window", "isLiquid": false, "portion": {"value": 50, "entered": "50", "unit": "gram"}, "updatedAt": "2026-08-02T12:00:00.100Z", "deletedAt": null},
+          {"id": "e-out-of-window", "mealId": "m-previous-second", "kind": "food", "position": 0, "foodSource": "usda", "foodId": "usda-out-of-window", "isLiquid": false, "portion": {"value": 60, "entered": "60", "unit": "gram"}, "updatedAt": "2026-08-02T11:59:59.900Z", "deletedAt": null}
+        ],
+        "archivedUserFoodIds": []
+      },
+      "expected": [
+        {"foodSource": "usda", "foodId": "usda-in-window", "recentCount": 1, "lastLoggedAt": "2026-08-02T12:00:00.000Z", "lastPortion": {"value": 50, "entered": "50", "unit": "gram"}},
+        {"foodSource": "usda", "foodId": "usda-out-of-window", "recentCount": 0, "lastLoggedAt": "2026-08-02T11:59:59.000Z", "lastPortion": {"value": 60, "entered": "60", "unit": "gram"}}
+      ]
+    },
+    {
       "name": "no-entries-gives-an-empty-history",
       "input": {
         "now": "2026-10-31T12:00:00.000Z",

@@ -95,7 +95,6 @@ void main() {
         everyElement(FoodPickerOrigin.userFood),
       );
       expect(yourFoods.items.first.lastPortion?.entered, '120');
-      expect(yourFoods.items.first.lastLoggedAt, DateTime.utc(2026, 6, 26, 8));
       expect(yourFoods.items.skip(2).map((item) => item.lastPortion),
           everyElement(isNull));
       expect(
@@ -181,6 +180,51 @@ void main() {
       expect(item.foodSource, FoodSource.openFoodFacts);
       expect(item.nutrientsPer100[NutrientId.energy].value, 352);
       expect(item.lastPortion?.entered, '30');
+    });
+
+    test('matches Your foods by brand, and by name and brand together',
+        () async {
+      final repository = RepositoryAddFoodRepository(
+        repositories,
+        openFoodFacts: _RecordingOpenFoodFactsRepository(
+          stored: [_offRecord('7394376616037', 'Oat drink', brand: 'Oatly')],
+        ),
+      );
+      await _logSnapshot(
+        repositories,
+        mealId: await _meal(repositories, DateTime.utc(2026, 6, 25, 7)),
+        foodId: '7394376616037',
+        name: 'Oat drink',
+        foodSource: FoodSource.openFoodFacts,
+        portion: _grams(250),
+      );
+      final yourFoods = await repository.loadYourFoods(now: now);
+
+      for (final filter in <AddFoodPickerFilter>[
+        AddFoodPickerFilter.all,
+        AddFoodPickerFilter.yours,
+      ]) {
+        for (final query in <String>['oatly', 'oatly drink']) {
+          final items = await repository.search(
+            filter: filter,
+            query: query,
+            yourFoods: yourFoods,
+          );
+          expect(
+            items.map((item) => (item.origin, item.id)),
+            [(FoodPickerOrigin.history, '7394376616037')],
+            reason: '${filter.name} "$query"',
+          );
+        }
+        expect(
+          await repository.search(
+            filter: filter,
+            query: 'oatly milk',
+            yourFoods: yourFoods,
+          ),
+          isEmpty,
+        );
+      }
     });
 
     test('falls back to the latest snapshot for a product not on the device',

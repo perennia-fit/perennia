@@ -100,6 +100,10 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
 
   /// Read once per opening; every search in it filters this in memory.
   YourFoods _yourFoods = YourFoods.empty;
+
+  /// Every item the last live search returned, kept until the live results
+  /// are cleared, so a device reload can merge them again in full.
+  List<FoodPickerItem> _liveItems = const <FoodPickerItem>[];
   Timer? _searchDebounceTimer;
   var _searchGeneration = 0;
   bool _onlineLookupsEnabled = true;
@@ -209,6 +213,7 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     if (generation != _searchGeneration) {
       return;
     }
+    _liveItems = result.items;
     _updateCurrent((current) {
       final (:results, :onlineResults) = _mergeLiveResults(
         current.results,
@@ -365,10 +370,15 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     if (generation != _searchGeneration) {
       return;
     }
-    _updateCurrent((current) {
-      final merged = _mergeLiveResults(results, current.onlineResults);
-      return current.copyWith(results: merged.results);
-    });
+    // The device may now hold products the live search returned: merge the
+    // whole live list again, so none is listed twice and a newer live copy
+    // keeps the place it took.
+    final (results: merged, :onlineResults) =
+        _mergeLiveResults(results, _liveItems);
+    _updateCurrent(
+      (current) =>
+          current.copyWith(results: merged, onlineResults: onlineResults),
+    );
   }
 
   /// Searches the device again. With [keepShown], the current data stays on
@@ -390,6 +400,8 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     if (generation != _searchGeneration) {
       return;
     }
+    // A new device search starts with no live results.
+    _liveItems = const <FoodPickerItem>[];
     state = next;
   }
 
@@ -439,6 +451,7 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
   }
 
   void _showPendingQuery(String query) {
+    _liveItems = const <FoodPickerItem>[];
     _updateCurrent(
       (current) => current.copyWith(
         query: query,

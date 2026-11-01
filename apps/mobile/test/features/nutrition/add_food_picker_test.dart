@@ -1760,7 +1760,6 @@ FoodPickerItem _oatMilk() {
       entered: '250',
       unit: PortionUnit.milliliter,
     ),
-    lastLoggedAt: DateTime.utc(2026, 6, 26, 7),
   );
 }
 

@@ -3808,7 +3808,8 @@ class NutritionRepository {
   /// 90 days back counts), then by the latest Meal start, then by the latest
   /// entry's position in its Meal, then Food Source name, then Food id. The
   /// golden vectors `m37-food-history.json` pin this order against the
-  /// server's `buildFoodHistory`.
+  /// server's `buildFoodHistory`. Times compare in whole seconds, as Drift
+  /// stores them; the server rounds down to seconds to agree.
   ///
   /// Entries of an archived User Food are left out: archiving is the
   /// user-facing delete, and the picker logs through [logFoodEntrySnapshot],

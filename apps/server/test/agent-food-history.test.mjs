@@ -117,9 +117,10 @@ test(
         entered: "250",
         unit: "milliliter"
       });
+      // Whole seconds, as the app stores them.
       assert.equal(
         body.items[0].lastLoggedAt,
-        new Date(now - DAY_MS).toISOString()
+        new Date(Math.floor((now - DAY_MS) / 1000) * 1000).toISOString()
       );
 
       const limited = await getAgent(app, "/agent/foods/history?limit=1");

@@ -264,6 +264,78 @@ void main() {
       expect(state.onlineResults.map((item) => item.name), ['Cola']);
     });
 
+    test(
+        'a bundle install after a live search lists each product once and '
+        'keeps the newer live copy', () async {
+      final bundle = StreamController<BundleStatus>();
+      addTearDown(bundle.close);
+      final repository = _FakeAddFoodRepository(
+        live: [
+          _food(
+            '8000500310427',
+            origin: FoodPickerOrigin.openFoodFacts,
+            foodSource: FoodSource.openFoodFacts,
+            name: 'Wafers (new)',
+            changedAt: DateTime.utc(2026, 10),
+            live: true,
+          ),
+          _food(
+            '5000112637922',
+            origin: FoodPickerOrigin.openFoodFacts,
+            foodSource: FoodSource.openFoodFacts,
+            name: 'Cola',
+            live: true,
+          ),
+        ],
+      );
+      final container =
+          _container(repository, bundleStatus: bundle.stream);
+      container.listen(addFoodPickerControllerProvider, (_, __) {});
+      bundle.add(BundleStatus.installing);
+      await container.read(addFoodPickerControllerProvider.future);
+      await container
+          .read(addFoodPickerControllerProvider.notifier)
+          .submitQuery('wafers');
+      expect(
+        container
+            .read(addFoodPickerControllerProvider)
+            .value!
+            .onlineResults
+            .map((item) => item.name),
+        ['Wafers (new)', 'Cola'],
+      );
+
+      // The install brings both products onto the device, wafers as an
+      // older copy.
+      repository.catalogue = [
+        _food(
+          '8000500310427',
+          origin: FoodPickerOrigin.openFoodFacts,
+          foodSource: FoodSource.openFoodFacts,
+          name: 'Wafers',
+          changedAt: DateTime.utc(2026),
+        ),
+        _food(
+          '5000112637922',
+          origin: FoodPickerOrigin.openFoodFacts,
+          foodSource: FoodSource.openFoodFacts,
+          name: 'Cola',
+        ),
+      ];
+      bundle.add(BundleStatus.ready);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final state = container.read(addFoodPickerControllerProvider).value!;
+      expect(state.results.map((item) => item.name), ['Wafers (new)', 'Cola']);
+      expect(state.onlineResults, isEmpty);
+      final keys = [
+        for (final item in [...state.results, ...state.onlineResults])
+          item.key,
+      ];
+      expect(keys.toSet(), hasLength(keys.length));
+    });
+
     test('closing the picker starts the next opening on All, empty', () async {
       final repository = _FakeAddFoodRepository();
       final container = _container(repository);
@@ -291,7 +363,10 @@ void main() {
   });
 }
 
-ProviderContainer _container(AddFoodRepository repository) {
+ProviderContainer _container(
+  AddFoodRepository repository, {
+  Stream<BundleStatus>? bundleStatus,
+}) {
   final container = ProviderContainer(
     overrides: [
       addFoodRepositoryProvider.overrideWith((ref) => repository),
@@ -299,7 +374,7 @@ ProviderContainer _container(AddFoodRepository repository) {
         (ref) => InMemorySettingsRepository(),
       ),
       bundleStatusProvider.overrideWith(
-        (ref) => Stream<BundleStatus>.value(BundleStatus.ready),
+        (ref) => bundleStatus ?? Stream<BundleStatus>.value(BundleStatus.ready),
       ),
     ],
   );
@@ -325,7 +400,9 @@ class _FakeAddFoodRepository implements AddFoodRepository {
 
   final YourFoods yourFoods;
   final bool failLoad;
-  final List<FoodPickerItem> catalogue;
+  /// What a typed device search returns; a test may change it, as a
+  /// finished bundle install does.
+  List<FoodPickerItem> catalogue;
   final List<FoodPickerItem> live;
 
   var loadCalls = 0;
