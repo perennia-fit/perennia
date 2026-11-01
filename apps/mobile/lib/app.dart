@@ -15,6 +15,7 @@ import 'features/home/services/workout_auto_finish_service.dart';
 import 'features/home/widgets/home_screen.dart';
 import 'features/metrics/widgets/metrics_screen.dart';
 import 'features/nutrition/widgets/nutrition_day_view.dart';
+import 'features/progress/repositories/progress_feature_repository.dart';
 import 'features/protocols/controllers/protocols_day_controller.dart';
 import 'features/protocols/services/protocol_reminder_scheduler.dart';
 import 'features/protocols/widgets/compound_list_screen.dart';
@@ -48,6 +49,7 @@ class PerenniaRoot extends StatelessWidget {
     this.authRepository,
     this.homeRepository,
     this.upNextFeatureRepository,
+    this.progressFeatureRepository,
     this.templatePickerRepository,
     this.routinePlanRepository,
     this.workoutTemplateRepository,
@@ -60,6 +62,7 @@ class PerenniaRoot extends StatelessWidget {
   final AuthRepository? authRepository;
   final HomeRepository? homeRepository;
   final UpNextFeatureRepository? upNextFeatureRepository;
+  final ProgressFeatureRepository? progressFeatureRepository;
   final TemplatePickerFeatureRepository? templatePickerRepository;
   final RoutinePlanFeatureRepository? routinePlanRepository;
   final WorkoutTemplateFeatureRepository? workoutTemplateRepository;
@@ -91,6 +94,16 @@ class PerenniaRoot extends StatelessWidget {
           // to know about a second, unrelated provider.
           upNextFeatureRepositoryProvider.overrideWith(
             (ref) => const StubUpNextFeatureRepository(),
+          ),
+        if (progressFeatureRepository != null)
+          progressFeatureRepositoryProvider.overrideWith(
+            (ref) => progressFeatureRepository!,
+          )
+        else if (homeRepository != null)
+          // Same rationale as the Up-next default above: the Progress root
+          // reads its cards through this repository.
+          progressFeatureRepositoryProvider.overrideWith(
+            (ref) => const StubProgressFeatureRepository(),
           ),
         if (templatePickerRepository != null)
           templatePickerFeatureRepositoryProvider.overrideWith(

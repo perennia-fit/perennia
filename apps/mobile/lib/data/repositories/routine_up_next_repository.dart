@@ -36,6 +36,25 @@ final class RoutineUpNextSummary {
   final List<RoutineUpNextCardRecord> cards;
 }
 
+/// One active weekly Routine as Progress Overview compares the week with it
+/// (docs/designs/progress-overview.md, D1): its planning entries, with the
+/// Routine's name for the "Comparing" line. A Routine with no planning entry
+/// is never one of these.
+final class WeeklyPlanFacts {
+  WeeklyPlanFacts({
+    required this.routineId,
+    required this.routineName,
+    required Iterable<WeeklyPlanEntry> entries,
+  }) : entries = List<WeeklyPlanEntry>.unmodifiable(entries);
+
+  final String routineId;
+  final String routineName;
+  final List<WeeklyPlanEntry> entries;
+
+  WeeklyPlan toWeeklyPlan() =>
+      WeeklyPlan(routineId: routineId, entries: entries);
+}
+
 /// Read-only local repository deriving Up-next suggestions for every
 /// cadenced Routine (ROUTINES.md §1.2, §3.1;;).
 ///
@@ -92,7 +111,37 @@ final class RoutineUpNextRepository {
     );
   }
 
+  /// The active weekly Routines' planning entries, for This week (D1). The
+  /// select is Up next's, so an archived Routine, entry or Workout Template
+  /// plans nothing here either, and a Routine with no live entry is absent.
+  /// An entry without a slot plans nothing; a weekly slot is the ISO
+  /// weekday.
+  Stream<List<WeeklyPlanFacts>> watchWeeklyPlans() {
+    return _cadencedRoutinesQuery().watch().map(_weeklyPlansFromJoinedRows);
+  }
+
+  /// Whether an active Routine has a rotating Cadence: This week compares
+  /// weekly Routines only, and says so when one rotates.
+  Stream<bool> watchHasRotatingRoutine() {
+    final query = _database.selectOnly(_database.planRoutines)
+      ..addColumns([_database.planRoutines.id])
+      ..where(
+        _database.planRoutines.deletedAt.isNull() &
+            _database.planRoutines.cadenceKind.equals(
+              CadenceKind.rotating.storageValue,
+            ),
+      )
+      ..limit(1);
+    return query.watch().map((rows) => rows.isNotEmpty);
+  }
+
   Stream<List<_CadencedRoutineEntries>> _watchCadencedRoutines() {
+    return _cadencedRoutinesQuery().watch().map(
+          _cadencedRoutinesFromJoinedRows,
+        );
+  }
+
+  JoinedSelectStatement<HasResultSet, dynamic> _cadencedRoutinesQuery() {
     final query = _database.select(_database.planRoutines).join([
       innerJoin(
         _database.routineEntries,
@@ -119,7 +168,40 @@ final class RoutineUpNextRepository {
         OrderingTerm.asc(_database.routineEntries.position),
         OrderingTerm.asc(_database.routineEntries.id),
       ]);
-    return query.watch().map(_cadencedRoutinesFromJoinedRows);
+    return query;
+  }
+
+  List<WeeklyPlanFacts> _weeklyPlansFromJoinedRows(List<TypedResult> rows) {
+    // Dart maps keep insertion order, so Routines come out in the select's.
+    final nameById = <String, String>{};
+    final entriesByRoutine = <String, List<WeeklyPlanEntry>>{};
+    for (final result in rows) {
+      final routine = result.readTable(_database.planRoutines);
+      if (routine.cadenceKind != CadenceKind.weekly.storageValue) {
+        continue;
+      }
+      final slot = result.readTable(_database.routineEntries).slot;
+      if (slot == null) {
+        continue;
+      }
+      nameById[routine.id] = routine.name;
+      entriesByRoutine.putIfAbsent(routine.id, () => <WeeklyPlanEntry>[]).add(
+            WeeklyPlanEntry(
+              workoutTemplateId:
+                  result.readTable(_database.workoutTemplates).id,
+              weekday: slot,
+            ),
+          );
+    }
+    return List<WeeklyPlanFacts>.unmodifiable(
+      entriesByRoutine.entries.map(
+        (routine) => WeeklyPlanFacts(
+          routineId: routine.key,
+          routineName: nameById[routine.key]!,
+          entries: routine.value,
+        ),
+      ),
+    );
   }
 
   Stream<Map<String, List<UpNextTemplateLinkFact>>>

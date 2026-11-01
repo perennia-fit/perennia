@@ -33,6 +33,7 @@ import '../../domain/training/template_divergence.dart';
 import '../../domain/training/template_materialize.dart';
 import '../../domain/training/training_day.dart';
 import '../../domain/training/training_dimensions.dart';
+import '../../domain/training/training_progress.dart';
 import '../../domain/training/training_records.dart';
 import '../../domain/training/workout_capture.dart';
 import '../../domain/training/workout_share_summary.dart';
@@ -2372,6 +2373,80 @@ class WorkoutSessionRepository {
   ) {
     return _activeWorkoutSessionQuery(localDate: localDate).watch().map(
           (rows) => rows.map(_workoutSessionFromRow).toList(growable: false),
+        );
+  }
+
+  /// The facts the training progress core reads (docs/designs/
+  /// progress-overview.md, D0-D1) for every live Workout dated [from]
+  /// through [to], inclusive, Open Workouts included, by start then id.
+  ///
+  /// `performedSetCount` counts the Workout's Performed Sets: live and
+  /// completed. A Workout materialized from a template and left untouched
+  /// therefore counts 0, and the core does not treat it as a Logged Workout.
+  /// `linkedTemplateId` is the template of its live Template Link. A Workout
+  /// has at most one, which `template_links_workout_id_unique` enforces on
+  /// this device; the latest `updated_at`, then the highest id, decides
+  /// anyway, so this loader and the server's pick the same link (D1).
+  Stream<List<ProgressWorkout>> watchProgressWorkoutsBetween(
+    TrainingDayDate from,
+    TrainingDayDate to,
+  ) {
+    return _database
+        .customSelect(
+          '''
+          SELECT
+            workout_sessions.id AS workout_id,
+            workout_sessions.local_date AS local_date,
+            workout_sessions.started_at AS started_at,
+            workout_sessions.ended_at AS ended_at,
+            workout_sessions.focus_id AS focus_id,
+            (
+              SELECT template_links.workout_template_id
+              FROM template_links
+              WHERE template_links.workout_id = workout_sessions.id
+                AND template_links.deleted_at IS NULL
+              ORDER BY template_links.updated_at DESC, template_links.id DESC
+              LIMIT 1
+            ) AS linked_template_id,
+            (
+              SELECT COUNT(*)
+              FROM logged_sets
+              WHERE logged_sets.workout_id = workout_sessions.id
+                AND logged_sets.deleted_at IS NULL
+                AND logged_sets.is_completed = 1
+            ) AS performed_set_count
+          FROM workout_sessions
+          WHERE workout_sessions.deleted_at IS NULL
+            AND workout_sessions.local_date BETWEEN ? AND ?
+          ORDER BY workout_sessions.started_at, workout_sessions.id
+          ''',
+          variables: <Variable<Object>>[
+            Variable<String>(from.storageValue),
+            Variable<String>(to.storageValue),
+          ],
+          readsFrom: <ResultSetImplementation<HasResultSet, dynamic>>{
+            _database.workoutSessions,
+            _database.templateLinks,
+            _database.loggedSets,
+          },
+        )
+        .watch()
+        .map(
+          (rows) => List<ProgressWorkout>.unmodifiable(
+            rows.map(
+              (row) => ProgressWorkout(
+                workoutId: row.read<String>('workout_id'),
+                localDate:
+                    TrainingDayDate.parse(row.read<String>('local_date')),
+                startedAt: row.read<DateTime>('started_at').toUtc(),
+                endedAt: row.readNullable<DateTime>('ended_at')?.toUtc(),
+                focusId: row.readNullable<String>('focus_id'),
+                linkedTemplateId:
+                    row.readNullable<String>('linked_template_id'),
+                performedSetCount: row.read<int>('performed_set_count'),
+              ),
+            ),
+          ),
         );
   }
 

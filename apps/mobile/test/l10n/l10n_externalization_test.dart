@@ -12,6 +12,13 @@ void main() {
       'lib/features/focus/widgets/focus_manager_screen.dart',
       'lib/features/focus/widgets/focus_picker_sheet.dart',
       'lib/features/focus/widgets/focused_exercise_list.dart',
+      'lib/features/progress/widgets/progress_overview.dart',
+      'lib/features/progress/widgets/progress_card.dart',
+      'lib/features/progress/widgets/this_week_card.dart',
+      'lib/features/progress/widgets/trained_days_card.dart',
+      'lib/features/progress/widgets/focus_time_card.dart',
+      'lib/features/progress/widgets/protocols_progress_card.dart',
+      'lib/features/progress/widgets/progress_format.dart',
     ];
     final forbiddenPatterns = <String, RegExp>{
       'Text literal': RegExp(r'\bText\(\s*[' '"]'),

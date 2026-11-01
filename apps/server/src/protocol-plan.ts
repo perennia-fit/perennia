@@ -495,12 +495,13 @@ export function epochDay(localDate: LocalDate): number {
   return day;
 }
 
-function localDateFromEpochDay(day: number): LocalDate {
+/** The `YYYY-MM-DD` date of a UTC epoch day; the inverse of `epochDay`. */
+export function localDateFromEpochDay(day: number): LocalDate {
   return new Date(day * MS_PER_DAY).toISOString().slice(0, 10);
 }
 
 /** ISO 8601 weekday of an epoch day, 1 = Monday through 7 = Sunday. */
-function epochDayIsoWeekday(day: number): number {
+export function epochDayIsoWeekday(day: number): number {
   // Epoch day 0 (1970-01-01) was a Thursday, ISO weekday 4.
   return floorMod(day + 3, 7) + 1;
 }

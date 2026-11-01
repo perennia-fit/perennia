@@ -215,7 +215,9 @@ with `md` corners, never FABs.
   rows; tap anywhere → Training Screen.
 - **Root navigation:** three labelled destinations — Today, Progress, Library — with
   selected state in Signal Cyan. Each retains its own view state; the bar is absent from
-  logging, editor, and detail routes.
+  logging, editor, and detail routes. Progress is the Progress Overview: a period
+  control (4 wk, 12 wk, 1 yr) over a scroll of summary cards, then the Body Tracker
+  and Health metrics links.
 - **Today Log action:** one extended FAB opening a bottom sheet of authored daily writes
   (Workout, Food, Supplement). Body measurements remain contextual to Progress → Body.
 - **Tabs (Track | History | Graph):** text tabs in the chrome, active tab in Signal
@@ -227,6 +229,24 @@ with `md` corners, never FABs.
   divider-color stroke, `md` corners, Signal Cyan focus stroke; no floating labels.
 - **Calendar:** month grid, up to four category-colored 6px dots per day, today
   ringed in Signal Cyan.
+- **Summary card (Progress):** a flat card (surface color, `md` corners, no shadow)
+  with an `h2` title, an optional trailing text button to an existing detail screen,
+  and its content. Empty, it shows one line and at most one action; loading, its title
+  over a fixed-height empty body. Text buttons use the primary text color. Counts and
+  statuses only — no percentage, streak, ring or grade; a change is an arrow or a word
+  in the secondary text color, never red, green or gold.
+- **This week row:** seven equal day columns (weekday initial, date, a 24px status
+  icon in the secondary text color inside a 48px cell), today outlined 1px in the
+  primary text color. A legend names every status shown, Rest and No plan as text
+  only, so an icon is never the only signal.
+- **Trained days calendar:** one column per week, one row per weekday, square cells
+  up to 24px with 2px gaps. A Trained Day is filled in the primary text color at 70%;
+  any other past date is a 1px outline in the divider color; a future date is blank.
+  Fill against outline is the signal; color carries no meaning.
+- **Focus color:** training colored by Focus (Time by Focus bars) uses the Focus's
+  stored color, or its default category token; "No Focus" and a Focus not yet on
+  the device use `other`. Every colored segment has its Focus named in a legend
+  beside it, and adjacent segments are separated by a 1px gap in the surface color.
 
 ## Do's and Don'ts
 

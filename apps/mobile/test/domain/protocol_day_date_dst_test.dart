@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'protocol_day_date_dst_checks.dart' as checks;
 
 /// [ProtocolDayDate] arithmetic across both daylight-saving changes
-/// (docs/designs/protocol-schedules-and-reminders.md, file 6). A local day is
+/// (docs/designs/protocol-schedules-and-reminders.md, file 6), and
+/// `TrainingDayDate.addDays`, which Progress Overview walks its dates with
+/// (docs/designs/progress-overview.md). A local day is
 /// 23 or 25 hours long on a change, so arithmetic on local `DateTime`s
 /// repeats a date in autumn and skips one in spring; the arithmetic runs in
 /// UTC so it cannot.

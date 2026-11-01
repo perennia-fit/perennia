@@ -34,6 +34,7 @@ import { createDrizzleAgentProtocolsStore } from "./agent-protocols.js";
 import { createDrizzleAgentNutritionGoalStore } from "./agent-nutrition-goals.js";
 import { createDrizzleAgentSettingsStore } from "./agent-settings.js";
 import { createDrizzleAgentPlanReadStore } from "./agent-plan-reads.js";
+import { createDrizzleAgentProgressReadStore } from "./agent-progress-reads.js";
 import { createDrizzleAgentPlanTreeBatchWriteStore } from "./agent-plan-tree-batch-write.js";
 import { createDrizzleAgentPlanMaterializeStore } from "./agent-plan-materialize.js";
 import { createDrizzleAgentPlanCaptureStore } from "./agent-plan-capture.js";
@@ -149,6 +150,7 @@ export {
   AgentMcpRoutineDetailInputSchema,
   AgentMcpRoutineListInputSchema,
   AgentMcpTrainingDayNutritionInputSchema,
+  AgentMcpTrainingDaysInputSchema,
   AgentMcpValidateSetInputSchema,
   AgentMcpWorkoutTemplateDetailInputSchema,
   AgentMcpWorkoutTemplateListInputSchema,
@@ -740,6 +742,17 @@ export {
   type AgentUpNextTemplateLinkFact,
   type AgentWorkoutTemplateListQuery
 } from "./agent-plan-reads.js";
+export {
+  AgentProgressReadInvalidRangeResponseSchema,
+  AgentProgressReadUnavailableResponseSchema,
+  AgentTrainingDaysQuerySchema,
+  AgentTrainingDaysResponseSchema,
+  agentTrainingDaysRoute,
+  createDrizzleAgentProgressReadStore,
+  type AgentProgressReadStore,
+  type AgentTrainingDaysQuery,
+  type AgentTrainingDaysResponse
+} from "./agent-progress-reads.js";
 export {
   AGENT_PLAN_TREE_BATCH_ENTITY,
   AGENT_PLAN_TREE_BATCH_WRITE_MAX_ITEMS,
@@ -1511,6 +1524,11 @@ export async function createMigratedServerApp({
   );
   const agentSettingsStore = createDrizzleAgentSettingsStore(database.db);
   const agentPlanReadStore = createDrizzleAgentPlanReadStore(database.db);
+  const agentProgressReadStore = createDrizzleAgentProgressReadStore({
+    db: database.db,
+    settingsStore: agentSettingsStore,
+    catalogStore: agentCatalogStore
+  });
   const agentPlanTreeBatchWriteStore =
     createDrizzleAgentPlanTreeBatchWriteStore(database.db);
   const agentPlanMaterializeStore =
@@ -1557,6 +1575,7 @@ export async function createMigratedServerApp({
     agentNutritionGoalStore,
     agentSettingsStore,
     agentPlanReadStore,
+    agentProgressReadStore,
     agentPlanTreeBatchWriteStore,
     agentPlanMaterializeStore,
     agentPlanCaptureStore,
@@ -1586,6 +1605,7 @@ export async function createMigratedServerApp({
     agentNutritionGoalStore,
     agentSettingsStore,
     agentPlanReadStore,
+    agentProgressReadStore,
     agentPlanTreeBatchWriteStore,
     agentPlanMaterializeStore,
     agentPlanCaptureStore,

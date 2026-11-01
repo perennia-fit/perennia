@@ -66,6 +66,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `nutrition-totals` | GET | `/agent/nutrition/totals` |
 | `nutrition-trends` | GET | `/agent/nutrition/trends` |
 | `probe` | GET | `/agent/probe` |
+| `progress-training-days` | GET | `/agent/progress/training-days` |
 | `read-settings` | GET | `/agent/settings` |
 | `resolve-exercise` | GET | `/agent/exercises/resolve` |
 | `search-platform-foods` | GET | `/agent/foods/platform-search` |

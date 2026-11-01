@@ -675,6 +675,16 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async listAgentTrainingDays(input, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/progress/training-days",
+      expectedStatus: 200,
+      query: pick(input, ["fromLocalDate", "toLocalDate", "today"]),
+      signal: options.signal
+    });
+  }
+
   async listAgentWorkoutTemplates(input = {}, options = {}) {
     return this.request({
       method: "GET",

@@ -583,6 +583,104 @@ void main() {
     });
   });
 
+  group('watchConsistencySummary against the database', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    late _StackIds ids;
+
+    setUp(() async {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+      ids = await _seedStack(repositories);
+    });
+
+    tearDown(() => database.close());
+
+    Map<DayStatusKind, int> countsOf(ConsistencyRange range) {
+      final counts = <DayStatusKind, int>{};
+      for (final status in range.dayStatuses) {
+        counts[status.status] = (counts[status.status] ?? 0) + 1;
+      }
+      return counts;
+    }
+
+    test(
+        'each Compound\'s counts match its Consistency view over the same '
+        'range, ordered by name, with uncounted statuses left out', () async {
+      // Through three days after today: future dates have no Day Status.
+      final to = _today.addDays(3);
+      final summaries = await repositories.protocolPlan
+          .watchConsistencySummary(_start, to, today: _today)
+          .first;
+
+      // Melatonin is in no Protocol, so it has no counted status.
+      expect(
+        summaries.map((summary) => summary.compoundName),
+        <String>['AgeMate', 'TRT'],
+      );
+      for (final summary in summaries) {
+        final range = await repositories.protocolPlan
+            .watchConsistency(summary.compoundId, _start, to, today: _today)
+            .first;
+        final counts = countsOf(range);
+        expect(summary.logged, counts[DayStatusKind.logged] ?? 0);
+        expect(summary.partlyLogged, counts[DayStatusKind.partlyLogged] ?? 0);
+        expect(summary.notLogged, counts[DayStatusKind.notLogged] ?? 0);
+        expect(summary.paused, counts[DayStatusKind.paused] ?? 0);
+      }
+      final trt = summaries.singleWhere((s) => s.compoundId == ids.trt);
+      // 10th-12th unlogged, the 13th one of two; today is pending.
+      expect(
+        (trt.logged, trt.partlyLogged, trt.notLogged, trt.paused),
+        (0, 1, 3, 0),
+      );
+      final ageMate =
+          summaries.singleWhere((s) => s.compoundId == ids.ageMate);
+      expect(
+        (ageMate.logged, ageMate.partlyLogged, ageMate.notLogged,
+            ageMate.paused),
+        (0, 0, 4, 0),
+      );
+    });
+
+    test('logging a Dose re-emits the counts, and a bad range is refused',
+        () async {
+      final emissions = <List<CompoundConsistencySummary>>[];
+      final subscription = repositories.protocolPlan
+          .watchConsistencySummary(_start, _today, today: _today)
+          .listen(emissions.add);
+      addTearDown(subscription.cancel);
+      await _until(() => emissions.isNotEmpty);
+
+      // The 12th's 09:00 slot is filled: one of its two, partly logged.
+      await _logTrt(repositories, ids, DateTime(2026, 10, 12, 9));
+      await _until(
+        () =>
+            emissions.last
+                .singleWhere((summary) => summary.compoundId == ids.trt)
+                .partlyLogged ==
+            2,
+      );
+
+      expect(
+        () => repositories.protocolPlan.watchConsistencySummary(
+          _date(2025, 1, 1),
+          _date(2026, 1, 2),
+          today: _today,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => repositories.protocolPlan.watchConsistencySummary(
+          _today,
+          _start,
+          today: _today,
+        ),
+        throwsArgumentError,
+      );
+    });
+  });
+
   group('entry points', () {
     testWidgets(
         'a Compound row in the Compound list opens its Consistency view, '

@@ -49,3 +49,30 @@ it in `apps/mobile/test/domain/barcode_candidates_golden_test.dart` against
 `barcodeCandidates` in `apps/mobile/lib/domain/nutrition/open_food_facts.dart`;
 the server runs it in `apps/server/test/barcode-candidates.golden.test.mjs`
 against `apps/server/src/barcode-candidates.ts`.
+
+## Training progress
+
+`m37-training-progress.json` (domain `training-progress`) pins the training
+progress core in both languages: `trainingWeek` (a Training Day Status for
+each day of the current week against the weekly Routines),
+`summarizeTrainingWeek` (the counts per status) and `trainingDays` (the Logged
+Workouts and the seconds per Focus of each date in a range). The app runs it in
+`apps/mobile/test/domain/training_progress_golden_test.dart` against
+`apps/mobile/lib/domain/training/training_progress.dart`; the server runs it in
+`apps/server/test/training-progress.golden.test.mjs` against
+`apps/server/src/analytics/training-progress.ts`. The behaviour is specified in
+[`docs/designs/progress-overview.md`](../../../docs/designs/progress-overview.md)
+(D0-D3).
+
+Each case names its `function`, gives that function's arguments by parameter
+name in `input`, and its full return value in `expected`. A case whose input
+the function rejects (`today` outside the week, `from` after `to`, a range of
+more than 366 dates) expects `{"error": "argument"}`: the runners map the Dart
+`ArgumentError` and the TypeScript `RangeError` to it. The file is governed by
+the adjacent `m37-training-progress.schema.json`; its `schemaVersion`, the
+schema's constant and both runners' constants move together.
+
+Dates are local `YYYY-MM-DD` dates and "today" is an input, so cases contain no
+timezone. Instants are ISO-8601 UTC strings; a Workout's local date is given,
+not derived from its start, which is how a session after midnight belongs to
+the next date.

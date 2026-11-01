@@ -1528,5 +1528,226 @@
   "protocolRemindersPermissionLabel": "Notifications",
   "protocolRemindersPermissionGranted": "Allowed",
   "protocolRemindersPermissionNotDetermined": "Not asked yet",
-  "protocolRemindersPermissionUnsupported": "Not available on this device"
+  "protocolRemindersPermissionUnsupported": "Not available on this device",
+  "progressPeriodWeeks4": "4 wk",
+  "progressPeriodWeeks12": "12 wk",
+  "progressPeriodYear": "1 yr",
+  "progressRoutinesAction": "Routines",
+  "progressCardUnavailable": "Unavailable right now",
+  "progressFocusesAction": "Focuses",
+  "progressThisWeekTitle": "This week",
+  "progressThisWeekEmpty": "Plan your week with a Routine",
+  "progressThisWeekNothingLogged": "Nothing logged yet this week",
+  "progressThisWeekComparing": "Comparing {names}",
+  "@progressThisWeekComparing": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "progressThisWeekComparingWeeklyOnly": "Comparing {names}. Weekly Routines only.",
+  "@progressThisWeekComparingWeeklyOnly": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "progressThisWeekWeeklyOnly": "Weekly Routines only.",
+  "progressThisWeekSemantics": "This week: {days}.",
+  "@progressThisWeekSemantics": {
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "progressThisWeekDaySemantics": "{weekday} {status}",
+  "@progressThisWeekDaySemantics": {
+    "placeholders": {
+      "weekday": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "progressStatusDone": "Done",
+  "progressStatusPartlyDone": "Partly done",
+  "progressStatusDoneDifferently": "Done differently",
+  "progressStatusNotDone": "Not done",
+  "progressStatusPending": "Pending",
+  "progressStatusPlanned": "Planned",
+  "progressStatusTrained": "Trained",
+  "progressStatusRest": "Rest",
+  "progressStatusNoPlan": "No plan",
+  "progressStatusSpoken": "{status, select, done{done} partly_done{partly done} done_differently{done differently} not_done{not done} pending{pending} planned{planned} trained{trained} rest{rest} no_plan{no plan} other{}}",
+  "@progressStatusSpoken": {
+    "description": "A Training Day Status as read inside a sentence, keyed by its wire value.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "progressCountDone": "{count, plural, other{{count} done}}",
+  "@progressCountDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountPartlyDone": "{count, plural, other{{count} partly done}}",
+  "@progressCountPartlyDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountDoneDifferently": "{count, plural, other{{count} done differently}}",
+  "@progressCountDoneDifferently": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountNotDone": "{count, plural, other{{count} not done}}",
+  "@progressCountNotDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountTrained": "{count, plural, other{{count} trained}}",
+  "@progressCountTrained": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressTrainedDaysTitle": "Trained days",
+  "progressTrainedDaysCount": "{count, plural, =1{1 trained day} other{{count} trained days}}",
+  "@progressTrainedDaysCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressTrainedDaysSemantics": "{count, plural, =1{1 trained day in the last {weeks} weeks.} other{{count} trained days in the last {weeks} weeks.}}",
+  "@progressTrainedDaysSemantics": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "weeks": {
+        "type": "int"
+      }
+    }
+  },
+  "progressTrainedDaysEmpty": "Logged workouts show here",
+  "progressFocusTimeTitle": "Time by Focus",
+  "progressFocusTimeEmpty": "Finished workouts show here",
+  "progressFocusTimeNoFocus": "No Focus",
+  "progressFocusTimeUnknownFocus": "Focus",
+  "@progressFocusTimeUnknownFocus": {
+    "description": "A Focus that has not reached this device yet."
+  },
+  "progressFocusTimeAxisHours": "{hours}h",
+  "@progressFocusTimeAxisHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "progressFocusTimeEntry": "{name} {duration}",
+  "@progressFocusTimeEntry": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "progressFocusTimeSemantics": "Time by Focus, this week: {entries}",
+  "@progressFocusTimeSemantics": {
+    "placeholders": {
+      "entries": {
+        "type": "String"
+      }
+    }
+  },
+  "progressHoursSpoken": "{count, plural, =1{1 hour} other{{count} hours}}",
+  "@progressHoursSpoken": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressMinutesSpoken": "{count, plural, =1{1 minute} other{{count} minutes}}",
+  "@progressMinutesSpoken": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressHoursMinutesSpoken": "{hours} {minutes}",
+  "@progressHoursMinutesSpoken": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "progressProtocolsTitle": "Protocols",
+  "progressProtocolsUnlock": "Unlock",
+  "progressProtocolsAll": "All protocols",
+  "progressProtocolsEmpty": "No protocol days in this period",
+  "progressCountLogged": "{count, plural, other{{count} logged}}",
+  "@progressCountLogged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountPartlyLogged": "{count, plural, other{{count} partly logged}}",
+  "@progressCountPartlyLogged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountNotLogged": "{count, plural, other{{count} not logged}}",
+  "@progressCountNotLogged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountPaused": "{count, plural, other{{count} paused}}",
+  "@progressCountPaused": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

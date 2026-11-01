@@ -4771,6 +4771,312 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not available on this device'**
   String get protocolRemindersPermissionUnsupported;
+
+  /// No description provided for @progressPeriodWeeks4.
+  ///
+  /// In en, this message translates to:
+  /// **'4 wk'**
+  String get progressPeriodWeeks4;
+
+  /// No description provided for @progressPeriodWeeks12.
+  ///
+  /// In en, this message translates to:
+  /// **'12 wk'**
+  String get progressPeriodWeeks12;
+
+  /// No description provided for @progressPeriodYear.
+  ///
+  /// In en, this message translates to:
+  /// **'1 yr'**
+  String get progressPeriodYear;
+
+  /// No description provided for @progressRoutinesAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Routines'**
+  String get progressRoutinesAction;
+
+  /// No description provided for @progressCardUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Unavailable right now'**
+  String get progressCardUnavailable;
+
+  /// No description provided for @progressFocusesAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Focuses'**
+  String get progressFocusesAction;
+
+  /// No description provided for @progressThisWeekTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This week'**
+  String get progressThisWeekTitle;
+
+  /// No description provided for @progressThisWeekEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan your week with a Routine'**
+  String get progressThisWeekEmpty;
+
+  /// No description provided for @progressThisWeekNothingLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing logged yet this week'**
+  String get progressThisWeekNothingLogged;
+
+  /// No description provided for @progressThisWeekComparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Comparing {names}'**
+  String progressThisWeekComparing(String names);
+
+  /// No description provided for @progressThisWeekComparingWeeklyOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Comparing {names}. Weekly Routines only.'**
+  String progressThisWeekComparingWeeklyOnly(String names);
+
+  /// No description provided for @progressThisWeekWeeklyOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekly Routines only.'**
+  String get progressThisWeekWeeklyOnly;
+
+  /// No description provided for @progressThisWeekSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'This week: {days}.'**
+  String progressThisWeekSemantics(String days);
+
+  /// No description provided for @progressThisWeekDaySemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'{weekday} {status}'**
+  String progressThisWeekDaySemantics(String weekday, String status);
+
+  /// No description provided for @progressStatusDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get progressStatusDone;
+
+  /// No description provided for @progressStatusPartlyDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Partly done'**
+  String get progressStatusPartlyDone;
+
+  /// No description provided for @progressStatusDoneDifferently.
+  ///
+  /// In en, this message translates to:
+  /// **'Done differently'**
+  String get progressStatusDoneDifferently;
+
+  /// No description provided for @progressStatusNotDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not done'**
+  String get progressStatusNotDone;
+
+  /// No description provided for @progressStatusPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get progressStatusPending;
+
+  /// No description provided for @progressStatusPlanned.
+  ///
+  /// In en, this message translates to:
+  /// **'Planned'**
+  String get progressStatusPlanned;
+
+  /// No description provided for @progressStatusTrained.
+  ///
+  /// In en, this message translates to:
+  /// **'Trained'**
+  String get progressStatusTrained;
+
+  /// No description provided for @progressStatusRest.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest'**
+  String get progressStatusRest;
+
+  /// No description provided for @progressStatusNoPlan.
+  ///
+  /// In en, this message translates to:
+  /// **'No plan'**
+  String get progressStatusNoPlan;
+
+  /// A Training Day Status as read inside a sentence, keyed by its wire value.
+  ///
+  /// In en, this message translates to:
+  /// **'{status, select, done{done} partly_done{partly done} done_differently{done differently} not_done{not done} pending{pending} planned{planned} trained{trained} rest{rest} no_plan{no plan} other{}}'**
+  String progressStatusSpoken(String status);
+
+  /// No description provided for @progressCountDone.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} done}}'**
+  String progressCountDone(int count);
+
+  /// No description provided for @progressCountPartlyDone.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} partly done}}'**
+  String progressCountPartlyDone(int count);
+
+  /// No description provided for @progressCountDoneDifferently.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} done differently}}'**
+  String progressCountDoneDifferently(int count);
+
+  /// No description provided for @progressCountNotDone.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} not done}}'**
+  String progressCountNotDone(int count);
+
+  /// No description provided for @progressCountTrained.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} trained}}'**
+  String progressCountTrained(int count);
+
+  /// No description provided for @progressTrainedDaysTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Trained days'**
+  String get progressTrainedDaysTitle;
+
+  /// No description provided for @progressTrainedDaysCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 trained day} other{{count} trained days}}'**
+  String progressTrainedDaysCount(int count);
+
+  /// No description provided for @progressTrainedDaysSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 trained day in the last {weeks} weeks.} other{{count} trained days in the last {weeks} weeks.}}'**
+  String progressTrainedDaysSemantics(int count, int weeks);
+
+  /// No description provided for @progressTrainedDaysEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged workouts show here'**
+  String get progressTrainedDaysEmpty;
+
+  /// No description provided for @progressFocusTimeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Time by Focus'**
+  String get progressFocusTimeTitle;
+
+  /// No description provided for @progressFocusTimeEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished workouts show here'**
+  String get progressFocusTimeEmpty;
+
+  /// No description provided for @progressFocusTimeNoFocus.
+  ///
+  /// In en, this message translates to:
+  /// **'No Focus'**
+  String get progressFocusTimeNoFocus;
+
+  /// A Focus that has not reached this device yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus'**
+  String get progressFocusTimeUnknownFocus;
+
+  /// No description provided for @progressFocusTimeAxisHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h'**
+  String progressFocusTimeAxisHours(int hours);
+
+  /// No description provided for @progressFocusTimeEntry.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} {duration}'**
+  String progressFocusTimeEntry(String name, String duration);
+
+  /// No description provided for @progressFocusTimeSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Time by Focus, this week: {entries}'**
+  String progressFocusTimeSemantics(String entries);
+
+  /// No description provided for @progressHoursSpoken.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 hour} other{{count} hours}}'**
+  String progressHoursSpoken(int count);
+
+  /// No description provided for @progressMinutesSpoken.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 minute} other{{count} minutes}}'**
+  String progressMinutesSpoken(int count);
+
+  /// No description provided for @progressHoursMinutesSpoken.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} {minutes}'**
+  String progressHoursMinutesSpoken(String hours, String minutes);
+
+  /// No description provided for @progressProtocolsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Protocols'**
+  String get progressProtocolsTitle;
+
+  /// No description provided for @progressProtocolsUnlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get progressProtocolsUnlock;
+
+  /// No description provided for @progressProtocolsAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All protocols'**
+  String get progressProtocolsAll;
+
+  /// No description provided for @progressProtocolsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No protocol days in this period'**
+  String get progressProtocolsEmpty;
+
+  /// No description provided for @progressCountLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} logged}}'**
+  String progressCountLogged(int count);
+
+  /// No description provided for @progressCountPartlyLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} partly logged}}'**
+  String progressCountPartlyLogged(int count);
+
+  /// No description provided for @progressCountNotLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} not logged}}'**
+  String progressCountNotLogged(int count);
+
+  /// No description provided for @progressCountPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} paused}}'**
+  String progressCountPaused(int count);
 }
 
 class _AppLocalizationsDelegate

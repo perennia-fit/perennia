@@ -150,6 +150,13 @@ import {
   type AgentPlanReadStore
 } from "./agent-plan-reads.js";
 import {
+  AgentProgressReadInvalidRangeResponseSchema,
+  AgentProgressReadUnavailableResponseSchema,
+  AgentTrainingDaysQuerySchema,
+  AgentTrainingDaysResponseSchema,
+  type AgentProgressReadStore
+} from "./agent-progress-reads.js";
+import {
   AgentPlanTreeBatchWriteErrorResponseSchema,
   AgentPlanTreeBatchWriteRequestSchema,
   AgentPlanTreeBatchWriteResponseSchema,
@@ -446,6 +453,12 @@ export const AgentMcpRoutineDetailInputSchema = z
   })
   .openapi("AgentMcpRoutineDetailInput");
 
+export const AgentMcpTrainingDaysInputSchema = z
+  .object({
+    query: AgentTrainingDaysQuerySchema
+  })
+  .openapi("AgentMcpTrainingDaysInput");
+
 export const AgentMcpPlanTreeBatchWriteInputSchema = z
   .object({
     request: AgentPlanTreeBatchWriteRequestSchema
@@ -525,6 +538,7 @@ export type AgentMcpServerOptions = {
   agentNutritionGoalStore?: AgentNutritionGoalBatchWriteStore;
   agentSettingsStore?: AgentSettingsBatchWriteStore;
   agentPlanReadStore?: AgentPlanReadStore;
+  agentProgressReadStore?: AgentProgressReadStore;
   agentPlanTreeBatchWriteStore?: AgentPlanTreeBatchWriteStore;
   agentPlanMaterializeStore?: AgentPlanMaterializeStore;
   agentPlanCaptureStore?: AgentPlanCaptureStore;
@@ -554,6 +568,7 @@ export function createAgentMcpServer({
   agentNutritionGoalStore,
   agentSettingsStore,
   agentPlanReadStore,
+  agentProgressReadStore,
   agentPlanTreeBatchWriteStore,
   agentPlanMaterializeStore,
   agentPlanCaptureStore,
@@ -1235,6 +1250,56 @@ export function createAgentMcpServer({
         );
       }
       return successResult(result);
+    }
+  );
+
+  server.registerTool(
+    "agent_list_training_days",
+    {
+      title: "List Agent Training Days",
+      description:
+        "List each local date's Logged Workout count and seconds per Focus over a range (both ends included, at most 366 days, ending no later than the required today), the number of Trained Days, and this week's Training Day Status of each day against the weekly Routines, through the same REST read path and the same core as the app's Progress Overview. Computed on read, never stored.",
+      inputSchema: AgentMcpTrainingDaysInputSchema,
+      outputSchema: AgentTrainingDaysResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProgressReadStore === undefined) {
+        return errorResult(
+          AgentProgressReadUnavailableResponseSchema.parse({
+            code: "agent_progress_read_unavailable",
+            message: "Agent progress read storage is not configured."
+          })
+        );
+      }
+      const query = AgentTrainingDaysQuerySchema.parse(input.query);
+      const checked = checkAgentProtocolDaysQuery(query);
+      if (!checked.ok) {
+        return errorResult(
+          AgentProgressReadInvalidRangeResponseSchema.parse({
+            code: "agent_progress_read_invalid_range",
+            message: checked.message
+          })
+        );
+      }
+      // The store parses its response against the output schema already.
+      return successResult(
+        await agentProgressReadStore.readTrainingDays({
+          userId: auth.agent.userId,
+          from: query.fromLocalDate,
+          to: query.toLocalDate,
+          today: query.today
+        })
+      );
     }
   );
 

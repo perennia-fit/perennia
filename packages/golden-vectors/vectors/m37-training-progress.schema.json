@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m37-training-progress.schema.json",
+  "title": "M37 training progress core golden vector",
+  "description": "Language-neutral parity cases for the training progress core (docs/designs/progress-overview.md, D0-D3). Each case names one function and gives its arguments by parameter name in `input` and its full return value in `expected`, or {\"error\": \"argument\"} for an input the function rejects (Dart ArgumentError, TypeScript RangeError). training_week gives each of the seven days from weekStart a Training Day Status against the weekly plans: each planned entry, ordered by routineId then workoutTemplateId, takes the first unmatched Logged Workout of that date, ordered by startedAt then workoutId, whose linkedTemplateId is its template; today must fall inside the week. summarize_training_week counts the days with each of done, partly_done, done_differently, not_done and trained. training_days returns one entry per date from `from` through `to` (inclusive, at most 366 dates): the Logged Workouts of that date, Open Workouts included, and the summed whole seconds (truncated, 0 when endedAt is before startedAt) of its ended Logged Workouts per Focus id, or `none` without a Focus. A Workout with performedSetCount 0 is not a Logged Workout and is ignored everywhere; Workouts dated outside the week or range are ignored. Dates are local YYYY-MM-DD; instants are ISO-8601 UTC strings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m37-training-progress"},
+    "domain": {"const": "training-progress"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m37-training-progress.schema.json"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "localDate": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "instant": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"},
+    "id": {"type": "string", "minLength": 1},
+    "nullableId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+    "count": {"type": "integer", "minimum": 0},
+    "argumentError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error"],
+      "properties": {"error": {"const": "argument"}}
+    },
+    "weeklyPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["routineId", "entries"],
+      "properties": {
+        "routineId": {"$ref": "#/$defs/id"},
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["workoutTemplateId", "weekday"],
+            "properties": {
+              "workoutTemplateId": {"$ref": "#/$defs/id"},
+              "weekday": {"type": "integer", "minimum": 1, "maximum": 7, "description": "ISO weekday, 1 = Monday to 7 = Sunday."}
+            }
+          }
+        }
+      }
+    },
+    "progressWorkout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workoutId", "localDate", "startedAt", "endedAt", "focusId", "linkedTemplateId", "performedSetCount"],
+      "properties": {
+        "workoutId": {"$ref": "#/$defs/id"},
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "startedAt": {"$ref": "#/$defs/instant"},
+        "endedAt": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}], "description": "Null for an Open Workout."},
+        "focusId": {"$ref": "#/$defs/nullableId"},
+        "linkedTemplateId": {"$ref": "#/$defs/nullableId"},
+        "performedSetCount": {"$ref": "#/$defs/count"}
+      }
+    },
+    "trainingWeekDay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["localDate", "status", "plannedCount", "matchedCount", "workoutCount"],
+      "properties": {
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "status": {"enum": ["done", "partly_done", "done_differently", "not_done", "pending", "planned", "trained", "rest", "no_plan"]},
+        "plannedCount": {"$ref": "#/$defs/count"},
+        "matchedCount": {"$ref": "#/$defs/count"},
+        "workoutCount": {"$ref": "#/$defs/count"}
+      }
+    },
+    "trainingWeek": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["weekStart", "days", "comparedRoutineIds"],
+      "properties": {
+        "weekStart": {"$ref": "#/$defs/localDate"},
+        "days": {"type": "array", "minItems": 7, "maxItems": 7, "items": {"$ref": "#/$defs/trainingWeekDay"}},
+        "comparedRoutineIds": {"type": "array", "items": {"$ref": "#/$defs/id"}}
+      }
+    },
+    "trainingWeekCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["done", "partlyDone", "doneDifferently", "notDone", "trained"],
+      "properties": {
+        "done": {"$ref": "#/$defs/count"},
+        "partlyDone": {"$ref": "#/$defs/count"},
+        "doneDifferently": {"$ref": "#/$defs/count"},
+        "notDone": {"$ref": "#/$defs/count"},
+        "trained": {"$ref": "#/$defs/count"}
+      }
+    },
+    "trainingDay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["localDate", "workoutCount", "secondsByFocus"],
+      "properties": {
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "workoutCount": {"$ref": "#/$defs/count"},
+        "secondsByFocus": {
+          "type": "object",
+          "description": "Focus id, or `none` for Workouts without a Focus, to summed whole seconds.",
+          "additionalProperties": {"$ref": "#/$defs/count"}
+        }
+      }
+    },
+    "caseHeader": {
+      "type": "object",
+      "required": ["name", "function", "input", "expected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "note": {"type": "string", "description": "Why the case exists and which rule it pins. Runners ignore it."}
+      }
+    },
+    "case": {
+      "type": "object",
+      "allOf": [{"$ref": "#/$defs/caseHeader"}],
+      "unevaluatedProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "function": {"const": "training_week"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["plans", "workouts", "weekStart", "today"],
+              "properties": {
+                "plans": {"type": "array", "items": {"$ref": "#/$defs/weeklyPlan"}},
+                "workouts": {"type": "array", "items": {"$ref": "#/$defs/progressWorkout"}},
+                "weekStart": {"$ref": "#/$defs/localDate"},
+                "today": {"$ref": "#/$defs/localDate"}
+              }
+            },
+            "expected": {"oneOf": [{"$ref": "#/$defs/trainingWeek"}, {"$ref": "#/$defs/argumentError"}]}
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "summarize_training_week"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["days"],
+              "properties": {
+                "days": {"type": "array", "items": {"$ref": "#/$defs/trainingWeekDay"}}
+              }
+            },
+            "expected": {"$ref": "#/$defs/trainingWeekCounts"}
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "training_days"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["workouts", "from", "to"],
+              "properties": {
+                "workouts": {"type": "array", "items": {"$ref": "#/$defs/progressWorkout"}},
+                "from": {"$ref": "#/$defs/localDate"},
+                "to": {"$ref": "#/$defs/localDate"}
+              }
+            },
+            "expected": {
+              "oneOf": [
+                {"type": "array", "maxItems": 366, "items": {"$ref": "#/$defs/trainingDay"}},
+                {"$ref": "#/$defs/argumentError"}
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

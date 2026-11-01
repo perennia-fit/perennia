@@ -31,3 +31,16 @@ const protocolConsistencyBudget = Duration(milliseconds: 50);
 const foodHistoryEntryCount = 20000;
 const foodHistoryFoodCount = 1500;
 const foodHistoryBudget = Duration(milliseconds: 150);
+
+/// Progress Overview over five years of history
+/// (docs/designs/progress-overview.md, Non-Functional Requirements):
+/// `buildProgressHistoryFixture` holds these rows. The training budget is
+/// `trainingWeek` plus `trainingDays` over the 1-year period, 366 dates.
+const progressHistoryYears = 5;
+const progressHistoryWorkoutCount = 1500;
+const progressHistorySetCount = 60000;
+const progressHistoryExerciseCount = 40;
+const progressHistoryFocusCount = 4;
+const progressHistoryReadingCount = 2000;
+const progressTrainingRangeDays = 366;
+const progressTrainingBudget = Duration(milliseconds: 50);

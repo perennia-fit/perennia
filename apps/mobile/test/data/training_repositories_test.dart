@@ -9,6 +9,7 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/platform_exercise_seed.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
+import 'package:perennia/domain/training/training_progress.dart';
 import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
 
@@ -3833,6 +3834,218 @@ void main() {
     );
     expect(resumed?.alertVolume, 0.4);
     expect(resumed?.status, RestTimerStatus.running);
+  });
+
+  group('WorkoutSessionRepository.watchProgressWorkoutsBetween', () {
+    const monday = TrainingDayDate(year: 2026, month: 10, day: 26);
+    const sunday = TrainingDayDate(year: 2026, month: 11, day: 1);
+
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    late String exerciseId;
+
+    setUp(() async {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(
+        database,
+        platformSeedSource: const _StarterSeedSource(),
+      );
+      exerciseId = await repositories.exercises.create(
+        ExerciseDraft(
+          name: 'Back Squat',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<List<ProgressWorkout>> read() => repositories.workoutSessions
+        .watchProgressWorkoutsBetween(monday, sunday)
+        .first;
+
+    /// A template "Lower" prescribing three Back Squat Sets.
+    Future<String> lowerTemplate() async {
+      final templateId = await repositories.workoutTemplates.create(
+        const WorkoutTemplateDraft(name: 'Lower'),
+      );
+      final templateExerciseId = await repositories.workoutTemplates
+          .addExercise(templateId, exerciseId);
+      await repositories.workoutTemplates.addPrescription(
+        templateExerciseId,
+        PrescriptionDraft(
+          mode: PrescriptionMode.fixed,
+          values: _loadRepsValues(load: '100', reps: '5'),
+          repeat: 3,
+        ),
+      );
+      return templateId;
+    }
+
+    Future<String> workoutOn(
+      TrainingDayDate day, {
+      int hour = 7,
+      bool ended = true,
+      String? focusId,
+    }) {
+      final startedAt = DateTime.utc(day.year, day.month, day.day, hour);
+      return repositories.workoutSessions.create(
+        WorkoutSessionDraft(
+          startedAt: startedAt,
+          timezone: 'UTC',
+          localDate: day,
+          endedAt: ended ? startedAt.add(const Duration(hours: 1)) : null,
+          focusId: focusId,
+        ),
+      );
+    }
+
+    test(
+        'a materialized Workout with only incomplete Sets has no Performed '
+        'Set until one is completed', () async {
+      final templateId = await lowerTemplate();
+      final result = await repositories.templateMaterialize.materialize(
+        TemplateMaterializeRequest(workoutTemplateId: templateId),
+        now: DateTime(2026, 10, 27, 7),
+      );
+      final sets =
+          await repositories.sets.listActiveForWorkout(result.workoutId);
+      expect(sets, hasLength(3));
+      expect(sets.every((set) => !set.isCompleted), isTrue);
+
+      final emissions = <List<ProgressWorkout>>[];
+      final subscription = repositories.workoutSessions
+          .watchProgressWorkoutsBetween(monday, sunday)
+          .listen(emissions.add);
+      addTearDown(subscription.cancel);
+      await _waitFor(() => emissions.isNotEmpty);
+
+      final abandoned = emissions.last.single;
+      expect(abandoned.workoutId, result.workoutId);
+      expect(abandoned.localDate,
+          const TrainingDayDate(year: 2026, month: 10, day: 27));
+      expect(abandoned.linkedTemplateId, templateId);
+      expect(abandoned.performedSetCount, 0);
+      expect(abandoned.isLogged, isFalse);
+
+      await repositories.sets.setCompleted(sets.first.id, isCompleted: true);
+      await _waitFor(
+        () => emissions.last.single.performedSetCount == 1,
+      );
+      // A completed Set that is later deleted is no longer performed.
+      await repositories.sets.softDelete(sets.first.id);
+      await _waitFor(
+        () => emissions.last.single.performedSetCount == 0,
+      );
+    });
+
+    test(
+        'a deleted Workout and Workouts outside the range are absent; an '
+        'Open Workout is listed', () async {
+      final kept = await workoutOn(monday, focusId: 'focus-weights');
+      final open = await workoutOn(sunday, hour: 18, ended: false);
+      final deleted = await workoutOn(
+        const TrainingDayDate(year: 2026, month: 10, day: 28),
+      );
+      await _createLoadRepsSet(
+        repositories,
+        workoutId: deleted,
+        exerciseId: exerciseId,
+        position: 0,
+        load: '100',
+        reps: '5',
+      );
+      await repositories.workoutSessions.softDelete(deleted);
+      await workoutOn(const TrainingDayDate(year: 2026, month: 10, day: 25));
+      await workoutOn(const TrainingDayDate(year: 2026, month: 11, day: 2));
+      await _createLoadRepsSet(
+        repositories,
+        workoutId: kept,
+        exerciseId: exerciseId,
+        position: 0,
+        load: '100',
+        reps: '5',
+      );
+      final keptSetId = await _createLoadRepsSet(
+        repositories,
+        workoutId: kept,
+        exerciseId: exerciseId,
+        position: 1,
+        load: '100',
+        reps: '5',
+      );
+      await repositories.sets.setCompleted(keptSetId, isCompleted: true);
+
+      final workouts = await read();
+
+      expect(
+        workouts.map((workout) => workout.workoutId),
+        <String>[kept, open],
+      );
+      final first = workouts.first;
+      expect(first.localDate, monday);
+      expect(first.startedAt, DateTime.utc(2026, 10, 26, 7));
+      expect(first.endedAt, DateTime.utc(2026, 10, 26, 8));
+      expect(first.focusId, 'focus-weights');
+      expect(first.linkedTemplateId, isNull);
+      expect(first.performedSetCount, 1);
+      expect(workouts.last.endedAt, isNull);
+      expect(workouts.last.performedSetCount, 0);
+    });
+
+    test(
+        'of two live Template Links, the latest updated wins, then the '
+        'highest id; a deleted link is ignored', () async {
+      final firstTemplate = await lowerTemplate();
+      final secondTemplate = await repositories.workoutTemplates.create(
+        const WorkoutTemplateDraft(name: 'Upper'),
+      );
+      final thirdTemplate = await repositories.workoutTemplates.create(
+        const WorkoutTemplateDraft(name: 'Run'),
+      );
+      final result = await repositories.templateMaterialize.materialize(
+        TemplateMaterializeRequest(workoutTemplateId: firstTemplate),
+        now: DateTime(2026, 10, 27, 7),
+      );
+      // This device keeps one link per Workout; a second one can only come
+      // from elsewhere, so the test lifts the device's own constraint.
+      await database.customStatement(
+        'DROP INDEX template_links_workout_id_unique',
+      );
+      Future<void> link(
+        String id,
+        String templateId,
+        DateTime updatedAt, {
+        DateTime? deletedAt,
+      }) {
+        return database.into(database.templateLinks).insert(
+              TemplateLinksCompanion.insert(
+                id: id,
+                workoutId: result.workoutId,
+                workoutTemplateId: templateId,
+                updatedAt: updatedAt,
+                deletedAt: Value<DateTime?>(deletedAt),
+              ),
+            );
+      }
+
+      final later = DateTime.utc(2030);
+      await link('link-b', secondTemplate, later);
+      await link(
+        'link-z',
+        thirdTemplate,
+        DateTime.utc(2031),
+        deletedAt: DateTime.utc(2031),
+      );
+      expect((await read()).single.linkedTemplateId, secondTemplate);
+
+      await link('link-c', thirdTemplate, later);
+      expect((await read()).single.linkedTemplateId, thirdTemplate);
+    });
   });
 }
 

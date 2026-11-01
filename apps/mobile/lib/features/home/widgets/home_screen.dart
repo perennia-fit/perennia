@@ -5,12 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/repositories/auth_repository.dart';
 import '../../auth/widgets/sign_in_screen.dart';
-import '../../body_tracker/widgets/body_tracker_screen.dart';
 import '../../catalog/widgets/exercise_editor_screen.dart';
 import '../../focus/controllers/focus_providers.dart';
 import '../../focus/widgets/focus_manager_screen.dart';
 import '../../focus/widgets/focus_visuals.dart';
-import '../../metrics/widgets/metrics_screen.dart';
 import '../../protocols/widgets/compound_list_screen.dart';
 import '../../protocols/widgets/protocols_day_view.dart';
 import '../../protocols/widgets/protocol_screen.dart';
@@ -25,6 +23,7 @@ import '../../settings/repositories/settings_repository.dart';
 import '../../settings/widgets/settings_screen.dart';
 import '../../nutrition/controllers/nutrition_day_controller.dart';
 import '../../nutrition/widgets/nutrition_day_view.dart';
+import '../../progress/widgets/progress_overview.dart';
 import '../../../domain/protocols/protocols.dart';
 import '../../../domain/training/training_records.dart';
 import '../../../domain/training/training_day.dart';
@@ -330,7 +329,13 @@ class HomeScreen extends ConsumerWidget {
         index: selectedDestination.index,
         children: [
           todayBody,
-          const _ProgressHomeContent(),
+          // Built only while selected: Progress Overview's providers are
+          // autoDispose, so nothing on it is computed while the user is on
+          // Today or Library. Its list's PageStorageKey restores the scroll.
+          if (selectedDestination == HomeDestination.progress)
+            const ProgressOverview()
+          else
+            const SizedBox.shrink(),
           const _LibraryHomeContent(),
         ],
       ),
@@ -592,45 +597,6 @@ Future<void> _showTitledActionSheet({
       );
     },
   );
-}
-
-class _ProgressHomeContent extends StatelessWidget {
-  const _ProgressHomeContent();
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(AppDimens.base),
-        children: [
-          Card(
-            margin: EdgeInsets.zero,
-            child: SettingsNavTile(
-              icon: Icons.monitor_weight_outlined,
-              title: l10n.homeBodyTitle,
-              subtitle: l10n.navBodyTracker,
-              onTap: () {
-                Navigator.of(context).pushNamed(BodyTrackerScreen.routeName);
-              },
-            ),
-          ),
-          const SizedBox(height: AppDimens.dense),
-          Card(
-            margin: EdgeInsets.zero,
-            child: SettingsNavTile(
-              icon: Icons.monitor_heart_outlined,
-              title: l10n.homeHealthMetricsTitle,
-              subtitle: l10n.metricsTitle,
-              onTap: () {
-                Navigator.of(context).pushNamed(MetricsScreen.routeName);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _LibraryHomeContent extends StatelessWidget {

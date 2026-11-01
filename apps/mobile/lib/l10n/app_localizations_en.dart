@@ -2866,4 +2866,285 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get protocolRemindersPermissionUnsupported =>
       'Not available on this device';
+
+  @override
+  String get progressPeriodWeeks4 => '4 wk';
+
+  @override
+  String get progressPeriodWeeks12 => '12 wk';
+
+  @override
+  String get progressPeriodYear => '1 yr';
+
+  @override
+  String get progressRoutinesAction => 'Routines';
+
+  @override
+  String get progressCardUnavailable => 'Unavailable right now';
+
+  @override
+  String get progressFocusesAction => 'Focuses';
+
+  @override
+  String get progressThisWeekTitle => 'This week';
+
+  @override
+  String get progressThisWeekEmpty => 'Plan your week with a Routine';
+
+  @override
+  String get progressThisWeekNothingLogged => 'Nothing logged yet this week';
+
+  @override
+  String progressThisWeekComparing(String names) {
+    return 'Comparing $names';
+  }
+
+  @override
+  String progressThisWeekComparingWeeklyOnly(String names) {
+    return 'Comparing $names. Weekly Routines only.';
+  }
+
+  @override
+  String get progressThisWeekWeeklyOnly => 'Weekly Routines only.';
+
+  @override
+  String progressThisWeekSemantics(String days) {
+    return 'This week: $days.';
+  }
+
+  @override
+  String progressThisWeekDaySemantics(String weekday, String status) {
+    return '$weekday $status';
+  }
+
+  @override
+  String get progressStatusDone => 'Done';
+
+  @override
+  String get progressStatusPartlyDone => 'Partly done';
+
+  @override
+  String get progressStatusDoneDifferently => 'Done differently';
+
+  @override
+  String get progressStatusNotDone => 'Not done';
+
+  @override
+  String get progressStatusPending => 'Pending';
+
+  @override
+  String get progressStatusPlanned => 'Planned';
+
+  @override
+  String get progressStatusTrained => 'Trained';
+
+  @override
+  String get progressStatusRest => 'Rest';
+
+  @override
+  String get progressStatusNoPlan => 'No plan';
+
+  @override
+  String progressStatusSpoken(String status) {
+    String _temp0 = intl.Intl.selectLogic(
+      status,
+      {
+        'done': 'done',
+        'partly_done': 'partly done',
+        'done_differently': 'done differently',
+        'not_done': 'not done',
+        'pending': 'pending',
+        'planned': 'planned',
+        'trained': 'trained',
+        'rest': 'rest',
+        'no_plan': 'no plan',
+        'other': '',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count done',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountPartlyDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count partly done',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountDoneDifferently(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count done differently',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountNotDone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count not done',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountTrained(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trained',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get progressTrainedDaysTitle => 'Trained days';
+
+  @override
+  String progressTrainedDaysCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trained days',
+      one: '1 trained day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressTrainedDaysSemantics(int count, int weeks) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trained days in the last $weeks weeks.',
+      one: '1 trained day in the last $weeks weeks.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get progressTrainedDaysEmpty => 'Logged workouts show here';
+
+  @override
+  String get progressFocusTimeTitle => 'Time by Focus';
+
+  @override
+  String get progressFocusTimeEmpty => 'Finished workouts show here';
+
+  @override
+  String get progressFocusTimeNoFocus => 'No Focus';
+
+  @override
+  String get progressFocusTimeUnknownFocus => 'Focus';
+
+  @override
+  String progressFocusTimeAxisHours(int hours) {
+    return '${hours}h';
+  }
+
+  @override
+  String progressFocusTimeEntry(String name, String duration) {
+    return '$name $duration';
+  }
+
+  @override
+  String progressFocusTimeSemantics(String entries) {
+    return 'Time by Focus, this week: $entries';
+  }
+
+  @override
+  String progressHoursSpoken(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours',
+      one: '1 hour',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressMinutesSpoken(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes',
+      one: '1 minute',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressHoursMinutesSpoken(String hours, String minutes) {
+    return '$hours $minutes';
+  }
+
+  @override
+  String get progressProtocolsTitle => 'Protocols';
+
+  @override
+  String get progressProtocolsUnlock => 'Unlock';
+
+  @override
+  String get progressProtocolsAll => 'All protocols';
+
+  @override
+  String get progressProtocolsEmpty => 'No protocol days in this period';
+
+  @override
+  String progressCountLogged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count logged',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountPartlyLogged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count partly logged',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountNotLogged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count not logged',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountPaused(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count paused',
+    );
+    return '$_temp0';
+  }
 }
