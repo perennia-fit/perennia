@@ -33,7 +33,14 @@ class TrainedDaysCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final title = l10n.progressTrainedDaysTitle;
-    final data = ref.watch(progressTrainedDaysProvider).value;
+    final state = ref.watch(progressTrainedDaysProvider);
+    if (state.hasError) {
+      return ProgressCard.empty(
+        title: title,
+        message: l10n.progressCardUnavailable,
+      );
+    }
+    final data = state.value;
     if (data == null) {
       return ProgressCard.loading(title: title);
     }

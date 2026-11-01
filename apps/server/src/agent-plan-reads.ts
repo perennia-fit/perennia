@@ -1135,7 +1135,7 @@ export function routineEntryFromRow(row: OpaquePlanRow, templatesById: Map<strin
   };
 }
 
-function cadenceFromRow(
+export function cadenceFromRow(
   row: OpaquePlanRow
 ): { kind: "weekly"; window: null } | { kind: "rotating"; window: number } | null {
   const kind = payloadNullableString(row, "cadence_kind");

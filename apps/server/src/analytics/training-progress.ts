@@ -227,16 +227,23 @@ export function trainingDays({
   for (let offset = 0; offset < dateCount; offset += 1) {
     const localDate = localDateFromEpochDay(firstDay + offset);
     const logged = loggedByDate.get(localDate) ?? [];
-    const secondsByFocus: Record<string, number> = {};
+    // A Map, not an object: a Focus id is opaque synced data, and one named
+    // like an Object.prototype member ("constructor", "__proto__") must sum
+    // like any other, as it does in the Dart core's Map.
+    const secondsByFocus = new Map<string, number>();
     for (const workout of logged) {
       if (workout.endedAt === null) {
         continue;
       }
       const seconds = Math.trunc((Date.parse(workout.endedAt) - Date.parse(workout.startedAt)) / 1000);
       const key = workout.focusId ?? NO_FOCUS_KEY;
-      secondsByFocus[key] = (secondsByFocus[key] ?? 0) + Math.max(seconds, 0);
+      secondsByFocus.set(key, (secondsByFocus.get(key) ?? 0) + Math.max(seconds, 0));
     }
-    days.push({ localDate, workoutCount: logged.length, secondsByFocus });
+    days.push({
+      localDate,
+      workoutCount: logged.length,
+      secondsByFocus: Object.fromEntries(secondsByFocus)
+    });
   }
   return days;
 }

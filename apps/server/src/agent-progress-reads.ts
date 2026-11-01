@@ -10,7 +10,7 @@ import {
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
 import { payloadFocusId, type AgentCatalogStore } from "./agent-catalog.js";
-import { isoWeekday, routineEntryFromRow } from "./agent-plan-reads.js";
+import { cadenceFromRow, isoWeekday, routineEntryFromRow } from "./agent-plan-reads.js";
 import {
   AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS,
   LocalDateSchema,
@@ -233,12 +233,7 @@ export function createDrizzleAgentProgressReadStore({
       const weekEnd = addDays(weekStart, 6);
       const [plans, workouts] = await Promise.all([
         loadWeeklyPlans(db, userId),
-        loadProgressWorkouts(
-          db,
-          userId,
-          from < weekStart ? from : weekStart,
-          to > weekEnd ? to : weekEnd
-        )
+        loadRangeAndWeekWorkouts(db, userId, { from, to }, { from: weekStart, to: weekEnd })
       ]);
 
       const days = trainingDays({ workouts, from, to });
@@ -258,16 +253,14 @@ export function createDrizzleAgentProgressReadStore({
  * A weekly slot is the ISO weekday it plans.
  */
 async function loadWeeklyPlans(db: ServerDatabase, userId: string): Promise<WeeklyPlan[]> {
-  const routines = await db
-    .select()
-    .from(schema.routines)
-    .where(
-      and(
-        eq(schema.routines.userId, userId),
-        isNull(schema.routines.deletedAt),
-        sql`${schema.routines.payload} ->> 'cadence_kind' = 'weekly'`
-      )
-    );
+  // Decoded by the plan reads' own `cadenceFromRow`, so a Routine is weekly
+  // here exactly when its Routine detail and Up next say it is.
+  const routines = (
+    await db
+      .select()
+      .from(schema.routines)
+      .where(and(eq(schema.routines.userId, userId), isNull(schema.routines.deletedAt)))
+  ).filter((routine) => cadenceFromRow(routine)?.kind === "weekly");
   if (routines.length === 0) {
     return [];
   }
@@ -320,6 +313,33 @@ async function loadWeeklyPlans(db: ServerDatabase, userId: string): Promise<Week
     routineId: routine.id,
     entries: entriesByRoutine.get(routine.id) ?? []
   }));
+}
+
+/**
+ * The Workouts of the requested range and of the current week. Windows that
+ * overlap or touch are read as one; apart, each is read on its own, so a past
+ * range never pulls every Workout between it and today. Apart, they share no
+ * date, so no Workout is read twice.
+ */
+async function loadRangeAndWeekWorkouts(
+  db: ServerDatabase,
+  userId: string,
+  range: { from: string; to: string },
+  week: { from: string; to: string }
+): Promise<ProgressWorkout[]> {
+  if (range.from <= addDays(week.to, 1) && week.from <= addDays(range.to, 1)) {
+    return loadProgressWorkouts(
+      db,
+      userId,
+      range.from < week.from ? range.from : week.from,
+      range.to > week.to ? range.to : week.to
+    );
+  }
+  const [rangeWorkouts, weekWorkouts] = await Promise.all([
+    loadProgressWorkouts(db, userId, range.from, range.to),
+    loadProgressWorkouts(db, userId, week.from, week.to)
+  ]);
+  return [...rangeWorkouts, ...weekWorkouts];
 }
 
 /**
@@ -378,27 +398,31 @@ async function loadProgressWorkouts(
 
   const performedSetCounts = new Map(setCounts.map((row) => [row.workoutId, row.count]));
   // More than one live link per Workout is not enforced by the schema or
-  // sync, so take the latest `updatedAt`, then the highest id, as the app does.
+  // sync, so take the latest `updatedAt` to the second, then the highest id,
+  // as the app does.
   const linkByWorkout = new Map<string, (typeof links)[number]>();
   for (const link of links) {
     const workoutId = link.payload.workout_id as string;
     const current = linkByWorkout.get(workoutId);
-    if (
-      current === undefined ||
-      link.updatedAt.getTime() > current.updatedAt.getTime() ||
-      (link.updatedAt.getTime() === current.updatedAt.getTime() && link.id > current.id)
-    ) {
+    if (current === undefined) {
+      linkByWorkout.set(workoutId, link);
+      continue;
+    }
+    const updatedAt = wholeSeconds(link.updatedAt).getTime();
+    const currentUpdatedAt = wholeSeconds(current.updatedAt).getTime();
+    if (updatedAt > currentUpdatedAt || (updatedAt === currentUpdatedAt && link.id > current.id)) {
       linkByWorkout.set(workoutId, link);
     }
   }
 
   return sessions.map((session) => {
     const linkedTemplateId = linkByWorkout.get(session.id)?.payload.workout_template_id;
+    const endedAt = dateValue(session.payload.ended_at);
     return {
       workoutId: session.id,
       localDate: session.payload.local_date as string,
-      startedAt: (dateValue(session.payload.started_at) ?? session.updatedAt).toISOString(),
-      endedAt: dateValue(session.payload.ended_at)?.toISOString() ?? null,
+      startedAt: wholeSeconds(dateValue(session.payload.started_at) ?? session.updatedAt).toISOString(),
+      endedAt: endedAt === null ? null : wholeSeconds(endedAt).toISOString(),
       focusId: payloadFocusId(session.payload),
       linkedTemplateId:
         typeof linkedTemplateId === "string" && linkedTemplateId.length > 0
@@ -426,3 +450,14 @@ function dateValue(value: unknown): Date | null {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
+
+/**
+ * `date` truncated to the whole second. The app's Drift columns store instants
+ * as whole epoch seconds, so the server reads them at that precision too:
+ * otherwise a Workout's seconds by Focus, or which of two Template Links
+ * updated within one second wins, could differ between the app and an Agent.
+ */
+function wholeSeconds(date: Date): Date {
+  return new Date(Math.floor(date.getTime() / 1000) * 1000);
+}
+

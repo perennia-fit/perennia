@@ -419,6 +419,10 @@ void main() {
 
     await tester
         .tap(find.byKey(ProgressOverview.periodKey(ProgressPeriod.weeks4)));
+    // The period does not set This week, so it stays loaded through the
+    // switch rather than falling back to its loading body.
+    await tester.pump();
+    expect(find.byKey(ThisWeekCard.daysKey), findsOneWidget);
     await _settle(tester);
     // 28 dates from Monday 5 October; even offsets from 10 August land on
     // 5, 7, ..., 29 October.
@@ -428,6 +432,8 @@ void main() {
 
     await tester
         .tap(find.byKey(ProgressOverview.periodKey(ProgressPeriod.year)));
+    await tester.pump();
+    expect(find.byKey(ThisWeekCard.daysKey), findsOneWidget);
     await _settle(tester);
     expect(text(tester, TrainedDaysCard.countKey), '41 trained days');
     expect(cells('trained') + cells('untrained') + cells('future'), 364);

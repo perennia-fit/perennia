@@ -2880,6 +2880,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get progressRoutinesAction => 'Routines';
 
   @override
+  String get progressCardUnavailable => 'Unavailable right now';
+
+  @override
   String get progressFocusesAction => 'Focuses';
 
   @override

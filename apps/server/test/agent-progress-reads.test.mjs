@@ -212,6 +212,125 @@ test(
   }
 );
 
+test(
+  "a past range and the current week are read apart, and nothing between them is",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    try {
+      await seedUser(database, userId);
+      await seedHybridBlock(database, userId);
+      await seedWorkouts(database, userId, [
+        workout("w-mar", "2026-03-10", "06:00", "07:00", "f-weights", null),
+        // Between the range and the week: in neither answer.
+        workout("w-jun", "2026-06-10", "06:00", "07:00", "f-weights", null),
+        workout("w-mon", "2026-10-26", "06:00", "07:00", "f-weights", "t-lower")
+      ]);
+
+      const result = await progressStore(database).readTrainingDays({
+        userId,
+        from: "2026-03-01",
+        to: "2026-03-31",
+        today: "2026-11-01"
+      });
+
+      assert.deepEqual(
+        result.days.filter((day) => day.workoutCount > 0),
+        [{ localDate: "2026-03-10", workoutCount: 1, secondsByFocus: { "f-weights": 3600 } }]
+      );
+      assert.equal(result.week.weekStart, "2026-10-26");
+      assert.deepEqual(
+        result.week.days.map((day) => [day.localDate, day.status, day.workoutCount]),
+        [
+          ["2026-10-26", "done", 1],
+          ["2026-10-27", "not_done", 0],
+          ["2026-10-28", "rest", 0],
+          ["2026-10-29", "not_done", 0],
+          ["2026-10-30", "rest", 0],
+          ["2026-10-31", "not_done", 0],
+          ["2026-11-01", "rest", 0]
+        ]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// The app's Drift columns hold whole epoch seconds, so the server reads every
+// instant at that precision: the same seconds by Focus, and the same Template
+// Link when two were updated within one second (the highest id wins a tie).
+test(
+  "instants are read to the whole second, as the app stores them",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    const id = (suffix) => `${userId}-${suffix}`;
+    try {
+      await seedUser(database, userId);
+      await seedHybridBlock(database, userId);
+      const workoutId = id("w-mon");
+      await database.db.insert(schema.workoutSessions).values(
+        opaqueRow({
+          id: workoutId,
+          userId,
+          payload: {
+            local_date: "2026-10-26",
+            // 3 599.2 s at millisecond precision; 3 600 s to the second.
+            started_at: "2026-10-26T06:00:00.900Z",
+            ended_at: "2026-10-26T07:00:00.100Z",
+            focus_id: "f-weights"
+          }
+        })
+      );
+      await database.db.insert(schema.loggedSets).values(
+        opaqueRow({
+          id: `${workoutId}-set-0`,
+          userId,
+          payload: { workout_id: workoutId, exercise_id: "exercise-1", position: 0, is_completed: true }
+        })
+      );
+      const link = (suffix, template, updatedAt) => ({
+        ...opaqueRow({
+          id: `${workoutId}-${suffix}`,
+          userId,
+          payload: {
+            workout_id: workoutId,
+            workout_template_id: id(template),
+            routine_id: null,
+            slot: null
+          }
+        }),
+        updatedAt: new Date(updatedAt)
+      });
+      await database.db.insert(schema.templateLinks).values([
+        // Later by milliseconds only, so the same second as link-b.
+        link("link-a", "t-lower", "2026-10-26T08:00:00.900Z"),
+        link("link-b", "t-run", "2026-10-26T08:00:00.100Z")
+      ]);
+
+      const result = await progressStore(database).readTrainingDays({
+        userId,
+        from: "2026-10-26",
+        to: "2026-10-26",
+        today: "2026-10-27"
+      });
+
+      assert.deepEqual(result.days, [
+        { localDate: "2026-10-26", workoutCount: 1, secondsByFocus: { "f-weights": 3600 } }
+      ]);
+      // Linked to Run intervals, not the planned Lower.
+      assert.equal(result.week.days[0].status, "done_differently");
+    } finally {
+      await database.close();
+    }
+  }
+);
+
 test("the training-days read refuses a bad range with 400 before the store, as REST and MCP", async () => {
   const { app, calls } = progressApp();
   const today = utcToday();

@@ -4796,6 +4796,12 @@ abstract class AppLocalizations {
   /// **'Routines'**
   String get progressRoutinesAction;
 
+  /// No description provided for @progressCardUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Unavailable right now'**
+  String get progressCardUnavailable;
+
   /// No description provided for @progressFocusesAction.
   ///
   /// In en, this message translates to:

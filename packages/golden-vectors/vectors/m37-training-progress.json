@@ -626,6 +626,21 @@
       "expected": [{"localDate": "2026-10-26", "workoutCount": 1, "secondsByFocus": {"f-weights": 0}}]
     },
     {
+      "name": "focus-ids-named-like-object-members",
+      "function": "training_days",
+      "note": "D3: a Focus id is opaque synced data. Ids that name members of a JavaScript object's prototype sum like any other id.",
+      "input": {
+        "workouts": [
+          {"workoutId": "w-constructor", "localDate": "2026-10-26", "startedAt": "2026-10-26T06:00:00.000Z", "endedAt": "2026-10-26T07:00:00.000Z", "focusId": "constructor", "linkedTemplateId": null, "performedSetCount": 3},
+          {"workoutId": "w-proto", "localDate": "2026-10-26", "startedAt": "2026-10-26T08:00:00.000Z", "endedAt": "2026-10-26T08:10:00.000Z", "focusId": "__proto__", "linkedTemplateId": null, "performedSetCount": 1},
+          {"workoutId": "w-to-string", "localDate": "2026-10-26", "startedAt": "2026-10-26T09:00:00.000Z", "endedAt": "2026-10-26T09:01:00.000Z", "focusId": "toString", "linkedTemplateId": null, "performedSetCount": 1}
+        ],
+        "from": "2026-10-26",
+        "to": "2026-10-26"
+      },
+      "expected": [{"localDate": "2026-10-26", "workoutCount": 3, "secondsByFocus": {"constructor": 3600, "__proto__": 600, "toString": 60}}]
+    },
+    {
       "name": "no-performed-set-is-ignored",
       "function": "training_days",
       "note": "D0: a Workout with no Performed Set is not a Logged Workout: no count, no time, no key.",

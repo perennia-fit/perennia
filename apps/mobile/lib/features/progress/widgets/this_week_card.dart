@@ -32,7 +32,14 @@ class ThisWeekCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final title = l10n.progressThisWeekTitle;
-    final data = ref.watch(progressThisWeekProvider).value;
+    final state = ref.watch(progressThisWeekProvider);
+    if (state.hasError) {
+      return ProgressCard.empty(
+        title: title,
+        message: l10n.progressCardUnavailable,
+      );
+    }
+    final data = state.value;
     if (data == null) {
       return ProgressCard.loading(title: title);
     }

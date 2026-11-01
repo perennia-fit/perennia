@@ -281,7 +281,12 @@ final progressThisWeekProvider =
   }
   final plans = ref.watch(progressWeeklyPlansProvider);
   final rotating = ref.watch(progressHasRotatingRoutineProvider);
-  final workouts = ref.watch(progressWorkoutsProvider((range.from, range.to)));
+  // Keyed by the week alone, not the period: switching the period keeps
+  // this stream, so This week neither reloads nor waits on a year of
+  // Workouts it does not read (Goal 2, D8).
+  final workouts = ref.watch(
+    progressWorkoutsProvider((range.weekStart, range.weekStart.addDays(6))),
+  );
   return _whenAll(
     <AsyncValue<Object?>>[plans, rotating, workouts],
     'progress.thisWeek',
@@ -439,15 +444,26 @@ final progressProtocolsProvider =
 
 /// Loading until every input has data, the first error otherwise; then
 /// [compute] inside a Timeline span named [span], so a profile build shows
-/// each card's work in DevTools.
+/// each card's work in DevTools. An error is also logged under [span]: the
+/// card shows only that it is unavailable.
 AsyncValue<T> _whenAll<T>(
   List<AsyncValue<Object?>> inputs,
   String span,
   T Function() compute,
 ) {
+  AsyncValue<T> failed(Object error, StackTrace stackTrace) {
+    developer.log(
+      'failed',
+      name: span,
+      error: error,
+      stackTrace: stackTrace,
+    );
+    return AsyncError<T>(error, stackTrace);
+  }
+
   for (final input in inputs) {
     if (input.hasError) {
-      return AsyncError<T>(input.error!, input.stackTrace ?? StackTrace.empty);
+      return failed(input.error!, input.stackTrace ?? StackTrace.empty);
     }
   }
   if (inputs.any((input) => !input.hasValue)) {
@@ -456,6 +472,6 @@ AsyncValue<T> _whenAll<T>(
   try {
     return AsyncData<T>(developer.Timeline.timeSync(span, compute));
   } catch (error, stackTrace) {
-    return AsyncError<T>(error, stackTrace);
+    return failed(error, stackTrace);
   }
 }

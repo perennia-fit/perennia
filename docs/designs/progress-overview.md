@@ -830,9 +830,12 @@ shown empty.
 shadow) with an `h2` title, an optional trailing text button to a detail
 screen, and a one-line empty state with at most one action when it has
 nothing to show. While a card's data is loading it shows its title over a
-120 dp empty body. The Protocols card is the exception: it renders nothing
-while loading (D7). A card whose content is taller or shorter moves the
-cards below it once, when its data arrives.
+120 dp empty body. When its data fails to load, it shows its title over the
+one-line "Unavailable right now" (`progressCardUnavailable`) with no action,
+and the error is logged under the card's Timeline span name. The Protocols
+card is the exception: it renders nothing while loading and fails closed on
+an error (D7). A card whose content is taller or shorter moves the cards
+below it once, when its data arrives.
 
 | # | Card | Title | Trailing button | Opens |
 | :- | :--- | :---- | :-------------- | :---- |
@@ -1028,6 +1031,9 @@ in words instead of an arrow. No change is drawn in red, green or gold.
 
 **Performance.**
 *   Each card has its own provider, so a slow card never blocks another.
+    This week reads the current week's Workouts through its own stream,
+    keyed by the week's dates, so switching the period neither reloads it
+    nor makes it wait on the period's query.
 *   A card still computing shows its loading body (see Cards).
 *   `ExerciseAnalyticsRepository.watchNewBests` builds all series inside
     `compute` from `package:flutter/foundation.dart`, the background-isolate
@@ -1119,7 +1125,7 @@ in `index.ts` and passed to `createApp` and `createAgentMcpServer` as
 
 | Method | Returns | Reads |
 | :----- | :------ | :---- |
-| `readTrainingDays({userId, from, to, today})` | the `listAgentTrainingDays` response | Routines whose payload `cadence_kind` is `weekly` and that are not deleted; their routine entries that are not deleted and have a `slot`; the entries' workout templates that are not deleted; workout sessions whose payload `local_date` is in `[min(from, weekStart), max(to, weekStart + 6)]` and that are not deleted; each session's count of logged sets that are not deleted with payload `is_completed` true; each session's active template link (latest `updated_at`, then highest `id`); the account's `weekStartDay` |
+| `readTrainingDays({userId, from, to, today})` | the `listAgentTrainingDays` response | Routines whose payload `cadence_kind` is `weekly` and that are not deleted; their routine entries that are not deleted and have a `slot`; the entries' workout templates that are not deleted; workout sessions whose payload `local_date` is in `[from, to]` or `[weekStart, weekStart + 6]` and that are not deleted, read as one window when the two overlap or touch and as two otherwise, so a past range never reads the dates between it and the week; each session's count of logged sets that are not deleted with payload `is_completed` true; each session's active template link (latest `updated_at` to the whole second, then highest `id`); the account's `weekStartDay`. Every instant (`started_at`, `ended_at`, a link's `updated_at`) is truncated to the whole second, the precision the app's Drift columns store, so both loaders feed the core the same inputs |
 | `readNewBests({userId, from, to})` | the `listAgentNewBests` response | performed sets as defined below, grouped by exercise; their exercises through the catalog |
 | `readExerciseProgressSets({userId, exerciseId})` | `ProgressWorkoutSets[]` | the same, for one exercise |
 
@@ -1146,7 +1152,11 @@ which then calls it.
 
 **Reused helpers.** The training-days loader reuses `cadenceFromRow`,
 `routineEntryFromRow` and `isoWeekday` from `agent-plan-reads.ts`, which this
-change exports. `weekStartDay` comes from the settings read store's
+change exports. It reads the user's live Routines and keeps those whose
+`cadenceFromRow(row)?.kind` is `weekly`, so a Routine is weekly here exactly
+when the plan reads say it is. `unionValues` from `agent-protocols.ts`, also
+exported, checks the nine status wire values against the core's
+`TrainingDayStatus` type. `weekStartDay` comes from the settings read store's
 `readSettings({userId})` (`createDrizzleAgentSettingsStore`), which the
 progress store receives at construction.
 
@@ -1659,6 +1669,8 @@ source:
         *   two Focuses on one date;
         *   an Open Workout (counted, no key);
         *   a Workout ending before it started (0 seconds, key present);
+        *   Focus ids named like JavaScript object members (`constructor`,
+            `__proto__`, `toString`), which sum like any other id;
         *   a Workout with `performedSetCount` 0 (ignored);
         *   a Workout dated outside the range (ignored);
         *   a 366-date range;
@@ -1769,15 +1781,25 @@ source:
     *   `progressRangeProvider`: `from`, `to`, `today`, `weekStart` and
         `firstWeekStart`, from the period, today and
         `AppSettings.weekStartFor`.
+    *   `TrainingDayDate.addDays` (`training_day.dart`) and
+        `AppSettings.weekStartFor` (`settings_repository.dart`) (modify):
+        calendar arithmetic on a UTC date, as `ProtocolDayDate.addDays`
+        does, instead of whole days added to a local midnight. Across a
+        daylight-saving change the old arithmetic repeats or skips a date,
+        which the cores' and the range's date walks cannot tolerate. Every
+        other caller (Today's date navigation, the calendar, Up next)
+        changes only on those dates, where the old result was wrong.
     *   One `autoDispose` `StreamProvider` per repository stream (the
         codebase has no stream-combining package). Each card provider is an
         `autoDispose` `Provider<AsyncValue<T>>` that `ref.watch`es the
         stream providers it needs, returns loading until all have data, and
         then runs its core inside a `developer.Timeline` span named
-        `progress.{card}`:
+        `progress.{card}`. An input's error, or the core's, is returned as
+        the card's error and logged under that span name:
         *   `progressThisWeekProvider`: `trainingWeek`,
             `summarizeTrainingWeek`, the compared Routines' names and the
-            rotating flag;
+            rotating flag, over the Workouts of `[weekStart, weekStart + 6]`
+            alone, so its stream is the same in every period;
         *   `progressTrainedDaysProvider`: `trainingDays` and the Trained
             Day count;
         *   `progressFocusTimeProvider`: `weeklyFocusSeconds` and the Focus
@@ -1815,6 +1837,7 @@ source:
     *   The nine status labels `progressStatusDone` to
         `progressStatusNoPlan`.
     *   `progressHoursSpoken` and `progressMinutesSpoken`.
+    *   `progressCardUnavailable`, a card's error line (D8).
     *   Plural forms for the counts.
 33. **`apps/mobile/test/l10n/l10n_externalization_test.dart`** (modify).
     Add each widget file created in items 28-30 to its file list. PR 3 and
@@ -1830,7 +1853,7 @@ source:
         *   the `agent_progress_read_invalid_range` and
             `agent_progress_read_unavailable` response schemas.
     *   `apps/server/src/agent-protocols.ts` (modify): export
-        `LocalDateSchema`.
+        `LocalDateSchema` and `unionValues`.
     *   `apps/server/src/agent-plan-reads.ts` (modify): export
         `cadenceFromRow`, `routineEntryFromRow` and `isoWeekday`.
     *   `apps/server/src/app.ts` (modify): the `agentProgressReadStore`
@@ -1889,7 +1912,8 @@ source:
         (create). It runs against in-memory SQLite with
         `RepositoryProgressFeatureRepository`:
         *   CUJs 1-8, 12 and 14;
-        *   period switching;
+        *   period switching, with This week still shown on the first frame
+            after the switch;
         *   scroll position kept across tab switches.
     *   `apps/mobile/test/features/progress/this_week_card_test.dart`
         (create), with the stub:
@@ -1897,6 +1921,15 @@ source:
         *   each row of the compared-Routines line table;
         *   the all-zero summary;
         *   the semantics label.
+    *   `apps/mobile/test/features/progress/training_cards_error_test.dart`
+        (create): a failing Workouts stream shows This week, Trained days
+        and Time by Focus as unavailable, not loading.
+    *   `test/domain/protocol_day_date_dst_checks.dart` (modify):
+        `TrainingDayDate.addDays` walks every date both ways across each
+        daylight-saving change, in each zone; and
+        `test/features/settings/app_settings_test.dart` (modify):
+        `weekStartFor` is the week start on or before every date of 2018,
+        2019 and 2026, for both week start days.
     *   `apps/mobile/test/features/progress/protocols_progress_card_test.dart`
         (create), with the stub and a `protocolsLockStoreProvider` override
         for each lock state:
@@ -1938,7 +1971,11 @@ source:
         *   no store (503);
         *   a Sunday `weekStartDay`;
         *   a Set payload without `is_completed` (not performed);
-        *   a Set in a deleted session (ignored).
+        *   a Set in a deleted session (ignored);
+        *   a past range, read apart from the current week, with a Workout
+            between them in neither answer;
+        *   sub-second `started_at`, `ended_at` and link `updatedAt`, read
+            to the whole second as the app stores them.
     *   `apps/server/test/agent-mcp.test.mjs` (modify): the tool list.
     *   `apps/server/test/agent-skill.test.mjs` and
         `packages/contract/test/agent-skill-reference.test.mjs` pass with
