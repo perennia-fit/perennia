@@ -2,8 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart'
-    show DuplicateMealTypeNameException;
+    show
+        DuplicateMealTypeNameException,
+        FoodEntrySnapshotDraft,
+        MealDraft,
+        TrainingRepositories;
 import 'package:perennia/domain/nutrition/nutrition.dart';
 import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
@@ -18,6 +24,18 @@ import 'package:perennia/theme/theme.dart';
 import 'add_food_repository_fakes.dart';
 
 void main() {
+  final warnAboutMultipleDatabases =
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+
+  setUpAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  });
+
+  tearDownAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
+        warnAboutMultipleDatabases;
+  });
+
   testWidgets('renders unknown macro totals as dash instead of zero', (
     tester,
   ) async {
@@ -626,7 +644,7 @@ void main() {
     }
   });
 
-  testWidgets('selected Recent Food opens prefilled Log Portion and saves',
+  testWidgets('a selected Your foods row opens prefilled Log Portion and saves',
       (tester) async {
     final controller = _FakeNutritionDayController(
       _nutritionDayWithThreeSnacks(),
@@ -672,7 +690,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(
-        AddFoodPicker.resultKey(AddFoodPickerFilter.recent, 'usda-chicken'),
+        AddFoodPicker.resultKey(_pickerFood()),
       ),
     );
     await tester.pumpAndSettle();
@@ -705,6 +723,153 @@ void main() {
     expect(entry.portion.value, 1.5);
     expect(entry.portion.entered, '1.5');
     expect(entry.portion.unit, PortionUnit.serving);
+  });
+
+  testWidgets(
+      'CUJ 1: the usual Food is first in Your foods and logs in two taps',
+      (tester) async {
+    // A phone-height surface, so the sheet shows Your foods without scrolling.
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+    final now = DateTime.now().toUtc();
+    final oatMilk = _oatMilkProduct();
+    Future<void> log(
+      DateTime startedAt, {
+      required String foodId,
+      required String name,
+      required FoodSource foodSource,
+      required Portion portion,
+      required bool isLiquid,
+    }) async {
+      final mealId = await repositories.nutrition.createMeal(
+        MealDraft(
+          mealType: 'Breakfast',
+          startedAt: startedAt,
+          timezone: 'UTC',
+          localDate: NutritionDayDate(
+            year: startedAt.year,
+            month: startedAt.month,
+            day: startedAt.day,
+          ),
+        ),
+      );
+      await repositories.nutrition.logFoodEntrySnapshot(
+        entry: FoodEntrySnapshotDraft(
+          mealId: mealId,
+          foodId: foodId,
+          name: name,
+          foodSource: foodSource,
+          nutrientsPer100: oatMilk.nutrientsPer100,
+          isLiquid: isLiquid,
+          portion: portion,
+        ),
+      );
+    }
+
+    // Oat milk most mornings; a one-off snack logged more recently.
+    for (var day = 3; day >= 1; day -= 1) {
+      await log(
+        now.subtract(Duration(days: day)),
+        foodId: oatMilk.id,
+        name: oatMilk.name,
+        foodSource: FoodSource.openFoodFacts,
+        portion: Portion(
+          value: 250,
+          entered: '250',
+          unit: PortionUnit.milliliter,
+        ),
+        isLiquid: true,
+      );
+    }
+    await log(
+      now.subtract(const Duration(hours: 2)),
+      foodId: 'usda-fdc-171077',
+      name: 'Chicken breast',
+      foodSource: FoodSource.usda,
+      portion: Portion(value: 120, entered: '120', unit: PortionUnit.gram),
+      isLiquid: false,
+    );
+    final controller = _FakeNutritionDayController(
+      _nutritionDayWithThreeSnacks(),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          nutritionDayControllerProvider.overrideWith(() => controller),
+          settingsRepositoryProvider.overrideWith(
+            (ref) => InMemorySettingsRepository(),
+          ),
+          openFoodFactsRepositoryProvider.overrideWith(
+            (ref) => const StubOpenFoodFactsRepository(),
+          ),
+          addFoodRepositoryProvider.overrideWith(
+            (ref) => RepositoryAddFoodRepository(
+              repositories,
+              openFoodFacts: _DeviceProducts([oatMilk]),
+            ),
+          ),
+          mealTypeListProvider.overrideWith(
+            (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const NutritionDayView(),
+        ),
+      ),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(NutritionDayView.mealCardKey('meal-snack-2')),
+    );
+    final addFoodButton = find.byKey(
+      NutritionDayView.addFoodButtonKey('meal-snack-2'),
+    );
+    await tester.scrollUntilVisible(
+      addFoodButton,
+      -400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(addFoodButton);
+    await _pumpUntilFound(tester, find.byKey(AddFoodPicker.yourFoodsLabelKey));
+
+    final oatMilkRow = find.byKey(
+      AddFoodPicker.resultKey(_oatMilkPickerKeyItem()),
+    );
+    final chickenRow = find.byKey(
+      const Key('nutrition.addFood.result-usda-usda-fdc-171077'),
+    );
+    expect(
+      tester.getTopLeft(oatMilkRow).dy,
+      lessThan(tester.getTopLeft(chickenRow).dy),
+    );
+    expect(
+      find.descendant(of: oatMilkRow, matching: find.text('Oatly')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: oatMilkRow, matching: find.text('Last: 250 ml')),
+      findsOneWidget,
+    );
+
+    await tester.tap(oatMilkRow);
+    await tester.pumpAndSettle();
+    expect(_logPortionAmountText(tester), '250');
+    await tester.tap(find.byKey(LogPortionScreen.saveButtonKey));
+    await tester.pumpAndSettle();
+
+    final entry = controller.loggedFoodEntries.single;
+    expect(entry.mealId, 'meal-snack-2');
+    expect(entry.foodId, oatMilk.id);
+    expect(entry.name, 'Oat milk');
+    expect(entry.foodSource, FoodSource.openFoodFacts);
+    expect(entry.portion.entered, '250');
+    expect(entry.portion.unit, PortionUnit.milliliter);
   });
 
   testWidgets('barcode scan opens Log Portion with Open Food Facts snapshot',
@@ -900,7 +1065,7 @@ class _EmptyAddFoodRepository with NoOnlineLookups implements AddFoodRepository 
   Future<List<FoodPickerItem>> search({
     required AddFoodPickerFilter filter,
     required String query,
-    int limit = 50,
+    required YourFoods yourFoods,
   }) async {
     return const <FoodPickerItem>[];
   }
@@ -915,9 +1080,9 @@ class _SingleFoodRepository with NoOnlineLookups implements AddFoodRepository {
   Future<List<FoodPickerItem>> search({
     required AddFoodPickerFilter filter,
     required String query,
-    int limit = 50,
+    required YourFoods yourFoods,
   }) async {
-    if (filter != food.filter) {
+    if (filter != AddFoodPickerFilter.all) {
       return const <FoodPickerItem>[];
     }
     return <FoodPickerItem>[food];
@@ -933,21 +1098,38 @@ class _BarcodeFoodRepository with NoOnlineLookups implements AddFoodRepository {
   Future<List<FoodPickerItem>> search({
     required AddFoodPickerFilter filter,
     required String query,
-    int limit = 50,
+    required YourFoods yourFoods,
   }) async {
     return const <FoodPickerItem>[];
   }
 
   @override
   Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
-    String raw,
-  ) async {
+    String raw, {
+    required YourFoods yourFoods,
+  }) async {
     return raw == '3017620422003'
         ? (status: BarcodeLookupOutcome.found, item: food)
         : (status: BarcodeLookupOutcome.notFound, item: null);
   }
 }
 
+/// The device's Open Food Facts products, for resolving Your foods.
+class _DeviceProducts extends StubOpenFoodFactsRepository {
+  const _DeviceProducts(this.products);
+
+  final List<PlatformFoodRecord> products;
+
+  @override
+  Future<List<PlatformFoodRecord>> localProductsByCodes(
+    List<String> codes,
+  ) async {
+    return [
+      for (final product in products)
+        if (codes.contains(product.id)) product,
+    ];
+  }
+}
 
 class _FakeBarcodeScanner implements BarcodeScanner {
   const _FakeBarcodeScanner(this.result);
@@ -1363,7 +1545,7 @@ FoodPickerItem _pickerFood() {
   return FoodPickerItem(
     id: 'usda-chicken',
     name: 'Chicken breast',
-    filter: AddFoodPickerFilter.recent,
+    origin: FoodPickerOrigin.history,
     foodSource: FoodSource.usda,
     nutrientsPer100: NutrientVector.energyAndMacros(
       energy: NutrientAmount.complete(
@@ -1398,11 +1580,56 @@ FoodPickerItem _pickerFood() {
   );
 }
 
+PlatformFoodRecord _oatMilkProduct() {
+  return PlatformFoodRecord(
+    id: '7394376616037',
+    name: 'Oat milk',
+    foodSource: FoodSource.openFoodFacts,
+    nutrientsPer100: NutrientVector.energyAndMacros(
+      energy: NutrientAmount.complete(
+        value: 46,
+        entered: '46',
+        unit: NutrientUnit.kilocalorie,
+      ),
+      protein: NutrientAmount.complete(
+        value: 1,
+        entered: '1',
+        unit: NutrientUnit.gram,
+      ),
+      carbohydrate: NutrientAmount.complete(
+        value: 6.7,
+        entered: '6.7',
+        unit: NutrientUnit.gram,
+      ),
+      fat: NutrientAmount.complete(
+        value: 1.5,
+        entered: '1.5',
+        unit: NutrientUnit.gram,
+      ),
+    ),
+    isLiquid: true,
+    brand: 'Oatly',
+  );
+}
+
+/// Only the picker key matters for the row's widget key.
+FoodPickerItem _oatMilkPickerKeyItem() {
+  final product = _oatMilkProduct();
+  return FoodPickerItem(
+    id: product.id,
+    name: product.name,
+    origin: FoodPickerOrigin.history,
+    foodSource: product.foodSource,
+    nutrientsPer100: product.nutrientsPer100,
+    isLiquid: product.isLiquid,
+  );
+}
+
 FoodPickerItem _openFoodFactsBar() {
   return FoodPickerItem(
     id: '3017620422003',
     name: 'Hazelnut cocoa spread',
-    filter: AddFoodPickerFilter.openFoodFacts,
+    origin: FoodPickerOrigin.openFoodFacts,
     foodSource: FoodSource.openFoodFacts,
     nutrientsPer100: NutrientVector.energyAndMacros(
       energy: NutrientAmount.complete(

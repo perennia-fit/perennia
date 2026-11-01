@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m37-food-history.schema.json",
+  "title": "M37 Food History golden vector",
+  "description": "Language-neutral parity cases for Food History (docs/designs/unified-food-search.md): the distinct Foods a user logged, one per Food Source and Food id, from active `food` entries with a Food id, a Food Source and a liquid flag in active Meals, leaving out archived User Foods. Ordered by entries whose Meal started at or after now minus 90 days (descending), then the latest Meal start (descending), then the latest entry's position (ascending), then Food Source name, then Food id. The latest entry is by Meal start, then entry updatedAt, then entry id; the Last Portion is the Portion of the latest entry that has one. Times are ISO-8601 UTC strings; Portions use the Portion JSON the app stores in portion_json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m37-food-history"},
+    "domain": {"const": "food-history"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m37-food-history.schema.json"},
+    "cases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "instant": {"type": "string", "format": "date-time"},
+    "portion": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["value", "entered", "unit"],
+      "properties": {
+        "value": {"type": "number"},
+        "entered": {"type": "string", "minLength": 1},
+        "unit": {"enum": ["gram", "milliliter", "ounce", "fluidOunce", "serving", "package"]}
+      }
+    },
+    "meal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "startedAt", "deletedAt"],
+      "properties": {
+        "id": {"type": "string"},
+        "startedAt": {"$ref": "#/$defs/instant"},
+        "deletedAt": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}]}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "mealId", "kind", "position", "foodSource", "foodId", "isLiquid", "portion", "updatedAt", "deletedAt"],
+      "properties": {
+        "id": {"type": "string"},
+        "mealId": {"type": "string"},
+        "kind": {"enum": ["food", "quickEntry"]},
+        "position": {"type": "integer", "minimum": 0},
+        "foodSource": {"type": ["string", "null"]},
+        "foodId": {"type": ["string", "null"]},
+        "isLiquid": {"type": ["boolean", "null"]},
+        "portion": {"$ref": "#/$defs/portion"},
+        "updatedAt": {"$ref": "#/$defs/instant"},
+        "deletedAt": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}]}
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["foodSource", "foodId", "recentCount", "lastLoggedAt", "lastPortion"],
+      "properties": {
+        "foodSource": {"type": "string"},
+        "foodId": {"type": "string"},
+        "recentCount": {"type": "integer", "minimum": 0},
+        "lastLoggedAt": {"$ref": "#/$defs/instant"},
+        "lastPortion": {"$ref": "#/$defs/portion"}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": {"type": "string"},
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["now", "meals", "entries", "archivedUserFoodIds"],
+          "properties": {
+            "now": {"$ref": "#/$defs/instant"},
+            "meals": {"type": "array", "items": {"$ref": "#/$defs/meal"}},
+            "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+            "archivedUserFoodIds": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "expected": {"type": "array", "items": {"$ref": "#/$defs/record"}}
+      }
+    }
+  }
+}

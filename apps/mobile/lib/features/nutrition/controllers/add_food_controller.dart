@@ -9,8 +9,12 @@ import '../../settings/repositories/settings_repository.dart';
 import '../repositories/add_food_repository.dart';
 import 'nutrition_day_controller.dart';
 
-final addFoodPickerControllerProvider =
-    AsyncNotifierProvider<AddFoodPickerController, AddFoodPickerState>(
+/// Auto-disposed: the picker sheet is its only listener, so each opening
+/// builds a fresh controller with filter All, an empty query and a fresh
+/// Your foods read (docs/designs/unified-food-search.md § Controller
+/// lifecycle).
+final addFoodPickerControllerProvider = AsyncNotifierProvider.autoDispose<
+    AddFoodPickerController, AddFoodPickerState>(
   AddFoodPickerController.new,
 );
 
@@ -36,7 +40,7 @@ final class AddFoodPickerState {
   final BarcodeLookupStatus barcodeLookupStatus;
   final String? barcode;
 
-  /// Live Open Food Facts results whose barcode is not among [results].
+  /// Live Open Food Facts results whose picker key is not among [results].
   final List<FoodPickerItem> onlineResults;
 
   /// The last live search's state; cleared when the query changes.
@@ -85,14 +89,17 @@ enum BarcodeLookupStatus {
   disabled;
 }
 
-/// The online slot of the Open Food Facts filter.
+/// The online slot of the All and Open Food Facts filters.
 enum OnlinePickerStatus { idle, loading, ok, noResults, offline, unavailable }
 
 class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
   static const searchDebounceDuration = Duration(milliseconds: 300);
 
   String _query = '';
-  AddFoodPickerFilter _filter = AddFoodPickerFilter.recent;
+  AddFoodPickerFilter _filter = AddFoodPickerFilter.all;
+
+  /// Read once per opening; every search in it filters this in memory.
+  YourFoods _yourFoods = YourFoods.empty;
   Timer? _searchDebounceTimer;
   var _searchGeneration = 0;
   bool _onlineLookupsEnabled = true;
@@ -136,6 +143,12 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
       // online lookups default to on.
       _onlineLookupsEnabled = true;
     }
+    try {
+      _yourFoods = await ref.read(addFoodRepositoryProvider).loadYourFoods();
+    } on Object {
+      // A failed Food History read leaves the Catalogue searchable.
+      _yourFoods = YourFoods.empty;
+    }
     return _load(filter: _filter, query: _query);
   }
 
@@ -153,10 +166,10 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
   }
 
   /// The online search row or the keyboard's search action. Runs the local
-  /// search at once; in the Open Food Facts filter it then returns the item to
-  /// open (a stored barcode match, or a live barcode hit), sets the barcode
-  /// line for a barcode miss, or runs one live search. Elsewhere it returns
-  /// `null`.
+  /// search at once; in the All and Open Food Facts filters it then returns
+  /// the item to open (a stored barcode match, or a live barcode hit), sets
+  /// the barcode line for a barcode miss, or runs one live search. In Your
+  /// foods and USDA it returns `null`.
   Future<FoodPickerItem?> submitQuery(String query) async {
     if (query != _query) {
       _query = query;
@@ -164,7 +177,8 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     }
     _searchDebounceTimer?.cancel();
     await _refresh(generation: ++_searchGeneration, keepShown: true);
-    if (_filter != AddFoodPickerFilter.openFoodFacts) {
+    if (_filter != AddFoodPickerFilter.all &&
+        _filter != AddFoodPickerFilter.openFoodFacts) {
       return null;
     }
     if (barcodeCandidates(query).isNotEmpty) {
@@ -186,7 +200,9 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     );
     ({OnlineSearchStatus status, List<FoodPickerItem> items}) result;
     try {
-      result = await ref.read(addFoodRepositoryProvider).searchOnline(query);
+      result = await ref
+          .read(addFoodRepositoryProvider)
+          .searchOnline(query, yourFoods: _yourFoods);
     } on Object {
       // An unexpected failure reads as unavailable.
       result = (
@@ -216,28 +232,32 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     });
   }
 
-  /// Goal 4: a live result whose code is among the device's matches and whose
-  /// change date is later takes that match's place; the rest are listed after
-  /// the device's matches, in the order Open Food Facts returned them.
+  /// A live result whose picker key matches an Open Food Facts Catalogue row
+  /// and whose change date is later takes that row's place; the rest whose
+  /// key is not listed follow the device's matches, in the order Open Food
+  /// Facts returned them. A Your foods row is never replaced: its facts
+  /// already come from the current device copy, and a live copy is stored on
+  /// the device when the user opens it.
   static ({List<FoodPickerItem> results, List<FoodPickerItem> onlineResults})
       _mergeLiveResults(
     List<FoodPickerItem> local,
     List<FoodPickerItem> live,
   ) {
-    final liveById = {for (final item in live) item.id: item};
-    final localIds = {for (final item in local) item.id};
+    final liveByKey = {for (final item in live) item.key: item};
+    final localKeys = {for (final item in local) item.key};
     return (
       results: [
         for (final item in local)
-          if (liveById[item.id] case final newer?
-              when _isNewer(newer, than: item))
+          if (liveByKey[item.key] case final newer?
+              when item.origin == FoodPickerOrigin.openFoodFacts &&
+                  _isNewer(newer, than: item))
             newer
           else
             item,
       ],
       onlineResults: [
         for (final item in live)
-          if (!localIds.contains(item.id)) item,
+          if (!localKeys.contains(item.key)) item,
       ],
     );
   }
@@ -277,7 +297,7 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     try {
       result = await ref
           .read(addFoodRepositoryProvider)
-          .lookupBarcode(normalizedBarcode);
+          .lookupBarcode(normalizedBarcode, yourFoods: _yourFoods);
     } on Object {
       // An unexpected failure reads as unavailable.
       result = (status: BarcodeLookupOutcome.unavailable, item: null);
@@ -339,11 +359,12 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
       results = await ref.read(addFoodRepositoryProvider).search(
             filter: filter,
             query: query,
+            yourFoods: _yourFoods,
           );
     } on Object {
       return;
     }
-    if (filter != _filter || query != _query) {
+    if (!ref.mounted || filter != _filter || query != _query) {
       return;
     }
     _updateCurrent((current) {
@@ -381,6 +402,7 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     final results = await ref.read(addFoodRepositoryProvider).search(
           filter: filter,
           query: query,
+          yourFoods: _yourFoods,
         );
     return AddFoodPickerState(
       query: query,

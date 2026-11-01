@@ -3797,83 +3797,88 @@ class NutritionRepository {
     return rows.map(_foodEntryFromRow).toList(growable: false);
   }
 
-  Future<List<FoodEntryRecord>> listRecentFoodEntries({
-    int limit = 50,
-  }) async {
-    if (limit <= 0) {
+  /// The user's **Food History**, in Food History order
+  /// (docs/designs/unified-food-search.md § Food History). Computed on each
+  /// call and never stored: it is an ordering signal for the add-food
+  /// picker, and a Food's facts come from the current Food, not from here.
+  ///
+  /// One record per (Food Source, Food id) over the active `food` entries
+  /// with a Food and a liquid flag, in active Meals. Ordered by the number of
+  /// entries whose Meal started in the 90 days before [now] (an entry exactly
+  /// 90 days back counts), then by the latest Meal start, then by the latest
+  /// entry's position in its Meal, then Food Source name, then Food id. The
+  /// golden vectors `m37-food-history.json` pin this order against the
+  /// server's `buildFoodHistory`.
+  ///
+  /// Entries of an archived User Food are left out: archiving is the
+  /// user-facing delete, and the picker logs through [logFoodEntrySnapshot],
+  /// which does not check archive state, so an archived Food listed here
+  /// would log without complaint. Its entries themselves are kept. A User
+  /// Food entry whose Foods row has not arrived yet still counts.
+  Future<List<FoodHistoryRecord>> listFoodHistory({DateTime? now}) async {
+    final cutoff = (now ?? DateTime.now()).subtract(const Duration(days: 90));
+    final rows = await _database.customSelect(
+      '''
+      WITH active AS (
+        SELECT e.food_source, e.food_id, m.started_at, e.updated_at, e.id,
+               e.position, e.portion_json
+        FROM food_entries e
+        JOIN meals m ON m.id = e.meal_id
+        LEFT JOIN foods f ON e.food_source = 'user' AND f.id = e.food_id
+        WHERE e.deleted_at IS NULL AND m.deleted_at IS NULL
+          AND e.entry_kind = 'food' AND e.food_id IS NOT NULL
+          AND e.food_source IS NOT NULL AND e.is_liquid IS NOT NULL
+          AND f.deleted_at IS NULL
+      ), ranked AS (
+        SELECT *,
+          ROW_NUMBER() OVER (PARTITION BY food_source, food_id
+            ORDER BY started_at DESC, updated_at DESC, id DESC) AS latest_rank,
+          ROW_NUMBER() OVER (PARTITION BY food_source, food_id
+            ORDER BY portion_json IS NULL, started_at DESC, updated_at DESC,
+              id DESC) AS portion_rank
+        FROM active
+      )
+      SELECT food_source, food_id,
+        SUM(CASE WHEN started_at >= ?1 THEN 1 ELSE 0 END) AS recent_count,
+        MAX(started_at) AS last_logged_at,
+        MAX(CASE WHEN latest_rank = 1 THEN id END) AS latest_entry_id,
+        MAX(CASE WHEN latest_rank = 1 THEN position END) AS latest_position,
+        MAX(CASE WHEN portion_rank = 1 THEN portion_json END)
+          AS last_portion_json
+      FROM ranked
+      GROUP BY food_source, food_id
+      ORDER BY recent_count DESC, last_logged_at DESC, latest_position ASC,
+        food_source ASC, food_id ASC
+      ''',
+      variables: [Variable<DateTime>(cutoff)],
+      readsFrom: {_database.foodEntries, _database.meals, _database.foods},
+    ).get();
+    return [
+      for (final row in rows)
+        FoodHistoryRecord(
+          foodSource: FoodSource.values.byName(row.read<String>('food_source')),
+          foodId: row.read<String>('food_id'),
+          recentCount: row.read<int>('recent_count'),
+          lastLoggedAt: row.read<DateTime>('last_logged_at').toUtc(),
+          latestPosition: row.read<int>('latest_position'),
+          latestEntryId: row.read<String>('latest_entry_id'),
+          lastPortion: switch (row.readNullable<String>('last_portion_json')) {
+            final json? => Portion.fromJsonString(json),
+            null => null,
+          },
+        ),
+    ];
+  }
+
+  /// The Food Entries with [ids], in any order; ids with no row are absent.
+  Future<List<FoodEntryRecord>> listFoodEntriesByIds(List<String> ids) async {
+    if (ids.isEmpty) {
       return const <FoodEntryRecord>[];
     }
-    final query = _database.select(_database.foodEntries)
-      ..where(
-        (row) =>
-            row.deletedAt.isNull() &
-            row.entryKind.equals(FoodEntryKind.food.name) &
-            row.foodId.isNotNull(),
-      )
-      ..orderBy([
-        (row) => OrderingTerm.desc(row.updatedAt),
-        (row) => OrderingTerm.desc(row.id),
-      ])
-      ..limit(limit);
-    final rows = await query.get();
-    return rows.map(_foodEntryFromRow).toList(growable: false);
-  }
-
-  Future<Portion?> lastPortionForFood({
-    required String foodId,
-    required FoodSource foodSource,
-  }) async {
-    final query = _database.select(_database.foodEntries)
-      ..where(
-        (row) =>
-            row.deletedAt.isNull() &
-            row.entryKind.equals(FoodEntryKind.food.name) &
-            row.foodId.equals(foodId) &
-            row.foodSource.equals(foodSource.name) &
-            row.portionJson.isNotNull(),
-      )
-      ..orderBy([
-        (row) => OrderingTerm.desc(row.updatedAt),
-        (row) => OrderingTerm.desc(row.id),
-      ])
-      ..limit(1);
-    final row = await query.getSingleOrNull();
-    final portionJson = row?.portionJson;
-    return portionJson == null ? null : Portion.fromJsonString(portionJson);
-  }
-
-  /// The Last Portion of each of [foodIds] from [foodSource], in one query;
-  /// a food never logged with a Portion is absent.
-  Future<Map<String, Portion>> lastPortionsForFoods({
-    required List<String> foodIds,
-    required FoodSource foodSource,
-  }) async {
-    if (foodIds.isEmpty) {
-      return const <String, Portion>{};
-    }
     final rows = await (_database.select(_database.foodEntries)
-          ..where(
-            (row) =>
-                row.deletedAt.isNull() &
-                row.entryKind.equals(FoodEntryKind.food.name) &
-                row.foodId.isIn(foodIds) &
-                row.foodSource.equals(foodSource.name) &
-                row.portionJson.isNotNull(),
-          )
-          ..orderBy([
-            (row) => OrderingTerm.desc(row.updatedAt),
-            (row) => OrderingTerm.desc(row.id),
-          ]))
+          ..where((row) => row.id.isIn(ids)))
         .get();
-    final portions = <String, Portion>{};
-    for (final row in rows) {
-      final foodId = row.foodId;
-      final portionJson = row.portionJson;
-      if (foodId != null && portionJson != null) {
-        portions.putIfAbsent(foodId, () => Portion.fromJsonString(portionJson));
-      }
-    }
-    return portions;
+    return rows.map(_foodEntryFromRow).toList(growable: false);
   }
 
   Future<NutritionDayRecord> nutritionDay(NutritionDayDate localDate) async {

@@ -1,11 +1,14 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/testing.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/local/food_reference_database.dart';
+import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
+import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/nutrition/open_food_facts.dart';
 import 'package:perennia/domain/protocols/protocol_plan_days.dart';
@@ -13,6 +16,7 @@ import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/analytics/repositories/exercise_overview_repository.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
+import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
 import 'package:perennia/features/training/widgets/training_screen.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
@@ -60,6 +64,88 @@ void main() {
         lessThan(openFoodFactsLocalSearchBudget),
         reason: 'A two-word prefix search must return within the typing '
             'budget.',
+      );
+    });
+
+    test(
+        'Food History over 20k Food Entries for 1,500 Foods stays under '
+        '150 ms', () async {
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final now = DateTime.utc(2026, 10, 31, 12);
+      await _seedFoodHistory(database, now: now);
+      final repositories = TrainingRepositories(database);
+
+      final stopwatch = Stopwatch()..start();
+      final history = await repositories.nutrition.listFoodHistory(now: now);
+      stopwatch.stop();
+
+      expect(history, hasLength(foodHistoryFoodCount));
+      expect(history.first.recentCount, greaterThan(0));
+      expect(history.every((record) => record.lastPortion != null), isTrue);
+      expect(
+        stopwatch.elapsed,
+        lessThan(foodHistoryBudget),
+        reason: 'Food History is read once per picker opening and must not '
+            'hold the picker in its loading state.',
+      );
+    });
+
+    test(
+        'a typed All search over 1,500 Your foods and 41k products stays '
+        'under 100 ms', () async {
+      final referenceDatabase = FoodReferenceDatabase.memory();
+      addTearDown(referenceDatabase.close);
+      await referenceDatabase.replaceBundle(
+        _syntheticOpenFoodFactsLines(openFoodFactsLocalSearchRowCount),
+        bundleHeader(
+          contentHash: 'synthetic',
+          productCount: openFoodFactsLocalSearchRowCount,
+        ),
+      );
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final repository = RepositoryAddFoodRepository(
+        TrainingRepositories(database),
+        openFoodFacts: DriftOpenFoodFactsRepository.forTesting(
+          database: referenceDatabase,
+          asset: const ThrowingBundleAsset(),
+          client: OpenFoodFactsClient(
+            baseUrl: Uri.parse('https://off.test/'),
+            httpClient: MockClient(
+              (request) async => fail('A typed search sent ${request.url}.'),
+            ),
+          ),
+        ),
+      );
+      final yourFoods = YourFoods([
+        for (var index = 0; index < foodHistoryFoodCount; index += 1)
+          _yourFoodsItem(index),
+      ]);
+      // The USDA seed is in memory after its first load, as in the app.
+      await repository.search(
+        filter: AddFoodPickerFilter.usda,
+        query: '',
+        yourFoods: yourFoods,
+      );
+
+      final stopwatch = Stopwatch()..start();
+      final items = await repository.search(
+        filter: AddFoodPickerFilter.all,
+        query: 'greek yo',
+        yourFoods: yourFoods,
+      );
+      stopwatch.stop();
+
+      expect(items, hasLength(searchResultLimit));
+      expect(
+        items.where((item) => item.origin == FoodPickerOrigin.history),
+        hasLength(yourFoodsInSearchLimit),
+      );
+      expect(
+        stopwatch.elapsed,
+        lessThan(openFoodFactsLocalSearchBudget),
+        reason: 'A typed All search must return within the typing budget.',
       );
     });
 
@@ -298,6 +384,83 @@ Future<void> _waitForFinder(WidgetTester tester, Finder finder) async {
   }
 
   fail('Timed out waiting for $finder.');
+}
+
+/// [foodHistoryEntryCount] Food Entries for [foodHistoryFoodCount] Foods
+/// (a third each User Foods, USDA and Open Food Facts) in 3,400 Meals over
+/// five years before [now], with a few Foods logged far more than the rest.
+Future<void> _seedFoodHistory(
+  AppDatabase database, {
+  required DateTime now,
+}) async {
+  const mealCount = 3400;
+  const span = Duration(days: 5 * 365);
+  const sources = <String>['user', 'usda', 'openFoodFacts'];
+  final nutrients = NutrientVector.full(const {}).toJsonString();
+  final portion = Portion(
+    value: 100,
+    entered: '100',
+    unit: PortionUnit.gram,
+  ).toJsonString();
+  await database.batch((batch) {
+    batch.insertAll(database.foods, [
+      for (var food = 0; food < foodHistoryFoodCount; food += 3)
+        FoodsCompanion.insert(
+          id: 'food-$food',
+          name: 'Food $food',
+          nutrientValuesJson: nutrients,
+          updatedAt: now,
+        ),
+    ]);
+    batch.insertAll(database.meals, [
+      for (var meal = 0; meal < mealCount; meal += 1)
+        MealsCompanion.insert(
+          id: 'meal-$meal',
+          mealType: 'Breakfast',
+          startedAt: now.subtract(span * (meal / mealCount)),
+          timezone: 'UTC',
+          updatedAt: now,
+        ),
+    ]);
+    batch.insertAll(database.foodEntries, [
+      for (var entry = 0; entry < foodHistoryEntryCount; entry += 1)
+        () {
+          // Every Food at least once, then a skew towards low indexes.
+          final food = entry < foodHistoryFoodCount
+              ? entry
+              : (entry * entry * 7919) %
+                  foodHistoryFoodCount ~/
+                  (1 + entry % 4);
+          final meal = entry * mealCount ~/ foodHistoryEntryCount;
+          return FoodEntriesCompanion.insert(
+            id: 'entry-$entry',
+            mealId: 'meal-$meal',
+            entryKind: const Value('food'),
+            position: entry % 6,
+            name: 'Food $food',
+            nutrientValuesJson: nutrients,
+            foodId: Value('food-$food'),
+            foodSource: Value(sources[food % 3]),
+            isLiquid: const Value(false),
+            portionJson: Value(portion),
+            updatedAt: now,
+          );
+        }(),
+    ]);
+  });
+}
+
+/// A Your foods row; one in ten matches "greek yo".
+FoodPickerItem _yourFoodsItem(int index) {
+  return FoodPickerItem(
+    id: 'food-$index',
+    name: index % 10 == 0 ? 'Greek yoghurt $index' : 'Food $index',
+    origin: FoodPickerOrigin.history,
+    foodSource: FoodSource.user,
+    nutrientsPer100: NutrientVector.full(const {}),
+    isLiquid: false,
+    lastPortion: Portion(value: 100, entered: '100', unit: PortionUnit.gram),
+  );
 }
 
 /// Product lines with realistic names and brands; one in ten is a Greek

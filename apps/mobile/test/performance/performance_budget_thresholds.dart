@@ -24,3 +24,10 @@ const protocolConsistencyProtocolCount = 3;
 const protocolConsistencyVersionsPerProtocol = 5;
 const protocolConsistencyDoseCount = 800;
 const protocolConsistencyBudget = Duration(milliseconds: 50);
+
+/// Food History over about five years of logging (eleven Foods a day): read
+/// once per add-food picker opening (docs/designs/unified-food-search.md §
+/// Performance).
+const foodHistoryEntryCount = 20000;
+const foodHistoryFoodCount = 1500;
+const foodHistoryBudget = Duration(milliseconds: 150);

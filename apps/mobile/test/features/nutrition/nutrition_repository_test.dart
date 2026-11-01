@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
@@ -2059,6 +2059,379 @@ void main() {
     });
   });
 
+  group('food history', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    final now = DateTime.utc(2026, 10, 31, 12);
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('ranks Foods logged in the last 90 days above older staples',
+        () async {
+      for (var day = 1; day <= 5; day += 1) {
+        final startedAt = DateTime.utc(2026, 10, day, 8);
+        await _insertHistoryMeal(database, 'recent-$day', startedAt);
+        await _insertHistoryEntry(
+          database,
+          id: 'recent-entry-$day',
+          mealId: 'recent-$day',
+          foodId: 'usda-recent',
+          updatedAt: startedAt,
+        );
+      }
+      for (var day = 1; day <= 10; day += 1) {
+        final startedAt = DateTime.utc(2025, 3, day, 8);
+        await _insertHistoryMeal(database, 'old-$day', startedAt);
+        await _insertHistoryEntry(
+          database,
+          id: 'old-entry-$day',
+          mealId: 'old-$day',
+          foodId: 'usda-old',
+          updatedAt: startedAt,
+        );
+      }
+
+      final history = await repositories.nutrition.listFoodHistory(now: now);
+
+      expect(
+          history.map((record) => record.foodId), ['usda-recent', 'usda-old']);
+      expect(history.map((record) => record.recentCount), [5, 0]);
+      expect(history.last.lastLoggedAt, DateTime.utc(2025, 3, 10, 8));
+    });
+
+    test('breaks a count tie by recency, then by position in the Meal',
+        () async {
+      await _insertHistoryMeal(database, 'earlier', DateTime.utc(2026, 10, 10));
+      await _insertHistoryMeal(database, 'later', DateTime.utc(2026, 10, 25));
+      await _insertHistoryEntry(
+        database,
+        id: 'm',
+        mealId: 'earlier',
+        foodId: 'food-m',
+        updatedAt: DateTime.utc(2026, 10, 30),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'a',
+        mealId: 'later',
+        position: 1,
+        foodId: 'food-a',
+        updatedAt: DateTime.utc(2026, 10, 25),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'z',
+        mealId: 'later',
+        foodId: 'food-z',
+        updatedAt: DateTime.utc(2026, 10, 25),
+      );
+
+      final history = await repositories.nutrition.listFoodHistory(now: now);
+
+      expect(history.map((record) => record.foodId), [
+        'food-z',
+        'food-a',
+        'food-m',
+      ]);
+      expect(history.map((record) => record.latestPosition), [0, 1, 0]);
+    });
+
+    test('takes the latest entry by Meal start, not by last edit', () async {
+      await _insertHistoryMeal(database, 'early', DateTime.utc(2026, 10, 20));
+      await _insertHistoryMeal(database, 'late', DateTime.utc(2026, 10, 25));
+      await _insertHistoryEntry(
+        database,
+        id: 'edited-later',
+        mealId: 'early',
+        foodId: 'food-a',
+        portion: _grams(100),
+        updatedAt: DateTime.utc(2026, 10, 29),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'logged-later',
+        mealId: 'late',
+        position: 2,
+        foodId: 'food-a',
+        portion: _grams(150),
+        updatedAt: DateTime.utc(2026, 10, 25),
+      );
+
+      final record =
+          (await repositories.nutrition.listFoodHistory(now: now)).single;
+
+      expect(record.latestEntryId, 'logged-later');
+      expect(record.latestPosition, 2);
+      expect(record.lastLoggedAt, DateTime.utc(2026, 10, 25));
+      expect(record.lastPortion?.toJson(), _grams(150).toJson());
+    });
+
+    test(
+        'takes the Last Portion from an earlier entry when the latest has none',
+        () async {
+      await _insertHistoryMeal(database, 'first', DateTime.utc(2026, 10, 10));
+      await _insertHistoryMeal(database, 'second', DateTime.utc(2026, 10, 20));
+      await _insertHistoryEntry(
+        database,
+        id: 'with-portion',
+        mealId: 'first',
+        foodId: 'food-shake',
+        portion: _grams(200),
+        updatedAt: DateTime.utc(2026, 10, 10),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'without-portion',
+        mealId: 'second',
+        foodId: 'food-shake',
+        updatedAt: DateTime.utc(2026, 10, 20),
+      );
+
+      final record =
+          (await repositories.nutrition.listFoodHistory(now: now)).single;
+
+      expect(record.latestEntryId, 'without-portion');
+      expect(record.lastPortion?.toJson(), _grams(200).toJson());
+    });
+
+    test(
+        'leaves out deleted entries and Meals, Quick Entries, an unknown '
+        'liquid flag and archived User Foods', () async {
+      final mealId = await repositories.nutrition.createMeal(
+        MealDraft(
+          mealType: 'Lunch',
+          startedAt: DateTime.utc(2026, 10, 15, 12),
+          timezone: 'UTC',
+          localDate: NutritionDayDate(year: 2026, month: 10, day: 15),
+        ),
+      );
+      final archivedFoodId = await repositories.nutrition.createUserFood(
+        UserFoodDraft(
+          name: 'Old protein bar',
+          nutrientsPer100: _foodPer100(),
+          isLiquid: false,
+        ),
+      );
+      final archivedEntry = await repositories.nutrition.logFoodEntrySnapshot(
+        entry: FoodEntrySnapshotDraft(
+          mealId: mealId,
+          foodId: archivedFoodId,
+          name: 'Old protein bar',
+          foodSource: FoodSource.user,
+          nutrientsPer100: _foodPer100(),
+          isLiquid: false,
+          portion: _grams(60),
+        ),
+      );
+      await repositories.nutrition.archiveUserFood(archivedFoodId);
+      await _insertHistoryMeal(
+        database,
+        'deleted-meal',
+        DateTime.utc(2026, 10, 16),
+        deletedAt: DateTime.utc(2026, 10, 17),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'in-deleted-meal',
+        mealId: 'deleted-meal',
+        foodId: 'usda-in-deleted-meal',
+        updatedAt: DateTime.utc(2026, 10, 16),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'deleted',
+        mealId: mealId,
+        position: 1,
+        foodId: 'usda-deleted',
+        updatedAt: DateTime.utc(2026, 10, 15),
+        deletedAt: DateTime.utc(2026, 10, 15, 13),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'quick',
+        mealId: mealId,
+        position: 2,
+        kind: FoodEntryKind.quickEntry,
+        foodId: 'usda-quick',
+        updatedAt: DateTime.utc(2026, 10, 15),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'unknown-liquid',
+        mealId: mealId,
+        position: 3,
+        foodId: 'usda-unknown-liquid',
+        isLiquid: null,
+        updatedAt: DateTime.utc(2026, 10, 15),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'kept',
+        mealId: mealId,
+        position: 4,
+        foodId: 'usda-kept',
+        updatedAt: DateTime.utc(2026, 10, 15),
+      );
+
+      final history = await repositories.nutrition.listFoodHistory(now: now);
+
+      expect(history.map((record) => record.foodId), ['usda-kept']);
+      expect(
+        (await repositories.nutrition.listActiveEntriesForMeal(mealId))
+            .map((entry) => entry.id),
+        contains(archivedEntry.foodEntryId),
+      );
+    });
+
+    test('gives one record per Food Source for a shared Food id', () async {
+      await _insertHistoryMeal(database, 'meal', DateTime.utc(2026, 10, 12));
+      await _insertHistoryEntry(
+        database,
+        id: 'usda',
+        mealId: 'meal',
+        foodId: '123',
+        updatedAt: DateTime.utc(2026, 10, 12),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'open-food-facts',
+        mealId: 'meal',
+        position: 1,
+        foodSource: FoodSource.openFoodFacts,
+        foodId: '123',
+        updatedAt: DateTime.utc(2026, 10, 12),
+      );
+
+      final history = await repositories.nutrition.listFoodHistory(now: now);
+
+      expect(
+        history.map((record) => (record.foodSource, record.foodId)),
+        [(FoodSource.usda, '123'), (FoodSource.openFoodFacts, '123')],
+      );
+    });
+
+    test('counts an entry exactly 90 days before now', () async {
+      final cutoff = now.subtract(const Duration(days: 90));
+      await _insertHistoryMeal(database, 'on-cutoff', cutoff);
+      await _insertHistoryMeal(
+        database,
+        'before-cutoff',
+        cutoff.subtract(const Duration(seconds: 1)),
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'on',
+        mealId: 'on-cutoff',
+        foodId: 'usda-on',
+        updatedAt: cutoff,
+      );
+      await _insertHistoryEntry(
+        database,
+        id: 'before',
+        mealId: 'before-cutoff',
+        foodId: 'usda-before',
+        updatedAt: cutoff,
+      );
+
+      final history = await repositories.nutrition.listFoodHistory(now: now);
+
+      expect(
+        history.map((record) => (record.foodId, record.recentCount)),
+        [('usda-on', 1), ('usda-before', 0)],
+      );
+      expect(
+        await repositories.nutrition.listFoodHistory(
+          now: now.add(const Duration(seconds: 1)),
+        ),
+        everyElement(
+          isA<FoodHistoryRecord>().having((r) => r.recentCount, 'count', 0),
+        ),
+      );
+    });
+
+    test('lists Food Entries by id', () async {
+      await _insertHistoryMeal(database, 'meal', DateTime.utc(2026, 10, 12));
+      for (final id in ['one', 'two', 'three']) {
+        await _insertHistoryEntry(
+          database,
+          id: id,
+          mealId: 'meal',
+          foodId: 'usda-$id',
+          updatedAt: DateTime.utc(2026, 10, 12),
+        );
+      }
+
+      final entries = await repositories.nutrition.listFoodEntriesByIds(
+        ['three', 'one', 'missing'],
+      );
+
+      expect(
+          entries.map((entry) => entry.id), unorderedEquals(['one', 'three']));
+      expect(
+          await repositories.nutrition.listFoodEntriesByIds(const []), isEmpty);
+    });
+
+    test('keeps a logged Food and its Last Portion after kill-and-reopen',
+        () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'prn_food_history_test_',
+      );
+      addTearDown(() async {
+        if (directory.existsSync()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final file = File('${directory.path}/nutrition.sqlite');
+      final firstDatabase = AppDatabase.openFile(file);
+      final firstRepositories = TrainingRepositories(firstDatabase);
+      final mealId = await firstRepositories.nutrition.createMeal(
+        MealDraft(
+          mealType: 'Snack',
+          startedAt: DateTime.utc(2026, 10, 30, 15),
+          timezone: 'UTC',
+          localDate: NutritionDayDate(year: 2026, month: 10, day: 30),
+        ),
+      );
+      final chicken = (await firstRepositories.platformFoods.getUsdaFoodById(
+        'usda-fdc-171077',
+      ))!;
+      await firstRepositories.nutrition.logFoodEntrySnapshot(
+        entry: FoodEntrySnapshotDraft(
+          mealId: mealId,
+          foodId: chicken.id,
+          name: chicken.name,
+          foodSource: chicken.foodSource,
+          nutrientsPer100: chicken.nutrientsPer100,
+          isLiquid: chicken.isLiquid,
+          servingLabel: chicken.servingLabel,
+          servingSize: chicken.servingSize,
+          packageSize: chicken.packageSize,
+          portion: _grams(118),
+        ),
+      );
+      await firstDatabase.close();
+
+      final reopenedDatabase = AppDatabase.openFile(file);
+      addTearDown(reopenedDatabase.close);
+      final history = await TrainingRepositories(reopenedDatabase)
+          .nutrition
+          .listFoodHistory(now: now);
+
+      expect(history, hasLength(1));
+      expect(history.single.foodSource, FoodSource.usda);
+      expect(history.single.foodId, 'usda-fdc-171077');
+      expect(history.single.recentCount, 1);
+      expect(history.single.lastPortion?.toJson(), _grams(118).toJson());
+    });
+  });
+
   group('nutrition goals repository', () {
     late AppDatabase database;
     late TrainingRepositories repositories;
@@ -2471,4 +2844,61 @@ RecipeIngredient _recipeIngredient(
     servingSize: food.servingSize,
     packageSize: food.packageSize,
   );
+}
+
+Portion _grams(double value) {
+  return Portion(
+    value: value,
+    entered: _enteredNumber(value),
+    unit: PortionUnit.gram,
+  );
+}
+
+Future<void> _insertHistoryMeal(
+  AppDatabase database,
+  String id,
+  DateTime startedAt, {
+  DateTime? deletedAt,
+}) {
+  return database.into(database.meals).insert(
+        MealsCompanion.insert(
+          id: id,
+          mealType: 'Breakfast',
+          startedAt: startedAt,
+          timezone: 'UTC',
+          updatedAt: startedAt,
+          deletedAt: Value(deletedAt),
+        ),
+      );
+}
+
+Future<void> _insertHistoryEntry(
+  AppDatabase database, {
+  required String id,
+  required String mealId,
+  required String foodId,
+  required DateTime updatedAt,
+  int position = 0,
+  FoodEntryKind kind = FoodEntryKind.food,
+  FoodSource foodSource = FoodSource.usda,
+  bool? isLiquid = false,
+  Portion? portion,
+  DateTime? deletedAt,
+}) {
+  return database.into(database.foodEntries).insert(
+        FoodEntriesCompanion.insert(
+          id: id,
+          mealId: mealId,
+          entryKind: Value(kind.name),
+          position: position,
+          name: id,
+          nutrientValuesJson: _foodPer100().toJsonString(),
+          foodId: Value(foodId),
+          foodSource: Value(foodSource.name),
+          isLiquid: Value(isLiquid),
+          portionJson: Value(portion?.toJsonString()),
+          updatedAt: updatedAt,
+          deletedAt: Value(deletedAt),
+        ),
+      );
 }

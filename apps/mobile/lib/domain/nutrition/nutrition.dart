@@ -1051,6 +1051,40 @@ class FoodEntryRecord {
   }
 }
 
+/// One Food in the user's **Food History**: the distinct Foods they logged,
+/// derived from active Food Entries on each read and never stored
+/// (docs/designs/unified-food-search.md § Food History). It is an ordering
+/// signal only; a Food's facts come from the current Food, not from here.
+final class FoodHistoryRecord {
+  const FoodHistoryRecord({
+    required this.foodSource,
+    required this.foodId,
+    required this.recentCount,
+    required this.lastLoggedAt,
+    required this.latestPosition,
+    required this.latestEntryId,
+    this.lastPortion,
+  });
+
+  final FoodSource foodSource;
+  final String foodId;
+
+  /// Food Entries whose Meal started in the last 90 days.
+  final int recentCount;
+
+  /// The greatest Meal `startedAt` among the Food's entries.
+  final DateTime lastLoggedAt;
+
+  /// The latest entry's position within its Meal.
+  final int latestPosition;
+
+  /// The latest entry: greatest Meal `startedAt`, then `updatedAt`, then id.
+  final String latestEntryId;
+
+  /// The **Last Portion**: the Portion of the latest entry that has one.
+  final Portion? lastPortion;
+}
+
 class NutritionDayMealRecord {
   NutritionDayMealRecord({
     required this.meal,
