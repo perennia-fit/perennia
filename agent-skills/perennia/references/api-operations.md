@@ -38,6 +38,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `list-doses` | GET | `/agent/protocols/doses` |
 | `list-exercises` | GET | `/agent/exercises` |
 | `list-focuses` | GET | `/agent/focuses` |
+| `list-food-history` | GET | `/agent/foods/history` |
 | `list-foods` | GET | `/agent/foods` |
 | `list-history-sets` | GET | `/agent/history/sets` |
 | `list-meals` | GET | `/agent/meals` |
@@ -396,6 +397,14 @@ Routine/slot must contain an active Routine Entry referencing the Template.
 `list-foods` (`GET /agent/foods`) searches or lists the caller's own Food
 library (User Foods and Recipes) with `search`/`includeArchived`/`limit`/
 `cursor`/`fields`. Platform reference data is never in this list.
+
+`list-food-history` (`GET /agent/foods/history`) lists the Foods the caller
+has logged, in the order the app's add-food picker shows them: most often in
+the last 90 days first, then most recently logged. Each item carries the
+`foodSource` and `foodId` to look the Food up (`list-foods` for `user`,
+`search-platform-foods` otherwise), the name it was last logged under, and its
+`lastPortion`, so "log my usual breakfast" is this read followed by
+`log-meal`. Archived User Foods are left out; `limit` bounds it (default 50).
 
 `search-platform-foods` (`GET /agent/foods/platform-search`) searches the
 Platform Food reference data the app ships, with `source`/`search`/`limit`.

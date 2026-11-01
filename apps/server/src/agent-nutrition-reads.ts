@@ -1242,7 +1242,7 @@ function parseRawNutrientVector(value: unknown): Record<string, unknown> {
   return isRecord(decoded) ? decoded : {};
 }
 
-function parseRawPortion(
+export function parseRawPortion(
   value: unknown
 ): { value: number; entered: string; unit: string } | null {
   let decoded: unknown = value;

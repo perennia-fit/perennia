@@ -11862,6 +11862,92 @@
           "entries"
         ]
       },
+      "AgentFoodHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentFoodHistoryItem"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "totalMatched": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "totalMatched"
+        ]
+      },
+      "AgentFoodHistoryItem": {
+        "type": "object",
+        "properties": {
+          "foodSource": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Food Source name, such as openFoodFacts, as AgentMealEntry.foodSource carries it."
+          },
+          "foodId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lastLoggedName": {
+            "type": "string",
+            "description": "The name on the latest Food Entry for this Food."
+          },
+          "recentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Food Entries whose Meal started in the last 90 days."
+          },
+          "lastLoggedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ISO-8601 start of the latest Meal this Food was logged in."
+          },
+          "lastPortion": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "value": {
+                "type": "number"
+              },
+              "entered": {
+                "type": "string",
+                "minLength": 1
+              },
+              "unit": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "value",
+              "entered",
+              "unit"
+            ],
+            "description": "The Last Portion: the Portion of the latest Food Entry for this Food that has one, or null."
+          }
+        },
+        "required": [
+          "foodSource",
+          "foodId",
+          "lastLoggedName",
+          "recentCount",
+          "lastLoggedAt",
+          "lastPortion"
+        ]
+      },
       "AgentNutritionGoalListResponse": {
         "type": "object",
         "properties": {
@@ -22899,6 +22985,119 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentMealListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or read storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentNutritionReadUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/foods/history": {
+      "get": {
+        "operationId": "listAgentFoodHistory",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "List the user's Food History: the Foods they log, most often in the last 90 days first.",
+        "description": "Returns the distinct Foods the caller has logged, derived on each call from live Food Entries and Meals and never stored, in the same order the app's add-food picker uses: Food Entries in the last 90 days descending, then the most recent Meal, then position in that Meal. Each item carries the Food Source and Food id to look the Food up with listAgentFoods or searchAgentPlatformFoods, the name the Food had when it was last logged, and its Last Portion. Archived User Foods are left out. Bounded by limit.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "description": "Maximum Foods to return, bounded to 200."
+            },
+            "required": false,
+            "description": "Maximum Foods to return, bounded to 200.",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's Food History, bounded by limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentFoodHistoryResponse"
                 }
               }
             }

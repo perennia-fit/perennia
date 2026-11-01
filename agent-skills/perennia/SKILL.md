@@ -113,6 +113,7 @@ node scripts/prn-agent.mjs list-routines --query limit=10
 node scripts/prn-agent.mjs get-routine --routine-id routine-id --query selectedDate=2026-07-06
 node scripts/prn-agent.mjs list-meals --query from=2026-06-01T00:00:00.000Z --query to=2026-06-30T00:00:00.000Z --query fields=id,mealType,startedAt,entries
 node scripts/prn-agent.mjs list-foods --query search=banana --query limit=10
+node scripts/prn-agent.mjs list-food-history --query limit=10
 node scripts/prn-agent.mjs search-platform-foods --query search=chicken
 node scripts/prn-agent.mjs search-platform-foods --query source=openFoodFacts --query search=0894700010137
 node scripts/prn-agent.mjs nutrition-totals --query from=2026-06-01 --query to=2026-06-30

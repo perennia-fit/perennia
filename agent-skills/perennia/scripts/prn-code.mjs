@@ -522,6 +522,16 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async listAgentFoodHistory(input = {}, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/foods/history",
+      expectedStatus: 200,
+      query: pick(input, ["limit"]),
+      signal: options.signal
+    });
+  }
+
   async listAgentFoods(input = {}, options = {}) {
     return this.request({
       method: "GET",

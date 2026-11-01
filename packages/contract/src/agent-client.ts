@@ -623,6 +623,25 @@ export type AgentFoodBatchWriteResult = {
 
 export type AgentFoodField = "id" | "name" | "foodSource" | "nutrientsPer100" | "isLiquid" | "servingLabel" | "servingSize" | "packageSize" | "isRecipe" | "recipeServingCount" | "updatedAt" | "deletedAt";
 
+export type AgentFoodHistoryItem = {
+  "foodSource": string;
+  "foodId": string;
+  "lastLoggedName": string;
+  "recentCount": number;
+  "lastLoggedAt": string;
+  "lastPortion": {
+  "value": number;
+  "entered": string;
+  "unit": string;
+} | null;
+};
+
+export type AgentFoodHistoryResponse = {
+  "items": Array<AgentFoodHistoryItem>;
+  "limit": number;
+  "totalMatched": number;
+};
+
 export type AgentFoodListItem = {
   "id": string;
   "name": string;
@@ -2195,6 +2214,10 @@ export type ListAgentExercisesInput = {
   "fields"?: string;
 };
 
+export type ListAgentFoodHistoryInput = {
+  "limit"?: number;
+};
+
 export type ListAgentFoodsInput = {
   "search"?: string;
   "includeArchived"?: boolean | null;
@@ -2350,6 +2373,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentDoses",
   "listAgentExercises",
   "listAgentFocuses",
+  "listAgentFoodHistory",
   "listAgentFoods",
   "listAgentHistorySets",
   "listAgentMeals",
@@ -2693,6 +2717,16 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/focuses",
       expectedStatus: 200,
+      signal: options.signal
+    });
+  }
+
+  async listAgentFoodHistory(input: ListAgentFoodHistoryInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentFoodHistoryResponse> {
+    return this.request<AgentFoodHistoryResponse>({
+      method: "GET",
+      path: "/agent/foods/history",
+      expectedStatus: 200,
+      query: { "limit": input.limit },
       signal: options.signal
     });
   }
