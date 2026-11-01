@@ -812,7 +812,9 @@ The query reads every active Food Entry once, so an index on
 `food_entries (food_source, food_id)` would not shorten it, and none is added.
 
 *   `listFoodHistory` with that data runs within `foodHistoryBudget` (150 ms)
-    on the test host. The constant is added to
+    on the test host. The test times the fastest of three reads: in the full
+    test run other test files share the host, and one read took 163 ms there
+    against 86–97 ms alone. The constant is added to
     `apps/mobile/test/performance/performance_budget_thresholds.dart`, and the
     test to `performance_budgets_test.dart`.
 *   A typed All search, given a loaded `YourFoods` of 1,500 items and the
