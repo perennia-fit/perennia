@@ -1,6 +1,7 @@
-/// Realistic test data for development: a training history, a body-weight
-/// trend, logged meals, and a supplement stack with its Protocols and Doses,
-/// written through the same repositories the app's screens use.
+/// Realistic test data for development: a training history under the starter
+/// Focuses, with the weekly and rotating Routines it was started from, a
+/// body-weight trend, logged meals, and a supplement stack with its Protocols
+/// and Doses, written through the same repositories the app's screens use.
 ///
 /// Writing through the repositories, rather than inserting rows, is the point:
 /// every row passes the shared validation, gets its Activity Log entry, and
@@ -15,6 +16,7 @@ import 'dart:math' as math;
 
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/protocols/protocol_plan_days.dart';
+import 'package:perennia/domain/training/focus_color.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 
@@ -179,13 +181,54 @@ const _lowerB = <_Lift>[
       sets: 3, reps: 10, startLoad: 80, weeklyIncrement: 2.5),
 ];
 
+const _mobility = <_Lift>[
+  _Lift(LibraryExercise.plank, sets: 3),
+];
+
+/// One session of the week: its lifts and the starter Focus it is logged
+/// under. A session with a [templateName] is started from that Workout
+/// Template, as a user starting it from Up next would.
+class _Session {
+  const _Session(this.lifts, {required this.focusId, this.templateName});
+
+  final List<_Lift> lifts;
+  final String focusId;
+  final String? templateName;
+}
+
+const _upperASession =
+    _Session(_upperA, focusId: starterFocusWeightsId, templateName: 'Upper A');
+const _lowerASession =
+    _Session(_lowerA, focusId: starterFocusWeightsId, templateName: 'Lower A');
+const _upperBSession = _Session(_upperB,
+    focusId: starterFocusCalisthenicsId, templateName: 'Upper B');
+const _lowerBSession = _Session(_lowerB,
+    focusId: starterFocusFunctionalId, templateName: 'Lower B');
+const _mobilitySession = _Session(_mobility, focusId: starterFocusMobilityId);
+
+/// Saturday's run. Its distance and time come from `_logRun`, not [_Lift].
+const _longRunSession = _Session(
+  [_Lift(LibraryExercise.running, sets: 1)],
+  focusId: starterFocusEnduranceId,
+  templateName: 'Long run',
+);
+
 /// Weekday (DateTime.monday = 1) → session. Saturday is the run.
-const _schedule = <int, List<_Lift>>{
-  DateTime.monday: _upperA,
-  DateTime.tuesday: _lowerA,
-  DateTime.thursday: _upperB,
-  DateTime.friday: _lowerB,
+const _schedule = <int, _Session>{
+  DateTime.monday: _upperASession,
+  DateTime.tuesday: _lowerASession,
+  DateTime.wednesday: _mobilitySession,
+  DateTime.thursday: _upperBSession,
+  DateTime.friday: _lowerBSession,
 };
+
+/// Where a session is started from: a Workout Template and the Routine slot
+/// that plans it.
+typedef _TemplatePlan = ({
+  String workoutTemplateId,
+  String routineId,
+  int slot,
+});
 
 class _Food {
   const _Food(this.name, this.kcal, this.protein, this.carbs, this.fat,
@@ -327,9 +370,30 @@ class _Generator {
   int _doses = 0;
   final _foodIds = <String, String>{};
 
+  /// Where each template-started session is started from.
+  final _plans = <_Session, _TemplatePlan>{};
+
   Future<TestDataSummary> run() async {
     final days = _options.weeks * 7;
     final start = _options.endDate.addDays(-(days - 1));
+    // The last Tuesday's "Lower A" is started from Up next and abandoned
+    // before any Set is completed: it plans a day that stays Not done.
+    final abandonedDay = _options.endDate.addDays(
+      -((_options.endDate.toLocalDateTime().weekday - DateTime.tuesday) % 7),
+    );
+
+    await _createRoutines();
+    for (final exerciseId in const [
+      LibraryExercise.benchPress,
+      LibraryExercise.barbellSquat,
+      LibraryExercise.running,
+    ]) {
+      await _repositories.exercises.setFavorite(
+        exerciseId,
+        isFavorite: true,
+        actor: _actor,
+      );
+    }
 
     String? bodyWeightId;
     if (_options.includeBodyWeight) {
@@ -355,8 +419,10 @@ class _Generator {
       final week = dayIndex ~/ 7;
 
       final session = _schedule[weekday];
-      // About one planned session in twelve gets skipped, as in real life.
-      if (session != null && _random.nextDouble() > 0.08) {
+      if (day == abandonedDay) {
+        await _logAbandonedSession(day, session!, week);
+      } else if (session != null && _random.nextDouble() > 0.08) {
+        // About one planned session in twelve gets skipped, as in real life.
         await _logLiftingSession(day, session, week);
       } else if (weekday == DateTime.saturday && _random.nextDouble() > 0.15) {
         await _logRun(day, week);
@@ -577,29 +643,170 @@ class _Generator {
   ProtocolDayDate _protocolDay(TrainingDayDate day) =>
       ProtocolDayDate(year: day.year, month: day.month, day: day.day);
 
+  /// The program's Workout Templates and the two Routines that plan them:
+  /// "Hybrid block", weekly, with Upper A on Monday, Lower A on Tuesday and
+  /// the long run on Saturday; and "Upper/Lower rotation", rotating through
+  /// Upper B and Lower B. The templates carry the exercises and the Focus,
+  /// not Prescriptions, so starting one places no Sets: the generator logs
+  /// them as it does for any other session.
+  Future<void> _createRoutines() async {
+    Future<void> routine(
+      String name,
+      Cadence cadence,
+      Map<_Session, int> slotBySession,
+    ) async {
+      final routines = _repositories.routinePlans;
+      final templates = _repositories.workoutTemplates;
+      final routineId = await routines.create(
+        RoutinePlanDraft(name: name),
+        actor: _actor,
+      );
+      await routines.setCadence(routineId, cadence, actor: _actor);
+      for (final MapEntry(key: session, value: slot)
+          in slotBySession.entries) {
+        final workoutTemplateId = await templates.create(
+          WorkoutTemplateDraft(
+            name: session.templateName!,
+            focusId: session.focusId,
+          ),
+          actor: _actor,
+        );
+        for (final lift in session.lifts) {
+          await templates.addExercise(
+            workoutTemplateId,
+            lift.exerciseId,
+            actor: _actor,
+          );
+        }
+        await routines.addTemplateReference(
+          routineId,
+          workoutTemplateId,
+          slot: slot,
+          actor: _actor,
+        );
+        _plans[session] = (
+          workoutTemplateId: workoutTemplateId,
+          routineId: routineId,
+          slot: slot,
+        );
+      }
+    }
+
+    await routine('Hybrid block', const Cadence.weekly(), {
+      _upperASession: DateTime.monday,
+      _lowerASession: DateTime.tuesday,
+      _longRunSession: DateTime.saturday,
+    });
+    await routine('Upper/Lower rotation', const Cadence.rotating(2), {
+      _upperBSession: 1,
+      _lowerBSession: 2,
+    });
+  }
+
+  /// Starts [session]'s Workout at [startedAt] on [day]. A session with a
+  /// template is started from its Routine slot, which records the Template
+  /// Link, places the template's exercises and takes its Focus; any other
+  /// starts empty, under the session's Focus.
+  Future<String> _startWorkout(
+    TrainingDayDate day,
+    DateTime startedAt,
+    _Session session, {
+    String? comment,
+  }) async {
+    _workouts += 1;
+    final plan = _plans[session];
+    if (plan == null) {
+      return _repositories.workoutSessions.create(
+        WorkoutSessionDraft(
+          startedAt: startedAt,
+          timezone: _options.timezone,
+          localDate: day,
+          comment: comment,
+          focusId: session.focusId,
+        ),
+        actor: _actor,
+      );
+    }
+    final result = await _repositories.templateMaterialize.materialize(
+      TemplateMaterializeRequest(
+        workoutTemplateId: plan.workoutTemplateId,
+        routineId: plan.routineId,
+        slot: plan.slot,
+      ),
+      now: startedAt,
+      timezone: _options.timezone,
+      actor: _actor,
+    );
+    // Materialize dates the Workout in the host's zone; the generated
+    // history is dated in UTC, like the Workouts started empty.
+    await _repositories.workoutSessions.updateStartedAt(
+      result.workoutId,
+      startedAt: startedAt,
+      localDate: day,
+      actor: _actor,
+    );
+    if (comment != null) {
+      await _repositories.workoutSessions.updateComment(
+        result.workoutId,
+        comment: comment,
+        actor: _actor,
+      );
+    }
+    return result.workoutId;
+  }
+
+  /// A session started from Up next and left before any Set was completed:
+  /// its Sets stay as placed, incomplete, and the Workout is never finished.
+  Future<void> _logAbandonedSession(
+    TrainingDayDate day,
+    _Session session,
+    int week,
+  ) async {
+    var clock = _at(day, hour: 6, minute: 30);
+    final workoutId = await _startWorkout(day, clock, session);
+    for (final lift in session.lifts) {
+      for (var position = 0; position < lift.sets; position += 1) {
+        clock = clock.add(const Duration(seconds: 1));
+        await _repositories.sets.create(
+          LoggedSetDraft(
+            workoutId: workoutId,
+            exerciseId: lift.exerciseId,
+            position: position,
+            values: _liftValues(lift, week, deload: false, lastSet: false),
+            performedAt: clock,
+          ),
+          actor: _actor,
+        );
+        _sets += 1;
+      }
+    }
+  }
+
   Future<void> _logLiftingSession(
     TrainingDayDate day,
-    List<_Lift> session,
+    _Session session,
     int week,
   ) async {
     final deload = week % 4 == 3;
     var clock = _at(day, hour: 6, minute: 30 + _random.nextInt(60));
-    final workoutId = await _repositories.workoutSessions.create(
-      WorkoutSessionDraft(
-        startedAt: clock,
-        timezone: _options.timezone,
-        localDate: day,
-        comment: deload ? 'Deload week' : null,
-      ),
-      actor: _actor,
+    final workoutId = await _startWorkout(
+      day,
+      clock,
+      session,
+      comment: deload ? 'Deload week' : null,
     );
-    _workouts += 1;
 
-    for (final lift in session) {
-      await _repositories.workoutExercises.create(
-        WorkoutExerciseDraft(workoutId: workoutId, exerciseId: lift.exerciseId),
-        actor: _actor,
-      );
+    for (final lift in session.lifts) {
+      // A Workout started from a template already holds its exercises.
+      if (!_plans.containsKey(session)) {
+        await _repositories.workoutExercises.create(
+          WorkoutExerciseDraft(
+            workoutId: workoutId,
+            exerciseId: lift.exerciseId,
+          ),
+          actor: _actor,
+        );
+      }
       for (var position = 0; position < lift.sets; position += 1) {
         clock = clock.add(Duration(seconds: 90 + _random.nextInt(90)));
         final isLastSet = position == lift.sets - 1;
@@ -667,22 +874,7 @@ class _Generator {
 
   Future<void> _logRun(TrainingDayDate day, int week) async {
     final startedAt = _at(day, hour: 8, minute: _random.nextInt(45));
-    final workoutId = await _repositories.workoutSessions.create(
-      WorkoutSessionDraft(
-        startedAt: startedAt,
-        timezone: _options.timezone,
-        localDate: day,
-      ),
-      actor: _actor,
-    );
-    _workouts += 1;
-    await _repositories.workoutExercises.create(
-      WorkoutExerciseDraft(
-        workoutId: workoutId,
-        exerciseId: LibraryExercise.running,
-      ),
-      actor: _actor,
-    );
+    final workoutId = await _startWorkout(day, startedAt, _longRunSession);
 
     // 5 km building toward 8 km, at a pace that improves from 6:00 to ~5:30.
     final kilometres = math.min(8.0, 5 + week * 0.25);

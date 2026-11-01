@@ -412,6 +412,28 @@ final class ConsistencyRange {
   }
 }
 
+/// One Compound's counted Day Statuses over a range, for Progress Overview's
+/// Protocols card (docs/designs/progress-overview.md, D7). `pending`,
+/// `offCycle` and `notPlanned` are not counted. Derived on read, never
+/// stored.
+final class CompoundConsistencySummary {
+  const CompoundConsistencySummary({
+    required this.compoundId,
+    required this.compoundName,
+    required this.logged,
+    required this.partlyLogged,
+    required this.notLogged,
+    required this.paused,
+  });
+
+  final String compoundId;
+  final String compoundName;
+  final int logged;
+  final int partlyLogged;
+  final int notLogged;
+  final int paused;
+}
+
 /// Read-only local repository deriving the Planned list and the Consistency
 /// view from the plan rows and the Doses (D6), the way
 /// [RoutineUpNextRepository] derives Up next: nothing is stored, so there is
@@ -646,6 +668,90 @@ final class ProtocolPlanRepository {
         doses,
       ),
     );
+  }
+
+  /// Every Compound's counted Day Statuses over [from] through [to],
+  /// inclusive (D7), with [today] read from the caller's clock as
+  /// [watchConsistency] takes it. The same plan read and the same
+  /// `planDays` and `dayStatuses` over every Protocol, archived ones
+  /// included, so each Compound's counts agree with its Consistency view and
+  /// with the Agent's day statuses.
+  ///
+  /// Lists only Compounds with at least one counted status, ordered by name
+  /// (case-insensitive), then id. Throws an [ArgumentError] on the ranges
+  /// [watchConsistency] refuses.
+  Stream<List<CompoundConsistencySummary>> watchConsistencySummary(
+    ProtocolDayDate from,
+    ProtocolDayDate to, {
+    required ProtocolDayDate today,
+  }) {
+    _checkConsistencyRange(from, to);
+    return _combineLatest2(
+      _planQuery().watch().map(_planFromJoinedRows),
+      _repositories.protocols
+          ._activeDoseQuery(
+            (row) => row.localDate.isBetweenValues(
+              from.storageValue,
+              to.storageValue,
+            ),
+          )
+          .watch()
+          .map(
+            (rows) => rows
+                .map(_repositories.protocols._doseFromRow)
+                .toList(growable: false),
+          ),
+      (_PlanRows plan, List<DoseRecord> doses) => _consistencySummaries(
+        plan,
+        dayStatuses(
+          planDays(plan.protocols, from, to),
+          _planDoses(doses),
+          today,
+        ),
+      ),
+    );
+  }
+
+  List<CompoundConsistencySummary> _consistencySummaries(
+    _PlanRows plan,
+    List<DayStatus> statuses,
+  ) {
+    final countsByCompound = <String, Map<DayStatusKind, int>>{};
+    for (final status in statuses) {
+      switch (status.status) {
+        case DayStatusKind.logged ||
+              DayStatusKind.partlyLogged ||
+              DayStatusKind.notLogged ||
+              DayStatusKind.paused:
+          final counts = countsByCompound.putIfAbsent(
+            status.compoundId,
+            () => <DayStatusKind, int>{},
+          );
+          counts[status.status] = (counts[status.status] ?? 0) + 1;
+        case DayStatusKind.pending ||
+              DayStatusKind.offCycle ||
+              DayStatusKind.notPlanned:
+          break;
+      }
+    }
+    final summaries = <CompoundConsistencySummary>[
+      for (final MapEntry(key: compoundId, value: counts)
+          in countsByCompound.entries)
+        CompoundConsistencySummary(
+          compoundId: compoundId,
+          compoundName: plan.compounds[compoundId]!.name,
+          logged: counts[DayStatusKind.logged] ?? 0,
+          partlyLogged: counts[DayStatusKind.partlyLogged] ?? 0,
+          notLogged: counts[DayStatusKind.notLogged] ?? 0,
+          paused: counts[DayStatusKind.paused] ?? 0,
+        ),
+    ]..sort((a, b) {
+        final byName = a.compoundName.toLowerCase().compareTo(
+              b.compoundName.toLowerCase(),
+            );
+        return byName != 0 ? byName : a.compoundId.compareTo(b.compoundId);
+      });
+    return List<CompoundConsistencySummary>.unmodifiable(summaries);
   }
 
   ConsistencyRange _consistencyRange(

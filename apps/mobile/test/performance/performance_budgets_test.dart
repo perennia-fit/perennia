@@ -14,6 +14,7 @@ import 'package:perennia/domain/nutrition/open_food_facts.dart';
 import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
+import 'package:perennia/domain/training/training_progress.dart';
 import 'package:perennia/features/analytics/repositories/exercise_overview_repository.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
@@ -200,6 +201,64 @@ void main() {
         stopwatch.elapsed,
         lessThan(protocolConsistencyBudget),
         reason: 'The Consistency view must plan and match its longest range '
+            'within the budget the spec pins.',
+      );
+    });
+
+    test(
+        'Progress training cores over 366 days of five years of history stay '
+        'under 50 ms', () async {
+      final fixture = await buildProgressHistoryFixture();
+      addTearDown(fixture.database.close);
+      final today = fixture.today;
+      final from = today.addDays(-(progressTrainingRangeDays - 1));
+      final weekStart =
+          today.addDays(-(today.toLocalDateTime().weekday - DateTime.monday));
+      // The repository reads the cards wait on, outside the timed work.
+      final workouts = await fixture.repositories.workoutSessions
+          .watchProgressWorkoutsBetween(from, today)
+          .first;
+      final planFacts =
+          await fixture.repositories.routineUpNext.watchWeeklyPlans().first;
+      final plans = [for (final plan in planFacts) plan.toWeeklyPlan()];
+
+      final stopwatch = Stopwatch()..start();
+      final week = trainingWeek(
+        plans: plans,
+        workouts: workouts,
+        weekStart: weekStart,
+        today: today,
+      );
+      final days = trainingDays(workouts: workouts, from: from, to: today);
+      stopwatch.stop();
+
+      // The whole history is there, and the year's share of it was read.
+      final setCount = await fixture.database
+          .customSelect('SELECT COUNT(*) AS count FROM logged_sets')
+          .getSingle();
+      expect(setCount.read<int>('count'), progressHistorySetCount);
+      expect(
+        await fixture.repositories.workoutSessions.listActive(),
+        hasLength(progressHistoryWorkoutCount),
+      );
+      expect(fixture.exerciseIds, hasLength(progressHistoryExerciseCount));
+      expect(
+        workouts.length,
+        greaterThan(
+          progressHistoryWorkoutCount ~/ progressHistoryYears - 10,
+        ),
+      );
+      expect(workouts.every((workout) => workout.isLogged), isTrue);
+      expect(week.comparedRoutineIds, hasLength(2));
+      expect(days, hasLength(progressTrainingRangeDays));
+      expect(
+        days.where((day) => day.workoutCount > 0).length,
+        workouts.map((workout) => workout.localDate).toSet().length,
+      );
+      expect(
+        stopwatch.elapsed,
+        lessThan(progressTrainingBudget),
+        reason: 'This week and Trained days must compute the 1-year period '
             'within the budget the spec pins.',
       );
     });

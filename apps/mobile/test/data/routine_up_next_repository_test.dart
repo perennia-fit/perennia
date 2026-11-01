@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
@@ -257,6 +257,197 @@ void main() {
 
       expect(emissions, <int>[1, 2]);
       await subscription.cancel();
+    });
+  });
+
+  group('RoutineUpNextRepository.watchWeeklyPlans', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<String> createTemplate(String name) {
+      return repositories.workoutTemplates.create(
+        WorkoutTemplateDraft(name: name),
+      );
+    }
+
+    /// A weekly Routine planning each template on its weekday, in order.
+    Future<(String, List<String>)> weeklyRoutine(
+      String name,
+      Map<String, int> weekdayByTemplateId,
+    ) async {
+      final routineId = await repositories.routinePlans.create(
+        RoutinePlanDraft(name: name),
+      );
+      await repositories.routinePlans.setCadence(
+        routineId,
+        const Cadence.weekly(),
+      );
+      final entryIds = <String>[];
+      for (final MapEntry(key: templateId, value: weekday)
+          in weekdayByTemplateId.entries) {
+        entryIds.add(
+          await repositories.routinePlans.addTemplateReference(
+            routineId,
+            templateId,
+            slot: weekday,
+          ),
+        );
+      }
+      return (routineId, entryIds);
+    }
+
+    Map<String, int> weekdaysOf(WeeklyPlanFacts plan) => <String, int>{
+          for (final entry in plan.entries)
+            entry.workoutTemplateId: entry.weekday,
+        };
+
+    test('lists each weekly Routine with its slots as ISO weekdays, and '
+        'leaves out rotating and uncadenced Routines', () async {
+      final lower = await createTemplate('Lower');
+      final run = await createTemplate('Run intervals');
+      final (routineId, _) = await weeklyRoutine('Hybrid block', {
+        lower: DateTime.monday,
+        run: DateTime.tuesday,
+      });
+      final rotatingId = await repositories.routinePlans.create(
+        const RoutinePlanDraft(name: 'Rotation'),
+      );
+      await repositories.routinePlans.addTemplateReference(rotatingId, lower);
+      await repositories.routinePlans.setCadence(
+        rotatingId,
+        const Cadence.rotating(2),
+      );
+      final collectionId = await repositories.routinePlans.create(
+        const RoutinePlanDraft(name: 'Collection only'),
+      );
+      await repositories.routinePlans.addTemplateReference(collectionId, run);
+
+      final plans =
+          await repositories.routineUpNext.watchWeeklyPlans().first;
+
+      expect(plans, hasLength(1));
+      expect(plans.single.routineId, routineId);
+      expect(plans.single.routineName, 'Hybrid block');
+      expect(weekdaysOf(plans.single), <String, int>{
+        lower: DateTime.monday,
+        run: DateTime.tuesday,
+      });
+      final plan = plans.single.toWeeklyPlan();
+      expect(plan.routineId, routineId);
+      expect(plan.entries, hasLength(2));
+      expect(
+        await repositories.routineUpNext.watchHasRotatingRoutine().first,
+        isTrue,
+      );
+    });
+
+    test('an archived entry plans nothing', () async {
+      final lower = await createTemplate('Lower');
+      final upper = await createTemplate('Upper');
+      final (_, entryIds) = await weeklyRoutine('Hybrid block', {
+        lower: DateTime.monday,
+        upper: DateTime.thursday,
+      });
+      await repositories.routinePlans.removeTemplateReference(entryIds.first);
+
+      final plans =
+          await repositories.routineUpNext.watchWeeklyPlans().first;
+
+      expect(weekdaysOf(plans.single), <String, int>{
+        upper: DateTime.thursday,
+      });
+    });
+
+    test('an entry whose Workout Template is archived plans nothing',
+        () async {
+      final lower = await createTemplate('Lower');
+      final upper = await createTemplate('Upper');
+      await weeklyRoutine('Hybrid block', {
+        lower: DateTime.monday,
+        upper: DateTime.thursday,
+      });
+      await repositories.workoutTemplates.archive(lower);
+
+      final plans =
+          await repositories.routineUpNext.watchWeeklyPlans().first;
+
+      expect(weekdaysOf(plans.single), <String, int>{
+        upper: DateTime.thursday,
+      });
+    });
+
+    test('an entry without a slot plans nothing', () async {
+      final lower = await createTemplate('Lower');
+      final upper = await createTemplate('Upper');
+      final (_, entryIds) = await weeklyRoutine('Hybrid block', {
+        lower: DateTime.monday,
+        upper: DateTime.thursday,
+      });
+      // The editors keep every slot of a cadenced Routine set; a malformed
+      // synced row is the only way to lose one.
+      await (database.update(database.routineEntries)
+            ..where((row) => row.id.equals(entryIds.first)))
+          .write(const RoutineEntriesCompanion(slot: Value<int?>(null)));
+
+      final plans =
+          await repositories.routineUpNext.watchWeeklyPlans().first;
+
+      expect(weekdaysOf(plans.single), <String, int>{
+        upper: DateTime.thursday,
+      });
+    });
+
+    test('a weekly Routine with no entries is absent, and so is one whose '
+        'Routine is archived', () async {
+      final lower = await createTemplate('Lower');
+      await weeklyRoutine('Empty week', const <String, int>{});
+      final (archivedId, _) = await weeklyRoutine('Old block', {
+        lower: DateTime.monday,
+      });
+      await repositories.routinePlans.archive(archivedId);
+
+      expect(
+        await repositories.routineUpNext.watchWeeklyPlans().first,
+        isEmpty,
+      );
+      expect(
+        await repositories.routineUpNext.watchHasRotatingRoutine().first,
+        isFalse,
+      );
+    });
+
+    test('a Routine switched to weekly stops counting as rotating',
+        () async {
+      final rotatingId = await repositories.routinePlans.create(
+        const RoutinePlanDraft(name: 'Rotation'),
+      );
+      await repositories.routinePlans.setCadence(
+        rotatingId,
+        const Cadence.rotating(3),
+      );
+      final emissions = <bool>[];
+      final subscription = repositories.routineUpNext
+          .watchHasRotatingRoutine()
+          .listen(emissions.add);
+      addTearDown(subscription.cancel);
+      await pumpEventQueue();
+
+      await repositories.routinePlans.setCadence(
+        rotatingId,
+        const Cadence.weekly(),
+      );
+      await pumpEventQueue();
+
+      expect(emissions, <bool>[true, false]);
     });
   });
 }

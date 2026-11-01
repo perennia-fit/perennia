@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/training/focus_color.dart';
 import 'package:perennia/domain/training/training_day.dart';
 
 import '../../tool/test_data/test_data_generator.dart';
@@ -32,14 +33,17 @@ void main() {
 
   tearDown(() => database.close());
 
-  test('writes finished workouts whose sets all use library exercises',
-      () async {
+  test(
+      'writes finished workouts whose sets all use library exercises, but '
+      'for the one abandoned workout', () async {
     final summary = await generateTestData(repositories, options);
 
     final workouts = await repositories.workoutSessions.listActive();
     expect(workouts, hasLength(summary.workouts));
     expect(summary.workouts, greaterThanOrEqualTo(6));
-    expect(workouts.every((workout) => workout.endedAt != null), isTrue);
+    final open = workouts.where((workout) => workout.endedAt == null);
+    expect(open, hasLength(1));
+    final abandonedId = open.single.id;
 
     final library = {
       for (final exercise in await repositories.exercises.listActive())
@@ -52,7 +56,7 @@ void main() {
       for (final set in sets) {
         expect(LibraryExercise.all, contains(set.exerciseId));
         expect(library[set.exerciseId]?.origin, ExerciseLibraryOrigin.platform);
-        expect(set.isCompleted, isTrue);
+        expect(set.isCompleted, workout.id != abandonedId);
       }
     }
     expect(setCount, summary.sets);
@@ -63,6 +67,99 @@ void main() {
             .compareTo(const TrainingDayDate(year: 2026, month: 6, day: 15)),
         greaterThanOrEqualTo(0));
     expect(dates.last.compareTo(options.endDate), lessThanOrEqualTo(0));
+  });
+
+  test(
+      'plans the week with Routines, starts workouts from their templates '
+      'under the starter Focuses, and marks three favorites', () async {
+    await generateTestData(repositories, options);
+
+    final plans = await repositories.routineUpNext.watchWeeklyPlans().first;
+    expect(plans.single.routineName, 'Hybrid block');
+    expect(
+      plans.single.entries.map((entry) => entry.weekday),
+      unorderedEquals(
+        <int>[DateTime.monday, DateTime.tuesday, DateTime.saturday],
+      ),
+    );
+    final routines = {
+      for (final summary
+          in await repositories.routinePlans.listActiveSummaries())
+        summary.name: summary.id,
+    };
+    final rotation = await repositories.routinePlans
+        .getById(routines['Upper/Lower rotation']!);
+    expect(rotation!.cadence?.kind, CadenceKind.rotating);
+    expect(rotation.cadence?.window, 2);
+    expect(rotation.entries, hasLength(2));
+    expect(
+      await repositories.routineUpNext.watchHasRotatingRoutine().first,
+      isTrue,
+    );
+
+    final favorites = (await repositories.exercises.listActive())
+        .where((exercise) => exercise.isFavorite)
+        .map((exercise) => exercise.id);
+    expect(
+      favorites,
+      unorderedEquals(<String>[
+        LibraryExercise.benchPress,
+        LibraryExercise.barbellSquat,
+        LibraryExercise.running,
+      ]),
+    );
+
+    final workouts = await repositories.workoutSessions
+        .watchProgressWorkoutsBetween(
+          const TrainingDayDate(year: 2026, month: 6, day: 15),
+          options.endDate,
+        )
+        .first;
+    expect(
+      workouts.map((workout) => workout.focusId).toSet(),
+      containsAll(<String>[
+        starterFocusWeightsId,
+        starterFocusEnduranceId,
+        starterFocusFunctionalId,
+        starterFocusCalisthenicsId,
+        starterFocusMobilityId,
+      ]),
+    );
+    final templateIds = {
+      for (final plan in plans)
+        for (final entry in plan.entries) entry.workoutTemplateId,
+      for (final entry in rotation.entries) entry.workoutTemplateId,
+    };
+    final linked =
+        workouts.where((workout) => workout.linkedTemplateId != null);
+    expect(linked, isNotEmpty);
+    expect(
+      linked.every(
+        (workout) => templateIds.contains(workout.linkedTemplateId),
+      ),
+      isTrue,
+    );
+    // Mobility is the one session started empty.
+    expect(
+      workouts
+          .where((workout) => workout.linkedTemplateId == null)
+          .every((workout) => workout.focusId == starterFocusMobilityId),
+      isTrue,
+    );
+
+    // The last Tuesday's Lower A was started from its slot and left with
+    // only incomplete Sets.
+    final abandoned = workouts.where((workout) => !workout.isLogged);
+    expect(abandoned, hasLength(1));
+    expect(
+      abandoned.single.localDate,
+      const TrainingDayDate(year: 2026, month: 6, day: 23),
+    );
+    expect(abandoned.single.linkedTemplateId, isNotNull);
+    final abandonedSets = await repositories.sets
+        .listActiveForWorkout(abandoned.single.workoutId);
+    expect(abandonedSets, isNotEmpty);
+    expect(abandonedSets.every((set) => !set.isCompleted), isTrue);
   });
 
   test('logs body weight and meals', () async {
