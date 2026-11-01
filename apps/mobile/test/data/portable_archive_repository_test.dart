@@ -1107,6 +1107,42 @@ void main() {
       expect(restored.colorHex, isNull);
     });
 
+    test('a schema-62 archive Focus keeps the color stored since', () async {
+      final focusId = await repositories.focuses.create('Climbing');
+      final currentArchive =
+          await repositories.portableArchives.exportPortableArchive();
+      final schema62Archive = _asSchema62Archive(currentArchive);
+
+      final colored = AppDatabase.inMemory();
+      addTearDown(colored.close);
+      final coloredRepositories = TrainingRepositories(colored);
+      await coloredRepositories.portableArchives.importPortableArchive(
+        currentArchive,
+      );
+      await coloredRepositories.focuses.recolor(
+        focusId,
+        colorHex: '#5FB05C',
+      );
+      // The archive's row is now the newer one, as if an older device
+      // renamed the Focus after this one colored it.
+      await (colored.update(colored.focuses)
+            ..where((row) => row.id.equals(focusId)))
+          .write(
+        FocusesCompanion(
+          updatedAt: Value<DateTime>(DateTime.utc(2000)),
+        ),
+      );
+
+      await coloredRepositories.portableArchives.importPortableArchive(
+        schema62Archive,
+      );
+
+      final restored = await (colored.select(colored.focuses)
+            ..where((row) => row.id.equals(focusId)))
+          .getSingle();
+      expect(restored.colorHex, '#5FB05C');
+    });
+
     test('imports an exact schema-52 archive with an opaque Routine seam',
         () async {
       await _seedWorkoutData(repositories);

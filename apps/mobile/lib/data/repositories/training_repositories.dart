@@ -15893,7 +15893,7 @@ WorkoutSessionsCompanion _workoutSessionCompanionFromImage(
     localDate: Value<String>(_activityRequiredString(image, 'local_date')),
     endedAt: Value<DateTime?>(_activityNullableDateTime(image, 'ended_at')),
     comment: Value<String?>(_activityNullableString(image, 'comment')),
-    focusId: _imageFocusId(image),
+    focusId: _imageStringIfPresent(image, 'focus_id'),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
@@ -16417,7 +16417,7 @@ WorkoutTemplatesCompanion _workoutTemplateCompanionFromImage(
   return WorkoutTemplatesCompanion(
     name: Value<String>(_activityRequiredString(image, 'name')),
     notes: Value<String?>(_activityNullableString(image, 'notes')),
-    focusId: _imageFocusId(image),
+    focusId: _imageStringIfPresent(image, 'focus_id'),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );

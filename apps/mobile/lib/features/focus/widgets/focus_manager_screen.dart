@@ -195,6 +195,9 @@ class _FocusMenu extends ConsumerWidget {
   /// which looks the same.
   Future<void> _chooseColor(BuildContext context, WidgetRef ref) async {
     final l10n = context.l10n;
+    // Read before the dialog: a sync can drop this row while it is open, and
+    // a disposed widget's ref can no longer be read.
+    final repository = ref.read(focusFeatureRepositoryProvider);
     final selectedHex = colorToHex(resolvedFocusColor(focus, context.colors));
     final chosen = await showDialog<String>(
       context: context,
@@ -224,12 +227,13 @@ class _FocusMenu extends ConsumerWidget {
       ),
     );
     if (chosen != null) {
-      await ref.read(focusFeatureRepositoryProvider).recolor(focus.id, chosen);
+      await repository.recolor(focus.id, chosen);
     }
   }
 
   Future<void> _confirmArchive(BuildContext context, WidgetRef ref) async {
     final l10n = context.l10n;
+    final repository = ref.read(focusFeatureRepositoryProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -251,11 +255,14 @@ class _FocusMenu extends ConsumerWidget {
       ),
     );
     if (confirmed ?? false) {
-      await ref.read(focusFeatureRepositoryProvider).archive(focus.id);
+      await repository.archive(focus.id);
     }
   }
 }
 
+/// Every token in `focusColorTokens` needs a label: a swatch is otherwise
+/// only a color. A token added without one fails loudly here, which the
+/// screen test's walk over every swatch catches, instead of showing its key.
 String _focusColorLabel(AppLocalizations l10n, String token) {
   return switch (token) {
     'back' => l10n.focusColorBack,
@@ -265,7 +272,7 @@ String _focusColorLabel(AppLocalizations l10n, String token) {
     'arms' => l10n.focusColorArms,
     'legs' => l10n.focusColorLegs,
     'chest' => l10n.focusColorChest,
-    _ => token,
+    _ => throw ArgumentError.value(token, 'token', 'No label for this color'),
   };
 }
 

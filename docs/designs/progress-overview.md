@@ -633,8 +633,8 @@ without `color_hex`. Three places together stop that from erasing a
 color:
 
 *   **Device decode.** A missing key leaves the column as it is, and an
-    explicit null clears it. This follows the existing `_imageFocusId`
-    pattern.
+    explicit null clears it, the pattern a Workout's `focus_id` already
+    follows. Archive import applies the same rule (Archived, below).
 *   **Server carry-forward.** `SYNC_CARRY_FORWARD_PAYLOAD_KEYS` in
     `apps/server/src/sync.ts` gains `[FOCUSES_SYNC_ENTITY]: ["color_hex"]`.
     Focuses are pushed through `pushAccountKeyedSyncRowsInTransaction`, whose
@@ -725,9 +725,11 @@ no Agent operation sets a Focus color. An Agent undo can write back an earlier
 Focus image, but that image came from a validated write.
 
 **Archived.** The portable archive serializes rows with `toJson`, so new
-archives carry `colorHex`. Reading an archive from schema 62 or earlier
-leaves `colorHex` null: the generated `fromJson` reads a missing nullable
-field as null.
+archives carry `colorHex`. An archive from schema 62 or earlier has no
+`colorHex` key, and import treats a missing key the way device decode does:
+a new Focus gets null, and a Focus already on the device keeps its stored
+color even when the archive's row wins. An explicit null in a newer archive
+still clears it.
 
 ### D7. Protocols card
 
@@ -1504,11 +1506,16 @@ source:
 3.  **`apps/mobile/test/data/schema_snapshot_migration_test.dart`** (modify).
     Seed a Focus at v62 and check that it survives at v63 with a null
     `colorHex`.
-4.  **`apps/mobile/lib/data/repositories/focus_repository.dart`** (modify).
+4.  **`apps/mobile/lib/data/repositories/focus_repository.dart`** and
+    **`portable_archive_repository.dart`** (modify).
     *   `_focusFromRow`, `_focusImage`, `_focusCompanionFromImage` and
         `_focusSyncCompanionFromImage` carry `color_hex`. On decode, a
         missing key leaves the column unchanged (`Value.absent()`) and an
-        explicit null clears it, as `_imageFocusId` does.
+        explicit null clears it, through one helper,
+        `_imageStringIfPresent(image, key)`, that `focus_id` uses too.
+    *   The archive's Focus entity remembers whether a row carried
+        `colorHex` and, when it did not, upserts without that column, so an
+        older archive never clears a stored color (D6, Archived).
     *   Add `Future<void> recolor(String id, {required String colorHex,
         String actor = 'app', String? batchId})`. It calls the existing
         `_normalizeColorHex` and `_requireRow`. When the normalized color
@@ -1616,7 +1623,9 @@ source:
         (modify): the existing swatch tests pass unchanged, and a new test
         asserts the tooltip labels.
     *   `apps/mobile/test/data/portable_archive_repository_test.dart`
-        (modify): an archive Focus without `colorHex` imports with null.
+        (modify): an archive Focus without `colorHex` imports with null, and
+        one whose row wins over a colored Focus on the device keeps that
+        color.
     *   `apps/server/test/focus-sync.test.mjs` (modify): a Focus pushed with
         `color_hex`, then pushed again without the key, keeps `color_hex`.
 

@@ -393,16 +393,11 @@ FocusesCompanion _focusSyncCompanionFromImage(
   );
 }
 
-// A Focus reference read from an Activity Log or sync image. Images written
-// before Focus existed carry no key.
-Value<String?> _imageFocusId(Map<String, Object?> image) {
-  return _imageStringIfPresent(image, 'focus_id');
-}
-
 // A nullable column read from an Activity Log or sync image, for a key added
-// after the entity's first release. Reading "no key" as null would let an old
-// undo or an older device's push erase the value, so a missing key leaves the
-// column untouched and only an explicit null clears it.
+// after the entity's first release (a Workout's or Template's `focus_id`, a
+// Focus's `color_hex`). Reading "no key" as null would let an old undo or an
+// older device's push erase the value, so a missing key leaves the column
+// untouched and only an explicit null clears it.
 Value<String?> _imageStringIfPresent(Map<String, Object?> image, String key) {
   return image.containsKey(key)
       ? Value<String?>(_activityNullableString(image, key))

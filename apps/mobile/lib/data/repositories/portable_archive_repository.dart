@@ -639,28 +639,29 @@ class PortableArchiveRepository {
           updatedAtOf: (row) => row.updatedAt,
           imageOf: _exerciseCategoryImage,
         ),
-        _TypedPortableArchiveEntity<FocusRow>(
+        _TypedPortableArchiveEntity<_PortableFocusRow>(
           tableName: AppDatabase.focusesTable,
-          selectRows: () {
+          selectRows: () async {
             final query = _database.select(_database.focuses)
               ..orderBy([
                 (row) => OrderingTerm.asc(row.id),
               ]);
-            return query.get();
+            return (await query.get()).map(_PortableFocusRow.stored).toList();
           },
-          fromJson: FocusRow.fromJson,
-          toJson: (row) => row.toJson(),
-          findById: (id) {
+          fromJson: _PortableFocusRow.fromJson,
+          toJson: (focus) => focus.row.toJson(),
+          findById: (id) async {
             final query = _database.select(_database.focuses)
               ..where((row) => row.id.equals(id));
-            return query.getSingleOrNull();
+            final row = await query.getSingleOrNull();
+            return row == null ? null : _PortableFocusRow.stored(row);
           },
-          upsert: (row) => _database
+          upsert: (focus) => _database
               .into(_database.focuses)
-              .insert(row, mode: InsertMode.insertOrReplace),
-          idOf: (row) => row.id,
-          updatedAtOf: (row) => row.updatedAt,
-          imageOf: _focusImage,
+              .insertOnConflictUpdate(focus.companion),
+          idOf: (focus) => focus.row.id,
+          updatedAtOf: (focus) => focus.row.updatedAt,
+          imageOf: (focus) => _focusImage(focus.row),
         ),
         _TypedPortableArchiveEntity<ExerciseRow>(
           tableName: AppDatabase.exercisesTable,
@@ -2099,6 +2100,35 @@ class _TypedPortableArchiveEntity<T extends Object>
   @override
   bool hasSamePortableImage(Object left, Object right) {
     return jsonEncode(toJson(left as T)) == jsonEncode(toJson(right as T));
+  }
+}
+
+/// A Focus row read from an archive, remembering whether the archive carried
+/// its color. Archives from schema 62 or earlier have no `colorHex` key, and
+/// reading that as null would let an old archive's newer row erase a color
+/// picked since (docs/designs/progress-overview.md, D6). A missing key leaves
+/// the stored color as it is, the rule sync and undo follow too; an explicit
+/// null still clears it.
+class _PortableFocusRow {
+  const _PortableFocusRow(this.row, {required this.hasColorHex});
+
+  _PortableFocusRow.stored(FocusRow row) : this(row, hasColorHex: true);
+
+  factory _PortableFocusRow.fromJson(Map<String, dynamic> json) {
+    return _PortableFocusRow(
+      FocusRow.fromJson(json),
+      hasColorHex: json.containsKey('colorHex'),
+    );
+  }
+
+  final FocusRow row;
+  final bool hasColorHex;
+
+  FocusesCompanion get companion {
+    final companion = row.toCompanion(false);
+    return hasColorHex
+        ? companion
+        : companion.copyWith(colorHex: const Value<String?>.absent());
   }
 }
 
