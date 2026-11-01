@@ -337,23 +337,17 @@ final progressTrainedDaysProvider =
   );
 });
 
+/// Reads the period's [TrainingDay]s from [progressTrainedDaysProvider], so
+/// `trainingDays` runs once per Workouts change for both cards.
 final progressFocusTimeProvider =
     Provider.autoDispose<AsyncValue<ProgressFocusTime>>((ref) {
-  final range = ref.watch(progressRangeProvider);
-  if (range == null) {
-    return const AsyncLoading<ProgressFocusTime>();
-  }
-  final workouts = ref.watch(progressWorkoutsProvider((range.from, range.to)));
+  final trained = ref.watch(progressTrainedDaysProvider);
   final focuses = ref.watch(progressFocusesByIdProvider);
   return _whenAll(
-    <AsyncValue<Object?>>[workouts, focuses],
+    <AsyncValue<Object?>>[trained, focuses],
     'progress.focusTime',
     () {
-      final days = trainingDays(
-        workouts: workouts.requireValue,
-        from: range.from,
-        to: range.to,
-      );
+      final ProgressTrainedDays(:days, :range) = trained.requireValue;
       final focusesById = focuses.requireValue;
       final keys = <String>{
         for (final day in days) ...day.secondsByFocus.keys,

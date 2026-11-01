@@ -7,6 +7,15 @@
 //
 // Pure and timezone-free: dates are local `YYYY-MM-DD` strings, instants are
 // ISO-8601 strings, and "today" is an input. Nothing returned here is stored.
+// Date arithmetic and id order are the Protocol plan core's, which pins the
+// same UTC epoch-day and code-unit rules against Dart.
+
+import {
+  compareIds,
+  epochDay,
+  epochDayIsoWeekday,
+  localDateFromEpochDay
+} from "../protocol-plan.js";
 
 /** A local `YYYY-MM-DD` date. */
 export type TrainingLocalDate = string;
@@ -255,45 +264,4 @@ function loggedWorkoutsByDate(
     );
   }
   return byDate;
-}
-
-// Ids compare by UTF-16 code unit, as Dart's String.compareTo does.
-function compareIds(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
-// Local-date arithmetic on UTC epoch days.
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-// The UTC epoch day of a `YYYY-MM-DD` date; a RangeError for anything that is
-// not a real calendar date, as Dart's TrainingDayDate.parse refuses it.
-function epochDay(localDate: TrainingLocalDate): number {
-  const match = LOCAL_DATE_PATTERN.exec(localDate);
-  if (match !== null) {
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    // Not Date.UTC, which reads years 0-99 as 1900-1999.
-    const date = new Date(0);
-    date.setUTCFullYear(year, month - 1, day);
-    if (
-      date.getUTCFullYear() === year &&
-      date.getUTCMonth() === month - 1 &&
-      date.getUTCDate() === day
-    ) {
-      return date.getTime() / MS_PER_DAY;
-    }
-  }
-  throw new RangeError(`Not a local date: ${localDate}.`);
-}
-
-function localDateFromEpochDay(day: number): TrainingLocalDate {
-  return new Date(day * MS_PER_DAY).toISOString().slice(0, 10);
-}
-
-// ISO weekday of an epoch day; epoch day 0 (1970-01-01) was a Thursday.
-function epochDayIsoWeekday(day: number): number {
-  return ((((day + 3) % 7) + 7) % 7) + 1;
 }

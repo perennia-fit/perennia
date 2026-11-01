@@ -172,7 +172,7 @@ final class RoutineUpNextRepository {
   }
 
   List<WeeklyPlanFacts> _weeklyPlansFromJoinedRows(List<TypedResult> rows) {
-    final order = <String>[];
+    // Dart maps keep insertion order, so Routines come out in the select's.
     final nameById = <String, String>{};
     final entriesByRoutine = <String, List<WeeklyPlanEntry>>{};
     for (final result in rows) {
@@ -184,25 +184,21 @@ final class RoutineUpNextRepository {
       if (slot == null) {
         continue;
       }
-      if (!nameById.containsKey(routine.id)) {
-        nameById[routine.id] = routine.name;
-        entriesByRoutine[routine.id] = <WeeklyPlanEntry>[];
-        order.add(routine.id);
-      }
-      entriesByRoutine[routine.id]!.add(
-        WeeklyPlanEntry(
-          workoutTemplateId:
-              result.readTable(_database.workoutTemplates).id,
-          weekday: slot,
-        ),
-      );
+      nameById[routine.id] = routine.name;
+      entriesByRoutine.putIfAbsent(routine.id, () => <WeeklyPlanEntry>[]).add(
+            WeeklyPlanEntry(
+              workoutTemplateId:
+                  result.readTable(_database.workoutTemplates).id,
+              weekday: slot,
+            ),
+          );
     }
     return List<WeeklyPlanFacts>.unmodifiable(
-      order.map(
-        (id) => WeeklyPlanFacts(
-          routineId: id,
-          routineName: nameById[id]!,
-          entries: entriesByRoutine[id]!,
+      entriesByRoutine.entries.map(
+        (routine) => WeeklyPlanFacts(
+          routineId: routine.key,
+          routineName: nameById[routine.key]!,
+          entries: routine.value,
         ),
       ),
     );

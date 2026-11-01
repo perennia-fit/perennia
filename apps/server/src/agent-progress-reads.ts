@@ -28,7 +28,7 @@ import {
 } from "./analytics/training-progress.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
-import { epochDay, MS_PER_DAY } from "./protocol-plan.js";
+import { epochDay, localDateFromEpochDay } from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 
 const TRAINING_DAY_STATUSES = unionValues<TrainingDayStatus>()([
@@ -416,7 +416,7 @@ function weekStartFor(today: string, weekStartDay: "monday" | "sunday"): string 
 }
 
 function addDays(localDate: string, days: number): string {
-  return new Date((epochDay(localDate) + days) * MS_PER_DAY).toISOString().slice(0, 10);
+  return localDateFromEpochDay(epochDay(localDate) + days);
 }
 
 function dateValue(value: unknown): Date | null {

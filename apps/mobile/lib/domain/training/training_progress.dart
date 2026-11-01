@@ -201,7 +201,7 @@ TrainingWeek trainingWeek({
 
   final days = <TrainingWeekDay>[];
   for (var offset = 0; offset < 7; offset += 1) {
-    final date = _addDays(weekStart, offset);
+    final date = weekStart.addDays(offset);
     final weekday = _isoWeekday(date);
     final planned = <(String, String)>[
       for (final plan in comparing)
@@ -309,7 +309,7 @@ List<TrainingDay> trainingDays({
   final loggedByDate = _loggedWorkoutsByDate(workouts);
   return List<TrainingDay>.unmodifiable(<TrainingDay>[
     for (var offset = 0; offset < dateCount; offset += 1)
-      _trainingDay(_addDays(from, offset), loggedByDate),
+      _trainingDay(from.addDays(offset), loggedByDate),
   ]);
 }
 
@@ -365,7 +365,7 @@ List<WeeklyFocusSeconds> weeklyFocusSeconds(
   return List<WeeklyFocusSeconds>.unmodifiable(<WeeklyFocusSeconds>[
     for (var week = 0; week < buckets.length; week += 1)
       WeeklyFocusSeconds(
-        weekStart: _addDays(firstWeekStart, week * 7),
+        weekStart: firstWeekStart.addDays(week * 7),
         secondsByFocus: buckets[week],
       ),
   ]);
@@ -393,20 +393,11 @@ Map<TrainingDayDate, List<ProgressWorkout>> _loggedWorkoutsByDate(
   return byDate;
 }
 
-// Date arithmetic on UTC midnights, so a daylight-saving change in the
-// device's zone never repeats or skips a date.
+// Date arithmetic on UTC midnights, as [TrainingDayDate.addDays] does, so a
+// daylight-saving change in the device's zone never repeats or skips a date.
 
 DateTime _utcMidnight(TrainingDayDate date) =>
     DateTime.utc(date.year, date.month, date.day);
-
-TrainingDayDate _addDays(TrainingDayDate date, int days) {
-  final shifted = DateTime.utc(date.year, date.month, date.day + days);
-  return TrainingDayDate(
-    year: shifted.year,
-    month: shifted.month,
-    day: shifted.day,
-  );
-}
 
 int _daysBetween(TrainingDayDate from, TrainingDayDate to) =>
     _utcMidnight(to).difference(_utcMidnight(from)).inDays;
