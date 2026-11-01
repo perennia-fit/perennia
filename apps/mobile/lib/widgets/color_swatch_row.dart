@@ -31,6 +31,7 @@ class ColorSwatchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fallback = context.colors.categoryColor('other');
     return Wrap(
       spacing: AppDimens.dense,
       runSpacing: AppDimens.dense,
@@ -43,10 +44,7 @@ class ColorSwatchRow extends StatelessWidget {
                 option.hex == selectedHex ? null : () => onSelected(option.hex),
             icon: Icon(
               Icons.circle,
-              color: colorFromHex(
-                option.hex,
-                fallback: context.colors.categoryColor('other'),
-              ),
+              color: colorFromHex(option.hex, fallback: fallback),
             ),
           ),
       ],

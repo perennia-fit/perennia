@@ -195,9 +195,7 @@ class _FocusMenu extends ConsumerWidget {
   /// which looks the same.
   Future<void> _chooseColor(BuildContext context, WidgetRef ref) async {
     final l10n = context.l10n;
-    final defaultHex = colorToHex(
-      context.colors.categoryColor(focusDefaultColorToken(focus.id)),
-    );
+    final selectedHex = colorToHex(resolvedFocusColor(focus, context.colors));
     final chosen = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -211,7 +209,7 @@ class _FocusMenu extends ConsumerWidget {
                 key: FocusManagerScreen.colorSwatchKey(token),
               ),
           ],
-          selectedHex: focus.colorHex ?? defaultHex,
+          selectedHex: selectedHex,
           onSelected: (hex) => Navigator.of(dialogContext).pop(hex),
         ),
         actions: [

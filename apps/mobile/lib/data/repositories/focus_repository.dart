@@ -375,26 +375,11 @@ FocusesCompanion _focusCompanionFromImage(Map<String, Object?> image) {
   return FocusesCompanion(
     name: Value<String>(_activityRequiredString(image, 'name')),
     sortOrder: Value<int>(_activityRequiredInt(image, 'sort_order')),
-    colorHex: _imageFocusColorHex(image),
+    // A device without Focus colors pushes images with no key.
+    colorHex: _imageStringIfPresent(image, 'color_hex'),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
-}
-
-// A Focus color read from an Activity Log or sync image. A device without
-// Focus colors pushes images with no key, so, as with [_imageFocusId], a
-// missing key leaves the column untouched and only an explicit null clears it.
-Value<String?> _imageFocusColorHex(Map<String, Object?> image) {
-  return image.containsKey('color_hex')
-      ? Value<String?>(_activityNullableString(image, 'color_hex'))
-      : const Value<String?>.absent();
-}
-
-// Undo compares the current image with the entry's after-image. An entry
-// written before Focus colors has no `color_hex`, which means the same row as
-// a null color, so it still counts as current.
-Map<String, Object?> _focusImageNormalized(Map<String, Object?> image) {
-  return <String, Object?>{'color_hex': null, ...image};
 }
 
 FocusesCompanion _focusSyncCompanionFromImage(
@@ -409,12 +394,18 @@ FocusesCompanion _focusSyncCompanionFromImage(
 }
 
 // A Focus reference read from an Activity Log or sync image. Images written
-// before Focus existed carry no key, and reading "no key" as "no Focus" would
-// let an old undo or an older device's push erase one, so a missing key leaves
-// the column untouched.
+// before Focus existed carry no key.
 Value<String?> _imageFocusId(Map<String, Object?> image) {
-  return image.containsKey('focus_id')
-      ? Value<String?>(_activityNullableString(image, 'focus_id'))
+  return _imageStringIfPresent(image, 'focus_id');
+}
+
+// A nullable column read from an Activity Log or sync image, for a key added
+// after the entity's first release. Reading "no key" as null would let an old
+// undo or an older device's push erase the value, so a missing key leaves the
+// column untouched and only an explicit null clears it.
+Value<String?> _imageStringIfPresent(Map<String, Object?> image, String key) {
+  return image.containsKey(key)
+      ? Value<String?>(_activityNullableString(image, key))
       : const Value<String?>.absent();
 }
 

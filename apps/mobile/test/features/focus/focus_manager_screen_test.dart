@@ -73,10 +73,20 @@ void main() {
     await openColorDialog(tester, climbingId);
 
     expect(find.text('Color for Climbing'), findsOneWidget);
-    for (final token in focusColorTokens) {
+    const labels = <String>[
+      'Back',
+      'Cardio',
+      'Core',
+      'Shoulders',
+      'Arms',
+      'Legs',
+      'Chest',
+    ];
+    for (final (index, token) in focusColorTokens.indexed) {
       final swatch = tester.widget<IconButton>(
         find.byKey(FocusManagerScreen.colorSwatchKey(token)),
       );
+      expect(swatch.tooltip, labels[index]);
       // The current color is the default token's, shown selected.
       expect(
         swatch.onPressed == null,
@@ -84,16 +94,6 @@ void main() {
         reason: token,
       );
     }
-    expect(
-      focusColorTokens.map(
-        (token) => tester
-            .widget<IconButton>(
-              find.byKey(FocusManagerScreen.colorSwatchKey(token)),
-            )
-            .tooltip,
-      ),
-      <String>['Back', 'Cardio', 'Core', 'Shoulders', 'Arms', 'Legs', 'Chest'],
-    );
 
     final pick =
         focusDefaultColorToken(climbingId) == 'legs' ? 'chest' : 'legs';

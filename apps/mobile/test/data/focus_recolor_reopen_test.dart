@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 
+import '../support/kill_point_snapshot_interceptor.dart';
+
 /// Kill-and-reopen for a Focus recolor (docs/designs/progress-overview.md,
 /// D6), following `test/features/protocols/protocol_plan_reopen_test.dart`:
 /// a database file that is closed and opened again.
@@ -118,12 +120,9 @@ Future<List<ActivityLogEntry>> _recolorEntries(
 /// Copies the database file and its journal, as a kill would leave them,
 /// just before the Focus row is updated and just before the commit that
 /// follows that update.
-class _KillPointInterceptor extends QueryInterceptor {
-  _KillPointInterceptor(this._file, this._directory);
+class _KillPointInterceptor extends KillPointSnapshotInterceptor {
+  _KillPointInterceptor(super.file, super.directory);
 
-  final File _file;
-  final Directory _directory;
-  final snapshots = <String, File>{};
   var _focusUpdates = 0;
 
   @override
@@ -134,7 +133,7 @@ class _KillPointInterceptor extends QueryInterceptor {
   ) {
     if (statement.contains('"focuses"')) {
       _focusUpdates += 1;
-      _snapshot('before-update');
+      snapshot('before-update');
     }
     return super.runUpdate(executor, statement, args);
   }
@@ -142,24 +141,8 @@ class _KillPointInterceptor extends QueryInterceptor {
   @override
   Future<void> commitTransaction(TransactionExecutor inner) {
     if (_focusUpdates > 0) {
-      _snapshot('before-commit');
+      snapshot('before-commit');
     }
     return super.commitTransaction(inner);
-  }
-
-  void _snapshot(String name) {
-    final target = Directory('${_directory.path}/$name');
-    if (target.existsSync()) {
-      target.deleteSync(recursive: true);
-    }
-    target.createSync();
-    final base = _file.uri.pathSegments.last;
-    for (final entity in _directory.listSync()) {
-      final entityName = entity.uri.pathSegments.last;
-      if (entity is File && entityName.startsWith(base)) {
-        entity.copySync('${target.path}/$entityName');
-      }
-    }
-    snapshots[name] = File('${target.path}/$base');
   }
 }
