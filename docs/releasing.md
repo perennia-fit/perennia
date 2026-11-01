@@ -17,17 +17,51 @@ stated in three places that must agree:
 `node tools/check-release.mjs` checks that they agree. The `release_version` CI
 job runs it on every pull request that touches one of them.
 
+## Choosing the version
+
+Perennia follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
+The app and the server share one version, so a release is numbered by the
+largest change in either.
+
+While the project is pre-1.0 (`0.y.z`):
+
+| Bump | When the release contains any of these |
+|---|---|
+| **Minor** (`0.y.0`) | A user-visible feature or flow change; a new or changed REST operation, MCP tool, or contract field; a new Drift schema version or server migration; a sync or payload shape change; anything that breaks an agent or API client |
+| **Patch** (`0.y.z`) | Only fixes that restore specified behaviour, copy and styling fixes, documentation, dependency bumps, or internal changes, with no schema, contract, or sync change |
+
+From 1.0 on, the usual rules apply: **major** for a breaking change to the REST or
+MCP contract, or for dropping a sync shape an installed app may still send;
+**minor** for new features, operations, fields, or migrations that existing
+clients keep working with; **patch** for fixes only.
+
+Whatever the bump, the build number after `+` in `apps/mobile/pubspec.yaml` goes
+up by one in every release and never resets (see
+[Rules that keep installs updatable](#rules-that-keep-installs-updatable)).
+
+### Keeping the changelog current
+
+Every pull request that changes something a user, an agent, or a self-hoster can
+notice adds a line under `## [Unreleased]` in [CHANGELOG.md](../CHANGELOG.md),
+under `Added`, `Changed`, `Fixed`, or `Removed`. Write it for the person using the
+app or the API, not for the code reviewer, and link the pull request. Docs-only,
+test-only, and refactor-only pull requests add nothing.
+
+The release pull request then only has to move those entries into the new
+version's section and choose the bump from them.
+
 ## Cutting a release
 
 1. Open a pull request that moves `## [Unreleased]` entries into a new
-   `## [x.y.z] - YYYY-MM-DD` section and bumps both versions. Raise the build
-   number after `+` (see below).
+   `## [x.y.z] - YYYY-MM-DD` section and bumps both versions, choosing the
+   bump as in [Choosing the version](#choosing-the-version). Raise the build
+   number after `+` by one (see below).
 2. Merge it to `main` once the gate is green.
 3. Tag the merge commit on `main` and push the tag:
 
    ```bash
-   git tag -a v0.0.1 -m "Perennia 0.0.1"
-   git push origin v0.0.1
+   git tag -a v0.1.0 -m "Perennia 0.1.0"
+   git push origin v0.1.0
    ```
 
 The tag runs [the release workflow](../.github/workflows/release.yml). It
