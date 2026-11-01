@@ -636,8 +636,9 @@ have (`listAgentFoods`, `searchAgentPlatformFoods`); see
 *   Store: `AgentFoodHistoryReadStore.listFoodHistory({ userId, limit, now })`
     reads the user's live `food_entries` and `meals` rows and the ids of
     archived `foods`, reads each Food Entry payload with the same Portion
-    reader as `readFoodEntriesByMealId` (`parseRawPortion`, exported from
-    `agent-nutrition-reads.ts`), and calls the pure function below. It reads
+    reader as `readFoodEntriesByMealId` (`parseRawPortion`, with
+    `stringValue` and `numberValue`, exported from `agent-nutrition-reads.ts`),
+    and calls the pure function below. It reads
     `is_liquid` as stored rather than through that read's entry mapper, which
     turns a null liquid flag into `false`; a null flag must leave the entry
     out, as it does in the app.
@@ -1039,8 +1040,8 @@ The query and response Zod schemas (`AgentFoodHistoryQuerySchema`,
 `AgentFoodHistoryItemSchema`, `AgentFoodHistoryResponseSchema`), the route
 `agentFoodHistoryRoute`, the store type `AgentFoodHistoryReadStore` and
 `createDrizzleAgentFoodHistoryReadStore(db)`. In
-`apps/server/src/agent-nutrition-reads.ts`, export `parseRawPortion` for the
-store to share (see [Agent surface](#agent-surface)).
+`apps/server/src/agent-nutrition-reads.ts`, export `parseRawPortion`,
+`stringValue` and `numberValue` for the store to share (see [Agent surface](#agent-surface)).
 
 #### 17. `apps/server/src/app.ts` and `apps/server/src/index.ts` (Modify)
 
@@ -1049,7 +1050,7 @@ auth, rate limit and unavailable handling, taking the store as an app option
 as `agentNutritionReadStore` is taken. In `index.ts`, create it with
 `createDrizzleAgentFoodHistoryReadStore(db)` next to the
 `createDrizzleAgentNutritionReadStore` call, and pass it to the app and to the
-MCP server; re-export the new modules from `index.ts` next to the
+MCP server; re-export `agent-food-history.js` from `index.ts` next to the
 `agent-nutrition-reads.js` exports, as the server tests import from it.
 
 #### 18. `apps/server/src/agent-mcp.ts` (Modify)

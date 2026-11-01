@@ -96,7 +96,16 @@ export function buildFoodHistory({
     }
   }
 
-  const groups = new Map<string, CountedEntry[]>();
+  // One pass: each group keeps its latest entry, its latest entry with a
+  // Portion, and its count in the window.
+  const groups = new Map<
+    string,
+    {
+      latest: CountedEntry;
+      latestWithPortion: CountedEntry | null;
+      recentCount: number;
+    }
+  >();
   for (const entry of entries) {
     const startedAt = mealStarts.get(entry.mealId);
     const updatedAt = Date.parse(entry.updatedAt);
@@ -113,9 +122,7 @@ export function buildFoodHistory({
     ) {
       continue;
     }
-    const key = JSON.stringify([foodSource, foodId]);
-    const group = groups.get(key) ?? [];
-    group.push({
+    const counted: CountedEntry = {
       id: entry.id,
       foodSource,
       foodId,
@@ -123,36 +130,54 @@ export function buildFoodHistory({
       portion: entry.portion,
       startedAt,
       updatedAt
-    });
-    groups.set(key, group);
+    };
+    const withPortion = counted.portion === null ? null : counted;
+    const recent = startedAt >= cutoff ? 1 : 0;
+    // Food Source names hold no NUL, so the key is unambiguous.
+    const key = `${foodSource}\u0000${foodId}`;
+    const group = groups.get(key);
+    if (group === undefined) {
+      groups.set(key, {
+        latest: counted,
+        latestWithPortion: withPortion,
+        recentCount: recent
+      });
+      continue;
+    }
+    group.recentCount += recent;
+    if (latestFirst(counted, group.latest) < 0) {
+      group.latest = counted;
+    }
+    if (
+      withPortion !== null &&
+      (group.latestWithPortion === null ||
+        latestFirst(withPortion, group.latestWithPortion) < 0)
+    ) {
+      group.latestWithPortion = withPortion;
+    }
   }
 
-  const records: (FoodHistoryRecord & { lastLoggedMs: number })[] = [];
-  for (const group of groups.values()) {
-    const byLatest = [...group].sort(latestFirst);
-    const latest = byLatest[0];
-    records.push({
-      foodSource: latest.foodSource,
-      foodId: latest.foodId,
-      recentCount: group.filter((entry) => entry.startedAt >= cutoff).length,
-      lastLoggedAt: new Date(latest.startedAt).toISOString(),
-      lastLoggedMs: latest.startedAt,
-      latestPosition: latest.position,
-      latestEntryId: latest.id,
-      lastPortion: byLatest.find((entry) => entry.portion !== null)?.portion ?? null
-    });
-  }
-
-  return records
+  return [...groups.values()]
+    .map(
+      ({ latest, latestWithPortion, recentCount }): FoodHistoryRecord => ({
+        foodSource: latest.foodSource,
+        foodId: latest.foodId,
+        recentCount,
+        // toISOString() output sorts as text in time order.
+        lastLoggedAt: new Date(latest.startedAt).toISOString(),
+        latestPosition: latest.position,
+        latestEntryId: latest.id,
+        lastPortion: latestWithPortion?.portion ?? null
+      })
+    )
     .sort(
       (left, right) =>
         right.recentCount - left.recentCount ||
-        right.lastLoggedMs - left.lastLoggedMs ||
+        compareText(right.lastLoggedAt, left.lastLoggedAt) ||
         left.latestPosition - right.latestPosition ||
         compareText(left.foodSource, right.foodSource) ||
         compareText(left.foodId, right.foodId)
-    )
-    .map(({ lastLoggedMs: _lastLoggedMs, ...record }) => record);
+    );
 }
 
 function latestFirst(left: CountedEntry, right: CountedEntry): number {

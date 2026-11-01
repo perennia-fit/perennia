@@ -7,7 +7,9 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentNutritionReadUnavailableResponseSchema,
-  parseRawPortion
+  numberValue,
+  parseRawPortion,
+  stringValue
 } from "./agent-nutrition-reads.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
@@ -138,30 +140,35 @@ export function createDrizzleAgentFoodHistoryReadStore(
 ): AgentFoodHistoryReadStore {
   return {
     async listFoodHistory({ userId, limit, now }) {
-      const mealRows = await db
-        .select({ id: schema.meals.id, payload: schema.meals.payload })
-        .from(schema.meals)
-        .where(
-          and(eq(schema.meals.userId, userId), isNull(schema.meals.deletedAt))
-        );
-      const entryRows = await db
-        .select({
-          id: schema.foodEntries.id,
-          payload: schema.foodEntries.payload
-        })
-        .from(schema.foodEntries)
-        .where(
-          and(
-            eq(schema.foodEntries.userId, userId),
-            isNull(schema.foodEntries.deletedAt)
+      const [mealRows, entryRows, archivedRows] = await Promise.all([
+        db
+          .select({ id: schema.meals.id, payload: schema.meals.payload })
+          .from(schema.meals)
+          .where(
+            and(eq(schema.meals.userId, userId), isNull(schema.meals.deletedAt))
+          ),
+        db
+          .select({
+            id: schema.foodEntries.id,
+            payload: schema.foodEntries.payload
+          })
+          .from(schema.foodEntries)
+          .where(
+            and(
+              eq(schema.foodEntries.userId, userId),
+              isNull(schema.foodEntries.deletedAt)
+            )
+          ),
+        db
+          .select({ id: schema.foods.id })
+          .from(schema.foods)
+          .where(
+            and(
+              eq(schema.foods.userId, userId),
+              isNotNull(schema.foods.deletedAt)
+            )
           )
-        );
-      const archivedRows = await db
-        .select({ id: schema.foods.id })
-        .from(schema.foods)
-        .where(
-          and(eq(schema.foods.userId, userId), isNotNull(schema.foods.deletedAt))
-        );
+      ]);
 
       const meals: FoodHistoryMeal[] = mealRows.flatMap((row) => {
         const startedAt = row.payload.started_at;
@@ -175,7 +182,7 @@ export function createDrizzleAgentFoodHistoryReadStore(
         if (entry === null) {
           return [];
         }
-        names.set(row.id, textValue(row.payload.name) ?? "");
+        names.set(row.id, stringValue(row.payload.name) ?? "");
         return [entry];
       });
 
@@ -211,28 +218,21 @@ function foodHistoryEntryFromPayload(
   id: string,
   payload: Record<string, unknown>
 ): FoodHistoryEntry | null {
-  const mealId = textValue(payload.meal_id);
-  const updatedAt = textValue(payload.updated_at);
+  const mealId = stringValue(payload.meal_id);
+  const updatedAt = stringValue(payload.updated_at);
   if (mealId === null || updatedAt === null) {
     return null;
   }
   return {
     id,
     mealId,
-    kind: textValue(payload.entry_kind) ?? "quickEntry",
-    position:
-      typeof payload.position === "number" && Number.isFinite(payload.position)
-        ? payload.position
-        : 0,
-    foodSource: textValue(payload.food_source),
-    foodId: textValue(payload.food_id),
+    kind: stringValue(payload.entry_kind) ?? "quickEntry",
+    position: numberValue(payload.position) ?? 0,
+    foodSource: stringValue(payload.food_source),
+    foodId: stringValue(payload.food_id),
     isLiquid: typeof payload.is_liquid === "boolean" ? payload.is_liquid : null,
     portion: parseRawPortion(payload.portion_json),
     updatedAt,
     deletedAt: null
   };
-}
-
-function textValue(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
 }

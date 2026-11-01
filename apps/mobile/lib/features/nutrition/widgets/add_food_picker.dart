@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/open_food_facts_repository.dart';
 import '../../../domain/nutrition/nutrition.dart';
-import '../../../domain/nutrition/open_food_facts.dart';
 import '../../../theme/theme.dart';
 import '../controllers/add_food_controller.dart';
 import '../repositories/add_food_repository.dart';
@@ -308,8 +307,7 @@ class _FoodResults extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final blank = buildFoodSearchMatch(state.query) == null &&
-        barcodeCandidates(state.query).isEmpty;
+    final blank = isBlankFoodQuery(state.query);
     final children = switch (state.filter) {
       AddFoodPickerFilter.all when blank => [
           if (state.results.isEmpty)
@@ -335,36 +333,19 @@ class _FoodResults extends StatelessWidget {
           ],
         ],
       AddFoodPickerFilter.all => [
-          ..._rows(context, state.results),
-          if (state.results.isEmpty)
-            const _StatusLine(
-              key: AddFoodPicker.noMatchLineKey,
-              text: _noMatchLine,
-            ),
+          ..._rowsOrNoMatch(context),
           ..._bundleLine(),
           ..._online(context),
         ],
-      AddFoodPickerFilter.yours => [
-          ..._rows(context, state.results),
-          if (state.results.isEmpty)
-            blank
-                ? const _StatusLine(
-                    key: AddFoodPicker.emptyStateKey,
-                    text: 'Foods you log or create appear here.',
-                  )
-                : const _StatusLine(
-                    key: AddFoodPicker.noMatchLineKey,
-                    text: _noMatchLine,
-                  ),
+      AddFoodPickerFilter.yours when blank && state.results.isEmpty => [
+          const _StatusLine(
+            key: AddFoodPicker.emptyStateKey,
+            text: 'Foods you log or create appear here.',
+          ),
         ],
-      AddFoodPickerFilter.usda => [
-          ..._rows(context, state.results),
-          if (state.results.isEmpty)
-            const _StatusLine(
-              key: AddFoodPicker.noMatchLineKey,
-              text: _noMatchLine,
-            ),
-        ],
+      AddFoodPickerFilter.yours ||
+      AddFoodPickerFilter.usda =>
+        _rowsOrNoMatch(context),
       AddFoodPickerFilter.openFoodFacts => [
           ..._bundleLine(),
           if (blank)
@@ -405,6 +386,15 @@ class _FoodResults extends StatelessWidget {
         _FoodResultRow(item: item, onOpen: onOpen),
         Divider(height: 1, color: context.colors.divider),
       ],
+    ];
+  }
+
+  List<Widget> _rowsOrNoMatch(BuildContext context) {
+    return [
+      ..._rows(context, state.results),
+      if (state.results.isEmpty)
+        const _StatusLine(
+            key: AddFoodPicker.noMatchLineKey, text: _noMatchLine),
     ];
   }
 

@@ -208,9 +208,9 @@ import {
 } from "./agent-protocols.js";
 import { nutrientValidationLimitsResponse } from "./agent-validation.js";
 import {
+  AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
   AGENT_FOOD_HISTORY_DESCRIPTION,
   AGENT_FOOD_HISTORY_MAX_LIMIT,
-  AgentFoodHistoryQuerySchema,
   AgentFoodHistoryResponseSchema,
   type AgentFoodHistoryReadStore
 } from "./agent-food-history.js";
@@ -1548,8 +1548,7 @@ export function createAgentMcpServer({
         AgentFoodHistoryResponseSchema.parse(
           await agentFoodHistoryReadStore.listFoodHistory({
             userId: auth.agent.userId,
-            limit: AgentFoodHistoryQuerySchema.parse({ limit: input.limit })
-              .limit,
+            limit: input.limit ?? AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
             now: new Date()
           })
         )

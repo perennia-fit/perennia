@@ -495,14 +495,6 @@ export {
   type AgentFoodHistoryResponse
 } from "./agent-food-history.js";
 export {
-  buildFoodHistory,
-  FOOD_HISTORY_WINDOW_MS,
-  type FoodHistoryEntry,
-  type FoodHistoryMeal,
-  type FoodHistoryPortion,
-  type FoodHistoryRecord
-} from "./food-history.js";
-export {
   AGENT_CROSS_DOMAIN_MAX_RANGE_DAYS,
   AGENT_CROSS_DOMAIN_MAX_WORKOUT_POINTS,
   CALORIES_BURNED_METRIC_NAME,

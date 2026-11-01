@@ -135,20 +135,16 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
         unawaited(_reloadDeviceMatches());
       }
     });
-    try {
-      _onlineLookupsEnabled =
-          await ref.read(addFoodRepositoryProvider).onlineLookupsEnabled();
-    } on Object {
+    final repository = ref.read(addFoodRepositoryProvider);
+    final (onlineLookupsEnabled, yourFoods) = await (
       // Settings that fail to load must not take the picker down with them;
       // online lookups default to on.
-      _onlineLookupsEnabled = true;
-    }
-    try {
-      _yourFoods = await ref.read(addFoodRepositoryProvider).loadYourFoods();
-    } on Object {
+      repository.onlineLookupsEnabled().catchError((Object _) => true),
       // A failed Food History read leaves the Catalogue searchable.
-      _yourFoods = YourFoods.empty;
-    }
+      repository.loadYourFoods().catchError((Object _) => YourFoods.empty),
+    ).wait;
+    _onlineLookupsEnabled = onlineLookupsEnabled;
+    _yourFoods = yourFoods;
     return _load(filter: _filter, query: _query);
   }
 
@@ -352,19 +348,21 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
   /// Re-runs the device search for the current query and filter, keeping
   /// the online slot and any live search in flight.
   Future<void> _reloadDeviceMatches() async {
-    final filter = _filter;
-    final query = _query;
+    // Not a new generation: a reload must not cancel a live search. Any newer
+    // query, filter, submit or disposal moves the generation on, and the
+    // reload's results are then dropped.
+    final generation = _searchGeneration;
     final List<FoodPickerItem> results;
     try {
       results = await ref.read(addFoodRepositoryProvider).search(
-            filter: filter,
-            query: query,
+            filter: _filter,
+            query: _query,
             yourFoods: _yourFoods,
           );
     } on Object {
       return;
     }
-    if (!ref.mounted || filter != _filter || query != _query) {
+    if (generation != _searchGeneration) {
       return;
     }
     _updateCurrent((current) {

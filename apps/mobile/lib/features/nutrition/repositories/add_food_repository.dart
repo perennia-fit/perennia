@@ -108,8 +108,12 @@ class FoodPickerItem {
   final bool isLiveResult;
 
   /// The picker's one identity for a Food: deduplication, live-result
-  /// exclusion and widget keys all use it.
-  String get key => '${foodSource.name}:$id';
+  /// exclusion and Last Portion lookups all use it.
+  String get key => keyOf(foodSource, id);
+
+  static String keyOf(FoodSource foodSource, String id) {
+    return '${foodSource.name}:$id';
+  }
 
   String get foodSourceLabel {
     return switch (foodSource) {
@@ -161,7 +165,7 @@ final class YourFoods {
   /// The Last Portion for (foodSource, id), for Catalogue rows. A Catalogue
   /// Food with a Last Portion has been logged, so it is in Food History.
   Portion? lastPortionFor(FoodSource foodSource, String id) {
-    return _lastPortions['${foodSource.name}:$id'];
+    return _lastPortions[FoodPickerItem.keyOf(foodSource, id)];
   }
 }
 
@@ -222,8 +226,10 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
   @override
   Future<YourFoods> loadYourFoods({DateTime? now}) async {
     final nutrition = _repositories.nutrition;
-    final history = await nutrition.listFoodHistory(now: now);
-    final userFoods = await nutrition.listActiveUserFoods();
+    final (history, userFoods) = await (
+      nutrition.listFoodHistory(now: now),
+      nutrition.listActiveUserFoods(),
+    ).wait;
     final userFoodsById = {for (final food in userFoods) food.id: food};
     final products = {
       for (final product in await _openFoodFacts.localProductsByCodes([
@@ -238,26 +244,19 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     for (final record in history) {
       final item = switch (record.foodSource) {
         FoodSource.user => switch (userFoodsById[record.foodId]) {
-            final food? => _historyItem(
-                record,
-                name: food.name,
-                nutrientsPer100: food.nutrientsPer100,
-                isLiquid: food.isLiquid,
-                servingLabel: food.servingLabel,
-                servingSize: food.servingSize,
-                packageSize: food.packageSize,
+            final food? => _userFoodItem(
+                food,
+                origin: FoodPickerOrigin.history,
+                record: record,
               ),
             null => null,
           },
-        FoodSource.usda => switch (await _repositories.platformFoods
-              .getUsdaFoodById(record.foodId)) {
-            final food? => _platformHistoryItem(record, food),
-            null => null,
-          },
-        FoodSource.openFoodFacts => switch (products[record.foodId]) {
-            final product? => _platformHistoryItem(record, product),
-            null => null,
-          },
+        FoodSource.usda => _historyItem(
+            await _repositories.platformFoods.getUsdaFoodById(record.foodId),
+            record,
+          ),
+        FoodSource.openFoodFacts =>
+          _historyItem(products[record.foodId], record),
         _ => null,
       };
       if (item == null) {
@@ -279,21 +278,27 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
       if (entry == null || isLiquid == null) {
         continue;
       }
-      final item = _historyItem(
-        record,
+      resolved[FoodPickerItem.keyOf(record.foodSource, record.foodId)] =
+          FoodPickerItem(
+        id: record.foodId,
         name: entry.name,
+        origin: FoodPickerOrigin.history,
+        foodSource: record.foodSource,
         nutrientsPer100: entry.nutrients,
         isLiquid: isLiquid,
         servingLabel: entry.servingLabel,
         servingSize: entry.servingSize,
         packageSize: entry.packageSize,
+        lastPortion: record.lastPortion,
+        lastLoggedAt: record.lastLoggedAt,
       );
-      resolved[item.key] = item;
     }
 
     final neverLogged = [
       for (final food in userFoods)
-        if (!resolved.containsKey('${FoodSource.user.name}:${food.id}')) food,
+        if (!resolved
+            .containsKey(FoodPickerItem.keyOf(FoodSource.user, food.id)))
+          food,
     ]..sort((a, b) {
         final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
         return byName != 0 ? byName : a.id.compareTo(b.id);
@@ -301,63 +306,74 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
 
     return YourFoods([
       for (final record in history)
-        if (resolved['${record.foodSource.name}:${record.foodId}']
+        if (resolved[FoodPickerItem.keyOf(record.foodSource, record.foodId)]
             case final item?)
           item,
       for (final food in neverLogged)
-        FoodPickerItem(
-          id: food.id,
-          name: food.name,
-          origin: FoodPickerOrigin.userFood,
-          foodSource: food.foodSource,
-          nutrientsPer100: food.nutrientsPer100,
-          isLiquid: food.isLiquid,
-          servingLabel: food.servingLabel,
-          servingSize: food.servingSize,
-          packageSize: food.packageSize,
-        ),
+        _userFoodItem(food, origin: FoodPickerOrigin.userFood),
     ]);
   }
 
-  FoodPickerItem _platformHistoryItem(
+  /// A Food History row from the current Catalogue Food, or `null` when the
+  /// Food is not on the device.
+  FoodPickerItem? _historyItem(
+    PlatformFoodRecord? food,
     FoodHistoryRecord record,
-    PlatformFoodRecord food,
   ) {
-    return _historyItem(
-      record,
+    return food == null
+        ? null
+        : _platformItem(
+            food,
+            origin: FoodPickerOrigin.history,
+            lastPortion: record.lastPortion,
+            lastLoggedAt: record.lastLoggedAt,
+          );
+  }
+
+  FoodPickerItem _userFoodItem(
+    UserFoodRecord food, {
+    required FoodPickerOrigin origin,
+    FoodHistoryRecord? record,
+  }) {
+    return FoodPickerItem(
+      id: food.id,
       name: food.name,
+      origin: origin,
+      foodSource: food.foodSource,
       nutrientsPer100: food.nutrientsPer100,
       isLiquid: food.isLiquid,
       servingLabel: food.servingLabel,
       servingSize: food.servingSize,
       packageSize: food.packageSize,
-      brand: food.brand,
+      lastPortion: record?.lastPortion,
+      lastLoggedAt: record?.lastLoggedAt,
     );
   }
 
-  FoodPickerItem _historyItem(
-    FoodHistoryRecord record, {
-    required String name,
-    required NutrientVector nutrientsPer100,
-    required bool isLiquid,
-    required String? servingLabel,
-    required double? servingSize,
-    required double? packageSize,
-    String? brand,
+  /// The one mapping from a Platform Food to a picker row.
+  FoodPickerItem _platformItem(
+    PlatformFoodRecord food, {
+    required FoodPickerOrigin origin,
+    required Portion? lastPortion,
+    DateTime? lastLoggedAt,
+    bool isLiveResult = false,
   }) {
     return FoodPickerItem(
-      id: record.foodId,
-      name: name,
-      origin: FoodPickerOrigin.history,
-      foodSource: record.foodSource,
-      nutrientsPer100: nutrientsPer100,
-      isLiquid: isLiquid,
-      servingLabel: servingLabel,
-      servingSize: servingSize,
-      packageSize: packageSize,
-      brand: brand,
-      lastPortion: record.lastPortion,
-      lastLoggedAt: record.lastLoggedAt,
+      id: food.id,
+      name: food.name,
+      origin: origin,
+      foodSource: food.foodSource,
+      nutrientsPer100: food.nutrientsPer100,
+      isLiquid: food.isLiquid,
+      servingLabel: food.servingLabel,
+      servingSize: food.servingSize,
+      packageSize: food.packageSize,
+      lastPortion: lastPortion,
+      lastLoggedAt: lastLoggedAt,
+      brand: food.brand,
+      sourceModifiedAt: food.sourceModifiedAt,
+      scans: food.scans,
+      isLiveResult: isLiveResult,
     );
   }
 
@@ -422,11 +438,10 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     required String query,
     required YourFoods yourFoods,
   }) async {
-    final blank = _isBlank(query);
+    final blank = isBlankFoodQuery(query);
     return switch (filter) {
-      AddFoodPickerFilter.all => blank
-          ? yourFoods.items.take(yourFoodsLimit).toList(growable: false)
-          : await _searchAll(query, yourFoods),
+      AddFoodPickerFilter.all when !blank => await _searchAll(query, yourFoods),
+      AddFoodPickerFilter.all ||
       AddFoodPickerFilter.yours =>
         _matchYourFoods(query, yourFoods).take(yourFoodsLimit).toList(),
       AddFoodPickerFilter.usda => await _searchUsdaFoods(query, yourFoods),
@@ -453,13 +468,8 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
   ) async {
     final candidates = barcodeCandidates(query).toSet();
     final (local, usda) = await (
-      _openFoodFacts
-          .searchLocal(query, limit: searchResultLimit)
-          .then<List<PlatformFoodRecord>?>((value) => value)
-          .catchError((Object _) => null),
-      _searchUsdaFoods(query, yourFoods)
-          .then<List<FoodPickerItem>?>((value) => value)
-          .catchError((Object _) => null),
+      _orNull(_openFoodFacts.searchLocal(query, limit: searchResultLimit)),
+      _orNull(_searchUsdaFoods(query, yourFoods)),
     ).wait;
     final offItems = _openFoodFactsItems(local ?? const [], yourFoods);
     final seen = <String>{};
@@ -477,7 +487,7 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
   /// Your foods matching [query] by name, or for an Open Food Facts Food by
   /// barcode; every item on a blank query.
   Iterable<FoodPickerItem> _matchYourFoods(String query, YourFoods yourFoods) {
-    if (_isBlank(query)) {
+    if (isBlankFoodQuery(query)) {
       return yourFoods.items;
     }
     final candidates = barcodeCandidates(query).toSet();
@@ -499,16 +509,9 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     );
     return [
       for (final food in foods)
-        FoodPickerItem(
-          id: food.id,
-          name: food.name,
+        _platformItem(
+          food,
           origin: FoodPickerOrigin.usda,
-          foodSource: food.foodSource,
-          nutrientsPer100: food.nutrientsPer100,
-          isLiquid: food.isLiquid,
-          servingLabel: food.servingLabel,
-          servingSize: food.servingSize,
-          packageSize: food.packageSize,
           lastPortion: yourFoods.lastPortionFor(food.foodSource, food.id),
         ),
     ];
@@ -523,29 +526,29 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
   }) {
     return [
       for (final food in foods)
-        FoodPickerItem(
-          id: food.id,
-          name: food.name,
+        _platformItem(
+          food,
           origin: FoodPickerOrigin.openFoodFacts,
-          foodSource: food.foodSource,
-          nutrientsPer100: food.nutrientsPer100,
-          isLiquid: food.isLiquid,
-          servingLabel: food.servingLabel,
-          servingSize: food.servingSize,
-          packageSize: food.packageSize,
           lastPortion: yourFoods.lastPortionFor(food.foodSource, food.id),
-          brand: food.brand,
-          sourceModifiedAt: food.sourceModifiedAt,
-          scans: food.scans,
           isLiveResult: isLiveResult,
         ),
     ];
   }
 }
 
-/// A query with nothing to search by: no name terms and no barcode
+/// A source that fails yields `null` instead of failing the search.
+Future<T?> _orNull<T>(Future<T> future) async {
+  try {
+    return await future;
+  } on Object {
+    return null;
+  }
+}
+
+/// A **Blank query**: nothing to search by, no name terms and no barcode
 /// candidates. An empty query, spaces and punctuation alone are all blank.
-bool _isBlank(String query) {
+/// The picker's lists and the repository's searches share this one rule.
+bool isBlankFoodQuery(String query) {
   return buildFoodSearchMatch(query) == null &&
       barcodeCandidates(query).isEmpty;
 }
