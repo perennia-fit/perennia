@@ -21,7 +21,7 @@ Postgres database and a container.
 ## Get the image
 
 Each release publishes the server image to the GitHub Container Registry as
-`ghcr.io/perennia-fit/perennia-server:<version>` (for example `0.0.1`), plus
+`ghcr.io/perennia-fit/perennia-server:<version>` (for example `0.1.0`), plus
 `latest` for the newest release. Pin the exact version: it never changes, so you
 upgrade when you choose to, and `/healthz` tells you which one is running.
 
@@ -39,7 +39,7 @@ docker run -d --name perennia \
   -e DATABASE_URL="postgres://user:password@host:5432/perennia" \
   -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)" \
   -e PUBLIC_SERVER_URL="https://perennia.example.com" \
-  ghcr.io/perennia-fit/perennia-server:0.0.1
+  ghcr.io/perennia-fit/perennia-server:0.1.0
 ```
 
 The server applies any pending database migrations on startup, before it

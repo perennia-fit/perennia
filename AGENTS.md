@@ -269,6 +269,25 @@ implementation-readiness review checks.
 - Link the spec from the implementation pull request, and set its Status to
   **Current** in that pull request once the code matches it.
 
+## Versioning and releases
+
+The app and the server share one version and follow
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). The full rules are in
+[docs/releasing.md](docs/releasing.md); the parts that touch every pull request:
+
+- **Changelog.** A pull request that changes something a user, an agent, or a
+  self-hoster can notice adds a line under `## [Unreleased]` in
+  [CHANGELOG.md](CHANGELOG.md) (`Added`, `Changed`, `Fixed`, or `Removed`).
+  Docs-only, test-only, and refactor-only changes add nothing.
+- **Choosing the bump.** Pre-1.0, a release is a **minor** bump (`0.y.0`) if it
+  contains any feature, contract or MCP change, schema migration, or sync shape
+  change, and a **patch** bump (`0.y.z`) only when it is fixes, docs, and
+  internal changes. The build number after `+` in `apps/mobile/pubspec.yaml`
+  goes up by one in every release and never resets.
+- **Releases are tags.** A release is a `vX.Y.Z` tag on `main`, cut by the steps
+  in docs/releasing.md. Deployments and store builds come only from those tags,
+  and a tag is never moved.
+
 ## CI and PR workflow
 
 Hosted CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every

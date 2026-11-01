@@ -9,6 +9,44 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-01
+
+A minor release: new features in the add-food picker, a reworked way to start
+planned workouts, Protocols on Today, and a new agent read.
+
+### Added
+
+- **One food search.** The add-food picker searches Your foods, USDA and Open
+  Food Facts together, with a source badge on every row and optional source
+  chips. Before you type, it lists your own Foods, most logged in the last 90
+  days first, each with the Portion you last used, so a repeat Food takes two
+  taps. ([#84](https://github.com/perennia-fit/perennia/pull/84))
+- **Food History for agents.** `listAgentFoodHistory`
+  (`GET /agent/foods/history`) and the MCP tool `agent_list_food_history` return
+  the Foods a user logs, in the same order as the picker.
+  ([#84](https://github.com/perennia-fit/perennia/pull/84))
+- **Protocols on Today.** Protocols have a place on Today, and the Supplements
+  domain is now called Protocols throughout the app.
+  ([#80](https://github.com/perennia-fit/perennia/pull/80))
+- **Plan notes during a workout.** A Workout started from a Template shows that
+  Template's notes, read-only and collapsible.
+  ([#78](https://github.com/perennia-fit/perennia/pull/78))
+
+### Changed
+
+- **Starting a planned workout** goes through one path from Today instead of
+  five overlapping sheets, and the copy says "workout" instead of "Workout
+  Template". ([#79](https://github.com/perennia-fit/perennia/pull/79))
+- **Open Food Facts search** is part of the one picker search; the separate
+  Recent and Open Food Facts views are gone.
+  ([#84](https://github.com/perennia-fit/perennia/pull/84))
+
+### Fixed
+
+- Starting a Template with no exercises now says so and asks before starting
+  an empty workout, instead of opening one silently.
+  ([#78](https://github.com/perennia-fit/perennia/pull/78))
+
 ## [0.0.1] - 2026-10-29
 
 The first tagged release: an early build for installing by hand on Android, cut
