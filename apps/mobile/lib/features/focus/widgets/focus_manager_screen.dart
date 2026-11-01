@@ -4,13 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/training/focus_color.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
+import '../../../widgets/color_swatch_row.dart';
 import '../controllers/focus_providers.dart';
 import '../repositories/focus_feature_repository.dart';
 import 'focus_visuals.dart';
 
-/// Add, rename, reorder (press and hold), and archive Focuses. The order here
+/// Add, rename, recolor, reorder (press and hold), and archive Focuses. The order here
 /// is the order the start sheet and every picker offer them in.
 class FocusManagerScreen extends ConsumerWidget {
   const FocusManagerScreen({super.key});
@@ -22,6 +24,9 @@ class FocusManagerScreen extends ConsumerWidget {
   static Key rowKey(String id) => Key('focus-manager.row.$id');
   static Key menuButtonKey(String id) => Key('focus-manager.menu.$id');
   static Key renameMenuKey(String id) => Key('focus-manager.rename.$id');
+  static Key colorMenuKey(String id) => Key('focus-manager.color.$id');
+  static Key colorSwatchKey(String token) => Key('focus-color.$token');
+  static const colorCancelButtonKey = Key('focus-color.cancel');
   static Key archiveMenuKey(String id) => Key('focus-manager.archive.$id');
   static const archiveConfirmButtonKey = Key('focus-manager.archive.confirm');
 
@@ -110,7 +115,21 @@ class _FocusList extends ConsumerWidget {
           child: ListTile(
             minTileHeight: AppDimens.touchTarget + AppDimens.dense,
             leading: Icon(focusIcon(focus.id)),
-            title: Text(focus.name, style: context.textStyles.body),
+            title: Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: resolvedFocusColor(focus, context.colors),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const SizedBox.square(dimension: 12),
+                ),
+                const SizedBox(width: AppDimens.dense),
+                Expanded(
+                  child: Text(focus.name, style: context.textStyles.body),
+                ),
+              ],
+            ),
             trailing: _FocusMenu(focus: focus),
           ),
         );
@@ -119,7 +138,7 @@ class _FocusList extends ConsumerWidget {
   }
 }
 
-enum _FocusAction { rename, archive }
+enum _FocusAction { rename, color, archive }
 
 class _FocusMenu extends ConsumerWidget {
   const _FocusMenu({required this.focus});
@@ -144,6 +163,8 @@ class _FocusMenu extends ConsumerWidget {
                     .rename(focus.id, name),
               ),
             );
+          case _FocusAction.color:
+            unawaited(_chooseColor(context, ref));
           case _FocusAction.archive:
             unawaited(_confirmArchive(context, ref));
         }
@@ -155,6 +176,11 @@ class _FocusMenu extends ConsumerWidget {
           child: Text(l10n.focusManagerRename),
         ),
         PopupMenuItem<_FocusAction>(
+          key: FocusManagerScreen.colorMenuKey(focus.id),
+          value: _FocusAction.color,
+          child: Text(l10n.focusColorMenu),
+        ),
+        PopupMenuItem<_FocusAction>(
           key: FocusManagerScreen.archiveMenuKey(focus.id),
           value: _FocusAction.archive,
           child: Text(l10n.focusManagerArchive),
@@ -163,8 +189,51 @@ class _FocusMenu extends ConsumerWidget {
     );
   }
 
+  /// The Focus color dialog (docs/designs/progress-overview.md, D6): the
+  /// seven category colors a Focus may take, the current one selected. There
+  /// is no "Default" choice; picking the default's swatch stores its hex,
+  /// which looks the same.
+  Future<void> _chooseColor(BuildContext context, WidgetRef ref) async {
+    final l10n = context.l10n;
+    // Read before the dialog: a sync can drop this row while it is open, and
+    // a disposed widget's ref can no longer be read.
+    final repository = ref.read(focusFeatureRepositoryProvider);
+    final selectedHex = colorToHex(resolvedFocusColor(focus, context.colors));
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.focusColorDialogTitle(focus.name)),
+        content: ColorSwatchRow(
+          options: [
+            for (final token in focusColorTokens)
+              ColorSwatchOption(
+                hex: colorToHex(dialogContext.colors.categoryColor(token)),
+                label: _focusColorLabel(l10n, token),
+                key: FocusManagerScreen.colorSwatchKey(token),
+              ),
+          ],
+          selectedHex: selectedHex,
+          onSelected: (hex) => Navigator.of(dialogContext).pop(hex),
+        ),
+        actions: [
+          TextButton(
+            key: FocusManagerScreen.colorCancelButtonKey,
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).cancelButtonLabel,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (chosen != null) {
+      await repository.recolor(focus.id, chosen);
+    }
+  }
+
   Future<void> _confirmArchive(BuildContext context, WidgetRef ref) async {
     final l10n = context.l10n;
+    final repository = ref.read(focusFeatureRepositoryProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -186,9 +255,25 @@ class _FocusMenu extends ConsumerWidget {
       ),
     );
     if (confirmed ?? false) {
-      await ref.read(focusFeatureRepositoryProvider).archive(focus.id);
+      await repository.archive(focus.id);
     }
   }
+}
+
+/// Every token in `focusColorTokens` needs a label: a swatch is otherwise
+/// only a color. A token added without one fails loudly here, which the
+/// screen test's walk over every swatch catches, instead of showing its key.
+String _focusColorLabel(AppLocalizations l10n, String token) {
+  return switch (token) {
+    'back' => l10n.focusColorBack,
+    'cardio' => l10n.focusColorCardio,
+    'core' => l10n.focusColorCore,
+    'shoulders' => l10n.focusColorShoulders,
+    'arms' => l10n.focusColorArms,
+    'legs' => l10n.focusColorLegs,
+    'chest' => l10n.focusColorChest,
+    _ => throw ArgumentError.value(token, 'token', 'No label for this color'),
+  };
 }
 
 /// Asks for a Focus name and saves it, keeping the dialog open with the

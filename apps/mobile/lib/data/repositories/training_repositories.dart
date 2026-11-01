@@ -15781,11 +15781,26 @@ const _templateLinkWorkoutSnapshotFields = <String>{
   'workout_exercise_group_members',
 };
 
+/// Image keys an entity gained after its first release, each with the value
+/// a row written before then means. An Activity Log entry from an older app
+/// has no such key, and undo must still find its image current, so undo
+/// compares images with these defaults filled in. The device decode leaves the
+/// column alone for a missing key, and the server's
+/// `SYNC_CARRY_FORWARD_PAYLOAD_KEYS` carries the stored value forward.
+const _activityLaterAddedKeyDefaults = <String, Map<String, Object?>>{
+  AppDatabase.focusesTable: <String, Object?>{'color_hex': null},
+};
+
 bool _activityImagesEqualForEntity(
   String entityTable,
   Map<String, Object?> left,
   Map<String, Object?> right,
 ) {
+  final laterAddedDefaults = _activityLaterAddedKeyDefaults[entityTable];
+  if (laterAddedDefaults != null) {
+    left = <String, Object?>{...laterAddedDefaults, ...left};
+    right = <String, Object?>{...laterAddedDefaults, ...right};
+  }
   if (entityTable == AppDatabase.protocolTargetOutcomesTable) {
     return _activityImagesEqual(
       _protocolTargetOutcomeImageNormalized(left),
@@ -15884,7 +15899,7 @@ WorkoutSessionsCompanion _workoutSessionCompanionFromImage(
     localDate: Value<String>(_activityRequiredString(image, 'local_date')),
     endedAt: Value<DateTime?>(_activityNullableDateTime(image, 'ended_at')),
     comment: Value<String?>(_activityNullableString(image, 'comment')),
-    focusId: _imageFocusId(image),
+    focusId: _imageStringIfPresent(image, 'focus_id'),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
@@ -16408,7 +16423,7 @@ WorkoutTemplatesCompanion _workoutTemplateCompanionFromImage(
   return WorkoutTemplatesCompanion(
     name: Value<String>(_activityRequiredString(image, 'name')),
     notes: Value<String?>(_activityNullableString(image, 'notes')),
-    focusId: _imageFocusId(image),
+    focusId: _imageStringIfPresent(image, 'focus_id'),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );

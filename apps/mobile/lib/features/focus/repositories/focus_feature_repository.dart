@@ -29,6 +29,9 @@ abstract interface class FocusFeatureRepository {
 
   Future<void> rename(String id, String name);
 
+  /// Stores [colorHex] (`#RRGGBB`) as the Focus's color.
+  Future<void> recolor(String id, String colorHex);
+
   Future<void> reorder(List<String> orderedIds);
 
   Future<void> archive(String id);
@@ -73,6 +76,9 @@ class StubFocusFeatureRepository implements FocusFeatureRepository {
 
   @override
   Future<void> rename(String id, String name) async {}
+
+  @override
+  Future<void> recolor(String id, String colorHex) async {}
 
   @override
   Future<void> reorder(List<String> orderedIds) async {}
@@ -128,6 +134,11 @@ class RepositoryFocusFeatureRepository implements FocusFeatureRepository {
   @override
   Future<void> rename(String id, String name) {
     return _repositories.focuses.rename(id, name: name);
+  }
+
+  @override
+  Future<void> recolor(String id, String colorHex) {
+    return _repositories.focuses.recolor(id, colorHex: colorHex);
   }
 
   @override

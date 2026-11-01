@@ -700,7 +700,10 @@ async function pushAccountKeyedSyncRowsInTransaction(
         .select({
           userId: table.userId,
           updatedAt: table.updatedAt,
-          deviceId: table.deviceId
+          deviceId: table.deviceId,
+          // Read for carry-forward (Focus `color_hex`); the other tables
+          // pushed here have no carried keys and ignore it.
+          payload: table.payload
         })
         .from(table)
         .where(ownRow(id))
@@ -2147,7 +2150,9 @@ const SYNC_CARRY_FORWARD_PAYLOAD_KEYS: Partial<
   [WORKOUT_SESSIONS_SYNC_ENTITY]: ["focus_id"],
   [WORKOUT_TEMPLATES_SYNC_ENTITY]: ["focus_id"],
   // JSON-encoded string array, like `equipment_ids`.
-  [EXERCISES_SYNC_ENTITY]: ["focus_ids"]
+  [EXERCISES_SYNC_ENTITY]: ["focus_ids"],
+  // A Focus's color; null means its default (progress-overview.md, D6).
+  [FOCUSES_SYNC_ENTITY]: ["color_hex"]
 };
 
 function carryForwardOmittedPayloadKeys<

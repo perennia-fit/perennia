@@ -93,6 +93,13 @@ void main() {
     expect(category.colorHex, '#4CAF50');
     expect(category.syncPreviouslySynced, isTrue);
 
+    // v63 added Focus colors; an existing Focus keeps its default (null).
+    final focus = await database.select(database.focuses).getSingle();
+    expect(focus.id, 'focus-1');
+    expect(focus.name, 'Climbing');
+    expect(focus.sortOrder, 3);
+    expect(focus.colorHex, isNull);
+
     final exercise = await database.select(database.exercises).getSingle();
     expect(exercise.id, 'exercise-1');
     expect(exercise.name, 'Back Squat');
@@ -172,6 +179,11 @@ void _seedFirstReleaseRows(sqlite.Database database) {
           '(id, name, sort_order, color_hex, sync_previously_synced, updated_at) '
           'VALUES (?, ?, ?, ?, ?, ?)',
       ['category-1', 'Legs', 0, '#4CAF50', 1, updatedAt],
+    ),
+    (
+      'INSERT INTO focuses (id, name, sort_order, updated_at) '
+          'VALUES (?, ?, ?, ?)',
+      ['focus-1', 'Climbing', 3, updatedAt],
     ),
     (
       'INSERT INTO exercises '

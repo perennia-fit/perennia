@@ -289,6 +289,56 @@ test(
 );
 
 test(
+  "a Focus push without color_hex keeps the stored color; an explicit null clears it",
+  { skip },
+  async () => {
+    const serverApp = await migratedApp();
+    try {
+      const user = await createSignedInUser(serverApp);
+      const pushFocus = async (change) => {
+        const response = await syncPush(serverApp.app, user.sessionToken, {
+          deviceId: "device-a",
+          entity: "focuses",
+          changes: [change]
+        });
+        assert.equal(response.status, 200);
+        assert.deepEqual((await response.json()).accepted, [WEIGHTS]);
+      };
+      const storedColor = async () => {
+        const pulled = await pullAll(serverApp.app, user.sessionToken);
+        const focus = pulled.find(
+          (change) => change.entity === "focuses" && change.id === WEIGHTS
+        );
+        assert.ok(focus);
+        return focus.payload;
+      };
+
+      const colored = focusChange(WEIGHTS, "Weights", 0, "2025-06-30T08:00:00.000Z");
+      colored.payload.color_hex = "#E06C5A";
+      await pushFocus(colored);
+      assert.equal((await storedColor()).color_hex, "#E06C5A");
+
+      // A device without Focus colors renames it and sends no color_hex.
+      await pushFocus(
+        focusChange(WEIGHTS, "Strength", 0, "2025-06-30T09:00:00.000Z")
+      );
+      const renamed = await storedColor();
+      assert.equal(renamed.name, "Strength");
+      assert.equal(renamed.color_hex, "#E06C5A");
+
+      const cleared = focusChange(WEIGHTS, "Strength", 0, "2025-06-30T10:00:00.000Z");
+      cleared.payload.color_hex = null;
+      await pushFocus(cleared);
+      const afterClear = await storedColor();
+      assert.equal(Object.hasOwn(afterClear, "color_hex"), true);
+      assert.equal(afterClear.color_hex, null);
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
+test(
   "agent Workout writes set, validate, and carry through a device-set focus_id",
   { skip },
   async () => {

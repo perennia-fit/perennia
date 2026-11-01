@@ -469,6 +469,12 @@ class $FocusesTable extends Focuses with TableInfo<$FocusesTable, FocusRow> {
   late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
       'sort_order', aliasedName, false,
       type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _colorHexMeta =
+      const VerificationMeta('colorHex');
+  @override
+  late final GeneratedColumn<String> colorHex = GeneratedColumn<String>(
+      'color_hex', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _syncDeviceIdMeta =
       const VerificationMeta('syncDeviceId');
   @override
@@ -502,6 +508,7 @@ class $FocusesTable extends Focuses with TableInfo<$FocusesTable, FocusRow> {
         id,
         name,
         sortOrder,
+        colorHex,
         syncDeviceId,
         syncPreviouslySynced,
         updatedAt,
@@ -533,6 +540,10 @@ class $FocusesTable extends Focuses with TableInfo<$FocusesTable, FocusRow> {
           sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
     } else if (isInserting) {
       context.missing(_sortOrderMeta);
+    }
+    if (data.containsKey('color_hex')) {
+      context.handle(_colorHexMeta,
+          colorHex.isAcceptableOrUnknown(data['color_hex']!, _colorHexMeta));
     }
     if (data.containsKey('sync_device_id')) {
       context.handle(
@@ -571,6 +582,8 @@ class $FocusesTable extends Focuses with TableInfo<$FocusesTable, FocusRow> {
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       sortOrder: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      colorHex: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}color_hex']),
       syncDeviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
       syncPreviouslySynced: attachedDatabase.typeMapping.read(
@@ -592,6 +605,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
   final String id;
   final String name;
   final int sortOrder;
+  final String? colorHex;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
   final DateTime updatedAt;
@@ -600,6 +614,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
       {required this.id,
       required this.name,
       required this.sortOrder,
+      this.colorHex,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
       required this.updatedAt,
@@ -610,6 +625,9 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
     map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || colorHex != null) {
+      map['color_hex'] = Variable<String>(colorHex);
+    }
     if (!nullToAbsent || syncDeviceId != null) {
       map['sync_device_id'] = Variable<String>(syncDeviceId);
     }
@@ -626,6 +644,9 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
       id: Value(id),
       name: Value(name),
       sortOrder: Value(sortOrder),
+      colorHex: colorHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(colorHex),
       syncDeviceId: syncDeviceId == null && nullToAbsent
           ? const Value.absent()
           : Value(syncDeviceId),
@@ -644,6 +665,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      colorHex: serializer.fromJson<String?>(json['colorHex']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
           serializer.fromJson<bool>(json['syncPreviouslySynced']),
@@ -658,6 +680,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'colorHex': serializer.toJson<String?>(colorHex),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -669,6 +692,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
           {String? id,
           String? name,
           int? sortOrder,
+          Value<String?> colorHex = const Value.absent(),
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
           DateTime? updatedAt,
@@ -677,6 +701,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
         id: id ?? this.id,
         name: name ?? this.name,
         sortOrder: sortOrder ?? this.sortOrder,
+        colorHex: colorHex.present ? colorHex.value : this.colorHex,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
         syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -688,6 +713,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      colorHex: data.colorHex.present ? data.colorHex.value : this.colorHex,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
           : this.syncDeviceId,
@@ -705,6 +731,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('colorHex: $colorHex, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -714,7 +741,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
   }
 
   @override
-  int get hashCode => Object.hash(id, name, sortOrder, syncDeviceId,
+  int get hashCode => Object.hash(id, name, sortOrder, colorHex, syncDeviceId,
       syncPreviouslySynced, updatedAt, deletedAt);
   @override
   bool operator ==(Object other) =>
@@ -723,6 +750,7 @@ class FocusRow extends DataClass implements Insertable<FocusRow> {
           other.id == this.id &&
           other.name == this.name &&
           other.sortOrder == this.sortOrder &&
+          other.colorHex == this.colorHex &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
           other.updatedAt == this.updatedAt &&
@@ -733,6 +761,7 @@ class FocusesCompanion extends UpdateCompanion<FocusRow> {
   final Value<String> id;
   final Value<String> name;
   final Value<int> sortOrder;
+  final Value<String?> colorHex;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
   final Value<DateTime> updatedAt;
@@ -742,6 +771,7 @@ class FocusesCompanion extends UpdateCompanion<FocusRow> {
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.colorHex = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -752,6 +782,7 @@ class FocusesCompanion extends UpdateCompanion<FocusRow> {
     required String id,
     required String name,
     required int sortOrder,
+    this.colorHex = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     required DateTime updatedAt,
@@ -765,6 +796,7 @@ class FocusesCompanion extends UpdateCompanion<FocusRow> {
     Expression<String>? id,
     Expression<String>? name,
     Expression<int>? sortOrder,
+    Expression<String>? colorHex,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
     Expression<DateTime>? updatedAt,
@@ -775,6 +807,7 @@ class FocusesCompanion extends UpdateCompanion<FocusRow> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (colorHex != null) 'color_hex': colorHex,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
         'sync_previously_synced': syncPreviouslySynced,
@@ -788,6 +821,7 @@ class FocusesCompanion extends UpdateCompanion<FocusRow> {
       {Value<String>? id,
       Value<String>? name,
       Value<int>? sortOrder,
+      Value<String?>? colorHex,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
       Value<DateTime>? updatedAt,
@@ -797,6 +831,7 @@ class FocusesCompanion extends UpdateCompanion<FocusRow> {
       id: id ?? this.id,
       name: name ?? this.name,
       sortOrder: sortOrder ?? this.sortOrder,
+      colorHex: colorHex ?? this.colorHex,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -816,6 +851,9 @@ class FocusesCompanion extends UpdateCompanion<FocusRow> {
     }
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (colorHex.present) {
+      map['color_hex'] = Variable<String>(colorHex.value);
     }
     if (syncDeviceId.present) {
       map['sync_device_id'] = Variable<String>(syncDeviceId.value);
@@ -842,6 +880,7 @@ class FocusesCompanion extends UpdateCompanion<FocusRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('colorHex: $colorHex, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -24050,6 +24089,7 @@ typedef $$FocusesTableCreateCompanionBuilder = FocusesCompanion Function({
   required String id,
   required String name,
   required int sortOrder,
+  Value<String?> colorHex,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   required DateTime updatedAt,
@@ -24060,6 +24100,7 @@ typedef $$FocusesTableUpdateCompanionBuilder = FocusesCompanion Function({
   Value<String> id,
   Value<String> name,
   Value<int> sortOrder,
+  Value<String?> colorHex,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   Value<DateTime> updatedAt,
@@ -24084,6 +24125,9 @@ class $$FocusesTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get colorHex => $composableBuilder(
+      column: $table.colorHex, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
@@ -24117,6 +24161,9 @@ class $$FocusesTableOrderingComposer
   ColumnOrderings<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get colorHex => $composableBuilder(
+      column: $table.colorHex, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId,
       builder: (column) => ColumnOrderings(column));
@@ -24149,6 +24196,9 @@ class $$FocusesTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get colorHex =>
+      $composableBuilder(column: $table.colorHex, builder: (column) => column);
 
   GeneratedColumn<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => column);
@@ -24189,6 +24239,7 @@ class $$FocusesTableTableManager extends RootTableManager<
             Value<String> id = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<int> sortOrder = const Value.absent(),
+            Value<String?> colorHex = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -24199,6 +24250,7 @@ class $$FocusesTableTableManager extends RootTableManager<
             id: id,
             name: name,
             sortOrder: sortOrder,
+            colorHex: colorHex,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -24209,6 +24261,7 @@ class $$FocusesTableTableManager extends RootTableManager<
             required String id,
             required String name,
             required int sortOrder,
+            Value<String?> colorHex = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             required DateTime updatedAt,
@@ -24219,6 +24272,7 @@ class $$FocusesTableTableManager extends RootTableManager<
             id: id,
             name: name,
             sortOrder: sortOrder,
+            colorHex: colorHex,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,

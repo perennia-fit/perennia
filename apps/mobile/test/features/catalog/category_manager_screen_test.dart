@@ -138,6 +138,28 @@ void main() {
       <String>['Strength', 'Mobility'],
     );
   });
+
+  testWidgets('each color swatch is labelled with its color', (tester) async {
+    await _pumpManager(tester, repositories);
+    final strength = (await repositories.catalog.listCategories())
+        .singleWhere((category) => category.name == 'Strength');
+
+    for (final colorHex in const <String>[
+      '#2F6FED',
+      '#1F9D55',
+      '#E11D48',
+      '#7C3AED',
+      '#EA580C',
+      '#0891B2',
+    ]) {
+      final swatch = tester.widget<IconButton>(
+        find.byKey(CategoryManagerScreen.colorButtonKey(strength.id, colorHex)),
+      );
+      expect(swatch.tooltip, 'Use $colorHex');
+      // The current color is disabled, so tapping it again does nothing.
+      expect(swatch.onPressed == null, colorHex == strength.colorHex);
+    }
+  });
 }
 
 Future<void> _pumpManager(

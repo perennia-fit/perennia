@@ -3890,6 +3890,60 @@ abstract class AppLocalizations {
   /// **'Archive {focus}?'**
   String focusManagerArchiveTitle(String focus);
 
+  /// No description provided for @focusColorMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'Color'**
+  String get focusColorMenu;
+
+  /// No description provided for @focusColorDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Color for {name}'**
+  String focusColorDialogTitle(String name);
+
+  /// No description provided for @focusColorBack.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get focusColorBack;
+
+  /// No description provided for @focusColorCardio.
+  ///
+  /// In en, this message translates to:
+  /// **'Cardio'**
+  String get focusColorCardio;
+
+  /// No description provided for @focusColorCore.
+  ///
+  /// In en, this message translates to:
+  /// **'Core'**
+  String get focusColorCore;
+
+  /// No description provided for @focusColorShoulders.
+  ///
+  /// In en, this message translates to:
+  /// **'Shoulders'**
+  String get focusColorShoulders;
+
+  /// No description provided for @focusColorArms.
+  ///
+  /// In en, this message translates to:
+  /// **'Arms'**
+  String get focusColorArms;
+
+  /// No description provided for @focusColorLegs.
+  ///
+  /// In en, this message translates to:
+  /// **'Legs'**
+  String get focusColorLegs;
+
+  /// No description provided for @focusColorChest.
+  ///
+  /// In en, this message translates to:
+  /// **'Chest'**
+  String get focusColorChest;
+
   /// No description provided for @focusManagerArchiveBody.
   ///
   /// In en, this message translates to:

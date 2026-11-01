@@ -1085,6 +1085,64 @@ void main() {
       expect(restoredRows[AppDatabase.templateLinksTable], isEmpty);
     });
 
+    test('imports a schema-62 archive Focus without colorHex as null',
+        () async {
+      final focusId = await repositories.focuses.create('Climbing');
+      await repositories.focuses.recolor(focusId, colorHex: '#5FB05C');
+      final currentArchive =
+          await repositories.portableArchives.exportPortableArchive();
+      final schema62Archive = _asSchema62Archive(currentArchive);
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(
+        schema62Archive,
+      );
+
+      final restored = await (restoredDatabase.select(restoredDatabase.focuses)
+            ..where((row) => row.id.equals(focusId)))
+          .getSingle();
+      expect(restored.name, 'Climbing');
+      expect(restored.colorHex, isNull);
+    });
+
+    test('a schema-62 archive Focus keeps the color stored since', () async {
+      final focusId = await repositories.focuses.create('Climbing');
+      final currentArchive =
+          await repositories.portableArchives.exportPortableArchive();
+      final schema62Archive = _asSchema62Archive(currentArchive);
+
+      final colored = AppDatabase.inMemory();
+      addTearDown(colored.close);
+      final coloredRepositories = TrainingRepositories(colored);
+      await coloredRepositories.portableArchives.importPortableArchive(
+        currentArchive,
+      );
+      await coloredRepositories.focuses.recolor(
+        focusId,
+        colorHex: '#5FB05C',
+      );
+      // The archive's row is now the newer one, as if an older device
+      // renamed the Focus after this one colored it.
+      await (colored.update(colored.focuses)
+            ..where((row) => row.id.equals(focusId)))
+          .write(
+        FocusesCompanion(
+          updatedAt: Value<DateTime>(DateTime.utc(2000)),
+        ),
+      );
+
+      await coloredRepositories.portableArchives.importPortableArchive(
+        schema62Archive,
+      );
+
+      final restored = await (colored.select(colored.focuses)
+            ..where((row) => row.id.equals(focusId)))
+          .getSingle();
+      expect(restored.colorHex, '#5FB05C');
+    });
+
     test('imports an exact schema-52 archive with an opaque Routine seam',
         () async {
       await _seedWorkoutData(repositories);
@@ -3128,6 +3186,40 @@ List<int> _asSchema60Archive(List<int> bytes) {
           old.remove('timezoneOffsetMinutes');
         }
         return old;
+      }).toList(growable: false);
+      expect(rows, isNotEmpty);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
+/// The archive as schema 62 wrote it: Focus rows had no `colorHex`.
+List<int> _asSchema62Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source)..['schemaVersion'] = 62;
+  final focusesFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.focusesTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName) {
+      continue;
+    }
+    if (file.name == focusesFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        expect(old.containsKey('colorHex'), isTrue);
+        return old..remove('colorHex');
       }).toList(growable: false);
       expect(rows, isNotEmpty);
       archive.addFile(

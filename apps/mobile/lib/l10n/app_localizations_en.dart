@@ -2357,6 +2357,35 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get focusColorMenu => 'Color';
+
+  @override
+  String focusColorDialogTitle(String name) {
+    return 'Color for $name';
+  }
+
+  @override
+  String get focusColorBack => 'Back';
+
+  @override
+  String get focusColorCardio => 'Cardio';
+
+  @override
+  String get focusColorCore => 'Core';
+
+  @override
+  String get focusColorShoulders => 'Shoulders';
+
+  @override
+  String get focusColorArms => 'Arms';
+
+  @override
+  String get focusColorLegs => 'Legs';
+
+  @override
+  String get focusColorChest => 'Chest';
+
+  @override
   String get focusManagerArchiveBody =>
       'Workouts already logged under it keep it. It stops being offered when you start a workout.';
 

@@ -8,6 +8,8 @@ import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 
+import '../../support/kill_point_snapshot_interceptor.dart';
+
 /// Kill-and-reopen for "Log all planned" (D6), following the repository's
 /// standing scenario (`test/data/plan_tree_reopen_test.dart`): a database
 /// file that is closed and opened again.
@@ -244,12 +246,9 @@ Map<String, PlannedRowStatus> _labels(PlannedDay planned) {
 /// inserted, and just before the last commit that follows a Dose insert.
 /// Had the Doses been written in separate transactions, the first Dose would
 /// already be committed at both moments, and its copy would hold it.
-class _KillPointInterceptor extends QueryInterceptor {
-  _KillPointInterceptor(this._file, this._directory);
+class _KillPointInterceptor extends KillPointSnapshotInterceptor {
+  _KillPointInterceptor(super.file, super.directory);
 
-  final File _file;
-  final Directory _directory;
-  final snapshots = <String, File>{};
   var _doseInserts = 0;
 
   @override
@@ -261,7 +260,7 @@ class _KillPointInterceptor extends QueryInterceptor {
     if (statement.contains('"doses"')) {
       _doseInserts += 1;
       if (_doseInserts == 2) {
-        _snapshot('before-second-dose');
+        snapshot('before-second-dose');
       }
     }
     return super.runInsert(executor, statement, args);
@@ -270,24 +269,8 @@ class _KillPointInterceptor extends QueryInterceptor {
   @override
   Future<void> commitTransaction(TransactionExecutor inner) {
     if (_doseInserts > 0) {
-      _snapshot('before-commit');
+      snapshot('before-commit');
     }
     return super.commitTransaction(inner);
-  }
-
-  void _snapshot(String name) {
-    final target = Directory('${_directory.path}/$name');
-    if (target.existsSync()) {
-      target.deleteSync(recursive: true);
-    }
-    target.createSync();
-    final base = _file.uri.pathSegments.last;
-    for (final entity in _directory.listSync()) {
-      final entityName = entity.uri.pathSegments.last;
-      if (entity is File && entityName.startsWith(base)) {
-        entity.copySync('${target.path}/$entityName');
-      }
-    }
-    snapshots[name] = File('${target.path}/$base');
   }
 }

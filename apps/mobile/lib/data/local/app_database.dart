@@ -38,6 +38,7 @@ class Focuses extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   IntColumn get sortOrder => integer()();
+  TextColumn get colorHex => text().nullable()();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -1305,7 +1306,7 @@ class AppDatabase extends _$AppDatabase {
   ];
 
   @override
-  int get schemaVersion => 62;
+  int get schemaVersion => 63;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -2000,6 +2001,18 @@ class AppDatabase extends _$AppDatabase {
             // keeping, and Food Entries and the Recent list never depended
             // on it (docs/designs/open-food-facts.md).
             await customStatement('DROP TABLE IF EXISTS open_food_facts_cache');
+          }
+          if (from < 63) {
+            // Null means the Focus uses its default color
+            // (docs/designs/progress-overview.md, D6), so no backfill.
+            // Upgrades that create focuses above already have the column.
+            if (await _tableExists(focuses.actualTableName) &&
+                !await _columnExists(
+                  focuses.actualTableName,
+                  focuses.colorHex.name,
+                )) {
+              await migrator.addColumn(focuses, focuses.colorHex);
+            }
           }
         },
         beforeOpen: (_) async => customStatement('PRAGMA foreign_keys = ON'),

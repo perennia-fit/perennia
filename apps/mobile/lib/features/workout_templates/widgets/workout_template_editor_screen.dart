@@ -487,7 +487,7 @@ class _WorkoutTemplateEditorScreenState
         exercises: template.exercises,
         groups: template.groups,
         group: group,
-        defaultColorHex: _colorToHex(
+        defaultColorHex: colorToHex(
           sheetContext.colors.categoryColor('other'),
         ),
         onSave: (input) async {
@@ -1681,7 +1681,3 @@ String _unitLabel(BuildContext context, TrainingUnit unit) {
   };
 }
 
-String _colorToHex(Color color) {
-  final rgb = color.toARGB32() & 0x00FFFFFF;
-  return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
-}

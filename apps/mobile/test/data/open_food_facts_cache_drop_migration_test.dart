@@ -63,7 +63,8 @@ void main() {
     addTearDown(migrated.close);
     await migrated.customSelect('SELECT 1').get();
 
-    expect(migrated.schemaVersion, 62);
+    // 62 dropped the cache; later versions keep it dropped.
+    expect(migrated.schemaVersion, greaterThanOrEqualTo(62));
     final tables = await _tableNames(migrated);
     expect(tables, isNot(contains('open_food_facts_cache')));
     expect(tables, expectedTables);

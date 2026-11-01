@@ -55,7 +55,7 @@ void main() {
     final userVersion =
         await database.customSelect('PRAGMA user_version').getSingle();
     expect(userVersion.read<int>('user_version'), fresh.schemaVersion);
-    expect(fresh.schemaVersion, 62);
+    expect(fresh.schemaVersion, greaterThan(60));
   });
 
   test('Compounds and Doses survive unchanged, Protocol tag included',
