@@ -301,6 +301,18 @@ existing Food Entry.
 A Food Entry that records a name and nutrient values directly, without referencing
 a Food or a Portion — the low-friction path for when only the totals are known.
 
+## Food History
+The distinct Foods a user has logged, derived from their active Food Entries (one per
+Food Source and Food), each with how many times it was logged in the last 90 days,
+when it was last logged, and its Last Portion. It is ordered by that count, then by
+recency. It is computed, never stored. It orders Foods; a Food's facts come from the
+Food itself. In the add-food picker it appears as "Your foods", together with the
+user's active User Foods that have never been logged.
+
+## Last Portion
+The Portion of the user's latest Food Entry for a Food that has a Portion, latest by
+the Meal's start, then the entry's last change.
+
 ## Compound
 An item a user takes and tracks — a supplement, vitamin, hormone, peptide, medication,
 or the like. A user-owned catalogue entry carrying a name and a default unit and route,

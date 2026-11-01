@@ -1,7 +1,7 @@
 # Unified Food Search
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved
+*   **Status:** Current
 *   **Date:** 2026-10-31
 
 --------------------------------------------------------------------------------
@@ -468,7 +468,9 @@ fail the search. If `searchLocal` throws, `B` and `F` are empty; if
 `searchUsdaFoods` throws, `U` is empty. The picker shows no error for a
 failed group, as it shows none for a failed device reload today
 (`_reloadDeviceMatches`). `search` throws only when every group it reads has
-failed.
+failed. A typed All search always reads `Y`, which is in memory and cannot
+fail, so it never throws; the USDA and Open Food Facts filters each read one
+source and throw when it fails, as they do today.
 
 ### Picker items
 
@@ -503,7 +505,8 @@ excluding live results that are already listed, and for widget keys.
 
 `addFoodPickerControllerProvider` becomes
 `AsyncNotifierProvider.autoDispose<AddFoodPickerController, AddFoodPickerState>`,
-with the controller extending `AutoDisposeAsyncNotifier`, following the
+with the controller extending `AsyncNotifier` (Riverpod 3 has no separate
+auto-dispose notifier class; the provider decides), following the
 transient-picker convention in
 `apps/mobile/lib/features/template_picker/controllers/template_picker_controller.dart`.
 The picker sheet is the only listener, so closing the sheet disposes the
@@ -632,8 +635,12 @@ have (`listAgentFoods`, `searchAgentPlatformFoods`); see
 *   Errors: 401, 429 and 503 exactly as `listAgentMeals` declares them.
 *   Store: `AgentFoodHistoryReadStore.listFoodHistory({ userId, limit, now })`
     reads the user's live `food_entries` and `meals` rows and the ids of
-    archived `foods`, using the payload readers `readFoodEntriesByMealId` uses,
-    and calls the pure function below.
+    archived `foods`, reads each Food Entry payload with the same Portion
+    reader as `readFoodEntriesByMealId` (`parseRawPortion`, exported from
+    `agent-nutrition-reads.ts`), and calls the pure function below. It reads
+    `is_liquid` as stored rather than through that read's entry mapper, which
+    turns a null liquid flag into `false`; a null flag must leave the entry
+    out, as it does in the app.
 *   Pure function: `buildFoodHistory({ entries, meals, archivedUserFoodIds,
     now })` in `apps/server/src/food-history.ts`, which applies
     [the rules above](#food-history) and returns the full ordered list. It is
@@ -645,9 +652,12 @@ limit? }`, the output `AgentFoodHistoryResponse`, through the same store and
 the same unavailable error as `agent_list_meals`.
 
 **Contract diff.** `openapi.json` gains the path, the two schemas and the
-operation; `agent-client.ts` gains `listAgentFoodHistory`; the Dart API client
-gains the matching method; `agent-skills/perennia/references/api-operations.md`
-gains its generated row. `packages/contract/src/agent-skill-reference.ts` gains
+operation; `agent-client.ts` gains `listAgentFoodHistory`;
+`agent-skills/perennia/references/api-operations.md` gains its generated row.
+The Dart API client (`apps/mobile/lib/api/perennia_api_client.dart`) does not
+change: its generator emits only the operations the app itself calls, and it
+carries no agent read such as `listAgentMeals`.
+`packages/contract/src/agent-skill-reference.ts` gains
 `listAgentFoodHistory: "list-food-history"` and
 `listAgentFoodHistory: "agent_list_food_history"` in its two maps. No existing
 operation changes.
@@ -828,9 +838,10 @@ The query reads every active Food Entry once, so an index on
     label joins the parts that exist with ", ":
     `<name>, <brand>, <source label>, <kcal text>, Last <portion>`. The source
     label is the badge's text without the licence marker (for example "Open
-    Food Facts"). The kcal text is the row's kcal label as displayed. A row
-    with no brand or no Last Portion leaves that part out. Example: "Oat milk,
-    Oatly, Open Food Facts, 46 kcal per 100 ml, Last 250 ml".
+    Food Facts"). The kcal text is the row's kcal label as displayed, which
+    is "<kcal> kcal per 100" for every unit. A row with no brand or no Last
+    Portion leaves that part out. Example: "Oat milk, Oatly, Open Food Facts,
+    46 kcal per 100, Last 250 ml".
 
 ### Privacy
 
@@ -984,7 +995,9 @@ and widget files that phase 3 changes.
     `formatPortionAmount`, and the row `Semantics` wrapper and label per
     [Accessibility](#accessibility).
 *   Add keys: `yourFoodsLabelKey` (`nutrition.addFood.yourFoodsLabel`),
-    `emptyStateKey` (`nutrition.addFood.emptyState`), `noMatchLineKey`
+    `emptyStateKey` (`nutrition.addFood.emptyState`, on the blank-query line
+    when there is nothing to list: All with no Your foods, and the Your foods
+    filter with none), `noMatchLineKey`
     (`nutrition.addFood.noMatch`) and `attributionFooterKey`
     (`nutrition.addFood.attributionFooter`). Keep `emptyQueryLineKey` for the
     Open Food Facts blank-query line.
@@ -1023,7 +1036,9 @@ the Meal and Food Entry fields it reads and a docstring pointing at this spec.
 The query and response Zod schemas (`AgentFoodHistoryQuerySchema`,
 `AgentFoodHistoryItemSchema`, `AgentFoodHistoryResponseSchema`), the route
 `agentFoodHistoryRoute`, the store type `AgentFoodHistoryReadStore` and
-`createDrizzleAgentFoodHistoryReadStore(db)`.
+`createDrizzleAgentFoodHistoryReadStore(db)`. In
+`apps/server/src/agent-nutrition-reads.ts`, export `parseRawPortion` for the
+store to share (see [Agent surface](#agent-surface)).
 
 #### 17. `apps/server/src/app.ts` and `apps/server/src/index.ts` (Modify)
 
@@ -1032,20 +1047,31 @@ auth, rate limit and unavailable handling, taking the store as an app option
 as `agentNutritionReadStore` is taken. In `index.ts`, create it with
 `createDrizzleAgentFoodHistoryReadStore(db)` next to the
 `createDrizzleAgentNutritionReadStore` call, and pass it to the app and to the
-MCP server.
+MCP server; re-export the new modules from `index.ts` next to the
+`agent-nutrition-reads.js` exports, as the server tests import from it.
 
 #### 18. `apps/server/src/agent-mcp.ts` (Modify)
 
 Register `agent_list_food_history` per [Agent surface](#agent-surface), next
-to `agent_list_meals`.
+to `agent_list_meals`. Add the tool's name to the expected tool list in
+`apps/server/test/agent-mcp.test.mjs`.
 
 #### 19. `packages/contract/src/agent-skill-reference.ts` (Modify), then the generated files
 
 Add the two map entries. Run `corepack pnpm --filter @perennia/contract
 generate` and commit `packages/contract/openapi.json`,
-`packages/contract/src/agent-client.ts`,
-`apps/mobile/lib/api/perennia_api_client.dart` and
-`agent-skills/perennia/references/api-operations.md`.
+`packages/contract/src/agent-client.ts` and
+`agent-skills/perennia/references/api-operations.md`
+(`apps/mobile/lib/api/perennia_api_client.dart` is regenerated unchanged).
+
+The agent skill's hand-written clients are held to the contract by
+`apps/server/test/agent-skill.test.mjs`, so they gain the operation too:
+`list-food-history` in the command map of
+`agent-skills/perennia/scripts/prn-agent.mjs`, and `listAgentFoodHistory` in
+`agent-skills/perennia/scripts/prn-code.mjs`. The hand-written part of
+`agent-skills/perennia/references/api-operations.md` gains a paragraph on the
+read next to `list-foods`, and `agent-skills/perennia/SKILL.md` an example
+line.
 
 #### 20. Server tests (Create)
 
@@ -1059,8 +1085,12 @@ generate` and commit `packages/contract/openapi.json`,
 #### 21. `tools/ci-local.mjs` and `.github/workflows/ci.yml` (Modify)
 
 Add `apps/server/src/food-history.ts` and
-`apps/server/test/food-history.golden.test.mjs` to the `golden` job's paths and
-commands in both files, in the same commit.
+`apps/server/test/food-history.golden.test.mjs` to the `golden` job's paths in
+both files, in the same commit. Both files run the TypeScript vectors through
+the `test:golden-vectors` script in `apps/server/package.json`, so the test
+file is added to that script, and `food-history` is added to
+`DOMAINS_OWNED_ELSEWHERE` in `apps/server/test/agent-validation.golden.test.mjs`,
+which fails on a vector domain no runner claims.
 
 #### 22. `CONTEXT.md` (Modify)
 
