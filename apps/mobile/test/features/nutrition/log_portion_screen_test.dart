@@ -276,14 +276,14 @@ void main() {
   });
 
   testWidgets(
-      'a Recent Open Food Facts food gets the link and disclaimer, no date',
+      'a Your foods Open Food Facts food gets the link and disclaimer, no date',
       (tester) async {
     await _pumpLogPortion(
       tester,
       food: FoodPickerItem(
         id: '3017620422003',
         name: 'Hazelnut cocoa spread',
-        filter: AddFoodPickerFilter.recent,
+        origin: FoodPickerOrigin.history,
         foodSource: FoodSource.openFoodFacts,
         nutrientsPer100: _openFoodFactsFood().nutrientsPer100,
         isLiquid: false,
@@ -463,7 +463,7 @@ FoodPickerItem _solidFood({
   return FoodPickerItem(
     id: 'usda-yogurt',
     name: 'Greek yogurt',
-    filter: AddFoodPickerFilter.usda,
+    origin: FoodPickerOrigin.usda,
     foodSource: FoodSource.usda,
     nutrientsPer100: _nutrients(
       energy: 200,
@@ -482,7 +482,7 @@ FoodPickerItem _liquidFood() {
   return FoodPickerItem(
     id: 'usda-milk',
     name: 'Milk, whole',
-    filter: AddFoodPickerFilter.usda,
+    origin: FoodPickerOrigin.usda,
     foodSource: FoodSource.usda,
     nutrientsPer100: _nutrients(
       energy: 60,
@@ -501,7 +501,7 @@ FoodPickerItem _openFoodFactsFood() {
   return FoodPickerItem(
     id: '3017620422003',
     name: 'Hazelnut cocoa spread',
-    filter: AddFoodPickerFilter.openFoodFacts,
+    origin: FoodPickerOrigin.openFoodFacts,
     foodSource: FoodSource.openFoodFacts,
     nutrientsPer100: _nutrients(
       energy: 539,

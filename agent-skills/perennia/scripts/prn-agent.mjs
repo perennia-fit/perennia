@@ -130,6 +130,11 @@ const COMMANDS = {
     path: "/agent/focuses",
     operationId: "listAgentFocuses"
   },
+  "list-food-history": {
+    method: "GET",
+    path: "/agent/foods/history",
+    operationId: "listAgentFoodHistory"
+  },
   "list-foods": { method: "GET", path: "/agent/foods", operationId: "listAgentFoods" },
   "search-platform-foods": {
     method: "GET",

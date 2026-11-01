@@ -18,6 +18,7 @@ import { createDrizzleActivityLinkMutationStore } from "./activity-links.js";
 import { createAgentMcpServer } from "./agent-mcp.js";
 import { createDrizzleAgentCatalogStore } from "./agent-catalog.js";
 import { createDrizzleAgentReadStore } from "./agent-read-surface.js";
+import { createDrizzleAgentFoodHistoryReadStore } from "./agent-food-history.js";
 import { createDrizzleAgentNutritionReadStore } from "./agent-nutrition-reads.js";
 import { createDrizzleAgentCrossDomainReadStore } from "./agent-cross-domain-reads.js";
 import { createDrizzleAgentWorkoutBatchWriteStore } from "./agent-workout-batch-write.js";
@@ -481,6 +482,18 @@ export {
   type AgentNutritionTrendsQuery,
   type AgentNutritionTrendsResponse
 } from "./agent-nutrition-reads.js";
+export {
+  AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
+  AGENT_FOOD_HISTORY_MAX_LIMIT,
+  AgentFoodHistoryItemSchema,
+  AgentFoodHistoryQuerySchema,
+  AgentFoodHistoryResponseSchema,
+  agentFoodHistoryRoute,
+  createDrizzleAgentFoodHistoryReadStore,
+  type AgentFoodHistoryQuery,
+  type AgentFoodHistoryReadStore,
+  type AgentFoodHistoryResponse
+} from "./agent-food-history.js";
 export {
   AGENT_CROSS_DOMAIN_MAX_RANGE_DAYS,
   AGENT_CROSS_DOMAIN_MAX_WORKOUT_POINTS,
@@ -1472,6 +1485,9 @@ export async function createMigratedServerApp({
   const agentNutritionReadStore = createDrizzleAgentNutritionReadStore(
     database.db
   );
+  const agentFoodHistoryReadStore = createDrizzleAgentFoodHistoryReadStore(
+    database.db
+  );
   const agentCrossDomainReadStore = createDrizzleAgentCrossDomainReadStore(
     database.db
   );
@@ -1537,6 +1553,7 @@ export async function createMigratedServerApp({
     agentActivityStore,
     agentProtocolsStore,
     agentNutritionReadStore,
+    agentFoodHistoryReadStore,
     agentNutritionGoalStore,
     agentSettingsStore,
     agentPlanReadStore,
@@ -1557,6 +1574,7 @@ export async function createMigratedServerApp({
     agentCatalogStore,
     agentReadStore,
     agentNutritionReadStore,
+    agentFoodHistoryReadStore,
     agentCrossDomainReadStore,
     agentWorkoutBatchWriteStore,
     agentExerciseCatalogBatchWriteStore,

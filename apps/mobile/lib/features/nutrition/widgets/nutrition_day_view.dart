@@ -16,6 +16,7 @@ import 'add_food_picker.dart';
 import 'log_portion_screen.dart';
 import 'nutrition_attribution.dart';
 import 'nutrition_trends_view.dart';
+import 'portion_text.dart';
 import 'quick_entry_dialog.dart';
 
 class NutritionDayView extends ConsumerWidget {
@@ -1268,5 +1269,5 @@ String _formatFoodEntryAmount(FoodEntryRecord entry) {
   if (portion == null) {
     return 'Quick entry';
   }
-  return '${portion.entered} ${portionUnitLabel(portion.unit)}';
+  return formatPortionAmount(portion);
 }

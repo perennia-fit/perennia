@@ -1077,11 +1077,11 @@ function canonicalNumber(value: number): number {
   return Number.parseFloat(value.toFixed(6));
 }
 
-function stringValue(value: unknown): string | null {
+export function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function numberValue(value: unknown): number | null {
+export function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
@@ -1242,7 +1242,7 @@ function parseRawNutrientVector(value: unknown): Record<string, unknown> {
   return isRecord(decoded) ? decoded : {};
 }
 
-function parseRawPortion(
+export function parseRawPortion(
   value: unknown
 ): { value: number; entered: string; unit: string } | null {
   let decoded: unknown = value;

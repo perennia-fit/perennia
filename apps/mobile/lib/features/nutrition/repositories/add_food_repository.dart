@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/open_food_facts_repository.dart';
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/nutrition/open_food_facts.dart';
 import '../../settings/repositories/settings_repository.dart';
 
 export '../../../data/repositories/open_food_facts_repository.dart'
@@ -16,27 +17,54 @@ final addFoodRepositoryProvider = Provider<AddFoodRepository>((ref) {
   );
 });
 
+/// Rows of Your foods on a blank All query and in the Your foods filter.
+const yourFoodsLimit = 200;
+
+/// Your foods rows in a typed All search.
+const yourFoodsInSearchLimit = 20;
+
+/// Total rows in a typed All search; rows in the USDA and Open Food Facts
+/// filters.
+const searchResultLimit = 50;
+
+/// The picker's chips, in the order shown. All is the default.
 enum AddFoodPickerFilter {
-  recent,
-  user,
+  all,
+  yours,
   usda,
   openFoodFacts;
 
   String get label {
     return switch (this) {
-      AddFoodPickerFilter.recent => 'Recent',
-      AddFoodPickerFilter.user => 'Your Food',
+      AddFoodPickerFilter.all => 'All',
+      AddFoodPickerFilter.yours => 'Your foods',
       AddFoodPickerFilter.usda => 'USDA',
       AddFoodPickerFilter.openFoodFacts => 'Open Food Facts',
     };
   }
 }
 
+/// Why a row is in the picker's list. [FoodPickerItem.foodSource] names
+/// where its data comes from; the live merge depends on this instead.
+enum FoodPickerOrigin {
+  /// A Food History row, from any Food Source.
+  history,
+
+  /// A User Food never logged.
+  userFood,
+
+  /// A USDA Catalogue row.
+  usda,
+
+  /// An Open Food Facts Catalogue row, from the device or a live search.
+  openFoodFacts,
+}
+
 class FoodPickerItem {
   const FoodPickerItem({
     required this.id,
     required this.name,
-    required this.filter,
+    required this.origin,
     required this.foodSource,
     required this.nutrientsPer100,
     required this.isLiquid,
@@ -44,7 +72,6 @@ class FoodPickerItem {
     this.servingSize,
     this.packageSize,
     this.lastPortion,
-    this.lastLoggedAt,
     this.brand,
     this.sourceModifiedAt,
     this.scans,
@@ -53,7 +80,7 @@ class FoodPickerItem {
 
   final String id;
   final String name;
-  final AddFoodPickerFilter filter;
+  final FoodPickerOrigin origin;
   final FoodSource foodSource;
   final NutrientVector nutrientsPer100;
   final bool isLiquid;
@@ -61,7 +88,6 @@ class FoodPickerItem {
   final double? servingSize;
   final double? packageSize;
   final Portion? lastPortion;
-  final DateTime? lastLoggedAt;
 
   /// The product's first brand, for Open Food Facts foods.
   final String? brand;
@@ -75,6 +101,14 @@ class FoodPickerItem {
   /// A live Open Food Facts copy that is not stored on the device; opening it
   /// stores it.
   final bool isLiveResult;
+
+  /// The picker's one identity for a Food: deduplication, live-result
+  /// exclusion and Last Portion lookups all use it.
+  String get key => keyOf(foodSource, id);
+
+  static String keyOf(FoodSource foodSource, String id) {
+    return '${foodSource.name}:$id';
+  }
 
   String get foodSourceLabel {
     return switch (foodSource) {
@@ -99,11 +133,47 @@ class FoodPickerItem {
   }
 }
 
+/// The resolved, ordered Your foods list, loaded once per picker opening
+/// (docs/designs/unified-food-search.md § Your foods). Every search in that
+/// opening filters it in memory.
+final class YourFoods {
+  factory YourFoods(List<FoodPickerItem> items) {
+    return YourFoods._(
+      List<FoodPickerItem>.unmodifiable(items),
+      <String, Portion>{
+        for (final item in items)
+          if (item.lastPortion case final portion?) item.key: portion,
+      },
+    );
+  }
+
+  const YourFoods._(this.items, this._lastPortions);
+
+  /// Food History rows first, in Food History order, then never-logged
+  /// User Foods by lower-cased name. Not capped.
+  final List<FoodPickerItem> items;
+
+  final Map<String, Portion> _lastPortions;
+
+  static const empty = YourFoods._(<FoodPickerItem>[], <String, Portion>{});
+
+  /// The Last Portion for (foodSource, id), for Catalogue rows. A Catalogue
+  /// Food with a Last Portion has been logged, so it is in Food History.
+  Portion? lastPortionFor(FoodSource foodSource, String id) {
+    return _lastPortions[FoodPickerItem.keyOf(foodSource, id)];
+  }
+}
+
 abstract interface class AddFoodRepository {
+  /// Your foods for one picker opening.
+  Future<YourFoods> loadYourFoods({DateTime? now});
+
+  /// The device's rows for [filter] and [query]. Never sends anything; Your
+  /// foods come from the loaded [yourFoods], never from a new read.
   Future<List<FoodPickerItem>> search({
     required AddFoodPickerFilter filter,
     required String query,
-    int limit = 50,
+    required YourFoods yourFoods,
   });
 
   /// The device setting "Look up foods online".
@@ -111,12 +181,13 @@ abstract interface class AddFoodRepository {
 
   /// One live Open Food Facts search; its items have `isLiveResult: true`.
   Future<({OnlineSearchStatus status, List<FoodPickerItem> items})>
-      searchOnline(String query);
+      searchOnline(String query, {required YourFoods yourFoods});
 
   /// A scanned or typed barcode: a stored product, else one live request.
   Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
-    String raw,
-  );
+    String raw, {
+    required YourFoods yourFoods,
+  });
 
   /// Stores a live Open Food Facts product the user opened.
   Future<void> keepOpenedProduct(FoodPickerItem item);
@@ -142,23 +213,196 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
     return await _onlineLookupsEnabled?.call() ?? true;
   }
 
+  /// Food History resolved to each Food as it is now, then the never-logged
+  /// User Foods. A record whose Food is not on the device (a User Food row
+  /// not synced yet, a product dropped from the bundle, a Food Source with no
+  /// catalogue) falls back to its latest Food Entry's snapshot, so it stays
+  /// loggable.
+  @override
+  Future<YourFoods> loadYourFoods({DateTime? now}) async {
+    final nutrition = _repositories.nutrition;
+    final (history, userFoods) = await (
+      nutrition.listFoodHistory(now: now),
+      nutrition.listActiveUserFoods(),
+    ).wait;
+    final userFoodsById = {for (final food in userFoods) food.id: food};
+    final (offProducts, usdaFoods) = await (
+      _openFoodFacts
+          .localProductsByCodes(_idsFrom(history, FoodSource.openFoodFacts)),
+      // Every lookup starts before any is awaited.
+      Future.wait([
+        for (final id in _idsFrom(history, FoodSource.usda))
+          _repositories.platformFoods.getUsdaFoodById(id),
+      ]),
+    ).wait;
+    final products = {
+      for (final product in [...offProducts, ...usdaFoods.nonNulls])
+        FoodPickerItem.keyOf(product.foodSource, product.id): product,
+    };
+
+    final resolved = <String, FoodPickerItem>{};
+    final unresolved = <FoodHistoryRecord>[];
+    for (final record in history) {
+      final item = switch (record.foodSource) {
+        FoodSource.user => switch (userFoodsById[record.foodId]) {
+            final food? => _userFoodItem(
+                food,
+                origin: FoodPickerOrigin.history,
+                record: record,
+              ),
+            null => null,
+          },
+        FoodSource.usda || FoodSource.openFoodFacts => _historyItem(
+            products[FoodPickerItem.keyOf(record.foodSource, record.foodId)],
+            record,
+          ),
+        _ => null,
+      };
+      if (item == null) {
+        unresolved.add(record);
+      } else {
+        resolved[item.key] = item;
+      }
+    }
+
+    final latestEntries = {
+      for (final entry in await nutrition.listFoodEntriesByIds([
+        for (final record in unresolved) record.latestEntryId,
+      ]))
+        entry.id: entry,
+    };
+    for (final record in unresolved) {
+      final entry = latestEntries[record.latestEntryId];
+      final isLiquid = entry?.isLiquid;
+      if (entry == null || isLiquid == null) {
+        continue;
+      }
+      resolved[FoodPickerItem.keyOf(record.foodSource, record.foodId)] =
+          FoodPickerItem(
+        id: record.foodId,
+        name: entry.name,
+        origin: FoodPickerOrigin.history,
+        foodSource: record.foodSource,
+        nutrientsPer100: entry.nutrients,
+        isLiquid: isLiquid,
+        servingLabel: entry.servingLabel,
+        servingSize: entry.servingSize,
+        packageSize: entry.packageSize,
+        lastPortion: record.lastPortion,
+      );
+    }
+
+    final neverLogged = [
+      for (final food in userFoods)
+        if (!resolved
+            .containsKey(FoodPickerItem.keyOf(FoodSource.user, food.id)))
+          food,
+    ]..sort((a, b) {
+        final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        return byName != 0 ? byName : a.id.compareTo(b.id);
+      });
+
+    return YourFoods([
+      for (final record in history)
+        if (resolved[FoodPickerItem.keyOf(record.foodSource, record.foodId)]
+            case final item?)
+          item,
+      for (final food in neverLogged)
+        _userFoodItem(food, origin: FoodPickerOrigin.userFood),
+    ]);
+  }
+
+  static List<String> _idsFrom(
+    List<FoodHistoryRecord> history,
+    FoodSource foodSource,
+  ) {
+    return [
+      for (final record in history)
+        if (record.foodSource == foodSource) record.foodId,
+    ];
+  }
+
+  /// A Food History row from the current Catalogue Food, or `null` when the
+  /// Food is not on the device.
+  FoodPickerItem? _historyItem(
+    PlatformFoodRecord? food,
+    FoodHistoryRecord record,
+  ) {
+    return food == null
+        ? null
+        : _platformItem(
+            food,
+            origin: FoodPickerOrigin.history,
+            lastPortion: record.lastPortion,
+          );
+  }
+
+  FoodPickerItem _userFoodItem(
+    UserFoodRecord food, {
+    required FoodPickerOrigin origin,
+    FoodHistoryRecord? record,
+  }) {
+    return FoodPickerItem(
+      id: food.id,
+      name: food.name,
+      origin: origin,
+      foodSource: food.foodSource,
+      nutrientsPer100: food.nutrientsPer100,
+      isLiquid: food.isLiquid,
+      servingLabel: food.servingLabel,
+      servingSize: food.servingSize,
+      packageSize: food.packageSize,
+      lastPortion: record?.lastPortion,
+    );
+  }
+
+  /// The one mapping from a Platform Food to a picker row.
+  FoodPickerItem _platformItem(
+    PlatformFoodRecord food, {
+    required FoodPickerOrigin origin,
+    required Portion? lastPortion,
+    bool isLiveResult = false,
+  }) {
+    return FoodPickerItem(
+      id: food.id,
+      name: food.name,
+      origin: origin,
+      foodSource: food.foodSource,
+      nutrientsPer100: food.nutrientsPer100,
+      isLiquid: food.isLiquid,
+      servingLabel: food.servingLabel,
+      servingSize: food.servingSize,
+      packageSize: food.packageSize,
+      lastPortion: lastPortion,
+      brand: food.brand,
+      sourceModifiedAt: food.sourceModifiedAt,
+      scans: food.scans,
+      isLiveResult: isLiveResult,
+    );
+  }
+
   @override
   Future<({OnlineSearchStatus status, List<FoodPickerItem> items})>
-      searchOnline(String query) async {
+      searchOnline(String query, {required YourFoods yourFoods}) async {
     final result = await _openFoodFacts.searchOnline(
       query,
       allowOnline: await onlineLookupsEnabled(),
     );
     return (
       status: result.status,
-      items: await _openFoodFactsItems(result.products, isLiveResult: true),
+      items: _openFoodFactsItems(
+        result.products,
+        yourFoods,
+        isLiveResult: true,
+      ),
     );
   }
 
   @override
   Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
-    String raw,
-  ) async {
+    String raw, {
+    required YourFoods yourFoods,
+  }) async {
     final result = await _openFoodFacts.lookupBarcode(
       raw,
       allowOnline: await onlineLookupsEnabled(),
@@ -168,7 +412,8 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
       status: result.status,
       item: product == null
           ? null
-          : (await _openFoodFactsItems(<PlatformFoodRecord>[product])).single,
+          : _openFoodFactsItems(<PlatformFoodRecord>[product], yourFoods)
+              .single,
     );
   }
 
@@ -195,179 +440,126 @@ class RepositoryAddFoodRepository implements AddFoodRepository {
   Future<List<FoodPickerItem>> search({
     required AddFoodPickerFilter filter,
     required String query,
-    int limit = 50,
-  }) {
-    if (limit <= 0) {
-      return Future<List<FoodPickerItem>>.value(const <FoodPickerItem>[]);
-    }
+    required YourFoods yourFoods,
+  }) async {
+    final blank = isBlankFoodQuery(query);
     return switch (filter) {
-      AddFoodPickerFilter.recent => _searchRecent(query, limit: limit),
-      AddFoodPickerFilter.user => _searchUserFoods(query, limit: limit),
-      AddFoodPickerFilter.usda => _searchUsdaFoods(query, limit: limit),
-      AddFoodPickerFilter.openFoodFacts => _searchOpenFoodFacts(
-          query,
-          limit: limit,
-        ),
+      AddFoodPickerFilter.all when !blank => await _searchAll(query, yourFoods),
+      AddFoodPickerFilter.all ||
+      AddFoodPickerFilter.yours =>
+        _matchYourFoods(query, yourFoods).take(yourFoodsLimit).toList(),
+      AddFoodPickerFilter.usda => await _searchUsdaFoods(query, yourFoods),
+      AddFoodPickerFilter.openFoodFacts => blank
+          ? const <FoodPickerItem>[]
+          : _openFoodFactsItems(
+              await _openFoodFacts.searchLocal(
+                query,
+                limit: searchResultLimit,
+              ),
+              yourFoods,
+            ),
     };
   }
 
-  Future<List<FoodPickerItem>> _searchRecent(
-    String query, {
-    required int limit,
-  }) async {
-    final entries = await _repositories.nutrition.listRecentFoodEntries(
-      limit: limit * 4,
-    );
+  /// A typed All search: Your foods matches (Y), then barcode matches (B),
+  /// then USDA (U), then the remaining Open Food Facts matches (F), keeping
+  /// the first copy of each Food. A source that fails leaves its groups
+  /// empty instead of failing the search, as a failed device reload shows no
+  /// error today.
+  Future<List<FoodPickerItem>> _searchAll(
+    String query,
+    YourFoods yourFoods,
+  ) async {
+    final candidates = barcodeCandidates(query).toSet();
+    final (local, usda) = await (
+      _orNull(_openFoodFacts.searchLocal(query, limit: searchResultLimit)),
+      _orNull(_searchUsdaFoods(query, yourFoods)),
+    ).wait;
+    final offItems = _openFoodFactsItems(local ?? const [], yourFoods);
     final seen = <String>{};
-    final items = <FoodPickerItem>[];
-
-    for (final entry in entries) {
-      final foodId = entry.foodId;
-      final foodSource = entry.foodSource;
-      final isLiquid = entry.isLiquid;
-      if (foodId == null || foodSource == null || isLiquid == null) {
-        continue;
-      }
-      if (!foodNameMatchesQuery(entry.name, query)) {
-        continue;
-      }
-      final key = '${foodSource.name}:$foodId';
-      if (!seen.add(key)) {
-        continue;
-      }
-      items.add(
-        FoodPickerItem(
-          id: foodId,
-          name: entry.name,
-          filter: AddFoodPickerFilter.recent,
-          foodSource: foodSource,
-          nutrientsPer100: entry.nutrients,
-          isLiquid: isLiquid,
-          servingLabel: entry.servingLabel,
-          servingSize: entry.servingSize,
-          packageSize: entry.packageSize,
-          lastPortion: entry.portion,
-          lastLoggedAt: entry.updatedAt,
-        ),
-      );
-      if (items.length >= limit) {
-        break;
-      }
-    }
-
-    return items;
+    return [
+      for (final item in [
+        ..._matchYourFoods(query, yourFoods).take(yourFoodsInSearchLimit),
+        ...offItems.where((item) => candidates.contains(item.id)),
+        ...?usda,
+        ...offItems.where((item) => !candidates.contains(item.id)),
+      ])
+        if (seen.add(item.key)) item,
+    ].take(searchResultLimit).toList(growable: false);
   }
 
-  Future<List<FoodPickerItem>> _searchUserFoods(
-    String query, {
-    required int limit,
-  }) async {
-    final matched = await _repositories.nutrition.searchActiveUserFoods(
-      query,
-      limit: limit,
-    );
-    final items = <FoodPickerItem>[];
-    for (final food in matched) {
-      items.add(
-        FoodPickerItem(
-          id: food.id,
-          name: food.name,
-          filter: AddFoodPickerFilter.user,
-          foodSource: food.foodSource,
-          nutrientsPer100: food.nutrientsPer100,
-          isLiquid: food.isLiquid,
-          servingLabel: food.servingLabel,
-          servingSize: food.servingSize,
-          packageSize: food.packageSize,
-          lastPortion: await _repositories.nutrition.lastPortionForFood(
-            foodId: food.id,
-            foodSource: food.foodSource,
-          ),
-        ),
-      );
+  /// Your foods matching [query] by name and brand, as the bundle search
+  /// does, or for an Open Food Facts Food by barcode; every item on a blank
+  /// query.
+  Iterable<FoodPickerItem> _matchYourFoods(String query, YourFoods yourFoods) {
+    if (isBlankFoodQuery(query)) {
+      return yourFoods.items;
     }
-    return items;
+    final candidates = barcodeCandidates(query).toSet();
+    return yourFoods.items.where(
+      (item) =>
+          foodNameMatchesQuery(
+            switch (item.brand) {
+              final brand? => '${item.name} $brand',
+              null => item.name,
+            },
+            query,
+          ) ||
+          (item.foodSource == FoodSource.openFoodFacts &&
+              candidates.contains(item.id)),
+    );
   }
 
   Future<List<FoodPickerItem>> _searchUsdaFoods(
-    String query, {
-    required int limit,
-  }) async {
+    String query,
+    YourFoods yourFoods,
+  ) async {
     final foods = await _repositories.platformFoods.searchUsdaFoods(
       query,
-      limit: limit,
-    );
-    final items = <FoodPickerItem>[];
-    for (final food in foods) {
-      items.add(
-        FoodPickerItem(
-          id: food.id,
-          name: food.name,
-          filter: AddFoodPickerFilter.usda,
-          foodSource: food.foodSource,
-          nutrientsPer100: food.nutrientsPer100,
-          isLiquid: food.isLiquid,
-          servingLabel: food.servingLabel,
-          servingSize: food.servingSize,
-          packageSize: food.packageSize,
-          lastPortion: await _repositories.nutrition.lastPortionForFood(
-            foodId: food.id,
-            foodSource: food.foodSource,
-          ),
-        ),
-      );
-    }
-    return items;
-  }
-
-  Future<List<FoodPickerItem>> _searchOpenFoodFacts(
-    String query, {
-    required int limit,
-  }) async {
-    final foods = await _openFoodFacts.searchLocal(query, limit: limit);
-    return _openFoodFactsItems(foods);
-  }
-
-  /// Picker items for Open Food Facts records, with their Last Portions read
-  /// in one query rather than one per row.
-  Future<List<FoodPickerItem>> _openFoodFactsItems(
-    List<PlatformFoodRecord> foods, {
-    bool isLiveResult = false,
-  }) async {
-    final lastPortions = await _repositories.nutrition.lastPortionsForFoods(
-      foodIds: [for (final food in foods) food.id],
-      foodSource: FoodSource.openFoodFacts,
+      limit: searchResultLimit,
     );
     return [
       for (final food in foods)
-        _openFoodFactsItem(
+        _platformItem(
           food,
-          lastPortion: lastPortions[food.id],
-          isLiveResult: isLiveResult,
+          origin: FoodPickerOrigin.usda,
+          lastPortion: yourFoods.lastPortionFor(food.foodSource, food.id),
         ),
     ];
   }
 
-  FoodPickerItem _openFoodFactsItem(
-    PlatformFoodRecord food, {
-    required Portion? lastPortion,
-    required bool isLiveResult,
+  /// Picker items for Open Food Facts records, with their Last Portions from
+  /// the loaded Your foods rather than a query.
+  List<FoodPickerItem> _openFoodFactsItems(
+    List<PlatformFoodRecord> foods,
+    YourFoods yourFoods, {
+    bool isLiveResult = false,
   }) {
-    return FoodPickerItem(
-      id: food.id,
-      name: food.name,
-      filter: AddFoodPickerFilter.openFoodFacts,
-      foodSource: food.foodSource,
-      nutrientsPer100: food.nutrientsPer100,
-      isLiquid: food.isLiquid,
-      servingLabel: food.servingLabel,
-      servingSize: food.servingSize,
-      packageSize: food.packageSize,
-      lastPortion: lastPortion,
-      brand: food.brand,
-      sourceModifiedAt: food.sourceModifiedAt,
-      scans: food.scans,
-      isLiveResult: isLiveResult,
-    );
+    return [
+      for (final food in foods)
+        _platformItem(
+          food,
+          origin: FoodPickerOrigin.openFoodFacts,
+          lastPortion: yourFoods.lastPortionFor(food.foodSource, food.id),
+          isLiveResult: isLiveResult,
+        ),
+    ];
   }
+}
+
+/// A source that fails yields `null` instead of failing the search.
+Future<T?> _orNull<T>(Future<T> future) async {
+  try {
+    return await future;
+  } on Object {
+    return null;
+  }
+}
+
+/// A **Blank query**: nothing to search by, no name terms and no barcode
+/// candidates. An empty query, spaces and punctuation alone are all blank.
+/// The picker's lists and the repository's searches share this one rule.
+bool isBlankFoodQuery(String query) {
+  return buildFoodSearchMatch(query) == null &&
+      barcodeCandidates(query).isEmpty;
 }

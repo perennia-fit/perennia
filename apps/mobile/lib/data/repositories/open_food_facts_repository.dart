@@ -43,6 +43,10 @@ abstract interface class OpenFoodFactsRepository {
   /// duplicates.
   Future<List<PlatformFoodRecord>> searchLocal(String query, {int limit = 50});
 
+  /// The stored products with these codes, in any order; a code with no
+  /// stored product is absent. Sends nothing.
+  Future<List<PlatformFoodRecord>> localProductsByCodes(List<String> codes);
+
   /// One live search. Stores nothing.
   Future<({OnlineSearchStatus status, List<PlatformFoodRecord> products})>
       searchOnline(String query, {required bool allowOnline});
@@ -180,6 +184,18 @@ class DriftOpenFoodFactsRepository implements OpenFoodFactsRepository {
       for (final row in [...byCode, ...matched])
         if (seen.add(row.code)) toPlatformFoodRecord(productFromRow(row)),
     ].take(limit).toList();
+  }
+
+  @override
+  Future<List<PlatformFoodRecord>> localProductsByCodes(
+    List<String> codes,
+  ) async {
+    final opened = await _open();
+    if (opened == null || codes.isEmpty) {
+      return const <PlatformFoodRecord>[];
+    }
+    final rows = await opened.database.productsByCodes(codes);
+    return [for (final row in rows) toPlatformFoodRecord(productFromRow(row))];
   }
 
   @override
@@ -340,6 +356,12 @@ class StubOpenFoodFactsRepository implements OpenFoodFactsRepository {
     String query, {
     int limit = 50,
   }) async =>
+      const <PlatformFoodRecord>[];
+
+  @override
+  Future<List<PlatformFoodRecord>> localProductsByCodes(
+    List<String> codes,
+  ) async =>
       const <PlatformFoodRecord>[];
 
   @override

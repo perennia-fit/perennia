@@ -1,7 +1,7 @@
 # Unified Food Search
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved
+*   **Status:** Current
 *   **Date:** 2026-10-31
 
 --------------------------------------------------------------------------------
@@ -293,6 +293,13 @@ order the user logged them. The order uses nothing but the Food Entries and
 Meals, so the app and the server compute the same order, and golden vectors
 check it (see [Validation and analytics](#validation-and-analytics)).
 
+**Precision.** Every time compares in whole seconds, rounded down: Meal
+`startedAt`, entry `updatedAt` and the 90-day cutoff. The app stores times as
+Unix seconds, so it cannot see milliseconds, and the server drops them before
+comparing so the two agree on the latest entry, its Last Portion and the
+window. `lastLoggedAt` is therefore a whole second (`…:00.000Z` on the
+server).
+
 **Shape.**
 
 ```dart
@@ -382,7 +389,7 @@ final class YourFoods {
     A resolved record becomes a `FoodPickerItem` with `origin`
     `FoodPickerOrigin.history`, the current Food's name, nutrients, liquid
     flag, serving, package size and (for Open Food Facts) brand, plus the
-    record's `lastPortion` and `lastLoggedAt`.
+    record's `lastPortion`.
 3.  **Unresolved records** (a User Food whose row is missing, a product no
     longer on the device, or a Food Source with no catalogue) fall back to the
     snapshot of their latest Food Entry: one
@@ -422,7 +429,9 @@ The `limit` parameter is removed. The limits are named constants in
 | `searchResultLimit` | 50 | Total rows in a typed All search; rows in the USDA and Open Food Facts filters |
 
 **Matching Your foods.** An item of `yourFoods.items` matches a typed query
-when `foodNameMatchesQuery(item.name, query)` is true, or when its
+when `foodNameMatchesQuery` is true for its name followed by its brand, when
+it has one (`'<name> <brand>'`), so a query can name the brand, the product
+or both, as the Open Food Facts search does; or when its
 `foodSource` is Open Food Facts and its id is one of `barcodeCandidates(query)`.
 On a blank query every item matches.
 
@@ -468,7 +477,9 @@ fail the search. If `searchLocal` throws, `B` and `F` are empty; if
 `searchUsdaFoods` throws, `U` is empty. The picker shows no error for a
 failed group, as it shows none for a failed device reload today
 (`_reloadDeviceMatches`). `search` throws only when every group it reads has
-failed.
+failed. A typed All search always reads `Y`, which is in memory and cannot
+fail, so it never throws; the USDA and Open Food Facts filters each read one
+source and throw when it fails, as they do today.
 
 ### Picker items
 
@@ -496,14 +507,16 @@ excluding live results that are already listed, and for widget keys.
 `Key('nutrition.addFood.result-${item.foodSource.name}-${item.id}')`.
 `filterChipKey` keeps its form (`nutrition.addFood.filter-<filter.name>`).
 
-`FoodPickerItem.lastLoggedAt` is the Food History record's `lastLoggedAt` for
-`history` rows and null otherwise. Only the picker reads it.
+`FoodPickerItem` has no last-logged time: the picker shows the Last Portion,
+and the order of Your foods already carries recency. The field the Recent
+filter filled is removed.
 
 ### Controller lifecycle
 
 `addFoodPickerControllerProvider` becomes
 `AsyncNotifierProvider.autoDispose<AddFoodPickerController, AddFoodPickerState>`,
-with the controller extending `AutoDisposeAsyncNotifier`, following the
+with the controller extending `AsyncNotifier` (Riverpod 3 has no separate
+auto-dispose notifier class; the provider decides), following the
 transient-picker convention in
 `apps/mobile/lib/features/template_picker/controllers/template_picker_controller.dart`.
 The picker sheet is the only listener, so closing the sheet disposes the
@@ -599,6 +612,12 @@ The keyboard's search action and the online row:
 *   It leaves out of the live group any live result whose picker key equals the
     key of a row in the list. Today it compares ids only.
 
+The controller keeps every item of the last live search until the live
+results are cleared (a new query or a new device search). When a bundle
+install finishes and the device's matches are searched again, it merges that
+whole list again, so a product that is now on the device is not listed twice
+and a newer live copy keeps the place it took.
+
 ### Agent surface
 
 Food History is a new read of the user's data, so agents get it, per
@@ -631,9 +650,16 @@ have (`listAgentFoods`, `searchAgentPlatformFoods`); see
     the shape of `AgentMealEntry.portion`).
 *   Errors: 401, 429 and 503 exactly as `listAgentMeals` declares them.
 *   Store: `AgentFoodHistoryReadStore.listFoodHistory({ userId, limit, now })`
-    reads the user's live `food_entries` and `meals` rows and the ids of
-    archived `foods`, using the payload readers `readFoodEntriesByMealId` uses,
-    and calls the pure function below.
+    reads the user's live `meals` rows (their `started_at` only), the live
+    `food_entries` rows whose payload has `entry_kind` `food`, a
+    `food_source` and a `food_id` (only the fields Food History reads), and
+    the ids of archived `foods`, in three queries run together; it reads each Food Entry payload with the same Portion
+    reader as `readFoodEntriesByMealId` (`parseRawPortion`, with
+    `stringValue` and `numberValue`, exported from `agent-nutrition-reads.ts`),
+    and calls the pure function below. It reads
+    `is_liquid` as stored rather than through that read's entry mapper, which
+    turns a null liquid flag into `false`; a null flag must leave the entry
+    out, as it does in the app.
 *   Pure function: `buildFoodHistory({ entries, meals, archivedUserFoodIds,
     now })` in `apps/server/src/food-history.ts`, which applies
     [the rules above](#food-history) and returns the full ordered list. It is
@@ -645,9 +671,12 @@ limit? }`, the output `AgentFoodHistoryResponse`, through the same store and
 the same unavailable error as `agent_list_meals`.
 
 **Contract diff.** `openapi.json` gains the path, the two schemas and the
-operation; `agent-client.ts` gains `listAgentFoodHistory`; the Dart API client
-gains the matching method; `agent-skills/perennia/references/api-operations.md`
-gains its generated row. `packages/contract/src/agent-skill-reference.ts` gains
+operation; `agent-client.ts` gains `listAgentFoodHistory`;
+`agent-skills/perennia/references/api-operations.md` gains its generated row.
+The Dart API client (`apps/mobile/lib/api/perennia_api_client.dart`) does not
+change: its generator emits only the operations the app itself calls, and it
+carries no agent read such as `listAgentMeals`.
+`packages/contract/src/agent-skill-reference.ts` gains
 `listAgentFoodHistory: "list-food-history"` and
 `listAgentFoodHistory: "agent_list_food_history"` in its two maps. No existing
 operation changes.
@@ -692,6 +721,10 @@ operation changes.
     lastLoggedAt, lastPortion }` list. The cases cover:
     *   frequency over recency;
     *   the 90-day boundary (an entry exactly 90 days before `now` counts);
+    *   whole-second precision: a same-second tie on Meal `startedAt` and
+        entry `updatedAt` decided by entry `id`, and an entry 0.5 s before the
+        exact 90-day boundary that counts because it is in the boundary's
+        second;
     *   a tie on `lastLoggedAt` broken by position;
     *   the latest entry chosen by Meal `startedAt`, not `updatedAt`;
     *   Last Portion from an earlier entry when the latest has none;
@@ -802,7 +835,9 @@ The query reads every active Food Entry once, so an index on
 `food_entries (food_source, food_id)` would not shorten it, and none is added.
 
 *   `listFoodHistory` with that data runs within `foodHistoryBudget` (150 ms)
-    on the test host. The constant is added to
+    on the test host. The test times the fastest of three reads: in the full
+    test run other test files share the host, and one read took 163 ms there
+    against 86–97 ms alone. The constant is added to
     `apps/mobile/test/performance/performance_budget_thresholds.dart`, and the
     test to `performance_budgets_test.dart`.
 *   A typed All search, given a loaded `YourFoods` of 1,500 items and the
@@ -828,9 +863,10 @@ The query reads every active Food Entry once, so an index on
     label joins the parts that exist with ", ":
     `<name>, <brand>, <source label>, <kcal text>, Last <portion>`. The source
     label is the badge's text without the licence marker (for example "Open
-    Food Facts"). The kcal text is the row's kcal label as displayed. A row
-    with no brand or no Last Portion leaves that part out. Example: "Oat milk,
-    Oatly, Open Food Facts, 46 kcal per 100 ml, Last 250 ml".
+    Food Facts"). The kcal text is the row's kcal label as displayed, which
+    is "<kcal> kcal per 100" for every unit. A row with no brand or no Last
+    Portion leaves that part out. Example: "Oat milk, Oatly, Open Food Facts,
+    46 kcal per 100, Last 250 ml".
 
 ### Privacy
 
@@ -984,7 +1020,9 @@ and widget files that phase 3 changes.
     `formatPortionAmount`, and the row `Semantics` wrapper and label per
     [Accessibility](#accessibility).
 *   Add keys: `yourFoodsLabelKey` (`nutrition.addFood.yourFoodsLabel`),
-    `emptyStateKey` (`nutrition.addFood.emptyState`), `noMatchLineKey`
+    `emptyStateKey` (`nutrition.addFood.emptyState`, on the blank-query line
+    when there is nothing to list: All with no Your foods, and the Your foods
+    filter with none), `noMatchLineKey`
     (`nutrition.addFood.noMatch`) and `attributionFooterKey`
     (`nutrition.addFood.attributionFooter`). Keep `emptyQueryLineKey` for the
     Open Food Facts blank-query line.
@@ -1023,7 +1061,9 @@ the Meal and Food Entry fields it reads and a docstring pointing at this spec.
 The query and response Zod schemas (`AgentFoodHistoryQuerySchema`,
 `AgentFoodHistoryItemSchema`, `AgentFoodHistoryResponseSchema`), the route
 `agentFoodHistoryRoute`, the store type `AgentFoodHistoryReadStore` and
-`createDrizzleAgentFoodHistoryReadStore(db)`.
+`createDrizzleAgentFoodHistoryReadStore(db)`. In
+`apps/server/src/agent-nutrition-reads.ts`, export `parseRawPortion`,
+`stringValue` and `numberValue` for the store to share (see [Agent surface](#agent-surface)).
 
 #### 17. `apps/server/src/app.ts` and `apps/server/src/index.ts` (Modify)
 
@@ -1032,20 +1072,31 @@ auth, rate limit and unavailable handling, taking the store as an app option
 as `agentNutritionReadStore` is taken. In `index.ts`, create it with
 `createDrizzleAgentFoodHistoryReadStore(db)` next to the
 `createDrizzleAgentNutritionReadStore` call, and pass it to the app and to the
-MCP server.
+MCP server; re-export `agent-food-history.js` from `index.ts` next to the
+`agent-nutrition-reads.js` exports, as the server tests import from it.
 
 #### 18. `apps/server/src/agent-mcp.ts` (Modify)
 
 Register `agent_list_food_history` per [Agent surface](#agent-surface), next
-to `agent_list_meals`.
+to `agent_list_meals`. Add the tool's name to the expected tool list in
+`apps/server/test/agent-mcp.test.mjs`.
 
 #### 19. `packages/contract/src/agent-skill-reference.ts` (Modify), then the generated files
 
 Add the two map entries. Run `corepack pnpm --filter @perennia/contract
 generate` and commit `packages/contract/openapi.json`,
-`packages/contract/src/agent-client.ts`,
-`apps/mobile/lib/api/perennia_api_client.dart` and
-`agent-skills/perennia/references/api-operations.md`.
+`packages/contract/src/agent-client.ts` and
+`agent-skills/perennia/references/api-operations.md`
+(`apps/mobile/lib/api/perennia_api_client.dart` is regenerated unchanged).
+
+The agent skill's hand-written clients are held to the contract by
+`apps/server/test/agent-skill.test.mjs`, so they gain the operation too:
+`list-food-history` in the command map of
+`agent-skills/perennia/scripts/prn-agent.mjs`, and `listAgentFoodHistory` in
+`agent-skills/perennia/scripts/prn-code.mjs`. The hand-written part of
+`agent-skills/perennia/references/api-operations.md` gains a paragraph on the
+read next to `list-foods`, and `agent-skills/perennia/SKILL.md` an example
+line.
 
 #### 20. Server tests (Create)
 
@@ -1059,8 +1110,12 @@ generate` and commit `packages/contract/openapi.json`,
 #### 21. `tools/ci-local.mjs` and `.github/workflows/ci.yml` (Modify)
 
 Add `apps/server/src/food-history.ts` and
-`apps/server/test/food-history.golden.test.mjs` to the `golden` job's paths and
-commands in both files, in the same commit.
+`apps/server/test/food-history.golden.test.mjs` to the `golden` job's paths in
+both files, in the same commit. Both files run the TypeScript vectors through
+the `test:golden-vectors` script in `apps/server/package.json`, so the test
+file is added to that script, and `food-history` is added to
+`DOMAINS_OWNED_ELSEWHERE` in `apps/server/test/agent-validation.golden.test.mjs`,
+which fails on a vector domain no runner claims.
 
 #### 22. `CONTEXT.md` (Modify)
 

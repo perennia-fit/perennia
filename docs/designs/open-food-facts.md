@@ -89,7 +89,8 @@ runs into four failures.
     looked up before needs the network, and gyms and basements often have poor
     signal. The bundled USDA catalogue, the only offline reference data, holds
     three generic foods. An offline user finds nothing but their own User Foods
-    and their Recent list.
+    and the Foods they logged before (now Your foods, in
+    [Unified Food Search](unified-food-search.md)).
 2.  **Search returns one product.** `OpenFoodFactsRepository.search()` in
     `training_repositories.dart` keeps only the first usable product in the
     response. A search for "greek yogurt" shows a single yogurt, and the user
@@ -167,8 +168,8 @@ same barcode with different numbers.
         `showLicense: true`) and the attribution notice.
     *   On the log-portion screen, the notice also shows a link to the
         product's Open Food Facts page, the disclaimer, and the change date when
-        it is known. Items from the Recent list get the link and the disclaimer
-        too.
+        it is known. Your foods rows ([Unified Food Search](unified-food-search.md)) get the link and the
+        disclaimer too.
     *   On the Nutrition Day view, a logged Food Entry whose source is Open Food
         Facts carries the badge without the licence label
         (`showLicense: false`), as imported entries already do.
@@ -218,8 +219,9 @@ same barcode with different numbers.
     not be presented as reliable for it.
 *   **Changing logged history.** When a product's values change (a newer bundle
     or a newer live copy), existing Food Entries keep the snapshot they were
-    logged with. Re-logging from the Recent list logs the Recent snapshot, as
-    today.
+    logged with. Re-logging from Your foods logs the current device copy, or
+    the latest snapshot when the product is no longer on the device
+    ([Unified Food Search § Your foods](unified-food-search.md#your-foods)).
 *   **Showing the user how bundled and live values differ.** The newer copy is
     used, without a comparison view.
 *   **A Food Library screen** on the Library root. Browsing and managing User
@@ -828,8 +830,8 @@ slot and any live results while it does.
 
 The old cache table `open_food_facts_cache` in `AppDatabase` is dropped in
 schema version 62 (version 61 went to the Protocol Schedules change). Its rows are not copied: the app has not been released, so no
-user holds a cache worth keeping, and Food Entries and the Recent list do not
-depend on it.
+user holds a cache worth keeping, and Food Entries and Your foods
+([Unified Food Search](unified-food-search.md)) do not depend on it.
 
 ### One product, one row
 
@@ -895,8 +897,8 @@ pause:
 4.  A query with no parts and no barcode candidates searches nothing, and the
     list shows "Type a product or brand name."
 
-The Recent, User and USDA filters keep `foodNameMatchesQuery`, which matches
-substrings. The Open Food Facts filter matches word prefixes. This is deliberate:
+Your foods and the USDA filter ([Unified Food Search](unified-food-search.md)) keep
+`foodNameMatchesQuery`, which matches substrings. The Open Food Facts filter matches word prefixes. This is deliberate:
 FTS5 needs whole-word prefixes to stay within the search budget over 41,000 rows.
 
 **Barcode lookup in the app** (scan, or a barcode typed and submitted):
@@ -961,6 +963,12 @@ layer (only repositories touch the network, per
 
 ### The picker, the scanner and the log-portion screen
 
+The picker's layout, filters and attribution placement described below are
+superseded by [Unified Food Search](unified-food-search.md): one search over every source with
+the All filter by default, the Your foods view before typing, and the
+attribution notice as a footer after the list. The scanner, the log-portion
+screen and the About screen text described here are unchanged.
+
 With the **Open Food Facts** filter selected, the picker shows, from top to
 bottom:
 
@@ -1003,7 +1011,8 @@ action, in the Open Food Facts filter):
     code is among the device's matches and whose change date is later takes
     that match's place in group 2 (Goal 4); the rest form group 4.
 
-The other filters (Recent, User, USDA) keep their behaviour.
+The Your foods and USDA filters of [Unified Food Search](unified-food-search.md) keep this
+behaviour.
 
 **Scanning** uses the barcode rules. The existing `BarcodeLookupStatus` values
 are kept and two are added. Each miss shows the existing not-found state (the
@@ -1049,8 +1058,8 @@ does not open a browser. This spec keeps that behaviour, which needs no new
 dependency.
 
 On the log-portion screen, an Open Food Facts food shows its brand under the
-name when known, and the full notice. A food opened from the Recent list carries
-its barcode as its Food id, so it gets the product link and the disclaimer; its
+name when known, and the full notice. A food opened from Your foods
+([Unified Food Search](unified-food-search.md)) carries its barcode as its Food id, so it gets the product link and the disclaimer; its
 change date is not in the snapshot, so the date line is left out.
 
 `PlatformFoodRecord` and `FoodPickerItem` gain three nullable fields, `brand`,
@@ -2468,7 +2477,8 @@ Conventions in this plan:
         (Modify):
         *   brand, product link, disclaimer and date for an Open Food Facts
             food;
-        *   link and disclaimer without a date for a Recent item;
+        *   link and disclaimer without a date for a Your foods item
+            ([Unified Food Search](unified-food-search.md));
         *   none of them for USDA;
         *   `meetsGuideline` for tap target size and text contrast on the
             attribution block, in both themes.
