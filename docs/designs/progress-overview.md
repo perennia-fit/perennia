@@ -414,8 +414,10 @@ payloads. The server's existing exercise analytics read keeps its own
     `workoutTemplateId` of the Workout's Template Link. When a Workout has
     more than one active Template Link, the loaders take the one with the
     latest `updatedAt`, then the highest `id`. CONTEXT.md allows at most one
-    Template Link per Workout, but neither the schema nor sync enforces it, so
-    this rule is defensive. Open Workouts are included.
+    Template Link per Workout. The device enforces it with the unique index
+    `template_links_workout_id_unique`, but the server does not, so this rule
+    is defensive and keeps both loaders on the same link. Open Workouts are
+    included.
 *   `weekStart`: the local date the current week begins.
 *   `today`: a local date in `[weekStart, weekStart + 6]`; otherwise the core
     throws an argument error (Dart `ArgumentError`, TypeScript `RangeError`).
