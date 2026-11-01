@@ -17,6 +17,7 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/platform_exercise_seed.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
+import 'package:perennia/domain/training/training_progress.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/auth/widgets/sign_in_screen.dart';
 import 'package:perennia/features/body_tracker/widgets/body_tracker_screen.dart';
@@ -34,6 +35,8 @@ import 'package:perennia/features/metrics/controllers/metrics_controller.dart';
 import 'package:perennia/features/metrics/widgets/metrics_screen.dart';
 import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
+import 'package:perennia/features/progress/repositories/progress_feature_repository.dart';
+import 'package:perennia/features/progress/widgets/progress_overview.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
@@ -139,8 +142,10 @@ void main() {
     await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
     await tester.pumpAndSettle();
 
-    expect(find.text('Body'), findsOneWidget);
-    expect(find.text('Health metrics'), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.bodyTrackerTileKey);
+    expect(find.byKey(ProgressOverview.bodyTrackerTileKey), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.healthMetricsTileKey);
+    expect(find.byKey(ProgressOverview.healthMetricsTileKey), findsOneWidget);
   });
 
   testWidgets('root chrome stays available when the Training Day fails', (
@@ -164,8 +169,10 @@ void main() {
     await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
     await tester.pumpAndSettle();
 
-    expect(find.text('Body'), findsOneWidget);
-    expect(find.text('Health metrics'), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.bodyTrackerTileKey);
+    expect(find.byKey(ProgressOverview.bodyTrackerTileKey), findsOneWidget);
+    await _scrollToProgressTile(tester, ProgressOverview.healthMetricsTileKey);
+    expect(find.byKey(ProgressOverview.healthMetricsTileKey), findsOneWidget);
   });
 
   testWidgets('root chrome stays available while the Training Day loads', (
@@ -211,6 +218,11 @@ void main() {
               (ref) => const _DateEchoHomeRepository(),
             ),
             _homeNutritionDayOverride(),
+            // Every Progress card populated, the Protocols one unlocked.
+            progressFeatureRepositoryProvider.overrideWith(
+              (ref) => _populatedProgressRepository(),
+            ),
+            protocolsLockStoreProvider.overrideWith((ref) => _NoLockStore()),
           ],
           child: MaterialApp(
             theme: theme,
@@ -686,7 +698,8 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Body'));
+    await _scrollToProgressTile(tester, ProgressOverview.bodyTrackerTileKey);
+    await tester.tap(find.byKey(ProgressOverview.bodyTrackerTileKey));
     await tester.pump(const Duration(milliseconds: 300));
     await _pumpUntilFound(tester, find.byType(BodyTrackerScreen));
 
@@ -718,7 +731,8 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Health metrics'));
+    await _scrollToProgressTile(tester, ProgressOverview.healthMetricsTileKey);
+    await tester.tap(find.byKey(ProgressOverview.healthMetricsTileKey));
     await tester.pump(const Duration(milliseconds: 300));
     await _pumpUntilFound(tester, find.byType(MetricsScreen));
 
@@ -2208,6 +2222,90 @@ class _StubRoutinePlanListController extends RoutinePlanListController {
       RoutinePlanListSnapshot.empty,
     );
   }
+}
+
+/// Scrolls Progress Overview until the More tile keyed [key] is built and
+/// on screen; the list builds its rows lazily.
+Future<void> _scrollToProgressTile(WidgetTester tester, Key key) async {
+  await tester.scrollUntilVisible(
+    find.byKey(key),
+    200,
+    scrollable: find.descendant(
+      of: find.byKey(ProgressOverview.listKey),
+      matching: find.byType(Scrollable),
+    ),
+  );
+  await tester.ensureVisible(find.byKey(key));
+  await tester.pumpAndSettle();
+}
+
+/// A [StubProgressFeatureRepository] that fills every Progress card around
+/// the real current date: a weekly Routine, Workouts under two Focuses and
+/// none, and more Compounds than the Protocols card lists.
+StubProgressFeatureRepository _populatedProgressRepository() {
+  final today = TrainingDayDate.fromDateTime(DateTime.now());
+  // Each Workout is linked to the template its weekday plans, if any.
+  ProgressWorkout workout(int daysAgo, {String? focusId}) {
+    final date = today.addDays(-daysAgo);
+    final startedAt = date.atLocalTimeOf(DateTime(2000, 1, 1, 7));
+    return ProgressWorkout(
+      workoutId: 'workout-$daysAgo-${focusId ?? 'none'}',
+      localDate: date,
+      startedAt: startedAt,
+      endedAt: startedAt.add(const Duration(minutes: 70)),
+      focusId: focusId,
+      linkedTemplateId: 'template-${date.toLocalDateTime().weekday}',
+      performedSetCount: 3,
+    );
+  }
+
+  return StubProgressFeatureRepository(
+    weeklyPlans: <WeeklyPlanFacts>[
+      WeeklyPlanFacts(
+        routineId: 'routine-hybrid',
+        routineName: 'Hybrid block',
+        entries: <WeeklyPlanEntry>[
+          for (final weekday in <int>[1, 2, 4, 6])
+            WeeklyPlanEntry(
+              workoutTemplateId: 'template-$weekday',
+              weekday: weekday,
+            ),
+        ],
+      ),
+    ],
+    hasRotatingRoutine: true,
+    workouts: <ProgressWorkout>[
+      for (var daysAgo = 0; daysAgo < 80; daysAgo += 3)
+        workout(daysAgo, focusId: daysAgo % 2 == 0 ? 'focus-weights' : null),
+      workout(1, focusId: 'focus-endurance'),
+    ],
+    focusesById: <String, FocusRecord>{
+      'focus-weights': FocusRecord(
+        id: 'focus-weights',
+        name: 'Weights',
+        sortOrder: 0,
+        updatedAt: DateTime.utc(2026),
+      ),
+      'focus-endurance': FocusRecord(
+        id: 'focus-endurance',
+        name: 'Endurance',
+        sortOrder: 1,
+        colorHex: '#E0608F',
+        updatedAt: DateTime.utc(2026),
+      ),
+    },
+    consistencySummaries: <CompoundConsistencySummary>[
+      for (var index = 0; index < 7; index += 1)
+        CompoundConsistencySummary(
+          compoundId: 'compound-$index',
+          compoundName: 'Compound $index',
+          logged: 20 + index,
+          partlyLogged: index % 2,
+          notLogged: 2,
+          paused: index == 3 ? 4 : 0,
+        ),
+    ],
+  );
 }
 
 /// An in-memory `ProtocolsLockStore` fake that never reports a configured

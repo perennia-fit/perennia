@@ -62,9 +62,12 @@ class TrainingDayDate implements Comparable<TrainingDayDate> {
     );
   }
 
+  /// Calendar arithmetic on a UTC midnight, as `ProtocolDayDate.addDays`
+  /// does: adding whole days to a local midnight would land on the wrong date
+  /// whenever the span crosses a daylight-saving change.
   TrainingDayDate addDays(int days) {
-    final next = toLocalDateTime().add(Duration(days: days));
-    return TrainingDayDate.fromDateTime(next);
+    final next = DateTime.utc(year, month, day + days);
+    return TrainingDayDate(year: next.year, month: next.month, day: next.day);
   }
 
   @override

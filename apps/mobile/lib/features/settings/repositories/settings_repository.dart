@@ -415,10 +415,11 @@ class AppSettings {
   }
 
   TrainingDayDate weekStartFor(TrainingDayDate localDate) {
-    final date = localDate.toLocalDateTime();
+    final weekday =
+        DateTime.utc(localDate.year, localDate.month, localDate.day).weekday;
     final startWeekday = weekStartDay.dateTimeWeekday;
-    final delta = (date.weekday - startWeekday + 7) % 7;
-    return TrainingDayDate.fromDateTime(date.subtract(Duration(days: delta)));
+    final delta = (weekday - startWeekday + 7) % 7;
+    return localDate.addDays(-delta);
   }
 
   Map<String, Object?> toJson() {

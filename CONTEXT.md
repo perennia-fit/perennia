@@ -147,6 +147,28 @@ Training Days; data always belongs to a Workout.
 The Workout of the current Training Day that has not been ended. New exercises and
 sets default into the Open Session.
 
+## Performed Set
+A Set that is not deleted, belongs to a Workout that is not deleted, and is marked
+complete. Saving a Set on the Track tab marks it complete. A Set that a Workout
+Template or a quick log placed in a Workout stays incomplete until the user completes
+it. On the server, a Set payload without `is_completed` is not performed, matching how
+the app decodes it.
+
+## Logged Workout
+A Workout that is not deleted and has at least one Performed Set. A Workout started
+from Up next and abandoned holds only incomplete Sets, so it is not a Logged Workout.
+Only Logged Workouts count toward Training Day Statuses, Trained Days and time by
+Focus.
+
+## Trained Day
+A Training Day with at least one Logged Workout.
+
+## Training Day Status
+The single label for one day of the current week against the user's weekly Routines,
+from a closed set: Done, Partly done, Done differently, Not done, Pending, Planned,
+Trained, Rest, or No plan. Derived, never stored; never a score, a streak or a
+percentage. Mirrors Day Status in the Protocols domain.
+
 ## Workout Template
 A named, reusable plan for one Workout: the exercises, their order and groupings,
 and their prescribed sets for a single session, plus standing notes — on the
