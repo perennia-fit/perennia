@@ -30,6 +30,7 @@ const Map<String, String> _dartRunnerByDomain = <String, String>{
   'plan-divergence': 'test/domain/template_divergence_golden_test.dart',
   'template-materialize': 'test/domain/template_materialize_golden_test.dart',
   'routine-up-next': 'test/domain/routine_up_next_golden_test.dart',
+  'training-progress': 'test/domain/training_progress_golden_test.dart',
   'protocol-plan': 'test/domain/protocol_plan_golden_test.dart',
   'protocol-plan-validation':
       'test/domain/protocol_plan_validation_test.dart',
