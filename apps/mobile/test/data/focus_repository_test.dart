@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
@@ -398,6 +400,148 @@ void main() {
           entry.entityId == '01a16cdc-0000-7000-8000-000000000001',
     );
     expect(pulled.afterImage!['name'], 'Climbing');
+  });
+
+  group('recolor', () {
+    Future<FocusRecord> focus(String id) async =>
+        (await repositories.focuses.watchAllById().first)[id]!;
+
+    Future<List<ActivityLogEntry>> focusEntries() async {
+      final entries = await repositories.activityLog.listEntries();
+      return entries
+          .where((entry) => entry.entityTable == AppDatabase.focusesTable)
+          .toList();
+    }
+
+    test('stores the normalized color with its Activity Log entry', () async {
+      final before = (await focusEntries()).length;
+
+      await repositories.focuses.recolor(_weightsId, colorHex: '#e06c5a');
+
+      expect((await focus(_weightsId)).colorHex, '#E06C5A');
+      final entries = await focusEntries();
+      expect(entries, hasLength(before + 1));
+      final entry = entries.firstWhere(
+        (entry) =>
+            entry.entityId == _weightsId &&
+            entry.afterImage?['color_hex'] == '#E06C5A',
+      );
+      expect(entry.beforeImage!['color_hex'], isNull);
+    });
+
+    test('to the stored color writes nothing', () async {
+      await repositories.focuses.recolor(_weightsId, colorHex: '#E06C5A');
+      final before = await focusEntries();
+      final updatedAt = (await focus(_weightsId)).updatedAt;
+
+      await repositories.focuses.recolor(_weightsId, colorHex: '#e06c5a');
+
+      expect(await focusEntries(), hasLength(before.length));
+      expect((await focus(_weightsId)).updatedAt, updatedAt);
+    });
+
+    test('rejects anything but #RRGGBB', () async {
+      await expectLater(
+        repositories.focuses.recolor(_weightsId, colorHex: 'red'),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repositories.focuses.recolor(_weightsId, colorHex: '#E06C5'),
+        throwsArgumentError,
+      );
+      expect((await focus(_weightsId)).colorHex, isNull);
+    });
+
+    test('works on an archived Focus', () async {
+      await repositories.focuses.archive(_enduranceId);
+
+      await repositories.focuses.recolor(_enduranceId, colorHex: '#3FBFB0');
+
+      final archived = await focus(_enduranceId);
+      expect(archived.isArchived, isTrue);
+      expect(archived.colorHex, '#3FBFB0');
+    });
+
+    test('a sync image without color_hex leaves the color', () async {
+      await repositories.focuses.recolor(_weightsId, colorHex: '#E06C5A');
+
+      await repositories.activityLog.applyPlanSyncImage(
+        entityTable: AppDatabase.focusesTable,
+        image: <String, Object?>{
+          'id': _weightsId,
+          'name': 'Strength',
+          'sort_order': 0,
+          'updated_at': DateTime.utc(2027).toIso8601String(),
+          'deleted_at': null,
+        },
+        deviceId: 'device-b',
+        localDeviceId: 'device-a',
+        batchId: 'pulled',
+      );
+
+      final after = await focus(_weightsId);
+      expect(after.name, 'Strength');
+      expect(after.colorHex, '#E06C5A');
+    });
+
+    test('a sync image with an explicit null clears it', () async {
+      await repositories.focuses.recolor(_weightsId, colorHex: '#E06C5A');
+
+      await repositories.activityLog.applyPlanSyncImage(
+        entityTable: AppDatabase.focusesTable,
+        image: <String, Object?>{
+          'id': _weightsId,
+          'name': 'Weights',
+          'sort_order': 0,
+          'color_hex': null,
+          'updated_at': DateTime.utc(2027).toIso8601String(),
+          'deleted_at': null,
+        },
+        deviceId: 'device-b',
+        localDeviceId: 'device-a',
+        batchId: 'pulled',
+      );
+
+      expect((await focus(_weightsId)).colorHex, isNull);
+    });
+
+    test('undo of an entry whose images lack color_hex succeeds', () async {
+      await repositories.focuses.rename(
+        _weightsId,
+        name: 'Lifting',
+        batchId: 'old-rename',
+      );
+      // Rewrite the entry as a device without Focus colors wrote it.
+      final rows = await (database.select(database.activityLog)
+            ..where((row) => row.batchId.equals('old-rename')))
+          .get();
+      for (final row in rows) {
+        String? strip(String? image) {
+          if (image == null) {
+            return null;
+          }
+          final decoded = jsonDecode(image) as Map<String, Object?>
+            ..remove('color_hex');
+          return jsonEncode(decoded);
+        }
+
+        await (database.update(database.activityLog)
+              ..where((entry) => entry.id.equals(row.id)))
+            .write(
+          ActivityLogCompanion(
+            beforeImage: Value<String?>(strip(row.beforeImage)),
+            afterImage: Value<String?>(strip(row.afterImage)),
+          ),
+        );
+      }
+
+      final undo = await repositories.activityLog.undoBatch('old-rename');
+
+      expect(undo.hasConflicts, isFalse);
+      final after = await focus(_weightsId);
+      expect(after.name, 'Weights');
+      expect(after.colorHex, isNull);
+    });
   });
 }
 

@@ -188,12 +188,17 @@ class FocusRecord {
     required this.name,
     required this.sortOrder,
     required this.updatedAt,
+    this.colorHex,
     this.deletedAt,
   });
 
   final String id;
   final String name;
   final int sortOrder;
+
+  /// The user's chosen `#RRGGBB` color, or null for the Focus's default
+  /// (`focusDefaultColorToken`).
+  final String? colorHex;
   final DateTime updatedAt;
   final DateTime? deletedAt;
 

@@ -1206,6 +1206,22 @@
       }
     }
   },
+  "focusColorMenu": "Color",
+  "focusColorDialogTitle": "Color for {name}",
+  "@focusColorDialogTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "focusColorBack": "Back",
+  "focusColorCardio": "Cardio",
+  "focusColorCore": "Core",
+  "focusColorShoulders": "Shoulders",
+  "focusColorArms": "Arms",
+  "focusColorLegs": "Legs",
+  "focusColorChest": "Chest",
   "focusManagerArchiveBody": "Workouts already logged under it keep it. It stops being offered when you start a workout.",
   "focusManagerDuplicateName": "A focus with that name already exists.",
   "focusManagerEmptyName": "Enter a name.",

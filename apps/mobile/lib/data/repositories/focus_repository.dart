@@ -91,6 +91,37 @@ class FocusRepository {
     });
   }
 
+  /// Stores [colorHex] as the Focus's color. Like [rename], it works on an
+  /// archived Focus, so past time keeps the user's color, and an unchanged
+  /// color writes nothing.
+  Future<void> recolor(
+    String id, {
+    required String colorHex,
+    String actor = 'app',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+    return _database.transaction(() async {
+      final before = await _requireRow(id);
+      final normalized = _normalizeColorHex(colorHex);
+      if (normalized == before.colorHex) {
+        return;
+      }
+      await (_database.update(_database.focuses)
+            ..where((row) => row.id.equals(id)))
+          .write(
+        FocusesCompanion(
+          colorHex: Value<String?>(normalized),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      await _appendChange(context, id, before: before);
+    });
+  }
+
   Future<void> reorder(
     List<String> focusIds, {
     String actor = 'app',
@@ -323,6 +354,7 @@ FocusRecord _focusFromRow(FocusRow row) {
     id: row.id,
     name: row.name,
     sortOrder: row.sortOrder,
+    colorHex: row.colorHex,
     updatedAt: row.updatedAt.toUtc(),
     deletedAt: row.deletedAt?.toUtc(),
   );
@@ -333,6 +365,7 @@ Map<String, Object?> _focusImage(FocusRow row) {
     'id': row.id,
     'name': row.name,
     'sort_order': row.sortOrder,
+    'color_hex': row.colorHex,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
@@ -342,9 +375,26 @@ FocusesCompanion _focusCompanionFromImage(Map<String, Object?> image) {
   return FocusesCompanion(
     name: Value<String>(_activityRequiredString(image, 'name')),
     sortOrder: Value<int>(_activityRequiredInt(image, 'sort_order')),
+    colorHex: _imageFocusColorHex(image),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
+}
+
+// A Focus color read from an Activity Log or sync image. A device without
+// Focus colors pushes images with no key, so, as with [_imageFocusId], a
+// missing key leaves the column untouched and only an explicit null clears it.
+Value<String?> _imageFocusColorHex(Map<String, Object?> image) {
+  return image.containsKey('color_hex')
+      ? Value<String?>(_activityNullableString(image, 'color_hex'))
+      : const Value<String?>.absent();
+}
+
+// Undo compares the current image with the entry's after-image. An entry
+// written before Focus colors has no `color_hex`, which means the same row as
+// a null color, so it still counts as current.
+Map<String, Object?> _focusImageNormalized(Map<String, Object?> image) {
+  return <String, Object?>{'color_hex': null, ...image};
 }
 
 FocusesCompanion _focusSyncCompanionFromImage(

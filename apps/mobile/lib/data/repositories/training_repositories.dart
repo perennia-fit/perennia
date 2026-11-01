@@ -15786,6 +15786,12 @@ bool _activityImagesEqualForEntity(
       _protocolTargetOutcomeImageNormalized(right),
     );
   }
+  if (entityTable == AppDatabase.focusesTable) {
+    return _activityImagesEqual(
+      _focusImageNormalized(left),
+      _focusImageNormalized(right),
+    );
+  }
   if (entityTable != AppDatabase.templateLinksTable) {
     return _activityImagesEqual(left, right);
   }

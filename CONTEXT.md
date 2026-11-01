@@ -91,7 +91,9 @@ reorder, archive, and add their own. A Workout carries at most one Focus, and a
 Workout Template may carry one that materializing copies onto the new Workout. An
 Exercise may belong to any number of Focuses, which is what lets a picker open on
 the exercises that matter for today's session. Optional everywhere and freely
-changeable: changing or archiving a Focus never alters recorded Sets. Distinct from
+changeable: changing or archiving a Focus never alters recorded Sets. A Focus has a
+color, used wherever training is colored by Focus. Until the user picks one, the
+color comes from a fixed default for the Focus. Distinct from
 Category (what an exercise works, usually a body part) and from Exercise Type (what
 it measures).
 

@@ -109,3 +109,10 @@ Color colorFromHex(String colorHex, {required Color fallback}) {
   final value = int.tryParse(normalized, radix: 16);
   return value == null ? fallback : Color(0xFF000000 | value);
 }
+
+/// The `#RRGGBB` form of [color], the shape stored color fields take; the
+/// inverse of [colorFromHex] for an opaque color.
+String colorToHex(Color color) {
+  final rgb = color.toARGB32() & 0x00FFFFFF;
+  return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}
