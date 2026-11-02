@@ -25,6 +25,7 @@ import '../../domain/protocols/protocols.dart';
 import '../../domain/settings/account_settings.dart';
 import '../../domain/settings/settings_validation.dart';
 import '../../domain/training/exercise_catalog_merge.dart';
+import '../../domain/training/plan_logging.dart' show defaultRestAfter;
 import '../../domain/training/plan_validation.dart' as plan_validation;
 import '../../domain/training/routine_cadence.dart';
 import '../../domain/training/routine_up_next.dart';
@@ -9344,7 +9345,9 @@ class ExerciseGroupRepository {
 class RestTimerRepository {
   const RestTimerRepository._(this._repositories);
 
-  static const defaultDuration = Duration(seconds: 120);
+  /// The rest when nothing gives one; the Training Screen's Rest after
+  /// falls back to the same value (`restShownFor`).
+  static const defaultDuration = defaultRestAfter;
   static const defaultAlertVolume = 1.0;
 
   final TrainingRepositories _repositories;
