@@ -150,11 +150,14 @@ import {
   type AgentPlanReadStore
 } from "./agent-plan-reads.js";
 import {
+  AgentNewBestsQuerySchema,
+  AgentNewBestsResponseSchema,
   AgentProgressReadInvalidRangeResponseSchema,
   AgentProgressReadUnavailableResponseSchema,
   AgentTrainingDaysQuerySchema,
   AgentTrainingDaysResponseSchema,
   checkAgentTrainingDaysQuery,
+  readAgentExerciseProgressSeries,
   type AgentProgressReadStore
 } from "./agent-progress-reads.js";
 import {
@@ -459,6 +462,12 @@ export const AgentMcpTrainingDaysInputSchema = z
     query: AgentTrainingDaysQuerySchema
   })
   .openapi("AgentMcpTrainingDaysInput");
+
+export const AgentMcpNewBestsInputSchema = z
+  .object({
+    query: AgentNewBestsQuerySchema
+  })
+  .openapi("AgentMcpNewBestsInput");
 
 export const AgentMcpPlanTreeBatchWriteInputSchema = z
   .object({
@@ -983,19 +992,26 @@ export function createAgentMcpServer({
         );
       }
 
-      const sets = await agentReadStore.readExerciseSets({
-        userId: auth.agent.userId,
-        exerciseId: input.params.exerciseId,
-        from: query.from,
-        to: query.to
-      });
+      const [sets, progressSeries] = await Promise.all([
+        agentReadStore.readExerciseSets({
+          userId: auth.agent.userId,
+          exerciseId: input.params.exerciseId,
+          from: query.from,
+          to: query.to
+        }),
+        readAgentExerciseProgressSeries(agentProgressReadStore, {
+          userId: auth.agent.userId,
+          exercise
+        })
+      ]);
 
       return successResult(
         AgentExerciseAnalyticsResponseSchema.parse(
           buildAgentExerciseAnalyticsResponse({
             exercise,
             maxPoints: query.maxPoints,
-            sets
+            sets,
+            progressSeries
           })
         )
       );
@@ -1299,6 +1315,55 @@ export function createAgentMcpServer({
           from: query.fromLocalDate,
           to: query.toLocalDate,
           today: query.today
+        })
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_new_bests",
+    {
+      title: "List Agent New Bests",
+      description:
+        "List every New Best dated over a range (both ends included, at most 366 days): a Logged Workout whose Progress Measure for an exercise, taken from its Record Profile over completed Sets, is strictly better than every earlier Workout's, judged over the exercise's whole history. Archived exercises are left out and values are in normalized units. Same REST read path and core as the app's Progress Overview; computed on read, never stored.",
+      inputSchema: AgentMcpNewBestsInputSchema,
+      outputSchema: AgentNewBestsResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProgressReadStore === undefined) {
+        return errorResult(
+          AgentProgressReadUnavailableResponseSchema.parse({
+            code: "agent_progress_read_unavailable",
+            message: "Agent progress read storage is not configured."
+          })
+        );
+      }
+      const query = AgentNewBestsQuerySchema.parse(input.query);
+      const checked = checkAgentTrainingDaysQuery(query);
+      if (!checked.ok) {
+        return errorResult(
+          AgentProgressReadInvalidRangeResponseSchema.parse({
+            code: "agent_progress_read_invalid_range",
+            message: checked.message
+          })
+        );
+      }
+      // The store parses its response against the output schema already.
+      return successResult(
+        await agentProgressReadStore.readNewBests({
+          userId: auth.agent.userId,
+          from: query.fromLocalDate,
+          to: query.toLocalDate
         })
       );
     }

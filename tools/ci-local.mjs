@@ -194,6 +194,7 @@ const JOBS = {
       'apps/server/src/food-history.ts',
       'apps/server/test/food-history.golden.test.mjs',
       'apps/server/test/training-progress.golden.test.mjs',
+      'apps/server/test/progress-measure.golden.test.mjs',
       'apps/server/package.json', '.node-version',
       'apps/mobile/lib/domain/**', 'apps/mobile/lib/features/body_tracker/**',
       'apps/mobile/test/domain/**', 'apps/mobile/test/features/body_tracker/**',

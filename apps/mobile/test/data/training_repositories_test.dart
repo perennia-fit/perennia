@@ -1086,8 +1086,7 @@ void main() {
     });
 
     test('exercise groups survive reopening the database', () async {
-      final directory =
-          await Directory.systemTemp.createTemp('perennia_test_');
+      final directory = await Directory.systemTemp.createTemp('perennia_test_');
       addTearDown(() => directory.delete(recursive: true));
 
       final databaseFile = File('${directory.path}/exercise_groups.sqlite');
@@ -2398,7 +2397,7 @@ void main() {
       expect(reorderLogs.map((entry) => entry.actor), everyElement('tester'));
     });
 
-    test('finds latest prior set for exercise before current workout',
+    test('finds latest performed prior set for exercise before current workout',
         () async {
       final benchId = await repositories.exercises.create(
         ExerciseDraft(
@@ -2444,6 +2443,7 @@ void main() {
         position: 0,
         load: '80',
         reps: '5',
+        isCompleted: true,
       );
       await _createLoadRepsSet(
         repositories,
@@ -2452,6 +2452,7 @@ void main() {
         position: 1,
         load: '82.5',
         reps: '4',
+        isCompleted: true,
       );
       await _createLoadRepsSet(
         repositories,
@@ -2460,6 +2461,7 @@ void main() {
         position: 0,
         load: '60',
         reps: '8',
+        isCompleted: true,
       );
       final latestPriorId = await _createLoadRepsSet(
         repositories,
@@ -2468,6 +2470,17 @@ void main() {
         position: 1,
         load: '85',
         reps: '3',
+        isCompleted: true,
+      );
+      // A placeholder the Template left incomplete: never performed, so it
+      // must not become the prefill even though it sits last.
+      await _createLoadRepsSet(
+        repositories,
+        workoutId: newerWorkoutId,
+        exerciseId: benchId,
+        position: 2,
+        load: '0',
+        reps: '10',
       );
       await _createLoadRepsSet(
         repositories,
@@ -3036,8 +3049,7 @@ void main() {
 
     test('seeded exercise and logged set survive reopening the database',
         () async {
-      final directory =
-          await Directory.systemTemp.createTemp('perennia_test_');
+      final directory = await Directory.systemTemp.createTemp('perennia_test_');
       addTearDown(() => directory.delete(recursive: true));
 
       final databaseFile = File('${directory.path}/walking_skeleton.sqlite');
@@ -3078,8 +3090,7 @@ void main() {
 
     test('started session survives reopening on its original training day',
         () async {
-      final directory =
-          await Directory.systemTemp.createTemp('perennia_test_');
+      final directory = await Directory.systemTemp.createTemp('perennia_test_');
       addTearDown(() => directory.delete(recursive: true));
 
       final databaseFile = File('${directory.path}/training_day.sqlite');
@@ -3758,8 +3769,7 @@ void main() {
 
   test('rest timer deadline persists and resumes after reopening the database',
       () async {
-    final directory =
-        await Directory.systemTemp.createTemp('perennia_timer_');
+    final directory = await Directory.systemTemp.createTemp('perennia_timer_');
     addTearDown(() => directory.delete(recursive: true));
     final databaseFile = File('${directory.path}/timer.sqlite');
     final startedAt = DateTime.utc(2026, 6, 16, 1);
@@ -3804,7 +3814,7 @@ void main() {
       alertVolume: 0.4,
       now: startedAt,
     );
-    final timer = await repositories.restTimers.getById(timerId);
+    final timer = await repositories.restTimers.getById(timerId!);
 
     expect(timer?.duration, rest);
     expect(timer?.deadlineAt, startedAt.add(rest));
@@ -3834,6 +3844,56 @@ void main() {
     );
     expect(resumed?.alertVolume, 0.4);
     expect(resumed?.status, RestTimerStatus.running);
+  });
+
+  test('a planned rest of zero starts no timer and keeps the running one',
+      () async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(
+      database,
+      platformSeedSource: const _StarterSeedSource(),
+    );
+    final startedAt = DateTime.utc(2026, 6, 16, 1);
+    final exerciseId = await repositories.exercises.create(
+      ExerciseDraft(
+        name: 'Back Squat',
+        type: ExerciseType(
+          const <DimensionId>[DimensionId.load, DimensionId.reps],
+        ),
+      ),
+    );
+    final workoutId = await repositories.workoutSessions.create(
+      WorkoutSessionDraft(startedAt: startedAt, timezone: 'UTC'),
+    );
+    Future<LoggedSetRecord> plannedSet(int position, Duration rest) async {
+      final setId = await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: workoutId,
+          exerciseId: exerciseId,
+          position: position,
+          values: _loadRepsValues(load: '100', reps: '5'),
+          plannedRestAfter: rest,
+        ),
+      );
+      return (await repositories.sets.getById(setId))!;
+    }
+
+    final runningId = await repositories.restTimers.startForSet(
+      await plannedSet(0, const Duration(seconds: 90)),
+      now: startedAt,
+    );
+    final skippedId = await repositories.restTimers.startForSet(
+      await plannedSet(1, Duration.zero),
+      now: startedAt.add(const Duration(seconds: 10)),
+    );
+
+    expect(skippedId, isNull);
+    final current = await repositories.restTimers.getCurrentForWorkout(
+      workoutId,
+    );
+    expect(current?.id, runningId);
+    expect(current?.status, RestTimerStatus.running);
   });
 
   group('WorkoutSessionRepository.watchProgressWorkoutsBetween', () {
@@ -4101,6 +4161,7 @@ Future<String> _createLoadRepsSet(
   required int position,
   required String load,
   required String reps,
+  bool isCompleted = false,
 }) {
   return repositories.sets.create(
     LoggedSetDraft(
@@ -4108,6 +4169,7 @@ Future<String> _createLoadRepsSet(
       exerciseId: exerciseId,
       position: position,
       values: _loadRepsValues(load: load, reps: reps),
+      isCompleted: isCompleted,
     ),
   );
 }

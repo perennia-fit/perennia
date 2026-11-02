@@ -150,6 +150,7 @@ export {
   AgentMcpRoutineDetailInputSchema,
   AgentMcpRoutineListInputSchema,
   AgentMcpTrainingDayNutritionInputSchema,
+  AgentMcpNewBestsInputSchema,
   AgentMcpTrainingDaysInputSchema,
   AgentMcpValidateSetInputSchema,
   AgentMcpWorkoutTemplateDetailInputSchema,
@@ -743,12 +744,17 @@ export {
   type AgentWorkoutTemplateListQuery
 } from "./agent-plan-reads.js";
 export {
+  AgentNewBestsQuerySchema,
+  AgentNewBestsResponseSchema,
+  agentNewBestsRoute,
   AgentProgressReadInvalidRangeResponseSchema,
   AgentProgressReadUnavailableResponseSchema,
   AgentTrainingDaysQuerySchema,
   AgentTrainingDaysResponseSchema,
   agentTrainingDaysRoute,
   createDrizzleAgentProgressReadStore,
+  type AgentNewBestsQuery,
+  type AgentNewBestsResponse,
   type AgentProgressReadStore,
   type AgentTrainingDaysQuery,
   type AgentTrainingDaysResponse

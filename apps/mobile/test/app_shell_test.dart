@@ -15,6 +15,7 @@ import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/platform_exercise_seed.dart';
+import 'package:perennia/domain/analytics/progress_measure.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/domain/training/training_progress.dart';
@@ -36,6 +37,8 @@ import 'package:perennia/features/metrics/widgets/metrics_screen.dart';
 import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
 import 'package:perennia/features/progress/repositories/progress_feature_repository.dart';
+import 'package:perennia/features/progress/widgets/key_exercises_card.dart';
+import 'package:perennia/features/progress/widgets/new_bests_card.dart';
 import 'package:perennia/features/progress/widgets/progress_overview.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
@@ -241,6 +244,25 @@ void main() {
         await tester.tap(find.byKey(destinationKey));
         await tester.pumpAndSettle();
 
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      }
+
+      // The training cards below the fold, populated.
+      await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
+      await tester.pumpAndSettle();
+      for (final card in <Type>[KeyExercisesCard, NewBestsCard]) {
+        await tester.scrollUntilVisible(
+          find.byType(card),
+          200,
+          scrollable: find.descendant(
+            of: find.byKey(ProgressOverview.listKey),
+            matching: find.byType(Scrollable),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Bench press'), findsWidgets);
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
@@ -2241,9 +2263,57 @@ Future<void> _scrollToProgressTile(WidgetTester tester, Key key) async {
 
 /// A [StubProgressFeatureRepository] that fills every Progress card around
 /// the real current date: a weekly Routine, Workouts under two Focuses and
-/// none, and more Compounds than the Protocols card lists.
+/// none, more Compounds than the Protocols card lists, and two charted
+/// Favorites with New Bests.
 StubProgressFeatureRepository _populatedProgressRepository() {
   final today = TrainingDayDate.fromDateTime(DateTime.now());
+  ProgressPoint point(int daysAgo, double value, {bool isNewBest = false}) {
+    final date = today.addDays(-daysAgo);
+    return ProgressPoint(
+      workoutId: 'workout-$daysAgo-none',
+      localDate: date,
+      startedAt: date.atLocalTimeOf(DateTime(2000, 1, 1, 7)),
+      setId: 'set-$daysAgo',
+      value: value,
+      unit: TrainingUnit.kilogram,
+      isNewBest: isNewBest,
+    );
+  }
+
+  ExerciseRecord favorite(String id, String name) => ExerciseRecord(
+        id: id,
+        origin: ExerciseLibraryOrigin.user,
+        name: name,
+        type: ExerciseType(const <DimensionId>[
+          DimensionId.load,
+          DimensionId.reps,
+        ]),
+        defaultLoadUnit: TrainingUnit.kilogram,
+        loadMode: ExerciseLoadMode.added,
+        recordProfile: RecordProfile.maxLoad,
+        categoryId: null,
+        notes: null,
+        isFavorite: true,
+        updatedAt: DateTime.utc(2026),
+      );
+  final series = <ProgressSeries>[
+    ProgressSeries(
+      exerciseId: 'exercise-bench',
+      measure: ProgressMeasureKind.maxLoad,
+      betterIs: ProgressBetterIs.higher,
+      points: <ProgressPoint>[
+        point(120, 95),
+        point(30, 97.5, isNewBest: true),
+        point(3, 100, isNewBest: true),
+      ],
+    ),
+    ProgressSeries(
+      exerciseId: 'exercise-squat',
+      measure: ProgressMeasureKind.maxLoad,
+      betterIs: ProgressBetterIs.higher,
+      points: <ProgressPoint>[point(27, 140), point(6, 135)],
+    ),
+  ];
   // Each Workout is linked to the template its weekday plans, if any.
   ProgressWorkout workout(int daysAgo, {String? focusId}) {
     final date = today.addDays(-daysAgo);
@@ -2304,6 +2374,29 @@ StubProgressFeatureRepository _populatedProgressRepository() {
           notLogged: 2,
           paused: index == 3 ? 4 : 0,
         ),
+    ],
+    favorites: <ExerciseRecord>[
+      favorite('exercise-bench', 'Bench press'),
+      favorite('exercise-squat', 'Squat'),
+    ],
+    exerciseNames: const <String, String>{
+      'exercise-bench': 'Bench press',
+      'exercise-squat': 'Squat',
+    },
+    progressSeries: series,
+    newBests: <NewBest>[
+      for (final point in series.first.points.reversed)
+        if (point.isNewBest)
+          NewBest(
+            exerciseId: 'exercise-bench',
+            measure: ProgressMeasureKind.maxLoad,
+            workoutId: point.workoutId,
+            localDate: point.localDate,
+            startedAt: point.startedAt,
+            setId: point.setId,
+            value: point.value,
+            unit: point.unit,
+          ),
     ],
   );
 }

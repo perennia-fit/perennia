@@ -49,6 +49,7 @@ void main() {
   final statusIcon = components['status-icon'] as YamlMap;
   final legendIcon = components['legend-icon'] as YamlMap;
   final trainedDaysCell = components['trained-days-cell'] as YamlMap;
+  final progressSparkline = components['progress-sparkline'] as YamlMap;
 
   final unmapped = colors.keys
       .cast<String>()
@@ -122,6 +123,14 @@ void main() {
         '  static const double trainedDaysCellGap = ${_num(trainedDaysCell['gap'])};')
     ..writeln(
         '  static const double trainedDaysFillOpacity = ${_num(trainedDaysCell['fillOpacity'])};')
+    ..writeln(
+        '  static const double progressSparklineHeight = ${_num(progressSparkline['height'])};')
+    ..writeln(
+        '  static const double progressSparklinePointRadius = ${_num(progressSparkline['pointRadius'])};')
+    ..writeln(
+        '  static const double progressSparklineRingWidth = ${_num(progressSparkline['ringWidth'])};')
+    ..writeln(
+        '  static const double progressSparklineLineWidth = ${_num(progressSparkline['lineWidth'])};')
     ..writeln()
     ..writeln('  // ---- typography ----');
 

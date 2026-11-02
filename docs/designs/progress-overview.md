@@ -378,8 +378,10 @@ Every input to the training progress and Progress Measure cores is built from
 Performed Sets: Sets with `deletedAt` null and `isCompleted` true whose
 Workout has `deletedAt` null. There are no cascading deletes, so a deleted
 Workout's Sets stay undeleted; the loaders drop them by joining to the
-Workout, as `ExerciseAnalyticsRepository` already does through
-`_activeWorkoutsById`. The
+Workout. The app's Progress reads join each Set to its live Workout in the
+watched query itself, rather than looking Workouts up after the Set query as
+`ExerciseAnalyticsRepository._activeWorkoutsById` does, so deleting a Workout
+whose Sets stay undeleted re-emits. The
 codebase already uses this rule for copy-previous values and volume samples
 (`_lastPerformedValuesByExerciseId` in `template_materialize_repository.dart`,
 and `performanceVolumeSamples`). The cores make the rule testable:
@@ -534,7 +536,11 @@ only, in both languages. In the app, an exercise is active when its
 `Exercises` row has `deletedAt` null, which is the rule
 `ExerciseAnalyticsRepository` already applies. On the server, it is an
 exercise that `AgentCatalogStore.getExercisesByIds` returns with `active`
-not false. An archived exercise's Workouts still count toward Training Day
+not false, called with `includeShadowed: true`. A Platform exercise shadowed
+by a same-named active User Library exercise is hidden from the Agent's
+catalog lists, but its `Exercises` row in the app is not deleted, so it is
+still active in both languages and keeps its series and New Bests. An
+archived exercise's Workouts still count toward Training Day
 Statuses, Trained Days and time.
 
 **How the measure is taken.** For each Workout, drop Sets that are not
@@ -845,7 +851,7 @@ below it once, when its data arrives.
 | 2 | Trained days | "Trained days" | none | none |
 | 3 | Time by Focus | "Time by Focus" | "Focuses" | `FocusManagerScreen` |
 | 4 | Key exercises | "Key exercises" | none | none |
-| 5 | New bests | "New bests · {count}" | none | none |
+| 5 | New bests | "New bests · {count}" ("New bests" while loading, on error and when empty) | none | none |
 | 6 | Body | "Body" | "Body Tracker" | `BodyTrackerScreen.routeName` |
 | 7 | Protocols | "Protocols" | none | none |
 | 8 | More | none | none | the two existing tiles |
@@ -949,7 +955,10 @@ below it once, when its data arrives.
         | no earlier point | "First sessions" | "First sessions" |
 
     *   New Best points are drawn as hollow rings in the primary text color,
-        and the tile's semantics label adds "New best on {date}".
+        and the tile's semantics label adds "New best on {date}", naming
+        the most recent New Best in the period and dated as New bests rows
+        are. The tile's full label is the exercise name, the measure label,
+        the Best line and the comparison line, joined with ", ".
     *   A tile with no point in the period shows "No sessions this period"
         in place of the sparkline, "Best" and the comparison line.
     *   Tapping a tile pushes `ExerciseOverviewScreen(exerciseId: …)`.
@@ -965,6 +974,9 @@ below it once, when its data arrives.
         for an earlier date in the current year, and "12 Oct 2025"
         otherwise.
     *   Tapping a row pushes `ExerciseOverviewScreen(exerciseId: …)`.
+    *   A New Best whose exercise has no name in `watchExerciseNames` (an
+        archive that has not reached the computation yet) is left out of
+        both the rows and the count, so they always agree.
     *   Empty state: "No new bests in this period", no action.
 6.  **Body.**
     *   One row per curated Body Tracker measurement
@@ -1020,7 +1032,10 @@ the Dart enum of `measure` values (Data shapes), defined in
 Seconds are rounded half up to whole seconds before formatting. Differences
 in the comparison line use the same function, except that a pace or
 duration difference under a minute reads "18 s", and one of a minute or more
-reads `m:ss` ("1:05").
+reads `m:ss` ("1:05"). The comparison line compares the two values as they
+are displayed, after this rounding, and its difference is the gap between
+the displayed values. A gain smaller than the display precision reads "Same
+as before", so the line never contradicts the "Best" value beside it.
 
 `unitSystem` is `AppSettings.unitSystem`. Exercise Overview keeps its own
 formatting; aligning it is part of the separate Exercise Overview change.
@@ -1046,7 +1061,10 @@ in words instead of an arrow. No change is drawn in red, green or gold.
 
 **Accessibility.**
 *   Each chart is wrapped as `Semantics(container: true, label: …, child:
-    ExcludeSemantics(chart))`, the existing pattern.
+    ExcludeSemantics(chart))`, the existing pattern. A Key exercises tile is
+    itself one labelled button node with its content excluded, so its
+    sparkline has no wrapper of its own; a second node inside the tap
+    target would only repeat the label.
 *   Every tappable row, tile and button is at least 48 dp.
 *   With the stub repository showing a populated state for every card, the
     screen passes the text contrast, tap target and labelled tap target
@@ -1058,7 +1076,7 @@ in words instead of an arrow. No change is drawn in red, green or gold.
 | :------- | :------------- | :------- | :------------ |
 | This week, Trained days, Time by Focus | `GET /agent/progress/training-days`, operationId `listAgentTrainingDays` (new) | `agent_list_training_days` (new) | new path; `AgentTrainingDaysResponse`, `AgentTrainingDay`, `AgentTrainingWeekDay`, `AgentTrainingDayStatus` |
 | New bests | `GET /agent/progress/new-bests`, operationId `listAgentNewBests` (new) | `agent_list_new_bests` (new) | new path; `AgentNewBestsResponse`, `AgentNewBest` |
-| Key exercises | `GET /agent/analytics/exercises/{exerciseId}`, operationId `getAgentExerciseAnalytics` (changed) | `agent_get_exercise_analytics` (changed) | response adds `progressSeries` |
+| Key exercises | `GET /agent/analytics/exercises/{exerciseId}`, operationId `getAgentExerciseAnalytics` (changed) | `agent_get_exercise_analytics` (changed) | response adds `progressSeries`; `NullableAgentProgressSeries`, `AgentProgressSeries`, `AgentProgressPoint`, `AgentProgressMeasure` |
 | Body | `GET /agent/metrics/readings`, operationId `listAgentMetricReadings` (changed) | `agent_list_metric_readings` (changed) | query adds `includeTrend`; each reading may add `trendValue` |
 | Protocols | `GET /agent/protocols/day-statuses` (unchanged) | `agent_list_protocol_day_statuses` (unchanged) | none |
 
@@ -1088,7 +1106,9 @@ in words instead of an arrow. No change is drawn in red, green or gold.
     questions in CUJ 13.
 
 **`listAgentNewBests`.**
-*   Query: `fromLocalDate`, `toLocalDate`, with the same rules and errors.
+*   Query: `fromLocalDate`, `toLocalDate`, with the same rules and errors,
+    checked by the same `checkAgentTrainingDaysQuery`. There is no `today`,
+    so only the order and 366-date rules apply.
 *   Response: `{newBests: AgentNewBest[]}` from `newBestsBetween`, each
     `{exerciseId, exerciseName, measure, workoutId, localDate, startedAt,
     setId, value, unit}`.
@@ -1146,6 +1166,18 @@ session. Each Set's `exercise_id` is passed through the exported
 `AgentCatalogStore.getExercisesByIds`, which the store receives at
 construction as `workoutExerciseCatalog` is received in
 `agent-read-surface.ts`.
+
+Neither read loads more history than it needs. The exercise analytics read
+filters Sets in SQL to the exercise's id and every seed redirect source
+that resolves to it (`exerciseIdsResolvingTo` in `agent-catalog.ts`). The
+New Bests read first selects the distinct exercise ids with a Performed Set
+in a live Workout dated in the range, since only those can have a New Best
+in it, and then loads the whole history of those exercises alone.
+
+A synced row the app cannot read is skipped by the app's loader rather than
+failing the read: an exercise whose profile cannot be decoded has no series,
+and a Set value with an unknown or disallowed unit, or an entry that is not
+a number, is left out of its Set, as this loader leaves it out.
 
 Exercises the catalog does not return, or returns with `active` false, are
 skipped. Series are keyed by the resolved id. The name is the catalog
@@ -2054,9 +2086,12 @@ source:
         TrainingDayDate to)`.
 
     Both read active exercises (`deletedAt` null) and their Performed Sets.
-    They join each Set to its Workout for `localDate` and `startedAt`, and
-    drop Sets of deleted Workouts through `_activeWorkoutsById`. The profile
-    is built as `ExerciseAnalyticsRepository` builds it today.
+    They join each Set to its live Workout in one watched query for
+    `localDate` and `startedAt`, so Sets of deleted Workouts are dropped and
+    a Workout delete re-emits (D0). The profile is built as
+    `ExerciseAnalyticsRepository` builds it today; a row that cannot be
+    decoded is skipped (D9). `watchNewBests` runs one `compute` at a time,
+    keeping only the latest waiting history.
     `watchNewBests` runs every exercise's `progressSeries` and
     `newBestsBetween` inside `compute`, passing plain data (the grouped
     `ProgressWorkoutSets` and the profiles) and getting the `NewBest` list
@@ -2113,6 +2148,10 @@ source:
     `performance_budgets_test.dart`** (modify). Add
     `progressNewBestsBudget` over the item 36 fixture, plus its README row.
 52. **`CONTEXT.md`** (modify). Add Progress Measure and New Best.
+    **`DESIGN.md` and `apps/mobile/DESIGN.md`** (modify): the Progress
+    sparkline component and its front-matter token `progress-sparkline`
+    (40px height, 3px point radius, 1.5px ring stroke, 2px line width),
+    generated and read through `AppDimens` as item 37's tokens are.
 53. **Tests.**
     *   `apps/mobile/test/features/progress/key_exercises_card_test.dart`
         and `new_bests_card_test.dart` (create), with the stub:

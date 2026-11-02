@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/platform_exercise_seed.dart';
+import 'package:perennia/domain/analytics/progress_measure.dart';
 import 'package:perennia/domain/training/focus_color.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
@@ -15,7 +16,11 @@ import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
 import 'package:perennia/features/home/widgets/home_screen.dart';
 import 'package:perennia/features/progress/controllers/progress_controller.dart';
+import 'package:perennia/features/analytics/widgets/exercise_overview_screen.dart';
 import 'package:perennia/features/progress/widgets/focus_time_card.dart';
+import 'package:perennia/features/progress/widgets/key_exercises_card.dart';
+import 'package:perennia/features/progress/widgets/new_bests_card.dart';
+import 'package:perennia/features/progress/widgets/progress_sparkline.dart';
 import 'package:perennia/features/progress/widgets/progress_overview.dart';
 import 'package:perennia/features/progress/widgets/protocols_progress_card.dart';
 import 'package:perennia/features/progress/widgets/this_week_card.dart';
@@ -189,6 +194,9 @@ void main() {
   }
 
   List<Override> overrides(DateTime now) => <Override>[
+        // Key exercises and New bests read the database through the
+        // exercise analytics repository.
+        appDatabaseProvider.overrideWith((ref) => database),
         trainingRepositoriesProvider.overrideWith((ref) => repositories),
         settingsRepositoryProvider.overrideWith(
           (ref) => InMemorySettingsRepository(),
@@ -584,6 +592,209 @@ void main() {
     await _unmount(tester);
   });
 
+  /// A Favorite "5 km run" with Record Profile fastest pace.
+  Future<String> fiveKmRun() async {
+    final id = await repositories.exercises.create(
+      ExerciseDraft(
+        name: '5 km run',
+        type: ExerciseType(const <DimensionId>[
+          DimensionId.distance,
+          DimensionId.duration,
+        ]),
+        recordProfile: RecordProfile.fastestPace,
+      ),
+    );
+    await repositories.exercises.setFavorite(id, isFavorite: true);
+    return id;
+  }
+
+  /// A Workout at [startedAt] with one 5 km Set of [seconds] on [runId].
+  Future<String> run(
+    String runId,
+    DateTime startedAt,
+    int seconds, {
+    bool isCompleted = true,
+  }) async {
+    final workoutId = await repositories.workoutSessions.create(
+      WorkoutSessionDraft(
+        startedAt: startedAt,
+        timezone: startedAt.timeZoneName,
+        localDate: TrainingDayDate.fromDateTime(startedAt),
+        endedAt: startedAt.add(Duration(seconds: seconds)),
+      ),
+    );
+    await repositories.sets.create(
+      LoggedSetDraft(
+        workoutId: workoutId,
+        exerciseId: runId,
+        position: 0,
+        isCompleted: isCompleted,
+        values: LoggedSet.fromValues(<SetDimensionValue>[
+          SetDimensionValue(
+            dimension: DimensionId.distance,
+            entered: '5',
+            unit: TrainingUnit.kilometer,
+          ),
+          SetDimensionValue(
+            dimension: DimensionId.duration,
+            entered: '$seconds',
+            unit: TrainingUnit.second,
+          ),
+        ]),
+      ),
+    );
+    return workoutId;
+  }
+
+  testWidgets(
+      'CUJ 9: a new best on a run shows on its tile and tops New '
+      'bests', (tester) async {
+    late String runId;
+    late String saturday;
+    await tester.runAsync(() async {
+      runId = await fiveKmRun();
+      // Before the 12-week period from 10 August: 5:22 and 5:30 per km.
+      await run(runId, DateTime(2026, 7, 20, 7), 1610);
+      await run(runId, DateTime(2026, 8, 3, 7), 1650);
+      // In the period: 5:40, then 5:04 on Saturday.
+      await run(runId, DateTime(2026, 10, 17, 7), 1700);
+      saturday = await run(runId, _at(5, 7), 1520);
+    });
+
+    await pumpOverview(tester, _at(6, 18));
+
+    expect(
+      text(tester, KeyExercisesCard.bestKey(runId)),
+      'Best 5:04 /km',
+    );
+    expect(
+      text(tester, KeyExercisesCard.comparisonKey(runId)),
+      '18 s faster than before',
+    );
+    final sparkline = tester.widget<ProgressSparkline>(
+      find.descendant(
+        of: find.byKey(KeyExercisesCard.tileKey(runId)),
+        matching: find.byType(ProgressSparkline),
+      ),
+    );
+    expect(sparkline.points.map((point) => point.y), <double>[340, 304]);
+    expect(sparkline.markedIndexes, <int>{1});
+
+    final rows = find.descendant(
+      of: find.ancestor(
+        of: find.text('New bests · 1'),
+        matching: find.byType(Material),
+      ),
+      matching: find.byType(InkWell),
+    );
+    final top = rows.first;
+    final best = NewBest(
+      exerciseId: runId,
+      measure: ProgressMeasureKind.fastestPace,
+      workoutId: saturday,
+      localDate: _monday.addDays(5),
+      startedAt: _at(5, 7),
+      setId: '',
+      value: 304,
+      unit: TrainingUnit.second,
+    );
+    expect(tester.widget(top).key, NewBestsCard.rowKey(best));
+    expect(
+      find.descendant(of: top, matching: find.text('5 km run · 5:04 /km')),
+      findsOneWidget,
+    );
+    expect(find.descendant(of: top, matching: find.text('Sat')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: top,
+        matching: find.byIcon(Icons.emoji_events_outlined),
+      ),
+      findsOneWidget,
+    );
+
+    // The row opens the exercise.
+    await tester.tap(top);
+    await _settle(tester);
+    expect(
+      tester
+          .widget<ExerciseOverviewScreen>(find.byType(ExerciseOverviewScreen))
+          .exerciseId,
+      runId,
+    );
+    await _unmount(tester);
+  });
+
+  testWidgets(
+      'CUJ 10: with no Favorites, Key exercises asks for one, with no '
+      'action', (tester) async {
+    await tester.runAsync(() async {
+      // History, but nothing marked as a Favorite.
+      await workout(_at(0, 7));
+    });
+
+    await pumpOverview(tester, _at(6, 18));
+
+    expect(
+      find.text('Mark exercises as favorites to chart them here'),
+      findsOneWidget,
+    );
+    final card = find
+        .ancestor(
+          of: find.text('Key exercises'),
+          matching: find.byType(Material),
+        )
+        .first;
+    expect(
+      find.descendant(of: card, matching: find.byType(TextButton)),
+      findsNothing,
+    );
+    await _unmount(tester);
+  });
+
+  testWidgets(
+      'an abandoned planned workout adds no New Best, however far its '
+      'unfinished Set would go', (tester) async {
+    await tester.runAsync(() async {
+      final runId = await fiveKmRun();
+      final plan = await hybridBlock();
+      await run(runId, _at(-14, 7), 1650);
+      // Started from Up next and abandoned: its Set was never completed.
+      final abandoned = await startFrom(
+        plan.run,
+        _at(1, 7),
+        routineId: plan.routine,
+        slot: DateTime.tuesday,
+        performed: false,
+      );
+      await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: abandoned,
+          exerciseId: runId,
+          position: 0,
+          isCompleted: false,
+          values: LoggedSet.fromValues(<SetDimensionValue>[
+            SetDimensionValue(
+              dimension: DimensionId.distance,
+              entered: '5',
+              unit: TrainingUnit.kilometer,
+            ),
+            SetDimensionValue(
+              dimension: DimensionId.duration,
+              entered: '1400',
+              unit: TrainingUnit.second,
+            ),
+          ]),
+        ),
+      );
+    });
+
+    await pumpOverview(tester, _at(2, 12));
+
+    expect(find.text('No new bests in this period'), findsOneWidget);
+    expect(find.textContaining('New bests ·'), findsNothing);
+    await _unmount(tester);
+  });
+
   testWidgets(
       'CUJ 12: locked Protocols show only the lock; unlocking lists '
       'each Compound, which opens its Consistency view', (tester) async {
@@ -688,6 +899,11 @@ void main() {
     expect(find.text('Plan your week with a Routine'), findsOneWidget);
     expect(find.text('Logged workouts show here'), findsOneWidget);
     expect(find.text('Finished workouts show here'), findsOneWidget);
+    expect(
+      find.text('Mark exercises as favorites to chart them here'),
+      findsOneWidget,
+    );
+    expect(find.text('No new bests in this period'), findsOneWidget);
     expect(find.byKey(ProtocolsProgressCard.cardKey), findsNothing);
 
     int actionsIn(String title) {
@@ -706,6 +922,8 @@ void main() {
     expect(actionsIn('This week'), 1);
     expect(actionsIn('Trained days'), 0);
     expect(actionsIn('Time by Focus'), 1);
+    expect(actionsIn('Key exercises'), 0);
+    expect(actionsIn('New bests'), 0);
     expect(find.byKey(ProgressOverview.bodyTrackerTileKey), findsOneWidget);
     expect(find.byKey(ProgressOverview.healthMetricsTileKey), findsOneWidget);
     await _unmount(tester);

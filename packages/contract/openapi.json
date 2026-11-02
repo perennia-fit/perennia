@@ -9807,6 +9807,9 @@
           },
           "periodStats": {
             "$ref": "#/components/schemas/AgentPeriodStats"
+          },
+          "progressSeries": {
+            "$ref": "#/components/schemas/NullableAgentProgressSeries"
           }
         },
         "required": [
@@ -9821,7 +9824,8 @@
           "volume",
           "maxLoadSeries",
           "repMaxSeries",
-          "periodStats"
+          "periodStats",
+          "progressSeries"
         ]
       },
       "AgentReadExerciseAnalyticsProfile": {
@@ -10089,6 +10093,104 @@
           "totalDurationSeconds",
           "totalDistanceKilometers",
           "maxEstimatedOneRepMaxKilograms"
+        ]
+      },
+      "NullableAgentProgressSeries": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/AgentProgressSeries"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "The Progress Measure per Logged Workout over the exercise's whole history, not limited by from, to or the Set page, with each New Best marked: the same points the app's Key exercises card plots. Null for an archived exercise, a Record Profile with no single best number (minAssistancePerRepCount, completionStreak), or when progress read storage is not configured."
+      },
+      "AgentProgressSeries": {
+        "type": "object",
+        "properties": {
+          "exerciseId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "measure": {
+            "$ref": "#/components/schemas/AgentProgressMeasure"
+          },
+          "betterIs": {
+            "type": "string",
+            "enum": [
+              "higher",
+              "lower"
+            ]
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProgressPoint"
+            },
+            "description": "One per Logged Workout with a value for the measure, over the exercise's whole history, ordered by localDate, startedAt and workoutId."
+          }
+        },
+        "required": [
+          "exerciseId",
+          "measure",
+          "betterIs",
+          "points"
+        ]
+      },
+      "AgentProgressMeasure": {
+        "type": "string",
+        "enum": [
+          "estimatedOneRepMax",
+          "maxLoad",
+          "maxReps",
+          "maxDuration",
+          "minDuration",
+          "maxDistance",
+          "fastestPace"
+        ],
+        "description": "The one number per Logged Workout an exercise's Record Profile charts: the best estimated one-rep max (repMax), or the Workout's headline record. Values are in the engine's normalized units: kilograms, repetitions, kilometres, seconds, and seconds per kilometre for fastestPace."
+      },
+      "AgentProgressPoint": {
+        "type": "object",
+        "properties": {
+          "workoutId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "localDate": {
+            "type": "string",
+            "description": "A local calendar date, YYYY-MM-DD.",
+            "example": "2026-10-26"
+          },
+          "startedAt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "setId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The completed Set the value came from."
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/AgentReadTrainingUnit"
+          },
+          "isNewBest": {
+            "type": "boolean",
+            "description": "True when the value is strictly better than every earlier point's. The first point never is, and an equal value is not."
+          }
+        },
+        "required": [
+          "workoutId",
+          "localDate",
+          "startedAt",
+          "setId",
+          "value",
+          "unit",
+          "isNewBest"
         ]
       },
       "AgentReadExerciseNotFoundResponse": {
@@ -13351,6 +13453,72 @@
         "required": [
           "code",
           "message"
+        ]
+      },
+      "AgentNewBestsResponse": {
+        "type": "object",
+        "properties": {
+          "newBests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentNewBest"
+            },
+            "description": "Every New Best dated in the range, newest first: by localDate, startedAt and workoutId descending, then exerciseId ascending."
+          }
+        },
+        "required": [
+          "newBests"
+        ]
+      },
+      "AgentNewBest": {
+        "type": "object",
+        "properties": {
+          "exerciseId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exerciseName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "measure": {
+            "$ref": "#/components/schemas/AgentProgressMeasure"
+          },
+          "workoutId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "localDate": {
+            "type": "string",
+            "description": "A local calendar date, YYYY-MM-DD.",
+            "example": "2026-10-26"
+          },
+          "startedAt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "setId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The completed Set the value came from."
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/AgentReadTrainingUnit"
+          }
+        },
+        "required": [
+          "exerciseId",
+          "exerciseName",
+          "measure",
+          "workoutId",
+          "localDate",
+          "startedAt",
+          "setId",
+          "value",
+          "unit"
         ]
       },
       "AgentPlanTreeBatchWriteResponse": {
@@ -24298,6 +24466,138 @@
           },
           "400": {
             "description": "The range is refused, with this body: fromLocalDate after toLocalDate, a range of more than 366 days, toLocalDate after today, or a today more than one day from the server's UTC date. A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProgressReadInvalidRangeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or progress read storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProgressReadUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/progress/new-bests": {
+      "get": {
+        "operationId": "listAgentNewBests",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "List the New Bests set over a range.",
+        "description": "Returns every New Best whose Logged Workout is dated from fromLocalDate through toLocalDate (both included, at most 366 days): a Workout whose Progress Measure for an exercise is strictly better than every earlier Workout's, judged over the exercise's whole history. The measure comes from the exercise's Record Profile, over completed Sets only; archived exercises are left out. Values are in the engine's normalized units. Computed on read by the same core the app's Progress Overview uses, never stored.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "Inclusive first local date (YYYY-MM-DD) of the range. The range holds at most 366 days, both ends included.",
+              "example": "2026-10-26"
+            },
+            "required": true,
+            "description": "Inclusive first local date (YYYY-MM-DD) of the range. The range holds at most 366 days, both ends included.",
+            "name": "fromLocalDate",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Inclusive last local date (YYYY-MM-DD) of the range; not before fromLocalDate.",
+              "example": "2026-10-26"
+            },
+            "required": true,
+            "description": "Inclusive last local date (YYYY-MM-DD) of the range; not before fromLocalDate.",
+            "name": "toLocalDate",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The range's New Bests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentNewBestsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The range is refused, with this body: fromLocalDate after toLocalDate, or a range of more than 366 days. A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.",
             "content": {
               "application/json": {
                 "schema": {

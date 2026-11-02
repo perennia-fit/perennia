@@ -72,6 +72,7 @@ jobs:
               - 'apps/server/src/food-history.ts'
               - 'apps/server/test/food-history.golden.test.mjs'
               - 'apps/server/test/training-progress.golden.test.mjs'
+              - 'apps/server/test/progress-measure.golden.test.mjs'
               - 'apps/server/package.json'
               - '.node-version'
               - 'apps/mobile/lib/domain/**'

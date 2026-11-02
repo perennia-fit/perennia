@@ -1,8 +1,8 @@
 # Protocol Schedules and Reminders
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Current (2026-10-28)
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, to record the decisions made building file 46a and Phase 5, and to record the decisions made building Phase 6)
+*   **Status:** In Review (the 2026-11-02 revision: D8, CUJs 13 to 18, Phases 7 and 8). Phases 1 to 6 are Current (2026-10-28).
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, to record the decisions made building file 46a and Phase 5, and to record the decisions made building Phase 6; 2026-11-02 to close the archive day, add Protocol delete, and add Skips: D8)
 
 --------------------------------------------------------------------------------
 
@@ -140,6 +140,12 @@ the whole Protocol.
 7.  **The vocabulary is defined.** [CONTEXT.md](../../CONTEXT.md) gains the
     domain terms below, and the Schedule entry is rewritten, in the
     implementation pull request.
+8.  **A user can close out what the plan expects** (the 2026-11-02
+    revision, D8). Archiving a Protocol stops asking for the doses not yet
+    logged that day. A Protocol nothing was ever logged for can be deleted,
+    not only archived. And a single planned dose can be skipped, today or on
+    a past day, so a deliberate "not today" reads "Skipped" instead of
+    "Pending" or "Not logged".
 
 ## New and changed terms
 
@@ -157,7 +163,11 @@ names used in this spec and in code only.
 | **Protocol Member** | One Compound inside a Protocol, with its Schedule Versions. | yes |
 | **Planned dose** | One dose a Schedule plans on a date, with a clock time or untimed. Derived, never stored. A logged record is always a **Dose**; a computed one is always a "planned dose". | yes |
 | **Untimed** | A planned dose with no clock time. It counts like any other, but never gets a reminder. | yes |
-| **Day Status** | The single label for one Compound on one date, from the closed set in D6. Derived, never stored. | yes |
+| **Day Status** | The single label for one Compound on one date, from the closed set in D6 and D8. Derived, never stored. | yes |
+| **Skip** | The user's record that one planned dose of a Protocol, on one local date, was not taken on purpose. It names the planned dose by Protocol, Compound, local date and planned time (or untimed), never by slot number. Authored and synced like a Dose, but never a Dose and never a Metric: it records no intake. It answers its planned dose only while no Dose fills it (D8). | yes |
+| **Archive day** | The local date a Protocol or Protocol Member was archived (`archived_on`). On it, a planned dose counts only if a Dose fills it, whenever that Dose is logged; unfilled ones are no longer planned (D8). | yes |
+| **History** (of a Protocol) | At least one Dose that isn't tombstoned and is either tagged to the Protocol, or is of one of its member Compounds with a local date within the Protocol's dates (D8). Skips don't count. | no (in the Protocol entry) |
+| **Deleted** (Protocol) | A Protocol removed because it has no history. Its `protocols` row is stored as the tombstone undo leaves (`deleted_at` with no `archived_on`), so every reader treats it and its members, versions and target outcomes as never having existed, and the Activity Log can still recover it (D8). | yes (in the Protocol entry) |
 | **Planned list** | The planned-versus-logged list at the top of the Protocol Day view. | no |
 | **Consistency view** | The per-Compound view of logged Doses against planned doses over a date range. | no |
 | **Reminder reconciler** | The device-local component that keeps the phone's scheduled reminders equal to what the plan says. | no |
@@ -177,8 +187,17 @@ names used in this spec and in code only.
 *   **Logging from the notification itself.** v1 notifications open the app.
 *   **"Fixed number of doses" as a way for a Protocol to end.** It survives only
     as a helper that sets an end date.
-*   **A per-Dose "skip today" record.** A planned dose that wasn't logged reads
-    "Not logged".
+*   **Skipping a planned dose ahead of its day.** A Skip answers a planned
+    dose on today or a past day (D8). A run of days off is a Pause, and a
+    change of plan is a Schedule edit.
+*   **A reason or note on a Skip.** A Skip records only which planned dose
+    it answers.
+*   **Deleting a Protocol with history.** It can only be archived (D8).
+*   **Restoring an archived Protocol, and listing archived Protocols in the
+    app.** Unchanged: no editor action or Agent write restores one (D1),
+    and the app doesn't list them (Alternative AE).
+*   **Changing what ending early does.** An end date of today still plans
+    that day's remaining doses (D4); Skips answer them (D8).
 *   **CSV export of Protocols data.** The exclusion stays as it is.
 *   **Cancelling reminders on other devices through Sync Nudge** (Alternative
     O).
@@ -328,6 +347,29 @@ Building Phase 6 raised more. They are settled the same way:
 None of them changes what Phase 6 built, so there is no lettered entry
 after file 65.
 
+Using the built feature raised three more, which the 2026-11-02 revision
+settles in D8 and builds in Phases 7 and 8:
+
+*   **A Protocol archived today kept asking for today's doses.** The archive
+    day was planned (D1), and an archived Protocol is read-only, so its
+    unlogged rows read "Pending" for the rest of the day, with nothing the
+    user could do to answer them. Its reminders kept firing too (D5).
+*   **A Protocol created by mistake could only be archived.** Archiving
+    keeps a Protocol's past days counting, so a plan that was never
+    followed left its days reading "Not logged" in the Consistency view.
+*   **A dose not taken on purpose read the same as one forgotten.** This
+    spec deferred a "skip today" record until there was evidence that
+    "skipped on purpose" must look different from "Not logged" (formerly a
+    Future Improvements row). A user adjusting a protocol from day to day
+    asked for exactly that.
+
+The revision's Goldfish review changed four decisions before approval:
+delete writes only the Protocol row (Alternative AD); history also counts
+untagged Doses within the Protocol's dates, and Skips don't count; archiving
+is never refused (Alternative AC); and matching prefers slots no Skip took
+(Alternative X). It also dropped an archived-Protocols list (Alternative
+AE). No question is open on the revision.
+
 ## Critical User Journeys (CUJs)
 
 ### CUJ 1: Morning stack, one reminder
@@ -454,6 +496,83 @@ after file 65.
 *   **Then**: A banner reads "Reminders are off on this device", with an
     "Allow" button that requests permission. Until then phone B schedules no
     reminders.
+
+CUJs 13 to 18 come from the 2026-11-02 revision (D8).
+
+### CUJ 13: Deleting a Protocol nothing was logged for
+
+*   **Given**: Yesterday the user created a Protocol "Cut" holding creatine
+    at 08:00 daily, with reminders on. No creatine Dose has been logged
+    since, tagged or not. An untagged creatine Dose since yesterday would
+    count as history (D8), and the editor would offer Archive instead.
+*   **When**: The user opens "Cut" in the Protocol editor, taps **Delete**,
+    and confirms.
+*   **Then**: The editor offered Delete, not Archive. "Cut" is gone from the
+    Protocol list, from today's Planned
+    list and from the Consistency view: yesterday doesn't read "Not
+    logged", because "Cut" never planned anything. Its reminders are
+    cancelled on the next reconciler run. The Activity Log can undo the
+    delete, which brings "Cut" back exactly as it was.
+
+### CUJ 14: Archiving a course partway through the day
+
+*   **Given**: A Protocol "Shoulder" plans BPC-157 at 08:00 and 21:00 daily,
+    with reminders on, and has been followed for two weeks. Today the user
+    logged the 08:00 dose.
+*   **When**: At 12:00 the user archives "Shoulder".
+*   **Then**: The editor offered Archive, not Delete, because "Shoulder" has
+    history, and Archive asked for confirmation. Today's
+    Planned list keeps the 08:00 row, reading "Logged". The 21:00 row is
+    gone: no "Pending", no "Log all planned" for it, and no 21:00 reminder.
+    Today's Day Status for BPC-157 reads "Logged". From tomorrow "Shoulder"
+    plans nothing, as before this revision. Had the user archived it before
+    logging anything that day, today's group would be gone from the Planned
+    list, and the day would read "Not planned" with the reason "removed". If
+    the user then logs BPC-157 at 21:00 anyway, from the Compound list, that
+    Dose fills the 21:00 slot and the row comes back as "Logged". Had the
+    user set the end date to today instead of archiving, the 21:00 row would
+    stay "Pending", and the user could answer it with a Skip (D8).
+
+### CUJ 15: Skipping today's dose
+
+*   **Given**: TRT is planned daily at 09:00, with reminders on. It is
+    07:30, and the user decides not to take today's dose.
+*   **When**: The user taps TRT's "Pending" row, then **Skip** in the log
+    sheet.
+*   **Then**: Two taps. The row reads "Skipped". The 09:00 reminder no
+    longer fires for TRT, and "Log all planned" no longer logs it. Today's
+    Day Status for TRT is "Skipped". An Agent reading today's Day Statuses
+    gets `skipped`, with `skippedCount` 1.
+
+### CUJ 16: Changing one's mind after a Skip
+
+*   **Given**: The CUJ 15 Skip.
+*   **When**: At 10:00 the user takes TRT after all, taps the "Skipped" row
+    and saves the prefilled Dose.
+*   **Then**: One Batch logs the Dose and removes the Skip. The row reads
+    "Logged". Had the user tapped **Undo skip** instead, the row would read
+    "Pending" again, with nothing logged.
+
+### CUJ 17: Answering a past day
+
+*   **Given**: Yesterday GHK-Cu's 21:00 planned dose reads "Not logged". The
+    user left it out on purpose.
+*   **When**: The user goes to yesterday's Protocol Day, taps the row, then
+    **Skip**.
+*   **Then**: Yesterday reads "Skipped" in the Planned list, the Consistency
+    view and the Progress card's counts, not "Not logged".
+
+### CUJ 18: An Agent does the same
+
+*   **Given**: The user's Agent reads the plan through the Agent API.
+*   **When**: It skips a planned dose, removes that Skip using the `skipId`
+    from a Day Status fill, deletes a Protocol whose `hasHistory` is false,
+    tries to delete one with history, and archives one with no history.
+*   **Then**: The Skip, its removal and the delete apply and sync to the
+    app, with the same Day Statuses the app shows. The delete of a Protocol
+    with history is refused (422, `protocol_has_history`), as the app
+    refuses it, and the message says to archive instead. The archive
+    applies, with a `protocol_has_no_history` warning.
 
 ## Technical Plan (Architecture)
 
@@ -619,8 +738,12 @@ own id. No version is ever edited in place.
     archive is the one record of the removal. The archive stores its local
     date, `archived_on`, frozen when it is written, as a Dose freezes its
     `localDate`. So no reader converts a timestamp, and travel never moves it.
-    *   The archive day itself is still planned, the same as ending a Protocol
-        early: a Dose logged that morning still counts.
+    *   The archive day itself is still planned, so a Dose logged that
+        morning still counts. Since the 2026-11-02 revision, only its
+        filled planned doses count: unfilled ones on the archive day are no
+        longer planned (D8, "The archive day"). Ending a Protocol early
+        with an end date of today is unchanged: that day stays fully
+        planned (D4).
     *   From the next day on, the member reads "Not planned" with the reason
         `removed`.
 *   **Re-adding a Compound** creates a new member row, as today, with a first
@@ -632,9 +755,14 @@ own id. No version is ever edited in place.
     history with a gap of "removed" days.
 *   **Archived Protocols** keep their versions and freeze an `archived_on`
     the same way. Past days still count an archived Protocol up to and
-    including that date. An archived Protocol is read-only: the app's editor
-    refuses to edit one, and so does the Agent write path (D6). No path
-    restores an archived Protocol or Protocol Member. Clearing an archive
+    including that date, the archive day as D8 closes it. Since the
+    2026-11-02 revision the editor offers Archive only for a Protocol with
+    history, and Delete for one without (D8, "Deleting a Protocol"). An archived Protocol is read-only: the app's editor
+    refuses to edit one, and so does the Agent write path (D6). No editor
+    action and no Agent write restores an archived Protocol or Protocol
+    Member. (Activity Log undo of the archive entry writes its before-image
+    back, as undo does for any entry; D8 relies on that to reach an
+    archived Protocol with no history.) Clearing an archive
     would erase its `archived_on`, so the days it read "removed" would turn
     back into planned days. Coming back is a new member row (above), or a
     new Protocol.
@@ -877,10 +1005,17 @@ How a date is decided for one Protocol and Protocol Member, in order:
     reminder only if at least one unfilled timed planned dose at that time
     belongs to a Protocol with reminders on. Past times never do, and untimed
     planned doses never do.
-    *   **The archive day.** A Protocol or member archived today still gets
-        reminders for today's later planned times, because the archive day
-        itself is still planned (D1), and nothing here overrides that. Its
-        reminders stop from the next day. (Settled after Phase 5's build.)
+    *   **The archive day.** A Protocol or member archived today gets no
+        reminder for today's later planned times: an unfilled planned dose
+        on the archive day is no longer planned (D8). For today the
+        reconciler's input comes from the Day Status fills, which drop it;
+        for a later archive date (an Agent's `today` a day ahead), the input
+        skips any PlanDay with `archiveDay: true` (file 76). (Phase 5 built "still gets reminders for
+        today's later planned times, because the archive day itself is
+        still planned"; the 2026-11-02 revision changes it, in Phase 7.)
+    *   **Skipped planned doses.** A planned dose a Skip answers gets no
+        reminder, exactly as a filled one: the input's `filled` is true for
+        it (D8, file 76).
     *   **Daylight-saving changes.** A planned time that a spring-forward
         change skips fires at the first valid minute after the gap, so
         02:30 fires at 03:00. Distinct planned times inside one gap keep
@@ -941,12 +1076,14 @@ How a date is decided for one Protocol and Protocol Member, in order:
         or a read that fails, asks nothing. (Settled after Phase 5's
         build.)
     *   **"A Protocol has reminders on"** (CUJ 12 and the status screen)
-        means a Protocol that isn't archived has its Reminders switch on,
-        or a reminders-on timed planned dose still falls in the horizon (a
-        Protocol archived today keeps today's). It is read from the
-        Protocols themselves, not only from the horizon, so the banner
-        shows even when none of that Protocol's timed doses falls in the
-        next 14 days. (Settled after Phase 5's build.)
+        means a Protocol that isn't archived has its Reminders switch on.
+        It is read from the Protocols themselves, not from the horizon, so
+        the banner shows even when none of that Protocol's timed doses
+        falls in the next 14 days. (Settled after Phase 5's build.)
+        *   Phase 5 also counted "a reminders-on timed planned dose still in
+            the horizon", which kept a Protocol archived today. After D8 a
+            Protocol archived today keeps only filled doses, which schedule
+            nothing, so Phase 7 drops that half (file 76).
 *   **Tap:** the payload carries only `{kind: "protocolReminder", localDate}`.
     On iOS, `AppDelegate` handles a reminder tap itself and sends
     `onProtocolReminderTapped(localDate)` over the existing
@@ -1015,6 +1152,11 @@ provenance, never adherence.
         5.  `outside`.
 *   **Dates after today** have no Day Status.
 
+The 2026-11-02 revision adds two steps to matching (closing the archive day,
+then marking Skips), a `skippedCount`, and an eighth status, "Skipped". The
+rules above still hold for a day with no Skip and no archive day; D8, "Day
+Statuses with Skips and archive days", is the complete rule.
+
 Each status has a text label; color is never the only signal. Extra Doses are
 counted next to the status and never change it. UI copy and API fields never
 use "missed", "late", "overdue", "adherence", "streak", or a percentage.
@@ -1044,7 +1186,11 @@ its Protocol group headers and row labels say what it is.
     "Logged" when filled, "Pending" when unfilled today, "Not logged" when
     unfilled on a past day. Groups are ordered by Protocol name, then id.
     Within a group, rows are ordered by planned time (untimed last), then
-    Compound name, then Compound id, then slot.
+    Compound name, then Compound id, then slot. Since the 2026-11-02
+    revision a row can also read "Skipped", and tapping a "Pending" or
+    "Not logged" row offers **Skip** in the log sheet (D8, "Skips in the
+    app"). Today's and past rows come from the Day Status fills, numbered
+    after D8's archive-day drop.
 *   **Tapping a "Pending" or "Not logged" row** opens the log sheet
     prefilled with the planned amount and route, tagged with the row's
     Protocol. On today, the time is now. On a past day, it is the row's
@@ -1353,7 +1499,7 @@ amounts. Building Phase 4 settled the rest:
     | `today_out_of_range` | `today` is more than one day from the server's UTC date (field `today`) |
     | `schedule_version_exists` | a Schedule id already exists for this account: versions are insert-only |
     | `schedule_member_not_found` | a Schedule's `protocolCompoundId` is not a member of the Protocol it is listed under, in this request or already stored (a row tombstoned by undo doesn't count) |
-    | `archived_row_not_restorable` | `archived: false`, or no `archived`, for a member that is already archived; or any write naming a Protocol tombstoned by undo |
+    | `archived_row_not_restorable` | `archived: false`, or no `archived`, for a member that is already archived; or any write naming a Protocol tombstoned by undo or deleted (D8) |
     | `protocol_archived` | the write names a Protocol that is already archived (file 34a); one tombstoned by undo gets `archived_row_not_restorable` instead |
     | `rule_format`, `period_format` | the codec refuses a `rule` or `period` the D7 validators accepted. Unreachable while the two agree; it is a guard so a drift between them refuses the write instead of storing a row no reader can plan |
 
@@ -1588,6 +1734,569 @@ need. The "N doses" helper rejects N outside 1-1000; it is Dart only. Agent
 writes that carry `today` must have it within one day of the server's UTC
 date; that is the server's write path (D6).
 
+### D8. Closing the archive day, deleting a Protocol, and Skips
+
+*Added by the 2026-11-02 revision and revised after its Goldfish review.
+Built in Phases 7 and 8, which ship in one release (see "Mixed versions"
+below).*
+
+D1 to D7 let the user plan and log, but give no way to answer a planned dose
+except by logging it. Three gaps showed up in use (Open Questions):
+
+*   An archived Protocol keeps its archive day planned (D1) and is
+    read-only, so its unlogged doses that day read "Pending" with no way to
+    answer them, and their reminders still fire.
+*   A Protocol nothing was ever logged for can only be archived, so a plan
+    that was never followed still counts its past days as "Not logged".
+*   A planned dose not taken on purpose reads the same as one forgotten.
+
+This decision closes all three. Each one reuses machinery that already
+exists: the archive date (D1), the tombstone undo leaves (D1, "Undo"), and
+authored rows that travel the Dose's sync and Activity Log path.
+
+What it doesn't add:
+
+*   **A way to remove a planned dose from the plan itself.** That is already
+    a Schedule edit, which takes effect that same day (D1, CUJ 6). A user
+    adjusting a Protocol edits its Schedule; a Skip covers one dose on one
+    day. An archived Protocol stays read-only.
+*   **A change to ending early.** Setting a Protocol's end date to today
+    (D4) still plans that day's remaining doses, because an end date is
+    usually set ahead of time (CUJ 4) and the doses before it are meant to
+    be taken. A user who ends a course early answers the rest of that day
+    with Skips. Only archiving closes the day.
+
+#### The archive day
+
+On a Protocol's or Protocol Member's archive day, a planned dose counts only
+if a Dose fills it. The Dose can be logged at any time, including after the
+archive: a BPC-157 Dose logged that evening from the Compound list still
+fills its slot, and the row comes back as "Logged". The day's unfilled
+planned doses are dropped. They get no row, no "Pending", no "Log all
+planned", no reminder, no "Not logged" later, and no planned line on the
+Consistency chart.
+
+*   **Why drop the unfilled ones, rather than end the day at the moment of
+    the archive.** See Alternative S.
+*   **Why not make `archived_on` exclusive.** See Alternative R.
+*   **The `PlanDay` says so.** `planDays` sets `archiveDay: true` on a
+    PlanDay exactly when its state is `planned` and its date equals the
+    Protocol's `archivedOn` or the covering member row's `archivedOn`.
+    Every other PlanDay has `archiveDay: false`. A member removed and
+    re-added on the same day is covered by the newer row, which isn't
+    archived, so that day is not an archive day for it. `dayStatuses` drops
+    the unfilled slots (matching step 5, below). `planDays` can't drop them
+    itself, because it doesn't see Doses.
+*   **Removing a Protocol Member** follows the same rule on its archive day,
+    because the date is on the member row. It doesn't ask for confirmation.
+    It happens inside the editor's Save, which is one Batch the Activity
+    Log can undo, and it touches one Compound. Archiving a whole Protocol
+    does ask (below).
+*   **Which slot a Dose fills is unchanged.** Matching runs before the drop.
+    When two Protocols plan the same Compound, a Dose can fill the archived
+    Protocol's slot rather than the other Protocol's. Example: Protocol A,
+    archived today, plans 17:00 and Protocol B plans 09:00. A Dose logged
+    at 14:00 fills A's 17:00, and B's 09:00 stays "Pending". This is D6's
+    nearest-time rule, already accepted (Open Questions). The drop only
+    removes what no Dose filled. A vector pins the case (file 67).
+*   **Past archive days now read this way too.** Day Statuses are computed
+    on read, so after Phase 7 a stored archive day with unfilled planned
+    doses changes status, with no data change:
+    *   "Partly logged" becomes "Logged";
+    *   "Not logged" becomes "Not planned", with the reason `removed`.
+
+    This is accepted as a correction of the record, as D1 accepts for edits
+    to the Protocol's own fields: the user ended the Protocol that day, and
+    the doses after it were never going to be taken. Progress counts and
+    the Agent's Day Status reads move with it.
+*   **On screen, today's and past planned doses come from the Day Status
+    fills**, numbered after the drop. Only a future day, which has no Day
+    Status, reads its planned doses from PlanDays. The Planned list already
+    builds its rows this way (`PlannedDay._groups` reads the fills). The
+    Consistency chart reads `PlanDay.planned` today. On an `archiveDay:
+    true` PlanDay it now draws only the planned times that have a fill in
+    that date's Day Status (file 76).
+*   **Archiving asks for confirmation.** Phase 3 archives on one tap. The
+    editor now asks first (file 80), with copy that says what happens to
+    today's doses.
+
+#### Deleting a Protocol
+
+**History.** A Protocol has history when at least one Dose that isn't
+tombstoned (`deleted_at` is null) meets either condition:
+
+*   it is tagged to the Protocol (`protocol_id`); or
+*   its Compound is one of the Protocol's member Compounds, and its
+    `local_date` falls within the Protocol's dates.
+    *   A member counts whether or not it is archived. A member row
+        tombstoned by undo doesn't count.
+    *   The dates run from the Protocol's `start_local_date` to the earliest
+        of its `end_local_date` and `archived_on`. With neither set, there
+        is no upper bound.
+
+The second condition covers untagged Doses. The Compound list logs untagged
+unless the user picks a Protocol, and an Agent's Doses are untagged by
+default. Both fill a Protocol's slots (D6 ignores tags), so deleting the
+Protocol would lose those days' Day Statuses. The condition over-counts on
+purpose. A user who takes creatine anyway has "history" in a creatine
+Protocol created by mistake. A false "history" only means the editor offers
+Archive instead of Delete, which loses nothing.
+
+**Skips are not history.** A Skip records no intake. It can also be inert
+and invisible (below), so counting Skips could make a Protocol undeletable
+for a reason the user can't see. A deleted Protocol's Skips stay stored, and
+undo brings them back with it.
+
+**Archive or Delete.** The editor shows Delete for a Protocol with no
+history and Archive for one with history (file 80). That choice is UI only.
+The repository and the Agent write path accept an archive of any Protocol.
+An Agent archiving a Protocol with no history gets a soft warning, not a
+refusal (below). Refusing would take away the only exit that keeps a
+Protocol's past days, and would break Agent clients that archive today
+(Alternative AC).
+
+**What delete writes.** One row and one Activity Log entry, in one
+transaction and one Batch: the `protocols` row gets `deleted_at` = now,
+`archived_on` = null and `updated_at` = now. Its before and after images
+are both `_protocolImage`. Nothing else is written. That is the state undoing
+the Protocol's creation leaves on its row. The sync push sends the changed
+row like any other edit, and the server stores it as sent.
+
+**Readers hide the Protocol's members, Schedule Versions and target outcomes
+through its row.** Those child rows keep their own state. Every reader
+reaches them only through a Protocol that isn't tombstoned:
+
+*   in the app:
+    *   `ProtocolPlanRepository._planQuery` filters on the Protocol and
+        inner-joins members to it, which serves the Planned list, the
+        Consistency view and its summary, and the reminder reconciler;
+    *   `_activeProtocolQuery` serves the Protocol list, the options and
+        detail reads, and the Effect picker;
+    *   `anyProtocolRemindersOn` requires `deleted_at` to be null.
+*   on the server:
+    *   `listProtocols` and `readPlanProtocols` skip `isUndoTombstone`
+        Protocols and their children;
+    *   the batch write refuses any write naming such a Protocol;
+    *   `readEffectWindow` does not filter it today. File 83 makes it answer
+        a deleted Protocol as it answers an unknown one.
+
+File 86 adds one test per reader. Writing child tombstones as well was
+considered and rejected (Alternative AD).
+
+**Not a cascading delete.** One row is written. No member, Schedule Version,
+target outcome, Dose, Skip, Compound or Metric row changes. A Dose tagged to
+a deleted Protocol keeps its `protocol_id` and `protocol_name` snapshot. Its
+log sheet shows the snapshot name, as it does for an archived Protocol.
+
+**Undo.** The existing `undoBatch` writes the one before-image back, so the
+Protocol returns exactly as it was, archived or not, members and all.
+
+**A concurrent edit.** Suppose another device, offline, edits the Protocol's
+own fields after this one deletes it. LWW keeps the later row, so the whole
+Protocol comes back, children included. Nothing is half-deleted.
+
+**Deleting an archived Protocol.** It can be deleted when it has no history.
+That is the case this revision started from: a Protocol archived only
+because delete didn't exist. Deleting it clears `archived_on`, so its past
+days stop counting.
+
+*   **The Agent path** accepts an archived Protocol directly.
+*   **The app** doesn't list archived Protocols. Activity Log undo of the
+    archive entry writes its before-image back, so the Protocol is live
+    again, and the editor then offers Delete. That restore is built and
+    holds for any Activity Log entry. D1's "No path restores an archived
+    Protocol" means that no editor action and no Agent write does.
+*   **An archived-Protocols list** is a Future Improvement (Alternative AE).
+
+**The history check runs inside the write's transaction**, in the app and on
+the server, so a Dose committed first refuses the delete. A Dose synced from
+another device after the delete is a race (Risks). So is undoing a
+Protocol's creation batch, which can tombstone a Protocol with history
+because undo applies to any insert. This revision doesn't change that.
+
+#### Skips
+
+A **Skip** answers one planned dose on one local date: "not taken, on
+purpose". It is an authored row, synced and Activity-Logged like a Dose.
+
+*   **What it names.** `protocol_id`, `compound_id`, `local_date` and
+    `planned_local_time` (`HH:MM`, or null for an untimed planned dose). It
+    doesn't name a slot number, because slot numbers shift whenever another
+    Protocol's plan for that Compound and date changes (D6, step 1;
+    Alternative W).
+    *   **A timed Skip names exactly one planned dose.** Within one
+        Protocol, one Compound's timed planned doses have distinct times
+        (D7 `times_distinct`), and only one member row covers a date (D1).
+    *   **An untimed Skip answers any one of that Protocol's untimed planned
+        doses**, because they are interchangeable. k untimed Skips answer up
+        to k of them.
+*   **It records, it doesn't edit.** A Skip doesn't change the Protocol, so
+    one can be written against an archived Protocol's past days, which stay
+    read-only. One can't be written against a deleted Protocol
+    (`protocol_not_found`).
+*   **Doses prefer slots with no Skip.** Matching assigns Skips to slots
+    first, then fills with Doses, preferring slots no Skip took (matching
+    steps 3 and 4).
+    *   A Dose fills a skipped slot only when no slot without a Skip is
+        open. The Skip then marks nothing; it is **inert**.
+    *   So a Skip changes which slot a Dose fills only when the Dose would
+        otherwise land on the skipped one. Example: BPC-157 is planned at
+        08:00 and 21:00. At 07:00 the user skips 21:00. At 15:00 they log
+        the morning dose from the 08:00 row. The Dose fills 08:00, and the
+        day reads "Logged" with one skipped. Without the preference it
+        would fill 21:00 (360 minutes away, against 420), the Skip would
+        mark nothing, and "Log all planned" would offer 08:00 again.
+    *   **The cost.** A dose the user skips and then takes after all, logged
+        from the Compound list rather than from its "Skipped" row, fills
+        another open slot if there is one. Logging from the "Skipped" row
+        removes the Skip in the same write (below), so the main path never
+        meets this. (Alternative X.)
+*   **Inert Skips are kept**, never cleaned up. One that marks nothing shows
+    no row. If what made it inert goes away (the Dose is deleted, say), it
+    answers its planned dose again, which is what the user recorded. A
+    later Schedule edit dated the same day can also leave a Skip naming a
+    planned dose that no longer exists; that Skip is inert too.
+*   **Today and past days only.** A Skip's `local_date` must not be after the
+    writer's today (`skip_future`, below). The app offers Skip only on
+    "Pending" and "Not logged" rows, and a future day's rows have no
+    action (D6).
+*   **Removing a Skip.** The Undo skip action (in the app) or a `deletedAt`
+    (for an Agent) tombstones the Skip. For a timed Skip, the same write
+    also tombstones every other non-tombstoned Skip with the same Protocol,
+    Compound, date and time. Two devices can each write one; only one marks
+    the planned dose, and removing just that one would leave the row
+    "Skipped". An untimed Skip is removed alone, by its id, because each
+    one answers a different planned dose.
+*   **Skipping again** after a removal writes a new Skip with a new id. A
+    tombstoned Skip is never brought back (`skip_immutable`).
+*   **No unique key.** Two devices skipping the same planned dose offline
+    produce two rows. Sync keeps both (LWW is per row). For a timed planned
+    dose, matching marks it once and the second Skip is inert. For untimed
+    planned doses the two Skips mark two of them. A user who meant one can
+    undo either Skip. This over-mark is accepted rather than adding
+    deterministic ids (Alternative AB).
+*   **Effect and dose-response ignore Skips.** They read Doses, and a Skip
+    records no intake (Alternative V).
+
+#### Day Statuses with Skips and archive days
+
+This is the complete rule. It replaces D6's matching steps and Day Status
+order, and is the same in both languages and in the m36 vectors (schema
+version 2).
+
+**Matching**, for one Compound on one local date:
+
+1.  **Collect the planned doses**, as D6 step 1, numbered `slot` 0..n-1. Each
+    slot also remembers its PlanDay's `archiveDay`.
+2.  **Collect the logged Doses**, as D6 step 2.
+3.  **Assign the Skips.** Take the Skips with that Compound and date,
+    ordered by id. Each takes the lowest-numbered slot that has the Skip's
+    `protocolId`, has the Skip's planned time (both null for untimed), and
+    no earlier Skip took. A Skip that finds none marks nothing.
+4.  **Fill the slots.** Take each Dose in step 2's order, and stop at the
+    first rule that finds a slot:
+    1.  the nearest unfilled timed slot with no Skip (on a tie, the earlier
+        slot);
+    2.  the first unfilled untimed slot with no Skip;
+    3.  the nearest unfilled timed slot with a Skip (on a tie, the earlier
+        slot);
+    4.  the first unfilled untimed slot with a Skip.
+
+    A Dose placed by rule iii or iv clears that slot's Skip, which becomes
+    inert. A Dose that finds no slot is an extra.
+5.  **Close the archive day.** Drop every slot that no Dose filled and whose
+    PlanDay has `archiveDay: true`, with or without a Skip; its Skip
+    becomes inert. Renumber the remaining slots 0..k-1, keeping their order.
+    Only unfilled slots drop, so `extraCount` is unchanged.
+6.  **Report every slot,** with `doseId` (null when unfilled) and `skipId`
+    (null when no Skip marks it). A slot never has both.
+
+**Counts.** `plannedCount` is the number of slots after step 5.
+`loggedCount` is the number of filled slots. `skippedCount` is the number of
+slots with a `skipId`. `extraCount` is unchanged from D6. So
+`loggedCount + skippedCount ≤ plannedCount`.
+
+**Day Status**, decided in this order:
+
+*   **The Compound has planned doses that day** (`plannedCount > 0`). Let
+    the open count be `plannedCount − loggedCount − skippedCount`.
+    *   **No open slot:** "Logged" when `loggedCount > 0`, else "Skipped".
+    *   **An open slot, today:** "Pending".
+    *   **An open slot, on a past day:** "Partly logged" when
+        `loggedCount > 0`, else "Not logged".
+*   **It has none** (`plannedCount = 0`): as D6. One addition: a PlanDay
+    whose state is `planned` but whose slots step 5 all dropped counts as
+    reason `removed`, in D6's order (after `no_schedule`, before
+    `outside`).
+    *   Today `_unplannedStatus` (Dart) and its TypeScript twin throw on a
+        group whose only state is `planned` with no slots, so this case
+        must be handled (files 71 and 73).
+*   **Dates after today** have no Day Status, as D6.
+
+So a day where every planned dose was taken or skipped, and at least one
+taken, reads "Logged", with its skipped count shown next to it as extras
+are. A day where every planned dose was skipped reads "Skipped". Skips never
+raise "Not logged" to "Partly logged": that label stays about what was
+taken. The new status value is `skipped` and its label is "Skipped". It
+names the user's own choice, so it keeps the neutral-instrument rule.
+
+**`dueUnfilled`** leaves out a slot with a `skipId`, as it leaves out a
+filled one. So "Log all planned" never logs a skipped dose. Its button (D6)
+shows only while a row reads "Pending", and a skipped row doesn't.
+
+**Core API changes**, in both languages, with positional parameters as
+before:
+
+```text
+PlanDay   += archiveDay: bool              always present
+dayStatuses(planDays, doses, skips, today)  skips: PlanSkip[], may be empty
+  PlanSkip  = {skipId, protocolId, compoundId, localDate,
+               plannedLocalTime: "HH:MM" | null}
+DayStatus += skippedCount: int             always present
+DayStatus.status += "skipped"
+fill      += skipId: string | null         always present
+```
+
+`skips` comes third so that `today` stays last. Every caller passes its
+Skips. Until Phase 8 stores them, callers pass an empty list.
+
+#### Skips in the app
+
+*   **The Planned list.** A row whose fill has a `skipId` reads "Skipped",
+    with its own icon, never color alone. `PlannedRowStatus` gains
+    `skipped`. `PlannedRow` gains `skipId`, read from the fill as `status`
+    is.
+*   **Skipping.** Tapping a "Pending" or "Not logged" row opens the log
+    sheet as D6 says, plus a **Skip** button.
+    *   **Layout.** The sheet's lone full-width Save becomes a row of two
+        equal buttons, Skip (text) and Save (filled), each at least 48 dp
+        tall.
+    *   **What it writes.** Skip writes the row's own Protocol, Compound,
+        date and planned time, whatever the sheet's date, time or amount
+        fields hold, then closes the sheet.
+    *   **Taps.** Two from the day view. There is no confirmation, because
+        Undo skip reverses it in two taps.
+    *   **While a write runs,** both buttons are disabled, so a double tap
+        can't write two Skips; that matters most on an untimed row, where
+        two Skips would answer two planned doses.
+    *   **A failed write** shows no message, as Save's failures don't (D6).
+*   **A "Skipped" row** opens the same sheet, prefilled the same way, with
+    **Undo skip** where Skip was.
+    *   **Undo skip** removes the row's Skip (above) and closes the sheet.
+    *   **Save** logs the Dose and removes the row's Skip in one transaction
+        and one Batch (CUJ 16), so the row reads "Logged" without a stray
+        Skip behind it. Nearest-time matching still decides which slot the
+        Dose fills (D6), so a late Dose can fill a later slot, as it can
+        from a "Pending" row.
+*   **The Consistency view.**
+    *   A skipped slot reads "Skipped" where an unfilled one reads "Pending"
+        or "Not logged".
+    *   The day's line shows "{n} skipped" next to "{n} extra" when n > 0.
+    *   The chart plots Doses and planned times, and a Skip is neither, so
+        Skips don't change it. Only the archive day does (above).
+*   **The Progress card** (`docs/designs/progress-overview.md`, D7) counts
+    `skipped` days as their own count, "{n} skipped", after `paused`. A
+    "Logged" day with skipped slots counts as logged.
+*   **Reminders.**
+    *   A skipped planned dose's reminder input has `filled: true` (D5), so
+        its time fires only if another unfilled planned dose shares it.
+    *   For dates after today, `reminderInputs` builds inputs from PlanDays,
+        not from fills. It now skips a PlanDay with `archiveDay: true`.
+        Every planned dose there is unfilled, so step 5 would drop them all.
+        Such a date can come from an Agent's `today` a day ahead, or from
+        another device's later zone.
+
+#### Deleting and archiving in the app
+
+*   **The editor** of a saved Protocol shows exactly one of two buttons, read
+    from `watchProtocolHasHistory(protocolId)`:
+    *   **Archive**, when it has history. It now asks first. Title: "Archive
+        {name}?" Body: "Doses you logged stay in your history. From tomorrow
+        it plans nothing, and today's doses you haven't logged are no
+        longer expected." Buttons: Cancel, Archive.
+    *   **Delete**, when it has none, in the destructive style (DESIGN.md
+        `button-destructive`). Title: "Delete {name}?" Body: "Nothing has
+        been logged for this Protocol, so it is removed completely. You can
+        still recover it from the Activity Log." Buttons: Cancel, Delete.
+
+    While the read is loading, neither button shows. A new, unsaved
+    Protocol shows neither, as now.
+*   **History can change between the read and the tap,** for example when
+    another device syncs a Dose. `deleteProtocol` checks again in its
+    transaction and throws `ProtocolHasHistoryException`. The dialog closes,
+    a snack bar says "Something was logged for this Protocol, so it can
+    only be archived.", and the button follows the fresh read. Archive is
+    never refused, so it needs no such path.
+
+#### The Agent surface
+
+The Agent gets every operation the app has. The new routes, schemas and
+store types are exported from `apps/server/src/index.ts`, as Phase 6's were.
+
+*   **Deleting.** `POST /agent/protocols/delete`, operation id
+    `deleteAgentProtocols`, MCP tool `agent_delete_protocols`, skill command
+    `delete-protocols`.
+    *   **Request:** `{idempotencyKey, protocolIds}`, strict.
+        `idempotencyKey` is required (1 to 200 characters), as in every
+        Agent batch write. `protocolIds` holds 1 to 100 ids. A repeated id
+        is treated once, and its result appears once, at its first
+        position.
+    *   **The write.** It goes through `writeOpaqueBatch`, which keys the
+        receipt on `idempotencyKey`. So one request is one Batch with one
+        `batchId`. Undoing that batch (`undoAgentActivityBatch`) restores
+        every Protocol the request deleted.
+    *   **Response (200):** `{accepted: true, duplicate, idempotencyKey,
+        batchId, serverClock, protocols: [{id, outcome}]}`, the envelope of
+        the other batch writes. `outcome` is `deleted`, or
+        `already_deleted` for a Protocol already tombstoned, by a delete or
+        by undo. A retried request is harmless.
+    *   **Refusal (422):** as every Agent batch write, any refused id refuses
+        the whole request. The body is `{code:
+        "agent_protocol_delete_failed", message, issues}`, with issues in
+        `AgentProtocolsBatchWriteIssueSchema` (`field` `protocolIds[i]`,
+        `itemIndex`, `entityId` the id). The rules:
+        *   `protocol_not_found`: "No Protocol with this id exists for this
+            account."
+        *   `protocol_has_history`: "Doses were logged for this Protocol, so
+            it can't be deleted. Archive it with manage-protocols instead."
+    *   **Writes.** It writes the one row D8 names per Protocol, through
+        `pushProtocolsInTransaction`, with Activity Log envelopes. REST and
+        MCP both call `maybeNudgeAgentWrite` when anything was deleted, as
+        every Agent write does.
+    *   A separate operation, not a flag on the Protocol batch write. That
+        batch write replaces the whole row, so the other fields would have
+        to be sent and then ignored. It also refuses every write naming an
+        archived Protocol, which delete must accept.
+*   **Protocol reads.** Each entry of `listAgentProtocols` gains
+    `hasHistory` (boolean, D8's definition), so an Agent chooses between
+    archive and delete as the app does.
+*   **Archiving** through `batchWriteAgentProtocols` with `archived: true` is
+    accepted for any Protocol. A Protocol with no history, stored or created
+    in the same request, gets a warning in the response's existing
+    `warnings` array:
+    *   rule `protocol_has_no_history`;
+    *   field `protocols[i].archived`;
+    *   message "Nothing has been logged for this Protocol. Consider
+        deleting it with delete-protocols instead."
+
+    Archiving a Protocol Member (`archived: true` on a member) never gets
+    it.
+*   **The refusal for a tombstoned Protocol** now also answers deleted ones.
+    Its message becomes "This Protocol was deleted or removed by undo, and
+    can't be restored or edited. Create a new Protocol instead." The rule
+    id stays `archived_row_not_restorable`.
+*   **The Effect window read** answers a deleted Protocol as it answers an
+    unknown one.
+*   **Skips.** `POST /agent/protocols/skips/batch-write`, operation id
+    `batchWriteAgentProtocolSkips`, MCP tool
+    `agent_batch_write_protocol_skips`, skill command `log-protocol-skips`
+    (named like `log-doses`).
+    *   **Request:** `{idempotencyKey, today, skips}`, strict, with
+        `idempotencyKey` required.
+        *   `skips` holds 1 to 100 items of `{id, protocolId, compoundId,
+            localDate, plannedLocalTime, deletedAt?}`.
+        *   A new Skip's `id` is a client UUIDv7 (`ClientUuidV7Schema`), as
+            for Doses.
+        *   `today` takes the Protocol batch write's one-day bound and its
+            `today_out_of_range` refusal.
+    *   **The write** goes through `writeOpaqueBatch` with a new table key,
+        `protocol_skips`.
+    *   **Response (200):** `{accepted: true, duplicate, idempotencyKey,
+        batchId, serverClock, skips: [{id, outcome}]}`. `outcome` is
+        `applied`, `superseded`, `duplicate` or `refused`, with the meanings
+        the Dose batch write gives them (`refused` means the sync push
+        didn't accept the row). A Skip that the sibling rule below removes
+        gets its own entry, after the item that removed it.
+    *   **Refusal (422):** any failure refuses the whole batch, as for
+        Doses. The body is `{code: "agent_protocol_skip_batch_write_failed",
+        message, issues}`, with issues in
+        `AgentProtocolsBatchWriteIssueSchema` (`field` `skips[i].<field>`,
+        `itemIndex`, `entityId` the Skip id). The rules:
+        *   the validator's `skip_time_format` and `skip_future`;
+        *   `today_out_of_range`;
+        *   `protocol_not_found`, for an item without `deletedAt` whose
+            `protocolId` names no Protocol of this user, or a tombstoned
+            one. An archived Protocol is accepted, and removing a Skip is
+            always accepted;
+        *   `skip_immutable`, when the id names a stored Skip and the item
+            changes any field but `deletedAt`, or clears a `deletedAt` that
+            is set.
+    *   **Siblings.** An item that sets `deletedAt` on a timed Skip also
+        tombstones, in the same transaction and batch, every stored
+        non-tombstoned Skip with the same Protocol, Compound, date and time.
+        That is the app's Undo skip, so an Agent removing the `skipId` it
+        reads from a Day Status fill gets the same Day Status the app shows.
+    *   **No list operation.** An Agent finds the Skips that matter in the
+        Day Status read's fills (`detail=doses`). An inert Skip blocks
+        nothing and needs no removal.
+*   **The Day Status read** (`listAgentProtocolDayStatuses`) reads the
+    user's non-tombstoned Skips in the range, with the same filters, and
+    passes them to `dayStatuses`. Summary entries gain `skippedCount`, the
+    `status` enum gains `skipped`, and with `detail=doses` each fill gains
+    `skipId`. With a `protocolId`, only that Protocol's Skips are read; a
+    Skip can only mark its own Protocol's planned dose anyway.
+*   **The planned-day read** gains `archiveDay` on each entry. Its schema
+    description says: "On an archive day, the planned doses are expected
+    only if a Dose fills them; read Day Statuses for what is still
+    expected."
+*   **The contract diff** shows the two new operations, `hasHistory`, the
+    new fields and the `skipped` enum value in
+    `packages/contract/openapi.json`, the generated clients and the skill's
+    operation list, plus the new `protocol_skips` sync entity in the sync
+    request and pull enums.
+
+#### Validation (extends D7)
+
+One new validator joins the shared module, in both languages:
+`validateProtocolSkip({localDate, plannedLocalTime, today})` in Dart, and
+`validateAgentProtocolSkip` with the same parameters in TypeScript.
+
+*   **Vectors.** It is golden-vectored in `m36-protocol-plan-validation.json`,
+    as validator `protocol_skip`.
+*   **Export.** The TypeScript validator is exported from
+    `apps/server/src/index.ts`, as `validateAgentScheduleRule` is. The
+    contract package re-exports none of the plan validators, and doesn't
+    start here.
+*   **Typed dates.** As D7's "Typed bounds", `localDate` and `today` are
+    real dates already. A value that isn't one is a caller bug and throws a
+    `RangeError`, and the Agent path answers it 400 before calling the
+    validator.
+
+| Check id | Field | Limit | Message | Tier |
+| :------- | :---- | :---- | :------ | :--- |
+| `skip_time_format` | `plannedLocalTime` | `HH:MM` | "A planned time must be HH:MM, from 00:00 to 23:59." Null is valid (untimed) | reject |
+| `skip_future` | `localDate` | `today` | "A Skip can't be for a day after today." | reject |
+
+*   **No soft warning.**
+*   **It doesn't check that the Skip names a planned dose.** The plan can
+    change after a Skip is written, and an inert Skip is valid (above).
+    Besides, a pure validator doesn't read the plan.
+
+Deleting has no validator. Its refusals (`protocol_not_found`,
+`protocol_has_history`) read stored state, so they live in the write paths,
+in the app's repository and on the server.
+
+#### Mixed versions
+
+Releases 0.0.1 and 0.1.0 are installed, and nothing forces an update
+(`docs/releasing.md`). So:
+
+*   **One release.** Phases 7 and 8 ship in one release. Phase 7 merges
+    first, and no release is cut between them.
+*   **An older install keeps the pre-D8 behaviour:**
+    *   it plans the whole archive day and fires its reminders;
+    *   its pull skips the unknown `protocol_skips` entity (Prerequisite
+        P2), so it shows skipped doses as "Pending" or "Not logged", and its
+        "Log all planned" can log one;
+    *   it receives a deleted Protocol as an undo tombstone, which it
+        already ignores;
+    *   it can still archive a Protocol with no history, which the new app
+        then lets the user delete.
+*   **No protocol bump.** `SYNC_PROTOCOL_VERSION` stays 2: the change is
+    additive.
+*   **The CHANGELOG** names both changes, and the fix for an older install
+    is to update it.
+
 ## Alternatives Considered
 
 ### Alternative A: Remind when a Workout starts (D5)
@@ -1785,10 +2494,190 @@ date; that is the server's write path (D6).
 *   **Reason for Rejection**: An offset frozen at log time is enough to rebuild
     the Dose's local time, and keeps the core timezone-free.
 
+### Alternative R: Make `archived_on` exclusive (D8)
+
+*   **Pros**: The archive day plans nothing, which also stops asking for its
+    unlogged doses. It needs no new PlanDay field.
+*   **Cons**: A Dose logged on the morning of the archive day would match no
+    PlanDay, and D6 ignores such a Dose. So the morning's dose would drop
+    out of the Day Status.
+*   **Reason for Rejection**: It loses doses the user logged. D8's rule
+    drops only what no Dose filled.
+
+### Alternative S: End the archive day at the moment of the archive (D8)
+
+*   **Pros**: Planned doses timed before the archive moment would keep
+    reading "Not logged", and only the later ones would drop.
+*   **Cons**: It needs the archive's local clock time (`HH:MM`), frozen like
+    `archived_on`, as a new column on two synced tables (`protocols` and
+    `protocol_compounds`). It also needs a new field on the Agent writes,
+    and a rule for the core to read.
+*   **Reason for Rejection**: It differs from D8's rule only for a dose
+    planned before the archive and never logged, which the user ended the
+    Protocol without logging. That one case doesn't pay for a new synced
+    column.
+
+### Alternative T: Let the user edit or restore an archived Protocol (D8)
+
+*   **Pros**: Editing today's Schedule on an archived Protocol would also
+    remove today's doses, with no new rule.
+*   **Cons**: An archived Protocol is read-only because an edit or a restore
+    rewrites the days it read "removed" (D1).
+*   **Reason for Rejection**: The archive-day rule solves the problem
+    without touching the plan.
+
+### Alternative U: Delete any Protocol (D8)
+
+*   **Pros**: One action for every Protocol, and no history check.
+*   **Cons**: Deleting a Protocol that Doses were logged for removes the
+    plan they were logged against. Their days would lose their Day
+    Statuses, and the Agent's Effect read would lose the window.
+*   **Reason for Rejection**: The [invariant](../../AGENTS.md#non-negotiable-invariants)
+    behind "delete is archive" is that history survives. Archive keeps it.
+    A Protocol with no history (D8) has none of its own to keep.
+
+### Alternative V: Record a Skip as a Dose with no amount (D8)
+
+*   **Pros**: No new table, sync entity or Agent operation.
+*   **Cons**: A Dose is intake. A zero-amount Dose would count in Effect's
+    dose markers, in dose-response, as an extra, and in "recently logged".
+    The Dose validator would also have to accept an amount of zero.
+*   **Reason for Rejection**: It records something that didn't happen.
+
+### Alternative W: Name the skipped planned dose by its slot number (D8)
+
+*   **Pros**: A slot number is what the Planned list row already carries.
+*   **Cons**: A slot number is a position across every Protocol for that
+    Compound and date, and it shifts when any of those plans change (D6).
+*   **Reason for Rejection**: A Skip stored by slot would move to another
+    planned dose. Protocol, Compound, date and planned time name one
+    planned dose (D8, "What it names").
+
+### Alternative X: Order Skips and Doses differently in matching (D8)
+
+*   **Pros**: Each of the two simpler orders is easy to state.
+    *   **"Skip always wins":** Doses never fill a skipped slot.
+    *   **"Dose always wins":** fill as D6 does, then mark Skips on what is
+        left. This was the revision's first draft.
+*   **Cons**:
+    *   **"Skip always wins"** turns a dose the user took after all into an
+        extra.
+    *   **"Dose always wins"** lets a late Dose meant for an earlier row land
+        on the skipped slot. The Skip then marks nothing, and the earlier
+        row stays open, so "Log all planned" offers it again: a duplicate.
+        That is the 08:00/21:00 example in D8.
+*   **Reason for Rejection**: D8 takes the middle. Skips are assigned
+    first, and Doses prefer slots no Skip took, falling back to a skipped
+    slot only when nothing else is open. A Dose is never made an extra by
+    a Skip, and a Skip steers a Dose only away from itself.
+
+### Alternative Y: Store a one-day exception on the Schedule (D8)
+
+*   **Pros**: Keeps "what was planned" in one place.
+*   **Cons**: A Schedule Version applies from its date onward (D1). A one-day
+    exception would need an end, a second version to resume, and new rules
+    for Agents' insert-only versions.
+*   **Reason for Rejection**: It makes "not today" a plan change. The plan
+    didn't change; one day did.
+
+### Alternative Z: Delete a Protocol with SQL `DELETE` (D8)
+
+*   **Pros**: The row is really gone.
+*   **Cons**: The app's one true delete, `deleteCompound`, writes an Activity
+    Log entry with no after-image. Sync push only sends entries that have
+    one, so a hard-deleted row never reaches the server or other devices,
+    and undo has nothing to write back.
+*   **Reason for Rejection**: It can't sync and can't be undone. D8 uses the
+    tombstone undo already leaves.
+
+### Alternative AA: Skip a dose with a one-day Pause (D8)
+
+*   **Pros**: A Pause already exists, syncs, silences reminders, and reads
+    "Paused" rather than "Not logged".
+*   **Cons**:
+    *   **Too coarse.** A Pause covers the whole Protocol for whole days, not
+        one Compound's one planned dose.
+    *   **No past days.** It is an edit of the Protocol, so it can't be
+        written for an archived Protocol's past days.
+    *   **Concurrent edits.** It lives in the Protocol row's `period` JSON,
+        so two devices' Pauses replace each other by LWW.
+    *   **A cap.** `maxPauses` is 100, so a habit of skipping would reach it.
+*   **Reason for Rejection**: It answers the wrong question. A Pause is a
+    deliberate break in the plan (Goals), not one dose.
+
+### Alternative AB: Give timed Skips deterministic ids (D8)
+
+*   **Pros**: An id derived from the Protocol, Compound, date and time would
+    collapse two devices' Skips of one planned dose into one row by LWW.
+    That would remove the sibling sweep when a Skip is removed, and the
+    untimed over-mark too, if the id also carried an ordinal.
+*   **Cons**:
+    *   Every Agent-authored row id is a client UUIDv7
+        (`ClientUuidV7Schema`). A name-based id breaks that and the
+        creation-time order UUIDv7 gives.
+    *   Skipping again after a removal would revive a tombstone, which needs
+        a second set of LWW rules.
+*   **Reason for Rejection**: The sweep is one query in each write path, and
+    the untimed over-mark is rare and undone in two taps.
+
+### Alternative AC: Refuse to archive a Protocol with no history (D8)
+
+*   **Pros**: Archive and Delete would never overlap, in the app or for
+    Agents.
+*   **Cons**:
+    *   It turns the editor's one-button choice into a data rule, with a new
+        exception, a race path and its copy.
+    *   It changes an existing Agent operation: `archived: true` is valid
+        today, and would start answering 422.
+    *   If the history check ever misses a Protocol the user followed, it
+        removes the only exit that keeps the Protocol's past days.
+*   **Reason for Rejection**: The editor already shows one button, and an
+    Agent gets a warning. Nothing is lost when a Protocol with no history
+    is archived instead of deleted.
+
+### Alternative AD: Tombstone a deleted Protocol's child rows too (D8)
+
+*   **Pros**: Every row of the Protocol would read as deleted on its own,
+    without relying on readers to go through the Protocol.
+*   **Cons**:
+    *   It is a cascade of tombstones, which
+        [ARCHITECTURE.md](../../ARCHITECTURE.md) and AGENTS.md rule out.
+    *   **Under sync it can half-delete.** Another device's later edit of
+        the Protocol's own fields brings the row back by LWW while its
+        members and versions stay tombstoned, leaving a Protocol with no
+        members. Undo of the delete is then refused as stale, because
+        `undoBatch` refuses a batch when any of its rows changed.
+*   **Reason for Rejection**: Every reader already reaches the child rows
+    only through the Protocol (D8), so one row is enough.
+
+### Alternative AE: List archived Protocols in the app (D8)
+
+*   **Pros**: A Protocol archived before this revision, with nothing logged,
+    could be deleted from the app in one place.
+*   **Cons**:
+    *   A new section, a toggle, strings and a conversion of the Protocol
+        list to a stateful widget.
+    *   Its rows can't open, because an archived Protocol is read-only, and
+        can't be restored.
+    *   After Phase 7, an archived Protocol with no history appears only
+        when every Dose that gave it history is later deleted.
+*   **Reason for Rejection**: The case is reachable already. Activity Log
+    undo of the archive, then Delete, or the Agent's delete. It stays a
+    Future Improvement, for when users ask to browse archived Protocols.
+
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation | Where |
 | :--- | :----- | :--------- | :---- |
+| Another device logs a Dose for a Protocol while this one deletes it | After sync the Dose keeps its tag and name snapshot, but the Protocol plans nothing, so no Day Status counts it | Each write path checks history inside its transaction; the Activity Log undoes the delete in one row; the Dose itself is never touched | D8 |
+| A Skip synced against a Protocol another device deleted | An inert row | It marks nothing; undo of the delete brings its Protocol back and it answers its planned dose again | D8 |
+| Two devices skip the same planned dose offline | Two Skip rows; for an untimed planned dose, two of them are marked | Timed: matching marks it once, and removing a Skip removes every Skip with the same key. Untimed: accepted; Undo skip on either fixes it (Alternative AB) | D8 |
+| A Skip outlives what it answered (a Dose, a later Schedule edit) | An inert row | It marks nothing, shows no row, and blocks no delete; it answers its planned dose again only if the Dose is deleted | D8 |
+| Past archive days change status after Phase 7 | "Partly logged" reads "Logged", "Not logged" reads "Not planned" (removed) on those dates, in the app, Progress and Agent reads | Accepted as record correction, as D1 accepts for Protocol-level edits; Day Statuses are computed, so nothing is migrated | D8 |
+| A late Dose logged from the Compound list after a Skip | It fills another open slot rather than the skipped one | Logging from the "Skipped" row removes the Skip first; the Consistency view shows which slot each Dose filled | D8, Alternative X |
+| Older installs (0.0.1, 0.1.0) next to a Phase 8 install | They keep planning the archive day, ignore Skips, and can log a skipped dose with "Log all planned" | Phases 7 and 8 ship together; the CHANGELOG says to update; the new data is additive, so nothing breaks | D8, "Mixed versions" |
+| Undoing a Protocol's creation batch tombstones a Protocol with history | Its Doses keep their tags, but it plans nothing | Unchanged by this revision (undo applies to any insert); the Activity Log undoes the undo | D8 |
+| The m36 vector schema moves to version 2 | Every `plan_days`, `day_statuses` and `due_unfilled` case changes shape | One rewrite in Phase 7 (file 67), run by both suites in the same pull request | Phase 7 |
 | A Dose logged now from an earlier Planned list row fills a later slot | The earlier row stays "Pending", and the later slot's reminder doesn't fire | Accepted, and nearest-time matching is kept: recorded times stay true, and the Effect estimate reads them. The earlier row still shows as "Pending", and the Consistency view shows which slot each Dose filled | Open Questions, D6 |
 | A reminder prompts a second dose | A duplicate TRT or GLP-1 Dose | Reduced, not removed: nearest-time matching assigns each Dose to the planned time it was nearest, and "Log all planned" never logs doses that aren't due. A dose taken but not logged is still followed by its reminder | D6, m36 vectors |
 | Stale or duplicate reminders across devices | A reminder for a dose already logged elsewhere | Generic text; the Planned list is correct after sync; a per-device switch | CUJ 9, D5 |
@@ -1817,7 +2706,11 @@ date; that is the server's write path (D6).
         responses. They join the deny-list in
         `apps/server/src/observability.ts`, with a test in
         `apps/server/test/observability.test.mjs` that failed before they
-        did (file 65). (Settled after Phase 6's build.)
+        did (file 65). (Settled after Phase 6's build.) The revision's
+        Skip write adds `skips` at the top level of its request and response,
+        and the delete operation adds `protocolIds`, which normalizes to
+        `protocolids`. Bare Protocol ids are already denied (`protocolid`),
+        so both join the deny-list the same way (files 83 and 96).
     *   CSV export keeps excluding all Protocols data, including the new
         fields.
     *   Reminder state never leaves the device.
@@ -1838,20 +2731,22 @@ date; that is the server's write path (D6).
     still speaks sync protocol 2 and hides the plan features. A migrated Drift
     schema can't be downgraded on the device. There is no feature flag. A new
     build sends no notifications until the user turns reminders on for a
-    Protocol.
+    Protocol. The 2026-11-02 revision ships Phases 7 and 8 in one release,
+    stays on sync protocol 2, and leaves older installs on the pre-D8
+    behaviour until they update (D8, "Mixed versions").
 
 ## Invariants this touches
 
 | [Invariant](../../AGENTS.md#non-negotiable-invariants) | How it is preserved |
 | :-------------------- | :------------------ |
-| Derived analytics are computed, never stored or synced | Planned doses, Day Statuses and reminders are computed on read. Schedule Versions and Pauses are authored plan data, not results. |
-| Sets (here, Doses) are self-describing | Doses gain a frozen UTC offset, and nothing about a Dose depends on a Schedule. Matching reads Doses but never writes to them. |
-| User-facing delete is archive; no cascading deletes | Removing a Protocol Member archives it, whether the app or an Agent does it; versions are never deleted. Archiving a Protocol leaves its versions and tagged Doses untouched, and past days still count it. The one-time pre-1.0 clear (D3) is a migration of plan rows, not a user-facing delete. It leaves every Compound and Dose in place, and each Dose keeps its Protocol tag and name. |
-| Restore and import are merge-only | The archive keeps format 1. An older archive imports its Compounds and Doses and skips its pre-change plan rows (D3). Nothing in this feature deletes on import. |
-| Local writes never block on the network | Every write is local first. Reminders are scheduled on the device. |
-| Sync is silent last-writer-wins with recoverable losers | Versions are separate rows, so concurrent Schedule edits both survive and resolve by id. Edits are Activity Log entries as today. |
-| One shared two-tier validation module | D7's checks extend the existing modules in both languages, with vectors. |
-| No behavioral analytics | No reminder telemetry of any kind (see Non-Functional Requirements). |
+| Derived analytics are computed, never stored or synced | Planned doses, Day Statuses and reminders are computed on read. Schedule Versions and Pauses are authored plan data, not results. The 2026-11-02 revision keeps this: "Skipped", `skippedCount` and the archive day are computed on read. A Skip is authored, like a Dose: the user's record of a choice, not a result. |
+| Sets (here, Doses) are self-describing | Doses gain a frozen UTC offset, and nothing about a Dose depends on a Schedule. Matching reads Doses but never writes to them. A Skip names its planned dose by values (Protocol, Compound, date, time), never by a computed slot, and never changes a Dose. |
+| User-facing delete is archive; no cascading deletes | Removing a Protocol Member archives it, whether the app or an Agent does it; versions are never deleted. Archiving a Protocol leaves its versions and tagged Doses untouched, and past days still count it. The one-time pre-1.0 clear (D3) is a migration of plan rows, not a user-facing delete. It leaves every Compound and Dose in place, and each Dose keeps its Protocol tag and name. The 2026-11-02 revision lets a user delete a Protocol only when it has no history (D8: no Dose tagged to it or of its Compounds within its dates), so no history is lost. The delete writes one row, the `protocols` row, into the state undoing its creation leaves; readers hide its members, versions and target outcomes through that row, so nothing cascades, and the Activity Log undoes it in one row (Alternative AD). A Protocol with history is archived. Removing a Skip is a tombstone too. |
+| Restore and import are merge-only | The archive keeps format 1. An older archive imports its Compounds and Doses and skips its pre-change plan rows (D3). Nothing in this feature deletes on import. The revision adds `protocol_skips` to the archive at schema 64, merged like every other table; an archive below 64 has no such file and imports as before (file 92). |
+| Local writes never block on the network | Every write is local first. Reminders are scheduled on the device. Skip, undo skip and delete are single local transactions. |
+| Sync is silent last-writer-wins with recoverable losers | Versions are separate rows, so concurrent Schedule edits both survive and resolve by id. Edits are Activity Log entries as today. Skips are rows of their own, LWW per row with no unique key, so concurrent Skips of one planned dose both survive; a timed planned dose is marked once, and removing a timed Skip removes its same-key siblings (D8). A delete is one row, so a concurrent edit of the Protocol brings the whole Protocol back (D8). |
+| One shared two-tier validation module | D7's checks extend the existing modules in both languages, with vectors. `validateProtocolSkip` joins them (D8). |
+| No behavioral analytics | No reminder telemetry of any kind (see Non-Functional Requirements). A Skip is data the user authored, can see, can remove, and gets back in the portable archive. It isn't telemetry. |
 
 ## Additional Resources
 
@@ -1881,10 +2776,10 @@ date; that is the server's write path (D6).
 | Daily catch-up notification | Can't stay accurate across devices (Alternative D) | The Sync Nudge follow-up, or an accepted stale catch-up |
 | Follow-up reminders and snooze | Notification budget and noise (Alternative D) | A per-day notification cap within the D5 budget |
 | Exact Android reminders | A user-granted permission and a Play policy declaration | Opt-in `SCHEDULE_EXACT_ALARM`, falling back to inexact |
-| A per-Dose "skip today" record | "Not logged" is enough for v1 | Evidence that "skipped on purpose" must look different from "Not logged" |
 | Dose titration | Not needed by the motivating stack | A list of dose steps on the Schedule Rule, built on Schedule Versions |
 | Version the Protocol Period | Cycle edits mid-course are rare (D1) | Evidence of mid-course cycle changes |
 | A cycle-aware Effect view | Effect counts off-cycle and paused days as "during" | The core's `PlanDay` states as Effect's window input, with vectors for both languages |
+| An archived-Protocols list in the app | After Phase 7 the only case is rare, and Activity Log undo or the Agent's delete reaches it (Alternative AE) | Evidence that users want to browse archived Protocols |
 | Opt-in CSV export of Protocols data | Separate from reminders | A small change of its own that keeps "excluded by default" |
 | Timezone offsets for Workouts and Nutrition | The same abbreviation problem, out of this scope | The `timezoneOffsetMinutes` approach from D2, applied to those tables |
 
@@ -1915,7 +2810,9 @@ Phase 2 deletes the field.
 
 ## Detailed Implementation Plan
 
-Work lands in six phases, each its own pull request, after P5. Each phase
+Work lands in six phases, each its own pull request, after P5. The
+2026-11-02 revision adds Phases 7 and 8, also one pull request each, in
+that order. Each phase
 leaves the app buildable, the CI gate (`pnpm ci:local --changed`) green, and
 the app usable. File paths start from the repository root. Line references
 (`~N`) name the enclosing function, because line numbers drift.
@@ -1979,6 +2876,24 @@ depends on their order, including `pause_overlap`.
 **`doses` row:** adds `timezone_offset_minutes` (int, nullable). A Dose payload
 without the key, which every Dose logged before this change is, reads as null;
 it is never treated as malformed.
+
+**`protocol_skips` row** (one Skip; the 2026-11-02 revision, D8). Drift
+table, sync payload and server payload alike, with the sync and lifecycle
+columns every synced table has (`sync_device_id`, `sync_previously_synced`
+in Drift; `updated_at`, `deleted_at` everywhere):
+
+| Field | Type | Meaning |
+| :---- | :--- | :------ |
+| `id` | UUIDv7 text | The Skip's id; matching orders Skips by it |
+| `protocol_id` | text | The Protocol whose planned dose it answers. A soft reference, like a Dose's: no foreign key |
+| `compound_id` | text | The planned dose's Compound. Soft reference |
+| `local_date` | `YYYY-MM-DD` | The planned dose's date, as written; never derived from an instant |
+| `planned_local_time` | `HH:MM`, nullable | The planned dose's time; null for an untimed planned dose |
+
+No other field: a Skip carries no amount, note or reason (Non-Goals). A
+Skip is never edited; it is written once and removed by setting
+`deleted_at`. Index: `protocol_skips_local_date_index` on `local_date`, as
+Doses have.
 
 **Version rules** (D1):
 
@@ -2049,6 +2964,29 @@ applyingScheduleVersion(sorted, localDate) -> version | null
   The version that applies on localDate: the last of `sorted` (already in
   that order) dated on or before it. Null when none applies yet.
 ```
+
+**The 2026-11-02 revision** (D8, Phase 7) changes the shapes and functions
+listed below; the block above is otherwise unchanged:
+
+```text
+PlanDay   = {..., archiveDay: bool}                 always present; true only
+                                                    when state is "planned" on
+                                                    an archive date (D8)
+dayStatuses(planDays: PlanDay[], doses: PlanDose[], skips: PlanSkip[],
+            today: LocalDate) -> DayStatus[]
+  PlanSkip  = {skipId, protocolId, compoundId, localDate,
+               plannedLocalTime: "HH:MM" | null}
+  DayStatus = {..., status: ... | "skipped", skippedCount: int,
+               fills: [{..., doseId: string | null, skipId: string | null}]}
+  Matching steps 4 and 5 and the status order: D8.
+dueUnfilled: leaves out a fill with a skipId, as one with a doseId.
+validateProtocolSkip({localDate, plannedLocalTime, today}) -> issues (D8)
+```
+
+Output order is unchanged. Skips have no output of their own; `dayStatuses`
+reads them in id order (D8, step 5). In Dart, `PlanSkip` lives in
+`protocol_plan.dart` with the other core types, with `fromJson` and `toJson`
+like them; in TypeScript it is a type in `protocol-plan.ts`.
 
 **Shared version order.** `compareScheduleVersions` and
 `applyingScheduleVersion` are exported from the core in both languages
@@ -3883,6 +4821,808 @@ Phase 5's. Nothing in Phase 6 depends on it.
     one-line follow-up does. (Settled after Phase 6's build; this entry
     first said "once Phase 6 merges", before file 60a existed.)
 
+#### Phase 7: the archive day, the core's Skip rule, and Protocol delete
+
+Everything D8 needs except storing Skips. The core gains Skips, but every
+caller passes an empty list, so no "Skipped" is ever produced yet. What a
+user sees change:
+
+*   the archive day;
+*   the archive confirmation;
+*   Delete in the editor;
+*   the Progress card's (always zero) skipped count.
+
+What an Agent sees change:
+
+*   the delete operation;
+*   `hasHistory`;
+*   the archive warning;
+*   the new Day Status and planned-day fields.
+
+Phases 7 and 8 ship in one release (D8, "Mixed versions"), so the Skip
+fields are never published empty. The contract changes in Phase 7 anyway,
+because the response enums are checked against the core at compile time
+(D6).
+
+New constructor fields take defaults, so existing call sites keep compiling:
+
+*   `PlanSlotFill.skipId = null`;
+*   `DayStatus.skippedCount = 0`;
+*   `CompoundConsistencySummary.skipped = 0`;
+*   `PlannedRow.skipId = null`.
+
+`PlanDay.archiveDay` is required in `fromJson` but defaults to `false` in
+the constructor.
+
+##### 67. `packages/golden-vectors/vectors/m36-protocol-plan.json` and `m36-protocol-plan.schema.json` (Modify)
+
+*   **Proposed Changes**:
+    *   **Version.** `schemaVersion` 1 → 2, in the file and in the schema's
+        `const`.
+    *   **Schema.**
+        *   `planDay` requires `archiveDay` (boolean).
+        *   `dayStatus` requires `skippedCount` (integer ≥ 0), and its
+            `status` enum gains `skipped`.
+        *   `fill` requires `skipId` (string or null).
+        *   The `day_statuses` input requires `skips`, an array of `planSkip`
+            (`skipId`, `protocolId`, `compoundId`, `localDate`,
+            `plannedLocalTime`, all required, `additionalProperties:
+            false`).
+    *   **Rewrite every existing case** to the new shape:
+        *   `archiveDay` on every PlanDay, in inputs and expected values;
+        *   `skippedCount: 0` on every Day Status;
+        *   `skipId: null` on every fill, including the fills inside
+            `due_unfilled` inputs;
+        *   `skips: []` on every `day_statuses` input.
+
+        `archiveDay` is `false` except on a `planned` PlanDay whose date
+        equals its Protocol's or covering member row's `archivedOn`. Six
+        existing cases have one, and their values change:
+        *   `plan_days`:
+            *   `member-removed-today-is-still-planned-today` and
+                `archived-protocol-counts-through-its-archive-date`: the
+                archive date's expected PlanDay is `archiveDay: true`.
+                Each `note` is reworded from "still planned that day" to
+                D8's rule.
+            *   `start-moved-earlier-extends-an-archived-member`
+                (2026-10-15) and
+                `removed-and-re-added-member-reads-removed-in-the-gap`
+                (member-x-1 on 2026-10-05): the same.
+        *   `day_statuses`:
+            *   `member-removed-today-reads-pending-and-later-dates-are-not-returned`
+                is renamed
+                `member-removed-today-drops-unfilled-and-later-dates-are-not-returned`.
+                Its input PlanDay for 2026-10-26 gets `archiveDay: true`, and
+                today's Day Status becomes `not_planned` with reason
+                `removed` and `plannedCount` 0.
+            *   `archived-protocol-past-days-still-count`: its input PlanDay
+                on the archive date gets `archiveDay: true`. On that date,
+                an unfilled slot drops and a filled one stays, and the
+                expected Day Status follows D8's order.
+
+        `member-removed-and-re-added-the-same-day…` stays `false`.
+    *   **New cases.** Each gets a `note` naming the D8 rule it pins.
+        *   **`plan_days`:**
+            *   a Protocol archived on a date gives `archiveDay: true` there
+                and `removed` after;
+            *   a member removed and re-added on the same day gives
+                `archiveDay: false`;
+            *   an archive date that is off cycle stays `off_cycle`, with
+                `archiveDay: false`.
+        *   **`day_statuses`, archive day:**
+            *   one Dose fills one of two slots: one slot left, renumbered
+                0, `logged`;
+            *   no Dose: `not_planned`, reason `removed`, `plannedCount` 0;
+            *   a second Protocol planning the same Compound keeps its slots,
+                renumbered after the drop;
+            *   two Protocols (A archived, 17:00; B, 09:00) and one Dose at
+                14:00: the Dose fills A's 17:00, and B's 09:00 is open;
+            *   the archive day in the past: the same results with past-day
+                labels.
+        *   **`day_statuses`, Skips:**
+            *   one timed Skip today: `skipped`;
+            *   a Skip on one of two slots today: `pending`, `skippedCount`
+                1;
+            *   a Dose on one slot and a Skip on the other: `logged`,
+                `skippedCount` 1;
+            *   a Skip and no Dose on one of two slots, past day:
+                `not_logged`, `skippedCount` 1;
+            *   08:00 and 21:00, 21:00 skipped, a Dose at 15:00: it fills
+                08:00, `logged`, `skippedCount` 1 (D8's preference);
+            *   09:00 skipped, 21:00 open, a Dose at 09:10: it fills 21:00
+                (rule i), `skippedCount` 1 (the accepted cost);
+            *   only the skipped slot open, a Dose: it fills it, the Skip is
+                inert, `logged`, `skippedCount` 0;
+            *   a Skip naming a time not planned: inert;
+            *   two Skips with the same key: one marks;
+            *   three untimed Skips, two untimed slots: two mark;
+            *   a Skip with another Protocol's time: marks only its own
+                Protocol's slot;
+            *   a Skip on an archive day's unfilled slot: dropped, inert;
+            *   a Skip for another Compound or date: ignored.
+        *   **`due_unfilled`:**
+            *   a skipped slot is left out;
+            *   a dropped archive-day slot never appears.
+
+##### 68. `packages/golden-vectors/vectors/m36-protocol-plan-validation.json` and `m36-protocol-plan-validation.schema.json` (Modify)
+
+*   **Proposed Changes**:
+    *   **Schema.**
+        *   A new `oneOf` branch, `validator: {const: "protocol_skip"}`,
+            whose `input` object requires `localDate` and `today` (strings)
+            and `plannedLocalTime` (string or null), with
+            `additionalProperties: false`.
+        *   `$defs.checkId` gains `skip_time_format` and `skip_future`.
+        *   The schema `description` names the three validators.
+        *   The file's `schemaVersion` stays as it is: the change only adds
+            a branch.
+    *   **Cases:**
+        *   a timed and an untimed Skip today (accepted);
+        *   a past date (accepted);
+        *   tomorrow (`skip_future`);
+        *   `9:00`, `24:00` and `""` as the time (`skip_time_format`);
+        *   a bad time on a future date (both, in table order:
+            `skip_time_format`, then `skip_future`).
+
+##### 69. `packages/golden-vectors/vectors/README.md` (Modify)
+
+*   **Proposed Changes**: The m36 entry says the plan file is at schema
+    version 2 and why (D8), and that the validation file covers Skips.
+
+##### 70. `apps/mobile/lib/domain/protocols/protocol_plan.dart` (Modify)
+
+*   **Proposed Changes**:
+    *   `PlanDay` gains `final bool archiveDay`, read and written by
+        `fromJson` and `toJson`.
+    *   `DayStatusKind` gains `skipped('skipped')`, after `notLogged`.
+    *   `PlanSlotFill` gains `final String? skipId` and `bool get isSkipped
+        => skipId != null`. `isFilled` is unchanged.
+    *   `DayStatus` gains `final int skippedCount`.
+    *   New `PlanSkip`: `skipId`, `protocolId`, `compoundId`, `localDate` (a
+        `ProtocolDayDate`) and `plannedLocalTime` (a `String?`), with
+        `fromJson` and `toJson` like `PlanDose`.
+
+##### 71. `apps/mobile/lib/domain/protocols/protocol_plan_days.dart` (Modify)
+
+*   **Proposed Changes**:
+    *   `_planDay` sets `archiveDay` when it returns `planned` on the
+        Protocol's `archivedOn` or the covering row's `archivedOn`.
+    *   `dayStatuses(planDays, doses, skips, today)` groups Skips by
+        `_CompoundDate`, as it groups Doses.
+    *   `_dayStatus` runs D8's matching steps 3 to 5. `_slotFor` takes the
+        set of skipped slots and applies step 4's four rules in order.
+    *   `_plannedStatus` takes the open count.
+    *   `_unplannedStatus` treats a `planned` PlanDay whose slots were all
+        dropped as reason `removed`. Today it throws `StateError` on that
+        group.
+    *   `dueUnfilled` skips a fill when `fill.isFilled || fill.isSkipped`,
+        or when it is timed after now.
+    *   Doc comments state the archive-day and Skip rules where they bite.
+
+##### 72. `apps/mobile/lib/domain/protocols/protocol_plan_validation.dart` (Modify)
+
+*   **Proposed Changes**: `validateProtocolSkip({required ProtocolDayDate
+    localDate, required String? plannedLocalTime, required ProtocolDayDate
+    today})` returns the module's result type, with D8's two checks in
+    table order. Each issue carries D8's `field`, `limit` and `message`.
+
+##### 73. `apps/server/src/protocol-plan.ts` and `apps/server/src/index.ts` (Modify)
+
+*   **Proposed Changes**: The TypeScript mirror of files 70 and 71:
+    *   `PlanDay.archiveDay` and `PlanSkip`;
+    *   `DayStatusValue` gains `"skipped"`;
+    *   `DayStatusFill.skipId` and `DayStatus.skippedCount`;
+    *   `dayStatuses(planDays, doses, skips, today)`;
+    *   `planDayFor` sets `archiveDay`, and `dayStatusFor` runs steps 3 to 5;
+    *   the unplanned-status function handles the dropped group;
+    *   `dueUnfilled` skips skipped fills.
+
+    `index.ts` re-exports `PlanSkip`.
+
+##### 74. `apps/server/src/agent-validation.ts` and `apps/server/src/index.ts` (Modify)
+
+*   **Proposed Changes**: `validateAgentProtocolSkip({localDate,
+    plannedLocalTime, today})`, the mirror of file 72, returning
+    `AgentDoseValidationIssueSchema` issues. It is exported from `index.ts`
+    next to `validateAgentScheduleRule`. The contract package is not
+    changed.
+
+##### 75. Golden runners (Modify)
+
+*   `apps/mobile/test/domain/protocol_plan_golden_test.dart`:
+    *   `_schemaVersion = 2`;
+    *   `day_statuses` decodes `input.skips` with `PlanSkip.fromJson` and
+        passes them third.
+*   `apps/server/test/protocol-plan.golden.test.mjs`:
+    *   `PROTOCOL_PLAN_GOLDEN_SCHEMA_VERSION = 2`;
+    *   the `day_statuses` runner passes `input.skips`.
+*   `apps/mobile/test/domain/protocol_plan_validation_test.dart` and
+    `apps/server/test/agent-validation.golden.test.mjs` run the
+    `protocol_skip` validator.
+
+##### 76. The app's plan reads (Modify, Phase 7 part)
+
+*   **`apps/mobile/lib/data/repositories/protocol_plan_repository.dart`:**
+    *   **Skips.** Every `dayStatuses` call passes `const <PlanSkip>[]`
+        third; Phase 8 passes stored Skips.
+    *   **The Planned list.** `PlannedRowStatus` gains `skipped`. `PlannedRow`
+        gains `final String? skipId`. `_groups` sets both from the fill
+        (`skipped` before the today and past checks).
+    *   **Reminders.**
+        *   `reminderInputs` sets `filled: fill.isFilled ||
+            fill.isSkipped`. The `ProtocolReminderInput.filled` doc comment
+            says "filled or skipped".
+        *   The later-dates loop skips a PlanDay with `archiveDay: true`
+            (D8).
+    *   **The Progress summary.** `CompoundConsistencySummary` gains
+        `skipped`, and `_consistencySummaries` counts `DayStatusKind.skipped`
+        there. `ConsistencySlot.fill` and `ConsistencyDay.status` already
+        carry `skipId` and `skippedCount`, so nothing else is added.
+*   **`apps/mobile/lib/features/protocols/models/consistency_chart_data.dart`:**
+    on a PlanDay with `archiveDay: true`, planned segments include only the
+    planned times that have a fill in that date's Day Status (D8, "On
+    screen"). Its `build` already reads the same range's Day Statuses for
+    extras.
+*   **`apps/mobile/lib/features/protocols/services/protocol_reminder_scheduler.dart`:**
+    `remindersRequested` becomes `await _anyProtocolRemindersOn()` alone.
+    After D8 the other half, `inputs.any((i) => i.remindersEnabled)`, adds
+    only a Protocol archived today whose remaining doses are all filled,
+    and that schedules nothing. D5's "A Protocol has reminders on" bullet
+    is rewritten to match (this revision).
+
+##### 77. Every exhaustive switch over the two widened enums (Modify)
+
+*   **Proposed Changes**, so that Phase 7 compiles:
+    *   `apps/mobile/lib/features/protocols/widgets/plan_labels.dart`:
+        `dayStatusLabel` maps `skipped` to `l10n.dayStatusSkipped`.
+    *   `apps/mobile/lib/features/protocols/widgets/consistency_screen.dart`,
+        `_DayStatusLabel`: `skipped` uses
+        `Icons.do_not_disturb_on_outlined` in the secondary text color.
+    *   `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart`,
+        `_PlannedRowLabel`: `skipped` uses the same icon, with
+        `l10n.plannedListRowSkipped`.
+
+    Before merging, a search for `switch` over `DayStatusKind` and
+    `PlannedRowStatus` in `apps/mobile/lib` must find no other site. Today
+    there is none.
+
+##### 78. `apps/mobile/lib/domain/protocols/protocols.dart` (Modify, Phase 7 part)
+
+*   **Proposed Changes**: `ProtocolHasHistoryException` (`implements
+    Exception`, carrying `protocolId`), thrown by `deleteProtocol`.
+
+##### 79. `apps/mobile/lib/data/repositories/training_repositories.dart` (Modify, Phase 7 part)
+
+*   **Proposed Changes**, in `ProtocolsRepository`:
+    *   **`Future<bool> protocolHasHistory(String protocolId)` and
+        `Stream<bool> watchProtocolHasHistory(String protocolId)`.** One
+        query with D8's two conditions, as `EXISTS` over `doses`:
+        *   `deleted_at IS NULL AND protocol_id = ?`; or
+        *   `deleted_at IS NULL` and `compound_id` in the Protocol's member
+            rows that aren't undo tombstones, with `local_date` between the
+            Protocol's `start_local_date` and the earliest of its
+            `end_local_date` and `archived_on`.
+
+        The watch re-emits on writes to `doses`, `protocols` and
+        `protocol_compounds`. No index is added. The member half uses
+        `doses_compound_id_index`, and the tagged half scans one user's
+        Doses, which are few.
+    *   **`Future<String> deleteProtocol(String protocolId, {String actor =
+        'manual', String? batchId})`.** In one transaction:
+        *   `_requireProtocolRow` throws for an unknown id. A row already in
+            the undo-tombstone state throws `StateError('Protocol is
+            deleted: $id.')`.
+        *   `protocolHasHistory` true throws `ProtocolHasHistoryException`.
+        *   Otherwise it writes D8's one row (`deleted_at` and `updated_at`
+            = the context timestamp, `archived_on` = null) and appends one
+            Activity Log entry with `_protocolImage` before and after.
+
+        It returns the batch id.
+    *   **`archiveProtocol` is unchanged.** It accepts any Protocol.
+
+##### 80. `apps/mobile/lib/features/protocols/controllers/protocol_controller.dart` and `apps/mobile/lib/features/protocols/widgets/protocol_screen.dart` (Modify)
+
+*   **Proposed Changes**:
+    *   **Controller.**
+        *   `ProtocolListController.deleteProtocol(id)`.
+        *   `protocolHasHistoryProvider`, a
+            `StreamProvider.autoDispose.family<bool, String>` over
+            `watchProtocolHasHistory`, like the file's other per-id
+            providers.
+    *   **`ProtocolFormScreen`** shows Archive or Delete by
+        `protocolHasHistoryProvider` (D8).
+        *   New keys:
+            *   `deleteButtonKey = Key('protocols.form.delete')`;
+            *   `confirmArchiveButtonKey =
+                Key('protocols.form.confirmArchive')`;
+            *   `confirmDeleteButtonKey =
+                Key('protocols.form.confirmDelete')`.
+        *   Both buttons open an `AlertDialog` with D8's copy.
+        *   Delete and its confirm button use the destructive style, with
+            `Icons.delete_outline`.
+        *   After either write completes, the screen pops, as archive does
+            now.
+        *   A `ProtocolHasHistoryException` closes the dialog and shows D8's
+            snack bar.
+
+##### 81. `apps/mobile/lib/l10n/app_en.arb` and generated `app_localizations*.dart` (Modify/Regenerate, Phase 7 part)
+
+*   **Proposed Changes**:
+    *   `protocolEditorDelete`: "Delete".
+    *   `protocolArchiveConfirmTitle`: "Archive {name}?"
+    *   `protocolArchiveConfirmMessage` and `protocolDeleteConfirmMessage`:
+        D8's copy.
+    *   `protocolDeleteConfirmTitle`: "Delete {name}?"
+    *   `protocolOnlyArchivable`: D8's snack bar.
+    *   `dayStatusSkipped` and `plannedListRowSkipped`: "Skipped".
+    *   `progressCountSkipped`: "{count, plural, other{{count} skipped}}".
+
+##### 82. `apps/mobile/lib/features/progress/widgets/protocols_progress_card.dart` and `docs/designs/progress-overview.md` (Modify)
+
+*   **Proposed Changes**: The card shows a non-zero `skipped` count after
+    `paused`, with `progressCountSkipped`. In Progress Overview, D7 gains
+    one sentence saying so and pointing to this spec's D8, and the Data
+    shapes table's `CompoundConsistencySummary` row gains `skipped`, in the
+    same pull request, so the two specs agree.
+
+##### 83. Server: Protocol delete, history, and the Phase 6 reads (Modify)
+
+*   `apps/server/src/agent-protocols.ts`:
+    *   **The delete operation.**
+        *   Schemas: `AgentProtocolDeleteRequestSchema`,
+            `AgentProtocolDeleteResponseSchema` and
+            `AgentProtocolDeleteErrorResponseSchema`.
+        *   Route: `agentProtocolDeleteRoute` (D8), next to
+            `agentProtocolBatchWriteRoute`.
+        *   Store method: `deleteProtocols(userId, deviceId,
+            {idempotencyKey, protocolIds})`, through `writeOpaqueBatch`
+            with the existing `protocols` table key. Its `finalize` reads
+            each Protocol and answers `already_deleted` when
+            `isUndoTombstone`. It checks history, refuses with D8's rules,
+            and writes the one row.
+        *   `operationKind` gains `"protocol_deletes"`, so receipts don't
+            collide with the batch write's.
+    *   **History.** `protocolHasHistory`, a shared helper: D8's two
+        conditions as one `EXISTS` over `schema.doses` (`user_id`,
+        `deleted_at IS NULL`, and `payload->>'protocol_id'`, or
+        `payload->>'compound_id'` among the member payloads with
+        `payload->>'local_date'` in the dates, compared with `collate "C"`
+        as `readPlanDoses` does). Delete, the archive warning and
+        `listProtocols`' `hasHistory` all use it.
+    *   **`listProtocols`** adds `hasHistory` to each entry.
+    *   **The archive warning.** `stampArchive`'s caller adds D8's
+        `protocol_has_no_history` to `warnings` for a Protocol-level
+        archive.
+    *   **Messages.** The undo-tombstone refusal message (the
+        `archived_row_not_restorable` branch of the write guard) is reworded
+        as D8 says.
+    *   **Effect.** `readEffectWindow` treats an `isUndoTombstone` Protocol
+        as not found.
+    *   **The Phase 6 reads.**
+        *   The Day Status response gains `skippedCount`, `skipped` and
+            fill `skipId`. The call passes `[]` until Phase 8.
+        *   The planned-day response gains `archiveDay`, with D8's
+            description.
+        *   `DAY_STATUS_VALUES` gains `skipped`, which the compile-time
+            check against the core requires.
+*   `apps/server/src/app.ts`: registers the route. The handler
+    authenticates, calls the store method, and calls `maybeNudgeAgentWrite`
+    when any outcome is `deleted`. `apps/server/src/index.ts` exports the
+    route and schemas.
+*   `apps/server/src/agent-mcp.ts`: `agent_delete_protocols`, with the same
+    input and output, the same store method, and the same nudge.
+*   `apps/server/src/observability.ts`: `protocolids` joins the deny-list.
+    Bare Protocol ids are denied already (`protocolid`), and the key
+    normalizes to `protocolids`. A test in `observability.test.mjs` fails
+    before it is added.
+*   The skill files, as Phase 6 added its two commands (file 65, "Files no
+    entry listed"):
+    *   `packages/contract/src/agent-skill-reference.ts`;
+    *   `agent-skills/perennia/scripts/prn-agent.mjs` and `prn-code.mjs`;
+    *   `agent-skills/perennia/SKILL.md`: one example of
+        `delete-protocols`, and a line saying to archive a Protocol with
+        history and delete one without, reading `hasHistory`.
+*   Generated contract (Regenerate), as file 64.
+
+##### 84. `CONTEXT.md` (Modify, Phase 7 part)
+
+*   **Proposed Changes**:
+    *   The Protocol entry gains: "A Protocol with no history (no Dose of
+        it, tagged or within its dates) is deleted rather than archived.
+        Deleting it removes its plan as if it never existed, and the
+        Activity Log can recover it. On a Protocol's archive day, planned
+        doses a Dose filled still count, and unfilled ones are no longer
+        planned."
+    *   New entries for **Archive day** and **Skip**, with the definitions in
+        [New and changed terms](#new-and-changed-terms). The Skip entry
+        lands here because Phase 7's core and vectors already use the
+        term.
+    *   The Day Status entry names "Skipped".
+
+##### 85. `CHANGELOG.md` (Modify, Phase 7 part)
+
+*   **Proposed Changes**: Under `[Unreleased]`:
+    *   **Changed:** "Archiving a Protocol stops asking for that day's doses
+        you haven't logged, and asks for confirmation first."
+    *   **Added:** "Delete a Protocol nothing was logged for, from its
+        editor or through the Agent API (`delete-protocols`)."
+
+##### 86. Tests (Create/Modify, Phase 7)
+
+*   **Core:** the golden runners (file 75) cover D8's core rules in both
+    languages.
+*   **New tests:**
+    *   `apps/mobile/test/features/protocols/protocols_repository_test.dart`,
+        against in-memory SQLite:
+        *   `deleteProtocol` writes one `protocols` row and one Activity
+            Log entry, and leaves members, versions and target outcomes
+            untouched;
+        *   `undoBatch` restores it exactly, archived or not;
+        *   it refuses a Protocol with a tagged Dose
+            (`ProtocolHasHistoryException`), one with an untagged Dose of a
+            member Compound inside its dates, an unknown id, and one
+            already deleted;
+        *   an untagged Dose outside its dates, and a deleted Dose, are not
+            history;
+        *   `archiveProtocol` still accepts a Protocol with no history.
+    *   **Readers hide a deleted Protocol's children (D8), one test each:**
+        *   in the app: the plan query, through the Planned list, the
+            Consistency summary and `reminderInputs`; the active list;
+            `anyProtocolRemindersOn`. These go in
+            `apps/mobile/test/features/protocols/protocols_day_view_test.dart`,
+            `consistency_screen_test.dart` and
+            `protocol_reminder_scheduler_test.dart`.
+        *   on the server: `listProtocols`, `readPlanProtocols` (both
+            reads), `readEffectWindow` and the batch-write guard, in
+            `apps/server/test/agent-protocols.test.mjs`.
+    *   **The archive day:**
+        *   with one of two slots logged, one "Logged" row; with none, no
+            group;
+        *   `reminderInputs` holds no input for a dropped slot, today or
+            on a later archive date;
+        *   the chart draws no dropped time;
+        *   the Progress summary counts nothing for the dropped day.
+
+        These go in `protocols_day_view_test.dart`,
+        `protocol_reminder_scheduler_test.dart`,
+        `consistency_chart_data_test.dart` and
+        `apps/mobile/test/features/progress/protocols_progress_card_test.dart`.
+    *   **Widget tests:**
+        *   the editor shows Delete without history and Archive with it,
+            and each confirms before writing;
+        *   the snack bar shows on a refused delete.
+        *   **Accessibility:** both buttons are 48 dp targets with text, and
+            the destructive style is never the only signal (the button says
+            "Delete").
+    *   **`apps/server/test/agent-protocols.test.mjs`:**
+        *   `deleteAgentProtocols`: `deleted` and `already_deleted`, both
+            refusals as 422s, a repeated id, a retried `idempotencyKey`, and
+            Agent undo of its `batchId`;
+        *   the archive warning;
+        *   `hasHistory`;
+        *   the new Day Status and planned-day fields.
+    *   **`agent-mcp-parity.test.mjs`, `agent-mcp.test.mjs` and
+        `agent-skill.test.mjs`:** the new tool and command.
+    *   **`observability.test.mjs`:** `protocolIds` is redacted.
+    *   **`apps/server/test/sync-convergence.test.mjs`:**
+        *   a delete on one replica converges on the other, which then plans
+            nothing for the Protocol;
+        *   a delete against another replica's later edit of the Protocol's
+            name converges to the live Protocol with all its members.
+*   **Tests that change:**
+    *   **Pass the empty Skips list.** These calls of `dayStatuses` take
+        `const <PlanSkip>[]` (Dart) or `[]` (TypeScript) third:
+        *   `apps/mobile/test/performance/performance_budgets_test.dart:170`;
+        *   `apps/mobile/test/features/protocols/consistency_screen_test.dart:996`;
+        *   `apps/mobile/test/features/protocols/consistency_chart_data_test.dart:58, 193, 494`;
+        *   `apps/mobile/test/features/protocols/protocols_day_view_test.dart:1550, 1558`;
+        *   `apps/server/test/agent-protocols.test.mjs:3831, 3951, 3978`;
+        *   `apps/server/test/agent-mcp-parity.test.mjs:211`.
+    *   **Archive-day assertions.** These pin "the archive day is still
+        planned" and now expect D8's drop: "Not planned", reason
+        "Removed", for an unlogged archive day; a dropped chart time.
+        *   `consistency_screen_test.dart:100-109, 508-512, 529-544`;
+        *   `consistency_chart_data_test.dart:334-354`.
+    *   `protocol_reminder_scheduler_test.dart:677`: its archived-today
+        Protocol no longer keeps today's later reminders.
+    *   **Line numbers** are those of `main` on 2026-11-02 and name the
+        enclosing test.
+
+#### Phase 8: Skips
+
+##### 87. `apps/mobile/lib/data/local/app_database.dart` (Modify)
+
+*   **Proposed Changes**:
+    *   **The table.** `class ProtocolSkips extends Table`
+        (`@DataClassName('ProtocolSkipRow')`), with the Data shapes'
+        columns, no foreign keys, and `@TableIndex(name:
+        'protocol_skips_local_date_index', columns: {#localDate})`.
+    *   **Registration.**
+        *   in `@DriftDatabase(tables: …)`, after `Doses`;
+        *   `static const protocolSkipsTable = 'protocol_skips'`;
+        *   added to `tableNames`.
+    *   **Migration.** `schemaVersion` 63 → 64. `if (from < 64)` creates the
+        table, guarded by `_tableExists`, and its index with
+        `migrator.createIndex(...)`, because `createTable` doesn't install
+        `@TableIndex`.
+*   **Regenerate**, by `docs/releasing.md`'s "Drift schema snapshots" steps:
+    *   `app_database.g.dart`;
+    *   the dump `drift_schemas/app_database/drift_schema_v64.json`;
+    *   `test/generated_migrations/app_database/` (`schema.dart`,
+        `schema_v64.dart`).
+
+##### 88. `apps/mobile/lib/domain/protocols/protocols.dart` (Modify, Phase 8 part)
+
+*   **Proposed Changes**:
+    *   **`ProtocolSkipRecord`:** `id`, `protocolId`, `compoundId`,
+        `localDate` (a `ProtocolDayDate`) and `plannedLocalTime`.
+    *   **`ProtocolSkipDraft`:** the same fields without `id`.
+    *   **`ProtocolDayRecord`** gains `skips`, defaulting to `const []`: the
+        day's non-tombstoned Skips, ordered by id.
+
+##### 89. `apps/mobile/lib/data/repositories/training_repositories.dart` (Modify, Phase 8 part)
+
+*   **Proposed Changes**, in `ProtocolsRepository`:
+    *   **`Future<String> skipPlannedDose(ProtocolSkipDraft draft, {required
+        ProtocolDayDate today, String actor = 'manual', String?
+        batchId})`:**
+        *   runs `validateProtocolSkip(...).throwIfRejected()`;
+        *   throws `StateError` when the Protocol row is missing or an undo
+            tombstone;
+        *   inserts the row with a UUIDv7 id, and appends `beforeImage:
+            null`, `afterImage: _protocolSkipImage(row)`.
+
+        It returns the batch id.
+    *   **`Future<String> unskipPlannedDose(String skipId, {String actor =
+        'manual', String? batchId})`:** tombstones that Skip. When it is
+        timed, it also tombstones every other non-tombstoned Skip with the
+        same Protocol, Compound, date and time. Each row gets its own
+        Activity Log entry, all in one batch.
+    *   **`logDose(draft, {..., String? unskipId})`:** when set, the same
+        transaction and batch also does `unskipPlannedDose`'s writes for
+        that Skip.
+    *   **`protocolDay` and `watchProtocolDay`** read the day's Skips into
+        `ProtocolDayRecord.skips`, through `_activeProtocolSkipQuery`
+        (`deleted_at IS NULL`). `watchProtocolDay` combines the Doses watch
+        and the Skips watch with `_combineLatest2`.
+    *   **Image and companion functions**, next to the Dose ones:
+        *   `_protocolSkipImage(ProtocolSkipRow)`, with the keys `id`,
+            `protocol_id`, `compound_id`, `local_date`,
+            `planned_local_time`, `updated_at` and `deleted_at`;
+        *   `_protocolSkipCompanionFromImage`;
+        *   `_protocolSkipSyncCompanionFromImage`.
+    *   **Sync:** `_syncEntityTables` and `applySyncImage` handle
+        `protocol_skips`.
+    *   **Undo:** `ActivityLogRepository._currentImageFor` and
+        `_writeImageFor` get `protocol_skips` cases.
+    *   **Erase:** `TrainingRepositories.eraseTableNames` lists
+        `protocol_skips` before `protocols`.
+*   **No change** to
+    `apps/mobile/lib/features/activity/repositories/activity_feed_repository.dart`:
+    the table reads "protocol skips" through the existing fallback.
+
+##### 90. `apps/mobile/lib/data/repositories/protocol_plan_repository.dart` (Modify, Phase 8 part)
+
+*   **Proposed Changes**: Every read passes stored Skips to `dayStatuses`.
+    *   **Where the Skips come from:**
+        *   `_plannedDay` from `day.skips`;
+        *   `reminderInputs` from today's `ProtocolDayRecord`;
+        *   `watchConsistency`, `watchConsistencySummary` and
+            `_watchPlanAndDoses` read the range's Skips beside the Doses
+            (`local_date` in range, `deleted_at IS NULL`, and the Compound
+            when one is given).
+    *   **A third stream.** `_watchPlanAndDoses` needs it. A
+        `_combineLatest3` helper, written like `_combineLatest2`, joins this
+        file.
+    *   **Change watch.** `watchReminderInputChanges` also watches
+        `protocolSkips`.
+    *   **Conversion.** A `_planSkips` helper turns `ProtocolSkipRecord`s
+        into `PlanSkip`s, as `_planDoses` does.
+
+##### 91. `apps/mobile/lib/features/sync/repositories/sync_repository.dart` (Modify)
+
+*   **Proposed Changes**:
+    *   **Outbound.** `protocol_skips` joins `_outboundSyncActivityTables`.
+    *   **Push.** `_pushPendingProtocolSkipsWithClient`, through
+        `_pushPendingEntityRowsWithClient`, with
+        `_loadPendingProtocolSkipRows` and an acknowledge function copied
+        from the Dose one. It goes after Doses in both push sequences. There
+        is no `guardPendingRows`: a Skip is never edited, and a re-skip is
+        a new row.
+    *   **Pull.** `_applyPulledProtocolSkipChange` applies LWW, then
+        `applySyncImage`. In `_syncApplyOrder`, `protocol_skips` takes 14,
+        and every later rank moves up by one.
+    *   **Full re-sync.** `liveProtocolSkipSnapshotIds` and
+        `_markPreviouslySyncedProtocolSkipRowsAbsentFromSnapshotDeleted`,
+        as for Doses.
+
+##### 92. `apps/mobile/lib/data/repositories/portable_archive_repository.dart` (Modify)
+
+*   **Proposed Changes**:
+    *   **Entity.** A `_TypedPortableArchiveEntity<ProtocolSkipRow>` after
+        Doses, using `_protocolSkipImage`.
+    *   **Older archives.** `_mayBeAbsentFromArchive` lets `protocol_skips`
+        be absent below schema 64.
+    *   **Import checks.** A Skip row's `local_date` must be a real date,
+        and its `planned_local_time` must pass `skip_time_format`, or the
+        row is rejected as a malformed Dose is. It is not judged against
+        today, because an archive is a past record.
+    *   **Format.** The format version stays 1.
+
+##### 93. `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart` and `apps/mobile/lib/features/protocols/controllers/protocols_day_controller.dart` (Modify, Phase 8 part)
+
+*   **Proposed Changes**:
+    *   **`PlannedDoseTarget`** (in `protocols_day_view.dart`): `protocolId`,
+        `compoundId`, `localDate`, `plannedLocalTime` and `skipId`. The
+        Planned list builds it from a `PlannedRow`.
+    *   **`_PlannedRowTile`:** a `skipped` row opens the log sheet as a
+        `pending` one does, with a target whose `skipId` is the row's.
+    *   **`LogDoseSheet`** gains an optional `PlannedDoseTarget?
+        plannedDose`.
+        *   **With it,** Save's full-width button becomes a `Row` of two
+            `Expanded` buttons, each at least 48 dp:
+            *   a `TextButton`, **Skip**
+                (`LogDoseSheet.skipButtonKey =
+                Key('protocols.logDose.skip')`), when `skipId` is null;
+            *   **Undo skip** (`LogDoseSheet.unskipButtonKey =
+                Key('protocols.logDose.unskip')`), when it isn't;
+            *   the existing `FilledButton`, Save.
+        *   **Without it,** the sheet is as before.
+        *   **In-flight guard.** The sheet's existing `_saving` flag covers
+            all three writes. Every button is disabled while one runs, and
+            the sheet pops when it completes.
+        *   **Failure.** A failure shows no message, as Save's doesn't.
+        *   **Skip writes the target's values**, not the sheet's fields.
+    *   **`ProtocolDayController`:**
+        *   `skipPlannedDose(PlannedDoseTarget target)`, with the Protocols
+            clock's today;
+        *   `unskipPlannedDose(String skipId)`;
+        *   `logDose(DoseSnapshotDraft draft, {String? unskipId})`.
+
+##### 94. `apps/mobile/lib/features/protocols/widgets/consistency_screen.dart` (Modify, Phase 8 part)
+
+*   **Proposed Changes**:
+    *   `_slotLines` reads "Skipped" (`plannedListRowSkipped`) for a slot
+        with a `skipId`, before the choice between Pending and Not logged.
+    *   `_statusDetail` adds "{n} skipped" (`consistencySkippedCount`) when
+        `skippedCount > 0`, before the extra count.
+
+##### 95. `apps/mobile/lib/l10n/app_en.arb` and generated `app_localizations*.dart` (Modify/Regenerate, Phase 8 part)
+
+*   **Proposed Changes**:
+    *   `logDoseSkip`: "Skip".
+    *   `logDoseUnskip`: "Undo skip".
+    *   `consistencySkippedCount`: "{count, plural, other{{count}
+        skipped}}".
+
+##### 96. Server: storage and sync (Create/Modify)
+
+*   **`apps/server/src/db/schema.ts`:** a `protocolSkips` table
+    (`protocol_skips`), with the same columns and index as `doses`.
+*   **`apps/server/drizzle/<next>_protocol_skips.sql`**, with its snapshot
+    and journal entry, generated by `pnpm --filter @perennia/server
+    db:generate`. Expand-only: it adds a table.
+*   **`apps/server/src/sync.ts`:**
+    *   `PROTOCOL_SKIPS_SYNC_ENTITY = "protocol_skips"`, in
+        `SYNC_PULL_ENTITIES` and `SYNC_PUSH_ENTITIES`;
+    *   `pushProtocolSkipsInTransaction`, shaped like
+        `pushDosesInTransaction`, and the store method;
+    *   the pull cursor filter, the live snapshot filter, the select and
+        the row mapping;
+    *   sort rank 3.5, between Doses (3) and Foods (4);
+    *   no `PULL_PARENT_REFERENCES` entry, because its references are soft;
+    *   `SYNC_PROTOCOL_VERSION` stays 2.
+*   **`apps/server/src/app.ts`:** the push dispatch case.
+*   **`apps/server/src/agent-activity.ts`:** `OpaqueTable` and
+    `UNDOABLE_ENTITY_REGISTRY` entries, so Agent undo covers Skips.
+*   **`apps/server/src/observability.ts`:** `skips` joins the deny-list,
+    with a test that fails before it does, as file 65 did.
+
+##### 97. Server: the Skip write and the Day Status read (Modify)
+
+*   **`apps/server/src/agent-protocols.ts`:**
+    *   **The Skip write (D8).**
+        *   Schemas: `AgentProtocolSkipBatchWriteRequestSchema`,
+            `AgentProtocolSkipBatchWriteResponseSchema` and
+            `AgentProtocolSkipBatchWriteErrorResponseSchema`.
+        *   Route: `agentProtocolSkipBatchWriteRoute`.
+        *   `OpaqueTable`, `OpaqueTableKey` and `OPAQUE_TABLES` gain
+            `protocol_skips`, and `operationKind` gains
+            `"protocol_skips"`.
+        *   `prepareAgentProtocolSkipBatchWrite` runs, collecting every
+            issue before refusing:
+            *   `validateAgentProtocolSkip`;
+            *   the `today` bound;
+            *   `protocol_not_found`;
+            *   `skip_immutable`.
+        *   The store method writes through `writeOpaqueBatch`. Its finalize
+            adds the timed-sibling tombstones (D8) to the same batch.
+    *   **`readPlanSkips`:**
+        *   reads the user's Skips in the range (`payload->>'local_date'`
+            with `collate "C"`, as `readPlanDoses`);
+        *   filters by `compound_id` and `protocol_id` when given;
+        *   leaves tombstones out;
+        *   skips rows with no readable `protocol_id`, `compound_id` or
+            `local_date`.
+
+        `listProtocolDayStatuses` passes the result to `dayStatuses`.
+*   **`apps/server/src/app.ts` and `agent-mcp.ts`:** the route and the tool
+    (`agent_batch_write_protocol_skips`), both nudging.
+    `apps/server/src/index.ts` exports them.
+*   **The skill files, as file 83:**
+    *   `packages/contract/src/agent-skill-reference.ts`;
+    *   `prn-agent.mjs` and `prn-code.mjs`;
+    *   `SKILL.md`: one example of `log-protocol-skips`, and the rule that
+        removing a timed Skip removes its siblings.
+*   **Generated contract** (Regenerate), as file 64.
+
+##### 98. `CHANGELOG.md` (Modify, Phase 8 part)
+
+*   **Proposed Changes**: Under `[Unreleased]`, Added: "Skip a planned dose,
+    today or on a past day: it reads Skipped instead of Pending or Not
+    logged, and the Agent API can do the same (`log-protocol-skips`). Update
+    every device: older versions show skipped doses as not yet logged."
+
+##### 99. Tests (Create/Modify, Phase 8)
+
+*   **`apps/mobile/test/features/protocols/protocols_repository_test.dart`:**
+    *   `skipPlannedDose` validates, refuses a deleted Protocol, and accepts
+        an archived one;
+    *   `unskipPlannedDose` removes every Skip with a timed key, and only
+        the named untimed one;
+    *   `logDose(unskipId:)` writes both in one batch;
+    *   undo of each;
+    *   a Skip doesn't make a Protocol undeletable.
+*   **`apps/mobile/test/features/protocols/protocols_day_view_test.dart` and
+    `protocol_reminder_scheduler_test.dart`:**
+    *   the Planned list reads "Skipped", and "Log all planned" leaves the
+        row out;
+    *   `reminderInputs` marks the dose filled.
+*   **`consistency_screen_test.dart` and `protocols_progress_card_test.dart`:**
+    the Consistency view and the summary count it.
+*   **`apps/mobile/test/features/sync/sync_repository_test.dart`**, next to
+    the Dose push and pull cases:
+    *   push and pull of `protocol_skips`;
+    *   a full re-sync that drops a Skip the server no longer has.
+*   **`apps/mobile/test/data/schema_snapshot_migration_test.dart`:** v63 →
+    v64 creates the table and index.
+*   **`apps/mobile/test/data/portable_archive_repository_test.dart`:**
+    *   Skips round-trip;
+    *   an archive at schema 63 imports;
+    *   a malformed Skip row is rejected.
+*   **`apps/mobile/test/data/erase_all_data_test.dart`:** the erase list.
+*   **Kill and reopen,** in
+    `apps/mobile/test/features/protocols/protocol_plan_reopen_test.dart`:
+    skip a planned dose, close the database, reopen it, and the row still
+    reads "Skipped".
+*   **Widget tests** (`protocols_day_view_test.dart`,
+    `log_dose_sheet_test.dart`):
+    *   CUJ 15 in two taps from a "Pending" row;
+    *   Undo skip;
+    *   Save from a "Skipped" row (CUJ 16);
+    *   a past day's Skip (CUJ 17);
+    *   no Skip on a future day;
+    *   a double tap writes one Skip;
+    *   the label's text and icon in both themes (WCAG AA).
+*   **`apps/server/test/agent-protocols.test.mjs`:**
+    *   the Skip write: each outcome, each 422 rule, the `today` bound, the
+        sibling sweep, and a retried `idempotencyKey`;
+    *   the Day Status read with Skips.
+*   **`apps/server/test/sync-convergence.test.mjs`:**
+    *   two replicas skip the same timed planned dose offline, converge,
+        and read one Skipped dose;
+    *   one removes it, and both Skips are gone after sync.
+*   **MCP parity, the MCP tool list and the skill tests**, as file 86.
+*   **`observability.test.mjs`:** `skips` is redacted.
+
+##### 100. `docs/designs/SITEMAP.md` and this spec (Modify)
+
+*   **Proposed Changes**:
+    *   **Status → Current**, here and in SITEMAP.md, when Phase 8 merges
+        with the code matching D8.
+    *   **Until then**, the SITEMAP entry reads In Review, and then
+        Approved once the revision is approved.
+
 ### Verification Plan
 
 *   **Build**: `flutter build apk --debug`, plus an iOS simulator build
@@ -3915,6 +5655,27 @@ Phase 5's. Nothing in Phase 6 depends on it.
     *   pausing "Skin" for a week (CUJ 5);
     *   editing TRT to Monday, Wednesday and Friday (CUJ 6);
     *   logging last night's GHK-Cu after midnight (CUJ 7).
+*   **Phases 7 and 8** (the 2026-11-02 revision):
+    *   **CI gate**: `golden`, `mobile`, `js`, `sync` and `contract` in both
+        phases; Phase 8 also changes the Drift schema, so the `mobile`
+        job's snapshot check runs on the new v64 files.
+    *   **Cross-language**: every m36 case at schema version 2, including
+        the matching-preference and two-Protocol archive-day cases, and
+        every `protocol_skip` validation case, passes in both languages.
+    *   **Standing scenarios**: kill-and-reopen after a Skip (file 99); sync
+        convergence for a delete, for a delete against a concurrent edit of
+        the Protocol (file 86), and for concurrent Skips (file 99).
+    *   **Manual, on a device**: CUJs 13 to 17, each producing its Then.
+        *   For CUJ 14, archive a Protocol with reminders on a minute before
+            one of its later planned times that day, and check that no
+            reminder fires.
+        *   For CUJ 13, delete a new Protocol from its editor.
+        *   Also take a Protocol created and archived before Phase 7 with
+            nothing logged (the reported case): undo its archive in the
+            Activity Log, then delete it from the editor.
+        *   Check a 0.1.0 install synced with the new build: it ignores
+            Skips and shows the deleted Protocol as gone (D8, "Mixed
+            versions").
 
 --------------------------------------------------------------------------------
 

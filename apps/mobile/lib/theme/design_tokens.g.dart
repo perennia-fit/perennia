@@ -61,6 +61,10 @@ class DesignTokens {
   static const double trainedDaysCellSize = 24;
   static const double trainedDaysCellGap = 2;
   static const double trainedDaysFillOpacity = 0.7;
+  static const double progressSparklineHeight = 40;
+  static const double progressSparklinePointRadius = 3;
+  static const double progressSparklineRingWidth = 1.5;
+  static const double progressSparklineLineWidth = 2;
 
   // ---- typography ----
   static const TokenTextStyle numeralHero = TokenTextStyle(family: 'Roboto', size: 34, weight: 600, height: 1.1, tabularFigures: true);

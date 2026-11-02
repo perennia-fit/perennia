@@ -109,6 +109,11 @@ components:
     size: 24px
     gap: 2px
     fillOpacity: 0.7
+  progress-sparkline:
+    height: 40px
+    pointRadius: 3px
+    ringWidth: 1.5px
+    lineWidth: 2px
 ---
 
 # Design System: Perennia
