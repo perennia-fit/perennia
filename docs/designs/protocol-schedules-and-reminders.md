@@ -5501,6 +5501,13 @@ the constructor.
 *   **No change** to
     `apps/mobile/lib/features/activity/repositories/activity_feed_repository.dart`:
     the table reads "protocol skips" through the existing fallback.
+*   **Settled during Phase 8's build:** removing a Skip that is already a
+    tombstone (another device removed it first) doesn't rewrite it, since a
+    tombstoned Skip is never brought back, but a timed one still removes
+    its live siblings, so the row the user saw as "Skipped" ends up
+    unmarked. An unknown `skipId` throws `StateError`. `skipPlannedDose`
+    reports a validation failure as a failed `Future`
+    (`DoseValidationException`), as `logDose` does.
 
 ##### 90. `apps/mobile/lib/data/repositories/protocol_plan_repository.dart` (Modify, Phase 8 part)
 
@@ -5519,6 +5526,10 @@ the constructor.
         `protocolSkips`.
     *   **Conversion.** A `_planSkips` helper turns `ProtocolSkipRecord`s
         into `PlanSkip`s, as `_planDoses` does.
+    *   **A future day** (settled during Phase 8's build): `_plannedDay`'s
+        numbering run for a date after today passes no Skips. Its rows read
+        no status (D6), and a `skipId` there would contradict
+        `PlannedRow.skipId`'s meaning. Every Day Status read passes them.
 
 ##### 91. `apps/mobile/lib/features/sync/repositories/sync_repository.dart` (Modify)
 
@@ -5549,6 +5560,12 @@ the constructor.
         row is rejected as a malformed Dose is. It is not judged against
         today, because an archive is a past record.
     *   **Format.** The format version stays 1.
+    *   **How the import check runs** (settled during Phase 8's build): it
+        calls `validateProtocolSkip` with the row's own `local_date` as
+        `today`, so only `skip_time_format` can fire, and parses the date
+        with `ProtocolDayDate.parse`. Either failure is a
+        `PortableArchiveException` ("Archive row N is invalid"), as a row
+        that fails to decode is.
 
 ##### 93. `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart` and `apps/mobile/lib/features/protocols/controllers/protocols_day_controller.dart` (Modify, Phase 8 part)
 
@@ -5574,11 +5591,18 @@ the constructor.
             the sheet pops when it completes.
         *   **Failure.** A failure shows no message, as Save's doesn't.
         *   **Skip writes the target's values**, not the sheet's fields.
+        *   **Settled during Phase 8's build:** Save also returns at once
+            when `_saving` is already set, so a second tap before the next
+            frame can't write twice.
     *   **`ProtocolDayController`:**
         *   `skipPlannedDose(PlannedDoseTarget target)`, with the Protocols
             clock's today;
         *   `unskipPlannedDose(String skipId)`;
         *   `logDose(DoseSnapshotDraft draft, {String? unskipId})`.
+    *   **Where `PlannedDoseTarget` lives** (settled during Phase 8's
+        build): in `protocols_day_controller.dart`, not the view, because
+        the controller takes it and must not import the widget layer.
+        `protocols_day_view.dart` re-exports it.
 
 ##### 94. `apps/mobile/lib/features/protocols/widgets/consistency_screen.dart` (Modify, Phase 8 part)
 
@@ -5656,6 +5680,17 @@ the constructor.
     *   `SKILL.md`: one example of `log-protocol-skips`, and the rule that
         removing a timed Skip removes its siblings.
 *   **Generated contract** (Regenerate), as file 64.
+*   **Settled during Phase 8's build:**
+    *   **The opaque-table key** is `protocolSkips`, matching the existing
+        camelCase keys (`protocolCompounds`, `protocolTargetOutcomes`). The
+        sync entity, the Activity Log `entity_table` and `operationKind`
+        are `protocol_skips`.
+    *   **Request validation.** `id` uses `ClientUuidV7Schema` and
+        `localDate` and `today` use `LocalDateSchema`, so a value that
+        isn't one is a 400, as D8 says. `plannedLocalTime` accepts any
+        string or null, so the validator answers a bad time with a 422
+        `skip_time_format`. `deletedAt` must parse as a timestamp, or the
+        request is a 400.
 
 ##### 98. `CHANGELOG.md` (Modify, Phase 8 part)
 
