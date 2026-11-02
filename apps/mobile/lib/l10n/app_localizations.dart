@@ -5269,6 +5269,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{seconds} s'**
   String progressValueSeconds(int seconds);
+
+  /// No description provided for @progressBodyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Body'**
+  String get progressBodyTitle;
+
+  /// No description provided for @progressBodyTrackerAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Body Tracker'**
+  String get progressBodyTrackerAction;
+
+  /// No description provided for @progressBodyEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Log a measurement to see its trend'**
+  String get progressBodyEmpty;
+
+  /// Under the Body card's title: how the Trend shown beside each measurement is smoothed.
+  ///
+  /// In en, this message translates to:
+  /// **'Smoothed over about 10 days'**
+  String get progressBodyTrendHint;
+
+  /// The Trend rose over the period by {change}, a value with its unit.
+  ///
+  /// In en, this message translates to:
+  /// **'↑ {change}'**
+  String progressBodyChangeUp(String change);
+
+  /// The Trend fell over the period by {change}, a value with its unit.
+  ///
+  /// In en, this message translates to:
+  /// **'↓ {change}'**
+  String progressBodyChangeDown(String change);
+
+  /// The Trend's change over the period rounds to 0.0.
+  ///
+  /// In en, this message translates to:
+  /// **'No change'**
+  String get progressBodyNoChange;
+
+  /// No description provided for @progressBodyChartSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{name}: 1 reading and its trend in this period} other{{name}: {count} readings and their trend in this period}}'**
+  String progressBodyChartSemantics(int count, String name);
 }
 
 class _AppLocalizationsDelegate

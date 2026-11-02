@@ -17,6 +17,7 @@ import 'package:perennia/features/home/repositories/home_repository.dart';
 import 'package:perennia/features/home/widgets/home_screen.dart';
 import 'package:perennia/features/progress/controllers/progress_controller.dart';
 import 'package:perennia/features/analytics/widgets/exercise_overview_screen.dart';
+import 'package:perennia/features/progress/widgets/body_card.dart';
 import 'package:perennia/features/progress/widgets/focus_time_card.dart';
 import 'package:perennia/features/progress/widgets/key_exercises_card.dart';
 import 'package:perennia/features/progress/widgets/new_bests_card.dart';
@@ -904,6 +905,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('No new bests in this period'), findsOneWidget);
+    expect(find.text('Log a measurement to see its trend'), findsOneWidget);
     expect(find.byKey(ProtocolsProgressCard.cardKey), findsNothing);
 
     int actionsIn(String title) {
@@ -924,6 +926,17 @@ void main() {
     expect(actionsIn('Time by Focus'), 1);
     expect(actionsIn('Key exercises'), 0);
     expect(actionsIn('New bests'), 0);
+    // The More tile is titled "Body" too, so the card is found by type.
+    expect(
+      find
+          .descendant(
+            of: find.byType(BodyCard),
+            matching: find.byType(TextButton),
+          )
+          .evaluate()
+          .length,
+      1,
+    );
     expect(find.byKey(ProgressOverview.bodyTrackerTileKey), findsOneWidget);
     expect(find.byKey(ProgressOverview.healthMetricsTileKey), findsOneWidget);
     await _unmount(tester);

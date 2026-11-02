@@ -13,6 +13,7 @@ void main() {
     WidgetTester tester,
     List<ProgressSparklinePoint> points, {
     Set<int> markedIndexes = const <int>{},
+    List<ProgressSparklinePoint> overlay = const <ProgressSparklinePoint>[],
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -24,7 +25,9 @@ void main() {
             child: ProgressSparkline(
               points: points,
               markedIndexes: markedIndexes,
+              overlay: overlay,
               pointColor: AppColors.light.textPrimary,
+              overlayColor: AppColors.light.record,
             ),
           ),
         ),
@@ -105,5 +108,18 @@ void main() {
         .single;
     expect(dots.spots.map((spot) => spot.y), <double>[10, 11]);
     expect(painterOf(dots).color, AppColors.light.textPrimary);
+  });
+
+  testWidgets('the overlay line is drawn last, over the dots', (tester) async {
+    final data = await pump(
+      tester,
+      <ProgressSparklinePoint>[point(0, 80), point(1, 82)],
+      overlay: <ProgressSparklinePoint>[point(0, 80), point(1, 80.2)],
+    );
+
+    final line = data.lineBarsData.last;
+    expect(line.color, AppColors.light.record);
+    expect(line.barWidth, AppDimens.progressSparklineLine);
+    expect(line.spots.map((spot) => spot.y), <double>[80, 80.2]);
   });
 }

@@ -62,6 +62,7 @@ class DesignTokens {
   static const double trainedDaysCellGap = 2;
   static const double trainedDaysFillOpacity = 0.7;
   static const double progressSparklineHeight = 40;
+  static const double progressSparklineBodyHeight = 64;
   static const double progressSparklinePointRadius = 3;
   static const double progressSparklineRingWidth = 1.5;
   static const double progressSparklineLineWidth = 2;

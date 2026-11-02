@@ -7,6 +7,7 @@ import '../../body_tracker/widgets/body_tracker_screen.dart';
 import '../../metrics/widgets/metrics_screen.dart';
 import '../../settings/widgets/settings_shared.dart';
 import '../controllers/progress_controller.dart';
+import 'body_card.dart';
 import 'focus_time_card.dart';
 import 'key_exercises_card.dart';
 import 'new_bests_card.dart';
@@ -82,6 +83,8 @@ class ProgressOverview extends ConsumerWidget {
           const KeyExercisesCard(),
           gap,
           const NewBestsCard(),
+          gap,
+          const BodyCard(),
           gap,
           // Absent, or nothing while loading, without leaving a gap.
           const _ProtocolsSlot(gap: gap),

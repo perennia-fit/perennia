@@ -37,6 +37,7 @@ import 'package:perennia/features/metrics/widgets/metrics_screen.dart';
 import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
 import 'package:perennia/features/progress/repositories/progress_feature_repository.dart';
+import 'package:perennia/features/progress/widgets/body_card.dart';
 import 'package:perennia/features/progress/widgets/key_exercises_card.dart';
 import 'package:perennia/features/progress/widgets/new_bests_card.dart';
 import 'package:perennia/features/progress/widgets/progress_overview.dart';
@@ -249,10 +250,14 @@ void main() {
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       }
 
-      // The training cards below the fold, populated.
+      // The cards below the fold, populated.
       await tester.tap(find.byKey(HomeScreen.progressDestinationKey));
       await tester.pumpAndSettle();
-      for (final card in <Type>[KeyExercisesCard, NewBestsCard]) {
+      for (final (card, content) in <(Type, String)>[
+        (KeyExercisesCard, 'Bench press'),
+        (NewBestsCard, 'Bench press'),
+        (BodyCard, 'Body Weight'),
+      ]) {
         await tester.scrollUntilVisible(
           find.byType(card),
           200,
@@ -262,7 +267,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.textContaining('Bench press'), findsWidgets);
+        expect(find.textContaining(content), findsWidgets);
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
@@ -2263,8 +2268,8 @@ Future<void> _scrollToProgressTile(WidgetTester tester, Key key) async {
 
 /// A [StubProgressFeatureRepository] that fills every Progress card around
 /// the real current date: a weekly Routine, Workouts under two Focuses and
-/// none, more Compounds than the Protocols card lists, and two charted
-/// Favorites with New Bests.
+/// none, more Compounds than the Protocols card lists, two charted
+/// Favorites with New Bests, and a month of Body Weight Readings.
 StubProgressFeatureRepository _populatedProgressRepository() {
   final today = TrainingDayDate.fromDateTime(DateTime.now());
   ProgressPoint point(int daysAgo, double value, {bool isNewBest = false}) {
@@ -2329,7 +2334,45 @@ StubProgressFeatureRepository _populatedProgressRepository() {
     );
   }
 
+  final bodyWeight = MeasurementRecord(
+    id: 'measurement-body-weight',
+    name: 'Body Weight',
+    unit: MeasurementUnit.kilogram,
+    goalType: MeasurementGoalType.decrease,
+    enabled: true,
+    sortOrder: 0,
+    updatedAt: DateTime.utc(2026),
+  );
+  // Newest first, as Body Tracker reads them.
+  final bodyWeightEntries = <MeasurementEntryRecord>[
+    for (var daysAgo = 0; daysAgo < 30; daysAgo += 2)
+      MeasurementEntryRecord(
+        id: 'reading-$daysAgo',
+        measurementId: bodyWeight.id,
+        value: 80 + daysAgo / 20 + (daysAgo % 4 == 0 ? 0.6 : 0),
+        valueEntered: '80',
+        measuredAt: today
+            .addDays(-daysAgo)
+            .atLocalTimeOf(DateTime(2000, 1, 1, 7))
+            .toUtc(),
+        updatedAt: DateTime.utc(2026),
+      ),
+  ];
+
   return StubProgressFeatureRepository(
+    curatedMeasurements: <MeasurementRecord>[bodyWeight],
+    measurementEntries: <String, List<MeasurementHistoryEntry>>{
+      bodyWeight.id: <MeasurementHistoryEntry>[
+        for (final (index, entry) in bodyWeightEntries.indexed)
+          MeasurementHistoryEntry(
+            measurement: bodyWeight,
+            entry: entry,
+            previousEntry: index + 1 < bodyWeightEntries.length
+                ? bodyWeightEntries[index + 1]
+                : null,
+          ),
+      ],
+    },
     weeklyPlans: <WeeklyPlanFacts>[
       WeeklyPlanFacts(
         routineId: 'routine-hybrid',

@@ -1,7 +1,7 @@
 # Progress Overview
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved
+*   **Status:** Current
 *   **Date:** 2026-10-31
 
 --------------------------------------------------------------------------------
@@ -988,10 +988,22 @@ below it once, when its data arrives.
         decimal, rounded half up, and the Reading's own unit label as Body
         Tracker shows it. Readings are not converted to the unit system
         (D5). A change that rounds to 0.0 reads "No change".
+        *   Rounding is applied to the magnitude, and the arrow follows the
+            sign: "↑" for a rise, "↓" for a fall, so −1.65 and 1.65 show the
+            same number. The value keeps its trailing ".0" ("80.0 kg"),
+            unlike Key exercises' loads.
+        *   The name takes at most two lines, then an ellipsis. The change
+            line is in the secondary text color, never red or green: a fall
+            is good for one measurement and bad for another.
     *   The Trend label carries the hint "Smoothed over about 10 days" as a
         line of secondary text under the card title.
     *   Each row has a 64 dp chart of the period's Readings, drawn as dots in
         the secondary text color under the Trend line in the accent color.
+        *   The height is the `bodyHeight` of DESIGN.md's
+            `progress-sparkline` token. `ProgressSparkline` draws its overlay
+            last, so the line sits over the dots, as DESIGN.md describes it.
+        *   Its semantics label is "{name}: {n} readings and their trend in
+            this period" ("1 reading and its trend" for one).
     *   Empty state: "Log a measurement to see its trend", action "Body
         Tracker".
 7.  **Protocols.** As D7.
@@ -2283,7 +2295,8 @@ source:
         *   a reading whose value is only in `valueJson.value` (carries
             `trendValue`);
         *   an archived reading with `includeArchived` (no `trendValue`).
-65. **This spec** (modify). Status Current once PR 4 merges.
+65. **This spec** (modify). Status Current, set in PR 4 itself, with the
+    SITEMAP entry, since PR 4 completes the spec.
 
 ## Verification Plan
 

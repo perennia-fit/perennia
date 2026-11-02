@@ -25,10 +25,13 @@ class AppDimens {
   static const double trainedDaysFillOpacity =
       DesignTokens.trainedDaysFillOpacity;
 
-  /// A Key exercises tile's sparkline height, and the sparkline's point
-  /// radius, New Best ring stroke and overlay line width.
+  /// A Key exercises tile's sparkline height, a Body card row's chart
+  /// height, and the sparkline's point radius, New Best ring stroke and
+  /// overlay line width.
   static const double progressSparklineHeight =
       DesignTokens.progressSparklineHeight;
+  static const double progressBodyChartHeight =
+      DesignTokens.progressSparklineBodyHeight;
   static const double progressSparklinePoint =
       DesignTokens.progressSparklinePointRadius;
   static const double progressSparklineRing =
