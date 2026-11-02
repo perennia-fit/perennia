@@ -16,7 +16,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   exercises, New bests, Body and Protocols. The Body card draws each Body
   Tracker measurement's Trend, smoothed over about 10 days, with its change
   over the period. ([#86](https://github.com/perennia-fit/perennia/pull/86),
-  [#90](https://github.com/perennia-fit/perennia/pull/90))
+  [#90](https://github.com/perennia-fit/perennia/pull/90),
+  [#92](https://github.com/perennia-fit/perennia/pull/92))
 - **Progress reads for agents.** `listAgentTrainingDays`
   (`GET /agent/progress/training-days`, `agent_list_training_days`) and
   `listAgentNewBests` (`GET /agent/progress/new-bests`,
@@ -24,7 +25,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   and `GET /agent/metrics/readings` (`agent_list_metric_readings`) takes
   `includeTrend`, which adds each reading's `trendValue`.
   ([#86](https://github.com/perennia-fit/perennia/pull/86),
-  [#90](https://github.com/perennia-fit/perennia/pull/90))
+  [#90](https://github.com/perennia-fit/perennia/pull/90),
+  [#92](https://github.com/perennia-fit/perennia/pull/92))
 
 ## [0.1.0] - 2026-11-01
 
