@@ -14,6 +14,7 @@ import {
   resolvePlatformExerciseId,
   type AgentExercise
 } from "./agent-catalog.js";
+import { LocalDateSchema, unionValues } from "./agent-protocols.js";
 import { AgentSetValidationValuesSchema } from "./agent-validation.js";
 import {
   ExerciseAnalyticsEngine,
@@ -22,10 +23,12 @@ import {
   type AnalyticsRecord,
   type AnalyticsSet,
   type DimensionId,
+  type ExerciseAnalyticsProfile,
   type ExerciseAnalyticsResult,
   type LoggedSetValues,
   type TrainingUnit
 } from "./analytics/exercise-analytics.js";
+import type { ProgressMeasureKind, ProgressSeries } from "./analytics/progress-measure.js";
 import type { CanonicalSeries } from "./canonical-import.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
@@ -43,7 +46,7 @@ const DimensionIdSchema = z
   .enum(["load", "reps", "duration", "distance"])
   .openapi("AgentReadDimensionId");
 
-const TrainingUnitSchema = z
+export const TrainingUnitSchema = z
   .enum(["kilogram", "pound", "repetition", "second", "kilometer", "mile"])
   .openapi("AgentReadTrainingUnit");
 
@@ -128,6 +131,59 @@ export const AgentPeriodStatsSchema = z
   })
   .openapi("AgentPeriodStats");
 
+const PROGRESS_MEASURES = unionValues<ProgressMeasureKind>()([
+  "estimatedOneRepMax",
+  "maxLoad",
+  "maxReps",
+  "maxDuration",
+  "minDuration",
+  "maxDistance",
+  "fastestPace"
+]);
+
+export const AgentProgressMeasureSchema = z
+  .enum(PROGRESS_MEASURES)
+  .openapi("AgentProgressMeasure", {
+    description:
+      "The one number per Logged Workout an exercise's Record Profile charts: the best estimated one-rep max (repMax), or the Workout's headline record. Values are in the engine's normalized units: kilograms, repetitions, kilometres, seconds, and seconds per kilometre for fastestPace."
+  });
+
+const AgentProgressPointSchema = z
+  .object({
+    workoutId: z.string().min(1),
+    localDate: LocalDateSchema,
+    startedAt: z.string().min(1),
+    setId: z.string().min(1).openapi({
+      description: "The completed Set the value came from."
+    }),
+    value: z.number(),
+    unit: TrainingUnitSchema,
+    isNewBest: z.boolean().openapi({
+      description:
+        "True when the value is strictly better than every earlier point's. The first point never is, and an equal value is not."
+    })
+  })
+  .openapi("AgentProgressPoint");
+
+export const AgentProgressSeriesSchema = z
+  .object({
+    exerciseId: z.string().min(1),
+    measure: AgentProgressMeasureSchema,
+    betterIs: z.enum(["higher", "lower"]),
+    points: z.array(AgentProgressPointSchema).openapi({
+      description:
+        "One per Logged Workout with a value for the measure, over the exercise's whole history, ordered by localDate, startedAt and workoutId."
+    })
+  })
+  .openapi("AgentProgressSeries");
+
+const NullableAgentProgressSeriesSchema = z
+  .union([AgentProgressSeriesSchema, z.null()])
+  .openapi("NullableAgentProgressSeries", {
+    description:
+      "The Progress Measure per Logged Workout over the exercise's whole history, not limited by from, to or the Set page, with each New Best marked: the same points the app's Key exercises card plots. Null for an archived exercise, a Record Profile with no single best number (minAssistancePerRepCount, completionStreak), or when progress read storage is not configured."
+  });
+
 export const AgentExerciseAnalyticsResponseSchema = z
   .object({
     exercise: AgentExerciseSchema,
@@ -141,7 +197,8 @@ export const AgentExerciseAnalyticsResponseSchema = z
     volume: AgentDerivedSeriesSchema,
     maxLoadSeries: AgentDerivedSeriesSchema,
     repMaxSeries: z.array(AgentAnalyticsRecordSchema),
-    periodStats: AgentPeriodStatsSchema
+    periodStats: AgentPeriodStatsSchema,
+    progressSeries: NullableAgentProgressSeriesSchema
   })
   .openapi("AgentExerciseAnalyticsResponse");
 
@@ -1126,23 +1183,34 @@ export function createDrizzleAgentReadStore(db: ServerDatabase): AgentReadStore 
   };
 }
 
+/**
+ * The engine profile of a catalog exercise. Shared by the analytics read and
+ * the Progress reads, so a Progress Measure is taken under the same profile
+ * the exercise's records are.
+ */
+export function agentAnalyticsProfile(exercise: AgentExercise): ExerciseAnalyticsProfile {
+  return {
+    type: exercise.dimensions as DimensionId[],
+    loadMode: exercise.loadMode,
+    recordProfile: exercise.recordProfile
+  };
+}
+
 export function buildAgentExerciseAnalyticsResponse({
   exercise,
   maxPoints,
-  sets
+  sets,
+  progressSeries = null
 }: {
   exercise: AgentExercise;
   maxPoints: number;
   sets: readonly AgentReadableLoggedSet[];
+  progressSeries?: ProgressSeries | null;
 }) {
   const analyticsSets = sets.map(toAnalyticsSet);
   const engine = new ExerciseAnalyticsEngine();
   const analytics = engine.compute({
-    profile: {
-      type: exercise.dimensions as DimensionId[],
-      loadMode: exercise.loadMode,
-      recordProfile: exercise.recordProfile
-    },
+    profile: agentAnalyticsProfile(exercise),
     sets: analyticsSets
   });
 
@@ -1158,7 +1226,8 @@ export function buildAgentExerciseAnalyticsResponse({
     volume: serializeSeries(analytics.volume, maxPoints),
     maxLoadSeries: serializeMaxLoadSeries(analyticsSets, maxPoints),
     repMaxSeries: analytics.recordCatalog.repMaxRecords.map(serializeRecord),
-    periodStats: periodStats(analyticsSets, analytics)
+    periodStats: periodStats(analyticsSets, analytics),
+    progressSeries
   });
 }
 
@@ -1593,7 +1662,8 @@ function mapLoggedSetRow(row: LoggedSetRow): AgentReadableLoggedSet | null {
   };
 }
 
-function loggedSetValues(payload: Record<string, unknown>): LoggedSetValues {
+/** A Set payload's values in the engine's logged-values shape. */
+export function loggedSetValues(payload: Record<string, unknown>): LoggedSetValues {
   const nested = payload.values;
   if (isRecord(nested)) {
     const parsed: LoggedSetValues = {};

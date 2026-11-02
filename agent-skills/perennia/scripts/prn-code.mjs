@@ -685,6 +685,16 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async listAgentNewBests(input, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/progress/new-bests",
+      expectedStatus: 200,
+      query: pick(input, ["fromLocalDate", "toLocalDate"]),
+      signal: options.signal
+    });
+  }
+
   async listAgentWorkoutTemplates(input = {}, options = {}) {
     return this.request({
       method: "GET",

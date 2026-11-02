@@ -1058,7 +1058,7 @@ in words instead of an arrow. No change is drawn in red, green or gold.
 | :------- | :------------- | :------- | :------------ |
 | This week, Trained days, Time by Focus | `GET /agent/progress/training-days`, operationId `listAgentTrainingDays` (new) | `agent_list_training_days` (new) | new path; `AgentTrainingDaysResponse`, `AgentTrainingDay`, `AgentTrainingWeekDay`, `AgentTrainingDayStatus` |
 | New bests | `GET /agent/progress/new-bests`, operationId `listAgentNewBests` (new) | `agent_list_new_bests` (new) | new path; `AgentNewBestsResponse`, `AgentNewBest` |
-| Key exercises | `GET /agent/analytics/exercises/{exerciseId}`, operationId `getAgentExerciseAnalytics` (changed) | `agent_get_exercise_analytics` (changed) | response adds `progressSeries` |
+| Key exercises | `GET /agent/analytics/exercises/{exerciseId}`, operationId `getAgentExerciseAnalytics` (changed) | `agent_get_exercise_analytics` (changed) | response adds `progressSeries`; `NullableAgentProgressSeries`, `AgentProgressSeries`, `AgentProgressPoint`, `AgentProgressMeasure` |
 | Body | `GET /agent/metrics/readings`, operationId `listAgentMetricReadings` (changed) | `agent_list_metric_readings` (changed) | query adds `includeTrend`; each reading may add `trendValue` |
 | Protocols | `GET /agent/protocols/day-statuses` (unchanged) | `agent_list_protocol_day_statuses` (unchanged) | none |
 
@@ -1088,7 +1088,9 @@ in words instead of an arrow. No change is drawn in red, green or gold.
     questions in CUJ 13.
 
 **`listAgentNewBests`.**
-*   Query: `fromLocalDate`, `toLocalDate`, with the same rules and errors.
+*   Query: `fromLocalDate`, `toLocalDate`, with the same rules and errors,
+    checked by the same `checkAgentTrainingDaysQuery`. There is no `today`,
+    so only the order and 366-date rules apply.
 *   Response: `{newBests: AgentNewBest[]}` from `newBestsBetween`, each
     `{exerciseId, exerciseName, measure, workoutId, localDate, startedAt,
     setId, value, unit}`.
