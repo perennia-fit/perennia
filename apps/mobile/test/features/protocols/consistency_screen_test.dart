@@ -83,6 +83,51 @@ void main() {
       expect(find.text(EffectScreen.disclaimerText), findsOneWidget);
     });
 
+    testWidgets(
+        'a skipped slot reads Skipped, and the day shows its skipped count '
+        'next to its status (D8)', (tester) async {
+      _useTallView(tester);
+      await _pumpFixture(tester, _skippedRange);
+
+      String statusOn(ProtocolDayDate date) => tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byKey(ConsistencyScreen.dayStatusKey(_trt, date)),
+              matching: find.byType(Text),
+            ),
+          )
+          .map((text) => text.data ?? '')
+          .join(' ');
+
+      // Taken or skipped, with one taken: Logged, with its skipped count.
+      final twelfth = _dayText(tester, _date(2026, 10, 12));
+      expect(statusOn(_date(2026, 10, 12)), contains('Logged'));
+      expect(twelfth, contains('1 skipped'));
+      expect(twelfth, contains('Logged · 9:05 AM · 0.1 mL'));
+      expect(twelfth, contains('Skipped'));
+      expect(twelfth, isNot(contains('Not logged')));
+      // Every planned dose skipped: Skipped, and each slot says so.
+      final thirteenth = _dayText(tester, _date(2026, 10, 13));
+      expect(statusOn(_date(2026, 10, 13)), contains('Skipped'));
+      expect(thirteenth, contains('2 skipped'));
+      expect(
+        RegExp('^Skipped\$', multiLine: true).allMatches(thirteenth),
+        hasLength(3),
+      );
+      // Today: the skipped slot reads Skipped, the open one Pending.
+      final today = _dayText(tester, _today);
+      expect(statusOn(_today), contains('Pending'));
+      expect(today, contains('1 skipped'));
+      expect(
+        RegExp('^Skipped\$', multiLine: true).allMatches(today),
+        hasLength(1),
+      );
+      expect(
+        RegExp('^Pending\$', multiLine: true).allMatches(today),
+        hasLength(2),
+      );
+    });
+
     testWidgets('a removed member reads Not planned, Removed', (tester) async {
       _useTallView(tester);
       await _pumpFixture(tester, _removedRange);
@@ -1222,12 +1267,51 @@ ConsistencyRange _removedRange(ConsistencyRangeSelection selection) {
   );
 }
 
+/// TRT planned daily at 09:00 and 21:00 from the 12th, with Skips (D8): on
+/// the 12th the 09:00 dose is logged and 21:00 skipped; on the 13th both are
+/// skipped; today 21:00 is skipped and 09:00 is still open.
+ConsistencyRange _skippedRange(ConsistencyRangeSelection selection) {
+  final protocol = PlanProtocol(
+    protocolId: 'p-daily',
+    startLocalDate: _date(2026, 10, 12),
+    members: <PlanMember>[
+      PlanMember(
+        memberId: 'm-trt',
+        compoundId: _trt,
+        versions: <ScheduleVersion>[
+          _version('v-1', _date(2026, 10, 12), _twiceDaily()),
+        ],
+      ),
+    ],
+  );
+  PlanSkip skip(String id, ProtocolDayDate date, String time) => PlanSkip(
+        skipId: id,
+        protocolId: 'p-daily',
+        compoundId: _trt,
+        localDate: date,
+        plannedLocalTime: time,
+      );
+  return _range(
+    <PlanProtocol>[protocol],
+    _date(2026, 10, 12),
+    _today,
+    <DoseRecord>[_dose('d-1', _date(2026, 10, 12), 9, 5)],
+    skips: <PlanSkip>[
+      skip('s-1', _date(2026, 10, 12), '21:00'),
+      skip('s-2', _date(2026, 10, 13), '09:00'),
+      skip('s-3', _date(2026, 10, 13), '21:00'),
+      skip('s-4', _today, '21:00'),
+    ],
+  );
+}
+
 ConsistencyRange _range(
   List<PlanProtocol> protocols,
   ProtocolDayDate from,
   ProtocolDayDate to,
-  List<DoseRecord> doses,
-) {
+  List<DoseRecord> doses, {
+  List<PlanSkip> skips = const <PlanSkip>[],
+}) {
   final days = planDays(protocols, from, to);
   return ConsistencyRange(
     compoundId: _trt,
@@ -1247,7 +1331,7 @@ ConsistencyRange _range(
             sequence: index,
           ),
       ],
-      const <PlanSkip>[],
+      skips,
       _today,
     ),
     doses: doses,

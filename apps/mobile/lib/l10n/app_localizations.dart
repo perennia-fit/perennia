@@ -4544,6 +4544,18 @@ abstract class AppLocalizations {
   /// **'Date'**
   String get logDoseDateLabel;
 
+  /// No description provided for @logDoseSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get logDoseSkip;
+
+  /// No description provided for @logDoseUnskip.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo skip'**
+  String get logDoseUnskip;
+
   /// No description provided for @dayStatusNotPlanned.
   ///
   /// In en, this message translates to:
@@ -4663,6 +4675,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count} extra'**
   String consistencyExtraCount(int count);
+
+  /// No description provided for @consistencySkippedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} skipped}}'**
+  String consistencySkippedCount(int count);
 
   /// No description provided for @consistencyNotInProtocol.
   ///

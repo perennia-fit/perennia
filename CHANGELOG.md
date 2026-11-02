@@ -30,6 +30,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **Delete a Protocol nothing was logged for**, from its editor or through the
   Agent API (`delete-protocols`).
   ([#93](https://github.com/perennia-fit/perennia/pull/93))
+- **Skip a planned dose**, today or on a past day: it reads Skipped instead of
+  Pending or Not logged, and the Agent API can do the same
+  (`log-protocol-skips`). Update every device: older versions show skipped
+  doses as not yet logged.
 
 ### Changed
 

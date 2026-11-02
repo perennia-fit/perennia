@@ -1289,6 +1289,352 @@ void main() {
     });
   });
 
+  group('Skipping in the Planned list (D8)', () {
+    /// The InkWell of the Planned list row titled [compoundName].
+    Finder rowNamed(String compoundName) => find
+        .ancestor(of: find.text(compoundName), matching: find.byType(InkWell))
+        .first;
+
+    /// The label of the row titled [compoundName]: its last Text.
+    String? labelOf(WidgetTester tester, String compoundName) => tester
+        .widgetList<Text>(
+          find.descendant(
+            of: rowNamed(compoundName),
+            matching: find.byType(Text),
+          ),
+        )
+        .last
+        .data;
+
+    /// Runs [read] against the database on fake time.
+    Future<T> readOnFakeTime<T>(
+      WidgetTester tester,
+      Future<T> Function() read,
+    ) async {
+      late T value;
+      await _runOnFakeTime(tester, () async => value = await read());
+      return value;
+    }
+
+    Future<List<ProtocolSkipRow>> readSkips(
+      WidgetTester tester,
+      AppDatabase database,
+    ) {
+      return readOnFakeTime(
+        tester,
+        () => database.select(database.protocolSkips).get(),
+      );
+    }
+
+    /// Pumps until the row titled [compoundName] reads [label].
+    Future<void> pumpUntilLabel(
+      WidgetTester tester,
+      String compoundName,
+      String label,
+    ) async {
+      for (var attempt = 0; attempt < 40; attempt += 1) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(LogDoseSheet).evaluate().isEmpty &&
+            labelOf(tester, compoundName) == label) {
+          return;
+        }
+      }
+      fail('$compoundName never read $label.');
+    }
+
+    /// Opens the row titled [compoundName] and taps [buttonKey] in its sheet.
+    Future<void> tapInSheet(
+      WidgetTester tester,
+      String compoundName,
+      Key buttonKey,
+    ) async {
+      await tester.tap(rowNamed(compoundName));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(buttonKey));
+      await tester.tap(find.byKey(buttonKey));
+    }
+
+    testWidgets(
+      'CUJ 15: two taps from a Pending row skip it, and the row reads Skipped',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(tester, find.text('TRT'));
+        expect(labelOf(tester, 'TRT'), 'Pending');
+
+        // Tap 1 opens the row's sheet; tap 2 is Skip.
+        await tapInSheet(tester, 'TRT', LogDoseSheet.skipButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Skipped');
+
+        expect(labelOf(tester, 'AgeMate'), 'Pending');
+        expect(find.byType(LogDoseSheet), findsNothing);
+        final skip = (await readSkips(tester, database)).single;
+        expect(skip.plannedLocalTime, '09:00');
+        expect(skip.localDate, '2026-10-27');
+        expect(skip.deletedAt, isNull);
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'Undo skip on a Skipped row removes the Skip, and the row reads Pending '
+      'again with nothing logged (CUJ 16)',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(tester, find.text('TRT'));
+        await tapInSheet(tester, 'TRT', LogDoseSheet.skipButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Skipped');
+
+        await tapInSheet(tester, 'TRT', LogDoseSheet.unskipButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Pending');
+
+        expect(find.text('Skipped'), findsNothing);
+        final skips = await readSkips(tester, database);
+        expect(skips.single.deletedAt, isNotNull);
+        final doses = await readOnFakeTime(
+          tester,
+          () => database.select(database.doses).get(),
+        );
+        expect(doses, isEmpty);
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'Save from a Skipped row logs the Dose and removes the Skip in one '
+      'Batch, and the row reads Logged (CUJ 16)',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(tester, find.text('TRT'));
+        await tapInSheet(tester, 'TRT', LogDoseSheet.skipButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Skipped');
+
+        await tapInSheet(tester, 'TRT', LogDoseSheet.saveButtonKey);
+        await pumpUntilLabel(tester, 'TRT', 'Logged');
+
+        expect(find.text('Skipped'), findsNothing);
+        expect((await readSkips(tester, database)).single.deletedAt, isNotNull);
+        final entries = await readOnFakeTime(
+          tester,
+          repositories.activityLog.listEntries,
+        );
+        final dose = entries.singleWhere(
+          (entry) => entry.entityTable == AppDatabase.dosesTable,
+        );
+        final skipEntries = entries
+            .where(
+              (entry) => entry.entityTable == AppDatabase.protocolSkipsTable,
+            )
+            .toList();
+        // The Skip's own write, then its removal in the Dose's Batch.
+        expect(skipEntries, hasLength(2));
+        expect(
+          skipEntries.where((entry) => entry.batchId == dose.batchId),
+          hasLength(1),
+        );
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'CUJ 17: a past day\'s Not logged row is skipped from that day, and '
+      'reads Skipped',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        // The next morning: the stack's first day is now yesterday.
+        await _pumpLiveView(
+          tester,
+          repositories,
+          () => DateTime(2026, 10, 28, 8),
+        );
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolsDayView.previousDayButtonKey),
+        );
+        await tester.tap(find.byKey(ProtocolsDayView.previousDayButtonKey));
+        await _pumpUntilFound(tester, find.text('Not logged'));
+        await pumpUntilLabel(tester, 'Creatine', 'Not logged');
+
+        await tapInSheet(tester, 'Creatine', LogDoseSheet.skipButtonKey);
+        await pumpUntilLabel(tester, 'Creatine', 'Skipped');
+
+        expect(labelOf(tester, 'TRT'), 'Not logged');
+        final skip = (await readSkips(tester, database)).single;
+        expect(skip.localDate, '2026-10-27');
+        expect(skip.plannedLocalTime, '17:00');
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'a double tap on Skip writes one Skip',
+      (tester) async {
+        final database = AppDatabase.inMemory();
+        final repositories = TrainingRepositories(database);
+        await _seedOnFakeTime(tester, repositories);
+        await _pumpLiveView(tester, repositories, () => _cuj1Now);
+        await _pumpUntilFound(tester, find.text('TRT'));
+
+        await tester.tap(rowNamed('TRT'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(LogDoseSheet.skipButtonKey));
+        // Two taps before any frame: both reach the button's handler.
+        await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+        await pumpUntilLabel(tester, 'TRT', 'Skipped');
+
+        expect(await readSkips(tester, database), hasLength(1));
+
+        await _closeLive(tester, database);
+      },
+    );
+
+    testWidgets(
+      'a future day\'s row has no log action, so no Skip',
+      (tester) async {
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_tomorrow),
+          plannedDay: _plannedDay(_tomorrow),
+        );
+        await _pumpView(tester, _emptyDay(_tomorrow), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        await tester.tap(_rowFinder('protocol-daily', 'c-trt'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LogDoseSheet), findsNothing);
+        expect(find.byKey(LogDoseSheet.skipButtonKey), findsNothing);
+        expect(controller.skippedTargets, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'a Pending row\'s Skip names its own planned dose, and a Skipped row '
+      'opens the sheet with Undo skip',
+      (tester) async {
+        const skip = PlanSkip(
+          skipId: 'skip-ghk',
+          protocolId: 'protocol-night',
+          compoundId: 'c-ghk',
+          localDate: _today,
+          plannedLocalTime: '21:00',
+        );
+        final controller = _FakeProtocolDayController(
+          _emptyDay(_today),
+          plannedDay: _plannedDay(_today, skips: <PlanSkip>[skip]),
+        );
+        await _pumpView(tester, _emptyDay(_today), controller: controller);
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+        expect(_rowLabel(tester, 'protocol-night', 'c-ghk'), 'Skipped');
+
+        await tester.tap(_rowFinder('protocol-daily', 'c-creatine'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(LogDoseSheet.unskipButtonKey), findsNothing);
+        await tester.ensureVisible(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.pumpAndSettle();
+        final target = controller.skippedTargets.single;
+        expect(
+          (
+            target.protocolId,
+            target.compoundId,
+            target.localDate,
+            target.plannedLocalTime,
+            target.skipId,
+          ),
+          ('protocol-daily', 'c-creatine', _today, '17:00', null),
+        );
+
+        await tester.tap(_rowFinder('protocol-night', 'c-ghk'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(LogDoseSheet.skipButtonKey), findsNothing);
+        await tester.ensureVisible(find.byKey(LogDoseSheet.unskipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.unskipButtonKey));
+        await tester.pumpAndSettle();
+        expect(controller.unskippedIds, <String>['skip-ghk']);
+        expect(controller.loggedDoses, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'the Skipped label is a word beside its own icon, and meets '
+      'accessibility guidelines in both themes',
+      (tester) async {
+        const skip = PlanSkip(
+          skipId: 'skip-ghk',
+          protocolId: 'protocol-night',
+          compoundId: 'c-ghk',
+          localDate: _yesterday,
+          plannedLocalTime: '21:00',
+        );
+        for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+          final semantics = tester.ensureSemantics();
+          await _pumpView(
+            tester,
+            _emptyDay(_yesterday),
+            theme: theme,
+            controller: _FakeProtocolDayController(
+              _emptyDay(_yesterday),
+              plannedDay: _plannedDay(_yesterday, skips: <PlanSkip>[skip]),
+            ),
+          );
+          await _pumpUntilFound(
+              tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+          final icons = <IconData?>{};
+          for (final (protocolId, compoundId, label)
+              in <(String, String, String)>[
+            ('protocol-night', 'c-ghk', 'Skipped'),
+            ('protocol-daily', 'c-trt', 'Not logged'),
+          ]) {
+            final row = _rowFinder(protocolId, compoundId);
+            final text = find.descendant(of: row, matching: find.text(label));
+            expect(text, findsOneWidget);
+            final labelRow =
+                find.ancestor(of: text, matching: find.byType(Row)).first;
+            final icon = find.descendant(
+              of: labelRow,
+              matching: find.byType(Icon),
+            );
+            expect(icon, findsOneWidget);
+            icons.add(tester.widget<Icon>(icon).icon);
+          }
+          // Skipped and Not logged differ in word and in icon, not by color.
+          expect(icons, hasLength(2));
+
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+          await expectLater(
+            tester,
+            meetsGuideline(androidTapTargetGuideline),
+          );
+          await expectLater(
+            tester,
+            meetsGuideline(labeledTapTargetGuideline),
+          );
+
+          semantics.dispose();
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+      },
+    );
+  });
+
   group("Today's Protocols tab", () {
     const today = ProtocolDayDate(year: 2026, month: 6, day: 30);
     Widget tab() => const Scaffold(
@@ -1638,6 +1984,8 @@ class _FakeProtocolDayController extends ProtocolDayController {
   final editedDoseIds = <String>[];
   final editedDrafts = <DoseSnapshotDraft>[];
   final deletedDoseIds = <String>[];
+  final skippedTargets = <PlannedDoseTarget>[];
+  final unskippedIds = <String>[];
 
   @override
   Stream<ProtocolDayState> build() {
@@ -1647,7 +1995,22 @@ class _FakeProtocolDayController extends ProtocolDayController {
   }
 
   @override
-  Future<LogDoseResult> logDose(DoseSnapshotDraft draft) async {
+  Future<String> skipPlannedDose(PlannedDoseTarget target) async {
+    skippedTargets.add(target);
+    return 'batch-skip-${skippedTargets.length}';
+  }
+
+  @override
+  Future<String> unskipPlannedDose(String skipId) async {
+    unskippedIds.add(skipId);
+    return 'batch-unskip-${unskippedIds.length}';
+  }
+
+  @override
+  Future<LogDoseResult> logDose(
+    DoseSnapshotDraft draft, {
+    String? unskipId,
+  }) async {
     loggedDoses.add(draft);
     return LogDoseResult(
       batchId: 'batch-log-${loggedDoses.length}',
@@ -1807,14 +2170,14 @@ List<PlanProtocol> _protocols() {
 PlannedDay _plannedDay(
   ProtocolDayDate localDate, {
   List<PlanDose> doses = const <PlanDose>[],
+  List<PlanSkip> skips = const <PlanSkip>[],
   List<PlanProtocol>? protocols,
   ProtocolDayRecord? day,
 }) {
   final days = planDays(protocols ?? _protocols(), localDate, localDate);
   final isFuture = localDate.compareTo(_today) > 0;
-  final statuses = isFuture
-      ? const <DayStatus>[]
-      : dayStatuses(days, doses, const <PlanSkip>[], _today);
+  final statuses =
+      isFuture ? const <DayStatus>[] : dayStatuses(days, doses, skips, _today);
   return PlannedDay(
     localDate: localDate,
     today: _today,
