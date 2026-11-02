@@ -783,7 +783,8 @@ class SyncRepository implements SyncCycleRepository {
       session: session,
       deviceId: deviceId,
       entity: AppDatabase.protocolSkipsTable,
-      loadPendingRows: _loadPendingProtocolSkipRows,
+      loadPendingRows: () =>
+          _loadPendingEntityRows(AppDatabase.protocolSkipsTable),
       acknowledgePushResponse: _acknowledgeProtocolSkipPushResponse,
     );
   }
@@ -3459,23 +3460,6 @@ class SyncRepository implements SyncCycleRepository {
                 row.deletedAt.isNull() &
                 row.syncAcknowledgedAt.isNull() &
                 row.entityTable.equals(AppDatabase.dosesTable) &
-                row.afterImage.isNotNull(),
-          )
-          ..orderBy([
-            (row) => OrderingTerm.asc(row.occurredAt),
-            (row) => OrderingTerm.asc(row.id),
-          ])
-          ..limit(_syncPushBatchLimit))
-        .get();
-  }
-
-  Future<List<ActivityLogRow>> _loadPendingProtocolSkipRows() {
-    return (_database.select(_database.activityLog)
-          ..where(
-            (row) =>
-                row.deletedAt.isNull() &
-                row.syncAcknowledgedAt.isNull() &
-                row.entityTable.equals(AppDatabase.protocolSkipsTable) &
                 row.afterImage.isNotNull(),
           )
           ..orderBy([

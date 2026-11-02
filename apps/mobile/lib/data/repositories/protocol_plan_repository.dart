@@ -1041,64 +1041,17 @@ final class _PlanRows {
 }
 
 /// Combines the latest values of three Streams, emitting only once each has
-/// produced at least one value; written like `_combineLatest2`. None of them
-/// is expected to complete: each is a Drift `.watch()` query, which lives for
-/// the lifetime of the subscription.
+/// produced at least one value: `_combineLatest2` over a pair of the first
+/// two and the third, so it shares its subscription and error handling.
 Stream<T> _combineLatest3<A, B, C, T>(
   Stream<A> streamA,
   Stream<B> streamB,
   Stream<C> streamC,
   T Function(A, B, C) combine,
 ) {
-  late final StreamController<T> controller;
-  StreamSubscription<A>? subscriptionA;
-  StreamSubscription<B>? subscriptionB;
-  StreamSubscription<C>? subscriptionC;
-  A? latestA;
-  B? latestB;
-  C? latestC;
-  var hasA = false;
-  var hasB = false;
-  var hasC = false;
-
-  void emitIfReady() {
-    if (hasA && hasB && hasC) {
-      controller.add(combine(latestA as A, latestB as B, latestC as C));
-    }
-  }
-
-  controller = StreamController<T>(
-    onListen: () {
-      subscriptionA = streamA.listen(
-        (value) {
-          latestA = value;
-          hasA = true;
-          emitIfReady();
-        },
-        onError: controller.addError,
-      );
-      subscriptionB = streamB.listen(
-        (value) {
-          latestB = value;
-          hasB = true;
-          emitIfReady();
-        },
-        onError: controller.addError,
-      );
-      subscriptionC = streamC.listen(
-        (value) {
-          latestC = value;
-          hasC = true;
-          emitIfReady();
-        },
-        onError: controller.addError,
-      );
-    },
-    onCancel: () async {
-      await subscriptionA?.cancel();
-      await subscriptionB?.cancel();
-      await subscriptionC?.cancel();
-    },
+  return _combineLatest2(
+    _combineLatest2(streamA, streamB, (A a, B b) => (a, b)),
+    streamC,
+    ((A, B) ab, C c) => combine(ab.$1, ab.$2, c),
   );
-  return controller.stream;
 }

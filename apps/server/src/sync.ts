@@ -1617,113 +1617,45 @@ export async function pushDosesInTransaction(
   };
 }
 
-// A Skip (D8) is pushed exactly as a Dose is: per-row LWW, tenant isolation,
+// A Skip (D8) rides the shared opaque push: per-row LWW, tenant isolation,
 // and the Activity Log envelope when present. No parent check: its
 // `protocol_id` and `compound_id` are soft references.
 export async function pushProtocolSkipsInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
+  return pushOpaqueSyncRowsInTransaction(transaction, {
+    ...input,
+    entityTable: PROTOCOL_SKIPS_SYNC_ENTITY,
+    async readExisting(id) {
+      const rows = await transaction
+        .select({
+          userId: schema.protocolSkips.userId,
+          updatedAt: schema.protocolSkips.updatedAt,
+          deviceId: schema.protocolSkips.deviceId,
+          payload: schema.protocolSkips.payload
+        })
+        .from(schema.protocolSkips)
+        .where(eq(schema.protocolSkips.id, id))
+        .limit(1);
+      return rows[0];
+    },
+    async writeRow(existing, row) {
+      if (existing === undefined) {
+        await transaction.insert(schema.protocolSkips).values(row);
+      } else {
+        await transaction
+          .update(schema.protocolSkips)
+          .set(row)
+          .where(eq(schema.protocolSkips.id, row.id));
+      }
     }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: PROTOCOL_SKIPS_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.protocolSkips.userId,
-        updatedAt: schema.protocolSkips.updatedAt,
-        deviceId: schema.protocolSkips.deviceId
-      })
-      .from(schema.protocolSkips)
-      .where(eq(schema.protocolSkips.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    // TENANT ISOLATION: never let a cross-user push overwrite an
-    // existing Skip row keyed by the same client PK.
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.protocolSkips).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.protocolSkips)
-        .set(rowValues)
-        .where(eq(schema.protocolSkips.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  });
 }
 
 export async function pushProtocolsInTransaction(
