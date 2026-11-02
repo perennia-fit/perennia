@@ -24,8 +24,9 @@ This spec makes the plan drive the Track form. The first incomplete Set of the
 exercise is the **Current Set**; the form shows its values; one **Log set**
 action fills that Set, marks it complete, starts its rest and, in a superset,
 moves to the next exercise of the round. A weight changed while logging
-carries to the later planned Sets that had the same planned weight, so a
-missing weight is typed once. A changed rest sticks, and is remembered for the
+carries to the later planned Sets that had the same planned weight, and a
+value logged over a planned zero (reps, time or distance a Template couldn't
+know yet) fills the later planned zeros, so a missing value is typed once. A changed rest sticks, and is remembered for the
 exercise through the Sets themselves. The Workout screen, Navigation Panel and
 Today show what is done and what is current; starting from Up next opens a
 preview first; and an exercise can be replaced inside a Workout.
@@ -92,7 +93,9 @@ and are not part of this spec. This spec assumes it has merged, with this API:
 *   Logging a repeat planned Set stays at most two taps: open the exercise,
     **Log set**.
 *   A weight changed while logging carries to the later planned Sets that had
-    the same planned weight, so it is typed once.
+    the same planned weight, and a value logged over a planned zero rep,
+    duration or distance fills the later planned zeros, so a missing value is
+    typed once.
 *   A changed rest sticks for the rest of the exercise in this Workout and is
     remembered for the exercise next time, with no new stored field.
 *   Supersets advance through the round after every logged Set.
@@ -138,10 +141,11 @@ review:
 2.  **Unlogged Planned Sets at Finish.** The divergence comparison counts every
     active Set, planned or performed. That stays: a plan not finished is not a
     reason to rewrite the Template.
-3.  **Which dimensions carry forward.** Only load (see
+3.  **Which dimensions carry forward.** Load, by its planned value; reps,
+    duration and distance only over a planned zero (see
     [Carry-forward](#carry-forward)). Reps, duration and distance are outcomes
     of a Set, and carrying a missed rep would quietly lower the rest of the
-    plan.
+    plan; but a planned zero for them is a placeholder, never a target.
 
 ## Critical User Journeys (CUJs)
 
@@ -183,6 +187,14 @@ otherwise.
 *   **Given** planned Sets 0 kg × 10, 0 kg × 8, 0 kg × 6,
 *   **When** the user logs Set 1 at 40 kg × 10,
 *   **Then** Sets 2 and 3 show 40 kg × 8 and 40 kg × 6.
+
+### CUJ 4a: A placeholder from copy-previous
+
+*   **Given** Pull-Up (reps only) planned "3 × copy previous" and never done,
+    so Materialize planned 3 × 0 reps,
+*   **When** the user logs Set 1 at 8 reps,
+*   **Then** Sets 2 and 3 show 8 reps, and the next **Log set** needs no
+    typing.
 
 ### CUJ 5: Change the rest
 
@@ -358,8 +370,8 @@ LoggedSetRecord? currentSetFor(
 
 class CarryTarget {
   final String setId;
-  final SetDimensionValue? load;   // non-null: write this load
-  final Duration? rest;            // meaningful only when restChanged
+  final List<SetDimensionValue> values; // the dimensions to write; may be empty
+  final Duration? rest;                 // meaningful only when restChanged
   final bool restChanged;
 }
 
@@ -430,8 +442,13 @@ values and `R` the form's rest.
 *   **Load.** Only when the exercise records load and `V`'s load differs from
     `L`'s stored load (same `entered` text and same unit counts as equal;
     `SetDimensionValue` equality). Then every later Planned Set `P` whose load
-    equals `L`'s stored load takes `V`'s load. Its other dimensions are left as
-    they are.
+    equals `L`'s stored load takes `V`'s load.
+*   **Placeholders.** For each of reps, duration and distance the exercise
+    records: only when `L`'s stored value is a **planned zero** (its `entered`
+    text parses to the number zero) and `V`'s value differs. Then every later
+    Planned Set `P` whose value for that dimension is a planned zero takes
+    `V`'s value (its `entered` text and unit).
+*   A target's other dimensions are left as they are.
 *   **Rest.** Only when the user changed **Rest after** for this Set (see
     [Rest](#rest)). Then every later Planned Set `P` whose `plannedRestAfter`
     equals `L`'s stored `plannedRestAfter` (two nulls are equal) takes `R`.
@@ -439,9 +456,15 @@ values and `R` the form's rest.
     side and RPE never carry. Sets before `L` are never targets.
 
 Load is the value chosen before a Set; reps, duration and distance are what
-happened in it. Carrying only load fixes the missing weight (CUJ 2) without
-lowering a plan after a missed rep (CUJ 3), and works for a pyramid, whose reps
-differ but whose planned load is the same (CUJ 4).
+happened in it. Carrying load by its planned value fixes the missing weight
+(CUJ 2) without lowering a plan after a missed rep (CUJ 3), and works for a
+pyramid, whose reps differ but whose planned load is the same (CUJ 4). A
+planned zero for reps, duration or distance is never a real target: it is what
+Materialize writes for a copy-previous Prescription with no history
+(`zeroLoggedSetFor`), or a Template value not filled in yet. So a value logged
+over it fills the later planned zeros (CUJ 4a), while a missed rep against a
+real target (5, not 0) still carries nothing. Load keeps its own rule because
+0 kg is a real load (body weight with nothing added).
 
 #### Next group member
 
@@ -926,9 +949,18 @@ value came from a plan, so the app cannot tell.
 
 ### Alternative C: Carry every changed dimension
 
-Copies reps too. A missed rep (100 × 4 instead of 100 × 5) would lower every
-later Set to 4, and an unchanged Log set would then record 4. Carrying load
-only fixes the reported problem without that.
+Copies reps, duration and distance whenever they change. A missed rep
+(100 × 4 instead of 100 × 5) would lower every later Set to 4, an unchanged
+Log set would then record 4, and a pyramid's reps would flatten. Carrying load
+by its planned value, and the others only over a planned zero, fixes the
+reported problem without that.
+
+### Alternative C2: Carry load only
+
+The first version of this spec. It leaves a reps-only, timed or distance
+exercise planned from a copy-previous Prescription with no history at 0 on
+every later Set, so the value is typed on each one: the reported problem,
+again, for every exercise without load.
 
 ### Alternative D: A stored rest per Exercise
 
@@ -937,6 +969,11 @@ needs a schema version, a sync key, archive handling, agent fields, a
 validation rule and golden vectors; it would not sync for Platform exercises,
 which never sync. Every Performed Set already carries the rest it was logged
 with, so the remembered rest is derived from them instead.
+
+Decided in review on 2026-11-02, replacing the stored column of the first
+draft, with two trade-offs accepted: a Template's planned rest, once logged,
+replaces a rest the user chose earlier for that exercise; and Off (zero) is
+never remembered.
 
 ### Alternative E: Remember rest per Workout only
 
@@ -1169,7 +1206,9 @@ Strings; repository and widget tests in the Verification Plan.
 *   Current Set: first planned; picked planned; picked but performed falls
     back; none planned is null; tied positions order by id.
 *   Carry-forward: the missing weight (CUJ 2); a missed rep (CUJ 3); a pyramid
-    (CUJ 4); load unchanged carries nothing; a later Set with a different load
+    (CUJ 4); a reps placeholder from copy-previous (CUJ 4a); a duration and a
+    distance placeholder; a "0.0" placeholder counts as zero; a logged value
+    over a non-zero planned rep carries nothing; load unchanged carries nothing; a later Set with a different load
     untouched; earlier Sets untouched; rest carries only when changed and only
     to equal rests, nulls equal; a target already holding the values is left
     out; "60" against "60.0" differ; an exercise without load carries no load.
@@ -1210,7 +1249,7 @@ Strings; repository and widget tests in the Verification Plan.
 
 ### Widgets
 
-*   Pull request 1: CUJ 1, 2, 5, 7, 8, 9, 10 on the Training Screen: rows, form
+*   Pull request 1: CUJ 1, 2, 4a, 5, 7, 8, 9, 10 on the Training Screen: rows, form
     values and units, button labels, the confirmation texts and Undo (which
     also cancels the started timer), the rest start, the move to the next
     member; a double tap logs once; an extra Log set after a 0 s plan starts
