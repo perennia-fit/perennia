@@ -1272,7 +1272,10 @@ the shape `m36-protocol-plan.json` uses:
 Each file's header is `{name, domain, schemaVersion: 1, schema, cases}`, as
 in `m36-protocol-plan.json`. `m37-metric-trend.json` adds a top-level
 `tolerance: 1e-9`. Its runners compare the `trend` fields within it and
-everything else exactly. `packages/golden-vectors/vectors/README.md` gains a
+everything else exactly. JSON has no non-finite numbers, so a `TrendInput`
+`value` in that file is a number, `null`, or one of the strings `"NaN"`,
+`"Infinity"` and `"-Infinity"`, which the runners decode to the IEEE value
+before calling the core. `packages/golden-vectors/vectors/README.md` gains a
 section for each new file.
 
 An example taken from CUJ 2, reduced to the Thursday plan:
