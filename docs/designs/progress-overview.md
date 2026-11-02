@@ -378,8 +378,10 @@ Every input to the training progress and Progress Measure cores is built from
 Performed Sets: Sets with `deletedAt` null and `isCompleted` true whose
 Workout has `deletedAt` null. There are no cascading deletes, so a deleted
 Workout's Sets stay undeleted; the loaders drop them by joining to the
-Workout, as `ExerciseAnalyticsRepository` already does through
-`_activeWorkoutsById`. The
+Workout. The app's Progress reads join each Set to its live Workout in the
+watched query itself, rather than looking Workouts up after the Set query as
+`ExerciseAnalyticsRepository._activeWorkoutsById` does, so deleting a Workout
+whose Sets stay undeleted re-emits. The
 codebase already uses this rule for copy-previous values and volume samples
 (`_lastPerformedValuesByExerciseId` in `template_materialize_repository.dart`,
 and `performanceVolumeSamples`). The cores make the rule testable:
@@ -534,7 +536,11 @@ only, in both languages. In the app, an exercise is active when its
 `Exercises` row has `deletedAt` null, which is the rule
 `ExerciseAnalyticsRepository` already applies. On the server, it is an
 exercise that `AgentCatalogStore.getExercisesByIds` returns with `active`
-not false. An archived exercise's Workouts still count toward Training Day
+not false, called with `includeShadowed: true`. A Platform exercise shadowed
+by a same-named active User Library exercise is hidden from the Agent's
+catalog lists, but its `Exercises` row in the app is not deleted, so it is
+still active in both languages and keeps its series and New Bests. An
+archived exercise's Workouts still count toward Training Day
 Statuses, Trained Days and time.
 
 **How the measure is taken.** For each Workout, drop Sets that are not
@@ -1020,7 +1026,10 @@ the Dart enum of `measure` values (Data shapes), defined in
 Seconds are rounded half up to whole seconds before formatting. Differences
 in the comparison line use the same function, except that a pace or
 duration difference under a minute reads "18 s", and one of a minute or more
-reads `m:ss` ("1:05").
+reads `m:ss` ("1:05"). The comparison line compares the two values as they
+are displayed, after this rounding, and its difference is the gap between
+the displayed values. A gain smaller than the display precision reads "Same
+as before", so the line never contradicts the "Best" value beside it.
 
 `unitSystem` is `AppSettings.unitSystem`. Exercise Overview keeps its own
 formatting; aligning it is part of the separate Exercise Overview change.
@@ -1148,6 +1157,18 @@ session. Each Set's `exercise_id` is passed through the exported
 `AgentCatalogStore.getExercisesByIds`, which the store receives at
 construction as `workoutExerciseCatalog` is received in
 `agent-read-surface.ts`.
+
+Neither read loads more history than it needs. The exercise analytics read
+filters Sets in SQL to the exercise's id and every seed redirect source
+that resolves to it (`exerciseIdsResolvingTo` in `agent-catalog.ts`). The
+New Bests read first selects the distinct exercise ids with a Performed Set
+in a live Workout dated in the range, since only those can have a New Best
+in it, and then loads the whole history of those exercises alone.
+
+A synced row the app cannot read is skipped by the app's loader rather than
+failing the read: an exercise whose profile cannot be decoded has no series,
+and a Set value with an unknown or disallowed unit, or an entry that is not
+a number, is left out of its Set, as this loader leaves it out.
 
 Exercises the catalog does not return, or returns with `active` false, are
 skipped. Series are keyed by the resolved id. The name is the catalog
@@ -2056,9 +2077,12 @@ source:
         TrainingDayDate to)`.
 
     Both read active exercises (`deletedAt` null) and their Performed Sets.
-    They join each Set to its Workout for `localDate` and `startedAt`, and
-    drop Sets of deleted Workouts through `_activeWorkoutsById`. The profile
-    is built as `ExerciseAnalyticsRepository` builds it today.
+    They join each Set to its live Workout in one watched query for
+    `localDate` and `startedAt`, so Sets of deleted Workouts are dropped and
+    a Workout delete re-emits (D0). The profile is built as
+    `ExerciseAnalyticsRepository` builds it today; a row that cannot be
+    decoded is skipped (D9). `watchNewBests` runs one `compute` at a time,
+    keeping only the latest waiting history.
     `watchNewBests` runs every exercise's `progressSeries` and
     `newBestsBetween` inside `compute`, passing plain data (the grouped
     `ProgressWorkoutSets` and the profiles) and getting the `NewBest` list

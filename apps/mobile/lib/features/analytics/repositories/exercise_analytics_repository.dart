@@ -140,37 +140,51 @@ class ExerciseAnalyticsRepository {
   /// Every exercise's whole history runs through the engine, tens of
   /// thousands of Sets after a few years, so the series are built in a
   /// background isolate (`compute`, D8), which receives only the plain
-  /// [ProgressHistory]. A history that changes while one is still
-  /// computing supersedes it: only the latest history's result is emitted.
+  /// [ProgressHistory]. One isolate runs at a time: a history that arrives
+  /// while one computes waits, replacing any history already waiting, so a
+  /// sync pull's burst of writes costs at most one further run, not one
+  /// isolate and one copy of the history per write. Only the latest
+  /// history's result is emitted.
   Stream<List<NewBest>> watchNewBests(
     TrainingDayDate from,
     TrainingDayDate to,
   ) {
     late final StreamSubscription<ProgressHistory> subscription;
     final controller = StreamController<List<NewBest>>();
-    var generation = 0;
+    ProgressHistory? pending;
+    var computing = false;
 
-    Future<void> emit(ProgressHistory history) async {
-      final current = generation += 1;
-      try {
-        final bests = await compute(
-          newBestsInHistory,
-          (history: history, from: from, to: to),
-          debugLabel: 'progress.newBests',
-        );
-        if (current == generation && !controller.isClosed) {
-          controller.add(bests);
-        }
-      } on Object catch (error, stackTrace) {
-        if (current == generation && !controller.isClosed) {
-          controller.addError(error, stackTrace);
+    Future<void> drain() async {
+      computing = true;
+      while (pending != null && !controller.isClosed) {
+        final history = pending!;
+        pending = null;
+        try {
+          final bests = await compute(
+            newBestsInHistory,
+            (history: history, from: from, to: to),
+            debugLabel: 'progress.newBests',
+          );
+          if (pending == null && !controller.isClosed) {
+            controller.add(bests);
+          }
+        } on Object catch (error, stackTrace) {
+          if (pending == null && !controller.isClosed) {
+            controller.addError(error, stackTrace);
+          }
         }
       }
+      computing = false;
     }
 
     controller.onListen = () {
       subscription = watchProgressHistory().listen(
-        (history) => unawaited(emit(history)),
+        (history) {
+          pending = history;
+          if (!computing) {
+            unawaited(drain());
+          }
+        },
         onError: controller.addError,
       );
     };
@@ -187,7 +201,11 @@ class ExerciseAnalyticsRepository {
   /// than a lookup after the Set query, so deleting a Workout whose Sets stay
   /// undeleted (a synced delete does not cascade) re-emits too. A Workout
   /// whose stored date cannot be read is left out, as the Workout loader
-  /// does.
+  /// does. Sync copies payloads into columns unchecked, so a row this app
+  /// cannot read is skipped rather than failing the whole history: an
+  /// exercise whose profile cannot be decoded has no series, and a Set value
+  /// with an unknown or disallowed unit, or a non-numeric entry, is left out
+  /// of its Set, as the server's loader leaves it out (D9).
   @visibleForTesting
   Stream<ProgressHistory> watchProgressHistory({Set<String>? exerciseIds}) {
     final exercises = _database.select(_database.exercises)
@@ -224,9 +242,15 @@ class ExerciseAnalyticsRepository {
       if (exerciseRows == null || setRows == null || controller.isClosed) {
         return;
       }
-      controller.add(
-        _progressHistoryFromRows(exerciseRows, setRows, workouts),
-      );
+      // A listen callback's throw would never reach the controller, leaving
+      // the card loading for good; forwarded, it shows Unavailable.
+      try {
+        controller.add(
+          _progressHistoryFromRows(exerciseRows, setRows, workouts),
+        );
+      } on Object catch (error, stackTrace) {
+        controller.addError(error, stackTrace);
+      }
     }
 
     controller.onListen = () {
@@ -253,7 +277,9 @@ class ExerciseAnalyticsRepository {
     $WorkoutSessionsTable workouts,
   ) {
     final profiles = <String, ExerciseAnalyticsProfile>{
-      for (final row in exerciseRows) row.id: _profileFromRow(row),
+      for (final row in exerciseRows)
+        if (_decodedOrNull(() => _profileFromRow(row)) case final profile?)
+          row.id: profile,
     };
     final workoutFacts = <String, (TrainingDayDate, DateTime)>{};
     final setsByWorkoutByExercise = <String, Map<String, List<ProgressSet>>>{};
@@ -276,7 +302,7 @@ class ExerciseAnalyticsRepository {
               id: set.id,
               position: set.position,
               isCompleted: set.isCompleted,
-              values: _loggedSetValuesFromRow(set),
+              values: _loggedSetValuesFromRow(set, skipUnreadable: true),
             ),
           );
     }
@@ -410,31 +436,55 @@ ExerciseType _decodeDimensions(String encoded) {
   );
 }
 
-LoggedSet _loggedSetValuesFromRow(LoggedSetRow row) {
+/// [decode]'s result, or null when a stored value it reads is not one this
+/// app knows.
+T? _decodedOrNull<T>(T Function() decode) {
+  try {
+    return decode();
+  } on FormatException {
+    return null;
+  } on ArgumentError {
+    return null;
+  } on TypeError {
+    return null;
+  }
+}
+
+/// [row]'s values. With [skipUnreadable], a value with an unknown or
+/// disallowed unit, or an entry that is not a number, is left out instead of
+/// throwing.
+LoggedSet _loggedSetValuesFromRow(
+  LoggedSetRow row, {
+  bool skipUnreadable = false,
+}) {
   final values = <SetDimensionValue>[];
   _addSetValue(
     values,
     dimension: DimensionId.load,
     entered: row.loadEntered,
     unitName: row.loadUnit,
+    skipUnreadable: skipUnreadable,
   );
   _addSetValue(
     values,
     dimension: DimensionId.reps,
     entered: row.repsEntered,
     unitName: row.repsUnit,
+    skipUnreadable: skipUnreadable,
   );
   _addSetValue(
     values,
     dimension: DimensionId.duration,
     entered: row.durationEntered,
     unitName: row.durationUnit,
+    skipUnreadable: skipUnreadable,
   );
   _addSetValue(
     values,
     dimension: DimensionId.distance,
     entered: row.distanceEntered,
     unitName: row.distanceUnit,
+    skipUnreadable: skipUnreadable,
   );
 
   return values.isEmpty ? LoggedSet.completion() : LoggedSet.fromValues(values);
@@ -445,8 +495,17 @@ void _addSetValue(
   required DimensionId dimension,
   required String? entered,
   required String? unitName,
+  required bool skipUnreadable,
 }) {
   if (entered == null || unitName == null) {
+    return;
+  }
+
+  final unit = TrainingUnit.values.asNameMap()[unitName];
+  if (skipUnreadable &&
+      (unit == null ||
+          !DimensionRegistry.byId(dimension).allowsUnit(unit) ||
+          double.tryParse(entered) == null)) {
     return;
   }
 
@@ -454,7 +513,7 @@ void _addSetValue(
     SetDimensionValue(
       dimension: dimension,
       entered: entered,
-      unit: TrainingUnit.values.byName(unitName),
+      unit: unit ?? TrainingUnit.values.byName(unitName),
     ),
   );
 }

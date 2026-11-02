@@ -213,7 +213,9 @@ class _Tile extends StatelessWidget {
 
   /// D8's comparison line for the period's [best] against [bestBefore].
   /// Lower-is-better measures say "faster" or "shorter" in words, never an
-  /// arrow, and no line is colored.
+  /// arrow, and no line is colored. The two are compared as displayed, so a
+  /// gain smaller than the display precision reads "Same as before" and the
+  /// difference is the gap between the values the tile prints.
   static String _comparisonLine(
     AppLocalizations l10n,
     ProgressMeasureKind measure,
@@ -224,17 +226,22 @@ class _Tile extends StatelessWidget {
     if (bestBefore == null) {
       return l10n.progressComparisonFirst;
     }
-    if (best == bestBefore) {
+    final bestSteps = progressDisplaySteps(measure, best, unitSystem);
+    final beforeSteps = progressDisplaySteps(measure, bestBefore, unitSystem);
+    if (bestSteps == beforeSteps) {
       return l10n.progressComparisonSame;
     }
-    if (!measure.betterIs.isBetter(best, bestBefore)) {
+    if (!measure.betterIs.isBetter(
+      bestSteps.toDouble(),
+      beforeSteps.toDouble(),
+    )) {
       return l10n.progressComparisonBestBefore(
-        formatProgressValue(measure, bestBefore, unitSystem, l10n),
+        formatProgressSteps(measure, beforeSteps, unitSystem, l10n),
       );
     }
-    final difference = formatProgressValue(
+    final difference = formatProgressSteps(
       measure,
-      (best - bestBefore).abs(),
+      (bestSteps - beforeSteps).abs(),
       unitSystem,
       l10n,
       isDifference: true,

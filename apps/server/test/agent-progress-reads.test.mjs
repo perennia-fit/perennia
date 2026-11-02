@@ -12,6 +12,7 @@ import {
   createInMemoryAgentCatalogStore,
   schema
 } from "../src/index.ts";
+import { PLATFORM_EXERCISE_SEED_REDIRECTS } from "../src/data/platform-exercise-seed.generated.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -527,6 +528,81 @@ test(
         today: "2026-11-01"
       });
       assert.equal(days.trainedDayCount, 2);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// D4: a Platform exercise hidden by a same-named User Library exercise is
+// still active in the app, so its New Bests are listed here too.
+test(
+  "a Platform exercise shadowed by a same-named user exercise keeps its New Bests",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    const platform = `${userId}-platform-bench`;
+    try {
+      await seedUser(database, userId);
+      await seedWorkouts(database, userId, [
+        workout("w-oct3", "2026-10-03", "06:00", "07:00", null, null, {
+          sets: [squatSet(platform, 100, 5)]
+        }),
+        workout("w-oct28", "2026-10-28", "06:00", "07:00", null, null, {
+          sets: [squatSet(platform, 110, 5)]
+        })
+      ]);
+      const result = await progressStore(database, [
+        { ...catalogExercise(null, platform, "Bench press"), library: "platform" },
+        catalogExercise(userId, `${userId}-user-bench`, "Bench press")
+      ]).readNewBests({ userId, from: "2026-10-05", to: "2026-10-31" });
+
+      assert.deepEqual(
+        result.newBests.map((best) => [best.exerciseId, best.exerciseName, best.workoutId]),
+        [[platform, "Bench press", `${userId}-w-oct28`]]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// D9: the exercise read filters Sets in SQL by exercise id, so it must still
+// find a Set logged under a seed redirect's old id, and no other exercise's.
+test(
+  "the exercise progress read takes Sets logged under a redirected id and no other exercise's",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    const [redirect] = PLATFORM_EXERCISE_SEED_REDIRECTS;
+    try {
+      await seedUser(database, userId);
+      await seedWorkouts(database, userId, [
+        workout("w-oct3", "2026-10-03", "06:00", "07:00", null, null, {
+          sets: [squatSet(redirect.fromExerciseId, 100, 5)]
+        }),
+        workout("w-oct28", "2026-10-28", "06:00", "07:00", null, null, {
+          sets: [squatSet(redirect.toExerciseId, 110, 5), squatSet(`${userId}-other`, 200, 5)]
+        })
+      ]);
+      const workouts = await progressStore(database).readExerciseProgressSets({
+        userId,
+        exerciseId: redirect.toExerciseId
+      });
+
+      assert.deepEqual(
+        workouts
+          .map((one) => [one.workoutId, one.sets.map((set) => set.id)])
+          .sort(([left], [right]) => left.localeCompare(right)),
+        [
+          [`${userId}-w-oct28`, [`${userId}-w-oct28-set-0`]],
+          [`${userId}-w-oct3`, [`${userId}-w-oct3-set-0`]]
+        ]
+      );
     } finally {
       await database.close();
     }

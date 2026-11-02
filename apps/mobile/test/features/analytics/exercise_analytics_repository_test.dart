@@ -267,6 +267,83 @@ void main() {
       final bests = await analytics.watchNewBests(_june(1), _june(30)).first;
       expect(bests.map((best) => best.exerciseId), <String>[active]);
     });
+
+    test(
+      'a synced row this app cannot read is skipped, not fatal to the read',
+      () async {
+        final ids = <String>[
+          for (final name in <String>['Bench Press', 'Power Clean'])
+            await repositories.exercises.create(
+              ExerciseDraft(
+                name: name,
+                type: ExerciseType(<DimensionId>[
+                  DimensionId.load,
+                  DimensionId.reps,
+                ]),
+                recordProfile: RecordProfile.maxLoad,
+              ),
+            ),
+        ];
+        final [readable, unknownProfile] = ids;
+        final first = await _workoutOn(repositories, DateTime.utc(2026, 6, 1));
+        final second = await _workoutOn(repositories, DateTime.utc(2026, 6, 8));
+        await _performedSet(
+          repositories,
+          workoutId: first,
+          exerciseId: readable,
+          load: '100',
+        );
+        final bestId = await _performedSet(
+          repositories,
+          workoutId: second,
+          exerciseId: readable,
+          load: '110',
+        );
+        // As a sync pull from a newer app version could leave them.
+        final unknownUnitId = await _performedSet(
+          repositories,
+          workoutId: second,
+          exerciseId: readable,
+          load: '200',
+        );
+        final notNumericId = await _performedSet(
+          repositories,
+          workoutId: second,
+          exerciseId: readable,
+          load: '300',
+        );
+        await (database.update(database.loggedSets)
+              ..where((row) => row.id.equals(unknownUnitId)))
+            .write(const LoggedSetsCompanion(loadUnit: Value<String?>('stone')));
+        await (database.update(database.loggedSets)
+              ..where((row) => row.id.equals(notNumericId)))
+            .write(const LoggedSetsCompanion(loadEntered: Value<String?>('abc')));
+        for (final workoutId in <String>[first, second]) {
+          await _performedSet(
+            repositories,
+            workoutId: workoutId,
+            exerciseId: unknownProfile,
+            load: '60',
+          );
+        }
+        await (database.update(database.exercises)
+              ..where((row) => row.id.equals(unknownProfile)))
+            .write(const ExercisesCompanion(recordProfile: Value('maxPower')));
+
+        final series = await analytics
+            .watchProgressSeries(<String>[readable, unknownProfile]).first;
+        expect(series.map((one) => one.exerciseId), <String>[readable]);
+        expect(
+          series.single.points.map((point) => point.value),
+          <double>[100, 110],
+        );
+        final bests = await analytics.watchNewBests(_june(1), _june(30)).first;
+        expect(
+          bests.map((best) => '${best.exerciseId}:${best.setId}'),
+          <String>['$readable:$bestId'],
+        );
+      },
+    );
   });
 }
 

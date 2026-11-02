@@ -207,8 +207,9 @@ final progressExerciseNamesProvider =
   return ref.watch(progressFeatureRepositoryProvider).watchExerciseNames();
 });
 
-/// Keyed by the charted Favorites' ids, so renaming one keeps its series
-/// stream rather than restarting it.
+/// Keyed by the charted Favorites' ids as a set, so renaming one, even when
+/// that reorders the tiles, keeps its series stream rather than restarting
+/// it. The tiles take their order from the Favorites, not from the series.
 final progressSeriesProvider = StreamProvider.autoDispose
     .family<List<ProgressSeries>, ProgressExerciseIds>((ref, ids) {
   return ref
@@ -223,10 +224,12 @@ final progressNewBestsBetweenProvider = StreamProvider.autoDispose
       .watchNewBests(range.$1, range.$2);
 });
 
-/// Exercise ids compared by value, as a family key.
+/// Exercise ids compared by value, as a family key. The ids are kept in
+/// code-unit order, so the key does not depend on the order they are given in.
 @immutable
 final class ProgressExerciseIds {
-  const ProgressExerciseIds(this.ids);
+  ProgressExerciseIds(Iterable<String> ids)
+      : ids = List<String>.unmodifiable(ids.toSet().toList()..sort());
 
   final List<String> ids;
 

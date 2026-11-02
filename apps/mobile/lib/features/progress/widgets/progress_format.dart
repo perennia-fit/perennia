@@ -78,38 +78,75 @@ String formatProgressValue(
   AppLocalizations l10n, {
   bool isDifference = false,
 }) {
+  return formatProgressSteps(
+    measure,
+    progressDisplaySteps(measure, value, unitSystem),
+    unitSystem,
+    l10n,
+    isDifference: isDifference,
+  );
+}
+
+/// [value] as the whole number of steps [formatProgressValue] shows it in:
+/// tenths of a kilogram or pound, repetitions, whole seconds (per kilometre
+/// or mile for a pace), hundredths of a kilometre or mile. The comparison
+/// line compares and subtracts these, not the engine's values, so it never
+/// reads "0 s faster" beside two values it prints the same (D8).
+int progressDisplaySteps(
+  ProgressMeasureKind measure,
+  double value,
+  UnitSystem unitSystem,
+) {
+  final imperial = unitSystem == UnitSystem.imperial;
+  return switch (measure) {
+    ProgressMeasureKind.estimatedOneRepMax ||
+    ProgressMeasureKind.maxLoad =>
+      ((imperial ? value * _poundsPerKilogram : value) * 10).round(),
+    ProgressMeasureKind.maxReps => value.round(),
+    ProgressMeasureKind.maxDistance =>
+      ((imperial ? value / _kilometersPerMile : value) * 100).round(),
+    ProgressMeasureKind.maxDuration ||
+    ProgressMeasureKind.minDuration =>
+      _wholeSeconds(value),
+    ProgressMeasureKind.fastestPace =>
+      _wholeSeconds(imperial ? value * _kilometersPerMile : value),
+  };
+}
+
+/// [steps] from [progressDisplaySteps], formatted as [formatProgressValue]
+/// describes.
+String formatProgressSteps(
+  ProgressMeasureKind measure,
+  int steps,
+  UnitSystem unitSystem,
+  AppLocalizations l10n, {
+  bool isDifference = false,
+}) {
   final imperial = unitSystem == UnitSystem.imperial;
   switch (measure) {
     case ProgressMeasureKind.estimatedOneRepMax:
     case ProgressMeasureKind.maxLoad:
-      final load = _oneDecimal(imperial ? value * _poundsPerKilogram : value);
+      final load = _oneDecimal(steps);
       return imperial
           ? l10n.progressValuePounds(load)
           : l10n.progressValueKilograms(load);
     case ProgressMeasureKind.maxReps:
-      return l10n.progressValueReps(value.round());
+      return l10n.progressValueReps(steps);
     case ProgressMeasureKind.maxDistance:
-      final distance =
-          (imperial ? value / _kilometersPerMile : value).toStringAsFixed(2);
+      final distance = (steps / 100).toStringAsFixed(2);
       return imperial
           ? l10n.progressValueMiles(distance)
           : l10n.progressValueKilometers(distance);
     case ProgressMeasureKind.maxDuration:
     case ProgressMeasureKind.minDuration:
-      final seconds = _wholeSeconds(value);
-      return isDifference && seconds < 60
-          ? l10n.progressValueSeconds(seconds)
-          : _clock(seconds);
+      return isDifference && steps < 60
+          ? l10n.progressValueSeconds(steps)
+          : _clock(steps);
     case ProgressMeasureKind.fastestPace:
-      final seconds = _wholeSeconds(
-        imperial ? value * _kilometersPerMile : value,
-      );
       if (isDifference) {
-        return seconds < 60
-            ? l10n.progressValueSeconds(seconds)
-            : _clock(seconds);
+        return steps < 60 ? l10n.progressValueSeconds(steps) : _clock(steps);
       }
-      final pace = _clock(seconds);
+      final pace = _clock(steps);
       return imperial
           ? l10n.progressValuePacePerMile(pace)
           : l10n.progressValuePacePerKilometer(pace);
@@ -133,9 +170,9 @@ String formatProgressDate(
       : DateFormat('d MMM y', locale).format(local);
 }
 
-/// [value] rounded half up to one decimal, without a trailing ".0".
-String _oneDecimal(double value) {
-  final text = ((value * 10).round() / 10).toStringAsFixed(1);
+/// [tenths] as a one-decimal number, without a trailing ".0".
+String _oneDecimal(int tenths) {
+  final text = (tenths / 10).toStringAsFixed(1);
   return text.endsWith('.0') ? text.substring(0, text.length - 2) : text;
 }
 

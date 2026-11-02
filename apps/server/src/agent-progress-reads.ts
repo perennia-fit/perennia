@@ -11,6 +11,7 @@ import {
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
 import {
+  exerciseIdsResolvingTo,
   payloadFocusId,
   resolvePlatformExerciseId,
   type AgentCatalogStore,
@@ -395,18 +396,18 @@ export function createDrizzleAgentProgressReadStore({
     },
 
     async readNewBests({ userId, from, to }) {
-      const workoutsByExercise = await loadPerformedWorkoutSets(db, userId);
-      // Only an exercise with a Workout in the range can have a New Best in
-      // it, so the others are neither resolved nor computed.
-      const exerciseIds = [...workoutsByExercise]
-        .filter(([, workouts]) =>
-          workouts.some((workout) => workout.localDate >= from && workout.localDate <= to)
-        )
-        .map(([exerciseId]) => exerciseId);
-      const exercises =
-        exerciseIds.length === 0
-          ? []
-          : await catalogStore.getExercisesByIds({ userId, exerciseIds });
+      // Only an exercise with a Performed Set in the range can have a New
+      // Best in it, so only those exercises' histories are loaded, resolved
+      // and computed.
+      const exerciseIds = await loadExerciseIdsPerformedBetween(db, userId, from, to);
+      if (exerciseIds.length === 0) {
+        return AgentNewBestsResponseSchema.parse({ newBests: [] });
+      }
+      const [workoutsByExercise, exercises] = await Promise.all([
+        loadPerformedWorkoutSets(db, userId, exerciseIds),
+        // A shadowed Platform exercise is still active in the app (D4).
+        catalogStore.getExercisesByIds({ userId, exerciseIds, includeShadowed: true })
+      ]);
 
       const names = new Map<string, string>();
       const series: ProgressSeries[] = [];
@@ -438,7 +439,7 @@ export function createDrizzleAgentProgressReadStore({
 
     async readExerciseProgressSets({ userId, exerciseId }) {
       const resolved = resolvePlatformExerciseId(exerciseId);
-      return (await loadPerformedWorkoutSets(db, userId, resolved)).get(resolved) ?? [];
+      return (await loadPerformedWorkoutSets(db, userId, [resolved])).get(resolved) ?? [];
     }
   };
 }
@@ -470,15 +471,18 @@ export async function readAgentExerciseProgressSeries(
  * deleted, or was never synced, is dropped: there are no cascading deletes.
  * Only Sets whose payload `is_completed` is true are read; a missing key is
  * not Performed, unlike the analytics read's `is_completed ?? true`, which is
- * why `readLiveLoggedSets` is not reused. With `onlyExerciseId`, the other
- * exercises' Sets are dropped. Instants are read to the whole second, as in
+ * why `readLiveLoggedSets` is not reused. Only the Sets of `exerciseIds`
+ * (resolved ids) are read: the SQL filter takes each id with the seed
+ * redirect sources that resolve to it, so a read never scans the user's whole
+ * history for a few exercises. Instants are read to the whole second, as in
  * `loadProgressWorkouts`.
  */
 async function loadPerformedWorkoutSets(
   db: ServerDatabase,
   userId: string,
-  onlyExerciseId?: string
+  exerciseIds: readonly string[]
 ): Promise<Map<string, ProgressWorkoutSets[]>> {
+  const wanted = new Set(exerciseIds);
   const rows = await db
     .select({
       id: schema.loggedSets.id,
@@ -501,7 +505,11 @@ async function loadPerformedWorkoutSets(
       and(
         eq(schema.loggedSets.userId, userId),
         isNull(schema.loggedSets.deletedAt),
-        sql`${schema.loggedSets.payload} -> 'is_completed' = 'true'::jsonb`
+        sql`${schema.loggedSets.payload} -> 'is_completed' = 'true'::jsonb`,
+        inArray(
+          sql`${schema.loggedSets.payload} ->> 'exercise_id'`,
+          exerciseIds.flatMap(exerciseIdsResolvingTo)
+        )
       )
     );
 
@@ -519,7 +527,7 @@ async function loadPerformedWorkoutSets(
       continue;
     }
     const exerciseId = resolvePlatformExerciseId(rawExerciseId);
-    if (onlyExerciseId !== undefined && exerciseId !== onlyExerciseId) {
+    if (!wanted.has(exerciseId)) {
       continue;
     }
     const workouts = byExercise.get(exerciseId) ?? new Map<string, WorkoutSets>();
@@ -543,6 +551,49 @@ async function loadPerformedWorkoutSets(
     });
   }
   return new Map([...byExercise].map(([exerciseId, workouts]) => [exerciseId, [...workouts.values()]]));
+}
+
+/**
+ * The resolved ids of the exercises with a Performed Set in a live Workout
+ * dated within [from, to], inclusive (D0): the only exercises that can have a
+ * New Best in the range. The date compares as text, as in
+ * `loadProgressWorkouts`.
+ */
+async function loadExerciseIdsPerformedBetween(
+  db: ServerDatabase,
+  userId: string,
+  from: string,
+  to: string
+): Promise<string[]> {
+  const localDate = sql<string>`${schema.workoutSessions.payload} ->> 'local_date'`;
+  const rows = await db
+    .selectDistinct({ exerciseId: sql<unknown>`${schema.loggedSets.payload} ->> 'exercise_id'` })
+    .from(schema.loggedSets)
+    .innerJoin(
+      schema.workoutSessions,
+      and(
+        eq(schema.workoutSessions.id, sql`${schema.loggedSets.payload} ->> 'workout_id'`),
+        eq(schema.workoutSessions.userId, userId),
+        isNull(schema.workoutSessions.deletedAt),
+        gte(localDate, from),
+        lte(localDate, to)
+      )
+    )
+    .where(
+      and(
+        eq(schema.loggedSets.userId, userId),
+        isNull(schema.loggedSets.deletedAt),
+        sql`${schema.loggedSets.payload} -> 'is_completed' = 'true'::jsonb`
+      )
+    );
+  return [
+    ...new Set(
+      rows
+        .map((row) => row.exerciseId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+        .map(resolvePlatformExerciseId)
+    )
+  ];
 }
 
 /**

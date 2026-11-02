@@ -91,6 +91,24 @@ void main() {
       expect(difference(ProgressMeasureKind.maxDuration, 59.5), '1:00');
     });
 
+    test('display steps are the values as shown, in whole steps', () {
+      int steps(ProgressMeasureKind measure, double value,
+              [UnitSystem unitSystem = UnitSystem.metric]) =>
+          progressDisplaySteps(measure, value, unitSystem);
+
+      expect(steps(ProgressMeasureKind.maxLoad, 100.018), 1000);
+      expect(
+          steps(ProgressMeasureKind.maxLoad, 100, UnitSystem.imperial), 2205);
+      expect(steps(ProgressMeasureKind.maxReps, 12), 12);
+      expect(steps(ProgressMeasureKind.minDuration, 59.5), 60);
+      expect(steps(ProgressMeasureKind.maxDistance, 21.1), 2110);
+      expect(steps(ProgressMeasureKind.fastestPace, 304.4), 304);
+      expect(
+        steps(ProgressMeasureKind.fastestPace, 304, UnitSystem.imperial),
+        489,
+      );
+    });
+
     test('other measures read as their values do', () {
       expect(difference(ProgressMeasureKind.maxLoad, 2.5), '2.5 kg');
       expect(difference(ProgressMeasureKind.maxReps, 3), '3 reps');

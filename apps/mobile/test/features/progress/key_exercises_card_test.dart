@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -211,6 +213,69 @@ void main() {
     }
   });
 
+  testWidgets('the comparison line compares the values as displayed', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    const run = <DimensionId>[DimensionId.distance, DimensionId.duration];
+    final cases = <(ExerciseRecord, ProgressSeries, String, String)>[
+      // 220.5 lb in kilograms, a gain under the 0.1 kg shown.
+      (
+        _exercise('e-lb', 'Bench press', RecordProfile.maxLoad),
+        _series(
+          'e-lb',
+          ProgressMeasureKind.maxLoad,
+          [(-7, 100), (14, 220.5 * 0.45359237)],
+        ),
+        'Best 100 kg',
+        'Same as before',
+      ),
+      // 0.2 s/km faster: a New Best that rounds to the same 5:04.
+      (
+        _exercise('e-pace', '5 km run', RecordProfile.fastestPace,
+            dimensions: run),
+        _series(
+          'e-pace',
+          ProgressMeasureKind.fastestPace,
+          [(-7, 304.4), (14, 304.2)],
+        ),
+        'Best 5:04 /km',
+        'Same as before',
+      ),
+      // 5:22 against 5:05 is 17 s, though the exact gap is 17.8 s.
+      (
+        _exercise('e-tempo', 'Tempo run', RecordProfile.fastestPace,
+            dimensions: run),
+        _series(
+          'e-tempo',
+          ProgressMeasureKind.fastestPace,
+          [(-7, 322.4), (14, 304.6)],
+        ),
+        'Best 5:05 /km',
+        '17 s faster than before',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      StubProgressFeatureRepository(
+        favorites: [for (final entry in cases) entry.$1],
+        progressSeries: [for (final entry in cases) entry.$2],
+      ),
+    );
+
+    for (final (exercise, _, best, comparison) in cases) {
+      expect(_text(tester, KeyExercisesCard.bestKey(exercise.id)), best);
+      expect(
+        _text(tester, KeyExercisesCard.comparisonKey(exercise.id)),
+        comparison,
+        reason: exercise.name,
+      );
+    }
+  });
+
   testWidgets(
       'a tile marks its New Bests as rings and names the latest in its '
       'label', (tester) async {
@@ -392,4 +457,51 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text(name), findsOneWidget);
   });
+
+  testWidgets(
+      'renaming a Favorite so the tiles reorder keeps their series stream',
+      (tester) async {
+    final repository = _FavoritesStreamRepository(
+      progressSeries: [
+        _series('e-bench', ProgressMeasureKind.maxLoad, [(14, 100)]),
+        _series('e-squat', ProgressMeasureKind.maxLoad, [(14, 140)]),
+      ],
+    );
+    addTearDown(repository.favoritesController.close);
+    final bench = _exercise('e-bench', 'Bench press', RecordProfile.maxLoad);
+    final squat = _exercise('e-squat', 'Squat', RecordProfile.maxLoad);
+    repository.favoritesController.add([bench, squat]);
+    await _pump(tester, repository);
+
+    // Ordered by name, "Back squat" now comes first.
+    final renamed = _exercise('e-squat', 'Back squat', RecordProfile.maxLoad);
+    repository.favoritesController.add([renamed, bench]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Back squat'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Back squat')).dx,
+      lessThan(tester.getTopLeft(find.text('Bench press')).dx),
+    );
+    expect(repository.seriesWatches, 1);
+  });
+}
+
+/// A stub whose Favorites change over time, counting series streams.
+class _FavoritesStreamRepository extends StubProgressFeatureRepository {
+  _FavoritesStreamRepository({super.progressSeries});
+
+  final favoritesController = StreamController<List<ExerciseRecord>>();
+  int seriesWatches = 0;
+
+  @override
+  Stream<List<ExerciseRecord>> watchFavorites() => favoritesController.stream;
+
+  @override
+  Stream<List<ProgressSeries>> watchProgressSeries(
+    Iterable<String> exerciseIds,
+  ) {
+    seriesWatches += 1;
+    return super.watchProgressSeries(exerciseIds);
+  }
 }
