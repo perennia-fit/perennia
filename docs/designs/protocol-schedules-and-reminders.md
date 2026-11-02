@@ -1,7 +1,7 @@
 # Protocol Schedules and Reminders
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review (the 2026-11-02 revision: D8, CUJs 13 to 18, Phases 7 and 8). Phases 1 to 6 are Current (2026-10-28).
+*   **Status:** Approved (the 2026-11-02 revision: D8, CUJs 13 to 18, Phases 7 and 8, approved in perennia-fit/perennia#91). Phases 1 to 6 are Current (2026-10-28).
 *   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, to record the decisions made building file 46a and Phase 5, and to record the decisions made building Phase 6; 2026-11-02 to close the archive day, add Protocol delete, and add Skips: D8)
 
 --------------------------------------------------------------------------------
