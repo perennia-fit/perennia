@@ -1,8 +1,8 @@
 /// The Protocol Plan core (docs/designs/protocol-schedules-and-reminders.md,
 /// D1, D4, D6 and D8): what was planned on a range of dates, and how the
-/// logged Doses and Skips line up with it. Every surface (the Planned list, the Consistency
-/// view, the reminder reconciler) asks these functions instead of reading a
-/// Schedule directly.
+/// logged Doses and Skips line up with it. Every surface (the Planned list,
+/// the Consistency view, the reminder reconciler) asks these functions
+/// instead of reading a Schedule directly.
 ///
 /// Pure and timezone-free: no I/O, no clock, no timezone. Dates are local
 /// [ProtocolDayDate]s, times are `HH:MM` strings, and "today" and "now" are

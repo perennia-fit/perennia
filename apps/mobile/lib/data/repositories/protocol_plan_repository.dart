@@ -544,9 +544,8 @@ final class ProtocolPlanRepository {
   /// D6), so a Dose logged before its time, or a Skip, stops that reminder;
   /// a dropped archive-day slot has no fill, so it has no input (D8). Later
   /// dates come from `planDays` and are always unfilled, and a later archive
-  /// day is left out. `remindersEnabled` is the
-  /// planning Protocol's flag. Untimed planned doses are left out, because
-  /// they never get a reminder.
+  /// day is left out. `remindersEnabled` is the planning Protocol's flag.
+  /// Untimed planned doses are left out, because they never get a reminder.
   ///
   /// Ordered by date, then the core's PlanDay and slot order. Reads the plan
   /// and today's Doses once; the reconciler re-reads on

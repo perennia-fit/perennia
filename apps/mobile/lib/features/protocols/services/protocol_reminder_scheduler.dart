@@ -586,17 +586,21 @@ class ProtocolReminderScheduler {
     final now = tz.TZDateTime.from(_clock(), location);
     final today =
         ProtocolDayDate(year: now.year, month: now.month, day: now.day);
-    final inputs = await _readInputs(
-      today,
-      today.addDays(protocolReminderHorizonDays - 1),
-    );
     // Read from the Protocols alone (D5, D8): after D8 a Protocol archived
     // today keeps only filled doses, so the horizon's inputs add nothing.
     final remindersRequested = await _anyProtocolRemindersOn();
     final scheduling = deviceSwitchOn &&
         remindersRequested &&
         permission == TimerBackgroundPermissionStatus.granted;
-    final desired = scheduling ? desiredReminders(inputs, now) : null;
+    final desired = scheduling
+        ? desiredReminders(
+            await _readInputs(
+              today,
+              today.addDays(protocolReminderHorizonDays - 1),
+            ),
+            now,
+          )
+        : null;
     final wanted = <int, ReminderSpec>{
       for (final reminder in desired?.reminders ?? const <ReminderSpec>[])
         reminder.id: reminder,

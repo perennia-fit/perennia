@@ -962,8 +962,8 @@ function dayStatusFor(
   }
 
   // Step 5: close the archive day. Only unfilled slots drop, so the extras
-  // are unchanged, and a dropped slot's Skip marks nothing. Step 6 numbers
-  // what is left.
+  // are unchanged, and a dropped slot's Skip marks nothing. The rest are
+  // numbered in order.
   const fills: DayStatusFill[] = slots
     .filter((slot) => slot.doseId !== null || !slot.archiveDay)
     .map(({ position: _position, minutes: _minutes, archiveDay: _archiveDay, ...fill }, index) => ({
@@ -1084,10 +1084,10 @@ export function compareIds(left: string, right: string): number {
 
 /**
  * Today's unfilled planned doses that are due now: timed at or before
- * `nowLocalTime`, or untimed. A slot a Skip marks is left out as a filled one
- * is, so "Log all planned" never logs a skipped dose (D8). "Log all planned"
- * logs exactly these. Rows come in Compound id order (Day Status order), then
- * slot order; other dates contribute nothing.
+ * `nowLocalTime`, or untimed: "Log all planned" logs exactly these. A slot a
+ * Skip marks is left out as a filled one is, so a skipped dose is never
+ * logged (D8). Rows come in Compound id order (Day Status order), then slot
+ * order; other dates contribute nothing.
  */
 export function dueUnfilled(
   dayStatuses: readonly DayStatus[],
