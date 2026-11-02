@@ -5082,7 +5082,10 @@ the constructor.
     on a PlanDay with `archiveDay: true`, planned segments include only the
     planned times that have a fill in that date's Day Status (D8, "On
     screen"). Its `build` already reads the same range's Day Statuses for
-    extras.
+    extras. A fill keeps a planned time only when both its Protocol and its
+    time match the PlanDay's, so another Protocol's filled slot at the same
+    time can't keep the archived Protocol's time; both would draw the same
+    segment anyway. (Settled during Phase 7's build.)
 *   **`apps/mobile/lib/features/protocols/services/protocol_reminder_scheduler.dart`:**
     `remindersRequested` becomes `await _anyProtocolRemindersOn() ||
     inputs.any((i) => i.remindersEnabled && !i.filled)`, and the inputs are
@@ -5106,8 +5109,11 @@ the constructor.
         `l10n.plannedListRowSkipped`.
 
     Before merging, a search for `switch` over `DayStatusKind` and
-    `PlannedRowStatus` in `apps/mobile/lib` must find no other site. Today
-    there is none.
+    `PlannedRowStatus` in `apps/mobile/lib` must find no other site. The
+    search found one more: `_consistencySummaries` in
+    `protocol_plan_repository.dart`, which file 76 changes to count
+    `skipped`. (Settled during Phase 7's build; this entry first said there
+    was none.)
 
 ##### 78. `apps/mobile/lib/domain/protocols/protocols.dart` (Modify, Phase 7 part)
 
@@ -5142,6 +5148,9 @@ the constructor.
 
         It returns the batch id.
     *   **`archiveProtocol` is unchanged.** It accepts any Protocol.
+    *   **An unknown id.** `protocolHasHistory` returns false for it;
+        `deleteProtocol` still refuses it through `_requireProtocolRow`.
+        (Settled during Phase 7's build.)
 
 ##### 80. `apps/mobile/lib/features/protocols/controllers/protocol_controller.dart` and `apps/mobile/lib/features/protocols/widgets/protocol_screen.dart` (Modify)
 
@@ -5167,6 +5176,17 @@ the constructor.
             now.
         *   A `ProtocolHasHistoryException` closes the dialog and shows D8's
             snack bar.
+        *   **Other failures** (settled during Phase 7's build): a
+            `StateError` means the Protocol was already deleted, or removed
+            by undo, on another device, so the editor closes. Any other
+            error re-enables the buttons and shows
+            `protocolEditorDeleteFailed` ("Could not delete the Protocol:
+            {error}"), the pattern `protocolEditorSaveFailed` already uses.
+        *   **Dialog details** (settled during Phase 7's build): Cancel
+            reuses `protocolEditorCancel`; Archive's confirm button keeps
+            the default filled style, since only Delete is destructive;
+            Archive and Delete sit in a 48 dp-tall box, and so do the
+            dialogs' buttons.
 
 ##### 81. `apps/mobile/lib/l10n/app_en.arb` and generated `app_localizations*.dart` (Modify/Regenerate, Phase 7 part)
 
@@ -5246,6 +5266,26 @@ the constructor.
         `delete-protocols`, and a line saying to archive a Protocol with
         history and delete one without, reading `hasHistory`.
 *   Generated contract (Regenerate), as file 64.
+*   **Settled during Phase 7's build:**
+    *   **The history helper** is `protocolsWithHistory(executor, userId,
+        scopes)`. It returns the set of ids with history, so
+        `listProtocols` checks a page in one query. Each scope is still one
+        `EXISTS` with D8's two conditions. The member Compound ids are read
+        from member payloads in TypeScript and passed in, which lets the
+        archive warning include members sent in the same request.
+    *   **The store method** takes one object, `deleteProtocols({userId,
+        deviceId, idempotencyKey, protocolIds})`, as the store's other
+        methods do. The request fingerprint covers `idempotencyKey` and
+        `protocolIds`.
+    *   **A replay** (the same `idempotencyKey`, `duplicate: true`) rebuilds
+        its outcomes from the original batch's Activity Log entries: ids
+        that batch wrote are `deleted`, the rest `already_deleted`.
+    *   **The 422 body's top-level `message`** is "One or more Protocols
+        can't be deleted; nothing was deleted." For an idempotency-key
+        conflict (rule `idempotency_key_conflict`) it is "This idempotency
+        key was already used with a different request; nothing was
+        deleted." A receipt store that is unavailable answers 503
+        `agent_protocols_unavailable`, as the other Agent batch writes do.
 
 ##### 84. `CONTEXT.md` (Modify, Phase 7 part)
 
