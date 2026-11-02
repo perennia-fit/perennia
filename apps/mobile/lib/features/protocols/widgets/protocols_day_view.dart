@@ -861,6 +861,11 @@ class _PlannedRowLabel extends StatelessWidget {
           colors.textSecondary,
           l10n.plannedListRowNotLogged,
         ),
+      PlannedRowStatus.skipped => (
+          Icons.do_not_disturb_on_outlined,
+          colors.textSecondary,
+          l10n.plannedListRowSkipped,
+        ),
       PlannedRowStatus.none => throw StateError('A future row has no label.'),
     };
 

@@ -238,6 +238,34 @@ test("privacy logger strips the plan values of a logged planned-day or Day Statu
   }
 });
 
+test("privacy logger strips the Protocol ids of a logged Protocol delete", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  // A logged delete request, its body spread as it arrives (D8).
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/agent/protocols/delete",
+      idempotencyKey: "delete-1",
+      protocolIds: ["protocol-skin", "protocol-sleep"]
+    },
+    "synthetic Protocol delete"
+  );
+
+  assert.equal(logEvents.length, 1);
+  const serialized = JSON.stringify(logEvents[0].payload);
+  assert.equal(logEvents[0].payload.userId, "user-1");
+  assert.doesNotMatch(serialized, /"protocolIds":(?!"\[Filtered\]")/);
+  for (const value of ["protocol-skin", "protocol-sleep"]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+});
+
 test("Sentry crash reporting is opt-in and requires a DSN", () => {
   const sdk = createFakeSentrySdk();
 

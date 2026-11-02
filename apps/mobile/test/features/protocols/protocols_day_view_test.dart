@@ -1023,6 +1023,129 @@ void main() {
     );
   });
 
+  group('the archive day and a deleted Protocol (D8)', () {
+    /// TRT at 09:00 and 21:00, in a Protocol archived on [archivedOn].
+    List<PlanProtocol> archivedTwiceDaily(ProtocolDayDate archivedOn) {
+      return <PlanProtocol>[
+        PlanProtocol(
+          protocolId: 'protocol-daily',
+          startLocalDate: _start,
+          archivedOn: archivedOn,
+          members: <PlanMember>[
+            _member(
+              'c-trt',
+              TimedScheduleRule(
+                days: const DailyScheduleDays(),
+                times: const <String>['09:00', '21:00'],
+              ),
+              const PlanAmount(
+                amountValue: 0.5,
+                amountEntered: '0.5',
+                unit: DoseUnit.milliliter,
+                route: DoseRoute.intramuscular,
+              ),
+            ),
+          ],
+        ),
+      ];
+    }
+
+    test(
+        'on an archive day with one of two slots logged, the Planned list '
+        'has one Logged row; with none, no group', () {
+      for (final date in <ProtocolDayDate>[_today, _yesterday]) {
+        final logged = _plannedDay(
+          date,
+          protocols: archivedTwiceDaily(date),
+          doses: <PlanDose>[_planDose('c-trt', date, '08:40')],
+        );
+        final rows = logged.groups.single.rows;
+        expect(rows, hasLength(1), reason: '$date');
+        expect(rows.single.plannedLocalTime, '09:00');
+        expect(rows.single.slot, 0);
+        expect(rows.single.status, PlannedRowStatus.logged);
+        expect(rows.single.skipId, isNull);
+
+        final unlogged = _plannedDay(
+          date,
+          protocols: archivedTwiceDaily(date),
+        );
+        expect(unlogged.groups, isEmpty, reason: '$date');
+        expect(unlogged.hasPlanned, isFalse);
+      }
+    });
+
+    testWidgets(
+      "today's archive day shows its one Logged row and no "
+      '"Log all planned"',
+      (tester) async {
+        await _pumpView(
+          tester,
+          _emptyDay(_today),
+          controller: _FakeProtocolDayController(
+            _emptyDay(_today),
+            plannedDay: _plannedDay(
+              _today,
+              protocols: archivedTwiceDaily(_today),
+              doses: <PlanDose>[_planDose('c-trt', _today, '08:40')],
+            ),
+          ),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(ProtocolsDayView.plannedListKey));
+
+        expect(_rowLabel(tester, 'protocol-daily', 'c-trt'), 'Logged');
+        expect(
+          find.byKey(
+            ProtocolsDayView.plannedRowKey('protocol-daily', 'c-trt', 1),
+          ),
+          findsNothing,
+        );
+        expect(find.text('Pending'), findsNothing);
+        expect(
+            find.byKey(ProtocolsDayView.logAllPlannedButtonKey), findsNothing);
+      },
+    );
+
+    test(
+        'a deleted Protocol is hidden from the Planned list and the active '
+        'list, members and all', () async {
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final repositories = TrainingRepositories(database);
+      await _seedDailyStack(repositories);
+      final today = ProtocolDayDate.fromDateTime(_cuj1Now);
+      final protocolId =
+          (await repositories.protocols.listProtocolSummaries()).single.id;
+      expect(
+        (await repositories.protocolPlan.plannedDay(today, today: today))
+            .groups
+            .single
+            .protocol
+            .id,
+        protocolId,
+      );
+
+      await repositories.protocols.deleteProtocol(protocolId);
+
+      final planned =
+          await repositories.protocolPlan.plannedDay(today, today: today);
+      expect(planned.groups, isEmpty);
+      expect(planned.planDays, isEmpty);
+      expect(planned.dayStatuses, isEmpty);
+      expect(await repositories.protocols.listProtocolSummaries(), isEmpty);
+      expect(await repositories.protocols.listProtocols(), isEmpty);
+      expect(
+        await repositories.protocols.watchProtocolOptions().first,
+        isEmpty,
+      );
+      expect(
+        await repositories.protocols.watchProtocol(protocolId).first,
+        isNull,
+      );
+    });
+  });
+
   group("Today's Protocols tab", () {
     const today = ProtocolDayDate(year: 2026, month: 6, day: 30);
     Widget tab() => const Scaffold(
@@ -1546,16 +1669,18 @@ PlannedDay _plannedDay(
 }) {
   final days = planDays(protocols ?? _protocols(), localDate, localDate);
   final isFuture = localDate.compareTo(_today) > 0;
-  final statuses =
-      isFuture ? const <DayStatus>[] : dayStatuses(days, doses, _today);
+  final statuses = isFuture
+      ? const <DayStatus>[]
+      : dayStatuses(days, doses, const <PlanSkip>[], _today);
   return PlannedDay(
     localDate: localDate,
     today: _today,
     day: day ?? _emptyDay(localDate),
     planDays: days,
     dayStatuses: statuses,
-    rowStatuses:
-        isFuture ? dayStatuses(days, const <PlanDose>[], localDate) : statuses,
+    rowStatuses: isFuture
+        ? dayStatuses(days, const <PlanDose>[], const <PlanSkip>[], localDate)
+        : statuses,
     compounds: <String, CompoundRecord>{
       for (final (id, name, unit) in <(String, String, DoseUnit)>[
         ('c-trt', 'TRT', DoseUnit.milliliter),

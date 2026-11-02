@@ -27,6 +27,15 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   ([#86](https://github.com/perennia-fit/perennia/pull/86),
   [#90](https://github.com/perennia-fit/perennia/pull/90),
   [#92](https://github.com/perennia-fit/perennia/pull/92))
+- **Delete a Protocol nothing was logged for**, from its editor or through the
+  Agent API (`delete-protocols`).
+  ([#93](https://github.com/perennia-fit/perennia/pull/93))
+
+### Changed
+
+- **Archiving a Protocol** stops asking for that day's doses you haven't
+  logged, and asks for confirmation first.
+  ([#93](https://github.com/perennia-fit/perennia/pull/93))
 
 ### Changed
 

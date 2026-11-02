@@ -395,7 +395,11 @@ Protocol Days.
 A named, time-bounded course of one or more Protocol Members — a regimen the user follows
 (a supplement stack, a hormone course, a self-experiment) — with a Protocol Period saying
 when it is in effect. The plan of the Protocols domain — the analog of a Routine. A
-mutable template; editing it never alters logged Doses.
+mutable template; editing it never alters logged Doses. A Protocol with no history (no
+Dose of it, tagged or within its dates) is deleted rather than archived. Deleting it
+removes its plan as if it never existed, and the Activity Log can recover it. On a
+Protocol's archive day, planned doses a Dose filled still count, and unfilled ones are no
+longer planned.
 
 ## Protocol Member
 One Compound inside a Protocol, with its Schedule Versions. Removing it archives the
@@ -438,8 +442,20 @@ A planned dose with no clock time. It counts like any other, but never gets a re
 
 ## Day Status
 The single label for one Compound on one date, from a closed set: Logged, Pending, Partly
-logged, Not logged, Paused, Off cycle, or Not planned (with its reason). Derived, never
-stored; never a score, a streak or a percentage.
+logged, Not logged, Skipped, Paused, Off cycle, or Not planned (with its reason). Derived,
+never stored; never a score, a streak or a percentage.
+
+## Skip
+The user's record that one planned dose of a Protocol, on one local date, was not taken
+on purpose. It names the planned dose by Protocol, Compound, local date and planned time
+(or untimed), never by slot number. Authored and synced like a Dose, but never a Dose and
+never a Metric: it records no intake. It answers its planned dose only while no Dose
+fills it.
+
+## Archive day
+The local date a Protocol or Protocol Member was archived. On it, a planned dose counts
+only if a Dose fills it, whenever that Dose is logged; unfilled ones are no longer
+planned.
 
 ## Protocol Day
 The grouping of all Doses sharing the same local date — a presentation concept, mirroring

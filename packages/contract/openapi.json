@@ -7546,7 +7546,11 @@
               "null"
             ],
             "minLength": 1,
-            "description": "Local date (YYYY-MM-DD) the Protocol was archived, frozen when it was archived. Past days still count it through this date."
+            "description": "Local date (YYYY-MM-DD) the Protocol was archived, frozen when it was archived. Past days still count it through this date; on this date its planned doses count only if a Dose fills them."
+          },
+          "hasHistory": {
+            "type": "boolean",
+            "description": "At least one Dose not deleted is tagged to this Protocol, or is of one of its member Compounds (archived members included) on a date within its dates. Archive a Protocol with history; delete one without (delete-protocols)."
           },
           "updatedAt": {
             "type": "string",
@@ -7582,6 +7586,7 @@
           "period",
           "remindersEnabled",
           "archivedOn",
+          "hasHistory",
           "updatedAt",
           "deletedAt",
           "members",
@@ -7679,7 +7684,7 @@
               "null"
             ],
             "minLength": 1,
-            "description": "Local date (YYYY-MM-DD) the member was removed, frozen when it was archived. The member is still planned that day, and reads removed from the next."
+            "description": "Local date (YYYY-MM-DD) the member was removed, frozen when it was archived. On that day its planned doses count only if a Dose fills them; it reads removed from the next day."
           },
           "versions": {
             "type": "array",
@@ -8546,6 +8551,10 @@
               "$ref": "#/components/schemas/AgentProtocolPlannedDose"
             },
             "description": "The planned doses, non-empty exactly when state is planned, in the rule's stored order."
+          },
+          "archiveDay": {
+            "type": "boolean",
+            "description": "True exactly when state is planned and the date is the Protocol's or the member's archive date. On an archive day, the planned doses are expected only if a Dose fills them; read Day Statuses for what is still expected."
           }
         },
         "required": [
@@ -8553,7 +8562,8 @@
           "compoundId",
           "localDate",
           "state",
-          "planned"
+          "planned",
+          "archiveDay"
         ]
       },
       "AgentProtocolPlannedDose": {
@@ -8706,9 +8716,10 @@
               "pending",
               "logged",
               "partly_logged",
-              "not_logged"
+              "not_logged",
+              "skipped"
             ],
-            "description": "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled."
+            "description": "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled; skipped is every planned dose skipped and none logged. On an archive day, planned doses no Dose filled are dropped, so a day where every one was dropped is not_planned with reason removed."
           },
           "notPlannedReason": {
             "type": "string",
@@ -8723,12 +8734,18 @@
           },
           "plannedCount": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Planned doses that day, after an archive day's unfilled ones are dropped."
           },
           "loggedCount": {
             "type": "integer",
             "minimum": 0,
             "description": "Filled planned doses; never more than plannedCount."
+          },
+          "skippedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Planned doses a Skip marks as not taken on purpose; loggedCount + skippedCount is never more than plannedCount."
           },
           "extraCount": {
             "type": "integer",
@@ -8740,7 +8757,7 @@
             "items": {
               "$ref": "#/components/schemas/AgentProtocolDayStatusFill"
             },
-            "description": "Only with detail=doses: every planned dose (slot), in slot order, with the Dose that filled it."
+            "description": "Only with detail=doses: every planned dose (slot), in slot order, with the Dose that filled it or the Skip that marks it."
           }
         },
         "required": [
@@ -8749,6 +8766,7 @@
           "status",
           "plannedCount",
           "loggedCount",
+          "skippedCount",
           "extraCount"
         ]
       },
@@ -8831,6 +8849,14 @@
             ],
             "minLength": 1,
             "description": "The logged Dose that filled this slot; null when it is unfilled."
+          },
+          "skipId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The Skip that marks this slot as not taken on purpose; null when none does. A slot never has both a doseId and a skipId."
           }
         },
         "required": [
@@ -8841,7 +8867,8 @@
           "amountEntered",
           "unit",
           "route",
-          "doseId"
+          "doseId",
+          "skipId"
         ]
       },
       "AgentDoseBatchWriteResponse": {
@@ -9451,7 +9478,7 @@
             "items": {
               "$ref": "#/components/schemas/AgentProtocolsBatchWriteIssue"
             },
-            "description": "Soft warnings from the shared plan validators (an improbable plan, such as more than 6 times a day). The batch was still written."
+            "description": "Soft warnings: from the shared plan validators (an improbable plan, such as more than 6 times a day), and protocol_has_no_history for a Protocol archived with nothing logged for it, which delete-protocols could remove instead. The batch was still written. protocol_has_no_history is judged against stored Doses when the batch is written, so a replay (duplicate: true) repeats only the plan validators' warnings."
           }
         },
         "required": [
@@ -9542,7 +9569,7 @@
           "archived": {
             "type": "boolean",
             "default": false,
-            "description": "Set to true to archive the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; past days still count the Protocol through that date. Archiving is a plan edit: it never cascades to a logged Dose, and an archived Protocol is never restored."
+            "description": "Set to true to archive the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; past days still count the Protocol through that date, and on that date its planned doses count only if a Dose fills them. Archiving is a plan edit: it never cascades to a logged Dose, and an archived Protocol is never restored."
           },
           "members": {
             "type": "array",
@@ -9608,7 +9635,7 @@
           "archived": {
             "type": "boolean",
             "default": false,
-            "description": "Set to true to remove the member from the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; the member is still planned that day. Its Schedule Versions are kept. A removed member is never restored: adding the Compound again is a new member row."
+            "description": "Set to true to remove the member from the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; that day its planned doses count only if a Dose fills them. Its Schedule Versions are kept. A removed member is never restored: adding the Compound again is a new member row."
           }
         },
         "required": [
@@ -9763,6 +9790,122 @@
         "required": [
           "id"
         ]
+      },
+      "AgentProtocolDeleteResponse": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "duplicate": {
+            "type": "boolean"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "batchId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Activity Log batch. Undoing it (undo-activity-batch) restores every Protocol this request deleted."
+          },
+          "serverClock": {
+            "type": "string",
+            "minLength": 1
+          },
+          "protocols": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolDeleteResult"
+            },
+            "description": "One entry per distinct id, in the order first sent."
+          }
+        },
+        "required": [
+          "accepted",
+          "duplicate",
+          "idempotencyKey",
+          "batchId",
+          "serverClock",
+          "protocols"
+        ]
+      },
+      "AgentProtocolDeleteResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "deleted",
+              "already_deleted"
+            ],
+            "description": "deleted, or already_deleted for a Protocol already removed, by a delete or by undo."
+          }
+        },
+        "required": [
+          "id",
+          "outcome"
+        ]
+      },
+      "AgentProtocolDeleteErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "agent_protocol_delete_failed"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolsBatchWriteIssue"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "issues"
+        ]
+      },
+      "AgentProtocolDeleteRequest": {
+        "type": "object",
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Stable key for this agent request. The whole request is one Activity Log batch with this batchId, and a replay with the same key writes nothing."
+          },
+          "protocolIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Reference to a UUIDv7 row, or to an existing legacy row owned by this account."
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Protocols to delete. Only a Protocol with no history (hasHistory false on list-protocols) can be deleted; archive one with history through manage-protocols. A repeated id is treated once."
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "protocolIds"
+        ],
+        "additionalProperties": false
       },
       "AgentExerciseAnalyticsResponse": {
         "type": "object",
@@ -22077,6 +22220,124 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentProtocolsBatchWriteErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or Protocols write storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProtocolsUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/protocols/delete": {
+      "post": {
+        "operationId": "deleteAgentProtocols",
+        "tags": [
+          "Agent Writes"
+        ],
+        "summary": "Delete Protocols nothing was logged for, as one Activity Log batch.",
+        "description": "Authenticated agent delete for a Protocol with no history: no Dose that isn't deleted is tagged to it, or is of one of its member Compounds on a date within its dates (list-protocols reports this as hasHistory). Deleting writes one row per Protocol, the state undoing its creation leaves, and nothing else: its members, Schedule Versions and target outcomes are hidden through it, and no Dose, Compound or Metric changes. Archived Protocols with no history are accepted. Any refused id refuses the whole request. Undoing the batchId (undo-activity-batch) restores every Protocol the request deleted. Idempotent by idempotency key.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentProtocolDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The delete was applied, or recognized as an idempotent replay.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProtocolDeleteResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A Protocol was not found or has history, or the idempotency key conflicts with an earlier request; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProtocolDeleteErrorResponse"
                 }
               }
             }

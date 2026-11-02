@@ -6284,6 +6284,110 @@ class ProtocolsRepository {
     });
   }
 
+  /// Whether the Protocol has history (D8): at least one Dose that isn't
+  /// tombstoned is tagged to it, or is of one of its member Compounds
+  /// (archived members included, undo-tombstoned ones not) with a local
+  /// date from its start through the earliest of its end date and its
+  /// archive date. Skips are never history. False for an unknown id.
+  ///
+  /// The editor reads it to offer Delete or Archive; [deleteProtocol]
+  /// checks it again inside its transaction.
+  Future<bool> protocolHasHistory(String protocolId) =>
+      _protocolHasHistoryQuery(protocolId).getSingle();
+
+  /// Reactive [protocolHasHistory]: re-emits on writes to `doses`,
+  /// `protocols` and `protocol_compounds`, so a Dose synced in from another
+  /// device turns Delete into Archive.
+  Stream<bool> watchProtocolHasHistory(String protocolId) =>
+      _protocolHasHistoryQuery(protocolId).watchSingle().distinct();
+
+  /// D8's two conditions as two `EXISTS` over `doses` in one query. The
+  /// member half joins through `doses_compound_id_index`; the tagged half
+  /// scans one user's Doses, which are few, so no index is added. Dates are
+  /// `YYYY-MM-DD` text, so text order is date order.
+  Selectable<bool> _protocolHasHistoryQuery(String protocolId) {
+    return _database.customSelect(
+      '''
+      SELECT (
+        EXISTS (
+          SELECT 1 FROM doses d
+          WHERE d.deleted_at IS NULL AND d.protocol_id = ?1
+        )
+        OR EXISTS (
+          SELECT 1 FROM protocols p
+          INNER JOIN protocol_compounds m
+            ON m.protocol_id = p.id
+            AND (m.deleted_at IS NULL OR m.archived_on IS NOT NULL)
+          INNER JOIN doses d ON d.compound_id = m.compound_id
+          WHERE p.id = ?1
+            AND d.deleted_at IS NULL
+            AND d.local_date >= p.start_local_date
+            AND (p.end_local_date IS NULL OR d.local_date <= p.end_local_date)
+            AND (p.archived_on IS NULL OR d.local_date <= p.archived_on)
+        )
+      ) AS has_history
+      ''',
+      variables: [Variable<String>(protocolId)],
+      readsFrom: {
+        _database.doses,
+        _database.protocols,
+        _database.protocolCompounds,
+      },
+    ).map((row) => row.read<bool>('has_history'));
+  }
+
+  /// Deletes a Protocol with no history (D8): one `protocols` row written to
+  /// the state undoing its creation leaves (`deleted_at` and `updated_at` =
+  /// now, `archived_on` = null) and one Activity Log entry, in one
+  /// transaction and one Batch. Not a cascading delete: no member, Schedule
+  /// Version, target outcome or Dose changes, and every reader hides them
+  /// through the tombstoned Protocol. `undoBatch` restores it exactly,
+  /// archived or not.
+  ///
+  /// An archived Protocol with no history is accepted, and deleting it
+  /// clears its `archived_on`, so its past days stop counting. Throws a
+  /// [StateError] for an unknown id or one already deleted, and
+  /// [ProtocolHasHistoryException] when [protocolHasHistory] is true inside
+  /// the transaction. Returns the batch id.
+  Future<String> deleteProtocol(
+    String protocolId, {
+    String actor = 'manual',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final before = await _requireProtocolRow(protocolId);
+      if (before.deletedAt != null && before.archivedOn == null) {
+        throw StateError('Protocol is deleted: $protocolId.');
+      }
+      if (await protocolHasHistory(protocolId)) {
+        throw ProtocolHasHistoryException(protocolId);
+      }
+      await (_database.update(_database.protocols)
+            ..where((row) => row.id.equals(protocolId)))
+          .write(
+        ProtocolsCompanion(
+          archivedOn: const Value<String?>(null),
+          updatedAt: Value<DateTime>(context.timestamp),
+          deletedAt: Value<DateTime?>(context.timestamp),
+        ),
+      );
+      final after = await _requireProtocolRow(protocolId);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.protocolsTable,
+        entityId: protocolId,
+        beforeImage: _protocolImage(before),
+        afterImage: _protocolImage(after),
+      );
+      return context.batchId;
+    });
+  }
+
   /// Lists active (non-archived) `Protocol`s with their ordered members (each
   /// carrying its optional `Schedule`) and declared target outcomes,
   /// newest-name order.
@@ -6866,10 +6970,11 @@ class ProtocolsRepository {
   ///
   /// A removed member's archive (`deleted_at`, plus `archived_on` frozen as
   /// [today]) is the one record of the removal: its Schedule Versions stay
-  /// as they are, and the archive day itself is still planned. A member
-  /// added while the Protocol's start is still ahead plans from the start;
-  /// one added to a Protocol that has already started plans from [today],
-  /// so its past days don't turn into "Not logged".
+  /// as they are, and on the archive day its planned doses count only if a
+  /// Dose fills them (D8). A member added while the Protocol's start is
+  /// still ahead plans from the start; one added to a Protocol that has
+  /// already started plans from [today], so its past days don't turn into
+  /// "Not logged".
   Future<void> _replaceProtocolMembers(
     String protocolId,
     List<String> compoundIds,

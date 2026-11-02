@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/features/home/controllers/home_controller.dart';
@@ -247,6 +248,100 @@ void main() {
       find.byKey(ProtocolsProgressCard.rowKey('creatine')),
     );
     expect(row.height, greaterThanOrEqualTo(48));
+  });
+
+  testWidgets('a non-zero skipped count follows paused (D8)', (tester) async {
+    await pump(
+      tester,
+      summaries: const <CompoundConsistencySummary>[
+        CompoundConsistencySummary(
+          compoundId: 'trt',
+          compoundName: 'TRT',
+          logged: 10,
+          partlyLogged: 3,
+          notLogged: 1,
+          paused: 4,
+          skipped: 2,
+        ),
+        CompoundConsistencySummary(
+          compoundId: 'creatine',
+          compoundName: 'Creatine',
+          logged: 26,
+          partlyLogged: 0,
+          notLogged: 2,
+          paused: 0,
+        ),
+      ],
+    );
+
+    expect(
+      find.text(
+        '10 logged · 3 partly logged · 1 not logged · 4 paused · 2 skipped',
+      ),
+      findsOneWidget,
+    );
+    // A zero count shows nothing.
+    expect(find.text('26 logged · 2 not logged'), findsOneWidget);
+  });
+
+  test(
+      "the summary counts nothing for an archive day's dropped planned "
+      'doses (D8)', () async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+    const start = ProtocolDayDate(year: 2026, month: 10, day: 26);
+    const today = ProtocolDayDate(year: 2026, month: 11, day: 1);
+    final creatine = (await repositories.protocols.createCompound(
+      const CompoundDraft(
+        name: 'Creatine',
+        defaultUnit: DoseUnit.gram,
+        defaultRoute: DoseRoute.oral,
+      ),
+    ))
+        .compoundId;
+    final created = await repositories.protocols.createProtocol(
+      ProtocolDraft(
+        name: 'Daily',
+        startLocalDate: start,
+        compoundIds: <String>[creatine],
+        schedulesByCompoundId: <String, ScheduleDraft?>{
+          creatine: ScheduleDraft(
+            rule: TimedScheduleRule(
+              days: const DailyScheduleDays(),
+              times: const <String>['09:00', '21:00'],
+            ),
+            doseAmountValue: 5,
+            doseAmountEntered: '5',
+            doseUnit: DoseUnit.gram,
+            route: DoseRoute.oral,
+          ),
+        },
+      ),
+      today: start,
+    );
+    // Archived on the 28th with nothing logged that day.
+    await repositories.protocols.archiveProtocol(
+      created.protocolId,
+      today: const ProtocolDayDate(year: 2026, month: 10, day: 28),
+    );
+
+    final summary = (await repositories.protocolPlan
+            .watchConsistencySummary(start, today, today: today)
+            .first)
+        .single;
+
+    // The 26th and 27th; the 28th reads Not planned and is not counted.
+    expect(
+      (
+        summary.logged,
+        summary.partlyLogged,
+        summary.notLogged,
+        summary.paused,
+        summary.skipped,
+      ),
+      (0, 0, 2, 0, 0),
+    );
   });
 
   testWidgets(

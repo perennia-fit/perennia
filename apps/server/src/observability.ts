@@ -392,5 +392,8 @@ const TRAINING_DATA_KEYS = new Set([
   "fromlocaldate",
   "tolocaldate",
   "planneddays",
-  "daystatuses"
+  "daystatuses",
+  // The Agent Protocol delete (same spec, D8) names its Protocols in a
+  // top-level `protocolIds`, which normalizes to this key, not `protocolid`.
+  "protocolids"
 ]);

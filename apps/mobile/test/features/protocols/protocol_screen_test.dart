@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -182,8 +184,321 @@ void main() {
     await tester.ensureVisible(find.byKey(ProtocolFormScreen.archiveButtonKey));
     await tester.tap(find.byKey(ProtocolFormScreen.archiveButtonKey));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ProtocolFormScreen.confirmArchiveButtonKey));
+    await tester.pumpAndSettle();
 
     expect(controller.archivedProtocolIds, <String>['protocol-1']);
+  });
+
+  group('Archive or Delete (D8)', () {
+    Future<void> openSaved(
+      WidgetTester tester,
+      _FakeProtocolListController controller, {
+      required Stream<bool> Function() hasHistory,
+      ThemeData? theme,
+    }) async {
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _leanBulkStack(),
+        compounds: _compounds(),
+        hasHistory: hasHistory,
+        theme: theme,
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.saveButtonKey),
+      );
+    }
+
+    testWidgets(
+        'a Protocol with no history shows Delete, not Archive, and asks '
+        'before deleting', (tester) async {
+      final controller = _FakeProtocolListController();
+      await openSaved(
+        tester,
+        controller,
+        hasHistory: () => Stream<bool>.value(false),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.deleteButtonKey),
+      );
+      expect(find.byKey(ProtocolFormScreen.archiveButtonKey), findsNothing);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.deleteButtonKey));
+      expect(find.text('Delete Lean bulk?'), findsOneWidget);
+      expect(
+        find.text(
+          'Nothing has been logged for this Protocol, so it is removed '
+          'completely. You can still recover it from the Activity Log.',
+        ),
+        findsOneWidget,
+      );
+
+      // Cancel writes nothing.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(controller.deletedProtocolIds, isEmpty);
+      expect(controller.archivedProtocolIds, isEmpty);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.deleteButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmDeleteButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(controller.deletedProtocolIds, <String>['protocol-1']);
+      expect(controller.archivedProtocolIds, isEmpty);
+    });
+
+    testWidgets(
+        'a Protocol with history shows Archive, not Delete, and asks before '
+        'archiving', (tester) async {
+      final controller = _FakeProtocolListController();
+      await openSaved(
+        tester,
+        controller,
+        hasHistory: () => Stream<bool>.value(true),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.archiveButtonKey),
+      );
+      expect(find.byKey(ProtocolFormScreen.deleteButtonKey), findsNothing);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.archiveButtonKey));
+      expect(find.text('Archive Lean bulk?'), findsOneWidget);
+      expect(
+        find.text(
+          'Doses you logged stay in your history. From tomorrow it plans '
+          "nothing, and today's doses you haven't logged are no longer "
+          'expected.',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(controller.archivedProtocolIds, isEmpty);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.archiveButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmArchiveButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(controller.archivedProtocolIds, <String>['protocol-1']);
+      expect(controller.deletedProtocolIds, isEmpty);
+    });
+
+    testWidgets(
+        'neither shows while the history read loads, nor on a new '
+        'Protocol', (tester) async {
+      final pending = StreamController<bool>();
+      addTearDown(pending.close);
+      await openSaved(
+        tester,
+        _FakeProtocolListController(),
+        hasHistory: () => pending.stream,
+      );
+      expect(find.byKey(ProtocolFormScreen.archiveButtonKey), findsNothing);
+      expect(find.byKey(ProtocolFormScreen.deleteButtonKey), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpFormScreen(
+        tester,
+        _FakeProtocolListController(),
+        compounds: _compounds(),
+        hasHistory: () => Stream<bool>.value(false),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.saveButtonKey),
+      );
+      expect(find.byKey(ProtocolFormScreen.archiveButtonKey), findsNothing);
+      expect(find.byKey(ProtocolFormScreen.deleteButtonKey), findsNothing);
+    });
+
+    testWidgets(
+        'a delete refused for history shows the snack bar, and the button '
+        'follows the fresh read', (tester) async {
+      final history = StreamController<bool>();
+      addTearDown(history.close);
+      final controller = _FakeProtocolListController()
+        ..deleteError = const ProtocolHasHistoryException('protocol-1');
+      await openSaved(tester, controller, hasHistory: () => history.stream);
+      history.add(false);
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.deleteButtonKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.deleteButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmDeleteButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        find.text(
+          'Something was logged for this Protocol, so it can only be '
+          'archived.',
+        ),
+        findsOneWidget,
+      );
+      expect(controller.deletedProtocolIds, isEmpty);
+      // The screen stays open.
+      expect(find.byKey(ProtocolFormScreen.saveButtonKey), findsOneWidget);
+
+      // The synced Dose reaches the history read.
+      history.add(true);
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.archiveButtonKey),
+      );
+      expect(find.byKey(ProtocolFormScreen.deleteButtonKey), findsNothing);
+    });
+
+    testWidgets(
+        'a delete that fails for another reason re-enables the buttons and '
+        'says why', (tester) async {
+      final controller = _FakeProtocolListController()
+        ..deleteError = Exception('disk full');
+      await openSaved(
+        tester,
+        controller,
+        hasHistory: () => Stream<bool>.value(false),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.deleteButtonKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.deleteButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmDeleteButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Could not delete the Protocol: Exception: disk full'),
+        findsOneWidget,
+      );
+      final delete = tester.widget<ButtonStyleButton>(
+        find.byKey(ProtocolFormScreen.deleteButtonKey),
+      );
+      expect(delete.onPressed, isNotNull);
+      final save = tester.widget<ButtonStyleButton>(
+        find.byKey(ProtocolFormScreen.saveButtonKey),
+      );
+      expect(save.onPressed, isNotNull);
+    });
+
+    testWidgets(
+        'a Protocol already deleted on another device closes the editor '
+        'instead of leaving it disabled', (tester) async {
+      final controller = _FakeProtocolListController()
+        ..deleteError = StateError('Protocol is deleted: protocol-1.');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            protocolListControllerProvider.overrideWith(() => controller),
+            protocolHasHistoryProvider.overrideWith(
+              (ref, protocolId) => Stream<bool>.value(false),
+            ),
+            compoundScheduleOptionListProvider.overrideWith(
+              (ref) => Stream<List<CompoundScheduleOptionRecord>>.value(
+                _compounds()
+                    .map(_compoundScheduleOptionFromCompound)
+                    .toList(growable: false),
+              ),
+            ),
+            metricOptionListProvider.overrideWith(
+              (ref) => Stream<List<MetricOptionRecord>>.value(
+                const <MetricOptionRecord>[],
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        ProtocolFormScreen(protocol: _leanBulkStack()),
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.deleteButtonKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.deleteButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmDeleteButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ProtocolFormScreen), findsNothing);
+      expect(find.text('open'), findsOneWidget);
+    });
+
+    testWidgets(
+        'Delete and Archive are 48 dp targets with text in both themes, so '
+        'the destructive color is never the only signal', (tester) async {
+      for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+        for (final hasHistory in <bool>[false, true]) {
+          final semantics = tester.ensureSemantics();
+          await openSaved(
+            tester,
+            _FakeProtocolListController(),
+            hasHistory: () => Stream<bool>.value(hasHistory),
+            theme: theme,
+          );
+          final button = find.byKey(
+            hasHistory
+                ? ProtocolFormScreen.archiveButtonKey
+                : ProtocolFormScreen.deleteButtonKey,
+          );
+          await _pumpUntilFound(tester, button);
+          await _reveal(tester, button);
+
+          final size = tester.getSize(button);
+          expect(size.height, greaterThanOrEqualTo(AppDimens.touchTarget));
+          expect(
+            find.descendant(
+              of: button,
+              matching: find.text(hasHistory ? 'Archive' : 'Delete'),
+            ),
+            findsOneWidget,
+          );
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+
+          // The confirmation's buttons too.
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+          final confirm = find.byKey(
+            hasHistory
+                ? ProtocolFormScreen.confirmArchiveButtonKey
+                : ProtocolFormScreen.confirmDeleteButtonKey,
+          );
+          expect(
+            tester.getSize(confirm).height,
+            greaterThanOrEqualTo(AppDimens.touchTarget),
+          );
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+
+          semantics.dispose();
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+      }
+    });
   });
 
   group('Schedule editor', () {
@@ -1508,6 +1823,7 @@ Future<void> _pumpListScreen(
   ThemeData? theme,
   List<CompoundRecord> compounds = const <CompoundRecord>[],
   Map<String, String> compoundNames = const <String, String>{},
+  bool hasHistory = true,
 }) async {
   final memberIds = controller.protocols
       .expand((protocol) => protocol.members)
@@ -1516,6 +1832,9 @@ Future<void> _pumpListScreen(
     ProviderScope(
       overrides: [
         protocolListControllerProvider.overrideWith(() => controller),
+        protocolHasHistoryProvider.overrideWith(
+          (ref, protocolId) => Stream<bool>.value(hasHistory),
+        ),
         compoundListProvider.overrideWith(
           (ref) => Stream<List<CompoundRecord>>.value(compounds),
         ),
@@ -1557,11 +1876,17 @@ Future<void> _pumpFormScreen(
   ProtocolRecord? protocol,
   List<CompoundRecord> compounds = const <CompoundRecord>[],
   List<MetricRecord> metrics = const <MetricRecord>[],
+  Stream<bool> Function()? hasHistory,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         protocolListControllerProvider.overrideWith(() => controller),
+        // The editor's Archive or Delete (D8). A Protocol with history by
+        // default, so the editor shows Archive as it did before D8.
+        protocolHasHistoryProvider.overrideWith(
+          (ref, protocolId) => hasHistory?.call() ?? Stream<bool>.value(true),
+        ),
         compoundScheduleOptionListProvider.overrideWith(
           (ref) => Stream<List<CompoundScheduleOptionRecord>>.value(
             compounds
@@ -1904,6 +2229,11 @@ class _FakeProtocolListController extends ProtocolListController {
   final editedProtocolIds = <String>[];
   final editedDrafts = <ProtocolDraft>[];
   final archivedProtocolIds = <String>[];
+  final deletedProtocolIds = <String>[];
+
+  /// Thrown by [deleteProtocol] instead of deleting, when set: the refusal
+  /// the repository gives when a Dose made the Protocol history (D8).
+  Object? deleteError;
 
   @override
   Stream<List<ProtocolSummaryRecord>> build() {
@@ -1932,6 +2262,16 @@ class _FakeProtocolListController extends ProtocolListController {
   Future<String> archiveProtocol(String protocolId) async {
     archivedProtocolIds.add(protocolId);
     return 'batch-archive-${archivedProtocolIds.length}';
+  }
+
+  @override
+  Future<String> deleteProtocol(String protocolId) async {
+    final error = deleteError;
+    if (error != null) {
+      throw error;
+    }
+    deletedProtocolIds.add(protocolId);
+    return 'batch-delete-${deletedProtocolIds.length}';
   }
 
   @override

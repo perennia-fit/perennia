@@ -1,7 +1,7 @@
 # Protocol Schedules and Reminders
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review (the 2026-11-02 revision: D8, CUJs 13 to 18, Phases 7 and 8). Phases 1 to 6 are Current (2026-10-28).
+*   **Status:** Approved (the 2026-11-02 revision: D8, CUJs 13 to 18, Phases 7 and 8, approved in perennia-fit/perennia#91). Phases 1 to 6 are Current (2026-10-28).
 *   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, to record the decisions made building file 46a and Phase 5, and to record the decisions made building Phase 6; 2026-11-02 to close the archive day, add Protocol delete, and add Skips: D8)
 
 --------------------------------------------------------------------------------
@@ -1080,10 +1080,14 @@ How a date is decided for one Protocol and Protocol Member, in order:
         It is read from the Protocols themselves, not from the horizon, so
         the banner shows even when none of that Protocol's timed doses
         falls in the next 14 days. (Settled after Phase 5's build.)
-        *   Phase 5 also counted "a reminders-on timed planned dose still in
-            the horizon", which kept a Protocol archived today. After D8 a
-            Protocol archived today keeps only filled doses, which schedule
-            nothing, so Phase 7 drops that half (file 76).
+        *   The reconciler also counts "a reminders-on timed planned dose
+            still in the horizon and not filled". After D8 a Protocol
+            archived on this device's today keeps only filled doses, so
+            this adds only an archived Protocol whose `archivedOn` is after
+            this device's today (an Agent's `today` a day ahead, or another
+            device's later zone), which still plans today in full. The
+            reconciler reads it only when the device switch is on and
+            permission is granted (file 76).
 *   **Tap:** the payload carries only `{kind: "protocolReminder", localDate}`.
     On iOS, `AppDelegate` handles a reminder tap itself and sends
     `onProtocolReminderTapped(localDate)` over the existing
@@ -1862,6 +1866,14 @@ are both `_protocolImage`. Nothing else is written. That is the state undoing
 the Protocol's creation leaves on its row. The sync push sends the changed
 row like any other edit, and the server stores it as sent.
 
+On the Agent path, "now" is the server clock, unless the stored row's
+`updated_at` is at or after it (a write in the same millisecond, or a
+device clock ahead within the sync push's accepted skew). Then the delete
+is stamped one millisecond after the stored `updated_at`, so
+last-writer-wins applies the delete the response reports as `deleted`.
+Stamping the server clock there would make the push keep the stored row
+while the response said it was deleted. (Settled during Phase 7's build.)
+
 **Readers hide the Protocol's members, Schedule Versions and target outcomes
 through its row.** Those child rows keep their own state. Every reader
 reaches them only through a Protocol that isn't tombstoned:
@@ -2180,7 +2192,15 @@ store types are exported from `apps/server/src/index.ts`, as Phase 6's were.
         deleting it with delete-protocols instead."
 
     Archiving a Protocol Member (`archived: true` on a member) never gets
-    it.
+    it. A request refused for any other reason gets none either, since it
+    writes nothing.
+    *   **A replay doesn't repeat it.** The warning is judged against the
+        stored Doses when the batch is written. A retried request with the
+        same `idempotencyKey` (`duplicate: true`) returns only the plan
+        validators' warnings, because judging the history again would read
+        it as it is now (a Dose logged since, or the Protocol deleted
+        since), not as the write saw it. The `warnings` schema description
+        says so. (Settled during Phase 7's build.)
 *   **The refusal for a tombstoned Protocol** now also answers deleted ones.
     Its message becomes "This Protocol was deleted or removed by undo, and
     can't be restored or edited. Create a new Protocol instead." The rule
@@ -5062,13 +5082,19 @@ the constructor.
     on a PlanDay with `archiveDay: true`, planned segments include only the
     planned times that have a fill in that date's Day Status (D8, "On
     screen"). Its `build` already reads the same range's Day Statuses for
-    extras.
+    extras. A fill keeps a planned time only when both its Protocol and its
+    time match the PlanDay's, so another Protocol's filled slot at the same
+    time can't keep the archived Protocol's time; both would draw the same
+    segment anyway. (Settled during Phase 7's build.)
 *   **`apps/mobile/lib/features/protocols/services/protocol_reminder_scheduler.dart`:**
-    `remindersRequested` becomes `await _anyProtocolRemindersOn()` alone.
-    After D8 the other half, `inputs.any((i) => i.remindersEnabled)`, adds
-    only a Protocol archived today whose remaining doses are all filled,
-    and that schedules nothing. D5's "A Protocol has reminders on" bullet
-    is rewritten to match (this revision).
+    `remindersRequested` becomes `await _anyProtocolRemindersOn() ||
+    inputs.any((i) => i.remindersEnabled && !i.filled)`, and the inputs are
+    read only when the device switch is on and permission is granted. A
+    Protocol archived on this device's today keeps only filled doses, which
+    ask for nothing. The inputs half still covers an archived Protocol whose
+    `archivedOn` is after this device's today, which plans today in full
+    (D8). D5's "A Protocol has reminders on" bullet is rewritten to match
+    (this revision; settled during Phase 7's build).
 
 ##### 77. Every exhaustive switch over the two widened enums (Modify)
 
@@ -5083,8 +5109,11 @@ the constructor.
         `l10n.plannedListRowSkipped`.
 
     Before merging, a search for `switch` over `DayStatusKind` and
-    `PlannedRowStatus` in `apps/mobile/lib` must find no other site. Today
-    there is none.
+    `PlannedRowStatus` in `apps/mobile/lib` must find no other site. The
+    search found one more: `_consistencySummaries` in
+    `protocol_plan_repository.dart`, which file 76 changes to count
+    `skipped`. (Settled during Phase 7's build; this entry first said there
+    was none.)
 
 ##### 78. `apps/mobile/lib/domain/protocols/protocols.dart` (Modify, Phase 7 part)
 
@@ -5119,6 +5148,9 @@ the constructor.
 
         It returns the batch id.
     *   **`archiveProtocol` is unchanged.** It accepts any Protocol.
+    *   **An unknown id.** `protocolHasHistory` returns false for it;
+        `deleteProtocol` still refuses it through `_requireProtocolRow`.
+        (Settled during Phase 7's build.)
 
 ##### 80. `apps/mobile/lib/features/protocols/controllers/protocol_controller.dart` and `apps/mobile/lib/features/protocols/widgets/protocol_screen.dart` (Modify)
 
@@ -5144,6 +5176,17 @@ the constructor.
             now.
         *   A `ProtocolHasHistoryException` closes the dialog and shows D8's
             snack bar.
+        *   **Other failures** (settled during Phase 7's build): a
+            `StateError` means the Protocol was already deleted, or removed
+            by undo, on another device, so the editor closes. Any other
+            error re-enables the buttons and shows
+            `protocolEditorDeleteFailed` ("Could not delete the Protocol:
+            {error}"), the pattern `protocolEditorSaveFailed` already uses.
+        *   **Dialog details** (settled during Phase 7's build): Cancel
+            reuses `protocolEditorCancel`; Archive's confirm button keeps
+            the default filled style, since only Delete is destructive;
+            Archive and Delete sit in a 48 dp-tall box, and so do the
+            dialogs' buttons.
 
 ##### 81. `apps/mobile/lib/l10n/app_en.arb` and generated `app_localizations*.dart` (Modify/Regenerate, Phase 7 part)
 
@@ -5223,6 +5266,26 @@ the constructor.
         `delete-protocols`, and a line saying to archive a Protocol with
         history and delete one without, reading `hasHistory`.
 *   Generated contract (Regenerate), as file 64.
+*   **Settled during Phase 7's build:**
+    *   **The history helper** is `protocolsWithHistory(executor, userId,
+        scopes)`. It returns the set of ids with history, so
+        `listProtocols` checks a page in one query. Each scope is still one
+        `EXISTS` with D8's two conditions. The member Compound ids are read
+        from member payloads in TypeScript and passed in, which lets the
+        archive warning include members sent in the same request.
+    *   **The store method** takes one object, `deleteProtocols({userId,
+        deviceId, idempotencyKey, protocolIds})`, as the store's other
+        methods do. The request fingerprint covers `idempotencyKey` and
+        `protocolIds`.
+    *   **A replay** (the same `idempotencyKey`, `duplicate: true`) rebuilds
+        its outcomes from the original batch's Activity Log entries: ids
+        that batch wrote are `deleted`, the rest `already_deleted`.
+    *   **The 422 body's top-level `message`** is "One or more Protocols
+        can't be deleted; nothing was deleted." For an idempotency-key
+        conflict (rule `idempotency_key_conflict`) it is "This idempotency
+        key was already used with a different request; nothing was
+        deleted." A receipt store that is unavailable answers 503
+        `agent_protocols_unavailable`, as the other Agent batch writes do.
 
 ##### 84. `CONTEXT.md` (Modify, Phase 7 part)
 

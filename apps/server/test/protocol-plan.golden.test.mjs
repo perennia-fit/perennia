@@ -17,7 +17,7 @@ import {
 // Moves with the vector file's `schemaVersion` and its schema's constant, and
 // with the app runner's (apps/mobile/test/domain/protocol_plan_golden_test.dart):
 // an incompatible case-shape change bumps all of them together.
-const PROTOCOL_PLAN_GOLDEN_SCHEMA_VERSION = 1;
+const PROTOCOL_PLAN_GOLDEN_SCHEMA_VERSION = 2;
 
 // One entry per `function` the vector file uses. A case naming anything else
 // fails loudly rather than being skipped.
@@ -31,7 +31,10 @@ const RUNNERS_BY_FUNCTION = new Map([
     "plan_days",
     (input) => planDays(input.protocols.map(decodePlanProtocol), input.from, input.to)
   ],
-  ["day_statuses", (input) => dayStatuses(input.planDays, input.doses, input.today)],
+  [
+    "day_statuses",
+    (input) => dayStatuses(input.planDays, input.doses, input.skips, input.today)
+  ],
   ["due_unfilled", (input) => dueUnfilled(input.dayStatuses, input.today, input.nowLocalTime)],
   [
     "effect_bounds",

@@ -25,11 +25,20 @@ its `function`, gives that function's arguments by parameter name in `input`,
 and its return value in `expected`. A codec case that must fail, and an
 `effect_bounds` case whose offset is outside −720 to +840 minutes, expect
 `{"rejects": true}`: the runners map a codec error, or the `RangeError` the
-offset guard throws, to it. `m36-protocol-plan-validation.json`
-(domain `protocol-plan-validation`) pins `validateScheduleRule` and
-`validateProtocolPeriod`, dispatched on each case's `validator`, and carries a
-`limits` block that both runners assert against their limits constants. The
-behaviour both files encode is specified in
+offset guard throws, to it.
+
+The plan file is at schema version 2. Version 2 (the spec's D8) closes a
+Protocol's archive day and adds Skips to matching, which changed every case's
+shape: each PlanDay carries `archiveDay`, each Day Status `skippedCount`, each
+fill `skipId`, and each `day_statuses` input a `skips` list.
+
+`m36-protocol-plan-validation.json` (domain `protocol-plan-validation`) pins
+`validateScheduleRule`, `validateProtocolPeriod` and, for Skips,
+`validateProtocolSkip` (`validateAgentProtocolSkip` in TypeScript), dispatched
+on each case's `validator`, and carries a `limits` block that both runners
+assert against their limits constants. Adding the Skip validator only added a
+case branch, so that file stays at schema version 1. The behaviour both files
+encode is specified in
 [`docs/designs/protocol-schedules-and-reminders.md`](../../../docs/designs/protocol-schedules-and-reminders.md).
 
 Each file is governed by the adjacent `.schema.json` of the same name. A

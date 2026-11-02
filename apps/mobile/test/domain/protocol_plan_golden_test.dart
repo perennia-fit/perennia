@@ -10,7 +10,7 @@ import 'package:perennia/domain/protocols/protocols.dart';
 /// The schema version this runner reads. It moves together with the vector
 /// file's `schemaVersion` and its schema's constant
 /// (packages/golden-vectors/vectors/README.md).
-const int _schemaVersion = 1;
+const int _schemaVersion = 2;
 
 /// The shared golden vector for the Protocol Plan core
 /// (docs/designs/protocol-schedules-and-reminders.md): the Schedule Rule and
@@ -64,6 +64,7 @@ Object? _run(String function, Map<String, Object?> input) {
       return dayStatuses(
         _list(input['planDays']).map(PlanDay.fromJson),
         _list(input['doses']).map(PlanDose.fromJson),
+        _list(input['skips']).map(PlanSkip.fromJson),
         _date(input['today']),
       ).map((status) => status.toJson()).toList();
     case 'due_unfilled':

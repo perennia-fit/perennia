@@ -379,6 +379,52 @@ void main() {
       expect(platform.scheduledIds, isEmpty);
     });
 
+    test(
+        'reminders-on inputs alone, as from a Protocol archived today, ask '
+        'for nothing: only a Protocol not archived does (D5, D8)', () async {
+      final platform = _FakePlatform(newYork);
+      final archivedToday = _scheduler(
+        platform: platform,
+        permissions: _FakePermissions(),
+        inputs: () => <ProtocolReminderInput>[
+          _input('trt', today, '09:00', filled: true),
+        ],
+        clock: () => now,
+        anyProtocolRemindersOn: () => false,
+      );
+      addTearDown(archivedToday.dispose);
+
+      await archivedToday.reconcile();
+
+      expect(archivedToday.status.remindersRequested, isFalse);
+      expect(archivedToday.status.horizonEnd, isNull);
+      expect(platform.scheduledIds, isEmpty);
+    });
+
+    test(
+        'a Protocol archived on a later date than this device\'s today '
+        'still plans today in full, so its unfilled doses keep their '
+        'reminders (D8)', () async {
+      final platform = _FakePlatform(newYork);
+      // An Agent sent today = tomorrow: on this device today is not the
+      // archive day, so its 21:00 dose still reads Pending.
+      final archivedTomorrow = _scheduler(
+        platform: platform,
+        permissions: _FakePermissions(),
+        inputs: () => <ProtocolReminderInput>[
+          _input('trt', today, '21:00'),
+        ],
+        clock: () => now,
+        anyProtocolRemindersOn: () => false,
+      );
+      addTearDown(archivedTomorrow.dispose);
+
+      await archivedTomorrow.reconcile();
+
+      expect(archivedTomorrow.status.remindersRequested, isTrue);
+      expect(platform.scheduledIds, <int>{protocolReminderId(today, '21:00')});
+    });
+
     test('permission denied schedules none', () async {
       permissions.status = TimerBackgroundPermissionStatus.denied;
       await scheduler.reconcile();
@@ -677,6 +723,82 @@ void main() {
       await repositories.protocols.archiveProtocol(
         stack.protocolId,
         today: today,
+      );
+      expect(await repositories.protocolPlan.anyProtocolRemindersOn(), isFalse);
+      // Archived today with nothing logged, it no longer keeps today's later
+      // reminders: its archive day drops every unfilled planned dose (D8).
+      expect(
+        await repositories.protocolPlan.reminderInputs(today, tomorrow),
+        isEmpty,
+      );
+    });
+
+    test(
+        'an archive day holds no reminder input for a dropped slot, today or '
+        'on a later archive date (D8)', () async {
+      final repositories = container.read(trainingRepositoriesProvider);
+      final stack = await _seedDailyStack(repositories, today);
+      await repositories.protocols.logDose(
+        stack.dose('trt', DateTime(2026, 10, 28, 8, 40)),
+      );
+      await repositories.protocols.archiveProtocol(
+        stack.protocolId,
+        today: today,
+      );
+
+      // Only the slot a Dose filled is left: AgeMate's 09:00 and creatine's
+      // 17:00 are dropped, and nothing is planned after today.
+      final inputs =
+          await repositories.protocolPlan.reminderInputs(today, tomorrow);
+      expect(
+        inputs.map(
+          (input) => (
+            input.compoundId == stack.ids['trt'],
+            input.localDate,
+            input.localTime,
+            input.filled,
+          ),
+        ),
+        <(bool, ProtocolDayDate, String, bool)>[
+          (true, today, '09:00', true),
+        ],
+      );
+    });
+
+    test(
+        'a later date that is an archive day, as from an Agent a day ahead, '
+        'holds no reminder input (D8)', () async {
+      final repositories = container.read(trainingRepositoriesProvider);
+      final stack = await _seedDailyStack(repositories, today);
+      await repositories.protocols.archiveProtocol(
+        stack.protocolId,
+        today: tomorrow,
+      );
+
+      final inputs = await repositories.protocolPlan
+          .reminderInputs(today, today.addDays(2));
+
+      expect(inputs, isNotEmpty);
+      expect(inputs.every((input) => input.localDate == today), isTrue);
+      expect(inputs.every((input) => !input.filled), isTrue);
+    });
+
+    test(
+        'a deleted Protocol is hidden from reminderInputs and '
+        'anyProtocolRemindersOn (D8)', () async {
+      final repositories = container.read(trainingRepositoriesProvider);
+      final stack = await _seedDailyStack(repositories, today);
+      expect(
+        await repositories.protocolPlan.reminderInputs(today, tomorrow),
+        isNotEmpty,
+      );
+      expect(await repositories.protocolPlan.anyProtocolRemindersOn(), isTrue);
+
+      await repositories.protocols.deleteProtocol(stack.protocolId);
+
+      expect(
+        await repositories.protocolPlan.reminderInputs(today, tomorrow),
+        isEmpty,
       );
       expect(await repositories.protocolPlan.anyProtocolRemindersOn(), isFalse);
     });
