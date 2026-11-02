@@ -8,6 +8,8 @@ import '../../metrics/widgets/metrics_screen.dart';
 import '../../settings/widgets/settings_shared.dart';
 import '../controllers/progress_controller.dart';
 import 'focus_time_card.dart';
+import 'key_exercises_card.dart';
+import 'new_bests_card.dart';
 import 'protocols_progress_card.dart';
 import 'this_week_card.dart';
 import 'trained_days_card.dart';
@@ -76,6 +78,10 @@ class ProgressOverview extends ConsumerWidget {
           const TrainedDaysCard(),
           gap,
           const FocusTimeCard(),
+          gap,
+          const KeyExercisesCard(),
+          gap,
+          const NewBestsCard(),
           gap,
           // Absent, or nothing while loading, without leaving a gap.
           const _ProtocolsSlot(gap: gap),

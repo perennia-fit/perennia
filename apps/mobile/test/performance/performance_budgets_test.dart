@@ -15,6 +15,7 @@ import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/domain/training/training_progress.dart';
+import 'package:perennia/features/analytics/repositories/exercise_analytics_repository.dart';
 import 'package:perennia/features/analytics/repositories/exercise_overview_repository.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
@@ -260,6 +261,58 @@ void main() {
         lessThan(progressTrainingBudget),
         reason: 'This week and Trained days must compute the 1-year period '
             'within the budget the spec pins.',
+      );
+    });
+
+    test(
+        'Progress Measures over five years of history find the 1-year '
+        'period\'s New Bests under 1 000 ms', () async {
+      final fixture = await buildProgressHistoryFixture();
+      addTearDown(fixture.database.close);
+      final analytics = ExerciseAnalyticsRepository(fixture.database);
+      final today = fixture.today;
+      final from = today.addDays(-(progressTrainingRangeDays - 1));
+      // The repository read the card waits on, outside the timed work.
+      final history = await analytics.watchProgressHistory().first;
+
+      final stopwatch = Stopwatch()..start();
+      final bests = newBestsInHistory(
+        (history: history, from: from, to: today),
+      );
+      stopwatch.stop();
+
+      // Every exercise's Performed Sets were read, and the background path
+      // the card uses agrees with the timed one.
+      expect(history.profiles.keys, unorderedEquals(fixture.exerciseIds));
+      expect(
+        history.workoutsByExercise.values
+            .expand((workouts) => workouts)
+            .fold<int>(0, (sum, workout) => sum + workout.sets.length),
+        progressHistorySetCount - progressHistorySetCount ~/ 20,
+      );
+      expect(bests, isNotEmpty);
+      expect(
+        bests.every(
+          (best) =>
+              best.localDate.compareTo(from) >= 0 &&
+              best.localDate.compareTo(today) <= 0,
+        ),
+        isTrue,
+      );
+      expect(
+        bests.map((best) => best.exerciseId).toSet(),
+        hasLength(progressHistoryExerciseCount),
+      );
+      expect(
+        (await analytics.watchNewBests(from, today).first)
+            .map((best) => '${best.exerciseId}:${best.workoutId}'),
+        bests.map((best) => '${best.exerciseId}:${best.workoutId}'),
+      );
+      expect(
+        stopwatch.elapsed,
+        lessThan(progressNewBestsBudget),
+        reason: 'New bests must judge every exercise\'s whole history within '
+            'the budget the spec pins.',
       );
     });
 

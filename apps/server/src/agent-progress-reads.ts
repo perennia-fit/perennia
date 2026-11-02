@@ -1,6 +1,7 @@
 // The Agent's Progress reads (docs/designs/progress-overview.md, D9): the same
-// This week, Trained days and Time by Focus answers Progress Overview shows,
-// computed on read by the shared training progress core and never stored.
+// This week, Trained days, Time by Focus, Key exercises and New bests answers
+// Progress Overview shows, computed on read by the shared training progress and
+// Progress Measure cores and never stored.
 
 import { createRoute, z } from "@hono/zod-openapi";
 import { and, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
@@ -9,7 +10,13 @@ import {
   AgentApiKeyUnavailableResponseSchema,
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
-import { payloadFocusId, type AgentCatalogStore } from "./agent-catalog.js";
+import {
+  exerciseIdsResolvingTo,
+  payloadFocusId,
+  resolvePlatformExerciseId,
+  type AgentCatalogStore,
+  type AgentExercise
+} from "./agent-catalog.js";
 import { cadenceFromRow, routineEntryFromRow } from "./agent-plan-reads.js";
 import {
   AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS,
@@ -17,7 +24,21 @@ import {
   LocalDateSchema,
   unionValues
 } from "./agent-protocols.js";
+import {
+  agentAnalyticsProfile,
+  AgentProgressMeasureSchema,
+  integerValue,
+  loggedSetValues,
+  TrainingUnitSchema
+} from "./agent-read-surface.js";
 import type { AgentSettingsReadStore } from "./agent-settings.js";
+import {
+  newBestsBetween,
+  progressSeries,
+  type ProgressSeries,
+  type ProgressSet,
+  type ProgressWorkoutSets
+} from "./analytics/progress-measure.js";
 import {
   MAX_TRAINING_DAYS_RANGE,
   NO_FOCUS_KEY,
@@ -30,7 +51,12 @@ import {
 } from "./analytics/training-progress.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
-import { epochDay, epochDayIsoWeekday, localDateFromEpochDay } from "./protocol-plan.js";
+import {
+  epochDay,
+  epochDayIsoWeekday,
+  isValidLocalDate,
+  localDateFromEpochDay
+} from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 
 // The route refuses ranges with the Protocol day-status rule, and the core
@@ -206,13 +232,98 @@ export const agentTrainingDaysRoute = createRoute({
   }
 });
 
+export const AgentNewBestsQuerySchema = z
+  .object({
+    fromLocalDate: LocalDateSchema.openapi({
+      param: { name: "fromLocalDate", in: "query" },
+      description: `Inclusive first local date (YYYY-MM-DD) of the range. The range holds at most ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days, both ends included.`
+    }),
+    toLocalDate: LocalDateSchema.openapi({
+      param: { name: "toLocalDate", in: "query" },
+      description: "Inclusive last local date (YYYY-MM-DD) of the range; not before fromLocalDate."
+    })
+  })
+  .openapi("AgentNewBestsQuery");
+
+const AgentNewBestSchema = z
+  .object({
+    exerciseId: z.string().min(1),
+    exerciseName: z.string().min(1),
+    measure: AgentProgressMeasureSchema,
+    workoutId: z.string().min(1),
+    localDate: LocalDateSchema,
+    startedAt: z.string().min(1),
+    setId: z.string().min(1).openapi({
+      description: "The completed Set the value came from."
+    }),
+    value: z.number(),
+    unit: TrainingUnitSchema
+  })
+  .openapi("AgentNewBest");
+
+export const AgentNewBestsResponseSchema = z
+  .object({
+    newBests: z.array(AgentNewBestSchema).openapi({
+      description:
+        "Every New Best dated in the range, newest first: by localDate, startedAt and workoutId descending, then exerciseId ascending."
+    })
+  })
+  .openapi("AgentNewBestsResponse");
+
+export const agentNewBestsRoute = createRoute({
+  method: "get",
+  path: "/agent/progress/new-bests",
+  operationId: "listAgentNewBests",
+  tags: ["Agent Reads"],
+  summary: "List the New Bests set over a range.",
+  description: `Returns every New Best whose Logged Workout is dated from fromLocalDate through toLocalDate (both included, at most ${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days): a Workout whose Progress Measure for an exercise is strictly better than every earlier Workout's, judged over the exercise's whole history. The measure comes from the exercise's Record Profile, over completed Sets only; archived exercises are left out. Values are in the engine's normalized units. Computed on read by the same core the app's Progress Overview uses, never stored.`,
+  security: [{ bearerAuth: [] }],
+  request: { query: AgentNewBestsQuerySchema },
+  responses: {
+    200: {
+      description: "The range's New Bests.",
+      content: {
+        "application/json": { schema: AgentNewBestsResponseSchema }
+      }
+    },
+    400: {
+      description:
+        "The range is refused, with this body: fromLocalDate after toLocalDate, or a range of more than " +
+        `${AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS} days. ` +
+        "A query the request schema refuses, such as a date that is not a real YYYY-MM-DD date or a missing required parameter, is also answered 400, before authentication, in the request validator's own error body rather than this one.",
+      content: {
+        "application/json": { schema: AgentProgressReadInvalidRangeResponseSchema }
+      }
+    },
+    401: {
+      description: "The request is missing a valid agent API key.",
+      content: {
+        "application/json": { schema: AgentUnauthorizedResponseSchema }
+      }
+    },
+    429: RateLimitExceededOpenApiResponse,
+    503: {
+      description: "Agent API key or progress read storage is not configured.",
+      content: {
+        "application/json": {
+          schema: z.union([
+            AgentApiKeyUnavailableResponseSchema,
+            AgentProgressReadUnavailableResponseSchema
+          ])
+        }
+      }
+    }
+  }
+});
+
 /**
  * The Protocol day-status range rule (`checkAgentProtocolDaysQuery`), refused
  * in this read's own terms: a training read has Training Day Statuses and
- * Logged Workouts, not the Protocols' Day Status.
+ * Logged Workouts, not the Protocols' Day Status. The New Bests read has no
+ * `today`, so it gets only the order and length rules.
  */
 export function checkAgentTrainingDaysQuery(
-  query: { fromLocalDate: string; toLocalDate: string; today: string },
+  query: { fromLocalDate: string; toLocalDate: string; today?: string },
   now: Date = new Date()
 ): { ok: true } | { ok: false; message: string } {
   return checkAgentProtocolDaysQuery(query, now, "a day still to come has no Logged Workout");
@@ -220,6 +331,8 @@ export function checkAgentTrainingDaysQuery(
 
 export type AgentTrainingDaysQuery = z.infer<typeof AgentTrainingDaysQuerySchema>;
 export type AgentTrainingDaysResponse = z.infer<typeof AgentTrainingDaysResponseSchema>;
+export type AgentNewBestsQuery = z.infer<typeof AgentNewBestsQuerySchema>;
+export type AgentNewBestsResponse = z.infer<typeof AgentNewBestsResponseSchema>;
 
 export type AgentProgressReadStore = {
   /**
@@ -232,18 +345,29 @@ export type AgentProgressReadStore = {
     to: string;
     today: string;
   }): Promise<AgentTrainingDaysResponse>;
+  /**
+   * The `listAgentNewBests` response. As with `readTrainingDays`, the caller
+   * checks the range first.
+   */
+  readNewBests(input: { userId: string; from: string; to: string }): Promise<AgentNewBestsResponse>;
+  /**
+   * One exercise's Performed Sets of live Workouts over its whole history,
+   * grouped by Workout: the input of its `progressSeries`.
+   */
+  readExerciseProgressSets(input: {
+    userId: string;
+    exerciseId: string;
+  }): Promise<ProgressWorkoutSets[]>;
 };
 
 export function createDrizzleAgentProgressReadStore({
   db,
-  settingsStore
+  settingsStore,
+  catalogStore
 }: {
   db: ServerDatabase;
   settingsStore: AgentSettingsReadStore;
-  /**
-   * Not read by `readTrainingDays`. The store takes it at construction so the
-   * exercise progress reads D9 adds resolve Set exercises through it.
-   */
+  /** Resolves the exercises of the Sets `readNewBests` reads. */
   catalogStore: AgentCatalogStore;
 }): AgentProgressReadStore {
   return {
@@ -269,8 +393,207 @@ export function createDrizzleAgentProgressReadStore({
         trainedDayCount: days.filter((day) => day.workoutCount > 0).length,
         week: { ...week, counts: summarizeTrainingWeek(week.days) }
       });
+    },
+
+    async readNewBests({ userId, from, to }) {
+      // Only an exercise with a Performed Set in the range can have a New
+      // Best in it, so only those exercises' histories are loaded, resolved
+      // and computed.
+      const exerciseIds = await loadExerciseIdsPerformedBetween(db, userId, from, to);
+      if (exerciseIds.length === 0) {
+        return AgentNewBestsResponseSchema.parse({ newBests: [] });
+      }
+      const [workoutsByExercise, exercises] = await Promise.all([
+        loadPerformedWorkoutSets(db, userId, exerciseIds),
+        // A shadowed Platform exercise is still active in the app (D4).
+        catalogStore.getExercisesByIds({ userId, exerciseIds, includeShadowed: true })
+      ]);
+
+      const names = new Map<string, string>();
+      const series: ProgressSeries[] = [];
+      for (const exercise of exercises) {
+        const workouts = workoutsByExercise.get(exercise.id);
+        // An archived exercise leaves New bests (D4); its Workouts still count
+        // toward Trained Days.
+        if (!exercise.active || workouts === undefined) {
+          continue;
+        }
+        const one = progressSeries({
+          exerciseId: exercise.id,
+          profile: agentAnalyticsProfile(exercise),
+          workouts
+        });
+        if (one !== null) {
+          series.push(one);
+          names.set(exercise.id, exercise.name);
+        }
+      }
+
+      return AgentNewBestsResponseSchema.parse({
+        newBests: newBestsBetween(series, from, to).map((best) => ({
+          ...best,
+          exerciseName: names.get(best.exerciseId)
+        }))
+      });
+    },
+
+    async readExerciseProgressSets({ userId, exerciseId }) {
+      const resolved = resolvePlatformExerciseId(exerciseId);
+      return (await loadPerformedWorkoutSets(db, userId, [resolved])).get(resolved) ?? [];
     }
   };
+}
+
+/**
+ * The exercise analytics read's `progressSeries` (D9): the exercise's
+ * Progress Measure over its whole history, or null without the progress
+ * store, for an archived exercise, or for a Record Profile with no series.
+ * REST and MCP both call it, so the two answer alike.
+ */
+export async function readAgentExerciseProgressSeries(
+  store: AgentProgressReadStore | undefined,
+  { userId, exercise }: { userId: string; exercise: AgentExercise }
+): Promise<ProgressSeries | null> {
+  if (store === undefined || !exercise.active) {
+    return null;
+  }
+  return progressSeries({
+    exerciseId: exercise.id,
+    profile: agentAnalyticsProfile(exercise),
+    workouts: await store.readExerciseProgressSets({ userId, exerciseId: exercise.id })
+  });
+}
+
+/**
+ * The user's Performed Sets in live Workouts (D0, D9), grouped by exercise id
+ * through `resolvePlatformExerciseId` and then by Workout. Each Set is joined
+ * to its Workout by the payload's `workout_id`, so a Set whose Workout is
+ * deleted, or was never synced, is dropped: there are no cascading deletes.
+ * Only Sets whose payload `is_completed` is true are read; a missing key is
+ * not Performed, unlike the analytics read's `is_completed ?? true`, which is
+ * why `readLiveLoggedSets` is not reused. Only the Sets of `exerciseIds`
+ * (resolved ids) are read: the SQL filter takes each id with the seed
+ * redirect sources that resolve to it, so a read never scans the user's whole
+ * history for a few exercises. Instants are read to the whole second, as in
+ * `loadProgressWorkouts`.
+ */
+async function loadPerformedWorkoutSets(
+  db: ServerDatabase,
+  userId: string,
+  exerciseIds: readonly string[]
+): Promise<Map<string, ProgressWorkoutSets[]>> {
+  const wanted = new Set(exerciseIds);
+  const rows = await db
+    .select({
+      id: schema.loggedSets.id,
+      payload: schema.loggedSets.payload,
+      workoutId: schema.workoutSessions.id,
+      localDate: sql<unknown>`${schema.workoutSessions.payload} -> 'local_date'`,
+      startedAt: sql<unknown>`${schema.workoutSessions.payload} -> 'started_at'`,
+      workoutUpdatedAt: schema.workoutSessions.updatedAt
+    })
+    .from(schema.loggedSets)
+    .innerJoin(
+      schema.workoutSessions,
+      and(
+        eq(schema.workoutSessions.id, sql`${schema.loggedSets.payload} ->> 'workout_id'`),
+        eq(schema.workoutSessions.userId, userId),
+        isNull(schema.workoutSessions.deletedAt)
+      )
+    )
+    .where(
+      and(
+        eq(schema.loggedSets.userId, userId),
+        isNull(schema.loggedSets.deletedAt),
+        sql`${schema.loggedSets.payload} -> 'is_completed' = 'true'::jsonb`,
+        inArray(
+          sql`${schema.loggedSets.payload} ->> 'exercise_id'`,
+          exerciseIds.flatMap(exerciseIdsResolvingTo)
+        )
+      )
+    );
+
+  type WorkoutSets = ProgressWorkoutSets & { sets: ProgressSet[] };
+  const byExercise = new Map<string, Map<string, WorkoutSets>>();
+  for (const row of rows) {
+    const rawExerciseId = row.payload.exercise_id;
+    // A Workout whose date is not a real date has no place on a series.
+    if (
+      typeof rawExerciseId !== "string" ||
+      rawExerciseId.length === 0 ||
+      typeof row.localDate !== "string" ||
+      !isValidLocalDate(row.localDate)
+    ) {
+      continue;
+    }
+    const exerciseId = resolvePlatformExerciseId(rawExerciseId);
+    if (!wanted.has(exerciseId)) {
+      continue;
+    }
+    const workouts = byExercise.get(exerciseId) ?? new Map<string, WorkoutSets>();
+    byExercise.set(exerciseId, workouts);
+    let workout = workouts.get(row.workoutId);
+    if (workout === undefined) {
+      workout = {
+        workoutId: row.workoutId,
+        localDate: row.localDate,
+        startedAt: wholeSeconds(dateValue(row.startedAt) ?? row.workoutUpdatedAt).toISOString(),
+        sets: []
+      };
+      workouts.set(row.workoutId, workout);
+    }
+    workout.sets.push({
+      id: row.id,
+      position: integerValue(row.payload.position) ?? 0,
+      // The query reads Performed Sets only.
+      isCompleted: true,
+      values: loggedSetValues(row.payload)
+    });
+  }
+  return new Map([...byExercise].map(([exerciseId, workouts]) => [exerciseId, [...workouts.values()]]));
+}
+
+/**
+ * The resolved ids of the exercises with a Performed Set in a live Workout
+ * dated within [from, to], inclusive (D0): the only exercises that can have a
+ * New Best in the range. The date compares as text, as in
+ * `loadProgressWorkouts`.
+ */
+async function loadExerciseIdsPerformedBetween(
+  db: ServerDatabase,
+  userId: string,
+  from: string,
+  to: string
+): Promise<string[]> {
+  const localDate = sql<string>`${schema.workoutSessions.payload} ->> 'local_date'`;
+  const rows = await db
+    .selectDistinct({ exerciseId: sql<unknown>`${schema.loggedSets.payload} ->> 'exercise_id'` })
+    .from(schema.loggedSets)
+    .innerJoin(
+      schema.workoutSessions,
+      and(
+        eq(schema.workoutSessions.id, sql`${schema.loggedSets.payload} ->> 'workout_id'`),
+        eq(schema.workoutSessions.userId, userId),
+        isNull(schema.workoutSessions.deletedAt),
+        gte(localDate, from),
+        lte(localDate, to)
+      )
+    )
+    .where(
+      and(
+        eq(schema.loggedSets.userId, userId),
+        isNull(schema.loggedSets.deletedAt),
+        sql`${schema.loggedSets.payload} -> 'is_completed' = 'true'::jsonb`
+      )
+    );
+  return [
+    ...new Set(
+      rows
+        .map((row) => row.exerciseId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+        .map(resolvePlatformExerciseId)
+    )
+  ];
 }
 
 /**

@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m37-progress-measure.schema.json",
+  "title": "M37 Progress Measure core golden vector",
+  "description": "Language-neutral parity cases for the Progress Measure core (docs/designs/progress-overview.md, D0 and D4). Each case names one function and gives its arguments by parameter name in `input` and its full return value in `expected`. progress_series drops each Workout's Sets with isCompleted false, runs the existing exercise analytics engine over the rest with performedAt set to the Workout's startedAt and the sequence set to the Set's position, and takes one point per Workout: for recordProfile repMax the highest estimatedOneRepMax point (measure estimatedOneRepMax, ties to the lower (position, id)), for maxLoad, maxReps, maxDuration and maxDistance the headline record (better when higher), for minDuration and fastestPace the headline record (better when lower); minAssistancePerRepCount and completionStreak have no series (null). A Workout with no Performed Set or no value for the measure has no point. Points are ordered by (localDate, startedAt, workoutId); a point is a New Best when it is strictly better than every earlier point, so the first point and equal values never are. Values and units are the engine's normalized ones: kilogram, repetition, second, kilometer, and seconds per kilometre for pace with unit second. new_bests_between returns every New Best point of the given series whose localDate is in [from, to], ordered by localDate, startedAt and workoutId descending, then exerciseId ascending. Dates are local YYYY-MM-DD; instants are ISO-8601 UTC strings; numbers compare exactly.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "domain", "schemaVersion", "schema", "cases"],
+  "properties": {
+    "name": {"const": "m37-progress-measure"},
+    "domain": {"const": "progress-measure"},
+    "schemaVersion": {"const": 1},
+    "schema": {"const": "m37-progress-measure.schema.json"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "localDate": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "instant": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"},
+    "id": {"type": "string", "minLength": 1},
+    "measure": {"enum": ["estimatedOneRepMax", "maxLoad", "maxReps", "maxDuration", "minDuration", "maxDistance", "fastestPace"]},
+    "betterIs": {"enum": ["higher", "lower"]},
+    "normalizedUnit": {"enum": ["kilogram", "repetition", "second", "kilometer"], "description": "The engine's normalized unit; pace is seconds per kilometre with unit second."},
+    "dimensionValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entered", "unit"],
+      "properties": {
+        "entered": {"type": "string", "minLength": 1, "description": "The value as entered, a decimal string."},
+        "unit": {"enum": ["kilogram", "pound", "repetition", "second", "kilometer", "mile"]}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimensions", "loadMode", "recordProfile"],
+      "description": "The exercise's analytics profile, as m4-analytics-pr-e1rm-volume.json gives it.",
+      "properties": {
+        "dimensions": {"type": "array", "uniqueItems": true, "items": {"enum": ["load", "reps", "duration", "distance"]}},
+        "loadMode": {"enum": ["added", "assisted"]},
+        "recordProfile": {"enum": ["repMax", "maxLoad", "maxReps", "maxDuration", "minDuration", "maxDistance", "fastestPace", "minAssistancePerRepCount", "completionStreak"]}
+      }
+    },
+    "progressSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "position", "isCompleted", "values"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "position": {"type": "integer", "minimum": 0},
+        "isCompleted": {"type": "boolean"},
+        "values": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The engine's logged-values shape; empty for a completion-only Set.",
+          "properties": {
+            "load": {"$ref": "#/$defs/dimensionValue"},
+            "reps": {"$ref": "#/$defs/dimensionValue"},
+            "duration": {"$ref": "#/$defs/dimensionValue"},
+            "distance": {"$ref": "#/$defs/dimensionValue"}
+          }
+        }
+      }
+    },
+    "progressWorkoutSets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workoutId", "localDate", "startedAt", "sets"],
+      "properties": {
+        "workoutId": {"$ref": "#/$defs/id"},
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "startedAt": {"$ref": "#/$defs/instant"},
+        "sets": {"type": "array", "items": {"$ref": "#/$defs/progressSet"}}
+      }
+    },
+    "progressPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workoutId", "localDate", "startedAt", "setId", "value", "unit", "isNewBest"],
+      "properties": {
+        "workoutId": {"$ref": "#/$defs/id"},
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "startedAt": {"$ref": "#/$defs/instant"},
+        "setId": {"$ref": "#/$defs/id", "description": "The Set the engine's value came from."},
+        "value": {"type": "number"},
+        "unit": {"$ref": "#/$defs/normalizedUnit"},
+        "isNewBest": {"type": "boolean"}
+      }
+    },
+    "progressSeries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exerciseId", "measure", "betterIs", "points"],
+      "properties": {
+        "exerciseId": {"$ref": "#/$defs/id"},
+        "measure": {"$ref": "#/$defs/measure"},
+        "betterIs": {"$ref": "#/$defs/betterIs"},
+        "points": {"type": "array", "items": {"$ref": "#/$defs/progressPoint"}}
+      }
+    },
+    "newBest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exerciseId", "measure", "workoutId", "localDate", "startedAt", "setId", "value", "unit"],
+      "properties": {
+        "exerciseId": {"$ref": "#/$defs/id"},
+        "measure": {"$ref": "#/$defs/measure"},
+        "workoutId": {"$ref": "#/$defs/id"},
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "startedAt": {"$ref": "#/$defs/instant"},
+        "setId": {"$ref": "#/$defs/id"},
+        "value": {"type": "number"},
+        "unit": {"$ref": "#/$defs/normalizedUnit"}
+      }
+    },
+    "caseHeader": {
+      "type": "object",
+      "required": ["name", "function", "input", "expected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "note": {"type": "string", "description": "Why the case exists and which rule it pins. Runners ignore it."}
+      }
+    },
+    "case": {
+      "type": "object",
+      "allOf": [{"$ref": "#/$defs/caseHeader"}],
+      "unevaluatedProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "function": {"const": "progress_series"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["exerciseId", "profile", "workouts"],
+              "properties": {
+                "exerciseId": {"$ref": "#/$defs/id"},
+                "profile": {"$ref": "#/$defs/profile"},
+                "workouts": {"type": "array", "items": {"$ref": "#/$defs/progressWorkoutSets"}}
+              }
+            },
+            "expected": {"oneOf": [{"$ref": "#/$defs/progressSeries"}, {"type": "null"}]}
+          }
+        },
+        {
+          "properties": {
+            "function": {"const": "new_bests_between"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["series", "from", "to"],
+              "properties": {
+                "series": {"type": "array", "items": {"$ref": "#/$defs/progressSeries"}},
+                "from": {"$ref": "#/$defs/localDate"},
+                "to": {"$ref": "#/$defs/localDate"}
+              }
+            },
+            "expected": {"type": "array", "items": {"$ref": "#/$defs/newBest"}}
+          }
+        }
+      ]
+    }
+  }
+}

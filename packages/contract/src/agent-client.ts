@@ -438,6 +438,7 @@ export type AgentExerciseAnalyticsResponse = {
   "maxLoadSeries": AgentDerivedSeries;
   "repMaxSeries": Array<AgentAnalyticsRecord>;
   "periodStats": AgentPeriodStats;
+  "progressSeries": NullableAgentProgressSeries;
 };
 
 export type AgentExerciseCatalogBatchWriteCategory = {
@@ -1013,6 +1014,22 @@ export type AgentMonitoringSummaryReading = {
   "updatedAt": string;
 };
 
+export type AgentNewBest = {
+  "exerciseId": string;
+  "exerciseName": string;
+  "measure": AgentProgressMeasure;
+  "workoutId": string;
+  "localDate": string;
+  "startedAt": string;
+  "setId": string;
+  "value": number;
+  "unit": AgentReadTrainingUnit;
+};
+
+export type AgentNewBestsResponse = {
+  "newBests": Array<AgentNewBest>;
+};
+
 export type AgentNutrientGoalProgress = {
   "nutrient": AgentNutritionGoalableNutrientId;
   "status": AgentNutrientGoalStatus;
@@ -1510,6 +1527,25 @@ export type AgentPlatformFoodAttribution = {
 };
 
 export type AgentPlatformFoodSource = "usda" | "openFoodFacts";
+
+export type AgentProgressMeasure = "estimatedOneRepMax" | "maxLoad" | "maxReps" | "maxDuration" | "minDuration" | "maxDistance" | "fastestPace";
+
+export type AgentProgressPoint = {
+  "workoutId": string;
+  "localDate": string;
+  "startedAt": string;
+  "setId": string;
+  "value": number;
+  "unit": AgentReadTrainingUnit;
+  "isNewBest": boolean;
+};
+
+export type AgentProgressSeries = {
+  "exerciseId": string;
+  "measure": AgentProgressMeasure;
+  "betterIs": "higher" | "lower";
+  "points": Array<AgentProgressPoint>;
+};
 
 export type AgentProteinCohort = {
   "dayCount": number;
@@ -2148,6 +2184,8 @@ export type NullableAgentMonitoringHeartRateSummary = AgentMonitoringHeartRateSu
 
 export type NullableAgentMonitoringRouteSummary = AgentMonitoringRouteSummary | unknown | null;
 
+export type NullableAgentProgressSeries = AgentProgressSeries | unknown | null;
+
 export type GetAgentEnergyBalanceInput = {
   "from": string;
   "to": string;
@@ -2304,6 +2342,11 @@ export type ListAgentMetricsInput = {
   "fields"?: string;
 };
 
+export type ListAgentNewBestsInput = {
+  "fromLocalDate": string;
+  "toLocalDate": string;
+};
+
 export type ListAgentProtocolDayStatusesInput = {
   "fromLocalDate": string;
   "toLocalDate": string;
@@ -2418,6 +2461,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentMeals",
   "listAgentMetricReadings",
   "listAgentMetrics",
+  "listAgentNewBests",
   "listAgentNutritionGoals",
   "listAgentProtocolDayStatuses",
   "listAgentProtocolPlannedDays",
@@ -2817,6 +2861,16 @@ export class PerenniaAgentClient {
       path: "/agent/metrics",
       expectedStatus: 200,
       query: { "search": input.search, "metricKey": input.metricKey, "metricGroup": input.metricGroup, "enabledOnly": input.enabledOnly, "includeArchived": input.includeArchived, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      signal: options.signal
+    });
+  }
+
+  async listAgentNewBests(input: ListAgentNewBestsInput, options: AgentClientRequestOptions = {}): Promise<AgentNewBestsResponse> {
+    return this.request<AgentNewBestsResponse>({
+      method: "GET",
+      path: "/agent/progress/new-bests",
+      expectedStatus: 200,
+      query: { "fromLocalDate": input.fromLocalDate, "toLocalDate": input.toLocalDate },
       signal: options.signal
     });
   }

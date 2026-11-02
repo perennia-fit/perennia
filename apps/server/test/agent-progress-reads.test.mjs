@@ -9,8 +9,10 @@ import {
   createDatabaseClient,
   createDrizzleAgentProgressReadStore,
   createDrizzleAgentSettingsStore,
+  createInMemoryAgentCatalogStore,
   schema
 } from "../src/index.ts";
+import { PLATFORM_EXERCISE_SEED_REDIRECTS } from "../src/data/platform-exercise-seed.generated.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -378,6 +380,282 @@ test(
   }
 );
 
+// CUJ 9 (docs/designs/progress-overview.md): before the period the fastest
+// "5 km run" was 5:22 /km; on Saturday 31 October they ran 5:04 /km. Each Set
+// that would beat it without counting is ignored: an incomplete one, one in a
+// deleted Workout, and another account's.
+test(
+  "CUJ 9: the New Bests read judges the period against earlier history and reads only Performed Sets",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    const otherUserId = `agent-progress-${randomUUID()}`;
+    const id = (suffix) => `${userId}-${suffix}`;
+    const run = id("5k-run");
+    const squat = id("squat");
+    try {
+      await seedUser(database, userId);
+      await seedUser(database, otherUserId);
+      await seedWorkouts(database, userId, [
+        // Before the period: 5:22 /km, then a slower 5:30 /km.
+        workout("w-sep26", "2026-09-26", "07:00", "07:30", null, null, {
+          sets: [runSet(run, 1610)]
+        }),
+        workout("w-oct17", "2026-10-17", "07:00", "07:30", null, null, {
+          sets: [runSet(run, 1650)]
+        }),
+        // Faster, but not Performed.
+        workout("w-oct29", "2026-10-29", "07:00", "07:30", null, null, {
+          sets: [runSet(run, 1400, { is_completed: false })]
+        }),
+        // Faster, but its Workout is deleted.
+        workout("w-oct30-deleted", "2026-10-30", "07:00", "07:30", null, null, {
+          deleted: true,
+          sets: [runSet(run, 1400)]
+        }),
+        // Saturday: 5:04 /km, a New Best.
+        workout("w-oct31", "2026-10-31", "07:00", "07:30", null, null, {
+          sets: [runSet(run, 1520)]
+        }),
+        // A heavier squat on 28 October is a New Best for e1RM (Brzycki:
+        // 100 x 5 is 112.5 kg, 110 x 5 is 123.75 kg).
+        workout("w-oct3", "2026-10-03", "06:00", "07:00", null, null, {
+          sets: [squatSet(squat, 100, 5)]
+        }),
+        workout("w-oct28", "2026-10-28", "06:00", "07:00", null, null, {
+          sets: [squatSet(squat, 110, 5)]
+        })
+      ]);
+      // Another account's faster run on the same exercise id.
+      await seedWorkouts(database, otherUserId, [
+        workout("w-oct30", "2026-10-30", "07:00", "07:30", null, null, {
+          sets: [runSet(run, 1300)]
+        })
+      ]);
+
+      const result = await progressStore(database, [
+        catalogExercise(userId, run, "5 km run", {
+          dimensions: ["distance", "duration"],
+          recordProfile: "fastestPace",
+          favorite: true
+        }),
+        catalogExercise(userId, squat, "Back squat")
+      ]).readNewBests({ userId, from: "2026-10-05", to: "2026-11-01" });
+
+      assert.deepEqual(result, {
+        newBests: [
+          {
+            exerciseId: run,
+            exerciseName: "5 km run",
+            measure: "fastestPace",
+            workoutId: id("w-oct31"),
+            localDate: "2026-10-31",
+            startedAt: "2026-10-31T07:00:00.000Z",
+            setId: `${id("w-oct31")}-set-0`,
+            value: 304,
+            unit: "second"
+          },
+          {
+            exerciseId: squat,
+            exerciseName: "Back squat",
+            measure: "estimatedOneRepMax",
+            workoutId: id("w-oct28"),
+            localDate: "2026-10-28",
+            startedAt: "2026-10-28T06:00:00.000Z",
+            setId: `${id("w-oct28")}-set-0`,
+            value: 123.75,
+            unit: "kilogram"
+          }
+        ]
+      });
+
+      // A period after the bests has none, and one holding only the first
+      // squat has none either: the first point is never a New Best.
+      for (const [from, to] of [
+        ["2026-11-01", "2026-11-01"],
+        ["2026-10-01", "2026-10-05"]
+      ]) {
+        assert.deepEqual(
+          await progressStore(database, [
+            catalogExercise(userId, run, "5 km run", {
+              dimensions: ["distance", "duration"],
+              recordProfile: "fastestPace"
+            }),
+            catalogExercise(userId, squat, "Back squat")
+          ]).readNewBests({ userId, from, to }),
+          { newBests: [] }
+        );
+      }
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "an archived user exercise has no New Bests, but its Workouts still count as Trained Days",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    const id = (suffix) => `${userId}-${suffix}`;
+    const archived = id("old-squat");
+    try {
+      await seedUser(database, userId);
+      await seedWorkouts(database, userId, [
+        workout("w-oct3", "2026-10-03", "06:00", "07:00", "f-weights", null, {
+          sets: [squatSet(archived, 100, 5)]
+        }),
+        workout("w-oct28", "2026-10-28", "06:00", "07:00", "f-weights", null, {
+          sets: [squatSet(archived, 120, 5)]
+        })
+      ]);
+      const store = progressStore(database, [
+        catalogExercise(userId, archived, "Old squat", { active: false })
+      ]);
+
+      assert.deepEqual(
+        await store.readNewBests({ userId, from: "2026-10-01", to: "2026-10-31" }),
+        { newBests: [] }
+      );
+      const days = await store.readTrainingDays({
+        userId,
+        from: "2026-10-01",
+        to: "2026-10-31",
+        today: "2026-11-01"
+      });
+      assert.equal(days.trainedDayCount, 2);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// D4: a Platform exercise hidden by a same-named User Library exercise is
+// still active in the app, so its New Bests are listed here too.
+test(
+  "a Platform exercise shadowed by a same-named user exercise keeps its New Bests",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    const platform = `${userId}-platform-bench`;
+    try {
+      await seedUser(database, userId);
+      await seedWorkouts(database, userId, [
+        workout("w-oct3", "2026-10-03", "06:00", "07:00", null, null, {
+          sets: [squatSet(platform, 100, 5)]
+        }),
+        workout("w-oct28", "2026-10-28", "06:00", "07:00", null, null, {
+          sets: [squatSet(platform, 110, 5)]
+        })
+      ]);
+      const result = await progressStore(database, [
+        { ...catalogExercise(null, platform, "Bench press"), library: "platform" },
+        catalogExercise(userId, `${userId}-user-bench`, "Bench press")
+      ]).readNewBests({ userId, from: "2026-10-05", to: "2026-10-31" });
+
+      assert.deepEqual(
+        result.newBests.map((best) => [best.exerciseId, best.exerciseName, best.workoutId]),
+        [[platform, "Bench press", `${userId}-w-oct28`]]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// D9: the exercise read filters Sets in SQL by exercise id, so it must still
+// find a Set logged under a seed redirect's old id, and no other exercise's.
+test(
+  "the exercise progress read takes Sets logged under a redirected id and no other exercise's",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    const [redirect] = PLATFORM_EXERCISE_SEED_REDIRECTS;
+    try {
+      await seedUser(database, userId);
+      await seedWorkouts(database, userId, [
+        workout("w-oct3", "2026-10-03", "06:00", "07:00", null, null, {
+          sets: [squatSet(redirect.fromExerciseId, 100, 5)]
+        }),
+        workout("w-oct28", "2026-10-28", "06:00", "07:00", null, null, {
+          sets: [squatSet(redirect.toExerciseId, 110, 5), squatSet(`${userId}-other`, 200, 5)]
+        })
+      ]);
+      const workouts = await progressStore(database).readExerciseProgressSets({
+        userId,
+        exerciseId: redirect.toExerciseId
+      });
+
+      assert.deepEqual(
+        workouts
+          .map((one) => [one.workoutId, one.sets.map((set) => set.id)])
+          .sort(([left], [right]) => left.localeCompare(right)),
+        [
+          [`${userId}-w-oct28`, [`${userId}-w-oct28-set-0`]],
+          [`${userId}-w-oct3`, [`${userId}-w-oct3-set-0`]]
+        ]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test("the New Bests read refuses a bad range with 400 before the store, as REST and MCP", async () => {
+  const { app, calls } = progressApp();
+  const today = utcToday();
+  const refused = [
+    // 367 dates, both ends included.
+    { fromLocalDate: addDays(today, -366), toLocalDate: today },
+    // fromLocalDate after toLocalDate.
+    { fromLocalDate: today, toLocalDate: addDays(today, -1) }
+  ];
+  for (const query of refused) {
+    const response = await agentGet(app, newBestsPath(query));
+    assert.equal(response.status, 400, JSON.stringify(query));
+    const body = await response.json();
+    assert.equal(body.code, "agent_progress_read_invalid_range", JSON.stringify(query));
+    assert.ok(body.message.length > 0);
+
+    const tool = await callTool(app, "agent_list_new_bests", query);
+    assert.equal(tool.isError, true, JSON.stringify(query));
+    assert.equal(tool.structuredContent.code, "agent_progress_read_invalid_range");
+    assert.equal(tool.structuredContent.message, body.message);
+  }
+  for (const bad of ["2026-02-30", "26-10-01", ""]) {
+    for (const query of [
+      { fromLocalDate: bad, toLocalDate: today },
+      { fromLocalDate: today, toLocalDate: bad }
+    ]) {
+      const response = await agentGet(app, newBestsPath(query));
+      assert.equal(response.status, 400, JSON.stringify(query));
+      assert.equal((await response.json()).success, false, JSON.stringify(query));
+    }
+  }
+  assert.deepEqual(calls, []);
+
+  // 366 dates, both ends included, is accepted.
+  const accepted = { fromLocalDate: addDays(today, -365), toLocalDate: today };
+  const response = await agentGet(app, newBestsPath(accepted));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { newBests: [] });
+  const tool = await callTool(app, "agent_list_new_bests", accepted);
+  assert.equal(tool.isError, undefined);
+  assert.deepEqual(tool.structuredContent, { newBests: [] });
+  assert.deepEqual(calls, [
+    { userId: "user-1", from: accepted.fromLocalDate, to: today },
+    { userId: "user-1", from: accepted.fromLocalDate, to: today }
+  ]);
+});
+
 test("the training-days read refuses a bad range with 400 before the store, as REST and MCP", async () => {
   const { app, calls } = progressApp();
   const today = utcToday();
@@ -449,7 +727,7 @@ test("the training-days read refuses a date that is not a real YYYY-MM-DD date i
   assert.deepEqual(calls, []);
 });
 
-test("the training-days read answers 503 when the progress store is not configured", async () => {
+test("the progress reads answer 503 when the progress store is not configured", async () => {
   const agentApiKeyStore = createAgentKeyStore("user-1");
   const app = createApp({
     logger: { info() {}, error() {} },
@@ -470,6 +748,14 @@ test("the training-days read answers 503 when the progress store is not configur
   const tool = await callTrainingDaysTool(app, query);
   assert.equal(tool.isError, true);
   assert.equal(tool.structuredContent.code, "agent_progress_read_unavailable");
+
+  const newBestsQuery = { fromLocalDate: today, toLocalDate: today };
+  const newBests = await agentGet(app, newBestsPath(newBestsQuery));
+  assert.equal(newBests.status, 503);
+  assert.equal((await newBests.json()).code, "agent_progress_read_unavailable");
+  const newBestsTool = await callTool(app, "agent_list_new_bests", newBestsQuery);
+  assert.equal(newBestsTool.isError, true);
+  assert.equal(newBestsTool.structuredContent.code, "agent_progress_read_unavailable");
 });
 
 function progressApp() {
@@ -478,6 +764,13 @@ function progressApp() {
     async readTrainingDays(input) {
       calls.push(input);
       return emptyResponse(input.today);
+    },
+    async readNewBests(input) {
+      calls.push(input);
+      return { newBests: [] };
+    },
+    async readExerciseProgressSets() {
+      throw new Error("readExerciseProgressSets should not be called.");
     }
   };
   const agentApiKeyStore = createAgentKeyStore("user-1");
@@ -510,12 +803,57 @@ function emptyResponse(today) {
   };
 }
 
-function progressStore(database) {
+function progressStore(database, exercises = []) {
   return createDrizzleAgentProgressReadStore({
     db: database.db,
     settingsStore: createDrizzleAgentSettingsStore(database.db),
-    catalogStore: {}
+    catalogStore: createInMemoryAgentCatalogStore(exercises)
   });
+}
+
+function catalogExercise(
+  userId,
+  id,
+  name,
+  { dimensions = ["load", "reps"], recordProfile = "repMax", favorite = false, active = true } = {}
+) {
+  return {
+    id,
+    library: "user",
+    ownerUserId: userId,
+    name,
+    category: null,
+    dimensions,
+    equipment: [],
+    loadMode: "added",
+    recordProfile,
+    favorite,
+    active,
+    shadowedPlatformExerciseId: null
+  };
+}
+
+function runSet(exerciseId, seconds, fields = {}) {
+  return {
+    is_completed: true,
+    exercise_id: exerciseId,
+    values: {
+      distance: { entered: "5", unit: "kilometer" },
+      duration: { entered: String(seconds), unit: "second" }
+    },
+    ...fields
+  };
+}
+
+function squatSet(exerciseId, kilograms, reps) {
+  return {
+    is_completed: true,
+    exercise_id: exerciseId,
+    values: {
+      load: { entered: String(kilograms), unit: "kilogram" },
+      reps: { entered: String(reps), unit: "repetition" }
+    }
+  };
 }
 
 function weekDay(localDate, status, plannedCount, matchedCount, workoutCount) {
@@ -690,7 +1028,15 @@ function agentGet(app, path) {
   });
 }
 
-async function callTrainingDaysTool(app, query) {
+function newBestsPath(query) {
+  return `/agent/progress/new-bests?${new URLSearchParams(query).toString()}`;
+}
+
+function callTrainingDaysTool(app, query) {
+  return callTool(app, "agent_list_training_days", query);
+}
+
+async function callTool(app, name, query) {
   const response = await app.request("/mcp", {
     method: "POST",
     headers: {
@@ -702,7 +1048,7 @@ async function callTrainingDaysTool(app, query) {
       jsonrpc: "2.0",
       id: 1,
       method: "tools/call",
-      params: { name: "agent_list_training_days", arguments: { query } }
+      params: { name, arguments: { query } }
     })
   });
   assert.equal(response.status, 200);

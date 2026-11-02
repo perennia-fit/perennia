@@ -6,7 +6,9 @@ import {
   applyMigrations,
   createApp,
   createDatabaseClient,
+  createDrizzleAgentProgressReadStore,
   createDrizzleAgentReadStore,
+  createDrizzleAgentSettingsStore,
   createDrizzleRateLimitBackend,
   createInMemoryAgentCatalogStore,
   encodeCanonicalSeriesBlob,
@@ -229,6 +231,111 @@ test(
         [setIds.squatTriple]
       );
       assert.equal(secondBody.nextCursor, null);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+// D9 (docs/designs/progress-overview.md): progressSeries is read through its
+// own store method over the whole history, not the request's from/to window or
+// the 200-Set page, and is null when the progress store is not configured.
+test(
+  "agent analytics progressSeries covers the whole history and is null without the progress store",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-read-progress-user-${randomUUID()}`;
+    const workoutCount = 210;
+    const workoutId = (index) => `${userId}-w-${index}`;
+    const localDate = (index) =>
+      new Date(Date.UTC(2026, 0, 1) + index * 86_400_000).toISOString().slice(0, 10);
+
+    try {
+      await seedUser(database, userId);
+      const at = new Date("2026-08-01T00:00:00.000Z");
+      const row = (id, payload) => ({
+        id,
+        userId,
+        deviceId: "device-agent-read-test",
+        updatedAt: at,
+        deletedAt: null,
+        receivedAt: at,
+        payload: { id, ...payload, updated_at: at.toISOString(), deleted_at: null }
+      });
+      const indexes = Array.from({ length: workoutCount }, (_, index) => index);
+      await database.db.insert(schema.workoutSessions).values(
+        indexes.map((index) =>
+          row(workoutId(index), {
+            local_date: localDate(index),
+            started_at: `${localDate(index)}T06:00:00.000Z`,
+            ended_at: `${localDate(index)}T07:00:00.000Z`
+          })
+        )
+      );
+      // One five-rep Set a day, a kilogram heavier each day but the last.
+      await database.db.insert(schema.loggedSets).values(
+        indexes.map((index) =>
+          row(`${workoutId(index)}-set`, {
+            workout_id: workoutId(index),
+            performed_at: `${localDate(index)}T06:00:00.000Z`,
+            exercise_id: "user-back-squat",
+            position: 0,
+            is_completed: true,
+            values: {
+              load: {
+                entered: String(index === workoutCount - 1 ? 50 : 60 + index),
+                unit: "kilogram"
+              },
+              reps: { entered: "5", unit: "repetition" }
+            }
+          })
+        )
+      );
+      const catalogStore = createInMemoryAgentCatalogStore(catalogFixtures(userId));
+      const path = `/agent/analytics/exercises/user-back-squat?from=${localDate(200)}T00:00:00.000Z`;
+
+      const withProgress = createApp({
+        logger: { info() {}, error() {} },
+        agentApiKeyStore: createAgentKeyStore(userId, {}, "agent-read-key-1"),
+        agentCatalogStore: catalogStore,
+        agentReadStore: createDrizzleAgentReadStore(database.db),
+        agentProgressReadStore: createDrizzleAgentProgressReadStore({
+          db: database.db,
+          settingsStore: createDrizzleAgentSettingsStore(database.db),
+          catalogStore
+        })
+      });
+      const response = await getAgent(withProgress, path);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      // The request's window holds the last ten Sets; the series holds all.
+      assert.equal(body.totalSetCount, 10);
+      const series = body.progressSeries;
+      assert.equal(series.exerciseId, "user-back-squat");
+      assert.equal(series.measure, "estimatedOneRepMax");
+      assert.equal(series.betterIs, "higher");
+      assert.equal(series.points.length, workoutCount);
+      assert.deepEqual(series.points[0], {
+        workoutId: workoutId(0),
+        localDate: localDate(0),
+        startedAt: `${localDate(0)}T06:00:00.000Z`,
+        setId: `${workoutId(0)}-set`,
+        value: 67.5,
+        unit: "kilogram",
+        isNewBest: false
+      });
+      assert.ok(series.points.slice(1, -1).every((point) => point.isNewBest));
+      assert.equal(series.points.at(-1).isNewBest, false);
+
+      const withoutProgress = createAgentReadApp({
+        agentReadStore: createDrizzleAgentReadStore(database.db),
+        userId
+      });
+      const without = await getAgent(withoutProgress, path);
+      assert.equal(without.status, 200);
+      assert.equal((await without.json()).progressSeries, null);
     } finally {
       await database.close();
     }

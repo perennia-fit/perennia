@@ -169,6 +169,18 @@ from a closed set: Done, Partly done, Done differently, Not done, Pending, Plann
 Trained, Rest, or No plan. Derived, never stored; never a score, a streak or a
 percentage. Mirrors Day Status in the Protocols domain.
 
+## Progress Measure
+The single number per Workout that shows whether an exercise is improving, chosen by
+its Record Profile: estimated one-rep max for rep-max exercises, otherwise the value
+of that profile's record (heaviest load, most reps, longest or shortest duration,
+longest distance, fastest pace). It is the best value among the Workout's Performed
+Sets. Derived, never stored.
+
+## New Best
+A Workout whose Progress Measure for an exercise is strictly better than every
+earlier Workout's value for that exercise. The exercise's first Workout with a value
+is never a New Best. Derived, never stored.
+
 ## Workout Template
 A named, reusable plan for one Workout: the exercises, their order and groupings,
 and their prescribed sets for a single session, plus standing notes — on the
