@@ -10665,8 +10665,11 @@ class MeasurementRepository {
     List<MeasurementRecord>? lastEmitted;
 
     await for (final rows in _curatedMeasurementQuery().watch()) {
-      final next =
-          rows.map(_measurementRecordFromMetricRow).toList(growable: false);
+      final next = <MeasurementRecord>[
+        for (final row in rows)
+          if (_readableMeasurementRecord(row) case final measurement?)
+            measurement,
+      ];
       if (_sameMeasurementRecords(lastEmitted, next)) {
         continue;
       }
@@ -10741,7 +10744,8 @@ class MeasurementRepository {
   ) {
     final measurementsById = <String, MeasurementRecord>{
       for (final row in measurementRows)
-        row.id: _measurementRecordFromMetricRow(row),
+        if (_readableMeasurementRecord(row) case final measurement?)
+          row.id: measurement,
     };
 
     // A Reading whose value cannot be read has no entry, and the next
@@ -10777,10 +10781,23 @@ class MeasurementRepository {
     return List<MeasurementHistoryEntry>.unmodifiable(history);
   }
 
+  /// The Metric as a measurement, or null when its unit or goal type is one
+  /// this build does not know. Synced rows are opaque (a newer client or an
+  /// Agent may write either), so such a Metric is left out, with its
+  /// Readings, instead of failing the streams Body Tracker's track list and
+  /// history and Progress Overview's Body card read.
+  MeasurementRecord? _readableMeasurementRecord(MetricRow row) {
+    try {
+      return _measurementRecordFromMetricRow(row);
+    } on ArgumentError {
+      return null;
+    }
+  }
+
   /// The Reading as a measurement entry, or null when its value cannot be
-  /// read. Synced rows are opaque, so one malformed Reading is left out of
-  /// the history instead of failing the stream Body Tracker and Progress
-  /// Overview's Body card read.
+  /// read. Synced rows are opaque, so one malformed Reading is left out
+  /// instead of failing the streams Body Tracker's track list and history
+  /// and Progress Overview's Body card read.
   MeasurementEntryRecord? _readableMeasurementEntry(MetricReadingRow row) {
     try {
       return _measurementEntryRecordFromMetricReadingRow(row);
@@ -10911,21 +10928,28 @@ class MeasurementRepository {
     List<MetricRow> measurements,
     Map<String, List<MetricReadingRow>> entryRowsByMeasurementId,
   ) {
-    return List<MeasurementTrackSummary>.unmodifiable(
-      measurements.map((measurement) {
-        final entries = entryRowsByMeasurementId[measurement.id] ??
-            const <MetricReadingRow>[];
-        return MeasurementTrackSummary(
-          measurement: _measurementRecordFromMetricRow(measurement),
-          latestEntry: entries.isEmpty
-              ? null
-              : _measurementEntryRecordFromMetricReadingRow(entries.first),
-          previousEntry: entries.length < 2
-              ? null
-              : _measurementEntryRecordFromMetricReadingRow(entries[1]),
-        );
-      }),
-    );
+    final summaries = <MeasurementTrackSummary>[];
+    for (final row in measurements) {
+      final measurement = _readableMeasurementRecord(row);
+      if (measurement == null) {
+        continue;
+      }
+      // Of the two latest rows read, an unreadable one is skipped, so the
+      // summary may then have no previous entry.
+      final entries = <MeasurementEntryRecord>[
+        for (final entry in entryRowsByMeasurementId[row.id] ??
+            const <MetricReadingRow>[])
+          if (_readableMeasurementEntry(entry) case final record?) record,
+      ];
+      summaries.add(
+        MeasurementTrackSummary(
+          measurement: measurement,
+          latestEntry: entries.isEmpty ? null : entries.first,
+          previousEntry: entries.length < 2 ? null : entries[1],
+        ),
+      );
+    }
+    return List<MeasurementTrackSummary>.unmodifiable(summaries);
   }
 
   Stream<List<MeasurementHistoryEntry>> watchHistoryEntries({

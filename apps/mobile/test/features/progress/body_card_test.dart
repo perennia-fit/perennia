@@ -296,4 +296,20 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('a Trend that overflows renders without throwing', (
+    tester,
+  ) async {
+    final bodyWeight = _measurement('body-weight', 'Body Weight');
+    await _pump(
+      tester,
+      _repository(bodyWeight, <(DateTime, double)>[
+        (_periodStartMorning, 1e308),
+        (_periodStartMorning, -1e308),
+      ]),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(BodyCard.rowKey(bodyWeight.id)), findsOneWidget);
+  });
 }

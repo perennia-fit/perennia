@@ -181,8 +181,9 @@ class _Row extends StatelessWidget {
 
 /// [value] to one decimal, rounded half up in magnitude (D8). Unlike Key
 /// exercises' loads, a trailing ".0" stays: every Body value has one decimal.
+/// Rounded as a double, so a huge synced value never overflows an int.
 String _oneDecimal(double value) {
-  final tenths = (value.abs() * 10).round();
+  final tenths = (value.abs() * 10).roundToDouble();
   final text = (tenths / 10).toStringAsFixed(1);
   return value < 0 && tenths != 0 ? '-$text' : text;
 }

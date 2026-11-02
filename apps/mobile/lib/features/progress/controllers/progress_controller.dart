@@ -680,7 +680,11 @@ final progressBodyProvider =
     return const AsyncLoading<List<ProgressBodyRow>>();
   }
   final measurements = ref.watch(progressCuratedMeasurementsProvider);
-  final curated = measurements.value;
+  // Only the measurements Body Tracker shows: one the user switched off
+  // there is off the card too, even while its Readings keep arriving.
+  final curated = measurements.value
+      ?.where((measurement) => measurement.enabled)
+      .toList(growable: false);
   final entries = <AsyncValue<List<MeasurementHistoryEntry>>>[
     for (final measurement in curated ?? const <MeasurementRecord>[])
       ref.watch(progressMeasurementEntriesProvider(measurement.id)),
@@ -705,16 +709,24 @@ final progressBodyProvider =
 /// [start, end). Each entry is a live Reading at Body Tracker's time,
 /// `atTime ?? windowStartedAt ?? updatedAt` (D5); the repository has
 /// already left out a Reading whose value cannot be read.
+///
+/// Finite Readings keep the Trend finite unless the arithmetic overflows,
+/// so a point whose Trend is not finite is dropped, and so is a change that
+/// overflows, as the Agent readings list drops its `trendValue`: the card
+/// can neither round nor chart them.
 ProgressBodyRow? _bodyRow(
   MeasurementRecord measurement,
   List<MeasurementHistoryEntry> entries,
   DateTime start,
   DateTime end,
 ) {
-  final points = metricTrend(<TrendInput>[
-    for (final MeasurementHistoryEntry(:entry) in entries)
-      TrendInput(id: entry.id, at: entry.measuredAt, value: entry.value),
-  ]);
+  final points = <TrendPoint>[
+    for (final point in metricTrend(<TrendInput>[
+      for (final MeasurementHistoryEntry(:entry) in entries)
+        TrendInput(id: entry.id, at: entry.measuredAt, value: entry.value),
+    ]))
+      if (point.trend.isFinite) point,
+  ];
   final readings = <TrendPoint>[
     for (final point in points)
       if (!point.at.isBefore(start) && point.at.isBefore(end)) point,
@@ -728,7 +740,10 @@ ProgressBodyRow? _bodyRow(
     unit: measurement.unit,
     readings: List<TrendPoint>.unmodifiable(readings),
     latestTrend: readings.last.trend,
-    change: trendChange(points, start, end),
+    change: switch (trendChange(points, start, end)) {
+      final double change when change.isFinite => change,
+      _ => null,
+    },
   );
 }
 

@@ -574,6 +574,67 @@ test(
         assertTrend(byId.get(id), trend);
       }
 
+      // Paged one Reading at a time, each page still carries the Trend over
+      // the whole history, not over the page's slice.
+      const pagedTrends = new Map();
+      let cursor = null;
+      do {
+        const pagedResponse = await getAgent(
+          app,
+          readingsPath(`limit=1&includeTrend=true${cursor ? `&cursor=${cursor}` : ""}`)
+        );
+        assert.equal(pagedResponse.status, 200);
+        const pagedBody = await pagedResponse.json();
+        assert.equal(pagedBody.readings.length, 1);
+        pagedTrends.set(pagedBody.readings[0].id, pagedBody.readings[0]);
+        cursor = pagedBody.nextCursor;
+      } while (cursor !== null);
+      // The list's own order is not the Trend's (D5), so only the set is
+      // checked here.
+      assert.deepEqual(
+        [...pagedTrends.keys()].sort(),
+        [ids.first, ids.windowed, ids.valueJsonOnly, ids.structured].sort()
+      );
+      for (const [id, trend] of Object.entries(expectedTrend)) {
+        assertTrend(pagedTrends.get(id), trend);
+      }
+      assert.equal("trendValue" in pagedTrends.get(ids.structured), false);
+
+      // The app stores Reading times as whole seconds, so two Readings in one
+      // second are ordered by id, not by millisecond: "a" (82) comes first and
+      // seeds the Trend, and "b" (80), at the same instant, does not move it.
+      const sameSecondMetricId = `metric-trend-same-second-${randomUUID()}`;
+      const sameSecond = {
+        a: `reading-same-second-a-${randomUUID()}`,
+        b: `reading-same-second-b-${randomUUID()}`
+      };
+      await insertBodyWeightMetric(database, { id: sameSecondMetricId, userId });
+      await insertReading(database, {
+        id: sameSecond.a,
+        userId,
+        metricId: sameSecondMetricId,
+        scalarValue: 82,
+        atTime: new Date("2026-06-01T07:00:00.900Z")
+      });
+      await insertReading(database, {
+        id: sameSecond.b,
+        userId,
+        metricId: sameSecondMetricId,
+        scalarValue: 80,
+        atTime: new Date("2026-06-01T07:00:00.100Z")
+      });
+      const sameSecondResponse = await getAgent(
+        app,
+        `/agent/metrics/readings?metricId=${sameSecondMetricId}&includeTrend=true`
+      );
+      assert.equal(sameSecondResponse.status, 200);
+      const sameSecondBody = await sameSecondResponse.json();
+      const sameSecondById = new Map(
+        sameSecondBody.readings.map((reading) => [reading.id, reading])
+      );
+      assertTrend(sameSecondById.get(sameSecond.a), 82);
+      assertTrend(sameSecondById.get(sameSecond.b), 82);
+
       const invalidResponse = await getAgent(app, readingsPath("includeTrend=yes"));
       assert.equal(invalidResponse.status, 400);
     } finally {

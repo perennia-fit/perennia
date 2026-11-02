@@ -14,13 +14,14 @@ MeasurementRecord _measurement(
   String id,
   String name, {
   MeasurementUnit unit = MeasurementUnit.centimeter,
+  bool enabled = true,
 }) {
   return MeasurementRecord(
     id: id,
     name: name,
     unit: unit,
     goalType: MeasurementGoalType.decrease,
-    enabled: true,
+    enabled: enabled,
     sortOrder: 0,
     updatedAt: DateTime.utc(2026),
   );
@@ -174,6 +175,55 @@ void main() {
     );
 
     expect(body.requireValue, isEmpty);
+  });
+
+  testWidgets('leaves out a measurement switched off in Body Tracker', (
+    tester,
+  ) async {
+    final hiddenWaist = _measurement('waist', 'Waist', enabled: false);
+    final body = await _read(
+      tester,
+      StubProgressFeatureRepository(
+        curatedMeasurements: <MeasurementRecord>[bodyWeight, hiddenWaist],
+        measurementEntries: <String, List<MeasurementHistoryEntry>>{
+          bodyWeight.id: _entries(bodyWeight, <(DateTime, double)>[
+            (DateTime(2026, 9, 1, 7), 80),
+          ]),
+          hiddenWaist.id: _entries(hiddenWaist, <(DateTime, double)>[
+            (DateTime(2026, 9, 1, 7), 90),
+          ]),
+        },
+      ),
+    );
+
+    expect(
+      body.requireValue.map((row) => row.measurementId),
+      <String>['body-weight'],
+    );
+  });
+
+  testWidgets('drops a Trend that overflows instead of keeping it', (
+    tester,
+  ) async {
+    // Two finite Readings at one instant: the gap overflows to -Infinity and
+    // the zero weight makes the second Trend NaN.
+    final body = await _read(
+      tester,
+      StubProgressFeatureRepository(
+        curatedMeasurements: <MeasurementRecord>[bodyWeight],
+        measurementEntries: <String, List<MeasurementHistoryEntry>>{
+          bodyWeight.id: _entries(bodyWeight, <(DateTime, double)>[
+            (DateTime(2026, 9, 1, 7), 1e308),
+            (DateTime(2026, 9, 1, 7), -1e308),
+          ]),
+        },
+      ),
+    );
+
+    final row = body.requireValue.single;
+    expect(row.readings.map((point) => point.trend), <double>[1e308]);
+    expect(row.latestTrend, 1e308);
+    expect(row.change, 0);
   });
 
   testWidgets('a failed measurement read makes the card unavailable', (

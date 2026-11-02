@@ -2024,7 +2024,7 @@ function readingTrendsForPage(
     const inputs = inputsByMetricId.get(row.metricId) ?? [];
     inputs.push({
       id: row.id,
-      at: (row.atTime ?? row.windowStartedAt ?? row.updatedAt).toISOString(),
+      at: wholeSecondIso(row.atTime ?? row.windowStartedAt ?? row.updatedAt),
       value: readingScalarValue(row)
     });
     inputsByMetricId.set(row.metricId, inputs);
@@ -2041,6 +2041,16 @@ function readingTrendsForPage(
     }
   }
   return trendByReadingId;
+}
+
+/**
+ * [at] truncated to whole seconds, as ISO-8601. The app stores Reading times
+ * as whole Unix seconds, so the Trend is computed at that precision here too:
+ * two Readings in the same second are then ordered by id on both sides, and
+ * `trendValue` matches the Body card (D5).
+ */
+function wholeSecondIso(at: Date) {
+  return new Date(Math.trunc(at.getTime() / 1000) * 1000).toISOString();
 }
 
 /**

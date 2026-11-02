@@ -1,8 +1,9 @@
 /// The Trend core (docs/designs/progress-overview.md, D5): a time-weighted
 /// moving average of a Metric's Readings, so a single day's swing on the
 /// scale moves the line little while a lasting change shows within about two
-/// weeks. Progress Overview's Body card reads these functions, and so does
-/// the Agent readings list when asked for `includeTrend`.
+/// weeks. Progress Overview's Body card reads these functions; the Agent
+/// readings list's `includeTrend` uses the TypeScript twin, which the
+/// vectors below pin to this file.
 ///
 /// Pure: no I/O, no clock. Readings are not converted between units. Nothing
 /// returned here is stored or synced.
@@ -54,14 +55,17 @@ final class TrendPoint {
 /// The first Trend value is the first Reading's value; each later one moves
 /// `a = 1 - 0.9 ^ days` of the way from the previous Trend towards the
 /// Reading, where `days` is the time since the previous kept Reading in
-/// fractional days. Time is taken in milliseconds, as the TypeScript twin
-/// has it, so the two agree on sub-millisecond instants.
+/// fractional days. Time, in the sort as in `days`, is taken in whole
+/// milliseconds, as the TypeScript twin has it, so two instants in the same
+/// millisecond are ordered by id on both sides.
 List<TrendPoint> metricTrend(Iterable<TrendInput> readings) {
   final kept = <TrendInput>[
     for (final reading in readings)
       if (reading.value case final double value when value.isFinite) reading,
   ]..sort((a, b) {
-      final byAt = a.at.compareTo(b.at);
+      final byAt = a.at.millisecondsSinceEpoch.compareTo(
+        b.at.millisecondsSinceEpoch,
+      );
       return byAt != 0 ? byAt : a.id.compareTo(b.id);
     });
 

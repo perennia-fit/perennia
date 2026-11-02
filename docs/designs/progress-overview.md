@@ -601,6 +601,13 @@ differs from the server readings list's sort key, which also considers
 `windowEndedAt`. In the app the inputs are mapped from the
 `MeasurementHistoryEntry` records that Body Tracker reads.
 
+`at` is compared at whole seconds. Drift stores the app's times as whole Unix
+seconds, while Postgres keeps the server's in microseconds, so the server
+truncates `at` to the second (toward zero, as Drift does) before calling the
+core. Two Readings in the same second then sort by id on both sides, and an
+Agent's `trendValue` matches the Body card. The cores themselves compare
+whole milliseconds, then id.
+
 `metricTrend(readings)` takes `{id, at, value}` points, sorts them by
 `(at, id)`, skips any whose value is null or not finite (a skipped point has
 no Trend point), and returns `{id, at, value, trend}` for each remaining
@@ -983,6 +990,12 @@ below it once, when its data arrives.
         (`MeasurementRepository.watchCuratedActive`) with at least one
         Reading in the period, in Body Tracker's order. Each row's Readings
         come from `watchHistoryEntries(measurementId: id)`.
+    *   Only measurements that are `enabled`, the ones Body Tracker's track
+        list shows: a measurement the user switched off there is off the
+        card too, even while its Readings keep arriving.
+    *   A Trend point whose value is not finite (finite Readings whose
+        arithmetic overflows) is dropped, and so is a change that is not
+        finite, as the server leaves such a `trendValue` off (D9).
     *   Each row has the name, the latest Trend value with unit, and the
         change over the period (D5), for example "↓ 1.6 kg". Both use one
         decimal, rounded half up, and the Reading's own unit label as Body
@@ -1024,7 +1037,10 @@ below it once, when its data arrives.
 *   Nutrition's `_SparklinePainter` is not changed.
 *   The Trained days calendar and the This week row are plain widgets, not
     charts.
-*   All colors come from `context.colors` and `resolvedFocusColor`.
+*   All colors come from `context.colors` and `resolvedFocusColor`, except
+    the Body Trend line's accent: `AppColors` has no accent token, so it
+    uses Signal Cyan through `Theme.of(context).colorScheme.primary`, as
+    the app's other accent uses do.
 
 **Values.** Key exercises and New bests format values with one new
 function, `formatProgressValue(ProgressMeasureKind measure, double value,
@@ -2245,14 +2261,23 @@ source:
     or an undecodable row) instead of throwing, so one malformed synced
     Reading neither fails the Body card nor Body Tracker's history; the next
     readable Reading becomes the predecessor. Such a Reading has no scalar
-    value, so D5 already leaves it out of the Trend.
+    value, so D5 already leaves it out of the Trend. Body Tracker's track
+    list skips it the same way among the two latest rows it reads, so its
+    summary may then have no previous entry.
+
+    Likewise, `watchCuratedActive`, the history mapping and the track list
+    leave out a curated Metric whose `unit` or `goalType` this build does
+    not know (a newer client or an Agent can sync one), with its Readings,
+    instead of failing the stream.
 59. **`progress_controller.dart`** (modify). Add the `autoDispose`
     `progressBodyProvider`, emitting `List<ProgressBodyRow>` under a
     Timeline span named `progress.body`. For the curated measurements, it:
     *   watches a `StreamProvider.autoDispose.family` of each
         measurement's entries, keyed by measurement id;
     *   maps each entry to `TrendInput` (D5) and runs `metricTrend`;
-    *   keeps measurements with at least one Reading in the period;
+    *   keeps `enabled` measurements with at least one Reading in the
+        period (D8 card 6), filtering before it watches their entries;
+    *   drops Trend points, and a change, that are not finite (D8 card 6);
     *   computes `trendChange` with `start` and `end` built from the period's
         dates in the device zone;
     *   takes `latestTrend` from the last `TrendPoint` in the period.
@@ -2266,8 +2291,9 @@ source:
         *   `AgentMetricReadingListItemSchema` gains optional `trendValue`;
         *   `createDrizzleAgentMetricStore`'s `listMetricReadings` loads all
             live readings of each Metric in the page when `includeTrend` is
-            `"true"`, maps them to `TrendInput` (D5), runs `metricTrend`,
-            and attaches `trendValue` after the `fields` projection.
+            `"true"`, maps them to `TrendInput` (D5, with `at` truncated to
+            the second), runs `metricTrend`, and attaches `trendValue` after
+            the `fields` projection.
     *   `agent-mcp.ts` (modify): add `includeTrend` to the readings tool's
         input schema. The shared store does the rest.
     *   Regenerate the contract outputs.
@@ -2294,7 +2320,10 @@ source:
         *   `includeTrend=false` (no `trendValue`);
         *   a reading whose value is only in `valueJson.value` (carries
             `trendValue`);
-        *   an archived reading with `includeArchived` (no `trendValue`).
+        *   an archived reading with `includeArchived` (no `trendValue`);
+        *   paging with `limit=1` and the returned cursor (each page still
+            carries the Trend over the whole history);
+        *   two readings in the same second, ordered by id (D5).
 65. **This spec** (modify). Status Current, set in PR 4 itself, with the
     SITEMAP entry, since PR 4 completes the spec.
 

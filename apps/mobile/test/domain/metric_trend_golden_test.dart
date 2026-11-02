@@ -61,6 +61,26 @@ void main() {
     }
   });
 
+  // JSON instants carry milliseconds at most, so this is not a vector case:
+  // the TypeScript twin sorts by `Date.parse` milliseconds, then by id.
+  test('metricTrend orders instants in the same millisecond by id', () {
+    final points = metricTrend(<TrendInput>[
+      TrendInput(
+        id: 'a',
+        at: DateTime.utc(2026, 10, 5, 7, 0, 0, 0, 900),
+        value: 82,
+      ),
+      TrendInput(
+        id: 'b',
+        at: DateTime.utc(2026, 10, 5, 7, 0, 0, 0, 100),
+        value: 80,
+      ),
+    ]);
+
+    expect(points.map((point) => point.id), <String>['a', 'b']);
+    expect(points.map((point) => point.trend), <double>[82, 82]);
+  });
+
   // Not vector cases: trendChange is Dart only (D5).
   group('trendChange', () {
     final start = DateTime.utc(2026, 10, 5);

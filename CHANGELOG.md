@@ -9,6 +9,23 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Added
+
+- **Progress Overview.** The Progress tab opens on one scroll of summary cards
+  over 4 weeks, 12 weeks or a year: This week, Trained days, Time by Focus, Key
+  exercises, New bests, Body and Protocols. The Body card draws each Body
+  Tracker measurement's Trend, smoothed over about 10 days, with its change
+  over the period. ([#86](https://github.com/perennia-fit/perennia/pull/86),
+  [#90](https://github.com/perennia-fit/perennia/pull/90))
+- **Progress reads for agents.** `listAgentTrainingDays`
+  (`GET /agent/progress/training-days`, `agent_list_training_days`) and
+  `listAgentNewBests` (`GET /agent/progress/new-bests`,
+  `agent_list_new_bests`) are new; exercise analytics gain `progressSeries`;
+  and `GET /agent/metrics/readings` (`agent_list_metric_readings`) takes
+  `includeTrend`, which adds each reading's `trendValue`.
+  ([#86](https://github.com/perennia-fit/perennia/pull/86),
+  [#90](https://github.com/perennia-fit/perennia/pull/90))
+
 ## [0.1.0] - 2026-11-01
 
 A minor release: new features in the add-food picker, a reworked way to start
