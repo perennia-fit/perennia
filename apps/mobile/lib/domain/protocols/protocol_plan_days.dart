@@ -1,8 +1,8 @@
 /// The Protocol Plan core (docs/designs/protocol-schedules-and-reminders.md,
-/// D1, D4 and D6): what was planned on a range of dates, and how the logged
-/// Doses line up with it. Every surface (the Planned list, the Consistency
-/// view, the reminder reconciler) asks these functions instead of reading a
-/// Schedule directly.
+/// D1, D4, D6 and D8): what was planned on a range of dates, and how the
+/// logged Doses and Skips line up with it. Every surface (the Planned list,
+/// the Consistency view, the reminder reconciler) asks these functions
+/// instead of reading a Schedule directly.
 ///
 /// Pure and timezone-free: no I/O, no clock, no timezone. Dates are local
 /// [ProtocolDayDate]s, times are `HH:MM` strings, and "today" and "now" are
@@ -32,6 +32,10 @@ import 'protocols.dart';
 /// 5. the member's Schedule Version for the date: none, or `unscheduled` →
 ///    `no_schedule`; `as_needed` → `as_needed`; days that exclude the date
 ///    → `not_scheduled_today`; otherwise `planned`.
+///
+/// A `planned` PlanDay on the Protocol's `archivedOn`, or on the covering
+/// member row's, has [PlanDay.archiveDay] set (D8): [dayStatuses] keeps only
+/// the planned doses a Dose fills there. Every other PlanDay has it unset.
 ///
 /// An every-N or cycle anchor stored with `anchorIsDefault` is read as the
 /// Protocol's `startLocalDate`, whatever date it stores (D4), so moving the
@@ -64,6 +68,7 @@ PlanDay _planDay(
   PlanDay state(
     PlanDayState state, [
     List<PlannedDose> planned = const <PlannedDose>[],
+    bool archiveDay = false,
   ]) =>
       PlanDay(
         protocolId: protocol.protocolId,
@@ -71,6 +76,7 @@ PlanDay _planDay(
         localDate: date,
         state: state,
         planned: planned,
+        archiveDay: archiveDay,
       );
 
   final end = protocol.endLocalDate;
@@ -112,7 +118,13 @@ PlanDay _planDay(
   if (!version.days!.includes(date)) {
     return state(PlanDayState.notScheduledToday);
   }
-  return state(PlanDayState.planned, version.planned);
+  // The covering row's date, not any row's: a member removed and re-added
+  // the same day is covered by the newer row, which isn't archived (D8).
+  return state(
+    PlanDayState.planned,
+    version.planned,
+    date == archivedOn || date == row.archivedOn,
+  );
 }
 
 /// [days] as planned (D4): an every-N anchor left at its default reads as
@@ -274,17 +286,27 @@ class _VersionPlan {
 /// including [today]; later dates are not returned. Ordered by date, then
 /// Compound id. [doses] are the Compound's non-archived logged Doses, tagged
 /// with a Protocol or not; the tag never decides whether a Dose counts.
+/// [skips] are the Skips that may answer a planned dose (D8); until Skips
+/// are stored, every caller passes none.
 ///
-/// Matching, for one Compound on one date (D6):
+/// Matching, for one Compound on one date (D8, which replaces D6's steps):
 /// 1. Every planned dose of every Protocol is numbered as a slot, ordered by
 ///    time (untimed last), then Protocol id, then position in its PlanDay.
 /// 2. The Doses are taken in local-time order, then [PlanDose.sequence].
-/// 3. Each fills the unfilled timed slot nearest its time (the earlier slot
-///    on a tie); with no timed slot unfilled, the first unfilled untimed
-///    slot; with nothing unfilled, it is an extra.
+/// 3. Each Skip, in id order, marks the lowest-numbered slot of its own
+///    Protocol at its planned time (both null when untimed) that no earlier
+///    Skip marked; one that finds none marks nothing.
+/// 4. Each Dose fills, by the first rule that finds a slot: the nearest
+///    unfilled timed slot with no Skip (the earlier on a tie), the first
+///    unfilled untimed slot with no Skip, then the same two among skipped
+///    slots, clearing that Skip; with none, it is an extra. So a Skip moves
+///    a Dose only when the Dose would otherwise land on the skipped slot.
+/// 5. On an archive day ([PlanDay.archiveDay]) every slot no Dose filled is
+///    dropped, Skip or not, and the rest are renumbered in order.
 List<DayStatus> dayStatuses(
   Iterable<PlanDay> planDays,
   Iterable<PlanDose> doses,
+  Iterable<PlanSkip> skips,
   ProtocolDayDate today,
 ) {
   final daysByKey = <_CompoundDate, List<PlanDay>>{};
@@ -302,6 +324,12 @@ List<DayStatus> dayStatuses(
         .putIfAbsent(_CompoundDate(dose.compoundId, dose.localDate), () => [])
         .add(dose);
   }
+  final skipsByKey = <_CompoundDate, List<PlanSkip>>{};
+  for (final skip in skips) {
+    skipsByKey
+        .putIfAbsent(_CompoundDate(skip.compoundId, skip.localDate), () => [])
+        .add(skip);
+  }
 
   final keys = daysByKey.keys.toList()
     ..sort((a, b) {
@@ -314,6 +342,7 @@ List<DayStatus> dayStatuses(
         key,
         daysByKey[key]!,
         dosesByKey[key] ?? const <PlanDose>[],
+        skipsByKey[key] ?? const <PlanSkip>[],
         today,
       ),
     ),
@@ -324,15 +353,39 @@ DayStatus _dayStatus(
   _CompoundDate key,
   List<PlanDay> days,
   List<PlanDose> doses,
+  List<PlanSkip> skips,
   ProtocolDayDate today,
 ) {
   final slots = <_Slot>[
     for (final day in days)
       if (day.state == PlanDayState.planned)
         for (var position = 0; position < day.planned.length; position += 1)
-          _Slot(day.protocolId, position, day.planned[position]),
+          _Slot(
+            day.protocolId,
+            position,
+            day.planned[position],
+            archiveDay: day.archiveDay,
+          ),
   ]..sort(_Slot.compare);
 
+  // Step 3: each Skip, in id order, marks the first slot of its own Protocol
+  // at its planned time that no earlier Skip marked.
+  final skippedBy = List<String?>.filled(slots.length, null);
+  final orderedSkips = List<PlanSkip>.of(skips)
+    ..sort((a, b) => a.skipId.compareTo(b.skipId));
+  for (final skip in orderedSkips) {
+    for (var index = 0; index < slots.length; index += 1) {
+      if (skippedBy[index] == null &&
+          slots[index].protocolId == skip.protocolId &&
+          slots[index].dose.localTime == skip.plannedLocalTime) {
+        skippedBy[index] = skip.skipId;
+        break;
+      }
+    }
+  }
+
+  // Steps 2 and 4. A Dose placed on a skipped slot clears its Skip, which
+  // then marks nothing.
   final orderedDoses = List<PlanDose>.of(doses)
     ..sort((a, b) {
       final byTime = a.localTime.compareTo(b.localTime);
@@ -342,20 +395,51 @@ DayStatus _dayStatus(
       final bySequence = a.sequence.compareTo(b.sequence);
       return bySequence != 0 ? bySequence : a.doseId.compareTo(b.doseId);
     });
-
   final filledBy = List<String?>.filled(slots.length, null);
-  var loggedCount = 0;
+  var extraCount = 0;
   for (final dose in orderedDoses) {
-    final slot = _slotFor(dose, slots, filledBy);
-    if (slot != null) {
+    final slot = _slotFor(dose, slots, filledBy, skippedBy);
+    if (slot == null) {
+      extraCount += 1;
+    } else {
       filledBy[slot] = dose.doseId;
-      loggedCount += 1;
+      skippedBy[slot] = null;
     }
   }
 
-  final plannedCount = slots.length;
+  // Step 5: close the archive day. Only unfilled slots drop, so the extras
+  // are unchanged, and a dropped slot's Skip marks nothing. The rest are
+  // numbered in order.
+  final fills = <PlanSlotFill>[];
+  for (var index = 0; index < slots.length; index += 1) {
+    if (filledBy[index] == null && slots[index].archiveDay) {
+      continue;
+    }
+    fills.add(
+      PlanSlotFill(
+        slot: fills.length,
+        protocolId: slots[index].protocolId,
+        plannedLocalTime: slots[index].dose.localTime,
+        amount: slots[index].dose.amount,
+        doseId: filledBy[index],
+        skipId: skippedBy[index],
+      ),
+    );
+  }
+
+  final plannedCount = fills.length;
+  final loggedCount = fills.where((fill) => fill.isFilled).length;
+  final skippedCount = fills.where((fill) => fill.isSkipped).length;
   final (status, reason) = plannedCount > 0
-      ? (_plannedStatus(plannedCount, loggedCount, key.localDate, today), null)
+      ? (
+          _plannedStatus(
+            loggedCount,
+            plannedCount - loggedCount - skippedCount,
+            key.localDate,
+            today,
+          ),
+          null,
+        )
       : _unplannedStatus(days);
 
   return DayStatus(
@@ -365,54 +449,60 @@ DayStatus _dayStatus(
     notPlannedReason: reason,
     plannedCount: plannedCount,
     loggedCount: loggedCount,
-    extraCount: orderedDoses.length - loggedCount,
-    fills: [
-      for (var index = 0; index < slots.length; index += 1)
-        PlanSlotFill(
-          slot: index,
-          protocolId: slots[index].protocolId,
-          plannedLocalTime: slots[index].dose.localTime,
-          amount: slots[index].dose.amount,
-          doseId: filledBy[index],
-        ),
-    ],
+    skippedCount: skippedCount,
+    extraCount: extraCount,
+    fills: fills,
   );
 }
 
-/// The slot [dose] fills, or null when it is an extra (D6 step 3).
-int? _slotFor(PlanDose dose, List<_Slot> slots, List<String?> filledBy) {
+/// The slot [dose] fills, or null when it is an extra (D8 step 4): first
+/// among the unfilled slots no Skip marks, then among the skipped ones.
+int? _slotFor(
+  PlanDose dose,
+  List<_Slot> slots,
+  List<String?> filledBy,
+  List<String?> skippedBy,
+) {
   final doseMinutes = planLocalTimeMinutes(dose.localTime);
-  int? nearest;
-  int? nearestDistance;
-  int? firstUntimed;
-  for (var index = 0; index < slots.length; index += 1) {
-    if (filledBy[index] != null) {
-      continue;
+  int? openSlot({required bool skipped}) {
+    int? nearest;
+    int? nearestDistance;
+    int? firstUntimed;
+    for (var index = 0; index < slots.length; index += 1) {
+      if (filledBy[index] != null || (skippedBy[index] != null) != skipped) {
+        continue;
+      }
+      final minutes = slots[index].minutes;
+      if (minutes == null) {
+        firstUntimed ??= index;
+        continue;
+      }
+      final distance = (minutes - doseMinutes).abs();
+      // Strictly nearer only: slots are in time order, so on a tie the
+      // earlier slot, found first, keeps it.
+      if (nearestDistance == null || distance < nearestDistance) {
+        nearest = index;
+        nearestDistance = distance;
+      }
     }
-    final minutes = slots[index].minutes;
-    if (minutes == null) {
-      firstUntimed ??= index;
-      continue;
-    }
-    final distance = (minutes - doseMinutes).abs();
-    // Strictly nearer only: slots are in time order, so on a tie the earlier
-    // slot, found first, keeps it.
-    if (nearestDistance == null || distance < nearestDistance) {
-      nearest = index;
-      nearestDistance = distance;
-    }
+    return nearest ?? firstUntimed;
   }
-  return nearest ?? firstUntimed;
+
+  return openSlot(skipped: false) ?? openSlot(skipped: true);
 }
 
+/// The status of a day with planned doses (D8), from how many were logged
+/// and how many are still open (neither logged nor skipped). Skips never
+/// raise "Not logged" to "Partly logged": that label is about what was
+/// taken.
 DayStatusKind _plannedStatus(
-  int plannedCount,
   int loggedCount,
+  int openCount,
   ProtocolDayDate date,
   ProtocolDayDate today,
 ) {
-  if (loggedCount >= plannedCount) {
-    return DayStatusKind.logged;
+  if (openCount <= 0) {
+    return loggedCount > 0 ? DayStatusKind.logged : DayStatusKind.skipped;
   }
   if (date == today) {
     return DayStatusKind.pending;
@@ -422,9 +512,16 @@ DayStatusKind _plannedStatus(
 
 /// With nothing planned (D6): `paused` if any Protocol reports it, else
 /// `off_cycle`, else `not_planned` with the first reason any Protocol
-/// reports, in [NotPlannedReason]'s declared order.
+/// reports, in [NotPlannedReason]'s declared order. A `planned` archive day
+/// whose slots step 5 all dropped reports `removed` (D8).
 (DayStatusKind, NotPlannedReason?) _unplannedStatus(List<PlanDay> days) {
-  final states = days.map((day) => day.state).toSet();
+  final states = days
+      .map(
+        (day) => day.state == PlanDayState.planned && day.archiveDay
+            ? PlanDayState.removed
+            : day.state,
+      )
+      .toSet();
   if (states.contains(PlanDayState.paused)) {
     return (DayStatusKind.paused, null);
   }
@@ -464,8 +561,9 @@ class DueUnfilledDose {
 }
 
 /// The planned doses "Log all planned" logs (D6): [today]'s unfilled slots
-/// that are timed at or before [nowLocalTime], or untimed. Other dates are
-/// ignored. Ordered by Compound id, then slot.
+/// that are timed at or before [nowLocalTime], or untimed. A slot a Skip
+/// marks is left out as a filled one is, so a skipped dose is never logged
+/// (D8). Other dates are ignored. Ordered by Compound id, then slot.
 List<DueUnfilledDose> dueUnfilled(
   Iterable<DayStatus> dayStatuses,
   ProtocolDayDate today,
@@ -482,7 +580,9 @@ List<DueUnfilledDose> dueUnfilled(
       ..sort((a, b) => a.slot.compareTo(b.slot));
     for (final fill in fills) {
       final time = fill.plannedLocalTime;
-      if (fill.isFilled || (time != null && planLocalTimeMinutes(time) > now)) {
+      if (fill.isFilled ||
+          fill.isSkipped ||
+          (time != null && planLocalTimeMinutes(time) > now)) {
         continue;
       }
       due.add(
@@ -647,9 +747,10 @@ class _CompoundDate {
 }
 
 /// One planned dose before it is numbered: its Protocol, its position in
-/// that Protocol's PlanDay, and its time in minutes (null when untimed).
+/// that Protocol's PlanDay, its time in minutes (null when untimed), and
+/// whether its PlanDay is an archive day (D8 step 5).
 class _Slot {
-  _Slot(this.protocolId, this.position, this.dose)
+  _Slot(this.protocolId, this.position, this.dose, {required this.archiveDay})
       : minutes = dose.localTime == null
             ? null
             : planLocalTimeMinutes(dose.localTime!);
@@ -657,6 +758,7 @@ class _Slot {
   final String protocolId;
   final int position;
   final PlannedDose dose;
+  final bool archiveDay;
   final int? minutes;
 
   /// Time (untimed last), then Protocol id, then position (D6 step 1).

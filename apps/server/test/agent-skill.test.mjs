@@ -120,6 +120,32 @@ test("Perennia agent skill workflow examples only use registered commands", asyn
   );
 });
 
+test("Perennia agent skill deletes Protocols through delete-protocols, documented beside archive", async () => {
+  const root = path.resolve(process.cwd(), "..", "..");
+  const skillRoot = path.join(root, "agent-skills", "perennia");
+  const scriptPath = path.join(skillRoot, "scripts", "prn-agent.mjs");
+  const body = { idempotencyKey: "delete-key", protocolIds: ["protocol-id"] };
+
+  const [{ stdout }, skill] = await Promise.all([
+    execFileAsync(
+      process.execPath,
+      [scriptPath, "delete-protocols", "--json", JSON.stringify(body), "--dry-run"],
+      { cwd: root, env: { ...process.env, PRN_AGENT_API_KEY: "prn_agent_test" } }
+    ),
+    readFile(path.join(skillRoot, "SKILL.md"), "utf8")
+  ]);
+
+  const envelope = JSON.parse(stdout);
+  assert.equal(envelope.ok, true);
+  assert.equal(envelope.command, "delete-protocols");
+  assert.equal(envelope.data.method, "POST");
+  assert.match(envelope.data.url, /\/agent\/protocols\/delete$/);
+  assert.deepEqual(envelope.data.body, body);
+  // The skill tells an Agent to choose archive or delete by hasHistory.
+  assert.match(skill, /hasHistory/);
+  assert.match(skill, /node scripts\/prn-agent\.mjs delete-protocols /);
+});
+
 test("Perennia code-mode portable client reaches method parity with every agent-key operation", async () => {
   const root = path.resolve(process.cwd(), "..", "..");
   const codeScriptPath = path.join(

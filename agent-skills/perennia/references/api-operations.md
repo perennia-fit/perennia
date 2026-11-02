@@ -27,6 +27,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | Command | Method | Path |
 |---|---:|---|
 | `capture-workout-template` | POST | `/agent/workout-templates/capture` |
+| `delete-protocols` | POST | `/agent/protocols/delete` |
 | `effect-window` | GET | `/agent/protocols/effect-window` |
 | `energy-balance` | GET | `/agent/cross-domain/energy-balance` |
 | `exercise-analytics` | GET | `/agent/analytics/exercises/{exerciseId}` |

@@ -12,6 +12,7 @@ import {
   validateAgentNutritionGoalTargets,
   validateAgentPrescription,
   validateAgentProtocolPeriod,
+  validateAgentProtocolSkip,
   validateAgentRoutineCadence,
   validateAgentScheduleRule,
   validateAgentSet,
@@ -218,6 +219,13 @@ function validateProtocolPlanVectorCase(vectorCase) {
       startLocalDate: input.startLocalDate,
       endLocalDate: input.endLocalDate,
       period: input.period
+    });
+  }
+  if (vectorCase.validator === "protocol_skip") {
+    return validateAgentProtocolSkip({
+      localDate: input.localDate,
+      plannedLocalTime: input.plannedLocalTime,
+      today: input.today
     });
   }
   throw new Error(`Unknown protocol plan validator: ${String(vectorCase.validator)}.`);

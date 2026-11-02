@@ -170,7 +170,8 @@ void main() {
       final stopwatch = Stopwatch()..start();
 
       final days = planDays(fixture.protocols, fixture.from, fixture.to);
-      final statuses = dayStatuses(days, fixture.doses, fixture.to);
+      final statuses =
+          dayStatuses(days, fixture.doses, const <PlanSkip>[], fixture.to);
       stopwatch.stop();
 
       expect(fixture.protocols, hasLength(protocolConsistencyProtocolCount));

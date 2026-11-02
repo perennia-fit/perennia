@@ -131,6 +131,95 @@ test("the planned-day and Day Status tools answer exactly as their REST reads do
   }
 });
 
+test("the Protocol delete tool answers exactly as its REST route does, refusal included", async () => {
+  const calls = [];
+  const nudges = [];
+  const issue = {
+    field: "protocolIds[0]",
+    rule: "protocol_not_found",
+    message: "No Protocol with this id exists for this account.",
+    itemIndex: 0,
+    entityId: "protocol-unknown"
+  };
+  const store = {
+    async deleteProtocols(input) {
+      calls.push(input);
+      const refused = input.protocolIds.includes("protocol-unknown");
+      return {
+        duplicate: false,
+        idempotencyConflict: false,
+        receiptUnavailable: false,
+        serverClock: "2026-11-02T00:00:00.000Z",
+        accepted: refused ? [] : ["protocol-1"],
+        applied: refused
+          ? []
+          : [{ id: "protocol-1", updatedAt: "2026-11-02T00:00:00.000Z", deviceId: input.deviceId }],
+        validationErrors: refused ? [issue] : [],
+        protocols: refused ? [] : [{ id: "protocol-1", outcome: "deleted" }]
+      };
+    }
+  };
+  const syncNudgePublisher = {
+    async enqueueSyncNudge(input) {
+      nudges.push(input);
+      return { enqueued: true, jobId: `nudge-${nudges.length}` };
+    }
+  };
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: authenticatingKeyStore(),
+    agentProtocolsStore: store,
+    syncNudgePublisher
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: authenticatingKeyStore(),
+      agentProtocolsStore: store,
+      syncNudgePublisher,
+      logger: { info() {}, error() {} }
+    })
+  );
+  const rest = (request) =>
+    app.request("/agent/protocols/delete", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer prn_agent_secret",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(request)
+    });
+  const mcp = (request) =>
+    client.callTool({
+      name: "agent_delete_protocols",
+      arguments: { apiKey: "prn_agent_secret", request }
+    });
+
+  try {
+    const deleted = { idempotencyKey: "delete-1", protocolIds: ["protocol-1"] };
+    const restDeleted = await rest(deleted);
+    assert.equal(restDeleted.status, 200);
+    const mcpDeleted = await mcp(deleted);
+    assert.equal(mcpDeleted.isError, undefined, JSON.stringify(mcpDeleted.content));
+    assert.deepEqual(mcpDeleted.structuredContent, await restDeleted.json());
+
+    const refused = { idempotencyKey: "delete-2", protocolIds: ["protocol-unknown"] };
+    const restRefused = await rest(refused);
+    assert.equal(restRefused.status, 422);
+    const mcpRefused = await mcp(refused);
+    assert.equal(mcpRefused.isError, true);
+    assert.deepEqual(mcpRefused.structuredContent, await restRefused.json());
+    assert.equal(mcpRefused.structuredContent.code, "agent_protocol_delete_failed");
+
+    // The same store call and the same nudge on both surfaces: one each per delete.
+    assert.equal(calls.length, 4);
+    assert.deepEqual(calls[1], calls[0]);
+    assert.deepEqual(calls[3], calls[2]);
+    assert.equal(nudges.length, 2);
+  } finally {
+    await close();
+  }
+});
+
 /**
  * A Protocols store whose two plan reads answer through the shared core over
  * one fixed plan, honoring the filters, so both surfaces have a real answer to
@@ -208,7 +297,7 @@ function planReadStore() {
         toLocalDate: query.toLocalDate,
         today: query.today,
         detail: query.detail,
-        dayStatuses: dayStatuses(plan(query), doses, query.today).map(({ fills, ...summary }) =>
+        dayStatuses: dayStatuses(plan(query), doses, [], query.today).map(({ fills, ...summary }) =>
           query.detail === "doses"
             ? {
                 ...summary,
@@ -217,7 +306,8 @@ function planReadStore() {
                   protocolId: fill.protocolId,
                   plannedLocalTime: fill.plannedLocalTime,
                   ...amounts(fill),
-                  doseId: fill.doseId
+                  doseId: fill.doseId,
+                  skipId: fill.skipId
                 }))
               }
             : summary
@@ -370,6 +460,9 @@ function fullyWiredMcpServer() {
         throw new Error("not used");
       },
       async writeProtocolBatch() {
+        throw new Error("not used");
+      },
+      async deleteProtocols() {
         throw new Error("not used");
       }
     },

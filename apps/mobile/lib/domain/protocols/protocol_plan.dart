@@ -660,8 +660,11 @@ class PlanDay {
     required this.localDate,
     required this.state,
     Iterable<PlannedDose> planned = const <PlannedDose>[],
+    this.archiveDay = false,
   }) : planned = List<PlannedDose>.unmodifiable(planned);
 
+  /// `archiveDay` is required here, unlike in the constructor: a vector or
+  /// payload without it is from before D8 and would misread an archive day.
   factory PlanDay.fromJson(Object? json) {
     final map = _object(json, 'plan day');
     return PlanDay(
@@ -670,6 +673,7 @@ class PlanDay {
       localDate: _date(map['localDate'], 'localDate'),
       state: PlanDayState.fromWireName(map['state']),
       planned: _list(map['planned'], 'planned').map(PlannedDose.fromJson),
+      archiveDay: _bool(map['archiveDay'], 'archiveDay'),
     );
   }
 
@@ -679,12 +683,20 @@ class PlanDay {
   final PlanDayState state;
   final List<PlannedDose> planned;
 
+  /// True exactly when [state] is [PlanDayState.planned] and [localDate] is
+  /// the Protocol's `archivedOn` or the covering member row's (D8, "The
+  /// archive day"). On that day a planned dose counts only if a Dose fills
+  /// it: `dayStatuses` drops the unfilled ones, which `planDays` cannot do
+  /// itself because it doesn't see Doses.
+  final bool archiveDay;
+
   Map<String, Object?> toJson() => <String, Object?>{
         'protocolId': protocolId,
         'compoundId': compoundId,
         'localDate': localDate.storageValue,
         'state': state.wireName,
         'planned': planned.map((dose) => dose.toJson()).toList(),
+        'archiveDay': archiveDay,
       };
 }
 
@@ -726,6 +738,47 @@ class PlanDose {
       };
 }
 
+/// One Skip as matching sees it (D8): "not taken, on purpose" for one
+/// planned dose of [protocolId]'s [compoundId] on [localDate], at
+/// [plannedLocalTime] (null for an untimed planned dose). It names no slot
+/// number, because slot numbers shift whenever another Protocol's plan for
+/// the Compound changes.
+class PlanSkip {
+  const PlanSkip({
+    required this.skipId,
+    required this.protocolId,
+    required this.compoundId,
+    required this.localDate,
+    required this.plannedLocalTime,
+  });
+
+  factory PlanSkip.fromJson(Object? json) {
+    final map = _object(json, 'skip');
+    return PlanSkip(
+      skipId: _string(map['skipId'], 'skipId'),
+      protocolId: _string(map['protocolId'], 'protocolId'),
+      compoundId: _string(map['compoundId'], 'compoundId'),
+      localDate: _date(map['localDate'], 'localDate'),
+      plannedLocalTime:
+          _nullableTime(map['plannedLocalTime'], 'plannedLocalTime'),
+    );
+  }
+
+  final String skipId;
+  final String protocolId;
+  final String compoundId;
+  final ProtocolDayDate localDate;
+  final String? plannedLocalTime;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'skipId': skipId,
+        'protocolId': protocolId,
+        'compoundId': compoundId,
+        'localDate': localDate.storageValue,
+        'plannedLocalTime': plannedLocalTime,
+      };
+}
+
 /// The single label for one Compound on one date (CONTEXT.md `Day Status`),
 /// from a closed set. Never a score: UI copy and API fields carry statuses
 /// and counts only.
@@ -736,7 +789,11 @@ enum DayStatusKind {
   pending('pending'),
   logged('logged'),
   partlyLogged('partly_logged'),
-  notLogged('not_logged');
+  notLogged('not_logged'),
+
+  /// Every planned dose was skipped and none logged (D8). It names the
+  /// user's own choice, so it keeps the neutral-instrument rule.
+  skipped('skipped');
 
   const DayStatusKind(this.wireName);
 
@@ -771,7 +828,8 @@ enum NotPlannedReason {
 }
 
 /// One numbered planned dose (a slot) of a Compound on a date, and the Dose
-/// that fills it, or null when it is unfilled.
+/// that fills it or the Skip that marks it (D8), each null when there is
+/// none. A slot never has both.
 class PlanSlotFill {
   const PlanSlotFill({
     required this.slot,
@@ -779,6 +837,7 @@ class PlanSlotFill {
     required this.plannedLocalTime,
     required this.doseId,
     this.amount = PlanAmount.none,
+    this.skipId,
   });
 
   factory PlanSlotFill.fromJson(Object? json) {
@@ -790,6 +849,7 @@ class PlanSlotFill {
           _nullableTime(map['plannedLocalTime'], 'plannedLocalTime'),
       amount: PlanAmount.fromJson(map),
       doseId: _nullableString(map['doseId'], 'doseId'),
+      skipId: _nullableString(map['skipId'], 'skipId'),
     );
   }
 
@@ -798,8 +858,12 @@ class PlanSlotFill {
   final String? plannedLocalTime;
   final PlanAmount amount;
   final String? doseId;
+  final String? skipId;
 
   bool get isFilled => doseId != null;
+
+  /// A Skip marks this slot (D8). A skipped slot is not filled.
+  bool get isSkipped => skipId != null;
 
   Map<String, Object?> toJson() => <String, Object?>{
         'slot': slot,
@@ -807,13 +871,15 @@ class PlanSlotFill {
         'plannedLocalTime': plannedLocalTime,
         ...amount.toJson(),
         'doseId': doseId,
+        'skipId': skipId,
       };
 }
 
 /// The Day Status of one Compound on one date, with its counts and every
-/// slot (D6). Derived, never stored. [notPlannedReason] is set exactly when
-/// [status] is [DayStatusKind.notPlanned]. Extra Doses are counted in
-/// [extraCount] and never change [status].
+/// slot (D6, D8). Derived, never stored. [notPlannedReason] is set exactly
+/// when [status] is [DayStatusKind.notPlanned]. Extra Doses are counted in
+/// [extraCount] and never change [status]. `loggedCount + skippedCount`
+/// never exceeds [plannedCount].
 class DayStatus {
   DayStatus({
     required this.compoundId,
@@ -824,6 +890,7 @@ class DayStatus {
     required this.extraCount,
     required Iterable<PlanSlotFill> fills,
     this.notPlannedReason,
+    this.skippedCount = 0,
   }) : fills = List<PlanSlotFill>.unmodifiable(fills);
 
   factory DayStatus.fromJson(Object? json) {
@@ -837,6 +904,7 @@ class DayStatus {
           reason == null ? null : NotPlannedReason.fromWireName(reason),
       plannedCount: _int(map['plannedCount'], 'plannedCount'),
       loggedCount: _int(map['loggedCount'], 'loggedCount'),
+      skippedCount: _int(map['skippedCount'], 'skippedCount'),
       extraCount: _int(map['extraCount'], 'extraCount'),
       fills: _list(map['fills'], 'fills').map(PlanSlotFill.fromJson),
     );
@@ -848,6 +916,9 @@ class DayStatus {
   final NotPlannedReason? notPlannedReason;
   final int plannedCount;
   final int loggedCount;
+
+  /// The slots a Skip marks (D8).
+  final int skippedCount;
   final int extraCount;
   final List<PlanSlotFill> fills;
 
@@ -860,6 +931,7 @@ class DayStatus {
           'notPlannedReason': notPlannedReason!.wireName,
         'plannedCount': plannedCount,
         'loggedCount': loggedCount,
+        'skippedCount': skippedCount,
         'extraCount': extraCount,
         'fills': fills.map((fill) => fill.toJson()).toList(),
       };

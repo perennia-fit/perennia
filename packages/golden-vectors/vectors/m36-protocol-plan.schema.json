@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "m36-protocol-plan.schema.json",
   "title": "M36 Protocol Plan core golden vector",
-  "description": "Language-neutral parity cases for the Protocol Plan core. Each case names one function and gives its arguments by parameter name in `input` and its return value in `expected`. rule_codec and period_codec decode the stored JSON in `input.json`; `expected` is the decoded value written back in the same JSON shape, or {\"rejects\": true}. plan_days decides one state per Protocol, Compound and date (D4): outside, paused, off_cycle, removed, then the Schedule Version that applies (latest effectiveFrom on or before the date, the larger id on a tie; the covering member row, the larger memberId on a tie). day_statuses fills slots by nearest time (D6) and returns one Day Status per Compound and date up to today. due_unfilled picks today's unfilled slots timed at or before now, or untimed. effect_bounds turns inclusive local-date bounds into Effect's half-open instants using the given UTC offset, or {\"rejects\": true} for an offset outside -720 to +840 (D2). Outputs are ordered: PlanDay by localDate, protocolId, compoundId; DayStatus by localDate, compoundId; fills by slot; due_unfilled rows in DayStatus order, then by slot. Cases contain no IANA zones; a UTC offset appears only as an input of effect_bounds cases.",
+  "description": "Language-neutral parity cases for the Protocol Plan core. Each case names one function and gives its arguments by parameter name in `input` and its return value in `expected`. rule_codec and period_codec decode the stored JSON in `input.json`; `expected` is the decoded value written back in the same JSON shape, or {\"rejects\": true}. plan_days decides one state per Protocol, Compound and date (D4): outside, paused, off_cycle, removed, then the Schedule Version that applies (latest effectiveFrom on or before the date, the larger id on a tie; the covering member row, the larger memberId on a tie); a planned PlanDay on the Protocol's or the covering member row's archivedOn has archiveDay true (D8). day_statuses assigns Skips to slots of their own Protocol and planned time in id order, fills slots by nearest time preferring slots no Skip took (D6, D8), drops an archive day's unfilled slots, and returns one Day Status per Compound and date up to today. due_unfilled picks today's slots with neither a Dose nor a Skip, timed at or before now, or untimed. effect_bounds turns inclusive local-date bounds into Effect's half-open instants using the given UTC offset, or {\"rejects\": true} for an offset outside -720 to +840 (D2). Outputs are ordered: PlanDay by localDate, protocolId, compoundId; DayStatus by localDate, compoundId; fills by slot; due_unfilled rows in DayStatus order, then by slot. Cases contain no IANA zones; a UTC offset appears only as an input of effect_bounds cases.",
   "type": "object",
   "additionalProperties": false,
   "required": ["name", "domain", "schemaVersion", "schema", "cases"],
   "properties": {
     "name": {"const": "m36-protocol-plan"},
     "domain": {"const": "protocol-plan"},
-    "schemaVersion": {"const": 1},
+    "schemaVersion": {"const": 2},
     "schema": {"const": "m36-protocol-plan.schema.json"},
     "cases": {
       "type": "array",
@@ -200,17 +200,18 @@
     "planDay": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["protocolId", "compoundId", "localDate", "state", "planned"],
+      "required": ["protocolId", "compoundId", "localDate", "state", "planned", "archiveDay"],
       "properties": {
         "protocolId": {"$ref": "#/$defs/id"},
         "compoundId": {"$ref": "#/$defs/id"},
         "localDate": {"$ref": "#/$defs/localDate"},
         "state": {"enum": ["planned", "not_scheduled_today", "as_needed", "no_schedule", "removed", "outside", "paused", "off_cycle"]},
-        "planned": {"type": "array", "items": {"$ref": "#/$defs/plannedDose"}}
+        "planned": {"type": "array", "items": {"$ref": "#/$defs/plannedDose"}},
+        "archiveDay": {"type": "boolean", "description": "True exactly when state is planned and localDate is the Protocol's or the covering member row's archivedOn (D8)."}
       },
       "if": {"properties": {"state": {"const": "planned"}}},
       "then": {"properties": {"planned": {"type": "array", "minItems": 1}}},
-      "else": {"properties": {"planned": {"type": "array", "maxItems": 0}}}
+      "else": {"properties": {"planned": {"type": "array", "maxItems": 0}, "archiveDay": {"const": false}}}
     },
     "planDose": {
       "type": "object",
@@ -224,29 +225,43 @@
         "sequence": {"type": "integer", "minimum": 0}
       }
     },
+    "planSkip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skipId", "protocolId", "compoundId", "localDate", "plannedLocalTime"],
+      "properties": {
+        "skipId": {"$ref": "#/$defs/id"},
+        "protocolId": {"$ref": "#/$defs/id"},
+        "compoundId": {"$ref": "#/$defs/id"},
+        "localDate": {"$ref": "#/$defs/localDate"},
+        "plannedLocalTime": {"$ref": "#/$defs/nullableLocalTime"}
+      }
+    },
     "fill": {
       "allOf": [{"$ref": "#/$defs/amount"}],
       "type": "object",
       "unevaluatedProperties": false,
-      "required": ["slot", "protocolId", "plannedLocalTime", "doseId"],
+      "required": ["slot", "protocolId", "plannedLocalTime", "doseId", "skipId"],
       "properties": {
         "slot": {"type": "integer", "minimum": 0},
         "protocolId": {"$ref": "#/$defs/id"},
         "plannedLocalTime": {"$ref": "#/$defs/nullableLocalTime"},
-        "doseId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}
+        "doseId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "skipId": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}
       }
     },
     "dayStatus": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["compoundId", "localDate", "status", "plannedCount", "loggedCount", "extraCount", "fills"],
+      "required": ["compoundId", "localDate", "status", "plannedCount", "loggedCount", "skippedCount", "extraCount", "fills"],
       "properties": {
         "compoundId": {"$ref": "#/$defs/id"},
         "localDate": {"$ref": "#/$defs/localDate"},
-        "status": {"enum": ["not_planned", "paused", "off_cycle", "pending", "logged", "partly_logged", "not_logged"]},
+        "status": {"enum": ["not_planned", "paused", "off_cycle", "pending", "logged", "partly_logged", "not_logged", "skipped"]},
         "notPlannedReason": {"enum": ["not_scheduled_today", "as_needed", "no_schedule", "removed", "outside"]},
         "plannedCount": {"type": "integer", "minimum": 0},
         "loggedCount": {"type": "integer", "minimum": 0},
+        "skippedCount": {"type": "integer", "minimum": 0},
         "extraCount": {"type": "integer", "minimum": 0},
         "fills": {"type": "array", "items": {"$ref": "#/$defs/fill"}}
       },
@@ -314,10 +329,11 @@
             "input": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["planDays", "doses", "today"],
+              "required": ["planDays", "doses", "skips", "today"],
               "properties": {
                 "planDays": {"type": "array", "items": {"$ref": "#/$defs/planDay"}},
                 "doses": {"type": "array", "items": {"$ref": "#/$defs/planDose"}},
+                "skips": {"type": "array", "items": {"$ref": "#/$defs/planSkip"}},
                 "today": {"$ref": "#/$defs/localDate"}
               }
             },

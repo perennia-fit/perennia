@@ -565,6 +565,121 @@ test(
 );
 
 test(
+  "a Protocol delete on one replica converges on the others, which then plan nothing for it; its child rows are unchanged",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = protocolReplicas(server);
+      const [replicaA] = replicas;
+      const plan = await stageProtocolPlan(replicas);
+
+      // D8: a delete writes the one Protocol row, as undoing its creation
+      // leaves it: deleted_at and updated_at now, archived_on null.
+      const deletedAt = "2026-10-20T07:00:00.000Z";
+      replicaA.stageChange("protocols", {
+        id: plan.protocolId,
+        payload: {
+          ...replicaA.row("protocols", plan.protocolId).payload,
+          archived_on: null,
+          updated_at: deletedAt,
+          deleted_at: deletedAt
+        },
+        updatedAt: deletedAt,
+        deletedAt
+      });
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        const protocol = replica.row("protocols", plan.protocolId);
+        assert.notEqual(protocol.deletedAt, null, replica.name);
+        assert.equal(protocol.payload.archived_on, null, replica.name);
+        // Nothing cascades: the member and its version are as they were.
+        assert.equal(replica.row("protocol_compounds", plan.memberId).deletedAt, null);
+        assert.equal(replica.row("schedules", plan.versionId).deletedAt, null);
+        // A reader reaches them only through a live Protocol, so it plans nothing.
+        assert.deepEqual(
+          planDays(livePlanProtocols(replica), "2026-10-20", "2026-10-21"),
+          [],
+          `${replica.name} still plans the deleted Protocol`
+        );
+      }
+      assert.equal(
+        replicas[2].stateSignatureFor(protocolPlanEntityOrder),
+        replicaA.stateSignatureFor(protocolPlanEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "a Protocol delete against another replica's later rename converges to the live Protocol with all its members",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = protocolReplicas(server);
+      const [replicaA, replicaB] = replicas;
+      const plan = await stageProtocolPlan(replicas);
+
+      // Offline: A deletes the Protocol, then B renames it later. B pushes
+      // first; A's older delete then loses last-writer-wins, so the whole
+      // Protocol comes back with its children, never half-deleted.
+      const deletedAt = "2026-10-20T07:00:00.000Z";
+      const renamedAt = "2026-10-20T08:00:00.000Z";
+      replicaA.stageChange("protocols", {
+        id: plan.protocolId,
+        payload: {
+          ...replicaA.row("protocols", plan.protocolId).payload,
+          archived_on: null,
+          updated_at: deletedAt,
+          deleted_at: deletedAt
+        },
+        updatedAt: deletedAt,
+        deletedAt
+      });
+      replicaB.stageChange("protocols", {
+        id: plan.protocolId,
+        payload: {
+          ...replicaB.row("protocols", plan.protocolId).payload,
+          name: "Renamed",
+          updated_at: renamedAt,
+          deleted_at: null
+        },
+        updatedAt: renamedAt,
+        deletedAt: null
+      });
+      await replicaB.pushPending();
+      await replicaA.pushPending();
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        const protocol = replica.row("protocols", plan.protocolId);
+        assert.equal(protocol.deletedAt, null, replica.name);
+        assert.equal(protocol.payload.name, "Renamed", replica.name);
+        assert.equal(replica.row("protocol_compounds", plan.memberId).deletedAt, null);
+        const days = planDays(livePlanProtocols(replica), "2026-10-20", "2026-10-20");
+        assert.deepEqual(
+          days.map((day) => [day.protocolId, day.compoundId, day.state]),
+          [[plan.protocolId, plan.compoundId, "planned"]],
+          replica.name
+        );
+      }
+      assert.equal(
+        replicas[2].stateSignatureFor(protocolPlanEntityOrder),
+        replicaA.stateSignatureFor(protocolPlanEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
   "fresh and resynced replicas converge when parents are edited after their children were received",
   { skip: databaseUrl ? false : "DATABASE_URL is not set." },
   async () => {
@@ -1726,6 +1841,82 @@ function protocolPlanRow(entityName, id, updatedAt, fields) {
 /** A synced `rule` or `period`: JSON text from the app, an object from an Agent write. */
 function storedJson(value) {
   return typeof value === "string" ? JSON.parse(value) : value;
+}
+
+function protocolReplicas(server) {
+  return ["a", "b", "c"].map(
+    (name) =>
+      new PlanTreeReplica({
+        name: `Protocol Replica ${name.toUpperCase()}`,
+        deviceId: `device-${name}`,
+        server,
+        entityOrder: protocolPlanEntityOrder
+      })
+  );
+}
+
+/** A one-member Protocol, written on the first replica and settled on all. */
+async function stageProtocolPlan(replicas) {
+  const updatedAt = "2026-10-01T08:00:00.000Z";
+  const at = new Date(updatedAt);
+  const ids = {
+    compoundId: createUuidV7(at),
+    protocolId: createUuidV7(at),
+    memberId: createUuidV7(at),
+    versionId: createUuidV7(at)
+  };
+  for (const row of [
+    protocolPlanRow("compounds", ids.compoundId, updatedAt, {
+      name: "Creatine",
+      default_unit: "gram",
+      default_route: "oral",
+      strength: null
+    }),
+    protocolPlanRow("protocols", ids.protocolId, updatedAt, {
+      name: "Daily",
+      start_local_date: "2026-09-01",
+      end_local_date: null,
+      period: null,
+      reminders_enabled: false,
+      archived_on: null
+    }),
+    protocolPlanRow("protocol_compounds", ids.memberId, updatedAt, {
+      protocol_id: ids.protocolId,
+      compound_id: ids.compoundId,
+      position: 0,
+      archived_on: null
+    }),
+    protocolPlanRow("schedules", ids.versionId, updatedAt, {
+      protocol_compound_id: ids.memberId,
+      effective_from: "2026-09-01",
+      rule: timedDailyRule(["09:00"]),
+      ...creatineAmount
+    })
+  ]) {
+    replicas[0].stageChange(row.entity, {
+      id: row.id,
+      payload: row.payload,
+      updatedAt,
+      deletedAt: null
+    });
+  }
+  await settlePlanReplicas(replicas);
+  return ids;
+}
+
+/**
+ * Every Protocol a reader plans from, as the app's plan query reads them
+ * (D1, D8): any Protocol but one tombstoned by undo or deleted
+ * (`deleted_at` with no `archived_on`), whose children it hides.
+ */
+function livePlanProtocols(replica) {
+  return [...replica.rows.values()]
+    .filter(
+      (row) =>
+        row.entity === "protocols" &&
+        (row.deletedAt === null || row.payload.archived_on !== null)
+    )
+    .map((row) => planProtocolFrom(replica, row.id));
 }
 
 /** One Protocol as the shared plan core reads it, from a replica's rows. */

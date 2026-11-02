@@ -4328,6 +4328,42 @@ abstract class AppLocalizations {
   /// **'Archive'**
   String get protocolEditorArchive;
 
+  /// No description provided for @protocolEditorDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get protocolEditorDelete;
+
+  /// No description provided for @protocolArchiveConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive {name}?'**
+  String protocolArchiveConfirmTitle(String name);
+
+  /// No description provided for @protocolArchiveConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Doses you logged stay in your history. From tomorrow it plans nothing, and today\'s doses you haven\'t logged are no longer expected.'**
+  String get protocolArchiveConfirmMessage;
+
+  /// No description provided for @protocolDeleteConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {name}?'**
+  String protocolDeleteConfirmTitle(String name);
+
+  /// No description provided for @protocolDeleteConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing has been logged for this Protocol, so it is removed completely. You can still recover it from the Activity Log.'**
+  String get protocolDeleteConfirmMessage;
+
+  /// No description provided for @protocolOnlyArchivable.
+  ///
+  /// In en, this message translates to:
+  /// **'Something was logged for this Protocol, so it can only be archived.'**
+  String get protocolOnlyArchivable;
+
   /// No description provided for @protocolEditorNameRequired.
   ///
   /// In en, this message translates to:
@@ -4351,6 +4387,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not save the Protocol: {error}'**
   String protocolEditorSaveFailed(String error);
+
+  /// No description provided for @protocolEditorDeleteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not delete the Protocol: {error}'**
+  String protocolEditorDeleteFailed(String error);
 
   /// No description provided for @protocolEditorCompoundFallback.
   ///
@@ -4478,6 +4520,12 @@ abstract class AppLocalizations {
   /// **'Not logged'**
   String get plannedListRowNotLogged;
 
+  /// No description provided for @plannedListRowSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped'**
+  String get plannedListRowSkipped;
+
   /// No description provided for @plannedListAnyTime.
   ///
   /// In en, this message translates to:
@@ -4537,6 +4585,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not logged'**
   String get dayStatusNotLogged;
+
+  /// No description provided for @dayStatusSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped'**
+  String get dayStatusSkipped;
 
   /// No description provided for @notPlannedReasonNotScheduledToday.
   ///
@@ -5077,6 +5131,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, other{{count} paused}}'**
   String progressCountPaused(int count);
+
+  /// No description provided for @progressCountSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} skipped}}'**
+  String progressCountSkipped(int count);
 
   /// No description provided for @progressKeyExercisesTitle.
   ///

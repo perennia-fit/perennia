@@ -148,6 +148,7 @@ node scripts/prn-agent.mjs log-doses --file doses.json --dry-run
 node scripts/prn-agent.mjs log-doses --file doses.json
 node scripts/prn-agent.mjs manage-compounds --file compounds.json
 node scripts/prn-agent.mjs manage-protocols --file protocols.json
+node scripts/prn-agent.mjs delete-protocols --json '{"idempotencyKey":"delete-key","protocolIds":["protocol-id"]}'
 node scripts/prn-agent.mjs update-settings --file settings.json
 node scripts/prn-agent.mjs undo-activity-batch --json '{"batchId":"batch-id","idempotencyKey":"undo-key"}'
 ```
@@ -161,6 +162,14 @@ validator's per-item `warnings[]`. A `duplicate` retry must not be resubmitted w
 a new key. A `422` error with rule `idempotency_key_conflict` means the key was
 reused for different work, so keep the original key with the original payload and
 use a new key only for the new request.
+
+To end a Protocol, read its `hasHistory` from `list-protocols`. Archive a
+Protocol with history (`manage-protocols` with `archived: true`), which keeps its
+past days. Delete one without history with `delete-protocols`, which removes its
+plan as if it never existed; `undo-activity-batch` on the delete's `batchId`
+brings it back. A delete of a Protocol with history is refused
+(`protocol_has_history`), and archiving one without history returns the
+`protocol_has_no_history` warning.
 
 Use `list-workout-templates`/`get-workout-template` and
 `list-routines`/`get-routine` for the redesigned plan layer. Lists are

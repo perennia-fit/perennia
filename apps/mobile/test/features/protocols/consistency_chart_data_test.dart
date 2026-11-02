@@ -58,6 +58,7 @@ void main() {
       final statuses = dayStatuses(
         planDays(<PlanProtocol>[protocol], from, to),
         const <PlanDose>[],
+        const <PlanSkip>[],
         to,
       );
       final tuesday =
@@ -190,7 +191,8 @@ void main() {
         from: from,
         to: to,
         planDays: days,
-        dayStatuses: dayStatuses(days, const <PlanDose>[], _date(2026, 10, 31)),
+        dayStatuses: dayStatuses(
+            days, const <PlanDose>[], const <PlanSkip>[], _date(2026, 10, 31)),
         doses: const <DoseRecord>[],
         extraDoseIds: const <String>{},
       );
@@ -303,8 +305,9 @@ void main() {
     });
 
     test(
-        'planned segments end on the day a member is removed, and on the day '
-        'a Protocol is archived', () {
+        'planned segments end the day before a member is removed, and before '
+        'a Protocol is archived, when nothing was logged on the archive day '
+        '(D8)', () {
       PlanProtocol protocol({
         ProtocolDayDate? memberArchivedOn,
         ProtocolDayDate? protocolArchivedOn,
@@ -331,7 +334,8 @@ void main() {
       final from = _date(2026, 10, 1);
       final to = _date(2026, 10, 8);
 
-      // Removed on the 3rd: the archive day itself is still planned (D1).
+      // Removed on the 3rd with nothing logged: the archive day's unfilled
+      // planned doses are dropped (D8), so the lines end on the 2nd.
       final removed = _build(
         <PlanProtocol>[protocol(memberArchivedOn: _date(2026, 10, 3))],
         from,
@@ -339,7 +343,7 @@ void main() {
       );
       expect(
         _segments(removed),
-        <(String, int, int)>[('09:00', 0, 2), ('21:00', 0, 2)],
+        <(String, int, int)>[('09:00', 0, 1), ('21:00', 0, 1)],
       );
       expect(removed.shades, isEmpty);
 
@@ -350,7 +354,67 @@ void main() {
       );
       expect(
         _segments(archived),
-        <(String, int, int)>[('09:00', 0, 4), ('21:00', 0, 4)],
+        <(String, int, int)>[('09:00', 0, 3), ('21:00', 0, 3)],
+      );
+    });
+
+    test(
+        'on an archive day the chart draws only the planned times a Dose '
+        'filled, and no dropped time (D8)', () {
+      final protocol = PlanProtocol(
+        protocolId: 'p-daily',
+        startLocalDate: _date(2026, 10, 1),
+        archivedOn: _date(2026, 10, 5),
+        members: <PlanMember>[
+          PlanMember(
+            memberId: 'm-trt',
+            compoundId: 'c-trt',
+            versions: <ScheduleVersion>[
+              _version(
+                'v-1',
+                _date(2026, 10, 1),
+                _daily(<String>['09:00', '21:00']),
+              ),
+            ],
+          ),
+        ],
+      );
+      final from = _date(2026, 10, 1);
+      final to = _date(2026, 10, 8);
+
+      // A Dose at 10:00 on the archive day fills 09:00; 21:00 is dropped.
+      final data = _build(
+        <PlanProtocol>[protocol],
+        from,
+        to,
+        doses: <DoseRecord>[_dose('d-1', _date(2026, 10, 5), 10, 0)],
+      );
+      expect(
+        _segments(data),
+        <(String, int, int)>[('09:00', 0, 4), ('21:00', 0, 3)],
+      );
+      expect(data.points.single.isExtra, isFalse);
+
+      // With today on the 4th, the archive day is ahead and has no Day
+      // Status, so none of its planned doses is filled and none is drawn.
+      final today = _date(2026, 10, 4);
+      final days = planDays(<PlanProtocol>[protocol], from, to);
+      final ahead = ConsistencyChartData.build(
+        from: from,
+        to: to,
+        planDays: days,
+        dayStatuses: dayStatuses(
+          days.where((day) => day.localDate.compareTo(today) <= 0),
+          const <PlanDose>[],
+          const <PlanSkip>[],
+          today,
+        ),
+        doses: const <DoseRecord>[],
+        extraDoseIds: const <String>{},
+      );
+      expect(
+        _segments(ahead),
+        <(String, int, int)>[('09:00', 0, 3), ('21:00', 0, 3)],
       );
     });
 
@@ -491,7 +555,7 @@ ConsistencyRange _range(
     to: to,
     today: to,
     planDays: days,
-    dayStatuses: dayStatuses(days, planDoses, to),
+    dayStatuses: dayStatuses(days, planDoses, const <PlanSkip>[], to),
     doses: doses,
     compound: null,
     protocols: const <String, ProtocolOptionRecord>{},

@@ -170,6 +170,9 @@ class _CompoundRow extends StatelessWidget {
         l10n.progressCountPartlyLogged(summary.partlyLogged),
       if (summary.notLogged > 0) l10n.progressCountNotLogged(summary.notLogged),
       if (summary.paused > 0) l10n.progressCountPaused(summary.paused),
+      // Days where every planned dose was skipped (protocol schedules spec,
+      // D8). A Logged day with skipped slots counts as logged.
+      if (summary.skipped > 0) l10n.progressCountSkipped(summary.skipped),
     ].join(progressSeparator);
     return InkWell(
       key: ProtocolsProgressCard.rowKey(summary.compoundId),

@@ -92,6 +92,11 @@ void main() {
               endLocalDate: _nullableDate(input['endLocalDate']),
               period: input['period'] as Map<String, Object?>?,
             ),
+          'protocol_skip' => validateProtocolSkip(
+              localDate: ProtocolDayDate.parse(input['localDate']! as String),
+              plannedLocalTime: input['plannedLocalTime'] as String?,
+              today: ProtocolDayDate.parse(input['today']! as String),
+            ),
           _ => throw StateError('Unknown plan validator: $validator.'),
         };
 
