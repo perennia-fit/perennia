@@ -220,6 +220,133 @@ test("the Protocol delete tool answers exactly as its REST route does, refusal i
   }
 });
 
+test("the Skip write tool answers exactly as its REST route does, both refusals included", async () => {
+  const calls = [];
+  const nudges = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const skipId = "01900000-0000-7000-8000-000000000001";
+  const unknownSkipId = "01900000-0000-7000-8000-000000000002";
+  const skip = (id, fields = {}) => ({
+    id,
+    protocolId: "protocol-1",
+    compoundId: "compound-a",
+    localDate: today,
+    plannedLocalTime: "21:00",
+    ...fields
+  });
+  const store = {
+    async writeProtocolSkipBatch(input) {
+      calls.push(input);
+      const refused = input.skips.some((row) => row.id === unknownSkipId);
+      return {
+        duplicate: false,
+        idempotencyConflict: false,
+        receiptUnavailable: false,
+        serverClock: "2026-11-02T00:00:00.000Z",
+        accepted: refused ? [] : [skipId],
+        applied: refused
+          ? []
+          : [{ id: skipId, updatedAt: "2026-11-02T00:00:00.000Z", deviceId: input.deviceId }],
+        validationErrors: refused
+          ? [
+              {
+                field: "skips[0].protocolId",
+                rule: "protocol_not_found",
+                message: "No Protocol with this id exists for this account.",
+                itemIndex: 0,
+                entityId: unknownSkipId
+              }
+            ]
+          : [],
+        skips: refused ? [] : [{ id: skipId, outcome: "applied" }]
+      };
+    }
+  };
+  const syncNudgePublisher = {
+    async enqueueSyncNudge(input) {
+      nudges.push(input);
+      return { enqueued: true, jobId: `nudge-${nudges.length}` };
+    }
+  };
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: authenticatingKeyStore(),
+    agentProtocolsStore: store,
+    syncNudgePublisher
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: authenticatingKeyStore(),
+      agentProtocolsStore: store,
+      syncNudgePublisher,
+      logger: { info() {}, error() {} }
+    })
+  );
+  const rest = (request) =>
+    app.request("/agent/protocols/skips/batch-write", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer prn_agent_secret",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(request)
+    });
+  const mcp = (request) =>
+    client.callTool({
+      name: "agent_batch_write_protocol_skips",
+      arguments: { apiKey: "prn_agent_secret", request }
+    });
+
+  try {
+    const written = { idempotencyKey: "skip-1", today, skips: [skip(skipId)] };
+    const restWritten = await rest(written);
+    assert.equal(restWritten.status, 200);
+    const mcpWritten = await mcp(written);
+    assert.equal(mcpWritten.isError, undefined, JSON.stringify(mcpWritten.content));
+    assert.deepEqual(mcpWritten.structuredContent, await restWritten.json());
+
+    // A refusal the store judges (protocol_not_found).
+    const storeRefused = { idempotencyKey: "skip-2", today, skips: [skip(unknownSkipId)] };
+    const restStoreRefused = await rest(storeRefused);
+    assert.equal(restStoreRefused.status, 422);
+    const mcpStoreRefused = await mcp(storeRefused);
+    assert.equal(mcpStoreRefused.isError, true);
+    assert.deepEqual(mcpStoreRefused.structuredContent, await restStoreRefused.json());
+    assert.equal(
+      mcpStoreRefused.structuredContent.code,
+      "agent_protocol_skip_batch_write_failed"
+    );
+
+    // A refusal the shared validator judges, before the store.
+    const validatorRefused = {
+      idempotencyKey: "skip-3",
+      today,
+      skips: [skip(skipId, { plannedLocalTime: "9:00" })]
+    };
+    const restValidatorRefused = await rest(validatorRefused);
+    assert.equal(restValidatorRefused.status, 422);
+    const mcpValidatorRefused = await mcp(validatorRefused);
+    assert.equal(mcpValidatorRefused.isError, true);
+    assert.deepEqual(mcpValidatorRefused.structuredContent, await restValidatorRefused.json());
+    assert.deepEqual(
+      mcpValidatorRefused.structuredContent.issues.map((issue) => issue.rule),
+      ["skip_time_format"]
+    );
+
+    // The same store call and the same nudge on both surfaces; the
+    // validator's refusal never reaches the store.
+    assert.equal(calls.length, 4);
+    assert.deepEqual(calls[1], { ...calls[0], skips: calls[1].skips });
+    assert.deepEqual(
+      calls[1].skips.map(({ updatedAt: _u, payload: { updated_at: _p, ...payload }, ...row }) => ({ ...row, payload })),
+      calls[0].skips.map(({ updatedAt: _u, payload: { updated_at: _p, ...payload }, ...row }) => ({ ...row, payload }))
+    );
+    assert.equal(nudges.length, 2);
+  } finally {
+    await close();
+  }
+});
+
 /**
  * A Protocols store whose two plan reads answer through the shared core over
  * one fixed plan, honoring the filters, so both surfaces have a real answer to
@@ -265,6 +392,17 @@ function planReadStore() {
   const doses = [
     { doseId: "dose-1", compoundId: "compound-a", localDate: addDays(today, -1), localTime: "08:55", sequence: 0 }
   ];
+  // A Skip of the evening dose the Dose didn't fill, so both reads agree on
+  // a skipped slot and a skippedCount too (D8).
+  const skips = [
+    {
+      skipId: "skip-1",
+      protocolId: "protocol-1",
+      compoundId: "compound-a",
+      localDate: addDays(today, -1),
+      plannedLocalTime: "21:00"
+    }
+  ];
   const plan = (query) =>
     planDays(
       protocols.filter((protocol) => query.protocolId === undefined || protocol.protocolId === query.protocolId),
@@ -297,7 +435,7 @@ function planReadStore() {
         toLocalDate: query.toLocalDate,
         today: query.today,
         detail: query.detail,
-        dayStatuses: dayStatuses(plan(query), doses, [], query.today).map(({ fills, ...summary }) =>
+        dayStatuses: dayStatuses(plan(query), doses, skips, query.today).map(({ fills, ...summary }) =>
           query.detail === "doses"
             ? {
                 ...summary,
@@ -463,6 +601,9 @@ function fullyWiredMcpServer() {
         throw new Error("not used");
       },
       async deleteProtocols() {
+        throw new Error("not used");
+      },
+      async writeProtocolSkipBatch() {
         throw new Error("not used");
       }
     },

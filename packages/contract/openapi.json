@@ -9907,6 +9907,176 @@
         ],
         "additionalProperties": false
       },
+      "AgentProtocolSkipBatchWriteResponse": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "duplicate": {
+            "type": "boolean"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "batchId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Activity Log batch. Undoing it (undo-activity-batch) reverses every row this request wrote, swept Skips included."
+          },
+          "serverClock": {
+            "type": "string",
+            "minLength": 1
+          },
+          "skips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolSkipBatchWriteResult"
+            },
+            "description": "One entry per Skip sent, in order. A Skip removed because it shares a removed timed Skip's Protocol, Compound, date and time gets its own entry, right after the item that removed it."
+          }
+        },
+        "required": [
+          "accepted",
+          "duplicate",
+          "idempotencyKey",
+          "batchId",
+          "serverClock",
+          "skips"
+        ]
+      },
+      "AgentProtocolSkipBatchWriteResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "superseded",
+              "duplicate",
+              "refused"
+            ],
+            "description": "As for Doses: applied, superseded (a newer stored version won), duplicate (an idempotent replay), or refused (the sync push didn't accept the row)."
+          }
+        },
+        "required": [
+          "id",
+          "outcome"
+        ]
+      },
+      "AgentProtocolSkipBatchWriteErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "agent_protocol_skip_batch_write_failed"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolsBatchWriteIssue"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "issues"
+        ]
+      },
+      "AgentProtocolSkipBatchWriteRequest": {
+        "type": "object",
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Stable key for this agent request. The whole request is one Activity Log batch with this batchId, and a replay with the same key writes nothing."
+          },
+          "today": {
+            "type": "string",
+            "description": "The user's local date (YYYY-MM-DD), within one day of the server's UTC date. A Skip may not be for a day after it.",
+            "example": "2026-10-26"
+          },
+          "skips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolSkipBatchWriteSkip"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Skips to write or remove atomically as one Activity Log batch. A Skip is never edited: it is written once and removed with deletedAt."
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "today",
+          "skips"
+        ],
+        "additionalProperties": false
+      },
+      "AgentProtocolSkipBatchWriteSkip": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+            "description": "The Skip's id: a client-supplied UUIDv7 for a new Skip, or the id of a stored one (a fill's skipId) to remove it."
+          },
+          "protocolId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Protocol whose planned dose this Skip answers. It must name a Protocol of this account that wasn't deleted; an archived one is accepted, for its past days."
+          },
+          "compoundId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The planned dose's Compound."
+          },
+          "localDate": {
+            "type": "string",
+            "description": "The planned dose's local date (YYYY-MM-DD); not after today.",
+            "example": "2026-10-26"
+          },
+          "plannedLocalTime": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The planned dose's time, HH:MM, or null for an untimed planned dose. A timed Skip names exactly one planned dose; an untimed one answers any one of that Protocol's untimed planned doses of the Compound that day."
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Set to remove the Skip. Removing a timed Skip also removes every other Skip with the same Protocol, Compound, date and time, as the app's Undo skip does. A removed Skip is never brought back: skip again with a new id."
+          }
+        },
+        "required": [
+          "id",
+          "protocolId",
+          "compoundId",
+          "localDate",
+          "plannedLocalTime"
+        ],
+        "additionalProperties": false
+      },
       "AgentExerciseAnalyticsResponse": {
         "type": "object",
         "properties": {
@@ -15939,6 +16109,7 @@
               "exercise_group_members",
               "compounds",
               "doses",
+              "protocol_skips",
               "foods",
               "meal_types",
               "food_entries",
@@ -16686,6 +16857,7 @@
               "exercise_group_members",
               "compounds",
               "doses",
+              "protocol_skips",
               "foods",
               "meal_types",
               "food_entries",
@@ -22338,6 +22510,124 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentProtocolDeleteErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or Protocols write storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProtocolsUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/protocols/skips/batch-write": {
+      "post": {
+        "operationId": "batchWriteAgentProtocolSkips",
+        "tags": [
+          "Agent Writes"
+        ],
+        "summary": "Skip planned doses, or remove Skips, as one Activity Log batch.",
+        "description": "Authenticated agent write for Skips: a Skip answers one planned dose on one local date as not taken, on purpose, so its Day Status reads skipped rather than pending or not_logged. It names the planned dose by Protocol, Compound, date and planned time (null when untimed), never by slot. A Skip is never edited: it is written once and removed with deletedAt, and removing a timed Skip also removes every other Skip with the same Protocol, Compound, date and time, in the same batch. Find the Skips that matter in the Day Status read's fills (detail=doses). Any refused item refuses the whole request. Idempotent by idempotency key.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentProtocolSkipBatchWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The batch was accepted, or recognized as an idempotent replay.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProtocolSkipBatchWriteResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A Skip failed validation, names no live Protocol, or edits a stored Skip, or today is out of range, or the idempotency key conflicts with an earlier request; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProtocolSkipBatchWriteErrorResponse"
                 }
               }
             }

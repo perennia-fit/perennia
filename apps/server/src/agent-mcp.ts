@@ -204,6 +204,10 @@ import {
   AgentProtocolDeleteRequestSchema,
   AgentProtocolDeleteResponseSchema,
   agentProtocolDeleteResponse,
+  AgentProtocolSkipBatchWriteRequestSchema,
+  AgentProtocolSkipBatchWriteResponseSchema,
+  agentProtocolSkipBatchWriteRefusal,
+  agentProtocolSkipBatchWriteResponse,
   AgentProtocolListQuerySchema,
   AgentProtocolListResponseSchema,
   AgentProtocolPlannedDaysQuerySchema,
@@ -218,6 +222,7 @@ import {
   prepareAgentCompoundBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
+  prepareAgentProtocolSkipBatchWrite,
   type AgentProtocolsStore
 } from "./agent-protocols.js";
 import { nutrientValidationLimitsResponse } from "./agent-validation.js";
@@ -537,6 +542,11 @@ export const AgentMcpProtocolBatchWriteInputSchema =
 export const AgentMcpProtocolDeleteInputSchema = AgentMcpAuthFieldsSchema.extend({
   request: AgentProtocolDeleteRequestSchema
 }).openapi("AgentMcpProtocolDeleteInput");
+
+export const AgentMcpProtocolSkipBatchWriteInputSchema =
+  AgentMcpAuthFieldsSchema.extend({
+    request: AgentProtocolSkipBatchWriteRequestSchema
+  }).openapi("AgentMcpProtocolSkipBatchWriteInput");
 
 export type AgentMcpServerOptions = {
   agentApiKeyStore?: AgentApiKeyStore;
@@ -2861,6 +2871,60 @@ export function createAgentMcpServer({
         protocolIds: input.request.protocolIds
       });
       const response = agentProtocolDeleteResponse(input.request, writeResult);
+      if (response.status !== 200) {
+        return errorResult(response.body);
+      }
+      await maybeNudgeAgentWrite({
+        syncNudgePublisher,
+        logger,
+        agent: auth.agent,
+        batchId: input.request.idempotencyKey,
+        applied: writeResult.applied.length
+      });
+      return successResult(response.body);
+    }
+  );
+
+  server.registerTool(
+    "agent_batch_write_protocol_skips",
+    {
+      title: "Batch Write Agent Protocol Skips",
+      description:
+        "Skip planned doses (not taken, on purpose), or remove Skips, through the same Skip validator, Activity Log, and sync-nudge path as REST. A Skip names its planned dose by protocolId, compoundId, localDate and plannedLocalTime (null when untimed), today or a past day, and makes its Day Status read skipped. A Skip is never edited: write it once, remove it with deletedAt. Removing a timed Skip also removes every other Skip with the same Protocol, Compound, date and time. Find a Skip to remove in agent_list_protocol_day_statuses fills (detail doses). Any refused item refuses the whole batch. Idempotent by idempotency key.",
+      inputSchema: AgentMcpProtocolSkipBatchWriteInputSchema,
+      outputSchema: AgentProtocolSkipBatchWriteResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      const prepared = prepareAgentProtocolSkipBatchWrite({ request: input.request });
+      if (!prepared.accepted) {
+        return errorResult(agentProtocolSkipBatchWriteRefusal(prepared.issues).body);
+      }
+      const writeResult = await agentProtocolsStore.writeProtocolSkipBatch({
+        userId: auth.agent.userId,
+        batchId: input.request.idempotencyKey,
+        requestFingerprint: agentProtocolsBatchRequestFingerprint(input.request),
+        deviceId: `agent:${auth.agent.keyId}`,
+        skips: prepared.skips
+      });
+      const response = agentProtocolSkipBatchWriteResponse(input.request, writeResult);
       if (response.status !== 200) {
         return errorResult(response.body);
       }

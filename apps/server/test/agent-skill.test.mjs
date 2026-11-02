@@ -146,6 +146,44 @@ test("Perennia agent skill deletes Protocols through delete-protocols, documente
   assert.match(skill, /node scripts\/prn-agent\.mjs delete-protocols /);
 });
 
+test("Perennia agent skill writes Skips through log-protocol-skips, documenting the sibling rule", async () => {
+  const root = path.resolve(process.cwd(), "..", "..");
+  const skillRoot = path.join(root, "agent-skills", "perennia");
+  const scriptPath = path.join(skillRoot, "scripts", "prn-agent.mjs");
+  const body = {
+    idempotencyKey: "skip-key",
+    today: "2026-11-02",
+    skips: [
+      {
+        id: "01900000-0000-7000-8000-000000000001",
+        protocolId: "protocol-id",
+        compoundId: "compound-id",
+        localDate: "2026-11-02",
+        plannedLocalTime: "21:00"
+      }
+    ]
+  };
+
+  const [{ stdout }, skill] = await Promise.all([
+    execFileAsync(
+      process.execPath,
+      [scriptPath, "log-protocol-skips", "--json", JSON.stringify(body), "--dry-run"],
+      { cwd: root, env: { ...process.env, PRN_AGENT_API_KEY: "prn_agent_test" } }
+    ),
+    readFile(path.join(skillRoot, "SKILL.md"), "utf8")
+  ]);
+
+  const envelope = JSON.parse(stdout);
+  assert.equal(envelope.ok, true);
+  assert.equal(envelope.command, "log-protocol-skips");
+  assert.equal(envelope.data.method, "POST");
+  assert.match(envelope.data.url, /\/agent\/protocols\/skips\/batch-write$/);
+  assert.deepEqual(envelope.data.body, body);
+  assert.match(skill, /node scripts\/prn-agent\.mjs log-protocol-skips /);
+  // Removing a timed Skip removes its siblings, and the skill says so.
+  assert.match(skill, /Removing a timed Skip also removes\s+every other Skip/);
+});
+
 test("Perennia code-mode portable client reaches method parity with every agent-key operation", async () => {
   const root = path.resolve(process.cwd(), "..", "..");
   const codeScriptPath = path.join(

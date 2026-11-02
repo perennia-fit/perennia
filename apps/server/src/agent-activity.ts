@@ -12,6 +12,7 @@ import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import {
   COMPOUNDS_SYNC_ENTITY,
   DOSES_SYNC_ENTITY,
+  PROTOCOL_SKIPS_SYNC_ENTITY,
   EXERCISE_CATEGORIES_SYNC_ENTITY,
   FOCUSES_SYNC_ENTITY,
   EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
@@ -39,6 +40,7 @@ import {
   TEMPLATE_LINKS_SYNC_ENTITY,
   pushCompoundsInTransaction,
   pushDosesInTransaction,
+  pushProtocolSkipsInTransaction,
   pushExerciseCategoriesInTransaction,
   pushFocusesInTransaction,
   pushExerciseGroupMembersInTransaction,
@@ -389,6 +391,7 @@ type OpaqueTable =
   | typeof schema.nutritionGoals
   | typeof schema.compounds
   | typeof schema.doses
+  | typeof schema.protocolSkips
   | typeof schema.protocols
   | typeof schema.protocolCompounds
   | typeof schema.schedules
@@ -484,6 +487,10 @@ const UNDOABLE_ENTITY_REGISTRY: Record<
   [DOSES_SYNC_ENTITY]: {
     table: schema.doses,
     push: pushDosesInTransaction
+  },
+  [PROTOCOL_SKIPS_SYNC_ENTITY]: {
+    table: schema.protocolSkips,
+    push: pushProtocolSkipsInTransaction
   },
   [PROTOCOLS_SYNC_ENTITY]: {
     table: schema.protocols,
