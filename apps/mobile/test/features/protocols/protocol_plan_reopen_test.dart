@@ -152,6 +152,67 @@ void main() {
       },
     );
   });
+
+  group('A Skip across a kill and reopen (D8)', () {
+    late Directory directory;
+    late File file;
+
+    setUp(() async {
+      directory = await Directory.systemTemp.createTemp(
+        'prn_protocol_skip_reopen_',
+      );
+      file = File('${directory.path}/plan.sqlite');
+    });
+
+    tearDown(() async {
+      if (directory.existsSync()) {
+        await directory.delete(recursive: true);
+      }
+    });
+
+    test('a skipped planned dose still reads Skipped after the reopen',
+        () async {
+      await _seedDailyStack(file);
+      var database = AppDatabase.openFile(file);
+      var repositories = TrainingRepositories(database);
+      final before = await repositories.protocolPlan
+          .plannedDay(_today, today: _today);
+      final creatineRow = before.groups.single.rows.singleWhere(
+        (row) => before.compounds[row.compoundId]!.name == 'Creatine',
+      );
+      await repositories.protocols.skipPlannedDose(
+        ProtocolSkipDraft(
+          protocolId: creatineRow.protocolId,
+          compoundId: creatineRow.compoundId,
+          localDate: _today,
+          plannedLocalTime: creatineRow.plannedLocalTime,
+        ),
+        today: _today,
+      );
+      // The process dies straight after the write returns.
+      await database.close();
+
+      database = AppDatabase.openFile(file);
+      addTearDown(database.close);
+      repositories = TrainingRepositories(database);
+
+      final planned = await repositories.protocolPlan
+          .watchPlannedDay(_today, today: _today)
+          .first;
+      expect(_labels(planned), <String, PlannedRowStatus>{
+        'TRT': PlannedRowStatus.pending,
+        'AgeMate': PlannedRowStatus.pending,
+        'Creatine': PlannedRowStatus.skipped,
+      });
+      final skipped = planned.groups.single.rows.singleWhere(
+        (row) => row.status == PlannedRowStatus.skipped,
+      );
+      final skip = await database.select(database.protocolSkips).getSingle();
+      expect(skipped.skipId, skip.id);
+      expect(skip.plannedLocalTime, '17:00');
+      expect(skip.deletedAt, equals(null));
+    });
+  });
 }
 
 /// CUJ 1 at 09:30: TRT and AgeMate are due at 09:00, creatine at 17:00.

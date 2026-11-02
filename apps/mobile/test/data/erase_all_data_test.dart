@@ -393,7 +393,7 @@ Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
       defaultRoute: DoseRoute.oral,
     ),
   );
-  await repositories.protocols.createProtocol(
+  final protocol = await repositories.protocols.createProtocol(
     ProtocolDraft(
       name: 'Lean bulk',
       startLocalDate: const ProtocolDayDate(year: 2026, month: 6, day: 1),
@@ -422,6 +422,16 @@ Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
       route: DoseRoute.oral,
       tookAt: DateTime.utc(2026, 6, 16, 8),
     ),
+  );
+  // A Skip (D8) is authored data like the Dose, so erase clears it too.
+  await repositories.protocols.skipPlannedDose(
+    ProtocolSkipDraft(
+      protocolId: protocol.protocolId,
+      compoundId: compound.compoundId,
+      localDate: const ProtocolDayDate(year: 2026, month: 6, day: 15),
+      plannedLocalTime: '08:00',
+    ),
+    today: const ProtocolDayDate(year: 2026, month: 6, day: 16),
   );
 
   return (

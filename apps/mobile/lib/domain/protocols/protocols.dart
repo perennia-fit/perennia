@@ -1088,14 +1088,59 @@ class ProtocolDayRecord {
   ProtocolDayRecord({
     required this.localDate,
     required Iterable<DoseRecord> doses,
-  }) : doses = List<DoseRecord>.unmodifiable(doses);
+    Iterable<ProtocolSkipRecord> skips = const <ProtocolSkipRecord>[],
+  })  : doses = List<DoseRecord>.unmodifiable(doses),
+        skips = List<ProtocolSkipRecord>.unmodifiable(skips);
 
   final ProtocolDayDate localDate;
   final List<DoseRecord> doses;
 
+  /// The day's Skips that aren't tombstoned, ordered by id: matching's
+  /// order (D8, step 3). Read beside [doses] so the Planned list matches
+  /// both from one emission. A Skip records no intake, so [isEmpty] and
+  /// [doseCount] ignore it.
+  final List<ProtocolSkipRecord> skips;
+
   bool get isEmpty => doses.isEmpty;
 
   int get doseCount => doses.length;
+}
+
+/// A stored `Skip` (CONTEXT.md; D8): "not taken, on purpose" for one
+/// planned dose of [protocolId]'s [compoundId] on [localDate], at
+/// [plannedLocalTime] (`HH:MM`, or null for an untimed planned dose). It
+/// carries no amount, note or reason, and is never edited: removing it
+/// tombstones the row, and skipping again writes a new one.
+class ProtocolSkipRecord {
+  const ProtocolSkipRecord({
+    required this.id,
+    required this.protocolId,
+    required this.compoundId,
+    required this.localDate,
+    required this.plannedLocalTime,
+  });
+
+  final String id;
+  final String protocolId;
+  final String compoundId;
+  final ProtocolDayDate localDate;
+  final String? plannedLocalTime;
+}
+
+/// What `ProtocolsRepository.skipPlannedDose` writes: a [ProtocolSkipRecord]
+/// without its id, which the repository assigns (UUIDv7).
+class ProtocolSkipDraft {
+  const ProtocolSkipDraft({
+    required this.protocolId,
+    required this.compoundId,
+    required this.localDate,
+    required this.plannedLocalTime,
+  });
+
+  final String protocolId;
+  final String compoundId;
+  final ProtocolDayDate localDate;
+  final String? plannedLocalTime;
 }
 
 /// Thrown by `ProtocolsRepository.deleteProtocol` when the Protocol has

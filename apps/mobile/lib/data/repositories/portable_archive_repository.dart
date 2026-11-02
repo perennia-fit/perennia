@@ -1308,6 +1308,32 @@ class PortableArchiveRepository {
           updatedAtOf: (row) => row.updatedAt,
           imageOf: _doseImage,
         ),
+        // Skips (D8) ride the same merge-only rails as Doses. An archive
+        // below schema 64 has no such file (`_mayBeAbsentFromArchive`).
+        _TypedPortableArchiveEntity<ProtocolSkipRow>(
+          tableName: AppDatabase.protocolSkipsTable,
+          selectRows: () {
+            final query = _database.select(_database.protocolSkips)
+              ..orderBy([
+                (row) => OrderingTerm.asc(row.id),
+              ]);
+            return query.get();
+          },
+          fromJson: ProtocolSkipRow.fromJson,
+          toJson: (row) => row.toJson(),
+          findById: (id) {
+            final query = _database.select(_database.protocolSkips)
+              ..where((row) => row.id.equals(id));
+            return query.getSingleOrNull();
+          },
+          upsert: (row) => _database
+              .into(_database.protocolSkips)
+              .insert(row, mode: InsertMode.insertOrReplace),
+          idOf: (row) => row.id,
+          updatedAtOf: (row) => row.updatedAt,
+          imageOf: _protocolSkipImage,
+          validateRow: _validatePortableProtocolSkipRow,
+        ),
         // The `Protocol` plan-layer entity (PROTOCOLS.md §1.4) rides
         // the same merge-only backup rails: kept in the encrypted portable
         // archive so a user keeps a complete sovereign backup, even though a
@@ -1646,6 +1672,11 @@ class PortableArchiveRepository {
       return true;
     }
     if (archiveSchemaVersion < 59 && tableName == AppDatabase.focusesTable) {
+      return true;
+    }
+    // Skips arrived at schema 64 (D8).
+    if (archiveSchemaVersion < 64 &&
+        tableName == AppDatabase.protocolSkipsTable) {
       return true;
     }
     return archiveSchemaVersion < 53 &&
@@ -2149,6 +2180,21 @@ void _validatePortablePrescriptionRow(PrescriptionRow row) {
         values: values.values.values,
       )
       .throwIfRejected();
+}
+
+/// A Skip row from an archive (D8): its `local_date` must be a real date,
+/// and its `planned_local_time` must pass the shared `skip_time_format`
+/// rule. A failure throws, and the row is rejected as a malformed Dose row
+/// is. It is not judged against today, because an archive is a past record:
+/// passing the row's own date as `today` leaves `skip_future` nothing to
+/// refuse, so only the time rule can fire.
+void _validatePortableProtocolSkipRow(ProtocolSkipRow row) {
+  final localDate = ProtocolDayDate.parse(row.localDate);
+  validateProtocolSkip(
+    localDate: localDate,
+    plannedLocalTime: row.plannedLocalTime,
+    today: localDate,
+  ).throwIfRejected();
 }
 
 void _validatePortableTemplateExerciseUniqueness(List<Object> rows) {

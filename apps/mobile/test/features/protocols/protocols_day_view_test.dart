@@ -1146,6 +1146,149 @@ void main() {
     });
   });
 
+  group('Skips in the Planned list read (D8)', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    final today = ProtocolDayDate.fromDateTime(_cuj1Now);
+
+    setUp(() async {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+      await _seedDailyStack(repositories);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<PlannedRow> rowOf(String compoundName) async {
+      final planned =
+          await repositories.protocolPlan.plannedDay(today, today: today);
+      return planned.groups.single.rows.singleWhere(
+        (row) => planned.compounds[row.compoundId]!.name == compoundName,
+      );
+    }
+
+    Future<String> skip(PlannedRow row) async {
+      await repositories.protocols.skipPlannedDose(
+        ProtocolSkipDraft(
+          protocolId: row.protocolId,
+          compoundId: row.compoundId,
+          localDate: today,
+          plannedLocalTime: row.plannedLocalTime,
+        ),
+        today: today,
+      );
+      return (await database.select(database.protocolSkips).get()).last.id;
+    }
+
+    test(
+        'a skipped planned dose reads Skipped with its skipId, and "Log all '
+        'planned" leaves it out', () async {
+      final trt = await rowOf('TRT');
+      expect(trt.status, PlannedRowStatus.pending);
+      final skipId = await skip(trt);
+
+      final skipped = await rowOf('TRT');
+      expect(skipped.status, PlannedRowStatus.skipped);
+      expect(skipped.skipId, skipId);
+      expect((await rowOf('AgeMate')).status, PlannedRowStatus.pending);
+      final planned =
+          await repositories.protocolPlan.plannedDay(today, today: today);
+      expect(planned.day.skips.single.id, skipId);
+      final trtStatus = planned.dayStatuses
+          .singleWhere((status) => status.compoundId == trt.compoundId);
+      expect(trtStatus.status, DayStatusKind.skipped);
+      expect(trtStatus.skippedCount, 1);
+
+      final container = ProviderContainer(
+        overrides: [
+          trainingRepositoriesProvider.overrideWithValue(repositories),
+          protocolsClockProvider.overrideWithValue(() => _cuj1Now),
+        ],
+      );
+      addTearDown(container.dispose);
+      final results = await container
+          .read(protocolDayControllerProvider.notifier)
+          .logAllPlanned();
+
+      expect(results, hasLength(1));
+      final doses = await database.select(database.doses).get();
+      expect(doses.single.compoundName, 'AgeMate');
+      expect((await rowOf('TRT')).status, PlannedRowStatus.skipped);
+      expect((await rowOf('AgeMate')).status, PlannedRowStatus.logged);
+    });
+
+    test('watchPlannedDay re-emits when a Skip is written and removed',
+        () async {
+      final emissions = <PlannedRowStatus>[];
+      final subscription = repositories.protocolPlan
+          .watchPlannedDay(today, today: today)
+          .listen((planned) {
+        emissions.add(
+          planned.groups.single.rows
+              .singleWhere(
+                (row) => planned.compounds[row.compoundId]!.name == 'TRT',
+              )
+              .status,
+        );
+      });
+      addTearDown(subscription.cancel);
+      await _waitForCondition(() => emissions.isNotEmpty);
+      expect(emissions.last, PlannedRowStatus.pending);
+
+      final skipId = await skip(await rowOf('TRT'));
+      await _waitForCondition(
+        () => emissions.last == PlannedRowStatus.skipped,
+      );
+
+      await repositories.protocols.unskipPlannedDose(skipId);
+      await _waitForCondition(
+        () => emissions.last == PlannedRowStatus.pending,
+      );
+    });
+
+    test(
+        'Save from a Skipped row logs the Dose and removes the Skip, so the '
+        'row reads Logged', () async {
+      final trt = await rowOf('TRT');
+      final skipId = await skip(trt);
+
+      final logged = await repositories.protocols.logDose(
+        DoseSnapshotDraft(
+          compoundId: trt.compoundId,
+          compoundName: 'TRT',
+          amountValue: 0.5,
+          amountEntered: '0.5',
+          unit: DoseUnit.milliliter,
+          route: DoseRoute.intramuscular,
+          tookAt: _cuj1Now,
+          protocolId: trt.protocolId,
+          protocolName: 'Daily',
+        ),
+        unskipId: skipId,
+      );
+
+      final row = await rowOf('TRT');
+      expect(row.status, PlannedRowStatus.logged);
+      expect(row.skipId, isNull);
+      final planned =
+          await repositories.protocolPlan.plannedDay(today, today: today);
+      expect(planned.day.skips, isEmpty);
+      final entries = (await repositories.activityLog.listEntries())
+          .where((entry) => entry.batchId == logged.batchId)
+          .map((entry) => entry.entityTable)
+          .toList();
+      expect(
+        entries,
+        unorderedEquals(<String>[
+          AppDatabase.dosesTable,
+          AppDatabase.protocolSkipsTable,
+        ]),
+      );
+    });
+  });
+
   group("Today's Protocols tab", () {
     const today = ProtocolDayDate(year: 2026, month: 6, day: 30);
     Widget tab() => const Scaffold(
@@ -1899,5 +2042,16 @@ class _StaticProtocolList extends ProtocolListController {
   @override
   Stream<List<ProtocolSummaryRecord>> build() {
     return Stream<List<ProtocolSummaryRecord>>.value(protocols);
+  }
+}
+
+/// Waits, outside a widget test, for a Drift watch to reach [condition].
+Future<void> _waitForCondition(bool Function() condition) async {
+  final stopwatch = Stopwatch()..start();
+  while (!condition()) {
+    if (stopwatch.elapsed > const Duration(seconds: 2)) {
+      fail('Timed out waiting for condition.');
+    }
+    await pumpEventQueue();
   }
 }

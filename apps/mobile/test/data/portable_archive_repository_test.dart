@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:cryptography/cryptography.dart';
-import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
+import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
@@ -1276,6 +1276,117 @@ void main() {
           await restoredRepositories.routinePlans.getById(routineId);
       expect(restored?.cadence, isNull);
       expect(restored?.entries.single.slot, isNull);
+    });
+
+    test('Skips round-trip, live and removed, into a fresh database (D8)',
+        () async {
+      final skipIds = await _seedProtocolSkips(repositories);
+      final source =
+          await repositories.portableArchives.exportPortableArchive();
+      final archived = _archiveRowsByTable(source)[
+          AppDatabase.protocolSkipsTable]!;
+      expect(_ids(archived), skipIds.toSet());
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(source);
+
+      final sourceRows = await (database.select(database.protocolSkips)
+            ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+          .get();
+      final restoredRows =
+          await (restoredDatabase.select(restoredDatabase.protocolSkips)
+                ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+              .get();
+      expect(restoredRows, sourceRows);
+      expect(restoredRows.where((row) => row.deletedAt != null), hasLength(1));
+      // Importing again merges: nothing changes.
+      await restoredRepositories.portableArchives.importPortableArchive(source);
+      expect(
+        await restoredDatabase.select(restoredDatabase.protocolSkips).get(),
+        hasLength(restoredRows.length),
+      );
+    });
+
+    test(
+        'imports a schema-63 archive with no Skips file, and refuses a '
+        'schema-64 archive that lacks one (D8)', () async {
+      await _seedProtocolsData(repositories);
+      final source =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(
+        _withoutProtocolSkips(source, schemaVersion: 63),
+      );
+      final restored = _archiveRowsByTable(
+        await restoredRepositories.portableArchives.exportPortableArchive(),
+      );
+      expect(restored[AppDatabase.dosesTable], hasLength(1));
+      expect(restored[AppDatabase.protocolSkipsTable], isEmpty);
+
+      await expectLater(
+        restoredRepositories.portableArchives.importPortableArchive(
+          _withoutProtocolSkips(source, schemaVersion: 64),
+        ),
+        throwsA(isA<PortableArchiveException>()),
+      );
+    });
+
+    test('rejects a malformed Skip row before writing anything (D8)',
+        () async {
+      await _seedProtocolSkips(repositories);
+      final source =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      final invalidRows = <String, Map<String, Object?>>{
+        'not a real date': <String, Object?>{'localDate': '2026-02-30'},
+        'not a date at all': <String, Object?>{'localDate': 'yesterday'},
+        'a time past 23:59': <String, Object?>{'plannedLocalTime': '24:00'},
+        'a time without minutes': <String, Object?>{'plannedLocalTime': '9'},
+        'no Protocol': <String, Object?>{'protocolId': null},
+      };
+      for (final invalid in invalidRows.entries) {
+        final tampered = _withUpdatedArchiveEntityRow(
+          source,
+          tableName: AppDatabase.protocolSkipsTable,
+          update: (row) => <String, Object?>{...row, ...invalid.value},
+        );
+        await expectLater(
+          restoredRepositories.portableArchives.importPortableArchive(tampered),
+          throwsA(isA<PortableArchiveException>()),
+          reason: invalid.key,
+        );
+        expect(
+          await restoredDatabase.select(restoredDatabase.protocolSkips).get(),
+          isEmpty,
+          reason: invalid.key,
+        );
+        expect(
+          await restoredDatabase.select(restoredDatabase.doses).get(),
+          isEmpty,
+          reason: invalid.key,
+        );
+      }
+
+      // A Skip dated after today is not judged: an archive is a past record.
+      final future = _withUpdatedArchiveEntityRow(
+        source,
+        tableName: AppDatabase.protocolSkipsTable,
+        update: (row) => <String, Object?>{...row, 'localDate': '2999-01-01'},
+      );
+      await restoredRepositories.portableArchives.importPortableArchive(future);
+      expect(
+        (await restoredDatabase.select(restoredDatabase.protocolSkips).get())
+            .map((row) => row.localDate),
+        contains('2999-01-01'),
+      );
     });
 
     test('rejects hard-invalid Prescriptions before writing anything',
@@ -2561,6 +2672,85 @@ Future<void> _seedProtocolsData(TrainingRepositories repositories) async {
     ),
     actor: 'tester',
   );
+}
+
+/// A Protocol with three Skips, one of them removed, plus a Dose. Returns
+/// every Skip's id.
+Future<List<String>> _seedProtocolSkips(
+  TrainingRepositories repositories,
+) async {
+  await _seedProtocolsData(repositories);
+  final compoundId = (await repositories.protocols.listCompounds()).single.id;
+  const start = ProtocolDayDate(year: 2026, month: 6, day: 1);
+  const today = ProtocolDayDate(year: 2026, month: 6, day: 16);
+  final protocolId = (await repositories.protocols.createProtocol(
+    ProtocolDraft(
+      name: 'Vitamin D',
+      startLocalDate: start,
+      compoundIds: <String>[compoundId],
+    ),
+    today: start,
+  ))
+      .protocolId;
+  final database = repositories.database;
+  Future<String> skip(ProtocolDayDate date, String? time) async {
+    final before = (await database.select(database.protocolSkips).get())
+        .map((row) => row.id)
+        .toSet();
+    await repositories.protocols.skipPlannedDose(
+      ProtocolSkipDraft(
+        protocolId: protocolId,
+        compoundId: compoundId,
+        localDate: date,
+        plannedLocalTime: time,
+      ),
+      today: today,
+    );
+    return (await database.select(database.protocolSkips).get())
+        .map((row) => row.id)
+        .toSet()
+        .difference(before)
+        .single;
+  }
+
+  final ids = <String>[
+    await skip(today, '08:00'),
+    await skip(today.addDays(-1), null),
+    await skip(today.addDays(-2), '21:00'),
+  ];
+  await repositories.protocols.unskipPlannedDose(ids.last);
+  return ids;
+}
+
+/// [bytes] as an archive at [schemaVersion] with no `protocol_skips` file
+/// or manifest entry, as every schema before 64 wrote it.
+List<int> _withoutProtocolSkips(List<int> bytes, {required int schemaVersion}) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source)..['schemaVersion'] = schemaVersion;
+  manifest['entities'] = (manifest['entities']! as List<Object?>)
+      .where(
+        (entry) =>
+            (entry! as Map<String, Object?>)['table'] !=
+            AppDatabase.protocolSkipsTable,
+      )
+      .toList(growable: false);
+  final skipsFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.protocolSkipsTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName ||
+        file.name == skipsFileName) {
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
 }
 
 Future<void> _seedMetricData(TrainingRepositories repositories) async {

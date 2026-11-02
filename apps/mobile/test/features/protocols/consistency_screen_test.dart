@@ -618,6 +618,92 @@ void main() {
       expect(await summaryIds(), containsAll(<String>[ids.trt, ids.ageMate]));
     });
 
+    test(
+        'stored Skips mark their slots: a taken-or-skipped day reads Logged '
+        'with its skipped count, an all-skipped day reads Skipped, and a '
+        'removed Skip or another Compound\'s is left out (D8)', () async {
+      Future<String> skip(
+        String compoundId,
+        ProtocolDayDate date,
+        String time,
+      ) async {
+        Future<Set<String>> skipIds() async =>
+            (await database.select(database.protocolSkips).get())
+                .map((row) => row.id)
+                .toSet();
+        final before = await skipIds();
+        await repositories.protocols.skipPlannedDose(
+          ProtocolSkipDraft(
+            protocolId: ids.protocolId,
+            compoundId: compoundId,
+            localDate: date,
+            plannedLocalTime: time,
+          ),
+          today: _today,
+        );
+        return (await skipIds()).difference(before).single;
+      }
+
+      final emissions = <ConsistencyRange>[];
+      final subscription = repositories.protocolPlan
+          .watchConsistency(ids.trt, _start, _today, today: _today)
+          .listen(emissions.add);
+      addTearDown(subscription.cancel);
+      await _until(() => emissions.isNotEmpty);
+      expect(
+        statusOn(emissions.last, _date(2026, 10, 13)).status,
+        DayStatusKind.partlyLogged,
+      );
+
+      // The 13th's 09:00 is filled by its Dose; skipping 21:00 closes it.
+      final evening = await skip(ids.trt, _date(2026, 10, 13), '21:00');
+      await _until(
+        () =>
+            statusOn(emissions.last, _date(2026, 10, 13)).status ==
+            DayStatusKind.logged,
+      );
+      final thirteenth = statusOn(emissions.last, _date(2026, 10, 13));
+      expect(
+        (thirteenth.loggedCount, thirteenth.skippedCount),
+        (1, 1),
+      );
+      expect(thirteenth.fills.last.skipId, evening);
+      final day = emissions.last.days
+          .singleWhere((day) => day.localDate == _date(2026, 10, 13));
+      expect(day.slots.last.fill.isSkipped, isTrue);
+      expect(day.slots.last.dose, isNull);
+
+      // Both of the 12th's skipped: Skipped.
+      await skip(ids.trt, _date(2026, 10, 12), '09:00');
+      await skip(ids.trt, _date(2026, 10, 12), '21:00');
+      // AgeMate's Skip on the 11th is not TRT's.
+      await skip(ids.ageMate, _date(2026, 10, 11), '09:00');
+      // A Skip removed again marks nothing.
+      final removed = await skip(ids.trt, _date(2026, 10, 10), '09:00');
+      await repositories.protocols.unskipPlannedDose(removed);
+
+      final range = await read(ids.trt);
+      expect(
+        statusOn(range, _date(2026, 10, 12)).status,
+        DayStatusKind.skipped,
+      );
+      expect(statusOn(range, _date(2026, 10, 12)).skippedCount, 2);
+      expect(
+        statusOn(range, _date(2026, 10, 11)).status,
+        DayStatusKind.notLogged,
+      );
+      expect(statusOn(range, _date(2026, 10, 11)).skippedCount, 0);
+      expect(
+        statusOn(range, _date(2026, 10, 10)).status,
+        DayStatusKind.notLogged,
+      );
+      final ageMate = await read(ids.ageMate);
+      expect(
+        statusOn(ageMate, _date(2026, 10, 11)).status,
+        DayStatusKind.skipped,
+      );
+    });
+
     test('logging a Dose or adding a Schedule Version re-emits the range',
         () async {
       final emissions = <ConsistencyRange>[];
@@ -746,6 +832,56 @@ void main() {
       expect(
         (logged.logged, logged.partlyLogged, logged.notLogged, logged.skipped),
         (1, 0, 2, 0),
+      );
+    });
+
+    test(
+        'an all-skipped day counts as skipped, a taken-or-skipped day as '
+        'logged, and a Skip write re-emits the counts (D8)', () async {
+      Future<void> skipTrt(ProtocolDayDate date, String time) {
+        return repositories.protocols.skipPlannedDose(
+          ProtocolSkipDraft(
+            protocolId: ids.protocolId,
+            compoundId: ids.trt,
+            localDate: date,
+            plannedLocalTime: time,
+          ),
+          today: _today,
+        );
+      }
+
+      final emissions = <List<CompoundConsistencySummary>>[];
+      final subscription = repositories.protocolPlan
+          .watchConsistencySummary(_start, _today, today: _today)
+          .listen(emissions.add);
+      addTearDown(subscription.cancel);
+      await _until(() => emissions.isNotEmpty);
+      CompoundConsistencySummary trt() => emissions.last
+          .singleWhere((summary) => summary.compoundId == ids.trt);
+      // 10th-12th unlogged, the 13th one of two; today is pending.
+      expect(
+        (trt().logged, trt().partlyLogged, trt().notLogged, trt().skipped),
+        (0, 1, 3, 0),
+      );
+
+      await skipTrt(_date(2026, 10, 12), '09:00');
+      await skipTrt(_date(2026, 10, 12), '21:00');
+      await skipTrt(_date(2026, 10, 13), '21:00');
+      await _until(() => trt().skipped == 1 && trt().logged == 1);
+
+      expect(
+        (trt().logged, trt().partlyLogged, trt().notLogged, trt().skipped),
+        (1, 0, 2, 1),
+      );
+      // The Consistency view over the same range agrees.
+      final range = await repositories.protocolPlan
+          .watchConsistency(ids.trt, _start, _today, today: _today)
+          .first;
+      expect(
+        range.dayStatuses
+            .where((status) => status.status == DayStatusKind.skipped)
+            .length,
+        trt().skipped,
       );
     });
 
