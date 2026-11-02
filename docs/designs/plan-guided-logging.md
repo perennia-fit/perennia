@@ -618,11 +618,15 @@ Other writes reuse what exists, each under the batch id the screen passes:
 *   **The rest strip.** The rest timer panel at the top of the Training Screen
     is replaced by a strip pinned directly above the Log set button, outside
     the scrolling area, in thumb reach:
-    *   running: "Rest 1:12" (tabular figures), then **−15 s**, **+15 s** and
-        **Stop** icon buttons;
+    *   running: "Rest 1:12" (tabular figures), then **−15 s** and **+15 s**
+        text buttons (no icon reads as fifteen seconds; their semantics
+        labels are "Rest 15 seconds less" and "Rest 15 seconds more") and a
+        **Stop** icon button;
     *   idle: **Start rest** (starts the form's rest; disabled at Off).
-    *   Tapping the remaining time opens a small sheet with the existing volume
-        slider.
+    *   Tapping the remaining time opens a small sheet, "Alert volume", with
+        the existing volume slider. The time shows only while a rest runs, so
+        the volume is changed while one runs; it then holds for the next
+        rest Log set or Start rest starts.
 *   **One owner.** The strip keeps today's panel behaviour: it stays mounted
     while the Training Screen switches exercises, owns the ticker, the 3-2-1
     prepare cue and the end alert, and schedules the background notification.
@@ -634,7 +638,11 @@ Other writes reuse what exists, each under the batch id the screen passes:
     timer that ran out. When the new remaining time is more than 3 s,
     `prepareAlertFiredAt` is cleared. It appends to the Activity Log like the
     other timer writes. After an adjust the strip cancels the background
-    schedule and schedules it again; Stop cancels it (as today).
+    schedule and schedules it again, unless the adjust left no time: then
+    the strip's own end alert on its next tick is the only alert, and a
+    notification at "now" would ring on top of it. A refused notification
+    permission was reported when the rest started and is not reported again
+    on each adjust. Stop cancels the schedule (as today).
 *   **Log set** starts the rest for the logged Set, unless the rest that runs
     is zero or the Workout has ended, with `startForSet(set, defaultDuration:
     <the rest that runs>, alertVolume: <the strip's current volume>)` under

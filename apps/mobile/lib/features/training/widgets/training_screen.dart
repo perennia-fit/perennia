@@ -18,73 +18,7 @@ import '../../analytics/widgets/exercise_overview_screen.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../services/timer_background_scheduler.dart';
-
-final restTimerAlertProvider = Provider<RestTimerAlert>(
-  (ref) => const SystemRestTimerAlert(),
-);
-
-abstract interface class RestTimerAlert {
-  /// The end cue: rest/interval bout is over.
-  Future<void> fire(double volume);
-
-  /// The 3-2-1 prepare cue: rest ends soon (remaining <= 3s). A lighter,
-  /// distinct signal from [fire] so the two are never confused.
-  Future<void> firePrepare(double volume);
-}
-
-class SystemRestTimerAlert implements RestTimerAlert {
-  const SystemRestTimerAlert();
-
-  @override
-  Future<void> fire(double volume) async {
-    await HapticFeedback.vibrate();
-    if (volume > 0) {
-      await SystemSound.play(SystemSoundType.alert);
-    }
-  }
-
-  @override
-  Future<void> firePrepare(double volume) async {
-    // Lighter than the end cue: a selection click + a short click tone, paired
-    // so vibration is never the sole signal. Sound honors the volume slider;
-    // the platform still respects silent mode / DND.
-    await HapticFeedback.selectionClick();
-    if (volume > 0) {
-      await SystemSound.play(SystemSoundType.click);
-    }
-  }
-}
-
-Future<TimerBackgroundPermissionStatus> _scheduleRestBackgroundTimer(
-  WidgetRef ref,
-  RestTimerRecord timer, {
-  String? workoutExerciseId,
-  required bool soundEnabled,
-}) {
-  return ref.read(timerBackgroundSchedulerProvider).schedule(
-        TimerBackgroundSchedule.rest(
-          timer,
-          workoutExerciseId: workoutExerciseId,
-          soundEnabled: soundEnabled,
-        ),
-      );
-}
-
-void _notifyIfBackgroundAlertsDenied(
-  BuildContext context,
-  TimerBackgroundPermissionStatus status,
-) {
-  if (status != TimerBackgroundPermissionStatus.denied || !context.mounted) {
-    return;
-  }
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        context.l10n.trainingBackgroundAlertsDenied,
-      ),
-    ),
-  );
-}
+import 'rest_strip.dart';
 
 class TrainingScreen extends ConsumerStatefulWidget {
   const TrainingScreen({
@@ -124,9 +58,12 @@ class TrainingScreen extends ConsumerStatefulWidget {
   static const restAfterDecrementKey = Key('training.restAfter.decrement');
   static const restAfterIncrementKey = Key('training.restAfter.increment');
   static const contextLineKey = Key('training.contextLine');
-  static const restStripKey = Key('training.restStrip');
-  static const restStripStopKey = Key('training.restStrip.stop');
-  static const restStripStartKey = Key('training.restStrip.start');
+  static const restStripKey = RestStrip.stripKey;
+  static const restStripStopKey = RestStrip.stopKey;
+  static const restStripStartKey = RestStrip.startKey;
+
+  /// The alert volume slider, in the sheet the rest strip's time opens.
+  static const restTimerVolumeSliderKey = RestStrip.volumeSliderKey;
   static const screenMenuButtonKey = Key('training.menu');
   static const commentFieldKey = Key('training.comment');
   static const sideFieldKey = Key('training.side');
@@ -143,14 +80,9 @@ class TrainingScreen extends ConsumerStatefulWidget {
   static const saveGroupButtonKey = Key('training.navigation.saveGroup');
   static const groupNameFieldKey = Key('training.navigation.groupName');
   static const groupColorFieldKey = Key('training.navigation.groupColor');
-  static const restTimerPanelKey = Key('training.restTimer.panel');
-  static const restTimerDurationFieldKey = Key('training.restTimer.duration');
-  static const restTimerStartButtonKey = Key('training.restTimer.start');
-  static const restTimerCancelButtonKey = Key('training.restTimer.cancel');
-  static const restTimerVolumeSliderKey = Key('training.restTimer.volume');
 
   static Key restStripAdjustKey(int seconds) {
-    return Key('training.restStrip.adjust.$seconds');
+    return RestStrip.adjustKey(seconds);
   }
 
   static Key navigationItemKey(String workoutExerciseId) {
@@ -207,7 +139,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   late String _activeWorkoutExerciseId;
 
   /// The loaded exercise. It stays on screen while the next one loads, so
-  /// the rest timer panel (and its ticker) stays mounted across a switch.
+  /// the rest strip (and its ticker) stays mounted across a switch.
   _TrainingExerciseState? _state;
   bool _loadFailed = false;
   int _loadGeneration = 0;
@@ -275,7 +207,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   final _removingSetIds = <String>{};
   int _restTimerRevision = 0;
 
-  /// The rest timer panel's volume, which Log set's timer starts with.
+  /// The rest strip's volume, which Log set's timer starts with.
   double _alertVolume = RestTimerRepository.defaultAlertVolume;
 
   @override
@@ -893,14 +825,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _RestTimerPanel(
-          workoutId: state.workoutExercise.workoutId,
-          workoutExerciseId: workoutExerciseId,
-          enableTicker: widget.enableRestTimerTicker,
-          revision: _restTimerRevision,
-          onAlertVolumeChanged: (volume) => _alertVolume = volume,
-        ),
-        const SizedBox(height: AppDimens.dense),
         Expanded(
           child: SingleChildScrollView(
             child: Column(
@@ -957,6 +881,18 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
               ],
             ),
           ),
+        ),
+        const SizedBox(height: AppDimens.dense),
+        // Always at this place in the Column, whatever the buttons below
+        // are, so the strip (the rest timer's one owner) stays mounted
+        // across exercise switches and Update mode.
+        RestStrip(
+          workoutId: state.workoutExercise.workoutId,
+          workoutExerciseId: workoutExerciseId,
+          rest: _rest,
+          enableTicker: widget.enableRestTimerTicker,
+          revision: _restTimerRevision,
+          onAlertVolumeChanged: (volume) => _alertVolume = volume,
         ),
         const SizedBox(height: AppDimens.dense),
         actions,
@@ -1245,7 +1181,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         )
             .then((status) {
           if (mounted) {
-            _notifyIfBackgroundAlertsDenied(context, status);
+            notifyIfBackgroundAlertsDenied(context, status);
           }
         }),
       );
@@ -2289,351 +2225,6 @@ class _NavigationExerciseItem {
   final ExerciseGroupRecord? group;
 }
 
-class _RestTimerPanel extends ConsumerStatefulWidget {
-  const _RestTimerPanel({
-    required this.workoutId,
-    required this.workoutExerciseId,
-    required this.enableTicker,
-    required this.revision,
-    required this.onAlertVolumeChanged,
-  });
-
-  final String workoutId;
-  final String workoutExerciseId;
-  final bool enableTicker;
-  final int revision;
-
-  /// Reports the volume slider (and a running timer's volume), which Log
-  /// set's timer starts with.
-  final ValueChanged<double> onAlertVolumeChanged;
-
-  @override
-  ConsumerState<_RestTimerPanel> createState() => _RestTimerPanelState();
-}
-
-class _RestTimerPanelState extends ConsumerState<_RestTimerPanel> {
-  late final TextEditingController _durationController;
-  Stream<RestTimerRecord?>? _timerStream;
-  late Future<RestTimerRecord?> _timerFuture;
-  Timer? _ticker;
-  DateTime _now = DateTime.now().toUtc();
-  String? _renderedTimerId;
-  double _alertVolume = RestTimerRepository.defaultAlertVolume;
-  final _alertsInFlight = <String>{};
-  final _prepareAlertsInFlight = <String>{};
-
-  /// The 3-2-1 prepare cue starts when the timer has <= 3s left.
-  static const _prepareWindow = Duration(seconds: 3);
-
-  @override
-  void initState() {
-    super.initState();
-    _durationController = TextEditingController(
-      text: RestTimerRepository.defaultDuration.inSeconds.toString(),
-    );
-    _timerFuture = _loadTimer(widget.workoutId);
-    if (widget.enableTicker) {
-      _timerStream = _watchTimer(widget.workoutId);
-      _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) {
-          setState(() => _now = DateTime.now().toUtc());
-        }
-      });
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _RestTimerPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.workoutId != widget.workoutId ||
-        oldWidget.revision != widget.revision) {
-      _timerStream = widget.enableTicker ? _watchTimer(widget.workoutId) : null;
-      _timerFuture = _loadTimer(widget.workoutId);
-      _renderedTimerId = null;
-    }
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    _durationController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.enableTicker) {
-      return StreamBuilder<RestTimerRecord?>(
-        stream: _timerStream!,
-        builder: (context, snapshot) => _buildPanel(context, snapshot.data),
-      );
-    }
-
-    return FutureBuilder<RestTimerRecord?>(
-      future: _timerFuture,
-      builder: (context, snapshot) => _buildPanel(context, snapshot.data),
-    );
-  }
-
-  Stream<RestTimerRecord?> _watchTimer(String workoutId) {
-    return ref
-        .read(trainingRepositoriesProvider)
-        .restTimers
-        .watchCurrentForWorkout(workoutId);
-  }
-
-  Future<RestTimerRecord?> _loadTimer(String workoutId) {
-    return ref
-        .read(trainingRepositoriesProvider)
-        .restTimers
-        .getCurrentForWorkout(workoutId);
-  }
-
-  Widget _buildPanel(BuildContext context, RestTimerRecord? timer) {
-    final repository = ref.read(trainingRepositoriesProvider).restTimers;
-    _syncControls(timer);
-    if (timer != null &&
-        timer.status == RestTimerStatus.running &&
-        timer.alertFiredAt == null &&
-        timer.isExpiredAt(_now)) {
-      _queueAlert(timer);
-    } else if (timer != null &&
-        timer.status == RestTimerStatus.running &&
-        timer.alertFiredAt == null &&
-        timer.prepareAlertFiredAt == null &&
-        _isWithinPrepareWindow(timer)) {
-      _queuePrepareAlert(timer);
-    }
-
-    final remaining = timer?.remainingAt(_now) ?? Duration.zero;
-    final isActive = timer != null &&
-        timer.status == RestTimerStatus.running &&
-        remaining > Duration.zero;
-    final l10n = context.l10n;
-    final title = timer == null
-        ? l10n.trainingRestTimer
-        : isActive
-            ? l10n.trainingRestCountdown(_formatRestDuration(remaining))
-            : l10n.trainingRestComplete;
-
-    return DecoratedBox(
-      key: TrainingScreen.restTimerPanelKey,
-      decoration: BoxDecoration(
-        border: Border.all(color: context.colors.divider),
-        borderRadius: AppRadii.cardMd,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimens.dense),
-        child: Wrap(
-          spacing: AppDimens.dense,
-          runSpacing: AppDimens.dense,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(
-              width: 136,
-              child: Text(
-                title,
-                style: context.textStyles.label,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            SizedBox(
-              width: 96,
-              child: TextField(
-                key: TrainingScreen.restTimerDurationFieldKey,
-                controller: _durationController,
-                onTap: () => _selectAllOnTap(_durationController),
-                decoration: InputDecoration(
-                  labelText: l10n.trainingRestSecondsLabel,
-                  isDense: true,
-                ),
-                keyboardType: TextInputType.number,
-              ),
-            ),
-            FilledButton.icon(
-              key: TrainingScreen.restTimerStartButtonKey,
-              onPressed: () => unawaited(_startOrAdjustTimer()),
-              icon: const Icon(Icons.timer_outlined),
-              label: Text(
-                timer == null
-                    ? l10n.trainingStartTimer
-                    : l10n.trainingUpdateTimer,
-              ),
-            ),
-            if (timer != null)
-              IconButton(
-                key: TrainingScreen.restTimerCancelButtonKey,
-                tooltip: l10n.trainingCancelTimerTooltip,
-                onPressed: () => unawaited(_cancelTimer(timer.id)),
-                icon: const Icon(Icons.close),
-              ),
-            SizedBox(
-              width: 180,
-              child: Row(
-                children: [
-                  const Icon(Icons.volume_up_outlined, size: 20),
-                  Expanded(
-                    child: Slider(
-                      key: TrainingScreen.restTimerVolumeSliderKey,
-                      value: _alertVolume,
-                      onChanged: (value) {
-                        setState(() => _alertVolume = value);
-                        widget.onAlertVolumeChanged(value);
-                        final currentTimer = timer;
-                        if (currentTimer != null) {
-                          unawaited(
-                            repository
-                                .updateAlertVolume(
-                                  currentTimer.id,
-                                  alertVolume: value,
-                                )
-                                .then((_) => _refreshTimer()),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _syncControls(RestTimerRecord? timer) {
-    if (timer?.id == _renderedTimerId) {
-      return;
-    }
-
-    _renderedTimerId = timer?.id;
-    if (timer == null) {
-      _durationController.text =
-          RestTimerRepository.defaultDuration.inSeconds.toString();
-      return;
-    }
-
-    _durationController.text = timer.duration.inSeconds.toString();
-    _alertVolume = timer.alertVolume;
-    widget.onAlertVolumeChanged(timer.alertVolume);
-  }
-
-  Future<void> _startOrAdjustTimer() async {
-    final seconds = int.tryParse(_durationController.text.trim()) ??
-        RestTimerRepository.defaultDuration.inSeconds;
-    final duration = Duration(
-      seconds: seconds <= 0
-          ? RestTimerRepository.defaultDuration.inSeconds
-          : seconds,
-    );
-    final repository = ref.read(trainingRepositoriesProvider).restTimers;
-    final timerId = await repository.start(
-      RestTimerDraft(
-        workoutId: widget.workoutId,
-        duration: duration,
-        alertVolume: _alertVolume,
-      ),
-    );
-    final timer = await repository.getById(timerId);
-    if (timer != null) {
-      final status = await _scheduleRestBackgroundTimer(
-        ref,
-        timer,
-        workoutExerciseId: widget.workoutExerciseId,
-        soundEnabled: _restTimerSoundsEnabled(),
-      );
-      if (mounted) {
-        _notifyIfBackgroundAlertsDenied(context, status);
-      }
-    }
-    _refreshTimer();
-  }
-
-  Future<void> _cancelTimer(String timerId) async {
-    await ref.read(trainingRepositoriesProvider).restTimers.cancel(timerId);
-    await ref.read(timerBackgroundSchedulerProvider).cancel(timerId);
-    _refreshTimer();
-  }
-
-  void _refreshTimer() {
-    if (!mounted || widget.enableTicker) {
-      return;
-    }
-    setState(() {
-      _timerFuture = _loadTimer(widget.workoutId);
-      _renderedTimerId = null;
-    });
-  }
-
-  void _queueAlert(RestTimerRecord timer) {
-    if (!_alertsInFlight.add(timer.id)) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_fireAlert(timer));
-    });
-  }
-
-  Future<void> _fireAlert(RestTimerRecord timer) async {
-    try {
-      if (_restTimerSoundsEnabled()) {
-        await ref.read(restTimerAlertProvider).fire(timer.alertVolume);
-      }
-    } finally {
-      if (mounted) {
-        await ref.read(trainingRepositoriesProvider).restTimers.markAlertFired(
-              timer.id,
-            );
-        await ref.read(timerBackgroundSchedulerProvider).cancel(timer.id);
-      }
-      _alertsInFlight.remove(timer.id);
-    }
-  }
-
-  bool _isWithinPrepareWindow(RestTimerRecord timer) {
-    final remaining = timer.remainingAt(_now);
-    return remaining > Duration.zero && remaining <= _prepareWindow;
-  }
-
-  void _queuePrepareAlert(RestTimerRecord timer) {
-    if (!_prepareAlertsInFlight.add(timer.id)) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_firePrepareAlert(timer));
-    });
-  }
-
-  Future<void> _firePrepareAlert(RestTimerRecord timer) async {
-    try {
-      final restTimers = ref.read(trainingRepositoriesProvider).restTimers;
-      final current = await restTimers.getById(timer.id);
-      // Re-check under the current row: don't prepare-cue a timer that already
-      // expired/fired its end cue, or already prepare-cued.
-      if (current == null ||
-          current.status != RestTimerStatus.running ||
-          current.alertFiredAt != null ||
-          current.prepareAlertFiredAt != null) {
-        return;
-      }
-      if (_restTimerSoundsEnabled()) {
-        await ref.read(restTimerAlertProvider).firePrepare(current.alertVolume);
-      }
-      await restTimers.markPrepareAlertFired(timer.id);
-    } finally {
-      _prepareAlertsInFlight.remove(timer.id);
-    }
-  }
-
-  bool _restTimerSoundsEnabled() {
-    return ref.read(settingsControllerProvider).value?.restTimerSoundsEnabled ??
-        AppSettings.defaults.restTimerSoundsEnabled;
-  }
-}
-
 /// "*group name* · Round *r* of *R* · Next: *member*", or "· All rounds
 /// done", ending with **Add round**.
 class _ContextLine extends StatelessWidget {
@@ -2976,7 +2567,7 @@ class _RestAfterInput extends StatelessWidget {
           child: Text(
             rest <= Duration.zero
                 ? l10n.trainingRestOff
-                : _formatRestDuration(rest),
+                : formatRestDuration(rest),
             key: TrainingScreen.restAfterValueKey,
             textAlign: TextAlign.center,
             style: context.textStyles.numeralRow,
@@ -3647,13 +3238,6 @@ double _defaultIncrementFor(
 
 String _formatRpe(double value) {
   return _formatEnteredNumber(value);
-}
-
-String _formatRestDuration(Duration duration) {
-  final totalSeconds = duration.inSeconds;
-  final minutes = totalSeconds ~/ 60;
-  final seconds = totalSeconds.remainder(60);
-  return '$minutes:${seconds.toString().padLeft(2, '0')}';
 }
 
 String _formatClockDuration(int totalSeconds) {

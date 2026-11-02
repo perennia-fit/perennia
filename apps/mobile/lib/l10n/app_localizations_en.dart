@@ -1037,27 +1037,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingSaveGroup => 'Save group';
 
   @override
-  String get trainingRestTimer => 'Rest timer';
-
-  @override
   String trainingRestCountdown(String remaining) {
     return 'Rest $remaining';
   }
 
   @override
-  String get trainingRestComplete => 'Rest complete';
+  String trainingRestStripRemainingLabel(int minutes, int seconds) {
+    return 'Rest, $minutes minutes $seconds seconds left';
+  }
 
   @override
-  String get trainingRestSecondsLabel => 'Rest sec';
+  String get trainingRestStripShorten => '−15 s';
 
   @override
-  String get trainingStartTimer => 'Start';
+  String get trainingRestStripShortenLabel => 'Rest 15 seconds less';
 
   @override
-  String get trainingUpdateTimer => 'Update';
+  String get trainingRestStripLengthen => '+15 s';
 
   @override
-  String get trainingCancelTimerTooltip => 'Cancel timer';
+  String get trainingRestStripLengthenLabel => 'Rest 15 seconds more';
+
+  @override
+  String get trainingStopRestTooltip => 'Stop rest';
+
+  @override
+  String get trainingStartRest => 'Start rest';
+
+  @override
+  String get trainingRestVolumeTitle => 'Alert volume';
 
   @override
   String get trainingPersonalRecordTooltip => 'Personal record';

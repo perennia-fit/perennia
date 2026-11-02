@@ -1831,47 +1831,59 @@ abstract class AppLocalizations {
   /// **'Save group'**
   String get trainingSaveGroup;
 
-  /// No description provided for @trainingRestTimer.
-  ///
-  /// In en, this message translates to:
-  /// **'Rest timer'**
-  String get trainingRestTimer;
-
   /// No description provided for @trainingRestCountdown.
   ///
   /// In en, this message translates to:
   /// **'Rest {remaining}'**
   String trainingRestCountdown(String remaining);
 
-  /// No description provided for @trainingRestComplete.
+  /// No description provided for @trainingRestStripRemainingLabel.
   ///
   /// In en, this message translates to:
-  /// **'Rest complete'**
-  String get trainingRestComplete;
+  /// **'Rest, {minutes} minutes {seconds} seconds left'**
+  String trainingRestStripRemainingLabel(int minutes, int seconds);
 
-  /// No description provided for @trainingRestSecondsLabel.
+  /// No description provided for @trainingRestStripShorten.
   ///
   /// In en, this message translates to:
-  /// **'Rest sec'**
-  String get trainingRestSecondsLabel;
+  /// **'−15 s'**
+  String get trainingRestStripShorten;
 
-  /// No description provided for @trainingStartTimer.
+  /// No description provided for @trainingRestStripShortenLabel.
   ///
   /// In en, this message translates to:
-  /// **'Start'**
-  String get trainingStartTimer;
+  /// **'Rest 15 seconds less'**
+  String get trainingRestStripShortenLabel;
 
-  /// No description provided for @trainingUpdateTimer.
+  /// No description provided for @trainingRestStripLengthen.
   ///
   /// In en, this message translates to:
-  /// **'Update'**
-  String get trainingUpdateTimer;
+  /// **'+15 s'**
+  String get trainingRestStripLengthen;
 
-  /// No description provided for @trainingCancelTimerTooltip.
+  /// No description provided for @trainingRestStripLengthenLabel.
   ///
   /// In en, this message translates to:
-  /// **'Cancel timer'**
-  String get trainingCancelTimerTooltip;
+  /// **'Rest 15 seconds more'**
+  String get trainingRestStripLengthenLabel;
+
+  /// No description provided for @trainingStopRestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop rest'**
+  String get trainingStopRestTooltip;
+
+  /// No description provided for @trainingStartRest.
+  ///
+  /// In en, this message translates to:
+  /// **'Start rest'**
+  String get trainingStartRest;
+
+  /// No description provided for @trainingRestVolumeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Alert volume'**
+  String get trainingRestVolumeTitle;
 
   /// No description provided for @trainingPersonalRecordTooltip.
   ///

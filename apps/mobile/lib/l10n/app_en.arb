@@ -614,7 +614,6 @@
   },
   "trainingCancel": "Cancel",
   "trainingSaveGroup": "Save group",
-  "trainingRestTimer": "Rest timer",
   "trainingRestCountdown": "Rest {remaining}",
   "@trainingRestCountdown": {
     "placeholders": {
@@ -623,11 +622,24 @@
       }
     }
   },
-  "trainingRestComplete": "Rest complete",
-  "trainingRestSecondsLabel": "Rest sec",
-  "trainingStartTimer": "Start",
-  "trainingUpdateTimer": "Update",
-  "trainingCancelTimerTooltip": "Cancel timer",
+  "trainingRestStripRemainingLabel": "Rest, {minutes} minutes {seconds} seconds left",
+  "@trainingRestStripRemainingLabel": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingRestStripShorten": "−15 s",
+  "trainingRestStripShortenLabel": "Rest 15 seconds less",
+  "trainingRestStripLengthen": "+15 s",
+  "trainingRestStripLengthenLabel": "Rest 15 seconds more",
+  "trainingStopRestTooltip": "Stop rest",
+  "trainingStartRest": "Start rest",
+  "trainingRestVolumeTitle": "Alert volume",
   "trainingPersonalRecordTooltip": "Personal record",
   "trainingReorderSetLabel": "Reorder set",
   "trainingDecreaseDimensionTooltip": "Decrease {dimension}",

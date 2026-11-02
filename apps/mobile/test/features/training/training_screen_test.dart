@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import 'package:perennia/features/analytics/repositories/exercise_analytics_repo
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/features/analytics/widgets/exercise_overview_screen.dart';
 import 'package:perennia/features/training/services/timer_background_scheduler.dart';
+import 'package:perennia/features/training/widgets/rest_strip.dart';
 import 'package:perennia/features/training/widgets/training_screen.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
@@ -448,9 +450,12 @@ void main() {
     });
 
     _testTrainingScreen(
-        'auto-starts rest timer on save and supports manual controls', (
+        'Log set starts the rest in the strip; Stop, then Start rest', (
       tester,
     ) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
       final workoutExerciseId = await tester.runAsync(
         () => _createWorkoutExercise(
           repositories,
@@ -464,12 +469,24 @@ void main() {
         () => repositories.workoutExercises.getById(workoutExerciseId!),
       ))!;
 
-      await _pumpTrainingScreen(tester, repositories, workoutExerciseId!);
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        workoutExerciseId!,
+        timerBackgroundScheduler: scheduler,
+      );
 
-      expect(find.byKey(TrainingScreen.restTimerPanelKey), findsOneWidget);
+      // Idle: Start rest, and the strip sits directly above Log set.
+      expect(find.byKey(TrainingScreen.restStripStartKey), findsOneWidget);
+      _expectMinimumTargetSize(
+        tester,
+        find.byKey(TrainingScreen.restStripStartKey),
+      );
       expect(
-        _fieldText(tester, TrainingScreen.restTimerDurationFieldKey),
-        '120',
+        tester.getRect(find.byKey(TrainingScreen.restStripKey)).bottom,
+        lessThanOrEqualTo(
+          tester.getRect(find.byKey(TrainingScreen.logSetButtonKey)).top,
+        ),
       );
 
       await tester.enterText(
@@ -491,11 +508,11 @@ void main() {
       expect(timer?.duration, const Duration(seconds: 120));
       expect(timer?.sourceSetId, isNotNull);
 
-      await _waitForFinder(
-        tester,
-        find.byKey(TrainingScreen.restTimerCancelButtonKey),
-      );
-      await tester.tap(find.byKey(TrainingScreen.restTimerCancelButtonKey));
+      await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
+      expect(_restStripSeconds(tester), inInclusiveRange(117, 120));
+      expect(find.byKey(TrainingScreen.restStripStartKey), findsNothing);
+
+      await tester.tap(find.byKey(TrainingScreen.restStripStopKey));
       await _settleRepositoryWork(tester);
 
       timer = await tester.runAsync<RestTimerRecord?>(
@@ -504,12 +521,18 @@ void main() {
         ),
       );
       expect(timer, isNull);
-
-      await tester.enterText(
-        find.byKey(TrainingScreen.restTimerDurationFieldKey),
-        '45',
+      expect(scheduler.cancels, isNotEmpty);
+      await _waitForFinder(
+        tester,
+        find.byKey(TrainingScreen.restStripStartKey),
       );
-      await tester.tap(find.byKey(TrainingScreen.restTimerStartButtonKey));
+
+      // Start rest starts the form's Rest after: 2:00 stepped down to 1:30.
+      await tester.tap(find.byKey(TrainingScreen.restAfterDecrementKey));
+      await tester.tap(find.byKey(TrainingScreen.restAfterDecrementKey));
+      await tester.pump();
+      expect(_restText(tester), '1:30');
+      await tester.tap(find.byKey(TrainingScreen.restStripStartKey));
       await _settleRepositoryWork(tester);
 
       timer = await tester.runAsync<RestTimerRecord?>(
@@ -517,8 +540,193 @@ void main() {
           workoutExercise.workoutId,
         ),
       );
-      expect(timer?.duration, const Duration(seconds: 45));
+      expect(timer?.duration, const Duration(seconds: 90));
       expect(timer?.sourceSetId, isNull);
+      expect(scheduler.schedules.last.timerId, timer!.id);
+      await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
+    });
+
+    _testTrainingScreen('Start rest is disabled at Off', (tester) async {
+      final workoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(tester, repositories, workoutExerciseId);
+      // 2:00 down to Off in 15 s steps.
+      for (var step = 0; step < 8; step += 1) {
+        await tester.tap(find.byKey(TrainingScreen.restAfterDecrementKey));
+      }
+      await tester.pump();
+
+      expect(_restText(tester), 'Off');
+      expect(
+        tester
+            .widget<ButtonStyleButton>(
+              find.byKey(TrainingScreen.restStripStartKey),
+            )
+            .onPressed,
+        isNull,
+      );
+    });
+
+    _testTrainingScreen(
+        'the strip adjusts a running rest and reschedules its alert', (
+      tester,
+    ) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final workoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final workoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(workoutExerciseId),
+      ))!;
+      final timerId = (await tester.runAsync<String>(
+        () => repositories.restTimers.start(
+          RestTimerDraft(
+            workoutId: workoutExercise.workoutId,
+            duration: const Duration(seconds: 90),
+          ),
+        ),
+      ))!;
+      final before = (await tester.runAsync(
+        () => repositories.restTimers.getById(timerId),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        workoutExerciseId,
+        timerBackgroundScheduler: scheduler,
+      );
+      await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
+      expect(_restStripSeconds(tester), inInclusiveRange(87, 90));
+
+      await tester.tap(find.byKey(TrainingScreen.restStripAdjustKey(15)));
+      await _settle(tester);
+
+      var timer = (await tester.runAsync(
+        () => repositories.restTimers.getById(timerId),
+      ))!;
+      expect(timer.duration, const Duration(seconds: 105));
+      expect(
+        timer.deadlineAt.difference(before.deadlineAt),
+        const Duration(seconds: 15),
+      );
+      expect(scheduler.cancels, <String>[timerId]);
+      expect(scheduler.schedules.single.deadlineAt, timer.deadlineAt.toUtc());
+      expect(_restStripSeconds(tester), inInclusiveRange(102, 105));
+
+      await tester.tap(find.byKey(TrainingScreen.restStripAdjustKey(-15)));
+      await _settle(tester);
+      await tester.tap(find.byKey(TrainingScreen.restStripAdjustKey(-15)));
+      await _settle(tester);
+
+      timer = (await tester.runAsync<RestTimerRecord?>(
+        () => repositories.restTimers.getById(timerId),
+      ))!;
+      expect(timer.duration, const Duration(seconds: 75));
+      expect(scheduler.cancels, <String>[timerId, timerId, timerId]);
+      expect(scheduler.schedules.last.deadlineAt, timer.deadlineAt.toUtc());
+      expect(_restStripSeconds(tester), inInclusiveRange(72, 75));
+
+      await tester.tap(find.byKey(TrainingScreen.restStripStopKey));
+      await _settle(tester);
+
+      timer = (await tester.runAsync<RestTimerRecord?>(
+        () => repositories.restTimers.getById(timerId),
+      ))!;
+      expect(timer.status, RestTimerStatus.canceled);
+      expect(scheduler.cancels, hasLength(4));
+      await _waitForFinder(
+        tester,
+        find.byKey(TrainingScreen.restStripStartKey),
+      );
+    });
+
+    _testTrainingScreen(
+        'the volume sheet sets the volume Log set starts its rest with', (
+      tester,
+    ) async {
+      final workoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final workoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(workoutExerciseId),
+      ))!;
+      final timerId = (await tester.runAsync<String>(
+        () => repositories.restTimers.start(
+          RestTimerDraft(
+            workoutId: workoutExercise.workoutId,
+            duration: const Duration(seconds: 90),
+          ),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(tester, repositories, workoutExerciseId);
+      await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
+      expect(find.byKey(TrainingScreen.restTimerVolumeSliderKey), findsNothing);
+
+      await tester.tap(find.textContaining(RegExp(r'^Rest \d')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Alert volume'), findsOneWidget);
+
+      // Drag the thumb past the slider's start: volume 0.
+      await tester.drag(
+        find.byKey(TrainingScreen.restTimerVolumeSliderKey),
+        const Offset(-1000, 0),
+      );
+      await _settleRepositoryWork(tester);
+
+      final adjusted = await tester.runAsync(
+        () => repositories.restTimers.getById(timerId),
+      );
+      expect(adjusted?.alertVolume, 0);
+
+      // Close the sheet, stop the rest, and log: the new rest keeps volume 0.
+      await tester.tapAt(const Offset(400, 20));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(TrainingScreen.restStripStopKey));
+      await _settleRepositoryWork(tester);
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settleRepositoryWork(tester);
+
+      final logged = await tester.runAsync(
+        () => repositories.restTimers.getCurrentForWorkout(
+          workoutExercise.workoutId,
+        ),
+      );
+      expect(logged?.id, isNot(timerId));
+      expect(logged?.alertVolume, 0);
     });
 
     _testTrainingScreen(
@@ -550,11 +758,7 @@ void main() {
 
       expect(scheduler.schedules, isEmpty);
 
-      await tester.enterText(
-        find.byKey(TrainingScreen.restTimerDurationFieldKey),
-        '45',
-      );
-      await tester.tap(find.byKey(TrainingScreen.restTimerStartButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.restStripStartKey));
       await _settleRepositoryWork(tester);
 
       final timer = await tester.runAsync<RestTimerRecord?>(
@@ -562,7 +766,7 @@ void main() {
           workoutExercise.workoutId,
         ),
       );
-      expect(timer?.duration, const Duration(seconds: 45));
+      expect(timer?.duration, const Duration(seconds: 120));
       expect(timer, isNotNull);
       expect(scheduler.schedules.map((schedule) => schedule.timerId),
           <String>[timer!.id]);
@@ -570,6 +774,7 @@ void main() {
         find.textContaining('Background timer alerts are off'),
         findsOneWidget,
       );
+      await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
     });
 
     _testTrainingScreen('fires foreground alert for an expired persisted timer',
@@ -617,11 +822,11 @@ void main() {
     });
 
     _testTrainingScreen(
-        'rest timer panel and its ticker survive a save-triggered auto-advance',
+        'the rest strip and its ticker survive a Log set auto-advance',
         (tester) async {
       // Regression for: swapping `_stateFuture` on auto-select-next-set
       // used to drop the Training Screen body to `SizedBox.expand()` for a
-      // frame, unmounting `_RestTimerPanel` and cancelling its `Timer.periodic`.
+      // frame, unmounting the rest timer and cancelling its `Timer.periodic`.
       // Runs the PRODUCTION ticker path (`enableRestTimerTicker: true`).
       final benchWorkoutExerciseId = (await tester.runAsync(
         () => _createWorkoutExercise(
@@ -677,14 +882,12 @@ void main() {
       );
       await _waitForFinder(
         tester,
-        find.byKey(TrainingScreen.restTimerPanelKey),
+        find.byKey(TrainingScreen.restStripStopKey),
       );
 
-      // Capture the panel's State identity BEFORE the advance. If the panel is
-      // unmounted and remounted, this State (and its ticker) is replaced. The
-      // panel key sits on a StatelessWidget child, so walk up to the enclosing
-      // stateful panel element.
-      final panelStateBefore = _restTimerPanelState(tester);
+      // Capture the strip's State identity BEFORE the advance. If the strip
+      // is unmounted and remounted, this State (and its ticker) is replaced.
+      final stripStateBefore = _restStripState(tester);
 
       await tester.enterText(
         find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
@@ -699,15 +902,15 @@ void main() {
       // Auto-advance lands on the grouped exercise.
       await _waitForFinder(tester, find.text('Barbell Row'));
 
-      // The panel is still on screen and it is the SAME State object: the
+      // The strip is still on screen and it is the SAME State object: the
       // ticker was never torn down.
-      expect(find.byKey(TrainingScreen.restTimerPanelKey), findsOneWidget);
-      final panelStateAfter = _restTimerPanelState(tester);
+      expect(find.byKey(TrainingScreen.restStripKey), findsOneWidget);
+      final stripStateAfter = _restStripState(tester);
       expect(
-        identical(panelStateBefore, panelStateAfter),
+        identical(stripStateBefore, stripStateAfter),
         isTrue,
-        reason: 'The rest-timer panel State (and its ticker) must survive the '
-            'save-triggered auto-advance to the next grouped exercise.',
+        reason: 'The rest strip State (and its ticker) must survive the '
+            'Log set auto-advance to the next grouped exercise.',
       );
 
       await _disposeWidgetTree(tester);
@@ -1722,6 +1925,16 @@ void main() {
             ),
           );
 
+          // A running rest, so the strip shows its time and buttons.
+          await tester.runAsync(
+            () => repositories.restTimers.start(
+              RestTimerDraft(
+                workoutId: benchWorkoutExercise!.workoutId,
+                duration: const Duration(seconds: 90),
+              ),
+            ),
+          );
+
           await _pumpTrainingScreen(
             tester,
             repositories,
@@ -1730,7 +1943,7 @@ void main() {
               <LoggedSetRecord>[loggedSet!],
             ),
             theme: theme,
-            textScaler: TextScaler.linear(1.8),
+            textScaler: TextScaler.linear(2.0),
           );
           await _waitForFinder(
             tester,
@@ -1791,6 +2004,37 @@ void main() {
             tester,
             find.byKey(TrainingScreen.logSetButtonKey),
           );
+
+          // The rest strip: its time, ±15 s and Stop.
+          await _waitForFinder(
+            tester,
+            find.byKey(TrainingScreen.restStripStopKey),
+          );
+          expect(
+            find.semantics.byLabel(
+              RegExp(r'^Rest, 1 minutes (2\d|30) seconds left$'),
+            ),
+            findsOne,
+          );
+          expect(find.semantics.byLabel('Rest 15 seconds less'), findsOne);
+          expect(find.semantics.byLabel('Rest 15 seconds more'), findsOne);
+          expect(find.byTooltip('Stop rest'), findsOneWidget);
+          for (final key in <Key>[
+            TrainingScreen.restStripAdjustKey(-15),
+            TrainingScreen.restStripAdjustKey(15),
+            TrainingScreen.restStripStopKey,
+          ]) {
+            _expectMinimumTargetSize(tester, find.byKey(key));
+          }
+          // Text scale 2.0: the pinned strip and Log set stay on screen,
+          // the strip directly above the button.
+          final screen = Offset.zero & tester.view.physicalSize;
+          final strip = tester.getRect(find.byKey(TrainingScreen.restStripKey));
+          final logSet =
+              tester.getRect(find.byKey(TrainingScreen.logSetButtonKey));
+          expect(screen.contains(strip.topLeft), isTrue);
+          expect(screen.contains(logSet.bottomRight), isTrue);
+          expect(strip.bottom, lessThanOrEqualTo(logSet.top));
 
           await tester.tap(find.byKey(TrainingScreen.navigationPanelButtonKey));
           await _pumpDrawerAnimation(tester);
@@ -2707,6 +2951,201 @@ void main() {
       expect(_logSetLabel(tester), 'Log set 1 of 3');
       expect(_rowLabel(tester, ids[0]), 'Set 1, next, 60 kg x 10');
     });
+
+    _testTrainingScreen(
+        'text scale 2.0 on a phone keeps the strip and Log set visible', (
+      tester,
+    ) async {
+      final bench = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+          rest: const Duration(seconds: 90),
+          performedCount: 1,
+        ),
+      ))!;
+      final row = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          workoutId: bench.workoutId,
+          name: 'Barbell Row',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '50', reps: '10'),
+          ),
+        ),
+      ))!;
+      await tester.runAsync(
+        () => repositories.exerciseGroups.create(
+          ExerciseGroupDraft(
+            workoutId: bench.workoutId,
+            name: 'A1 superset',
+            colorHex: '#2F6FED',
+            workoutExerciseIds: <String>[
+              bench.workoutExerciseId,
+              row.workoutExerciseId,
+            ],
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => repositories.restTimers.start(
+          RestTimerDraft(
+            workoutId: bench.workoutId,
+            duration: const Duration(minutes: 10),
+          ),
+        ),
+      );
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        bench.workoutExerciseId,
+        liveSets: true,
+        textScaler: TextScaler.linear(2.0),
+        surfaceSize: const Size(412, 915),
+      );
+      await _settle(tester);
+      await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
+
+      expect(tester.takeException(), isNull);
+      expect(_contextLine(tester), isNotNull);
+      expect(_logSetLabel(tester), 'Log set 2 of 3');
+      final screen = Offset.zero & tester.view.physicalSize;
+      final strip = tester.getRect(find.byKey(TrainingScreen.restStripKey));
+      final logSet = tester.getRect(find.byKey(TrainingScreen.logSetButtonKey));
+      expect(screen.contains(strip.topLeft), isTrue);
+      expect(screen.contains(logSet.bottomRight), isTrue);
+      expect(strip.bottom, lessThanOrEqualTo(logSet.top));
+      for (final key in <Key>[
+        TrainingScreen.restStripAdjustKey(-15),
+        TrainingScreen.restStripAdjustKey(15),
+        TrainingScreen.restStripStopKey,
+        TrainingScreen.logSetButtonKey,
+      ]) {
+        _expectMinimumTargetSize(tester, find.byKey(key));
+      }
+    });
+  });
+
+  group('kill and reopen', () {
+    _testTrainingScreen(
+        'CUJ 14: after a kill, Set 3 is current and the rest resumes', (
+      tester,
+    ) async {
+      final directory = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('perennia_cuj14_'),
+      ))!;
+      final file = File('${directory.path}/perennia.sqlite');
+      AppDatabase? database = AppDatabase.openFile(file);
+      try {
+        var repositories = TrainingRepositories(database);
+        final bench = (await tester.runAsync(
+          () => _createPlannedExercise(
+            repositories,
+            name: 'Bench Press',
+            planned: List<LoggedSet>.filled(
+              3,
+              _loadRepsValues(load: '60', reps: '10'),
+            ),
+            rest: const Duration(seconds: 90),
+            performedCount: 1,
+          ),
+        ))!;
+        final row = (await tester.runAsync(
+          () => _createPlannedExercise(
+            repositories,
+            workoutId: bench.workoutId,
+            name: 'Barbell Row',
+            planned: List<LoggedSet>.filled(
+              3,
+              _loadRepsValues(load: '50', reps: '10'),
+            ),
+            performedCount: 2,
+          ),
+        ))!;
+        await tester.runAsync(
+          () => repositories.exerciseGroups.create(
+            ExerciseGroupDraft(
+              workoutId: bench.workoutId,
+              name: 'A1 superset',
+              colorHex: '#2F6FED',
+              workoutExerciseIds: <String>[
+                bench.workoutExerciseId,
+                row.workoutExerciseId,
+              ],
+            ),
+          ),
+        );
+
+        await _pumpTrainingScreen(
+          tester,
+          repositories,
+          bench.workoutExerciseId,
+          liveSets: true,
+        );
+        await _settle(tester);
+        expect(_logSetLabel(tester), 'Log set 2 of 3');
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+        await _settle(tester);
+        final timer = (await tester.runAsync(
+          () => repositories.restTimers.getCurrentForWorkout(bench.workoutId),
+        ))!;
+        expect(timer.sourceSetId, bench.setIds[1]);
+        expect(timer.duration, const Duration(seconds: 90));
+
+        // Kill: the tree goes and the database closes with the rest running.
+        await _disposeWidgetTree(tester);
+        await tester.runAsync(() => database!.close());
+        database = null;
+
+        // Reopen the same file and rebuild the screen on Bench Press.
+        database = AppDatabase.openFile(file);
+        repositories = TrainingRepositories(database);
+        await _pumpTrainingScreen(
+          tester,
+          repositories,
+          bench.workoutExerciseId,
+          liveSets: true,
+        );
+        await _settle(tester);
+
+        expect(_rowLabel(tester, bench.setIds[0]), 'Set 1, done, 60 kg x 10');
+        expect(_rowLabel(tester, bench.setIds[1]), 'Set 2, done, 60 kg x 10');
+        expect(_rowLabel(tester, bench.setIds[2]), 'Set 3, next, 60 kg x 10');
+        expect(_logSetLabel(tester), 'Log set 3 of 3');
+        expect(
+          _contextLine(tester),
+          'A1 superset · Round 3 of 3 · Next: Barbell Row',
+        );
+        final resumed = (await tester.runAsync(
+          () => repositories.restTimers.getCurrentForWorkout(bench.workoutId),
+        ))!;
+        expect(resumed.id, timer.id);
+        expect(resumed.status, RestTimerStatus.running);
+        expect(resumed.deadlineAt, timer.deadlineAt);
+        await _waitForFinder(
+          tester,
+          find.byKey(TrainingScreen.restStripStopKey),
+        );
+        final left = resumed.deadlineAt.difference(DateTime.now().toUtc());
+        expect(
+          _restStripSeconds(tester),
+          inInclusiveRange(left.inSeconds - 2, left.inSeconds + 1),
+        );
+      } finally {
+        await _disposeWidgetTree(tester);
+        final open = database;
+        await tester.runAsync(() async {
+          await open?.close();
+          await directory.delete(recursive: true);
+        });
+      }
+    });
   });
 }
 
@@ -2831,10 +3270,11 @@ Future<void> _pumpTrainingScreen(
   TextScaler? textScaler,
   bool enableRestTimerTicker = false,
   bool liveSets = false,
+  Size surfaceSize = const Size(800, 1600),
 }) async {
   // A phone-tall surface, so the rows, the form and the pinned buttons are
   // all on screen without scrolling.
-  tester.view.physicalSize = const Size(800, 1600);
+  tester.view.physicalSize = surfaceSize;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final initialWorkoutExercise = await tester.runAsync(
@@ -2908,25 +3348,33 @@ Future<void> _pumpTrainingScreen(
   );
 }
 
-/// Resolves the `State` of the rest-timer panel. Its key sits on a
-/// `StatelessWidget` child, so walk up to the enclosing stateful panel element
-/// (the private `_RestTimerPanelState`, which owns the ticker).
-State _restTimerPanelState(WidgetTester tester) {
-  final element = tester.element(
-    find.byKey(TrainingScreen.restTimerPanelKey),
+/// Resolves the rest strip's `State`, which owns the ticker. Its key sits
+/// on the strip's root box, so walk up to the enclosing [RestStrip].
+State _restStripState(WidgetTester tester) {
+  return tester.state(
+    find.ancestor(
+      of: find.byKey(TrainingScreen.restStripKey),
+      matching: find.byType(RestStrip),
+    ),
   );
-  State? found;
-  element.visitAncestorElements((ancestor) {
-    if (ancestor is StatefulElement) {
-      found = ancestor.state;
-      return false;
-    }
-    return true;
-  });
-  if (found == null) {
-    fail('No stateful ancestor found for the rest-timer panel.');
+}
+
+/// The strip's visible remaining time ("Rest 1:12") in seconds. The strip
+/// counts down on the real clock, so callers allow for a few seconds.
+int _restStripSeconds(WidgetTester tester) {
+  final text = tester
+      .widget<Text>(
+        find.descendant(
+          of: find.byKey(TrainingScreen.restStripKey),
+          matching: find.textContaining(RegExp(r'^Rest \d')),
+        ),
+      )
+      .data!;
+  final match = RegExp(r'^Rest (\d+):(\d\d)$').firstMatch(text);
+  if (match == null) {
+    fail('The rest strip reads "$text".');
   }
-  return found!;
+  return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
 }
 
 void _expectMinimumTargetSize(WidgetTester tester, Finder finder) {
