@@ -76,3 +76,33 @@ Dates are local `YYYY-MM-DD` dates and "today" is an input, so cases contain no
 timezone. Instants are ISO-8601 UTC strings; a Workout's local date is given,
 not derived from its start, which is how a session after midnight belongs to
 the next date.
+
+## Progress Measure
+
+`m37-progress-measure.json` (domain `progress-measure`) pins the Progress
+Measure core in both languages: `progressSeries` (one value per Logged Workout
+for an exercise, taken from its Record Profile, with each New Best marked) and
+`newBestsBetween` (the New Bests of several exercises dated in a period, newest
+first). The app runs it in
+`apps/mobile/test/domain/progress_measure_golden_test.dart` against
+`apps/mobile/lib/domain/analytics/progress_measure.dart`; the server runs it in
+`apps/server/test/progress-measure.golden.test.mjs` against
+`apps/server/src/analytics/progress-measure.ts`. The behaviour is specified in
+[`docs/designs/progress-overview.md`](../../../docs/designs/progress-overview.md)
+(D0 and D4).
+
+Each case names its `function`, gives that function's arguments by parameter
+name in `input`, and its full return value in `expected`; a Record Profile with
+no single best number (`minAssistancePerRepCount`, `completionStreak`) expects
+`null`. The profile is `{dimensions, loadMode, recordProfile}`, as
+`m4-analytics-pr-e1rm-volume.json` gives it, and Set values are the engine's
+logged-values shape. The file is governed by the adjacent
+`m37-progress-measure.schema.json`; its `schemaVersion`, the schema's constant
+and both runners' constants move together.
+
+Both cores call the existing exercise analytics engine once per Workout rather
+than reimplementing it, so values are its normalized ones (kilograms,
+kilometres, seconds, and seconds per kilometre for pace with unit `second`),
+and the `m4-analytics-pr-e1rm-volume` vectors stay the engine's own. Values are
+compared exactly: both languages compute them in IEEE doubles with the same
+operations.
