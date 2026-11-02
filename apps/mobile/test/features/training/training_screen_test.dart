@@ -41,7 +41,8 @@ void main() {
       await database.close();
     });
 
-    testWidgets('renders exactly the fields for a load and reps exercise', (
+    _testTrainingScreen(
+        'renders exactly the fields for a load and reps exercise', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -93,7 +94,8 @@ void main() {
       expect(find.byKey(TrainingScreen.rpeFieldKey), findsNothing);
     });
 
-    testWidgets('tapping a dimension field selects its value to replace it', (
+    _testTrainingScreen(
+        'tapping a dimension field selects its value to replace it', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -121,7 +123,8 @@ void main() {
       );
     });
 
-    testWidgets('uses the settings default increment for load steppers', (
+    _testTrainingScreen('uses the settings default increment for load steppers',
+        (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -163,7 +166,7 @@ void main() {
       );
     });
 
-    testWidgets('renders exactly the fields for a timed exercise', (
+    _testTrainingScreen('renders exactly the fields for a timed exercise', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -194,7 +197,8 @@ void main() {
       );
     });
 
-    testWidgets('increments and decrements dimension inputs by defaults', (
+    _testTrainingScreen(
+        'increments and decrements dimension inputs by defaults', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -241,7 +245,8 @@ void main() {
       );
     });
 
-    testWidgets('saves a self-describing set for the workout exercise', (
+    _testTrainingScreen('saves a self-describing set for the workout exercise',
+        (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -264,7 +269,7 @@ void main() {
         find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
         '5',
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
 
       final workoutExercise = await tester.runAsync(
@@ -307,7 +312,7 @@ void main() {
       expect(savedSet.rpe, isNull);
     });
 
-    testWidgets(
+    _testTrainingScreen(
       'saves a sparse cardio set with duration parts and no distance',
       (tester) async {
         final workoutExerciseId = await tester.runAsync(
@@ -328,6 +333,8 @@ void main() {
         final setStream = StreamController<List<LoggedSetRecord>>();
         addTearDown(setStream.close);
 
+        await _emitSets(
+            tester, repositories, workoutExercise!.workoutId, setStream);
         await _pumpTrainingScreen(
           tester,
           repositories,
@@ -355,12 +362,12 @@ void main() {
           find.byKey(TrainingScreen.durationSecondsFieldKey),
           '3',
         );
-        await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
         await _settleRepositoryWork(tester);
         await _emitSets(
           tester,
           repositories,
-          workoutExercise!.workoutId,
+          workoutExercise.workoutId,
           setStream,
         );
 
@@ -381,59 +388,7 @@ void main() {
       },
     );
 
-    testWidgets('completed set rows hide completion status and checkbox', (
-      tester,
-    ) async {
-      final workoutExerciseId = await tester.runAsync(
-        () => _createWorkoutExercise(
-          repositories,
-          name: 'Bench Press',
-          type: ExerciseType(
-            const <DimensionId>[DimensionId.load, DimensionId.reps],
-          ),
-        ),
-      );
-      final workoutExercise = await tester.runAsync(
-        () => repositories.workoutExercises.getById(workoutExerciseId!),
-      );
-      final setId = await tester.runAsync(
-        () => _createBenchSet(
-          repositories,
-          workoutId: workoutExercise!.workoutId,
-          exerciseId: workoutExercise.exerciseId,
-          position: 0,
-          load: '100',
-          reps: '5',
-          isCompleted: true,
-        ),
-      );
-      final loggedSet = await tester.runAsync(
-        () => repositories.sets.getById(setId!),
-      );
-      final setStream = StreamController<List<LoggedSetRecord>>();
-      addTearDown(setStream.close);
-
-      await _pumpTrainingScreen(
-        tester,
-        repositories,
-        workoutExerciseId!,
-        setsStream: setStream.stream,
-      );
-      setStream.add(<LoggedSetRecord>[loggedSet!]);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 20));
-
-      expect(find.byKey(TrainingScreen.setTileKey(setId!)), findsOneWidget);
-      expect(find.text('100 kg x 5'), findsOneWidget);
-      expect(
-        find.byKey(TrainingScreen.completeSetCheckboxKey(setId)),
-        findsNothing,
-      );
-      expect(find.text('In progress'), findsNothing);
-      expect(find.text('Complete'), findsNothing);
-    });
-
-    testWidgets('keeps saved dimensions as defaults for the next set', (
+    _testTrainingScreen('keeps saved dimensions as defaults for the next set', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -456,7 +411,7 @@ void main() {
         find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
         '5',
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
 
       expect(
@@ -468,7 +423,7 @@ void main() {
         '5',
       );
 
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
 
       final workoutExercise = await tester.runAsync(
@@ -492,7 +447,8 @@ void main() {
       );
     });
 
-    testWidgets('auto-starts rest timer on save and supports manual controls', (
+    _testTrainingScreen(
+        'auto-starts rest timer on save and supports manual controls', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -524,7 +480,7 @@ void main() {
         find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
         '5',
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
 
       RestTimerRecord? timer = await tester.runAsync<RestTimerRecord?>(
@@ -565,7 +521,8 @@ void main() {
       expect(timer?.sourceSetId, isNull);
     });
 
-    testWidgets('keeps in-app rest timer running when alerts are denied', (
+    _testTrainingScreen(
+        'keeps in-app rest timer running when alerts are denied', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -615,63 +572,8 @@ void main() {
       );
     });
 
-    testWidgets('starts planned rest when a planned set is marked complete', (
-      tester,
-    ) async {
-      final workoutExerciseId = await tester.runAsync(
-        () => _createWorkoutExercise(
-          repositories,
-          name: 'Back Squat',
-          type: ExerciseType(
-            const <DimensionId>[DimensionId.load, DimensionId.reps],
-          ),
-        ),
-      );
-      final workoutExercise = (await tester.runAsync(
-        () => repositories.workoutExercises.getById(workoutExerciseId!),
-      ))!;
-      final plannedSetId = await tester.runAsync(
-        () => repositories.sets.create(
-          LoggedSetDraft(
-            workoutId: workoutExercise.workoutId,
-            exerciseId: workoutExercise.exerciseId,
-            position: 0,
-            values: _loadRepsValues(load: '100', reps: '5'),
-            plannedRestAfter: const Duration(seconds: 180),
-          ),
-        ),
-      );
-      final setStream = StreamController<List<LoggedSetRecord>>();
-      addTearDown(setStream.close);
-
-      await _pumpTrainingScreen(
-        tester,
-        repositories,
-        workoutExerciseId!,
-        setsStream: setStream.stream,
-      );
-      await _emitSets(
-        tester,
-        repositories,
-        workoutExercise.workoutId,
-        setStream,
-      );
-
-      await tester.tap(
-        find.byKey(TrainingScreen.completeSetCheckboxKey(plannedSetId!)),
-      );
-      await _settleRepositoryWork(tester);
-
-      final timer = await tester.runAsync<RestTimerRecord?>(
-        () => repositories.restTimers.getCurrentForWorkout(
-          workoutExercise.workoutId,
-        ),
-      );
-      expect(timer?.sourceSetId, plannedSetId);
-      expect(timer?.duration, const Duration(seconds: 180));
-    });
-
-    testWidgets('fires foreground alert for an expired persisted timer', (
+    _testTrainingScreen('fires foreground alert for an expired persisted timer',
+        (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -714,7 +616,7 @@ void main() {
       expect(timer?.alertFiredAt, isNotNull);
     });
 
-    testWidgets(
+    _testTrainingScreen(
         'rest timer panel and its ticker survive a save-triggered auto-advance',
         (tester) async {
       // Regression for: swapping `_stateFuture` on auto-select-next-set
@@ -792,7 +694,7 @@ void main() {
         find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
         '5',
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
       // Auto-advance lands on the grouped exercise.
       await _waitForFinder(tester, find.text('Barbell Row'));
@@ -811,7 +713,7 @@ void main() {
       await _disposeWidgetTree(tester);
     });
 
-    testWidgets(
+    _testTrainingScreen(
         'fires the 3-2-1 prepare cue exactly once inside the last 3 seconds',
         (tester) async {
       final workoutExerciseId = (await tester.runAsync(
@@ -870,7 +772,8 @@ void main() {
       await _disposeWidgetTree(tester);
     });
 
-    testWidgets('suppresses the prepare cue when timer sounds are turned off',
+    _testTrainingScreen(
+        'suppresses the prepare cue when timer sounds are turned off',
         (tester) async {
       final workoutExerciseId = (await tester.runAsync(
         () => _createWorkoutExercise(
@@ -918,7 +821,7 @@ void main() {
       await _disposeWidgetTree(tester);
     });
 
-    testWidgets('saves comments RPE and alternating unilateral sides', (
+    _testTrainingScreen('saves comments RPE and alternating unilateral sides', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -958,7 +861,7 @@ void main() {
         find.byKey(TrainingScreen.rpeFieldKey),
         '7.5',
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
 
       await tester.enterText(
@@ -973,7 +876,7 @@ void main() {
         find.byKey(TrainingScreen.commentFieldKey),
         'Smooth right',
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
 
       final sets = await tester.runAsync(
@@ -1007,7 +910,8 @@ void main() {
       );
     });
 
-    testWidgets('navigation drawer lists set counts and jumps exercises', (
+    _testTrainingScreen(
+        'navigation drawer lists set counts and jumps exercises', (
       tester,
     ) async {
       final benchWorkoutExerciseId = await tester.runAsync(
@@ -1132,7 +1036,7 @@ void main() {
       );
     });
 
-    testWidgets('opens exercise overview from the navigation drawer', (
+    _testTrainingScreen('opens exercise overview from the navigation drawer', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -1181,7 +1085,8 @@ void main() {
       await _disposeWidgetTree(tester);
     });
 
-    testWidgets('creates groups and auto-advances only grouped exercises', (
+    _testTrainingScreen(
+        'creates groups and auto-advances only grouped exercises', (
       tester,
     ) async {
       final benchWorkoutExerciseId = await tester.runAsync(
@@ -1282,7 +1187,7 @@ void main() {
         find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
         '5',
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
 
       await _waitForFinder(tester, find.text('Barbell Row'));
@@ -1301,14 +1206,15 @@ void main() {
         find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
         '12',
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
 
       await _waitForFinder(tester, find.text('Curl'));
       await _disposeWidgetTree(tester);
     });
 
-    testWidgets('prefills from the latest prior set and saves a new set', (
+    _testTrainingScreen(
+        'prefills from the latest prior set and saves a new set', (
       tester,
     ) async {
       final exerciseId = await tester.runAsync(
@@ -1372,7 +1278,7 @@ void main() {
         find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
         '85',
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
 
       final currentSets = await tester.runAsync(
@@ -1390,7 +1296,7 @@ void main() {
       expect(priorSet?.values.reps?.entered, '4');
     });
 
-    testWidgets(
+    _testTrainingScreen(
       'shows a trophy only for logged sets that become headline records',
       (tester) async {
         final exerciseId = await tester.runAsync(
@@ -1444,6 +1350,7 @@ void main() {
         addTearDown(setStream.close);
         addTearDown(recordSetIdsStream.close);
 
+        await _emitSets(tester, repositories, currentWorkoutId!, setStream);
         await _pumpTrainingScreen(
           tester,
           repositories,
@@ -1451,7 +1358,7 @@ void main() {
           setsStream: setStream.stream,
           recordSetIdsStream: recordSetIdsStream.stream,
         );
-        await _emitSets(tester, repositories, currentWorkoutId!, setStream);
+        await _emitSets(tester, repositories, currentWorkoutId, setStream);
         await _emitRecordSetIds(
           tester,
           repositories,
@@ -1467,7 +1374,7 @@ void main() {
           find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
           '5',
         );
-        await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
         await _settleRepositoryWork(tester);
         await _emitSets(tester, repositories, currentWorkoutId, setStream);
         await _emitRecordSetIds(
@@ -1495,7 +1402,7 @@ void main() {
           find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
           '5',
         );
-        await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
         await _settleRepositoryWork(tester);
         await _emitSets(tester, repositories, currentWorkoutId, setStream);
         await _emitRecordSetIds(
@@ -1522,7 +1429,7 @@ void main() {
       },
     );
 
-    testWidgets('hides record trophies when PR tracking is disabled', (
+    _testTrainingScreen('hides record trophies when PR tracking is disabled', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -1569,7 +1476,7 @@ void main() {
       expect(find.byKey(TrainingScreen.recordTrophyKey(setId)), findsNothing);
     });
 
-    testWidgets(
+    _testTrainingScreen(
       'detects log-time trophies through the analytics provider',
       (tester) async {
         final exerciseId = (await tester.runAsync(
@@ -1617,7 +1524,7 @@ void main() {
             ),
           ),
         ))!;
-        final checkboxSetId = (await tester.runAsync(
+        final plannedSetId = (await tester.runAsync(
           () => _createBenchSet(
             repositories,
             workoutId: currentWorkoutId,
@@ -1630,6 +1537,7 @@ void main() {
         final setStream = StreamController<List<LoggedSetRecord>>();
         addTearDown(setStream.close);
 
+        await _emitSets(tester, repositories, currentWorkoutId, setStream);
         await _pumpTrainingScreen(
           tester,
           repositories,
@@ -1638,15 +1546,14 @@ void main() {
           useProductionRecordProvider: true,
         );
         await _emitSets(tester, repositories, currentWorkoutId, setStream);
-        await tester.tap(
-          find.byKey(TrainingScreen.completeSetCheckboxKey(checkboxSetId)),
-        );
+        // Log set fills the planned 82.5 kg x 5, the Current Set.
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
         await _settleRepositoryWork(tester);
         await _emitSets(tester, repositories, currentWorkoutId, setStream);
         await _pumpFrames(tester);
 
         expect(
-          find.byKey(TrainingScreen.recordTrophyKey(checkboxSetId)),
+          find.byKey(TrainingScreen.recordTrophyKey(plannedSetId)),
           findsNothing,
         );
 
@@ -1658,7 +1565,7 @@ void main() {
           find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
           '5',
         );
-        await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
         await _settleRepositoryWork(tester);
         await _emitSets(tester, repositories, currentWorkoutId, setStream);
         await _pumpFrames(tester);
@@ -1680,7 +1587,7 @@ void main() {
           find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
           '5',
         );
-        await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
         await _settleRepositoryWork(tester);
         await _emitSets(tester, repositories, currentWorkoutId, setStream);
 
@@ -1697,7 +1604,7 @@ void main() {
           findsNothing,
         );
         expect(
-          find.byKey(TrainingScreen.recordTrophyKey(checkboxSetId)),
+          find.byKey(TrainingScreen.recordTrophyKey(plannedSetId)),
           findsNothing,
         );
 
@@ -1705,7 +1612,7 @@ void main() {
       },
     );
 
-    testWidgets('does not show a trophy for completion-only records', (
+    _testTrainingScreen('does not show a trophy for completion-only records', (
       tester,
     ) async {
       final workoutExerciseId = await tester.runAsync(
@@ -1723,6 +1630,8 @@ void main() {
       addTearDown(setStream.close);
       addTearDown(recordSetIdsStream.close);
 
+      await _emitSets(
+          tester, repositories, workoutExercise!.workoutId, setStream);
       await _pumpTrainingScreen(
         tester,
         repositories,
@@ -1730,10 +1639,10 @@ void main() {
         setsStream: setStream.stream,
         recordSetIdsStream: recordSetIdsStream.stream,
       );
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settleRepositoryWork(tester);
       await _emitSets(
-          tester, repositories, workoutExercise!.workoutId, setStream);
+          tester, repositories, workoutExercise.workoutId, setStream);
       await _emitRecordSetIds(
         tester,
         repositories,
@@ -1754,149 +1663,7 @@ void main() {
       );
     });
 
-    testWidgets('edits deletes completes and exposes reorder handles', (
-      tester,
-    ) async {
-      final workoutExerciseId = await tester.runAsync(
-        () => _createWorkoutExercise(
-          repositories,
-          name: 'Bench Press',
-          type: ExerciseType(
-            const <DimensionId>[DimensionId.load, DimensionId.reps],
-          ),
-        ),
-      );
-      final workoutExercise = await tester.runAsync(
-        () => repositories.workoutExercises.getById(workoutExerciseId!),
-      );
-      final firstSetId = (await tester.runAsync(
-        () => _createBenchSet(
-          repositories,
-          workoutId: workoutExercise!.workoutId,
-          exerciseId: workoutExercise.exerciseId,
-          position: 0,
-          load: '80',
-          reps: '5',
-        ),
-      ))!;
-      final secondSetId = (await tester.runAsync(
-        () => _createBenchSet(
-          repositories,
-          workoutId: workoutExercise!.workoutId,
-          exerciseId: workoutExercise.exerciseId,
-          position: 1,
-          load: '82.5',
-          reps: '4',
-        ),
-      ))!;
-      final setStream = StreamController<List<LoggedSetRecord>>();
-      addTearDown(setStream.close);
-
-      await _pumpTrainingScreen(
-        tester,
-        repositories,
-        workoutExerciseId!,
-        setsStream: setStream.stream,
-      );
-      await _emitSets(
-          tester, repositories, workoutExercise!.workoutId, setStream);
-
-      expect(find.byKey(TrainingScreen.setTileKey(firstSetId)), findsOneWidget);
-      expect(find.text('80 kg x 5'), findsOneWidget);
-      expect(find.text('82.5 kg x 4'), findsOneWidget);
-      expect(
-        find.byKey(TrainingScreen.reorderHandleKey(firstSetId)),
-        findsOneWidget,
-      );
-
-      await tester.tap(
-        find.byKey(TrainingScreen.completeSetCheckboxKey(firstSetId)),
-      );
-      await _settleRepositoryWork(tester);
-      await _emitSets(
-          tester, repositories, workoutExercise.workoutId, setStream);
-
-      final completedSet = await tester.runAsync(
-        () => repositories.sets.getById(firstSetId),
-      );
-      expect(completedSet?.isCompleted, true);
-
-      await tester.tap(find.byKey(TrainingScreen.editSetButtonKey(firstSetId)));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(
-          TrainingScreen.editDimensionFieldKey(
-            firstSetId,
-            DimensionId.load,
-          ),
-        ),
-        '85',
-      );
-      await tester.enterText(
-        find.byKey(
-          TrainingScreen.editDimensionFieldKey(
-            firstSetId,
-            DimensionId.reps,
-          ),
-        ),
-        '3',
-      );
-      await tester
-          .tap(find.byKey(TrainingScreen.saveEditButtonKey(firstSetId)));
-      await _settleRepositoryWork(tester);
-      await _emitSets(
-          tester, repositories, workoutExercise.workoutId, setStream);
-
-      final editedSet = await tester.runAsync(
-        () => repositories.sets.getById(firstSetId),
-      );
-      expect(editedSet?.values.load?.entered, '85');
-      expect(editedSet?.values.reps?.entered, '3');
-      expect(find.text('85 kg x 3'), findsOneWidget);
-
-      await tester.tap(
-        find.byKey(TrainingScreen.deleteSetButtonKey(secondSetId)),
-      );
-      await _settleRepositoryWork(tester);
-      await _emitSets(
-          tester, repositories, workoutExercise.workoutId, setStream);
-
-      final activeSets = await tester.runAsync(
-        () => repositories.sets.listActiveForWorkout(workoutExercise.workoutId),
-      );
-      final logs = await tester.runAsync(
-        repositories.activityLog.listEntries,
-      );
-
-      expect(activeSets!.map((set) => set.id), <String>[firstSetId]);
-      expect(find.byKey(TrainingScreen.setTileKey(secondSetId)), findsNothing);
-      expect(
-        logs!
-            .where(
-              (entry) =>
-                  entry.entityTable == AppDatabase.loggedSetsTable &&
-                  entry.entityId == firstSetId &&
-                  entry.beforeImage?['is_completed'] == false &&
-                  entry.afterImage?['is_completed'] == true,
-            )
-            .length,
-        1,
-      );
-      expect(
-        logs
-            .where(
-              (entry) =>
-                  entry.entityTable == AppDatabase.loggedSetsTable &&
-                  entry.entityId == secondSetId &&
-                  entry.beforeImage?['deleted_at'] == null &&
-                  entry.afterImage?['deleted_at'] != null,
-            )
-            .length,
-        1,
-      );
-    });
-
-    testWidgets(
+    _testTrainingScreen(
       'audited logging controls expose labels targets and contrast',
       (tester) async {
         for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
@@ -1967,16 +1734,29 @@ void main() {
           );
           await _waitForFinder(
             tester,
-            find.byKey(TrainingScreen.completeSetCheckboxKey(setId)),
+            find.byKey(TrainingScreen.setTileKey(setId)),
           );
 
           expect(find.semantics.byLabel('Decrease Load'), findsOne);
           expect(find.semantics.byLabel('Increase Load'), findsOne);
+          expect(find.semantics.byLabel('Decrease rest'), findsOne);
+          expect(find.semantics.byLabel('Increase rest'), findsOne);
           expect(
-            find.semantics.byLabel(RegExp(r'Mark set complete')),
+            find.semantics.byLabel(RegExp(r'Set 1, next, 80 kg x 5')),
             findsOne,
           );
           expect(find.semantics.byLabel('Reorder set'), findsOne);
+          expect(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is Semantics &&
+                  (widget.properties.customSemanticsActions?.keys.any(
+                        (action) => action.label == 'Remove planned set',
+                      ) ??
+                      false),
+            ),
+            findsOneWidget,
+          );
           expect(find.byTooltip('Left side'), findsOneWidget);
           expect(find.byTooltip('Right side'), findsOneWidget);
           _expectMinimumTargetSize(
@@ -1989,7 +1769,19 @@ void main() {
           );
           _expectMinimumTargetSize(
             tester,
-            find.byKey(TrainingScreen.completeSetCheckboxKey(setId)),
+            find.byKey(TrainingScreen.restAfterDecrementKey),
+          );
+          _expectMinimumTargetSize(
+            tester,
+            find.byKey(TrainingScreen.restAfterIncrementKey),
+          );
+          _expectMinimumTargetSize(
+            tester,
+            find.byKey(TrainingScreen.addSetButtonKey),
+          );
+          _expectMinimumTargetSize(
+            tester,
+            find.byKey(TrainingScreen.addRoundButtonKey),
           );
           _expectMinimumTargetSize(
             tester,
@@ -1997,13 +1789,22 @@ void main() {
           );
           _expectMinimumTargetSize(
             tester,
-            find.byKey(TrainingScreen.saveSetButtonKey),
+            find.byKey(TrainingScreen.logSetButtonKey),
           );
 
           await tester.tap(find.byKey(TrainingScreen.navigationPanelButtonKey));
           await _pumpDrawerAnimation(tester);
 
-          expect(find.textContaining(groupName), findsNWidgets(2));
+          expect(
+            find.descendant(
+              of: find.byKey(TrainingScreen.navigationPanelKey),
+              matching: find.textContaining(groupName),
+            ),
+            // Both members' subtitles and the group's own tile.
+            findsNWidgets(3),
+          );
+          // Barbell Row has no Planned Set, so Log set would not move.
+          expect(find.text('$groupName · Round 1 of 1'), findsOneWidget);
           expect(
             find.semantics.byLabel(
               RegExp('Exercise group ${RegExp.escape(groupName)}'),
@@ -2036,6 +1837,892 @@ void main() {
         }
       },
     );
+  });
+
+  group('log set', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    _testTrainingScreen('CUJ 1: logs a planned Set and Undo reverts it', (
+      tester,
+    ) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+          rest: const Duration(seconds: 90),
+        ),
+      ))!;
+      final ids = plan.setIds;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+        timerBackgroundScheduler: scheduler,
+      );
+      await _settle(tester);
+
+      expect(_rowLabel(tester, ids[0]), 'Set 1, next, 60 kg x 10');
+      expect(_rowLabel(tester, ids[1]), 'Set 2, planned, 60 kg x 10');
+      expect(_rowLabel(tester, ids[2]), 'Set 3, planned, 60 kg x 10');
+      expect(_rowIsHighlighted(tester, ids[0]), isTrue);
+      expect(_rowIsHighlighted(tester, ids[1]), isFalse);
+      expect(find.byType(Checkbox), findsNothing);
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '60',
+      );
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '10',
+      );
+      expect(_restText(tester), '1:30');
+      expect(_logSetLabel(tester), 'Log set 1 of 3');
+
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      expect(_rowLabel(tester, ids[0]), 'Set 1, done, 60 kg x 10');
+      expect(_rowLabel(tester, ids[1]), 'Set 2, next, 60 kg x 10');
+      expect(
+        find.descendant(
+          of: find.byKey(TrainingScreen.setTileKey(ids[0])),
+          matching: find.byIcon(Icons.check),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Set 1 logged'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+      expect(_logSetLabel(tester), 'Log set 2 of 3');
+      final timer = await tester.runAsync(
+        () => repositories.restTimers.getCurrentForWorkout(plan.workoutId),
+      );
+      expect(timer?.duration, const Duration(seconds: 90));
+      expect(timer?.sourceSetId, ids[0]);
+      final logged = await tester.runAsync(
+        () => repositories.sets.getById(ids[0]),
+      );
+      expect(logged?.isCompleted, isTrue);
+      expect(logged?.plannedRestAfter, const Duration(seconds: 90));
+
+      await _tapUndo(tester);
+      await _settle(tester);
+
+      final undone = await tester.runAsync(
+        () => repositories.sets.getById(ids[0]),
+      );
+      expect(undone?.isCompleted, isFalse);
+      expect(
+        await tester.runAsync(
+          () => repositories.restTimers.getCurrentForWorkout(plan.workoutId),
+        ),
+        isNull,
+      );
+      expect(scheduler.cancels, contains(timer!.id));
+      expect(_rowLabel(tester, ids[0]), 'Set 1, next, 60 kg x 10');
+      expect(_logSetLabel(tester), 'Log set 1 of 3');
+    });
+
+    _testTrainingScreen('CUJ 2: a weight missing from the plan carries', (
+      tester,
+    ) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Incline Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '0', reps: '10'),
+          ),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '26',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      final sets = (await tester.runAsync(
+        () => _setsOf(repositories, plan),
+      ))!;
+      expect(sets.map((set) => set.isCompleted), <bool>[true, false, false]);
+      expect(
+        sets.map((set) => set.values.load?.entered),
+        <String>['26', '26', '26'],
+      );
+      expect(
+        sets.map((set) => set.values.reps?.entered),
+        <String>['10', '10', '10'],
+      );
+      expect(find.text('Set 1 logged · 2 later sets updated'), findsOneWidget);
+      expect(_rowLabel(tester, sets[1].id), 'Set 2, next, 26 kg x 10');
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '26',
+      );
+    });
+
+    _testTrainingScreen('CUJ 4a: a copy-previous placeholder fills once', (
+      tester,
+    ) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Pull-Up',
+          type: ExerciseType(const <DimensionId>[DimensionId.reps]),
+          planned: List<LoggedSet>.filled(3, _repsValues('0')),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '8',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      var sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(
+        sets.map((set) => set.values.reps?.entered),
+        <String>['8', '8', '8'],
+      );
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '8',
+      );
+
+      // The next Log set needs no typing.
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(sets.map((set) => set.isCompleted), <bool>[true, true, false]);
+      expect(sets[1].values.reps?.entered, '8');
+    });
+
+    _testTrainingScreen('CUJ 5: a changed rest runs, carries and is remembered',
+        (tester) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+          rest: const Duration(seconds: 90),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      expect(_restText(tester), '1:30');
+      await tester.tap(find.byKey(TrainingScreen.restAfterIncrementKey));
+      await tester.pump();
+      await tester.tap(find.byKey(TrainingScreen.restAfterIncrementKey));
+      await tester.pump();
+      expect(_restText(tester), '2:00');
+
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      final timer = await tester.runAsync(
+        () => repositories.restTimers.getCurrentForWorkout(plan.workoutId),
+      );
+      expect(timer?.duration, const Duration(seconds: 120));
+      final sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(
+        sets.map((set) => set.plannedRestAfter),
+        List<Duration>.filled(3, const Duration(seconds: 120)),
+      );
+      expect(_restText(tester), '2:00');
+      expect(
+        await tester.runAsync(
+          () => repositories.sets.findRememberedRest(plan.exerciseId),
+        ),
+        const Duration(seconds: 120),
+      );
+
+      // The next Workout without a planned rest starts Rest after at 2:00.
+      await _disposeWidgetTree(tester);
+      final nextWorkoutExerciseId = (await tester.runAsync(() async {
+        final workoutId = await repositories.workoutSessions.create(
+          WorkoutSessionDraft(
+            startedAt: DateTime.utc(2026, 11, 3, 6),
+            timezone: 'UTC',
+          ),
+        );
+        return repositories.workoutExercises.create(
+          WorkoutExerciseDraft(
+            workoutId: workoutId,
+            exerciseId: plan.exerciseId,
+          ),
+        );
+      }))!;
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        nextWorkoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      expect(_logSetLabel(tester), 'Log set');
+      expect(_restText(tester), '2:00');
+    });
+
+    _testTrainingScreen('CUJ 7: walks a superset round by round', (
+      tester,
+    ) async {
+      final incline = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Incline Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '26', reps: '10'),
+          ),
+          rest: Duration.zero,
+        ),
+      ))!;
+      final pullUp = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          workoutId: incline.workoutId,
+          name: 'Pull-Up',
+          type: ExerciseType(const <DimensionId>[DimensionId.reps]),
+          planned: List<LoggedSet>.filled(3, _repsValues('8')),
+          rest: const Duration(seconds: 60),
+        ),
+      ))!;
+      await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          workoutId: incline.workoutId,
+          name: 'Triceps Pushdown',
+          planned: List<LoggedSet>.filled(
+            2,
+            _loadRepsValues(load: '20', reps: '12'),
+          ),
+          rest: Duration.zero,
+        ),
+      );
+      await tester.runAsync(
+        () => repositories.exerciseGroups.create(
+          ExerciseGroupDraft(
+            workoutId: incline.workoutId,
+            name: 'Superset',
+            colorHex: '#2F6FED',
+            workoutExerciseIds: <String>[
+              incline.workoutExerciseId,
+              pullUp.workoutExerciseId,
+            ],
+          ),
+        ),
+      );
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        incline.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      expect(
+        _contextLine(tester),
+        'Superset · Round 1 of 3 · Next: Pull-Up',
+      );
+
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _waitForContextLine(
+        tester,
+        'Superset · Round 1 of 3 · Next: Incline Press',
+      );
+      expect(find.widgetWithText(AppBar, 'Pull-Up'), findsOneWidget);
+
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _waitForContextLine(
+        tester,
+        'Superset · Round 2 of 3 · Next: Pull-Up',
+      );
+      expect(find.widgetWithText(AppBar, 'Incline Press'), findsOneWidget);
+
+      for (final next in <String>[
+        'Superset · Round 2 of 3 · Next: Incline Press',
+        'Superset · Round 3 of 3 · Next: Pull-Up',
+        // Only Pull-Up has a Set left, so Log set would not move.
+        'Superset · Round 3 of 3',
+      ]) {
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+        await _waitForContextLine(tester, next);
+      }
+      expect(find.byKey(TrainingScreen.nextExerciseButtonKey), findsNothing);
+
+      // The last Set of the round: the screen stays on Pull-Up.
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _waitForContextLine(tester, 'Superset · All rounds done');
+      await _settle(tester);
+      expect(find.widgetWithText(AppBar, 'Pull-Up'), findsOneWidget);
+      expect(
+        find.widgetWithText(OutlinedButton, 'Next: Triceps Pushdown'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(TrainingScreen.nextExerciseButtonKey));
+      await _waitForFinder(
+        tester,
+        find.widgetWithText(AppBar, 'Triceps Pushdown'),
+      );
+      await _settle(tester);
+      expect(_logSetLabel(tester), 'Log set 1 of 2');
+    });
+
+    _testTrainingScreen(
+        'CUJ 8: one more Set after a 0 s plan starts no timer, then Add set',
+        (tester) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Triceps Pushdown',
+          planned: List<LoggedSet>.filled(
+            2,
+            _loadRepsValues(load: '20', reps: '12'),
+          ),
+          rest: Duration.zero,
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      expect(_restText(tester), 'Off');
+      for (var i = 0; i < 2; i += 1) {
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+        await _settle(tester);
+      }
+      expect(_logSetLabel(tester), 'Log set');
+      expect(_restText(tester), 'Off');
+
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      var sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(sets, hasLength(3));
+      expect(sets.every((set) => set.isCompleted), isTrue);
+      expect(sets[2].values, _loadRepsValues(load: '20', reps: '12'));
+      expect(find.text('Set 3 logged'), findsOneWidget);
+      expect(
+        await tester.runAsync(
+          () => repositories.restTimers.getCurrentForWorkout(plan.workoutId),
+        ),
+        isNull,
+      );
+      expect(find.widgetWithText(AppBar, 'Triceps Pushdown'), findsOneWidget);
+      // The button stays usable.
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(TrainingScreen.logSetButtonKey))
+            .onPressed,
+        isNotNull,
+      );
+
+      await tester.tap(find.byKey(TrainingScreen.addSetButtonKey));
+      await _settle(tester);
+
+      sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(sets, hasLength(4));
+      expect(sets[3].isCompleted, isFalse);
+      expect(sets[3].values, _loadRepsValues(load: '20', reps: '12'));
+      expect(sets[3].plannedRestAfter, isNull);
+      expect(_rowLabel(tester, sets[3].id), 'Set 4, next, 20 kg x 12');
+      expect(_logSetLabel(tester), 'Log set 4 of 4');
+    });
+
+    _testTrainingScreen('CUJ 9: fixes a logged Set in Update mode', (
+      tester,
+    ) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[
+            _loadRepsValues(load: '60', reps: '9'),
+            _loadRepsValues(load: '60', reps: '10'),
+            _loadRepsValues(load: '60', reps: '10'),
+          ],
+          performedCount: 1,
+        ),
+      ))!;
+      final ids = plan.setIds;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      expect(_rowLabel(tester, ids[1]), 'Set 2, next, 60 kg x 10');
+
+      await tester.tap(find.byKey(TrainingScreen.setTileKey(ids[0])));
+      await tester.pump();
+
+      expect(_rowIsHighlighted(tester, ids[0]), isTrue);
+      expect(_rowIsHighlighted(tester, ids[1]), isFalse);
+      expect(find.byKey(TrainingScreen.logSetButtonKey), findsNothing);
+      expect(find.byKey(TrainingScreen.updateSetButtonKey), findsOneWidget);
+      expect(
+        find.byKey(TrainingScreen.deleteSelectedSetButtonKey),
+        findsOneWidget,
+      );
+      expect(find.byKey(TrainingScreen.notDoneButtonKey), findsOneWidget);
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '9',
+      );
+
+      // Update writes the fix and carries nothing.
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '62.5',
+      );
+      await tester.tap(find.byKey(TrainingScreen.updateSetButtonKey));
+      await _settle(tester);
+      var sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(sets[0].values.load?.entered, '62.5');
+      expect(sets[1].values.load?.entered, '60');
+      expect(find.byKey(TrainingScreen.logSetButtonKey), findsOneWidget);
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '60',
+      );
+
+      // Not done returns it to the plan as the Current Set.
+      await tester.tap(find.byKey(TrainingScreen.setTileKey(ids[0])));
+      await tester.pump();
+      await tester.tap(find.byKey(TrainingScreen.notDoneButtonKey));
+      await _settle(tester);
+
+      sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(sets[0].isCompleted, isFalse);
+      expect(_rowLabel(tester, ids[0]), 'Set 1, next, 62.5 kg x 9');
+      expect(_logSetLabel(tester), 'Log set 1 of 3');
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '62.5',
+      );
+    });
+
+    _testTrainingScreen('Delete in Update mode shows Undo, which restores', (
+      tester,
+    ) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            2,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+          performedCount: 1,
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.tap(find.byKey(TrainingScreen.setTileKey(plan.setIds[0])));
+      await tester.pump();
+      await tester.tap(find.byKey(TrainingScreen.deleteSelectedSetButtonKey));
+      await _settle(tester);
+
+      expect(find.text('Set deleted'), findsOneWidget);
+      expect(
+          find.byKey(TrainingScreen.setTileKey(plan.setIds[0])), findsNothing);
+      expect(_logSetLabel(tester), 'Log set 1 of 1');
+
+      await _tapUndo(tester);
+      await _settle(tester);
+      expect(
+        find.byKey(TrainingScreen.setTileKey(plan.setIds[0])),
+        findsOneWidget,
+      );
+      expect(_logSetLabel(tester), 'Log set 2 of 2');
+    });
+
+    _testTrainingScreen('CUJ 10: swiping a planned Set away offers Undo', (
+      tester,
+    ) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+        ),
+      ))!;
+      final third = plan.setIds[2];
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.drag(
+        find.byKey(TrainingScreen.setTileKey(third)),
+        const Offset(-700, 0),
+      );
+      // The slide out, then the resize, before Dismissible reports it.
+      for (var frame = 0; frame < 4; frame += 1) {
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      await _settle(tester);
+
+      expect(find.byKey(TrainingScreen.setTileKey(third)), findsNothing);
+      expect(find.text('Planned set removed'), findsOneWidget);
+      expect(
+        (await tester.runAsync(() => repositories.sets.getById(third)))
+            ?.deletedAt,
+        isNotNull,
+      );
+      expect(_logSetLabel(tester), 'Log set 1 of 2');
+
+      await _tapUndo(tester);
+      await _settle(tester);
+
+      expect(find.byKey(TrainingScreen.setTileKey(third)), findsOneWidget);
+      expect(_rowLabel(tester, third), 'Set 3, planned, 60 kg x 10');
+      expect(_logSetLabel(tester), 'Log set 1 of 3');
+    });
+
+    _testTrainingScreen('a double tap on Log set logs once', (tester) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      final sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(sets.map((set) => set.isCompleted), <bool>[true, false, false]);
+    });
+
+    _testTrainingScreen('a kg plan on an imperial unit setting logs kg', (
+      tester,
+    ) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '5')],
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+        settingsRepository: InMemorySettingsRepository(
+          AppSettings.defaults.copyWith(unitSystem: UnitSystem.imperial),
+        ),
+      );
+      await _settle(tester);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+            )
+            .decoration
+            ?.suffixText,
+        'kg',
+      );
+
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      final logged = (await tester.runAsync(
+        () => repositories.sets.getById(plan.setIds.single),
+      ))!;
+      expect(logged.isCompleted, isTrue);
+      expect(logged.values.load?.unit, TrainingUnit.kilogram);
+    });
+
+    _testTrainingScreen('Log set on an ended Workout starts no timer', (
+      tester,
+    ) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: <LoggedSet>[_loadRepsValues(load: '60', reps: '5')],
+          rest: const Duration(seconds: 90),
+          endedAt: DateTime.utc(2026, 11, 2, 7),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      expect(
+        (await tester.runAsync(
+          () => repositories.sets.getById(plan.setIds.single),
+        ))
+            ?.isCompleted,
+        isTrue,
+      );
+      expect(
+        await tester.runAsync(
+          () => repositories.restTimers.getCurrentForWorkout(plan.workoutId),
+        ),
+        isNull,
+      );
+    });
+
+    _testTrainingScreen('a hard reject shows "Set not logged"', (tester) async {
+      final workoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final workoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(workoutExerciseId),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '2000',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      expect(
+        find.text('Set not logged: Load must be no more than 1000 kg.'),
+        findsOneWidget,
+      );
+      expect(find.text('Set 1 logged'), findsNothing);
+      expect(
+        await tester.runAsync(
+          () => repositories.sets.listActiveForWorkout(
+            workoutExercise.workoutId,
+          ),
+        ),
+        isEmpty,
+      );
+    });
+
+    _testTrainingScreen('a sync reloads a clean form but keeps a stepped value',
+        (tester) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+        ),
+      ))!;
+      final current = plan.setIds[0];
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+
+      await tester.runAsync(
+        () => repositories.sets.updateValues(
+          current,
+          values: _loadRepsValues(load: '60', reps: '8'),
+          actor: 'sync',
+        ),
+      );
+      await _settle(tester);
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '8',
+      );
+
+      await tester.tap(
+        find.byKey(TrainingScreen.incrementButtonKey(DimensionId.load)),
+      );
+      await tester.pump();
+      await tester.runAsync(
+        () => repositories.sets.updateValues(
+          current,
+          values: _loadRepsValues(load: '60', reps: '7'),
+          actor: 'sync',
+        ),
+      );
+      await _settle(tester);
+
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '62.5',
+      );
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '8',
+      );
+      expect(_rowLabel(tester, current), 'Set 1, next, 60 kg x 7');
+    });
+
+    _testTrainingScreen(
+        'Update mode survives a sync and ends when its Set is un-completed',
+        (tester) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+          performedCount: 1,
+        ),
+      ))!;
+      final ids = plan.setIds;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.tap(find.byKey(TrainingScreen.setTileKey(ids[0])));
+      await tester.pump();
+      expect(find.byKey(TrainingScreen.updateSetButtonKey), findsOneWidget);
+
+      await tester.runAsync(
+        () => repositories.sets.updateValues(
+          ids[1],
+          values: _loadRepsValues(load: '65', reps: '10'),
+          actor: 'sync',
+        ),
+      );
+      await _settle(tester);
+      expect(find.byKey(TrainingScreen.updateSetButtonKey), findsOneWidget);
+      expect(_rowLabel(tester, ids[1]), 'Set 2, next, 65 kg x 10');
+
+      await tester.runAsync(
+        () => repositories.sets.setCompleted(
+          ids[0],
+          isCompleted: false,
+          actor: 'sync',
+        ),
+      );
+      await _settle(tester);
+      expect(find.byKey(TrainingScreen.updateSetButtonKey), findsNothing);
+      expect(_logSetLabel(tester), 'Log set 1 of 3');
+      expect(_rowLabel(tester, ids[0]), 'Set 1, next, 60 kg x 10');
+    });
+  });
+}
+
+/// A widget test of the Training Screen that always tears the tree down
+/// with [_disposeWidgetTree]: the screen holds live Drift streams for the
+/// whole Workout, whose cancellation leaves timers the binding must run.
+void _testTrainingScreen(
+  String description,
+  WidgetTesterCallback callback,
+) {
+  testWidgets(description, (tester) async {
+    try {
+      await callback(tester);
+    } finally {
+      await _disposeWidgetTree(tester);
+    }
   });
 }
 
@@ -2143,7 +2830,13 @@ Future<void> _pumpTrainingScreen(
   ThemeData? theme,
   TextScaler? textScaler,
   bool enableRestTimerTicker = false,
+  bool liveSets = false,
 }) async {
+  // A phone-tall surface, so the rows, the form and the pinned buttons are
+  // all on screen without scrolling.
+  tester.view.physicalSize = const Size(800, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
   final initialWorkoutExercise = await tester.runAsync(
     () => repositories.workoutExercises.getById(workoutExerciseId),
   );
@@ -2190,10 +2883,12 @@ Future<void> _pumpTrainingScreen(
           initialWorkoutExercise: initialWorkoutExercise,
           initialExercise: initialExercise,
           initialPriorSet: initialPriorSet,
-          setsStream: setsStream ??
-              Stream<List<LoggedSetRecord>>.value(
-                const <LoggedSetRecord>[],
-              ),
+          setsStream: liveSets
+              ? null
+              : setsStream ??
+                  Stream<List<LoggedSetRecord>>.value(
+                    const <LoggedSetRecord>[],
+                  ),
           recordSetIdsStream: useProductionRecordProvider
               ? recordSetIdsStream
               : recordSetIdsStream ??
@@ -2203,7 +2898,14 @@ Future<void> _pumpTrainingScreen(
       ),
     ),
   );
-  await _waitForFinder(tester, find.text('Save set'));
+  await _waitForFinder(
+    tester,
+    find.byWidgetPredicate(
+      (widget) =>
+          widget.key == TrainingScreen.logSetButtonKey ||
+          widget.key == TrainingScreen.updateSetButtonKey,
+    ),
+  );
 }
 
 /// Resolves the `State` of the rest-timer panel. Its key sits on a
@@ -2368,4 +3070,176 @@ Future<void> _emitRecordSetIds(
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 20));
+}
+
+class _PlanFixture {
+  const _PlanFixture({
+    required this.workoutId,
+    required this.exerciseId,
+    required this.workoutExerciseId,
+    required this.setIds,
+  });
+
+  final String workoutId;
+  final String exerciseId;
+  final String workoutExerciseId;
+
+  /// The Sets in plan order.
+  final List<String> setIds;
+}
+
+/// An exercise in a Workout with [planned] Sets, the first
+/// [performedCount] of them already performed, each with [rest].
+Future<_PlanFixture> _createPlannedExercise(
+  TrainingRepositories repositories, {
+  String? workoutId,
+  required String name,
+  ExerciseType? type,
+  required List<LoggedSet> planned,
+  Duration? rest,
+  int performedCount = 0,
+  DateTime? endedAt,
+}) async {
+  final resolvedWorkoutId = workoutId ??
+      await repositories.workoutSessions.create(
+        WorkoutSessionDraft(
+          startedAt: DateTime.utc(2026, 11, 2, 6),
+          timezone: 'UTC',
+          endedAt: endedAt,
+        ),
+      );
+  final exerciseId = await repositories.exercises.create(
+    ExerciseDraft(
+      name: name,
+      type: type ??
+          ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+    ),
+  );
+  final workoutExerciseId = await repositories.workoutExercises.create(
+    WorkoutExerciseDraft(workoutId: resolvedWorkoutId, exerciseId: exerciseId),
+  );
+  final setIds = <String>[];
+  for (var index = 0; index < planned.length; index += 1) {
+    final position =
+        await repositories.sets.nextPositionForWorkout(resolvedWorkoutId);
+    setIds.add(
+      await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: resolvedWorkoutId,
+          exerciseId: exerciseId,
+          position: position,
+          values: planned[index],
+          plannedRestAfter: rest,
+          isCompleted: index < performedCount,
+        ),
+      ),
+    );
+  }
+  return _PlanFixture(
+    workoutId: resolvedWorkoutId,
+    exerciseId: exerciseId,
+    workoutExerciseId: workoutExerciseId,
+    setIds: setIds,
+  );
+}
+
+Future<List<LoggedSetRecord>> _setsOf(
+  TrainingRepositories repositories,
+  _PlanFixture plan,
+) async {
+  final sets = await repositories.sets.listActiveForWorkout(plan.workoutId);
+  return sets.where((set) => set.exerciseId == plan.exerciseId).toList()
+    ..sort((a, b) {
+      final byPosition = a.position.compareTo(b.position);
+      return byPosition != 0 ? byPosition : a.id.compareTo(b.id);
+    });
+}
+
+LoggedSet _repsValues(String reps) {
+  return LoggedSet.fromValues(<SetDimensionValue>[
+    SetDimensionValue(
+      dimension: DimensionId.reps,
+      entered: reps,
+      unit: TrainingUnit.repetition,
+    ),
+  ]);
+}
+
+/// A Set row's semantics label ("Set 1, next, 60 kg x 10").
+String _rowLabel(WidgetTester tester, String setId) {
+  final labels = tester
+      .widgetList<Semantics>(
+        find.descendant(
+          of: find.byKey(TrainingScreen.setTileKey(setId)),
+          matching: find.byType(Semantics),
+        ),
+      )
+      .map((semantics) => semantics.properties.label)
+      .whereType<String>();
+  return labels.firstWhere((label) => label.startsWith('Set '));
+}
+
+bool _rowIsHighlighted(WidgetTester tester, String setId) {
+  return tester
+      .widget<ListTile>(
+        find.descendant(
+          of: find.byKey(TrainingScreen.setTileKey(setId)),
+          matching: find.byType(ListTile),
+        ),
+      )
+      .selected;
+}
+
+String _logSetLabel(WidgetTester tester) {
+  return tester
+      .widget<Text>(
+        find.descendant(
+          of: find.byKey(TrainingScreen.logSetButtonKey),
+          matching: find.byType(Text),
+        ),
+      )
+      .data!;
+}
+
+String _restText(WidgetTester tester) {
+  return tester
+      .widget<Text>(find.byKey(TrainingScreen.restAfterValueKey))
+      .data!;
+}
+
+String? _contextLine(WidgetTester tester) {
+  final finder = find.byKey(TrainingScreen.contextLineKey);
+  return finder.evaluate().isEmpty ? null : tester.widget<Text>(finder).data;
+}
+
+Future<void> _waitForContextLine(WidgetTester tester, String expected) async {
+  for (var attempt = 0; attempt < 50; attempt += 1) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 5)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+    if (_contextLine(tester) == expected) {
+      return;
+    }
+  }
+  fail('Timed out waiting for the context line "$expected"; it reads '
+      '"${_contextLine(tester)}".');
+}
+
+/// Lets a tap's repository writes, and the Drift streams they wake, finish.
+Future<void> _settle(WidgetTester tester) async {
+  for (var round = 0; round < 6; round += 1) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+}
+
+/// Taps the confirmation's Undo once the snack bar has finished sliding in.
+Future<void> _tapUndo(WidgetTester tester) async {
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
 }

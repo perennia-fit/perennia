@@ -697,9 +697,12 @@ subscribes, for the whole Workout, to the streams the Navigation Panel already
 uses: `workoutExercises.watchActiveForWorkout(workoutId)`,
 `sets.watchActiveForWorkout(workoutId)` (today filtered to one exercise; the
 screen keeps the unfiltered list and filters it for the rows) and
-`exerciseGroups.watchActiveForWorkout(workoutId)`. The context line, the
-Next button, `nextGroupMemberAfterLog` and the rounds read them. The
-Navigation Panel keeps its own subscriptions.
+`exerciseGroups.watchActiveForWorkout(workoutId)`, plus
+`exercises.watchActiveByIds` over the Workout's exercises for the other
+members' names (the context line, Next) and dimensions (Add round), as the
+Navigation Panel does. The context line, the Next button,
+`nextGroupMemberAfterLog` and the rounds read them. The Navigation Panel
+keeps its own subscriptions.
 
 **Screen state** lives in the widget's state, as today:
 
@@ -729,14 +732,19 @@ Navigation Panel keeps its own subscriptions.
 
 **Form loads** a Set (the Current Set, or the selected performed Set): the
 dimension fields take its values, and `formUnits` its units (not the unit
-setting); comment, side and RPE take its annotations (empty when it has none);
-**Rest after** and `loadedRest` take the rest shown; `formDirty` becomes false.
+setting); comment and RPE take its annotations (empty when it has none), and
+side takes the Set's side, or keeps the current side when the Set has none (a
+Planned Set never has one, so the side keeps alternating across a unilateral
+plan); **Rest after** and `loadedRest` take the rest shown; `formDirty`
+becomes false.
 
 **With no Current Set and nothing selected**, the form keeps the values last
-logged on this exercise in this visit, or else takes the prefill from the
-previous Workout (as today), with `formUnits` from the unit setting; comment
-and RPE clear and side alternates after each Log set, as Save set does today;
-Rest after shows the rest for a new Set.
+logged on this exercise in this visit, in the units they were logged in, or
+else takes the prefill from the previous Workout (as today), with `formUnits`
+from the unit setting; comment and RPE clear and side alternates after each
+Log set, as Save set does today; Rest after shows the rest for a new Set.
+Until the Workout's Sets stream first emits, the screen shows no rows and no
+form, so the form never loads against a plan it has not seen.
 
 **Reloads.** While `selectedSetId` is set, the form never reloads on its own.
 Otherwise it reloads when the Current Set's id changes, or when the Current
@@ -769,8 +777,11 @@ timer from step 6 is still the Workout's current timer, cancels it and its
 background schedule. Undo removes the logged values too; the user logs again.
 Undo of Remove, Delete, Add round and Replace calls `undoBatch` on that
 action's batch id. When `undoBatch` reports conflicts (another write touched
-the same rows since), nothing is reverted and "Couldn't undo: changed since"
-shows.
+the same rows since), nothing is reverted (for Log set, its timer is left
+running too, since the Set stays logged) and "Couldn't undo: changed since"
+shows. Add round shows "Round added" with **Undo**. An Update that is hard
+rejected writes nothing and shows "Set not updated" with the error's message,
+as Log set does; Update mode stays.
 
 ### Progress on the Workout screen, Today and the Navigation Panel
 

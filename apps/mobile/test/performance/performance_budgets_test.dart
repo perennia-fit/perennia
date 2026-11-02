@@ -86,8 +86,7 @@ void main() {
       Duration? fastest;
       for (var run = 0; run < 3; run += 1) {
         final stopwatch = Stopwatch()..start();
-        final history =
-            await repositories.nutrition.listFoodHistory(now: now);
+        final history = await repositories.nutrition.listFoodHistory(now: now);
         stopwatch.stop();
 
         expect(history, hasLength(foodHistoryFoodCount));
@@ -411,7 +410,7 @@ void main() {
       expect(overview?.groups, hasLength(fixture.workouts.length));
     });
 
-    testWidgets('set save confirms optimistically within one frame', (
+    testWidgets('Log set confirms optimistically within one frame', (
       tester,
     ) async {
       final database = AppDatabase.inMemory();
@@ -431,7 +430,7 @@ void main() {
         '5',
       );
 
-      await tester.tap(find.byKey(TrainingScreen.saveSetButtonKey));
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await tester.pump(setSaveConfirmationFrameBudget);
 
       expect(
@@ -449,6 +448,19 @@ void main() {
         ),
       );
       expect(sets, hasLength(1));
+
+      // The Training Screen holds live Drift streams for the whole Workout;
+      // tear the tree down and let their cancellation timers run.
+      await tester.pumpWidget(const SizedBox.shrink());
+      for (var frame = 0; frame < 10; frame += 1) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      for (var frame = 0; frame < 10; frame += 1) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
     });
 
     test('cold start Home data path stays under 2 s', () async {
@@ -540,7 +552,7 @@ Future<void> _pumpTrainingScreen(
       ),
     ),
   );
-  await _waitForFinder(tester, find.byKey(TrainingScreen.saveSetButtonKey));
+  await _waitForFinder(tester, find.byKey(TrainingScreen.logSetButtonKey));
 }
 
 Future<void> _settleRepositoryWork(WidgetTester tester) async {
@@ -642,16 +654,42 @@ FoodPickerItem _yourFoodsItem(int index) {
 /// yoghurt, so a common prefix query has many matches to rank.
 List<String> _syntheticOpenFoodFactsLines(int count) {
   const adjectives = <String>[
-    'Greek', 'Organic', 'Light', 'Classic', 'Crunchy', 'Smooth', 'Wholegrain',
-    'Roasted', 'Spicy', 'Original',
+    'Greek',
+    'Organic',
+    'Light',
+    'Classic',
+    'Crunchy',
+    'Smooth',
+    'Wholegrain',
+    'Roasted',
+    'Spicy',
+    'Original',
   ];
   const foods = <String>[
-    'yogurt', 'oats', 'peanut butter', 'crackers', 'muesli', 'chips', 'bread',
-    'cheese', 'juice', 'cereal', 'noodles', 'soup',
+    'yogurt',
+    'oats',
+    'peanut butter',
+    'crackers',
+    'muesli',
+    'chips',
+    'bread',
+    'cheese',
+    'juice',
+    'cereal',
+    'noodles',
+    'soup',
   ];
   const brands = <String>[
-    'Chobani', 'Sanitarium', 'Arnotts', 'Kelloggs', 'Coles', 'Woolworths',
-    'Tesco', 'Kirkland', 'Heinz', 'Uncle Tobys',
+    'Chobani',
+    'Sanitarium',
+    'Arnotts',
+    'Kelloggs',
+    'Coles',
+    'Woolworths',
+    'Tesco',
+    'Kirkland',
+    'Heinz',
+    'Uncle Tobys',
   ];
   return [
     for (var i = 0; i < count; i += 1)
@@ -733,7 +771,9 @@ List<String> _syntheticOpenFoodFactsLines(int count) {
             memberId: 'member-$p',
             compoundId: compoundId,
             versions: <ScheduleVersion>[
-              for (var v = 0; v < protocolConsistencyVersionsPerProtocol; v += 1)
+              for (var v = 0;
+                  v < protocolConsistencyVersionsPerProtocol;
+                  v += 1)
                 ScheduleVersion(
                   id: 'version-$p-$v',
                   effectiveFrom: from.addDays(v * versionSpacing),
