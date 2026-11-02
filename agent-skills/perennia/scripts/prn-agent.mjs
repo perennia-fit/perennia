@@ -248,6 +248,12 @@ const COMMANDS = {
     body: true,
     operationId: "batchWriteAgentProtocols"
   },
+  "delete-protocols": {
+    method: "POST",
+    path: "/agent/protocols/delete",
+    body: true,
+    operationId: "deleteAgentProtocols"
+  },
   "read-settings": {
     method: "GET",
     path: "/agent/settings",

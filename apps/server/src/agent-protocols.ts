@@ -81,6 +81,7 @@ export const AGENT_PROTOCOL_BATCH_WRITE_MAX_PROTOCOLS = 50;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_MEMBERS = 100;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_SCHEDULES = 100;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_TARGET_OUTCOMES = 50;
+export const AGENT_PROTOCOL_DELETE_MAX_PROTOCOLS = 100;
 
 // Effect-window bucketing bounds — a descriptive read, never stored.
 export const AGENT_EFFECT_WINDOW_MAX_DOSES = 500;
@@ -454,6 +455,10 @@ export const AgentProtocolSchema = z
     archivedOn: z.string().min(1).nullable().openapi({
       description:
         "Local date (YYYY-MM-DD) the Protocol was archived, frozen when it was archived. Past days still count it through this date."
+    }),
+    hasHistory: z.boolean().openapi({
+      description:
+        "At least one Dose not deleted is tagged to this Protocol, or is of one of its member Compounds (archived members included) on a date within its dates. Archive a Protocol with history; delete one without (delete-protocols)."
     }),
     updatedAt: ISO8601StringSchema,
     deletedAt: ISO8601StringSchema.nullable(),
@@ -840,6 +845,24 @@ export const AgentProtocolBatchWriteRequestSchema = z
   .strict()
   .openapi("AgentProtocolBatchWriteRequest");
 
+export const AgentProtocolDeleteRequestSchema = z
+  .object({
+    idempotencyKey: z.string().min(1).max(200).openapi({
+      description:
+        "Stable key for this agent request. The whole request is one Activity Log batch with this batchId, and a replay with the same key writes nothing."
+    }),
+    protocolIds: z
+      .array(AgentProtocolsReferenceIdSchema)
+      .min(1)
+      .max(AGENT_PROTOCOL_DELETE_MAX_PROTOCOLS)
+      .openapi({
+        description:
+          "Protocols to delete. Only a Protocol with no history (hasHistory false on list-protocols) can be deleted; archive one with history through manage-protocols. A repeated id is treated once."
+      })
+  })
+  .strict()
+  .openapi("AgentProtocolDeleteRequest");
+
 // ---------------------------------------------------------------------------
 // Write issue + response shapes
 // ---------------------------------------------------------------------------
@@ -910,7 +933,7 @@ export const AgentProtocolBatchWriteResponseSchema = z
     protocols: z.array(AgentEntityBatchWriteResultSchema),
     warnings: z.array(AgentProtocolsBatchWriteIssueSchema).openapi({
       description:
-        "Soft warnings from the shared plan validators (an improbable plan, such as more than 6 times a day). The batch was still written."
+        "Soft warnings: from the shared plan validators (an improbable plan, such as more than 6 times a day), and protocol_has_no_history for a Protocol archived with nothing logged for it, which delete-protocols could remove instead. The batch was still written."
     })
   })
   .openapi("AgentProtocolBatchWriteResponse");
@@ -933,6 +956,40 @@ export const AgentProtocolsBatchWriteErrorResponseSchema = z
     warnings: z.array(AgentProtocolsBatchWriteIssueSchema)
   })
   .openapi("AgentProtocolsBatchWriteErrorResponse");
+
+const AgentProtocolDeleteResultSchema = z
+  .object({
+    id: z.string().min(1),
+    outcome: z.enum(["deleted", "already_deleted"]).openapi({
+      description:
+        "deleted, or already_deleted for a Protocol already removed, by a delete or by undo."
+    })
+  })
+  .openapi("AgentProtocolDeleteResult");
+
+export const AgentProtocolDeleteResponseSchema = z
+  .object({
+    accepted: z.literal(true),
+    duplicate: z.boolean(),
+    idempotencyKey: z.string().min(1),
+    batchId: z.string().min(1).openapi({
+      description:
+        "The Activity Log batch. Undoing it (undo-activity-batch) restores every Protocol this request deleted."
+    }),
+    serverClock: z.string().min(1),
+    protocols: z.array(AgentProtocolDeleteResultSchema).openapi({
+      description: "One entry per distinct id, in the order first sent."
+    })
+  })
+  .openapi("AgentProtocolDeleteResponse");
+
+export const AgentProtocolDeleteErrorResponseSchema = z
+  .object({
+    code: z.literal("agent_protocol_delete_failed"),
+    message: z.string().min(1),
+    issues: z.array(AgentProtocolsBatchWriteIssueSchema)
+  })
+  .openapi("AgentProtocolDeleteErrorResponse");
 
 export const AgentProtocolsUnavailableResponseSchema = z
   .object({
@@ -1189,6 +1246,10 @@ const AgentProtocolPlannedDaySchema = z
       }),
     planned: z.array(AgentProtocolPlannedDoseSchema).openapi({
       description: "The planned doses, non-empty exactly when state is planned, in the rule's stored order."
+    }),
+    archiveDay: z.boolean().openapi({
+      description:
+        "True exactly when state is planned and the date is the Protocol's or the member's archive date. On an archive day, the planned doses are expected only if a Dose fills them; read Day Statuses for what is still expected."
     })
   })
   .openapi("AgentProtocolPlannedDay");
@@ -1214,6 +1275,10 @@ const AgentProtocolDayStatusFillSchema = z
     ...PlanAmountReadFields,
     doseId: z.string().min(1).nullable().openapi({
       description: "The logged Dose that filled this slot; null when it is unfilled."
+    }),
+    skipId: z.string().min(1).nullable().openapi({
+      description:
+        "The Skip that marks this slot as not taken on purpose; null when none does. A slot never has both a doseId and a skipId."
     })
   })
   .openapi("AgentProtocolDayStatusFill");
@@ -1226,21 +1291,27 @@ const AgentProtocolDayStatusSchema = z
       .enum(DAY_STATUS_VALUES)
       .openapi({
         description:
-          "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled."
+          "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled; skipped is every planned dose skipped and none logged. On an archive day, planned doses no Dose filled are dropped, so a day where every one was dropped is not_planned with reason removed."
       }),
     notPlannedReason: z
       .enum(NOT_PLANNED_REASONS)
       .optional()
       .openapi({ description: "Present exactly when status is not_planned." }),
-    plannedCount: z.number().int().min(0),
+    plannedCount: z.number().int().min(0).openapi({
+      description: "Planned doses that day, after an archive day's unfilled ones are dropped."
+    }),
     loggedCount: z.number().int().min(0).openapi({
       description: "Filled planned doses; never more than plannedCount."
+    }),
+    skippedCount: z.number().int().min(0).openapi({
+      description:
+        "Planned doses a Skip marks as not taken on purpose; loggedCount + skippedCount is never more than plannedCount."
     }),
     extraCount: z.number().int().min(0).openapi({
       description: "Logged Doses that filled no planned dose. Extras never change the status."
     }),
     fills: z.array(AgentProtocolDayStatusFillSchema).optional().openapi({
-      description: "Only with detail=doses: every planned dose (slot), in slot order, with the Dose that filled it."
+      description: "Only with detail=doses: every planned dose (slot), in slot order, with the Dose that filled it or the Skip that marks it."
     })
   })
   .openapi("AgentProtocolDayStatus");
@@ -1488,6 +1559,41 @@ export const agentProtocolBatchWriteRoute = createRoute({
   }
 });
 
+export const agentProtocolDeleteRoute = createRoute({
+  method: "post",
+  path: "/agent/protocols/delete",
+  operationId: "deleteAgentProtocols",
+  tags: ["Agent Writes"],
+  summary: "Delete Protocols nothing was logged for, as one Activity Log batch.",
+  description:
+    "Authenticated agent delete for a Protocol with no history: no Dose that isn't deleted is tagged to it, or is of one of its member Compounds on a date within its dates (list-protocols reports this as hasHistory). Deleting writes one row per Protocol, the state undoing its creation leaves, and nothing else: its members, Schedule Versions and target outcomes are hidden through it, and no Dose, Compound or Metric changes. Archived Protocols with no history are accepted. Any refused id refuses the whole request. Undoing the batchId (undo-activity-batch) restores every Protocol the request deleted. Idempotent by idempotency key.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": { schema: AgentProtocolDeleteRequestSchema }
+      }
+    }
+  },
+  responses: {
+    200: {
+      description: "The delete was applied, or recognized as an idempotent replay.",
+      content: {
+        "application/json": { schema: AgentProtocolDeleteResponseSchema }
+      }
+    },
+    422: {
+      description:
+        "A Protocol was not found or has history, or the idempotency key conflicts with an earlier request; nothing was written.",
+      content: {
+        "application/json": { schema: AgentProtocolDeleteErrorResponseSchema }
+      }
+    },
+    ...writeResponses401_429_503()
+  }
+});
+
 export const agentEffectWindowRoute = createRoute({
   method: "get",
   path: "/agent/protocols/effect-window",
@@ -1603,6 +1709,11 @@ export type AgentDoseBatchWriteRequest = z.infer<
 export type AgentProtocolBatchWriteRequest = z.infer<
   typeof AgentProtocolBatchWriteRequestSchema
 >;
+export type AgentProtocolDeleteRequest = z.infer<typeof AgentProtocolDeleteRequestSchema>;
+export type AgentProtocolDeleteResponse = z.infer<typeof AgentProtocolDeleteResponseSchema>;
+export type AgentProtocolDeleteErrorResponse = z.infer<
+  typeof AgentProtocolDeleteErrorResponseSchema
+>;
 export type AgentDoseBatchWriteIssue = z.infer<typeof AgentDoseBatchWriteIssueSchema>;
 
 type PreparedReference = {
@@ -1659,6 +1770,17 @@ export type AgentProtocolsStoreWriteResult = {
   accepted: string[];
   applied: { id: string; updatedAt: string; deviceId: string }[];
   validationErrors: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[];
+  /**
+   * Soft warnings judged from stored data, which the pure prepare step can't
+   * see: only the Protocol batch write sets them (D8's
+   * `protocol_has_no_history`). Callers append them to the prepare step's.
+   */
+  warnings?: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[];
+};
+
+/** A delete's store result: the write result plus one outcome per distinct id. */
+export type AgentProtocolDeleteStoreResult = AgentProtocolsStoreWriteResult & {
+  protocols: z.infer<typeof AgentProtocolDeleteResultSchema>[];
 };
 
 export type AgentProtocolsStore = {
@@ -1722,6 +1844,16 @@ export type AgentProtocolsStore = {
     schedules: PreparedRow[];
     targetOutcomes: PreparedRow[];
   }): Promise<AgentProtocolsStoreWriteResult>;
+  /**
+   * Deletes Protocols with no history (D8) as one Activity Log batch keyed on
+   * `idempotencyKey`. A refused id refuses the whole request.
+   */
+  deleteProtocols(input: {
+    userId: string;
+    deviceId: string;
+    idempotencyKey: string;
+    protocolIds: string[];
+  }): Promise<AgentProtocolDeleteStoreResult>;
 };
 
 // ---------------------------------------------------------------------------
@@ -2455,6 +2587,45 @@ export function agentProtocolsWriteFailure(
   };
 }
 
+/**
+ * The REST and MCP answer to a Protocol delete (D8): 200 with one outcome per
+ * distinct id, 422 for a refused id or a conflicting idempotency key (nothing
+ * written), and 503 while the idempotency receipt is unavailable.
+ */
+export function agentProtocolDeleteResponse(
+  request: AgentProtocolDeleteRequest,
+  result: AgentProtocolDeleteStoreResult
+):
+  | { status: 200; body: AgentProtocolDeleteResponse }
+  | { status: 422; body: AgentProtocolDeleteErrorResponse }
+  | { status: 503; body: z.infer<typeof AgentProtocolsUnavailableResponseSchema> } {
+  const failure = agentProtocolsWriteFailure(result, []);
+  if (failure?.status === 503) {
+    return failure;
+  }
+  if (failure !== null) {
+    return {
+      status: 422,
+      body: AgentProtocolDeleteErrorResponseSchema.parse({
+        code: "agent_protocol_delete_failed",
+        message: "One or more Protocols can't be deleted; nothing was deleted.",
+        issues: failure.body.errors
+      })
+    };
+  }
+  return {
+    status: 200,
+    body: AgentProtocolDeleteResponseSchema.parse({
+      accepted: true,
+      duplicate: result.duplicate,
+      idempotencyKey: request.idempotencyKey,
+      batchId: request.idempotencyKey,
+      serverClock: result.serverClock,
+      protocols: result.protocols
+    })
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Pure effect-window computation (deterministic, golden-vectorable, no I/O)
 // ---------------------------------------------------------------------------
@@ -2755,6 +2926,13 @@ export function createDrizzleAgentProtocolsStore(
 
       const start = cursorOffset(filteredProtocols, query.cursor);
       const page = filteredProtocols.slice(start, start + query.limit);
+      const withHistory = await protocolsWithHistory(
+        db,
+        userId,
+        page.map((protocol) =>
+          protocolHistoryScope(protocol, membersByProtocol.get(protocol.id) ?? [])
+        )
+      );
       const protocols = page.map((protocol) => {
         const members = (membersByProtocol.get(protocol.id) ?? [])
           .slice()
@@ -2762,6 +2940,7 @@ export function createDrizzleAgentProtocolsStore(
         const outcomes = outcomesByProtocol.get(protocol.id) ?? [];
         return AgentProtocolSchema.parse({
           ...serializeProtocol(protocol),
+          hasHistory: withHistory.has(protocol.id),
           members: members.map((row) =>
             serializeMember(row, schedulesByMember.get(row.id) ?? [])
           ),
@@ -2904,9 +3083,14 @@ export function createDrizzleAgentProtocolsStore(
       let windowSource: EffectWindowSource | null;
       if (query.protocolId !== undefined) {
         // An archived Protocol keeps its Effect (archive is not delete), so
-        // only a Protocol that was never written is an error.
+        // only a Protocol that was never written is an error, or one deleted
+        // or removed by undo, which never existed (D8).
         const [protocolRow] = await db
-          .select({ payload: schema.protocols.payload })
+          .select({
+            id: schema.protocols.id,
+            payload: schema.protocols.payload,
+            deletedAt: schema.protocols.deletedAt
+          })
           .from(schema.protocols)
           .where(
             and(
@@ -2914,7 +3098,7 @@ export function createDrizzleAgentProtocolsStore(
               eq(schema.protocols.id, query.protocolId)
             )
           );
-        if (protocolRow === undefined) {
+        if (protocolRow === undefined || isUndoTombstone(protocolRow)) {
           return { ok: false, message: "The requested Protocol was not found." };
         }
         // The bounds are local dates (D2), read at the caller's offset
@@ -3112,7 +3296,10 @@ export function createDrizzleAgentProtocolsStore(
       schedules,
       targetOutcomes
     }) {
-      return writeOpaqueBatch(db, {
+      // Filled by the finalize step, so a replay (which skips it) returns no
+      // archive warning: the pure prepare step's warnings are all it has.
+      const warnings: AgentProtocolsBatchWriteIssue[] = [];
+      const result = await writeOpaqueBatch(db, {
         userId,
         batchId,
         requestFingerprint,
@@ -3126,7 +3313,8 @@ export function createDrizzleAgentProtocolsStore(
             protocols,
             members,
             schedules,
-            targetOutcomes
+            targetOutcomes,
+            warnings
           }),
         groups: [
           {
@@ -3159,6 +3347,74 @@ export function createDrizzleAgentProtocolsStore(
           }
         ]
       });
+      return { ...result, warnings };
+    },
+
+    async deleteProtocols({ userId, deviceId, idempotencyKey, protocolIds }) {
+      // A repeated id is treated once, at its first position (D8).
+      const firstIndex = new Map<string, number>();
+      protocolIds.forEach((id, index) => {
+        if (!firstIndex.has(id)) {
+          firstIndex.set(id, index);
+        }
+      });
+      const ids = [...firstIndex.keys()];
+      const rows: PreparedRow[] = [];
+      const outcomes = new Map<string, "deleted" | "already_deleted">();
+      const result = await writeOpaqueBatch(db, {
+        userId,
+        batchId: idempotencyKey,
+        requestFingerprint: agentProtocolsBatchRequestFingerprint({
+          idempotencyKey,
+          protocolIds
+        }),
+        deviceId,
+        operationKind: "protocol_deletes",
+        finalize: (transaction, serverClock) =>
+          finalizeProtocolDeletes(transaction, {
+            userId,
+            serverClock,
+            firstIndex,
+            rows,
+            outcomes
+          }),
+        groups: [
+          {
+            keyPrefix: "protocol",
+            rows,
+            tableKey: "protocols",
+            table: schema.protocols,
+            push: pushProtocolsInTransaction
+          }
+        ]
+      });
+      if (result.duplicate) {
+        // A replay skips finalize, so its outcomes are read back from the
+        // batch it replays: the ids that batch logged were deleted by it.
+        const logged = await db
+          .select({ entityId: schema.activityLog.entityId })
+          .from(schema.activityLog)
+          .where(
+            and(
+              eq(schema.activityLog.userId, userId),
+              eq(schema.activityLog.actor, "agent"),
+              eq(schema.activityLog.batchId, idempotencyKey),
+              eq(schema.activityLog.entityTable, PROTOCOLS_SYNC_ENTITY)
+            )
+          );
+        const deletedIds = new Set(logged.map((row) => row.entityId));
+        for (const id of ids) {
+          outcomes.set(id, deletedIds.has(id) ? "deleted" : "already_deleted");
+        }
+      }
+      const written =
+        result.validationErrors.length === 0 &&
+        !result.idempotencyConflict &&
+        !result.receiptUnavailable;
+      return {
+        ...result,
+        protocols: written ? ids.map((id) => ({ id, outcome: outcomes.get(id)! })) : []
+      };
     }
   };
 }
@@ -3224,7 +3480,8 @@ type OpaqueBatchOptions = {
   batchId: string;
   requestFingerprint: string;
   deviceId: string;
-  operationKind: "doses" | "compounds" | "protocols";
+  /** Keys the receipt, so one idempotency key can't serve two operations. */
+  operationKind: "doses" | "compounds" | "protocols" | "protocol_deletes";
   groups: OpaqueBatchGroup[];
   /**
    * Work that needs stored data and must not run on a replay: it runs once
@@ -3401,7 +3658,8 @@ async function finalizeProtocolPlanRows(
     protocols,
     members,
     schedules,
-    targetOutcomes
+    targetOutcomes,
+    warnings
   }: {
     userId: string;
     today: string;
@@ -3410,6 +3668,8 @@ async function finalizeProtocolPlanRows(
     members: PreparedRow[];
     schedules: PreparedRow[];
     targetOutcomes: PreparedRow[];
+    /** Receives D8's archive warning; the refusals are returned. */
+    warnings: AgentProtocolsBatchWriteIssue[];
   }
 ): Promise<AgentProtocolsBatchWriteIssue[]> {
   const issues: AgentProtocolsBatchWriteIssue[] = [];
@@ -3500,7 +3760,7 @@ async function finalizeProtocolPlanRows(
             field: row.field,
             rule: "archived_row_not_restorable",
             message:
-              "This Protocol was removed by undo and can't be restored or edited. Create a new Protocol instead."
+              "This Protocol was deleted or removed by undo, and can't be restored or edited. Create a new Protocol instead."
           })
         : entityIssue(row.itemIndex, row.id, {
             field: row.field,
@@ -3519,6 +3779,43 @@ async function finalizeProtocolPlanRows(
       const refused = stampArchive(row, stored.get(row.id), { today, nowIso });
       if (refused !== null) {
         issues.push(refused);
+      }
+    }
+  }
+
+  // D8: archiving a Protocol with no history is accepted, with a warning
+  // that delete could remove it instead. Every Protocol archived here is a
+  // new archive (an archived one was refused above), stored or created in
+  // this request, so its history is read with this request's dates (the
+  // archive date is today) and members, stored and sent. A member archive
+  // never gets the warning.
+  const archived = protocols.filter(
+    (row) => row.archive === true && !refusedProtocolIds.has(row.id)
+  );
+  if (archived.length > 0) {
+    const archivedIds = new Set(archived.map((row) => row.id));
+    const protocolMembers = [
+      ...[...storedMembers.values()].filter(
+        (row) => archivedIds.has(String(row.payload.protocol_id)) && !isUndoTombstone(row)
+      ),
+      ...members.filter((row) => archivedIds.has(String(row.payload.protocol_id)))
+    ];
+    const membersOf = groupBy(protocolMembers, (row) => String(row.payload.protocol_id));
+    const withHistory = await protocolsWithHistory(
+      transaction,
+      userId,
+      archived.map((row) => protocolHistoryScope(row, membersOf.get(row.id) ?? []))
+    );
+    for (const row of archived) {
+      if (!withHistory.has(row.id)) {
+        warnings.push(
+          entityIssue(row.itemIndex, row.id, {
+            field: `protocols[${row.itemIndex}].archived`,
+            rule: "protocol_has_no_history",
+            message:
+              "Nothing has been logged for this Protocol. Consider deleting it with delete-protocols instead."
+          })
+        );
       }
     }
   }
@@ -3646,6 +3943,203 @@ async function finalizeProtocolPlanRows(
   await assignTargetOutcomePositions(transaction, { userId, targetOutcomes });
 
   return issues;
+}
+
+/**
+ * The half of a Protocol delete that needs stored data (D8). It runs inside
+ * the write's transaction, after the idempotency receipt, so a Dose committed
+ * first refuses the delete. Each id is read: an unknown one (or another
+ * account's) is `protocol_not_found`, a tombstoned one answers
+ * `already_deleted`, and one with history is `protocol_has_history`. Every
+ * other one gets D8's one row in `rows`: the stored payload with `deleted_at`
+ * and `updated_at` now and `archived_on` null, the state undoing its creation
+ * leaves. Its members, Schedule Versions and target outcomes are not written;
+ * every reader hides them through this row.
+ */
+async function finalizeProtocolDeletes(
+  transaction: OpaqueTransaction,
+  {
+    userId,
+    serverClock,
+    firstIndex,
+    rows,
+    outcomes
+  }: {
+    userId: string;
+    serverClock: Date;
+    /** Each distinct id, at its first position in the request. */
+    firstIndex: ReadonlyMap<string, number>;
+    rows: PreparedRow[];
+    outcomes: Map<string, "deleted" | "already_deleted">;
+  }
+): Promise<AgentProtocolsBatchWriteIssue[]> {
+  const ids = [...firstIndex.keys()];
+  const stored = byId(
+    await transaction
+      .select({
+        id: schema.protocols.id,
+        payload: schema.protocols.payload,
+        deletedAt: schema.protocols.deletedAt,
+        updatedAt: schema.protocols.updatedAt
+      })
+      .from(schema.protocols)
+      .where(and(eq(schema.protocols.userId, userId), inArray(schema.protocols.id, ids)))
+  );
+  const live = ids.flatMap((id) => {
+    const row = stored.get(id);
+    return row === undefined || isUndoTombstone(row) ? [] : [row];
+  });
+  const members =
+    live.length === 0
+      ? []
+      : await selectStoredPlanRows(transaction, schema.protocolCompounds, userId, [
+          inArray(
+            sql`${schema.protocolCompounds.payload}->>'protocol_id'`,
+            live.map((row) => row.id)
+          )
+        ]);
+  const membersOf = groupBy(
+    members.filter((row) => !isUndoTombstone(row)),
+    (row) => String(row.payload.protocol_id)
+  );
+  const withHistory = await protocolsWithHistory(
+    transaction,
+    userId,
+    live.map((row) => protocolHistoryScope(row, membersOf.get(row.id) ?? []))
+  );
+
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  for (const [id, itemIndex] of firstIndex) {
+    const row = stored.get(id);
+    const field = `protocolIds[${itemIndex}]`;
+    if (row === undefined) {
+      issues.push(
+        entityIssue(itemIndex, id, {
+          field,
+          rule: "protocol_not_found",
+          message: "No Protocol with this id exists for this account."
+        })
+      );
+    } else if (isUndoTombstone(row)) {
+      outcomes.set(id, "already_deleted");
+    } else if (withHistory.has(id)) {
+      issues.push(
+        entityIssue(itemIndex, id, {
+          field,
+          rule: "protocol_has_history",
+          message:
+            "Doses were logged for this Protocol, so it can't be deleted. Archive it with manage-protocols instead."
+        })
+      );
+    } else {
+      // The delete is stamped now, as D8 says, unless the stored row is
+      // stamped at or after now (a write in the same millisecond, or a
+      // device clock ahead within the accepted skew): then one millisecond
+      // after it, so last-writer-wins applies the delete it reports.
+      const stamp = new Date(
+        Math.max(serverClock.getTime(), row.updatedAt.getTime() + 1)
+      ).toISOString();
+      outcomes.set(id, "deleted");
+      rows.push({
+        id,
+        itemIndex,
+        field,
+        updatedAt: stamp,
+        deletedAt: stamp,
+        payload: { ...row.payload, archived_on: null, updated_at: stamp, deleted_at: stamp }
+      });
+    }
+  }
+  return issues;
+}
+
+/** What D8's history check reads of one Protocol: its id, dates and members. */
+type ProtocolHistoryScope = {
+  id: string;
+  /** Null (no real start date) reads as no lower bound. */
+  startLocalDate: string | null;
+  /** The earliest of its end date and archive date; null when neither is set. */
+  upperLocalDate: string | null;
+  compoundIds: string[];
+};
+
+/**
+ * A Protocol's history scope from its row and its member rows. The caller
+ * passes every member row it counts: archived ones included, rows tombstoned
+ * by undo left out (D8).
+ */
+function protocolHistoryScope(
+  protocol: { id: string; payload: Record<string, unknown> },
+  members: readonly { payload: Record<string, unknown> }[]
+): ProtocolHistoryScope {
+  const bounds = [
+    localDateOrNull(protocol.payload.end_local_date),
+    localDateOrNull(protocol.payload.archived_on)
+  ].filter((date): date is string => date !== null);
+  return {
+    id: protocol.id,
+    startLocalDate: localDateOrNull(protocol.payload.start_local_date),
+    upperLocalDate: bounds.length === 0 ? null : bounds.sort()[0]!,
+    compoundIds: [
+      ...new Set(
+        members.flatMap((member) => {
+          const compoundId = nullableString(member.payload.compound_id);
+          return compoundId === null ? [] : [compoundId];
+        })
+      )
+    ]
+  };
+}
+
+/**
+ * The ids of the scoped Protocols that have history (D8): at least one Dose
+ * of this user that isn't tombstoned is tagged to the Protocol, or is of one
+ * of its member Compounds with a `local_date` within its dates. One `EXISTS`
+ * per scope in a single query; dates compare in byte order ("C") as
+ * `readPlanDoses` compares them. Delete, the archive warning and
+ * `listProtocols`' `hasHistory` all read it, so they can't disagree. It
+ * over-counts on purpose (D8): a false "history" only means Archive is
+ * offered instead of Delete, which loses nothing.
+ */
+async function protocolsWithHistory(
+  executor: Pick<ServerDatabase, "execute">,
+  userId: string,
+  scopes: readonly ProtocolHistoryScope[]
+): Promise<Set<string>> {
+  if (scopes.length === 0) {
+    return new Set();
+  }
+  const doses = schema.doses;
+  const localDate = sql`(${doses.payload}->>'local_date') collate "C"`;
+  const json = JSON.stringify(
+    scopes.map((scope) => ({
+      id: scope.id,
+      start_date: scope.startLocalDate,
+      upper_date: scope.upperLocalDate,
+      compound_ids: scope.compoundIds
+    }))
+  );
+  const rows = await executor.execute<{ id: string }>(sql`
+    select scope.id
+    from jsonb_to_recordset(${json}::jsonb)
+      as scope(id text, start_date text, upper_date text, compound_ids jsonb)
+    where exists (
+      select 1 from ${doses}
+      where ${doses.userId} = ${userId}
+        and ${doses.deletedAt} is null
+        and (
+          ${doses.payload}->>'protocol_id' = scope.id
+          or (
+            ${doses.payload}->>'compound_id' in (
+              select jsonb_array_elements_text(scope.compound_ids)
+            )
+            and (scope.start_date is null or ${localDate} >= scope.start_date collate "C")
+            and (scope.upper_date is null or ${localDate} <= scope.upper_date collate "C")
+          )
+        )
+    )
+  `);
+  return new Set(rows.map((row) => row.id));
 }
 
 /**
@@ -4437,7 +4931,8 @@ function serializePlanDay(day: PlanDay) {
     planned: day.planned.map((planned) => ({
       localTime: planned.localTime,
       ...readPlanAmount(planned)
-    }))
+    })),
+    archiveDay: day.archiveDay
   };
 }
 
@@ -4451,6 +4946,7 @@ function serializeDayStatus(status: DayStatus, detail: "summary" | "doses") {
       : { notPlannedReason: status.notPlannedReason }),
     plannedCount: status.plannedCount,
     loggedCount: status.loggedCount,
+    skippedCount: status.skippedCount,
     extraCount: status.extraCount,
     ...(detail === "doses"
       ? {
@@ -4459,7 +4955,8 @@ function serializeDayStatus(status: DayStatus, detail: "summary" | "doses") {
             protocolId: fill.protocolId,
             plannedLocalTime: fill.plannedLocalTime,
             ...readPlanAmount(fill),
-            doseId: fill.doseId
+            doseId: fill.doseId,
+            skipId: fill.skipId
           }))
         }
       : {})

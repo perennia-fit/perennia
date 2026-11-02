@@ -107,6 +107,8 @@ import {
   AgentEffectWindowResponseSchema,
   agentProtocolBatchWriteRoute,
   agentProtocolDayStatusesRoute,
+  agentProtocolDeleteResponse,
+  agentProtocolDeleteRoute,
   agentProtocolListRoute,
   agentProtocolPlannedDaysRoute,
   AgentProtocolBatchWriteResponseSchema,
@@ -3721,7 +3723,9 @@ export function createApp(options: CreateAppOptions = {}) {
       schedules: prepared.schedules,
       targetOutcomes: prepared.targetOutcomes
     });
-    const writeFailure = agentProtocolsWriteFailure(writeResult, prepared.warnings);
+    // The pure step's warnings, then the store's (D8's archive warning).
+    const warnings = [...prepared.warnings, ...(writeResult.warnings ?? [])];
+    const writeFailure = agentProtocolsWriteFailure(writeResult, warnings);
     if (writeFailure !== null) {
       return writeFailure.status === 422
         ? context.json(writeFailure.body, 422)
@@ -3747,10 +3751,71 @@ export function createApp(options: CreateAppOptions = {}) {
           duplicate: writeResult.duplicate,
           results: prepared.responseProtocols
         }),
-        warnings: prepared.warnings
+        warnings
       }),
       200
     );
+  });
+
+  app.openapi(agentProtocolDeleteRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const agent = agentAuth.agent;
+    const requestBody = context.req.valid("json");
+    const writeResult = await agentProtocolsStore.deleteProtocols({
+      userId: agent.userId,
+      deviceId: `agent:${agent.keyId}`,
+      idempotencyKey: requestBody.idempotencyKey,
+      protocolIds: requestBody.protocolIds
+    });
+    const response = agentProtocolDeleteResponse(requestBody, writeResult);
+    if (response.status === 200) {
+      await maybeNudgeAgentWrite({
+        syncNudgePublisher,
+        logger,
+        agent,
+        batchId: requestBody.idempotencyKey,
+        applied: writeResult.applied.length
+      });
+      return context.json(response.body, 200);
+    }
+    return response.status === 422
+      ? context.json(response.body, 422)
+      : context.json(response.body, 503);
   });
 
   app.openapi(agentExerciseAnalyticsRoute, async (context) => {

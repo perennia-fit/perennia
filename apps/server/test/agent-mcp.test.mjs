@@ -254,6 +254,7 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_batch_write_settings",
         "agent_batch_write_workout",
         "agent_capture_workout_template",
+        "agent_delete_protocols",
         "agent_get_energy_balance",
         "agent_get_exercise_analytics",
         "agent_get_monitoring_activity",
@@ -371,6 +372,14 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         .get("agent_batch_write_plan_tree")
         .inputSchema.properties.request.properties.dryRun.default,
       false
+    );
+    // The delete tool takes the REST body: an idempotency key and the ids.
+    const deleteRequest = toolsByName.get("agent_delete_protocols").inputSchema
+      .properties.request;
+    assert.deepEqual(deleteRequest.required.sort(), ["idempotencyKey", "protocolIds"]);
+    assert.equal(deleteRequest.properties.protocolIds.maxItems, 100);
+    assert.ok(
+      toolsByName.get("agent_delete_protocols").outputSchema.properties.protocols
     );
     const doseIdSchema = toolsByName
       .get("agent_batch_write_doses")

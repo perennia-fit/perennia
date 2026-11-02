@@ -1563,6 +1563,7 @@ export type AgentProtocol = {
   "period": AgentProtocolPeriod;
   "remindersEnabled": boolean;
   "archivedOn": string | null;
+  "hasHistory": boolean;
   "updatedAt": string;
   "deletedAt": string | null;
   "members": Array<AgentProtocolMember>;
@@ -1634,6 +1635,7 @@ export type AgentProtocolDayStatus = {
   "notPlannedReason"?: "not_scheduled_today" | "as_needed" | "no_schedule" | "removed" | "outside";
   "plannedCount": number;
   "loggedCount": number;
+  "skippedCount": number;
   "extraCount": number;
   "fills"?: Array<AgentProtocolDayStatusFill>;
 };
@@ -1647,6 +1649,7 @@ export type AgentProtocolDayStatusFill = {
   "unit": "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
   "route": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "doseId": string | null;
+  "skipId": string | null;
 };
 
 export type AgentProtocolDayStatusesResponse = {
@@ -1655,6 +1658,25 @@ export type AgentProtocolDayStatusesResponse = {
   "today": string;
   "detail": "summary" | "doses";
   "dayStatuses": Array<AgentProtocolDayStatus>;
+};
+
+export type AgentProtocolDeleteRequest = {
+  "idempotencyKey": string;
+  "protocolIds": Array<string>;
+};
+
+export type AgentProtocolDeleteResponse = {
+  "accepted": true;
+  "duplicate": boolean;
+  "idempotencyKey": string;
+  "batchId": string;
+  "serverClock": string;
+  "protocols": Array<AgentProtocolDeleteResult>;
+};
+
+export type AgentProtocolDeleteResult = {
+  "id": string;
+  "outcome": "deleted" | "already_deleted";
 };
 
 export type AgentProtocolListResponse = {
@@ -1695,6 +1717,7 @@ export type AgentProtocolPlannedDay = {
   "localDate": string;
   "state": "planned" | "not_scheduled_today" | "as_needed" | "no_schedule" | "removed" | "outside" | "paused" | "off_cycle";
   "planned": Array<AgentProtocolPlannedDose>;
+  "archiveDay": boolean;
 };
 
 export type AgentProtocolPlannedDaysResponse = {
@@ -2439,6 +2462,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "batchWriteAgentWorkout",
   "captureAgentWorkoutTemplate",
   "createAgentApiKey",
+  "deleteAgentProtocols",
   "getAgentEnergyBalance",
   "getAgentExerciseAnalytics",
   "getAgentMonitoringActivity",
@@ -2645,6 +2669,16 @@ export class PerenniaAgentClient {
       method: "POST",
       path: "/agent/api-keys",
       expectedStatus: 201,
+      body: body,
+      signal: options.signal
+    });
+  }
+
+  async deleteAgentProtocols(body: AgentProtocolDeleteRequest, options: AgentClientRequestOptions = {}): Promise<AgentProtocolDeleteResponse> {
+    return this.request<AgentProtocolDeleteResponse>({
+      method: "POST",
+      path: "/agent/protocols/delete",
+      expectedStatus: 200,
       body: body,
       signal: options.signal
     });

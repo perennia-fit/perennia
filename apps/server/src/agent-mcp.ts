@@ -201,6 +201,9 @@ import {
   AgentProtocolDayStatusesQuerySchema,
   AgentProtocolDayStatusesResponseSchema,
   AgentProtocolDaysInvalidRequestResponseSchema,
+  AgentProtocolDeleteRequestSchema,
+  AgentProtocolDeleteResponseSchema,
+  agentProtocolDeleteResponse,
   AgentProtocolListQuerySchema,
   AgentProtocolListResponseSchema,
   AgentProtocolPlannedDaysQuerySchema,
@@ -530,6 +533,10 @@ export const AgentMcpProtocolBatchWriteInputSchema =
   AgentMcpAuthFieldsSchema.extend({
     request: AgentProtocolBatchWriteRequestSchema
   }).openapi("AgentMcpProtocolBatchWriteInput");
+
+export const AgentMcpProtocolDeleteInputSchema = AgentMcpAuthFieldsSchema.extend({
+  request: AgentProtocolDeleteRequestSchema
+}).openapi("AgentMcpProtocolDeleteInput");
 
 export type AgentMcpServerOptions = {
   agentApiKeyStore?: AgentApiKeyStore;
@@ -2819,6 +2826,55 @@ export function createAgentMcpServer({
     }
   );
 
+  server.registerTool(
+    "agent_delete_protocols",
+    {
+      title: "Delete Agent Protocols",
+      description:
+        "Delete Protocols nothing was logged for (hasHistory false on agent_list_protocols), through the same history check, Activity Log, and sync-nudge path as REST. Writes one row per Protocol and nothing else; archived Protocols with no history are accepted. Any refused id (protocol_not_found, protocol_has_history) refuses the whole request; archive a Protocol with history with agent_batch_write_protocols instead. One request is one batch: undoing its batchId restores every Protocol it deleted. Idempotent by idempotency key.",
+      inputSchema: AgentMcpProtocolDeleteInputSchema,
+      outputSchema: AgentProtocolDeleteResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      const writeResult = await agentProtocolsStore.deleteProtocols({
+        userId: auth.agent.userId,
+        deviceId: `agent:${auth.agent.keyId}`,
+        idempotencyKey: input.request.idempotencyKey,
+        protocolIds: input.request.protocolIds
+      });
+      const response = agentProtocolDeleteResponse(input.request, writeResult);
+      if (response.status !== 200) {
+        return errorResult(response.body);
+      }
+      await maybeNudgeAgentWrite({
+        syncNudgePublisher,
+        logger,
+        agent: auth.agent,
+        batchId: input.request.idempotencyKey,
+        applied: writeResult.applied.length
+      });
+      return successResult(response.body);
+    }
+  );
+
   return server;
 }
 
@@ -2979,7 +3035,9 @@ async function writeProtocolBatchToolResult({
     schedules: prepared.schedules,
     targetOutcomes: prepared.targetOutcomes
   });
-  const writeFailure = agentProtocolsWriteFailure(writeResult, prepared.warnings);
+  // The pure step's warnings, then the store's (D8's archive warning).
+  const warnings = [...prepared.warnings, ...(writeResult.warnings ?? [])];
+  const writeFailure = agentProtocolsWriteFailure(writeResult, warnings);
   if (writeFailure !== null) {
     return errorResult(writeFailure.body);
   }
@@ -3003,7 +3061,7 @@ async function writeProtocolBatchToolResult({
         duplicate: writeResult.duplicate,
         results: prepared.responseProtocols
       }),
-      warnings: prepared.warnings
+      warnings
     })
   );
 }
