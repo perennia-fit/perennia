@@ -98,6 +98,14 @@ components:
   stepper-button:
     rounded: "{rounded.md}"
     size: "{spacing.touch-target}"
+  status-icon:
+    size: 24px
+  legend-icon:
+    size: 16px
+  trained-days-cell:
+    size: 24px
+    gap: 2px
+    fillOpacity: 0.7
 ---
 
 # Design System: Perennia
@@ -236,11 +244,13 @@ with `md` corners, never FABs.
   statuses only — no percentage, streak, ring or grade; a change is an arrow or a word
   in the secondary text color, never red, green or gold.
 - **This week row:** seven equal day columns (weekday initial, date, a 24px status
-  icon in the secondary text color inside a 48px cell), today outlined 1px in the
-  primary text color. A legend names every status shown, Rest and No plan as text
-  only, so an icon is never the only signal.
+  icon (`status-icon`) in the secondary text color inside a 48px cell), today
+  outlined 1px in the primary text color. A legend names every status shown with a
+  16px icon (`legend-icon`), Rest and No plan as text only, so an icon is never the
+  only signal.
 - **Trained days calendar:** one column per week, one row per weekday, square cells
-  up to 24px with 2px gaps. A Trained Day is filled in the primary text color at 70%;
+  up to 24px with 2px gaps (`trained-days-cell`). A Trained Day is filled in the
+  primary text color at 70%;
   any other past date is a 1px outline in the divider color; a future date is blank.
   Fill against outline is the signal; color carries no meaning.
 - **Focus color:** training colored by Focus (Time by Focus bars) uses the Focus's

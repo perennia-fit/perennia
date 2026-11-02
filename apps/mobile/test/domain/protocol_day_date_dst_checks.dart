@@ -4,15 +4,17 @@
 /// [childZoneVariable] set). Each check returns its failures; none is a pass.
 ///
 /// The code under test (`protocols.dart`, `protocol_plan.dart`,
-/// `protocol_plan_days.dart`, and `training_day.dart` for
+/// `protocol_plan_days.dart`, `training_day.dart` for
 /// [TrainingDayDate.addDays], which the training progress cores walk dates
-/// with) imports nothing from Flutter, which is what lets
+/// with, and `nutrition.dart` for [NutritionDayDate.addDays]) imports
+/// nothing from Flutter, which is what lets
 /// the child be a bare Dart VM: it builds nothing, so the zones run at once
 /// without two `flutter test` runs colliding over the native-assets build.
 library;
 
 import 'dart:io';
 
+import 'package:perennia/domain/nutrition/nutrition.dart';
 import 'package:perennia/domain/protocols/protocol_plan.dart';
 import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/domain/protocols/protocols.dart';
@@ -61,6 +63,23 @@ List<DstCheck> dstChecks({String? zone}) {
               change.dates.reversed.toList(),
               'dates',
             ),
+      ),
+      (
+        name: 'NutritionDayDate.addDays walks every date both ways across '
+            '${change.name}',
+        run: () => <String>[
+              ..._equal(
+                _walkNutrition(change.from, change.dates.length, step: 1),
+                change.dates,
+                'dates',
+              ),
+              ..._equal(
+                _walkNutrition(change.dates.last, change.dates.length,
+                    step: -1),
+                change.dates.reversed.toList(),
+                'dates back',
+              ),
+            ],
       ),
       (
         name: 'TrainingDayDate.addDays walks every date both ways across '
@@ -281,6 +300,16 @@ List<String> _walk(String start, int count, {required int step}) {
 List<String> _walkTraining(String start, int count, {required int step}) {
   final dates = <String>[];
   var date = TrainingDayDate.parse(start);
+  for (var index = 0; index < count; index += 1) {
+    dates.add(date.storageValue);
+    date = date.addDays(step);
+  }
+  return dates;
+}
+
+List<String> _walkNutrition(String start, int count, {required int step}) {
+  final dates = <String>[];
+  var date = NutritionDayDate.parse(start);
   for (var index = 0; index < count; index += 1) {
     dates.add(date.storageValue);
     date = date.addDays(step);

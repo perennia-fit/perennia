@@ -1067,12 +1067,14 @@ in words instead of an arrow. No change is drawn in red, green or gold.
     required. Each uses `LocalDateSchema` from `agent-protocols.ts`, which
     this change exports. A malformed date gets the request validator's own
     400 body, as `GET /agent/protocols/day-statuses` documents for its dates.
-*   Range rules: the handler calls the existing exported
-    `checkAgentProtocolDaysQuery`. It rejects `fromLocalDate` after
-    `toLocalDate`, more than 366 dates, `toLocalDate` after `today`, and a
-    `today` more than one day from the server's UTC date. A rejection
-    returns 400 `agent_progress_read_invalid_range` with the function's
-    message.
+*   Range rules: the handler calls `checkAgentTrainingDaysQuery`, which
+    applies the existing exported `checkAgentProtocolDaysQuery` with its
+    own reason for refusing a future day ("a day still to come has no
+    Logged Workout"), so the message uses this read's terms, not the
+    Protocols' Day Status. It rejects `fromLocalDate` after `toLocalDate`,
+    more than 366 dates, `toLocalDate` after `today`, and a `today` more
+    than one day from the server's UTC date. A rejection returns 400
+    `agent_progress_read_invalid_range` with the function's message.
 *   503 `agent_progress_read_unavailable` when the store is not configured.
     Both codes use the `{code, message}` shape of the nutrition reads.
 *   Response: `{days, trainedDayCount, week}`.
@@ -1127,7 +1129,7 @@ in `index.ts` and passed to `createApp` and `createAgentMcpServer` as
 
 | Method | Returns | Reads |
 | :----- | :------ | :---- |
-| `readTrainingDays({userId, from, to, today})` | the `listAgentTrainingDays` response | Routines whose payload `cadence_kind` is `weekly` and that are not deleted; their routine entries that are not deleted and have a `slot`; the entries' workout templates that are not deleted; workout sessions whose payload `local_date` is in `[from, to]` or `[weekStart, weekStart + 6]` and that are not deleted, read as one window when the two overlap or touch and as two otherwise, so a past range never reads the dates between it and the week; each session's count of logged sets that are not deleted with payload `is_completed` true; each session's active template link (latest `updated_at` to the whole second, then highest `id`); the account's `weekStartDay`. Every instant (`started_at`, `ended_at`, a link's `updated_at`) is truncated to the whole second, the precision the app's Drift columns store, so both loaders feed the core the same inputs |
+| `readTrainingDays({userId, from, to, today})` | the `listAgentTrainingDays` response | Routines whose payload `cadence_kind` is `weekly` and that are not deleted; their routine entries that are not deleted and have a `slot`; the entries' workout templates that are not deleted; workout sessions whose payload `local_date` is in `[from, to]` or `[weekStart, weekStart + 6]` and that are not deleted, in one read over both windows, so a past range never reads the dates between it and the week; each session's count of logged sets that are not deleted with payload `is_completed` true; each session's active template link (latest `updated_at` to the whole second, then highest `id`); the account's `weekStartDay`. Every instant (`started_at`, `ended_at`, a link's `updated_at`) is truncated to the whole second, the precision the app's Drift columns store, so both loaders feed the core the same inputs |
 | `readNewBests({userId, from, to})` | the `listAgentNewBests` response | performed sets as defined below, grouped by exercise; their exercises through the catalog |
 | `readExerciseProgressSets({userId, exerciseId})` | `ProgressWorkoutSets[]` | the same, for one exercise |
 
@@ -1152,11 +1154,14 @@ exercise's `name`. The profile comes from a new exported
 extracted from the inline profile in `buildAgentExerciseAnalyticsResponse`,
 which then calls it.
 
-**Reused helpers.** The training-days loader reuses `cadenceFromRow`,
-`routineEntryFromRow` and `isoWeekday` from `agent-plan-reads.ts`, which this
-change exports. It reads the user's live Routines and keeps those whose
-`cadenceFromRow(row)?.kind` is `weekly`, so a Routine is weekly here exactly
-when the plan reads say it is. `unionValues` from `agent-protocols.ts`, also
+**Reused helpers.** The training-days loader reuses `cadenceFromRow` and
+`routineEntryFromRow` from `agent-plan-reads.ts`, which this change exports,
+and takes the week start's weekday from `epochDayIsoWeekday` in
+`protocol-plan.ts`, as the core does. It reads the user's live Routines and
+keeps those whose `cadenceFromRow(row)?.kind` is `weekly`, so a Routine is
+weekly here exactly when the plan reads say it is. Sync payloads are opaque,
+so a Routine or entry that either helper cannot decode plans nothing, as in
+the app, rather than failing the whole read. `unionValues` from `agent-protocols.ts`, also
 exported, checks the nine status wire values against the core's
 `TrainingDayStatus` type. `weekStartDay` comes from the settings read store's
 `readSettings({userId})` (`createDrizzleAgentSettingsStore`), which the
@@ -1717,13 +1722,17 @@ source:
 22. **`apps/mobile/lib/data/repositories/routine_up_next_repository.dart`**
     (modify).
     *   Add `class WeeklyPlanFacts` (Data shapes).
-    *   Add `Stream<List<WeeklyPlanFacts>> watchWeeklyPlans()`. It reuses
-        the select of `_watchCadencedRoutines`, which drops archived
-        Routines, archived entries and archived templates. Its inner joins
-        also leave out a Routine with no live entries.
-    *   `watchWeeklyPlans` keeps Routines whose `cadenceKind` is `weekly`,
-        drops entries whose `slot` is null, and maps each `slot` to
-        `weekday`.
+    *   Add `Stream<List<WeeklyPlanFacts>> watchWeeklyPlans()`. It maps
+        `_watchCadencedRoutines`, which drops archived Routines, archived
+        entries and archived templates, and whose inner joins leave out a
+        Routine with no live entries. Up next's Cadence decoding then
+        decides which Routines are weekly, as `cadenceFromRow` does on the
+        server.
+    *   `watchWeeklyPlans` keeps Routines whose Cadence is weekly and that
+        have an entry with a `slot`, and maps each `slot` to `weekday`.
+    *   A Routine whose Cadence cannot be decoded (a malformed synced row)
+        plans nothing in Up next and This week, instead of failing every
+        Routine's read; the server skips it the same way.
     *   Add `Stream<bool> watchHasRotatingRoutine()`, true when an active
         Routine has `cadenceKind` `rotating`.
     *   `TrainingRepositories.routineUpNext` already exposes this
@@ -1732,7 +1741,9 @@ source:
     (modify). On `WorkoutSessionRepository`, add
     `Stream<List<ProgressWorkout>> watchProgressWorkoutsBetween(
     TrainingDayDate from, TrainingDayDate to)`. It reads Workouts with
-    `deletedAt` null and `localDate` in the range. For each Workout it
+    `deletedAt` null and `localDate` in the range, leaving out a synced row
+    whose `localDate` is not a real `YYYY-MM-DD` date, as the server's core
+    ignores it, instead of failing every card. For each Workout it
     returns:
     *   its count of Sets with `deletedAt` null and `isCompleted` true;
     *   its `focusId`;
@@ -1857,9 +1868,9 @@ source:
     *   `apps/server/src/agent-protocols.ts` (modify): export
         `LocalDateSchema` and `unionValues`.
     *   `apps/server/src/agent-plan-reads.ts` (modify): export
-        `cadenceFromRow`, `routineEntryFromRow` and `isoWeekday`.
+        `cadenceFromRow` and `routineEntryFromRow`.
     *   `apps/server/src/app.ts` (modify): the `agentProgressReadStore`
-        option and the route. The route runs `checkAgentProtocolDaysQuery`
+        option and the route. The route runs `checkAgentTrainingDaysQuery`
         and has 400 and 503 branches.
     *   `apps/server/src/agent-mcp.ts` (modify): the
         `agentProgressReadStore` option and `agent_list_training_days`, with
@@ -1902,11 +1913,16 @@ source:
 37. **Docs.**
     *   `CONTEXT.md` (modify): add Performed Set, Logged Workout, Training
         Day Status and Trained Day.
-    *   `DESIGN.md` (modify):
+    *   `DESIGN.md` and `apps/mobile/DESIGN.md` (modify):
         *   root navigation: Progress is the Progress Overview;
         *   components: the summary card, the This week row with its
             status icons, the Trained days calendar fill and outline, and
-            the Focus color rule.
+            the Focus color rule;
+        *   front-matter tokens `status-icon` (24px), `legend-icon`
+            (16px) and `trained-days-cell` (24px, 2px gap, 0.7 fill
+            opacity), generated into `DesignTokens` by
+            `tool/generate_design_tokens.dart` and read through
+            `AppDimens`, so the cards hardcode none of them.
     *   `AGENTS.md` (modify): the Progress root bullet in the Screen map
         describes Progress Overview.
 38. **Tests.**

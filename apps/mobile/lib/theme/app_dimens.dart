@@ -10,6 +10,20 @@ class AppDimens {
   static const double rowHeight = DesignTokens.rowHeight;
   static const double touchTarget = DesignTokens.touchTarget;
   static const double supersetBar = 4;
+
+  /// A Training Day Status icon in This week's day columns.
+  static const double statusIcon = DesignTokens.statusIconSize;
+
+  /// An icon beside a legend label.
+  static const double legendIcon = DesignTokens.legendIconSize;
+
+  /// The largest Trained days calendar cell, and the gap between cells.
+  static const double trainedDaysCell = DesignTokens.trainedDaysCellSize;
+  static const double trainedDaysCellGap = DesignTokens.trainedDaysCellGap;
+
+  /// How opaque a Trained Day's fill of the primary text color is.
+  static const double trainedDaysFillOpacity =
+      DesignTokens.trainedDaysFillOpacity;
 }
 
 class AppRadii {

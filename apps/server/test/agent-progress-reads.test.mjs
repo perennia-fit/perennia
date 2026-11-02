@@ -156,6 +156,53 @@ test(
 );
 
 test(
+  "a Routine or entry whose payload cannot be decoded plans nothing instead of failing the read",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    const id = (suffix) => `${userId}-${suffix}`;
+    try {
+      await seedUser(database, userId);
+      await seedHybridBlock(database, userId);
+      await database.db.insert(schema.routines).values(
+        // A rotating Cadence without its window: cadenceFromRow throws on it.
+        opaqueRow({
+          id: id("broken-rotation"),
+          userId,
+          payload: { name: "Broken", cadence_kind: "rotating" }
+        })
+      );
+      await database.db.insert(schema.routineEntries).values(
+        // A Wednesday entry of the weekly Routine with no Workout Template.
+        opaqueRow({
+          id: id("e-broken"),
+          userId,
+          payload: { routine_id: id("hybrid"), position: 7, slot: 3 }
+        })
+      );
+
+      const result = await progressStore(database).readTrainingDays({
+        userId,
+        from: "2026-10-26",
+        to: "2026-11-01",
+        today: "2026-11-01"
+      });
+
+      assert.deepEqual(result.week.comparedRoutineIds, [id("hybrid")]);
+      // The Hybrid block's Monday, Tuesday, Thursday and Saturday still plan.
+      assert.deepEqual(
+        result.week.days.map((day) => day.plannedCount),
+        [1, 1, 0, 1, 0, 1, 0]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
   "a Sunday weekStartDay starts the week on the Sunday holding today",
   { skip },
   async () => {
@@ -359,6 +406,8 @@ test("the training-days read refuses a bad range with 400 before the store, as R
     assert.equal(tool.isError, true, JSON.stringify(query));
     assert.equal(tool.structuredContent.code, "agent_progress_read_invalid_range");
     assert.equal(tool.structuredContent.message, body.message);
+    // In this read's terms: a training read has no Protocol Day Status.
+    assert.doesNotMatch(body.message, /Day Status/);
   }
   assert.deepEqual(calls, []);
 

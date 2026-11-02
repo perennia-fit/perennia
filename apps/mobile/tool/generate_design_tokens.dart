@@ -45,6 +45,10 @@ void main() {
   final rounded = yaml['rounded'] as YamlMap;
   final spacing = yaml['spacing'] as YamlMap;
   final typography = yaml['typography'] as YamlMap;
+  final components = yaml['components'] as YamlMap;
+  final statusIcon = components['status-icon'] as YamlMap;
+  final legendIcon = components['legend-icon'] as YamlMap;
+  final trainedDaysCell = components['trained-days-cell'] as YamlMap;
 
   final unmapped = colors.keys
       .cast<String>()
@@ -106,6 +110,18 @@ void main() {
         '  static const double rowHeight = ${_num(spacing['row-height'])};')
     ..writeln(
         '  static const double touchTarget = ${_num(spacing['touch-target'])};')
+    ..writeln()
+    ..writeln('  // ---- components (logical px) ----')
+    ..writeln(
+        '  static const double statusIconSize = ${_num(statusIcon['size'])};')
+    ..writeln(
+        '  static const double legendIconSize = ${_num(legendIcon['size'])};')
+    ..writeln(
+        '  static const double trainedDaysCellSize = ${_num(trainedDaysCell['size'])};')
+    ..writeln(
+        '  static const double trainedDaysCellGap = ${_num(trainedDaysCell['gap'])};')
+    ..writeln(
+        '  static const double trainedDaysFillOpacity = ${_num(trainedDaysCell['fillOpacity'])};')
     ..writeln()
     ..writeln('  // ---- typography ----');
 

@@ -177,6 +177,7 @@ import {
   agentTrainingDaysRoute,
   AgentProgressReadInvalidRangeResponseSchema,
   AgentProgressReadUnavailableResponseSchema,
+  checkAgentTrainingDaysQuery,
   type AgentProgressReadStore
 } from "./agent-progress-reads.js";
 import {
@@ -4631,7 +4632,7 @@ export function createApp(options: CreateAppOptions = {}) {
       return agentAuth.response;
     }
     const query = context.req.valid("query");
-    const checked = checkAgentProtocolDaysQuery(query);
+    const checked = checkAgentTrainingDaysQuery(query);
     if (!checked.ok) {
       return context.json(
         AgentProgressReadInvalidRangeResponseSchema.parse({

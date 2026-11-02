@@ -2222,7 +2222,9 @@ function todayOutOfRangeMessage(today: string, now: Date): string | null {
  */
 export function checkAgentProtocolDaysQuery(
   query: { fromLocalDate: string; toLocalDate: string; today?: string },
-  now: Date = new Date()
+  now: Date = new Date(),
+  // Why a range may not end after today, in the caller's domain's terms.
+  futureDayReason = "a day still to come has no Day Status"
 ): { ok: true } | { ok: false; message: string } {
   const from = epochDay(query.fromLocalDate);
   const to = epochDay(query.toLocalDate);
@@ -2244,7 +2246,7 @@ export function checkAgentProtocolDaysQuery(
     if (to > epochDay(query.today)) {
       return {
         ok: false,
-        message: "toLocalDate must not be after today: a day still to come has no Day Status."
+        message: `toLocalDate must not be after today: ${futureDayReason}.`
       };
     }
   }

@@ -2432,21 +2432,23 @@ class WorkoutSessionRepository {
         )
         .watch()
         .map(
-          (rows) => List<ProgressWorkout>.unmodifiable(
-            rows.map(
-              (row) => ProgressWorkout(
-                workoutId: row.read<String>('workout_id'),
-                localDate:
-                    TrainingDayDate.parse(row.read<String>('local_date')),
-                startedAt: row.read<DateTime>('started_at').toUtc(),
-                endedAt: row.readNullable<DateTime>('ended_at')?.toUtc(),
-                focusId: row.readNullable<String>('focus_id'),
-                linkedTemplateId:
-                    row.readNullable<String>('linked_template_id'),
-                performedSetCount: row.read<int>('performed_set_count'),
-              ),
-            ),
-          ),
+          (rows) => List<ProgressWorkout>.unmodifiable(<ProgressWorkout>[
+            for (final row in rows)
+              // A synced row whose date cannot be read is left out, as the
+              // server's core ignores it, rather than failing every card.
+              if (_parseTrainingDayDate(row.read<String>('local_date'))
+                  case final localDate?)
+                ProgressWorkout(
+                  workoutId: row.read<String>('workout_id'),
+                  localDate: localDate,
+                  startedAt: row.read<DateTime>('started_at').toUtc(),
+                  endedAt: row.readNullable<DateTime>('ended_at')?.toUtc(),
+                  focusId: row.readNullable<String>('focus_id'),
+                  linkedTemplateId:
+                      row.readNullable<String>('linked_template_id'),
+                  performedSetCount: row.read<int>('performed_set_count'),
+                ),
+          ]),
         );
   }
 

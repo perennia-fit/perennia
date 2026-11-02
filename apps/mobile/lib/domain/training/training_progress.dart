@@ -185,7 +185,7 @@ TrainingWeek trainingWeek({
   required TrainingDayDate weekStart,
   required TrainingDayDate today,
 }) {
-  final todayOffset = _daysBetween(weekStart, today);
+  final todayOffset = today.daysBetween(weekStart);
   if (todayOffset < 0 || todayOffset > 6) {
     throw ArgumentError.value(
       today.storageValue,
@@ -202,7 +202,7 @@ TrainingWeek trainingWeek({
   final days = <TrainingWeekDay>[];
   for (var offset = 0; offset < 7; offset += 1) {
     final date = weekStart.addDays(offset);
-    final weekday = _isoWeekday(date);
+    final weekday = date.isoWeekday;
     final planned = <(String, String)>[
       for (final plan in comparing)
         for (final entry in plan.entries)
@@ -298,7 +298,7 @@ List<TrainingDay> trainingDays({
   required TrainingDayDate from,
   required TrainingDayDate to,
 }) {
-  final dateCount = _daysBetween(from, to) + 1;
+  final dateCount = to.daysBetween(from) + 1;
   if (dateCount < 1 || dateCount > maxTrainingDaysRange) {
     throw ArgumentError(
       'trainingDays needs from <= to and at most $maxTrainingDaysRange '
@@ -349,7 +349,7 @@ List<WeeklyFocusSeconds> weeklyFocusSeconds(
 ) {
   final buckets = <Map<String, int>>[];
   for (final day in days) {
-    final offset = _daysBetween(firstWeekStart, day.localDate);
+    final offset = day.localDate.daysBetween(firstWeekStart);
     if (offset < 0) {
       continue;
     }
@@ -392,14 +392,3 @@ Map<TrainingDayDate, List<ProgressWorkout>> _loggedWorkoutsByDate(
   }
   return byDate;
 }
-
-// Date arithmetic on UTC midnights, as [TrainingDayDate.addDays] does, so a
-// daylight-saving change in the device's zone never repeats or skips a date.
-
-DateTime _utcMidnight(TrainingDayDate date) =>
-    DateTime.utc(date.year, date.month, date.day);
-
-int _daysBetween(TrainingDayDate from, TrainingDayDate to) =>
-    _utcMidnight(to).difference(_utcMidnight(from)).inDays;
-
-int _isoWeekday(TrainingDayDate date) => _utcMidnight(date).weekday;

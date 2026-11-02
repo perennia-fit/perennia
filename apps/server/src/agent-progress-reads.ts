@@ -3,21 +3,23 @@
 // computed on read by the shared training progress core and never stored.
 
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 import {
   AgentApiKeyUnavailableResponseSchema,
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
 import { payloadFocusId, type AgentCatalogStore } from "./agent-catalog.js";
-import { cadenceFromRow, isoWeekday, routineEntryFromRow } from "./agent-plan-reads.js";
+import { cadenceFromRow, routineEntryFromRow } from "./agent-plan-reads.js";
 import {
   AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS,
+  checkAgentProtocolDaysQuery,
   LocalDateSchema,
   unionValues
 } from "./agent-protocols.js";
 import type { AgentSettingsReadStore } from "./agent-settings.js";
 import {
+  MAX_TRAINING_DAYS_RANGE,
   NO_FOCUS_KEY,
   summarizeTrainingWeek,
   trainingDays,
@@ -28,8 +30,14 @@ import {
 } from "./analytics/training-progress.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
-import { epochDay, localDateFromEpochDay } from "./protocol-plan.js";
+import { epochDay, epochDayIsoWeekday, localDateFromEpochDay } from "./protocol-plan.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
+
+// The route refuses ranges with the Protocol day-status rule, and the core
+// throws past its own limit. This fails to compile when the two limits differ,
+// instead of a range the route accepts failing as a 500.
+const routeRangeLimit: typeof MAX_TRAINING_DAYS_RANGE = AGENT_PROTOCOL_DAYS_MAX_RANGE_DAYS;
+void routeRangeLimit;
 
 const TRAINING_DAY_STATUSES = unionValues<TrainingDayStatus>()([
   "done",
@@ -198,13 +206,25 @@ export const agentTrainingDaysRoute = createRoute({
   }
 });
 
+/**
+ * The Protocol day-status range rule (`checkAgentProtocolDaysQuery`), refused
+ * in this read's own terms: a training read has Training Day Statuses and
+ * Logged Workouts, not the Protocols' Day Status.
+ */
+export function checkAgentTrainingDaysQuery(
+  query: { fromLocalDate: string; toLocalDate: string; today: string },
+  now: Date = new Date()
+): { ok: true } | { ok: false; message: string } {
+  return checkAgentProtocolDaysQuery(query, now, "a day still to come has no Logged Workout");
+}
+
 export type AgentTrainingDaysQuery = z.infer<typeof AgentTrainingDaysQuerySchema>;
 export type AgentTrainingDaysResponse = z.infer<typeof AgentTrainingDaysResponseSchema>;
 
 export type AgentProgressReadStore = {
   /**
    * The `listAgentTrainingDays` response. The route and the MCP tool run
-   * `checkAgentProtocolDaysQuery` first; the store does not check the range.
+   * `checkAgentTrainingDaysQuery` first; the store does not check the range.
    */
   readTrainingDays(input: {
     userId: string;
@@ -228,12 +248,18 @@ export function createDrizzleAgentProgressReadStore({
 }): AgentProgressReadStore {
   return {
     async readTrainingDays({ userId, from, to, today }) {
-      const { settings } = await settingsStore.readSettings({ userId });
-      const weekStart = weekStartFor(today, settings.weekStartDay);
-      const weekEnd = addDays(weekStart, 6);
-      const [plans, workouts] = await Promise.all([
+      // The plans don't depend on the week start, so they load while the
+      // settings and then the Workouts do.
+      const [plans, { weekStart, workouts }] = await Promise.all([
         loadWeeklyPlans(db, userId),
-        loadRangeAndWeekWorkouts(db, userId, { from, to }, { from: weekStart, to: weekEnd })
+        settingsStore.readSettings({ userId }).then(async ({ settings }) => {
+          const weekStart = weekStartFor(today, settings.weekStartDay);
+          const workouts = await loadProgressWorkouts(db, userId, [
+            { from, to },
+            { from: weekStart, to: addDays(weekStart, 6) }
+          ]);
+          return { weekStart, workouts };
+        })
       ]);
 
       const days = trainingDays({ workouts, from, to });
@@ -254,13 +280,15 @@ export function createDrizzleAgentProgressReadStore({
  */
 async function loadWeeklyPlans(db: ServerDatabase, userId: string): Promise<WeeklyPlan[]> {
   // Decoded by the plan reads' own `cadenceFromRow`, so a Routine is weekly
-  // here exactly when its Routine detail and Up next say it is.
+  // here exactly when its Routine detail and Up next say it is. Sync payloads
+  // are opaque: a Routine whose Cadence cannot be decoded plans nothing here,
+  // as in the app, rather than failing the whole read.
   const routines = (
     await db
       .select()
       .from(schema.routines)
       .where(and(eq(schema.routines.userId, userId), isNull(schema.routines.deletedAt)))
-  ).filter((routine) => cadenceFromRow(routine)?.kind === "weekly");
+  ).filter((routine) => decodedOrNull(() => cadenceFromRow(routine))?.kind === "weekly");
   if (routines.length === 0) {
     return [];
   }
@@ -301,8 +329,9 @@ async function loadWeeklyPlans(db: ServerDatabase, userId: string): Promise<Week
 
   const entriesByRoutine = new Map<string, WeeklyPlan["entries"][number][]>();
   for (const row of entryRows) {
-    const entry = routineEntryFromRow(row, templatesById);
-    if (entry.workoutTemplateArchived || entry.slot === null) {
+    // Likewise, an entry that cannot be decoded plans nothing.
+    const entry = decodedOrNull(() => routineEntryFromRow(row, templatesById));
+    if (entry === null || entry.workoutTemplateArchived || entry.slot === null) {
       continue;
     }
     const entries = entriesByRoutine.get(entry.routineId) ?? [];
@@ -316,43 +345,17 @@ async function loadWeeklyPlans(db: ServerDatabase, userId: string): Promise<Week
 }
 
 /**
- * The Workouts of the requested range and of the current week. Windows that
- * overlap or touch are read as one; apart, each is read on its own, so a past
- * range never pulls every Workout between it and today. Apart, they share no
- * date, so no Workout is read twice.
- */
-async function loadRangeAndWeekWorkouts(
-  db: ServerDatabase,
-  userId: string,
-  range: { from: string; to: string },
-  week: { from: string; to: string }
-): Promise<ProgressWorkout[]> {
-  if (range.from <= addDays(week.to, 1) && week.from <= addDays(range.to, 1)) {
-    return loadProgressWorkouts(
-      db,
-      userId,
-      range.from < week.from ? range.from : week.from,
-      range.to > week.to ? range.to : week.to
-    );
-  }
-  const [rangeWorkouts, weekWorkouts] = await Promise.all([
-    loadProgressWorkouts(db, userId, range.from, range.to),
-    loadProgressWorkouts(db, userId, week.from, week.to)
-  ]);
-  return [...rangeWorkouts, ...weekWorkouts];
-}
-
-/**
- * The live Workouts dated `from` through `to` as `ProgressWorkout` facts (D0,
- * D1). `performedSetCount` counts live Sets whose payload `is_completed` is
- * true; a missing key is false, unlike the exercise analytics read's
- * `is_completed ?? true`.
+ * The live Workouts dated within any of `windows`, inclusive, as
+ * `ProgressWorkout` facts (D0, D1). One read covers the requested range and
+ * the current week, so a past range never pulls the dates between it and the
+ * week, and a Workout in both is read once. `performedSetCount` counts live
+ * Sets whose payload `is_completed` is true; a missing key is false, unlike
+ * the exercise analytics read's `is_completed ?? true`.
  */
 async function loadProgressWorkouts(
   db: ServerDatabase,
   userId: string,
-  from: string,
-  to: string
+  windows: { from: string; to: string }[]
 ): Promise<ProgressWorkout[]> {
   const localDate = sql<string>`${schema.workoutSessions.payload} ->> 'local_date'`;
   const sessions = await db
@@ -362,8 +365,7 @@ async function loadProgressWorkouts(
       and(
         eq(schema.workoutSessions.userId, userId),
         isNull(schema.workoutSessions.deletedAt),
-        gte(localDate, from),
-        lte(localDate, to)
+        or(...windows.map(({ from, to }) => and(gte(localDate, from), lte(localDate, to))))
       )
     );
   if (sessions.length === 0) {
@@ -436,11 +438,20 @@ async function loadProgressWorkouts(
 /** The first date of the week holding `today`, as `AppSettings.weekStartFor` computes it. */
 function weekStartFor(today: string, weekStartDay: "monday" | "sunday"): string {
   const startWeekday = weekStartDay === "sunday" ? 7 : 1;
-  return addDays(today, -((isoWeekday(today) - startWeekday + 7) % 7));
+  return addDays(today, -((epochDayIsoWeekday(epochDay(today)) - startWeekday + 7) % 7));
 }
 
 function addDays(localDate: string, days: number): string {
   return localDateFromEpochDay(epochDay(localDate) + days);
+}
+
+/** `decode()`, or null when it throws on a malformed payload. */
+function decodedOrNull<T>(decode: () => T): T | null {
+  try {
+    return decode();
+  } catch {
+    return null;
+  }
 }
 
 function dateValue(value: unknown): Date | null {

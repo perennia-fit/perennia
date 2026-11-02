@@ -9,6 +9,7 @@ import '../../../theme/theme.dart';
 import '../../routine_plans/widgets/routine_plan_list_screen.dart';
 import '../controllers/progress_controller.dart';
 import 'progress_card.dart';
+import 'progress_format.dart';
 
 /// This week against the weekly Routines (D1, D8 card 1): one column per day
 /// with its Training Day Status icon, the counted statuses, a legend that
@@ -33,15 +34,9 @@ class ThisWeekCard extends ConsumerWidget {
     final l10n = context.l10n;
     final title = l10n.progressThisWeekTitle;
     final state = ref.watch(progressThisWeekProvider);
-    if (state.hasError) {
-      return ProgressCard.empty(
-        title: title,
-        message: l10n.progressCardUnavailable,
-      );
-    }
     final data = state.value;
-    if (data == null) {
-      return ProgressCard.loading(title: title);
+    if (state.hasError || data == null) {
+      return ProgressCard.pending(title: title, failed: state.hasError);
     }
     final routines = ProgressCardAction(
       key: routinesButtonKey,
@@ -112,11 +107,19 @@ class ThisWeekCard extends ConsumerWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (trainingDayStatusIcon(status) case final icon?) ...[
-                        Icon(icon, size: 16, color: colors.textSecondary),
+                        Icon(
+                          icon,
+                          size: AppDimens.legendIcon,
+                          color: colors.textSecondary,
+                        ),
                         const SizedBox(width: AppDimens.dense / 3),
                       ],
-                      Text(trainingDayStatusLabel(l10n, status),
-                          style: secondary),
+                      Flexible(
+                        child: Text(
+                          trainingDayStatusLabel(l10n, status),
+                          style: secondary,
+                        ),
+                      ),
                     ],
                   ),
             ],
@@ -170,9 +173,6 @@ class ThisWeekCard extends ConsumerWidget {
     );
   }
 }
-
-/// The separator between the parts of a Progress summary line.
-const String progressSeparator = ' · ';
 
 /// The icon a status is drawn with; Rest and No plan have none (D8).
 IconData? trainingDayStatusIcon(TrainingDayStatus status) {
@@ -243,7 +243,11 @@ class _DayColumn extends StatelessWidget {
               child: Center(
                 child: icon == null
                     ? null
-                    : Icon(icon, size: 24, color: colors.textSecondary),
+                    : Icon(
+                        icon,
+                        size: AppDimens.statusIcon,
+                        color: colors.textSecondary,
+                      ),
               ),
             ),
           ],

@@ -112,12 +112,29 @@ final class RoutineUpNextRepository {
   }
 
   /// The active weekly Routines' planning entries, for This week (D1). The
-  /// select is Up next's, so an archived Routine, entry or Workout Template
-  /// plans nothing here either, and a Routine with no live entry is absent.
-  /// An entry without a slot plans nothing; a weekly slot is the ISO
-  /// weekday.
+  /// Routines are Up next's, Cadence decoding included, so a Routine is
+  /// weekly here exactly when Up next says it is; an archived Routine, entry
+  /// or Workout Template plans nothing here either, and a Routine with no
+  /// live entry is absent. A weekly slot is the ISO weekday.
   Stream<List<WeeklyPlanFacts>> watchWeeklyPlans() {
-    return _cadencedRoutinesQuery().watch().map(_weeklyPlansFromJoinedRows);
+    return _watchCadencedRoutines().map(
+      (routines) => List<WeeklyPlanFacts>.unmodifiable(<WeeklyPlanFacts>[
+        for (final routine in routines)
+          if (routine.cadence.kind == CadenceKind.weekly &&
+              routine.entries.isNotEmpty)
+            WeeklyPlanFacts(
+              routineId: routine.routineId,
+              routineName: routine.routineName,
+              entries: <WeeklyPlanEntry>[
+                for (final entry in routine.entries)
+                  WeeklyPlanEntry(
+                    workoutTemplateId: entry.workoutTemplateId,
+                    weekday: entry.slot,
+                  ),
+              ],
+            ),
+      ]),
+    );
   }
 
   /// Whether an active Routine has a rotating Cadence: This week compares
@@ -171,39 +188,6 @@ final class RoutineUpNextRepository {
     return query;
   }
 
-  List<WeeklyPlanFacts> _weeklyPlansFromJoinedRows(List<TypedResult> rows) {
-    // Dart maps keep insertion order, so Routines come out in the select's.
-    final nameById = <String, String>{};
-    final entriesByRoutine = <String, List<WeeklyPlanEntry>>{};
-    for (final result in rows) {
-      final routine = result.readTable(_database.planRoutines);
-      if (routine.cadenceKind != CadenceKind.weekly.storageValue) {
-        continue;
-      }
-      final slot = result.readTable(_database.routineEntries).slot;
-      if (slot == null) {
-        continue;
-      }
-      nameById[routine.id] = routine.name;
-      entriesByRoutine.putIfAbsent(routine.id, () => <WeeklyPlanEntry>[]).add(
-            WeeklyPlanEntry(
-              workoutTemplateId:
-                  result.readTable(_database.workoutTemplates).id,
-              weekday: slot,
-            ),
-          );
-    }
-    return List<WeeklyPlanFacts>.unmodifiable(
-      entriesByRoutine.entries.map(
-        (routine) => WeeklyPlanFacts(
-          routineId: routine.key,
-          routineName: nameById[routine.key]!,
-          entries: routine.value,
-        ),
-      ),
-    );
-  }
-
   Stream<Map<String, List<UpNextTemplateLinkFact>>>
       _watchTemplateLinkFacts() {
     final query = _database.select(_database.templateLinks).join([
@@ -255,20 +239,16 @@ final class RoutineUpNextRepository {
         ),
       );
     }
-    return List<_CadencedRoutineEntries>.unmodifiable(
-      order.map((id) {
-        final routine = routineRowById[id]!;
-        return _CadencedRoutineEntries(
-          routineId: routine.id,
-          routineName: routine.name,
-          cadence: _cadenceFromRow(routine) ??
-              (throw StateError(
-                'Cadence-bearing Routine ${routine.id} has no Cadence.',
-              )),
-          entries: entriesByRoutine[id]!,
-        );
-      }),
-    );
+    return List<_CadencedRoutineEntries>.unmodifiable(<_CadencedRoutineEntries>[
+      for (final id in order)
+        if (_decodedCadence(routineRowById[id]!) case final cadence?)
+          _CadencedRoutineEntries(
+            routineId: id,
+            routineName: routineRowById[id]!.name,
+            cadence: cadence,
+            entries: entriesByRoutine[id]!,
+          ),
+    ]);
   }
 
   Map<String, List<UpNextTemplateLinkFact>> _templateLinkFactsFromJoinedRows(
@@ -310,6 +290,17 @@ final class _CadencedRoutineEntries {
   final String routineName;
   final Cadence cadence;
   final List<UpNextRoutineEntry> entries;
+}
+
+/// The Routine's Cadence, or null when its row cannot be decoded. Synced
+/// rows are opaque, so a malformed Routine plans nothing in Up next and This
+/// week, as on the server, instead of failing every Routine's read.
+Cadence? _decodedCadence(PlanRoutineRow routine) {
+  try {
+    return _cadenceFromRow(routine);
+  } on StateError {
+    return null;
+  }
 }
 
 TrainingDayDate? _parseTrainingDayDate(String value) {

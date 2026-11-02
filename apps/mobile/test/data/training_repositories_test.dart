@@ -3905,6 +3905,30 @@ void main() {
     }
 
     test(
+        'a synced Workout whose local date cannot be read is left out, not '
+        'an error', () async {
+      final good = await workoutOn(monday);
+      final broken = await workoutOn(monday, hour: 9);
+      await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: good,
+          exerciseId: exerciseId,
+          position: 0,
+          values: _loadRepsValues(load: '100', reps: '5'),
+          isCompleted: true,
+        ),
+      );
+      // Sorts inside the range as text, but is not a YYYY-MM-DD date.
+      await (database.update(database.workoutSessions)
+            ..where((row) => row.id.equals(broken)))
+          .write(const WorkoutSessionsCompanion(localDate: Value('2026-10-3')));
+
+      final workouts = await read();
+
+      expect(workouts.map((workout) => workout.workoutId), <String>[good]);
+    });
+
+    test(
         'a materialized Workout with only incomplete Sets has no Performed '
         'Set until one is completed', () async {
       final templateId = await lowerTemplate();
