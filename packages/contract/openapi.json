@@ -7542,7 +7542,7 @@
               "null"
             ],
             "minLength": 1,
-            "description": "Local date (YYYY-MM-DD) the Protocol was archived, frozen when it was archived. Past days still count it through this date."
+            "description": "Local date (YYYY-MM-DD) the Protocol was archived, frozen when it was archived. Past days still count it through this date; on this date its planned doses count only if a Dose fills them."
           },
           "hasHistory": {
             "type": "boolean",
@@ -7680,7 +7680,7 @@
               "null"
             ],
             "minLength": 1,
-            "description": "Local date (YYYY-MM-DD) the member was removed, frozen when it was archived. The member is still planned that day, and reads removed from the next."
+            "description": "Local date (YYYY-MM-DD) the member was removed, frozen when it was archived. On that day its planned doses count only if a Dose fills them; it reads removed from the next day."
           },
           "versions": {
             "type": "array",
@@ -9474,7 +9474,7 @@
             "items": {
               "$ref": "#/components/schemas/AgentProtocolsBatchWriteIssue"
             },
-            "description": "Soft warnings: from the shared plan validators (an improbable plan, such as more than 6 times a day), and protocol_has_no_history for a Protocol archived with nothing logged for it, which delete-protocols could remove instead. The batch was still written."
+            "description": "Soft warnings: from the shared plan validators (an improbable plan, such as more than 6 times a day), and protocol_has_no_history for a Protocol archived with nothing logged for it, which delete-protocols could remove instead. The batch was still written. protocol_has_no_history is judged against stored Doses when the batch is written, so a replay (duplicate: true) repeats only the plan validators' warnings."
           }
         },
         "required": [
@@ -9565,7 +9565,7 @@
           "archived": {
             "type": "boolean",
             "default": false,
-            "description": "Set to true to archive the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; past days still count the Protocol through that date. Archiving is a plan edit: it never cascades to a logged Dose, and an archived Protocol is never restored."
+            "description": "Set to true to archive the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; past days still count the Protocol through that date, and on that date its planned doses count only if a Dose fills them. Archiving is a plan edit: it never cascades to a logged Dose, and an archived Protocol is never restored."
           },
           "members": {
             "type": "array",
@@ -9631,7 +9631,7 @@
           "archived": {
             "type": "boolean",
             "default": false,
-            "description": "Set to true to remove the member from the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; the member is still planned that day. Its Schedule Versions are kept. A removed member is never restored: adding the Compound again is a new member row."
+            "description": "Set to true to remove the member from the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; that day its planned doses count only if a Dose fills them. Its Schedule Versions are kept. A removed member is never restored: adding the Compound again is a new member row."
           }
         },
         "required": [

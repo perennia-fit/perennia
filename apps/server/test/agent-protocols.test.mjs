@@ -3541,7 +3541,22 @@ test("delete route answers a store refusal as agent_protocol_delete_failed and n
   assert.equal((await post(app, "/agent/protocols/delete", body)).status, 200);
   assert.equal(nudges.length, 1);
 
-  result = { ...result, receiptUnavailable: true };
+  // A reused key judges no Protocol, so it doesn't say they can't be deleted.
+  result = { ...result, idempotencyConflict: true };
+  const conflict = await post(app, "/agent/protocols/delete", body);
+  assert.equal(conflict.status, 422);
+  const conflictBody = await conflict.json();
+  assert.equal(conflictBody.code, "agent_protocol_delete_failed");
+  assert.equal(
+    conflictBody.message,
+    "This idempotency key was already used with a different request; nothing was deleted."
+  );
+  assert.deepEqual(
+    conflictBody.issues.map((entry) => entry.rule),
+    ["idempotency_key_conflict"]
+  );
+
+  result = { ...result, idempotencyConflict: false, receiptUnavailable: true };
   assert.equal((await post(app, "/agent/protocols/delete", body)).status, 503);
 });
 

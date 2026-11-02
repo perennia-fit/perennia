@@ -586,21 +586,27 @@ class ProtocolReminderScheduler {
     final now = tz.TZDateTime.from(_clock(), location);
     final today =
         ProtocolDayDate(year: now.year, month: now.month, day: now.day);
-    // Read from the Protocols alone (D5, D8): after D8 a Protocol archived
-    // today keeps only filled doses, so the horizon's inputs add nothing.
-    final remindersRequested = await _anyProtocolRemindersOn();
-    final scheduling = deviceSwitchOn &&
-        remindersRequested &&
+    final canSchedule = deviceSwitchOn &&
         permission == TimerBackgroundPermissionStatus.granted;
-    final desired = scheduling
-        ? desiredReminders(
-            await _readInputs(
-              today,
-              today.addDays(protocolReminderHorizonDays - 1),
-            ),
-            now,
+    // The horizon's inputs are read only when something could be scheduled,
+    // so a run with the switch off or no permission reads no plan or Doses.
+    final inputs = canSchedule
+        ? await _readInputs(
+            today,
+            today.addDays(protocolReminderHorizonDays - 1),
           )
         : null;
+    // "A Protocol has reminders on" (D5) is read from the Protocols, plus
+    // one case they miss (D8): an archived Protocol whose `archivedOn` is
+    // after this device's today (an Agent's `today` a day ahead, or another
+    // device's later zone) still plans today in full, so its unfilled
+    // reminders-on doses still want reminders. A Protocol archived on this
+    // device's today keeps only filled doses, which ask for nothing.
+    final remindersRequested = await _anyProtocolRemindersOn() ||
+        (inputs?.any((input) => input.remindersEnabled && !input.filled) ??
+            false);
+    final scheduling = canSchedule && remindersRequested;
+    final desired = scheduling ? desiredReminders(inputs!, now) : null;
     final wanted = <int, ReminderSpec>{
       for (final reminder in desired?.reminders ?? const <ReminderSpec>[])
         reminder.id: reminder,

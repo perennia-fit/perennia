@@ -356,6 +356,96 @@ void main() {
     });
 
     testWidgets(
+        'a delete that fails for another reason re-enables the buttons and '
+        'says why', (tester) async {
+      final controller = _FakeProtocolListController()
+        ..deleteError = Exception('disk full');
+      await openSaved(
+        tester,
+        controller,
+        hasHistory: () => Stream<bool>.value(false),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.deleteButtonKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.deleteButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmDeleteButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Could not delete the Protocol: Exception: disk full'),
+        findsOneWidget,
+      );
+      final delete = tester.widget<ButtonStyleButton>(
+        find.byKey(ProtocolFormScreen.deleteButtonKey),
+      );
+      expect(delete.onPressed, isNotNull);
+      final save = tester.widget<ButtonStyleButton>(
+        find.byKey(ProtocolFormScreen.saveButtonKey),
+      );
+      expect(save.onPressed, isNotNull);
+    });
+
+    testWidgets(
+        'a Protocol already deleted on another device closes the editor '
+        'instead of leaving it disabled', (tester) async {
+      final controller = _FakeProtocolListController()
+        ..deleteError = StateError('Protocol is deleted: protocol-1.');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            protocolListControllerProvider.overrideWith(() => controller),
+            protocolHasHistoryProvider.overrideWith(
+              (ref, protocolId) => Stream<bool>.value(false),
+            ),
+            compoundScheduleOptionListProvider.overrideWith(
+              (ref) => Stream<List<CompoundScheduleOptionRecord>>.value(
+                _compounds()
+                    .map(_compoundScheduleOptionFromCompound)
+                    .toList(growable: false),
+              ),
+            ),
+            metricOptionListProvider.overrideWith(
+              (ref) => Stream<List<MetricOptionRecord>>.value(
+                const <MetricOptionRecord>[],
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        ProtocolFormScreen(protocol: _leanBulkStack()),
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.deleteButtonKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.deleteButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmDeleteButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ProtocolFormScreen), findsNothing);
+      expect(find.text('open'), findsOneWidget);
+    });
+
+    testWidgets(
         'Delete and Archive are 48 dp targets with text in both themes, so '
         'the destructive color is never the only signal', (tester) async {
       for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {

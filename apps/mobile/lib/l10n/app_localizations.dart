@@ -4388,6 +4388,12 @@ abstract class AppLocalizations {
   /// **'Could not save the Protocol: {error}'**
   String protocolEditorSaveFailed(String error);
 
+  /// No description provided for @protocolEditorDeleteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not delete the Protocol: {error}'**
+  String protocolEditorDeleteFailed(String error);
+
   /// No description provided for @protocolEditorCompoundFallback.
   ///
   /// In en, this message translates to:

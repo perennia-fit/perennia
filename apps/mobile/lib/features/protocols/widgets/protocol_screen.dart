@@ -1443,6 +1443,12 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
   /// Asks before deleting (D8). The repository checks history again inside
   /// its transaction: a Dose synced in since the editor read "no history"
   /// refuses the delete, and the button then follows the fresh read.
+  ///
+  /// A Protocol already deleted, or removed by undo, on another device and
+  /// synced in while the editor was open makes the repository throw a
+  /// [StateError]. The user asked for it gone and it is, so the editor
+  /// closes, as the Agent path answers `already_deleted`. Any other failure
+  /// re-enables the buttons and says why, as a failed Save does.
   Future<void> _delete(ProtocolRecord protocol) async {
     final l10n = context.l10n;
     final confirmed = await _confirm(
@@ -1466,6 +1472,16 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.protocolOnlyArchivable)),
         );
+      }
+      return;
+    } on StateError {
+      // Already deleted elsewhere: nothing left to do but close.
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _errorText = l10n.protocolEditorDeleteFailed('$error');
+        });
       }
       return;
     }

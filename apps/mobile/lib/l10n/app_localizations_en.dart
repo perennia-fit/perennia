@@ -2644,6 +2644,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String protocolEditorDeleteFailed(String error) {
+    return 'Could not delete the Protocol: $error';
+  }
+
+  @override
   String get protocolEditorCompoundFallback => 'Compound';
 
   @override

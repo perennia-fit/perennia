@@ -6968,10 +6968,11 @@ class ProtocolsRepository {
   ///
   /// A removed member's archive (`deleted_at`, plus `archived_on` frozen as
   /// [today]) is the one record of the removal: its Schedule Versions stay
-  /// as they are, and the archive day itself is still planned. A member
-  /// added while the Protocol's start is still ahead plans from the start;
-  /// one added to a Protocol that has already started plans from [today],
-  /// so its past days don't turn into "Not logged".
+  /// as they are, and on the archive day its planned doses count only if a
+  /// Dose fills them (D8). A member added while the Protocol's start is
+  /// still ahead plans from the start; one added to a Protocol that has
+  /// already started plans from [today], so its past days don't turn into
+  /// "Not logged".
   Future<void> _replaceProtocolMembers(
     String protocolId,
     List<String> compoundIds,

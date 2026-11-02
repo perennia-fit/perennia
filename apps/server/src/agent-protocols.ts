@@ -402,7 +402,7 @@ const AgentProtocolMemberSchema = z
     position: z.number().int().min(0),
     archivedOn: z.string().min(1).nullable().openapi({
       description:
-        "Local date (YYYY-MM-DD) the member was removed, frozen when it was archived. The member is still planned that day, and reads removed from the next."
+        "Local date (YYYY-MM-DD) the member was removed, frozen when it was archived. On that day its planned doses count only if a Dose fills them; it reads removed from the next day."
     }),
     versions: z.array(AgentProtocolScheduleVersionSchema).openapi({
       description:
@@ -454,7 +454,7 @@ export const AgentProtocolSchema = z
     }),
     archivedOn: z.string().min(1).nullable().openapi({
       description:
-        "Local date (YYYY-MM-DD) the Protocol was archived, frozen when it was archived. Past days still count it through this date."
+        "Local date (YYYY-MM-DD) the Protocol was archived, frozen when it was archived. Past days still count it through this date; on this date its planned doses count only if a Dose fills them."
     }),
     hasHistory: z.boolean().openapi({
       description:
@@ -728,7 +728,7 @@ const AgentProtocolBatchWriteMemberSchema = z
     updatedAt: ISO8601StringSchema.optional(),
     archived: ArchivedFlagSchema.openapi({
       description:
-        "Set to true to remove the member from the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; the member is still planned that day. Its Schedule Versions are kept. A removed member is never restored: adding the Compound again is a new member row."
+        "Set to true to remove the member from the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; that day its planned doses count only if a Dose fills them. Its Schedule Versions are kept. A removed member is never restored: adding the Compound again is a new member row."
     })
   })
   .strict()
@@ -802,7 +802,7 @@ export const AgentProtocolBatchWriteProtocolSchema = z
     updatedAt: ISO8601StringSchema.optional(),
     archived: ArchivedFlagSchema.openapi({
       description:
-        "Set to true to archive the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; past days still count the Protocol through that date. Archiving is a plan edit: it never cascades to a logged Dose, and an archived Protocol is never restored."
+        "Set to true to archive the Protocol. The server stamps the archive with the current time and freezes archivedOn as the request's today; past days still count the Protocol through that date, and on that date its planned doses count only if a Dose fills them. Archiving is a plan edit: it never cascades to a logged Dose, and an archived Protocol is never restored."
     }),
     members: z
       .array(AgentProtocolBatchWriteMemberSchema)
@@ -933,7 +933,7 @@ export const AgentProtocolBatchWriteResponseSchema = z
     protocols: z.array(AgentEntityBatchWriteResultSchema),
     warnings: z.array(AgentProtocolsBatchWriteIssueSchema).openapi({
       description:
-        "Soft warnings: from the shared plan validators (an improbable plan, such as more than 6 times a day), and protocol_has_no_history for a Protocol archived with nothing logged for it, which delete-protocols could remove instead. The batch was still written."
+        "Soft warnings: from the shared plan validators (an improbable plan, such as more than 6 times a day), and protocol_has_no_history for a Protocol archived with nothing logged for it, which delete-protocols could remove instead. The batch was still written. protocol_has_no_history is judged against stored Doses when the batch is written, so a replay (duplicate: true) repeats only the plan validators' warnings."
     })
   })
   .openapi("AgentProtocolBatchWriteResponse");
@@ -2608,7 +2608,11 @@ export function agentProtocolDeleteResponse(
       status: 422,
       body: AgentProtocolDeleteErrorResponseSchema.parse({
         code: "agent_protocol_delete_failed",
-        message: "One or more Protocols can't be deleted; nothing was deleted.",
+        // A reused key refuses the request without judging any Protocol, so
+        // its message mustn't suggest the Protocols can't be deleted.
+        message: result.idempotencyConflict
+          ? "This idempotency key was already used with a different request; nothing was deleted."
+          : "One or more Protocols can't be deleted; nothing was deleted.",
         issues: failure.body.errors
       })
     };
@@ -3298,6 +3302,9 @@ export function createDrizzleAgentProtocolsStore(
     }) {
       // Filled by the finalize step, so a replay (which skips it) returns no
       // archive warning: the pure prepare step's warnings are all it has.
+      // Recomputing it on a replay would judge the history as it is now, not
+      // as the write saw it (a Dose logged since, or the Protocol deleted
+      // since), so the contract says a replay doesn't repeat it (D8).
       const warnings: AgentProtocolsBatchWriteIssue[] = [];
       const result = await writeOpaqueBatch(db, {
         userId,
@@ -3788,11 +3795,12 @@ async function finalizeProtocolPlanRows(
   // new archive (an archived one was refused above), stored or created in
   // this request, so its history is read with this request's dates (the
   // archive date is today) and members, stored and sent. A member archive
-  // never gets the warning.
+  // never gets the warning. A request already refused gets none either: it
+  // writes nothing, so the history read would be a wasted round trip.
   const archived = protocols.filter(
     (row) => row.archive === true && !refusedProtocolIds.has(row.id)
   );
-  if (archived.length > 0) {
+  if (issues.length === 0 && archived.length > 0) {
     const archivedIds = new Set(archived.map((row) => row.id));
     const protocolMembers = [
       ...[...storedMembers.values()].filter(

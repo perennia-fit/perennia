@@ -401,6 +401,30 @@ void main() {
       expect(platform.scheduledIds, isEmpty);
     });
 
+    test(
+        'a Protocol archived on a later date than this device\'s today '
+        'still plans today in full, so its unfilled doses keep their '
+        'reminders (D8)', () async {
+      final platform = _FakePlatform(newYork);
+      // An Agent sent today = tomorrow: on this device today is not the
+      // archive day, so its 21:00 dose still reads Pending.
+      final archivedTomorrow = _scheduler(
+        platform: platform,
+        permissions: _FakePermissions(),
+        inputs: () => <ProtocolReminderInput>[
+          _input('trt', today, '21:00'),
+        ],
+        clock: () => now,
+        anyProtocolRemindersOn: () => false,
+      );
+      addTearDown(archivedTomorrow.dispose);
+
+      await archivedTomorrow.reconcile();
+
+      expect(archivedTomorrow.status.remindersRequested, isTrue);
+      expect(platform.scheduledIds, <int>{protocolReminderId(today, '21:00')});
+    });
+
     test('permission denied schedules none', () async {
       permissions.status = TimerBackgroundPermissionStatus.denied;
       await scheduler.reconcile();
