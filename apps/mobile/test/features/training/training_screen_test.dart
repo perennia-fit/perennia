@@ -93,6 +93,34 @@ void main() {
       expect(find.byKey(TrainingScreen.rpeFieldKey), findsNothing);
     });
 
+    testWidgets('tapping a dimension field selects its value to replace it', (
+      tester,
+    ) async {
+      final workoutExerciseId = await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Back Squat',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      );
+      await _pumpTrainingScreen(tester, repositories, workoutExerciseId!);
+      final loadField =
+          find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load));
+      await tester.enterText(loadField, '0');
+      await tester.pump();
+
+      await tester.tap(loadField);
+      await tester.pump();
+
+      final controller = tester.widget<TextField>(loadField).controller!;
+      expect(
+        controller.selection,
+        const TextSelection(baseOffset: 0, extentOffset: 1),
+      );
+    });
+
     testWidgets('uses the settings default increment for load steppers', (
       tester,
     ) async {
@@ -1309,6 +1337,7 @@ void main() {
           position: 0,
           load: '82.5',
           reps: '4',
+          isCompleted: true,
         ),
       );
       final currentWorkoutId = await tester.runAsync(

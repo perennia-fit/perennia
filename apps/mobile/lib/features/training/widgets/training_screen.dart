@@ -537,7 +537,9 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     final createdSet = await repositories.sets.getById(setId);
     if (createdSet != null) {
       final timerId = await repositories.restTimers.startForSet(createdSet);
-      final timer = await repositories.restTimers.getById(timerId);
+      final timer = timerId == null
+          ? null
+          : await repositories.restTimers.getById(timerId);
       if (timer != null) {
         _scheduleRestBackgroundTimerWithoutBlocking(
           timer,
@@ -659,7 +661,9 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     final completedSet = await repositories.sets.getById(set.id);
     if (completedSet != null) {
       final timerId = await repositories.restTimers.startForSet(completedSet);
-      final timer = await repositories.restTimers.getById(timerId);
+      final timer = timerId == null
+          ? null
+          : await repositories.restTimers.getById(timerId);
       if (timer != null) {
         _scheduleRestBackgroundTimerWithoutBlocking(
           timer,
@@ -1545,6 +1549,7 @@ class _RestTimerPanelState extends ConsumerState<_RestTimerPanel> {
               child: TextField(
                 key: TrainingScreen.restTimerDurationFieldKey,
                 controller: _durationController,
+                onTap: () => _selectAllOnTap(_durationController),
                 decoration: InputDecoration(
                   labelText: l10n.trainingRestSecondsLabel,
                   isDense: true,
@@ -2105,6 +2110,7 @@ class _SetEntryForm extends StatelessWidget {
           TextField(
             key: TrainingScreen.rpeFieldKey,
             controller: rpeController,
+            onTap: () => _selectAllOnTap(rpeController),
             decoration: InputDecoration(labelText: l10n.trainingRpeLabel),
             keyboardType: const TextInputType.numberWithOptions(
               decimal: true,
@@ -2162,6 +2168,7 @@ class _ScalarDimensionInput extends StatelessWidget {
           child: TextField(
             key: fieldKey,
             controller: controller,
+            onTap: () => _selectAllOnTap(controller),
             decoration: InputDecoration(
               labelText: label,
               suffixText: unitLabel,
@@ -2266,6 +2273,16 @@ class _DimensionStepButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Selects a number field's whole value on tap, so typing replaces a
+/// prefilled or placeholder value instead of appending to it: tapping "0"
+/// and typing 26 must give 26, not "026", which a Set would keep as entered.
+void _selectAllOnTap(TextEditingController controller) {
+  controller.selection = TextSelection(
+    baseOffset: 0,
+    extentOffset: controller.text.length,
+  );
 }
 
 class _DurationPartsFields extends StatefulWidget {
@@ -2442,6 +2459,7 @@ class _DurationPartTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
+      onTap: () => _selectAllOnTap(controller),
       decoration: InputDecoration(
         labelText: label,
         suffixText: suffix,
@@ -2547,6 +2565,7 @@ class _EditSetSheetState extends State<_EditSetSheet> {
                       dimension,
                     ),
                     controller: _controllers[dimension],
+                    onTap: () => _selectAllOnTap(_controllers[dimension]!),
                     decoration: InputDecoration(
                       labelText: _dimensionLabel(l10n, dimension),
                       suffixText: _unitShortLabel(
@@ -2602,6 +2621,7 @@ class _EditSetSheetState extends State<_EditSetSheet> {
                 TextField(
                   key: TrainingScreen.editRpeFieldKey(widget.set.id),
                   controller: _rpeController,
+                  onTap: () => _selectAllOnTap(_rpeController),
                   decoration: InputDecoration(labelText: l10n.trainingRpeLabel),
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
