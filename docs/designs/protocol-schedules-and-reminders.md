@@ -1,8 +1,8 @@
 # Protocol Schedules and Reminders
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved (the 2026-11-02 revision: D8, CUJs 13 to 18, Phases 7 and 8, approved in perennia-fit/perennia#91). Phases 1 to 6 are Current (2026-10-28).
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, to record the decisions made building file 46a and Phase 5, and to record the decisions made building Phase 6; 2026-11-02 to close the archive day, add Protocol delete, and add Skips: D8)
+*   **Status:** Current (2026-11-02). Phases 1 to 8 are built; the 2026-11-02 revision (D8, CUJs 13 to 18, Phases 7 and 8) was approved in perennia-fit/perennia#91.
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, to record the decisions made building file 46a and Phase 5, and to record the decisions made building Phase 6; 2026-11-02 to close the archive day, add Protocol delete, and add Skips: D8, and to record the decisions made building Phases 7 and 8)
 
 --------------------------------------------------------------------------------
 
@@ -2070,7 +2070,7 @@ fill      += skipId: string | null         always present
 ```
 
 `skips` comes third so that `today` stays last. Every caller passes its
-Skips. Until Phase 8 stores them, callers pass an empty list.
+stored, non-tombstoned Skips; the list is empty only when there are none.
 
 #### Skips in the app
 
@@ -2246,6 +2246,44 @@ store types are exported from `apps/server/src/index.ts`, as Phase 6's were.
         non-tombstoned Skip with the same Protocol, Compound, date and time.
         That is the app's Undo skip, so an Agent removing the `skipId` it
         reads from a Day Status fill gets the same Day Status the app shows.
+    *   **Settled during Phase 8's build:**
+        *   **`duplicate_skip_id`** joins the 422 rules: a Skip id that
+            appears more than once in one batch is refused (`field`
+            `skips[i].id`, message "A Skip id may appear only once per
+            batch."), as a repeated Dose id is. Two rows for one id in one
+            push would leave which one wins to the push order.
+        *   **Where the rules run.** The validator's rules, the `today`
+            bound and `duplicate_skip_id` run in the pure step
+            (`prepareAgentProtocolSkipBatchWrite`); `protocol_not_found` and
+            `skip_immutable` read stored data, so they run in the store,
+            inside the write's transaction after the idempotency receipt, as
+            the Protocol batch write's stored checks do. A refusal there
+            rolls the receipt back.
+        *   **One stamp for every removal.** A swept sibling, and an item
+            that sets `deletedAt` on a stored, non-tombstoned Skip, are
+            stamped (`updated_at`) with the server clock, unless the stored
+            Skip is stamped at or after it (a device clock ahead within the
+            sync push's accepted skew). Then the stamp is one millisecond
+            after the stored `updated_at`, as a Protocol delete's is (above),
+            so last-writer-wins applies the removal. Stamping the item with
+            the request time would leave it `superseded` and its Skip live
+            while its siblings were swept. The siblings are read in one
+            query over the removal items' dates and grouped by key in
+            memory.
+        *   **A replay lists the swept Skips again.** A retried
+            `idempotencyKey` doesn't sweep again; the store reads the Skips
+            the first write swept from that batch's Activity Log entries,
+            and lists each, with outcome `duplicate`, after the first
+            removal item with its Protocol, Compound, date and time, as the
+            first answer did.
+        *   **Unreadable stored Skips are left out of every read.** The sync
+            push stores a Skip as sent, so a row can carry a `local_date`
+            that isn't a real date or a `planned_local_time` that isn't
+            `HH:MM`. `readPlanSkips` drops such a row, as it drops one with
+            no readable `protocol_id`, `compound_id` or `local_date`, and the
+            app's Skip reads (the Protocol Day and Consistency) drop the same
+            rows, so the app and the Agent read one Day Status and a
+            malformed row never breaks a read.
     *   **No list operation.** An Agent finds the Skips that matter in the
         Day Status read's fills (`detail=doses`). An inert Skip blocks
         nothing and needs no removal.

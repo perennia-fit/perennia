@@ -3999,7 +3999,7 @@ test("prepareAgentProtocolSkipBatchWrite builds the Skip row and collects every 
 });
 
 test(
-  "batchWriteAgentProtocolSkips writes a Skip its Day Status reads, replays a retried key, reports a superseded removal, and Agent undo reverts it",
+  "batchWriteAgentProtocolSkips writes a Skip its Day Status reads, replays a retried key, applies a removal of a Skip stamped ahead, and Agent undo reverts it",
   { skip },
   async () => {
     await applyMigrations(databaseUrl);
@@ -4148,25 +4148,36 @@ test(
       );
 
       // A stored Skip stamped ahead of the server clock (a device clock
-      // ahead within the accepted skew) keeps its row against a removal
-      // stamped now: superseded.
-      const ahead = await storeSkip(database, userId, {
+      // ahead within the accepted skew), with a sibling stamped ahead too:
+      // the removal is stamped one millisecond after the stored Skip, as its
+      // swept sibling is, so both are removed (D8, settled during Phase 8's
+      // build). Stamped with the request time, the item would be superseded
+      // and its Skip left live while the sibling was swept.
+      const aheadAt = new Date(Date.now() + 60_000);
+      const aheadFields = {
         protocolId: plan.protocolId,
         compoundId: plan.compoundId,
         localDate: addDays(today, -2),
         plannedLocalTime: "09:00",
-        updatedAt: new Date(Date.now() + 60_000)
-      });
-      const superseded = await post(app, "/agent/protocols/skips/batch-write", {
+        updatedAt: aheadAt
+      };
+      const ahead = await storeSkip(database, userId, aheadFields);
+      const aheadSibling = await storeSkip(database, userId, aheadFields);
+      const aheadRemoval = await post(app, "/agent/protocols/skips/batch-write", {
         idempotencyKey: `skip-${randomUUID()}`,
         today,
         skips: [{ ...ahead.item, deletedAt: new Date().toISOString() }]
       });
-      assert.equal(superseded.status, 200);
-      assert.deepEqual((await superseded.json()).skips, [
-        { id: ahead.item.id, outcome: "superseded" }
+      assert.equal(aheadRemoval.status, 200);
+      assert.deepEqual((await aheadRemoval.json()).skips, [
+        { id: ahead.item.id, outcome: "applied" },
+        { id: aheadSibling.item.id, outcome: "applied" }
       ]);
-      assert.equal((await skipRow(ahead.item.id)).deleted_at, null);
+      for (const id of [ahead.item.id, aheadSibling.item.id]) {
+        const row = await skipRow(id);
+        assert.notEqual(row.deleted_at, null);
+        assert.equal(new Date(row.updated_at).getTime(), aheadAt.getTime() + 1);
+      }
 
       // Undoing the first batch removes its Skip, so the slot opens again.
       const undo = await post(app, "/agent/activity/undo-batch", {

@@ -4499,10 +4499,17 @@ function timedSkipKey(payload: Record<string, unknown>): string | null {
  * stored, non-tombstoned Skip with the same Protocol, Compound, date and
  * time, which the app's Undo skip removes too. Those rows join `rows` (the
  * write's group) and `sweptBy`; a sibling that is itself an item, or was
- * already swept, is left to that. A sibling is stamped now, unless it is
- * stamped at or after now (a device clock ahead within the accepted skew):
- * then one millisecond after it, so last-writer-wins applies the removal,
- * as a Protocol delete does.
+ * already swept, is left to that. The siblings are read in one query (the
+ * items' dates), then grouped by their timed key in memory.
+ *
+ * Every removal is stamped by one rule (D8, settled during Phase 8's build):
+ * the server clock, unless the stored Skip is stamped at or after it (a
+ * device clock ahead within the sync push's accepted skew), then one
+ * millisecond after the stored stamp, so last-writer-wins applies it, as a
+ * Protocol delete does. That holds for a swept sibling and for an item that
+ * removes a stored, non-tombstoned Skip alike: stamping the item with the
+ * request time would leave it `superseded`, and its Skip live, while its
+ * siblings were swept.
  */
 async function finalizeProtocolSkips(
   transaction: OpaqueTransaction,
@@ -4525,6 +4532,7 @@ async function finalizeProtocolSkips(
       .select({
         id: schema.protocolSkips.id,
         payload: schema.protocolSkips.payload,
+        updatedAt: schema.protocolSkips.updatedAt,
         deletedAt: schema.protocolSkips.deletedAt
       })
       .from(schema.protocolSkips)
@@ -4599,39 +4607,59 @@ async function finalizeProtocolSkips(
     return issues;
   }
 
-  const itemIds = new Set(items.map((item) => item.id));
-  const swept = new Set<string>();
+  // One stamp rule for every removal: see the docstring.
+  const removalStamp = (storedUpdatedAt: Date) =>
+    new Date(Math.max(serverClock.getTime(), storedUpdatedAt.getTime() + 1)).toISOString();
   for (const item of items) {
-    const plannedLocalTime = nullableString(item.payload.planned_local_time);
-    if (item.deletedAt === null || plannedLocalTime === null) {
+    const storedSkip = stored.get(item.id);
+    if (item.deletedAt === null || storedSkip === undefined || storedSkip.deletedAt !== null) {
       continue;
     }
-    const siblings = await transaction
-      .select({
-        id: schema.protocolSkips.id,
-        payload: schema.protocolSkips.payload,
-        updatedAt: schema.protocolSkips.updatedAt
-      })
-      .from(schema.protocolSkips)
-      .where(
-        and(
-          eq(schema.protocolSkips.userId, userId),
-          isNull(schema.protocolSkips.deletedAt),
-          sql`${schema.protocolSkips.payload}->>'protocol_id' = ${String(item.payload.protocol_id)}`,
-          sql`${schema.protocolSkips.payload}->>'compound_id' = ${String(item.payload.compound_id)}`,
-          sql`${schema.protocolSkips.payload}->>'local_date' = ${String(item.payload.local_date)}`,
-          sql`${schema.protocolSkips.payload}->>'planned_local_time' = ${plannedLocalTime}`
-        )
+    const stamp = removalStamp(storedSkip.updatedAt);
+    item.updatedAt = stamp;
+    item.payload.updated_at = stamp;
+  }
+
+  const removals = items.filter(
+    (item) => item.deletedAt !== null && timedSkipKey(item.payload) !== null
+  );
+  if (removals.length === 0) {
+    return [];
+  }
+  const candidates = await transaction
+    .select({
+      id: schema.protocolSkips.id,
+      payload: schema.protocolSkips.payload,
+      updatedAt: schema.protocolSkips.updatedAt
+    })
+    .from(schema.protocolSkips)
+    .where(
+      and(
+        eq(schema.protocolSkips.userId, userId),
+        isNull(schema.protocolSkips.deletedAt),
+        inArray(sql`${schema.protocolSkips.payload}->>'local_date'`, [
+          ...new Set(removals.map((item) => String(item.payload.local_date)))
+        ])
       )
-      .orderBy(asc(schema.protocolSkips.id));
-    for (const sibling of siblings) {
+    )
+    .orderBy(asc(schema.protocolSkips.id));
+  const siblingsByKey = new Map<string, typeof candidates>();
+  for (const candidate of candidates) {
+    const key = timedSkipKey(candidate.payload);
+    if (key !== null) {
+      siblingsByKey.set(key, [...(siblingsByKey.get(key) ?? []), candidate]);
+    }
+  }
+
+  const itemIds = new Set(items.map((item) => item.id));
+  const swept = new Set<string>();
+  for (const item of removals) {
+    for (const sibling of siblingsByKey.get(timedSkipKey(item.payload)!) ?? []) {
       if (itemIds.has(sibling.id) || swept.has(sibling.id)) {
         continue;
       }
       swept.add(sibling.id);
-      const stamp = new Date(
-        Math.max(serverClock.getTime(), sibling.updatedAt.getTime() + 1)
-      ).toISOString();
+      const stamp = removalStamp(sibling.updatedAt);
       rows.push({
         id: sibling.id,
         itemIndex: item.itemIndex,

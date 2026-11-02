@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -747,6 +748,37 @@ void main() {
         statusOn(ageMate, _date(2026, 10, 11)).status,
         DayStatusKind.skipped,
       );
+    });
+
+    test(
+        'a synced Skip with an unreadable local_date or planned time is left '
+        'out, and the range still reads (D8, as the server\'s readPlanSkips)',
+        () async {
+      Future<void> insertSkip(
+        String id,
+        String localDate,
+        String? plannedLocalTime,
+      ) {
+        return database.into(database.protocolSkips).insert(
+              ProtocolSkipsCompanion.insert(
+                id: id,
+                protocolId: ids.protocolId,
+                compoundId: ids.trt,
+                localDate: localDate,
+                plannedLocalTime: Value<String?>(plannedLocalTime),
+                updatedAt: DateTime.utc(2026, 10, 14),
+              ),
+            );
+      }
+
+      // Text-compared, '2026-10-12T00:00' falls inside the range.
+      await insertSkip('skip-bad-date', '2026-10-12T00:00', '09:00');
+      await insertSkip('skip-bad-time', '2026-10-12', '9:00');
+
+      final range = await read(ids.trt);
+      final twelfth = statusOn(range, _date(2026, 10, 12));
+      expect(twelfth.status, DayStatusKind.notLogged);
+      expect(twelfth.skippedCount, 0);
     });
 
     test('logging a Dose or adding a Schedule Version re-emits the range',

@@ -773,6 +773,7 @@ final class ProtocolPlanRepository {
           .map(
             (rows) => rows
                 .map(_repositories.protocols._protocolSkipFromRow)
+                .nonNulls
                 .toList(growable: false),
           ),
       combine,

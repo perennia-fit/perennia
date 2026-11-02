@@ -854,7 +854,8 @@ type Slot = DayStatusFill & { position: number; minutes: number | null; archiveD
  * 5. on an archive day (`PlanDay.archiveDay`), every slot no Dose filled is
  *    dropped, Skip or not, and the rest are renumbered in order.
  *
- * `skips` may be empty; until Skips are stored, every caller passes none.
+ * Every caller passes its stored, non-tombstoned Skips (D8); `skips` is
+ * empty only when there are none.
  */
 export function dayStatuses(
   planDays: readonly PlanDay[],

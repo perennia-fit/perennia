@@ -6255,13 +6255,30 @@ class ProtocolsRepository {
       ..orderBy([(row) => OrderingTerm.asc(row.id)]);
   }
 
-  ProtocolSkipRecord _protocolSkipFromRow(ProtocolSkipRow row) {
+  /// A stored Skip as the reads take it, or null for a row they can't read:
+  /// a `local_date` that isn't a real `YYYY-MM-DD` date, or a
+  /// `planned_local_time` that isn't `HH:MM`. The sync push stores a Skip
+  /// as sent, so such a row can arrive from another writer, and a text
+  /// range (`isBetweenValues`) can still match a malformed date. Dropping it
+  /// keeps the Protocol Day and Consistency reads alive, and matches the
+  /// server's `readPlanSkips`, so the app and the Agent read one Day Status.
+  ProtocolSkipRecord? _protocolSkipFromRow(ProtocolSkipRow row) {
+    final ProtocolDayDate localDate;
+    try {
+      localDate = ProtocolDayDate.parse(row.localDate);
+    } on FormatException {
+      return null;
+    }
+    final plannedLocalTime = row.plannedLocalTime;
+    if (plannedLocalTime != null && !isPlanLocalTime(plannedLocalTime)) {
+      return null;
+    }
     return ProtocolSkipRecord(
       id: row.id,
       protocolId: row.protocolId,
       compoundId: row.compoundId,
-      localDate: ProtocolDayDate.parse(row.localDate),
-      plannedLocalTime: row.plannedLocalTime,
+      localDate: localDate,
+      plannedLocalTime: plannedLocalTime,
     );
   }
 
@@ -6280,7 +6297,7 @@ class ProtocolsRepository {
       localDate: localDate,
       doses: rows.map(_doseFromRow).toList(growable: false)
         ..sort(_compareDosesByClock),
-      skips: skipRows.map(_protocolSkipFromRow),
+      skips: skipRows.map(_protocolSkipFromRow).nonNulls,
     );
   }
 
