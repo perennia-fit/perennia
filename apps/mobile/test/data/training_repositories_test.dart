@@ -586,24 +586,6 @@ void main() {
         groups.single.members.map((member) => member.workoutExerciseId),
         <String>[benchWorkoutExerciseId, rowWorkoutExerciseId],
       );
-      expect(
-        await repositories.exerciseGroups.findNextWorkoutExerciseIdAfter(
-          benchWorkoutExerciseId,
-        ),
-        rowWorkoutExerciseId,
-      );
-      expect(
-        await repositories.exerciseGroups.findNextWorkoutExerciseIdAfter(
-          rowWorkoutExerciseId,
-        ),
-        benchWorkoutExerciseId,
-      );
-      expect(
-        await repositories.exerciseGroups.findNextWorkoutExerciseIdAfter(
-          curlWorkoutExerciseId,
-        ),
-        isNull,
-      );
 
       await repositories.exerciseGroups.update(
         groupId,
@@ -649,12 +631,6 @@ void main() {
       expect(
         groups.single.members.map((member) => member.workoutExerciseId),
         <String>[rowWorkoutExerciseId, curlWorkoutExerciseId],
-      );
-      expect(
-        await repositories.exerciseGroups.findNextWorkoutExerciseIdAfter(
-          rowWorkoutExerciseId,
-        ),
-        curlWorkoutExerciseId,
       );
     });
 
@@ -714,12 +690,6 @@ void main() {
       );
       expect(groups, hasLength(1));
       expect(groups.single.workoutExerciseIds, workoutExerciseIds);
-      expect(
-        await repositories.exerciseGroups.findNextWorkoutExerciseIdAfter(
-          workoutExerciseIds.last,
-        ),
-        workoutExerciseIds.first,
-      );
 
       await repositories.exerciseGroups.unlinkAdjacent(
         workoutId: workoutId,
@@ -4129,6 +4099,613 @@ void main() {
 
       await link('link-c', thirdTemplate, later);
       expect((await read()).single.linkedTemplateId, thirdTemplate);
+    });
+  });
+  group('plan-guided logging writes', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    late String exerciseId;
+    late String workoutId;
+    final idGenerator = UuidV7Generator();
+    final startedAt = DateTime.utc(2026, 11, 2, 6);
+    const ninety = Duration(seconds: 90);
+
+    setUp(() async {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(
+        database,
+        platformSeedSource: const _StarterSeedSource(),
+      );
+      exerciseId = await repositories.exercises.create(
+        ExerciseDraft(
+          name: 'Incline Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      );
+      workoutId = await repositories.workoutSessions.create(
+        WorkoutSessionDraft(startedAt: startedAt, timezone: 'UTC'),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    String newBatchId() => idGenerator.generate(timestamp: DateTime.now());
+
+    /// Now, to the second: the database stores times at second precision.
+    DateTime nowInSeconds() {
+      final now = DateTime.now().toUtc();
+      return now.subtract(
+        Duration(
+          milliseconds: now.millisecond,
+          microseconds: now.microsecond,
+        ),
+      );
+    }
+
+    Future<String> plannedSet(
+      int position, {
+      String load = '0',
+      String reps = '10',
+      Duration? rest = ninety,
+      bool isCompleted = false,
+      String? inWorkoutId,
+      DateTime? performedAt,
+    }) {
+      return repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: inWorkoutId ?? workoutId,
+          exerciseId: exerciseId,
+          position: position,
+          values: _loadRepsValues(load: load, reps: reps),
+          plannedRestAfter: rest,
+          isCompleted: isCompleted,
+          performedAt: performedAt,
+        ),
+      );
+    }
+
+    Future<LoggedSetRecord> setById(String id) async {
+      return (await repositories.sets.getById(id))!;
+    }
+
+    Future<List<ActivityLogEntry>> entriesFor(String batchId) async {
+      final entries = await repositories.activityLog.listEntries();
+      return entries
+          .where((entry) => entry.batchId == batchId)
+          .toList(growable: false);
+    }
+
+    test(
+        'logSet performs the Current Set, carries the new load, and one undo '
+        'restores every touched Set', () async {
+      // Planned well before it is done: Log set stamps the completion time.
+      final plannedAt = DateTime.utc(2026, 1, 1, 9);
+      final ids = <String>[
+        for (var position = 0; position < 3; position += 1)
+          await plannedSet(position, performedAt: plannedAt),
+      ];
+      final plannedBefore = <LoggedSetRecord>[
+        for (final id in ids) await setById(id),
+      ];
+      final loggedAfter = nowInSeconds();
+      final batchId = newBatchId();
+
+      final result = await repositories.sets.logSet(
+        LogSetRequest(
+          workoutId: workoutId,
+          exerciseId: exerciseId,
+          currentSetId: ids.first,
+          values: _loadRepsValues(load: '26', reps: '10'),
+          comment: '  felt strong ',
+          side: SetSide.left,
+          rpe: 8,
+          restChanged: false,
+          rest: const Duration(seconds: 150),
+        ),
+        batchId: batchId,
+      );
+
+      expect(result.setId, ids.first);
+      expect(result.alreadyLogged, isFalse);
+      expect(result.carriedCount, 2);
+
+      final logged = await setById(ids.first);
+      expect(logged.isCompleted, isTrue);
+      expect(logged.values, _loadRepsValues(load: '26', reps: '10'));
+      expect(logged.comment, 'felt strong');
+      expect(logged.side, SetSide.left);
+      expect(logged.rpe, 8);
+      expect(logged.plannedRestAfter, ninety, reason: 'rest unchanged');
+      expect(logged.performedAt!.isBefore(loggedAfter), isFalse);
+      for (final id in ids.skip(1)) {
+        final later = await setById(id);
+        expect(later.performedAt, plannedAt);
+        expect(later.isCompleted, isFalse);
+        expect(later.values, _loadRepsValues(load: '26', reps: '10'));
+        expect(later.plannedRestAfter, ninety);
+        expect(later.comment, isNull);
+      }
+
+      final entries = await entriesFor(batchId);
+      expect(entries, hasLength(3));
+      expect(entries.map((entry) => entry.entityId).toSet(), ids.toSet());
+      expect(
+        entries.map((entry) => entry.entityTable).toSet(),
+        <String>{AppDatabase.loggedSetsTable},
+      );
+
+      final undo = await repositories.activityLog.undoBatch(batchId);
+      expect(undo.hasConflicts, isFalse);
+      for (final before in plannedBefore) {
+        final restored = await setById(before.id);
+        expect(restored.isCompleted, isFalse);
+        expect(restored.values, before.values);
+        expect(restored.plannedRestAfter, before.plannedRestAfter);
+        expect(restored.performedAt, before.performedAt);
+        expect(restored.comment, isNull);
+        expect(restored.side, isNull);
+        expect(restored.rpe, isNull);
+      }
+    });
+
+    test(
+        'logSet writes a planned rest only when changed, and carries it only '
+        'to later Sets with the same rest', () async {
+      final first = await plannedSet(0, load: '60');
+      final second = await plannedSet(1, load: '60');
+      final third = await plannedSet(2,
+          load: '60',
+          rest: const Duration(
+            seconds: 60,
+          ));
+      final unplanned = await plannedSet(3, load: '60', rest: null);
+      final unplannedNext = await plannedSet(4, load: '60', rest: null);
+
+      final unchangedBatch = newBatchId();
+      await repositories.sets.logSet(
+        LogSetRequest(
+          workoutId: workoutId,
+          exerciseId: exerciseId,
+          currentSetId: unplanned,
+          values: _loadRepsValues(load: '60', reps: '10'),
+          restChanged: false,
+          rest: const Duration(seconds: 120),
+        ),
+        batchId: unchangedBatch,
+      );
+      expect((await setById(unplanned)).plannedRestAfter, isNull);
+      expect(await entriesFor(unchangedBatch), hasLength(1));
+
+      final changedBatch = newBatchId();
+      final result = await repositories.sets.logSet(
+        LogSetRequest(
+          workoutId: workoutId,
+          exerciseId: exerciseId,
+          currentSetId: first,
+          values: _loadRepsValues(load: '60', reps: '10'),
+          restChanged: true,
+          rest: const Duration(seconds: 120),
+        ),
+        batchId: changedBatch,
+      );
+
+      expect(result.carriedCount, 1);
+      expect(
+        (await setById(first)).plannedRestAfter,
+        const Duration(seconds: 120),
+      );
+      expect(
+        (await setById(second)).plannedRestAfter,
+        const Duration(seconds: 120),
+      );
+      expect(
+        (await setById(third)).plannedRestAfter,
+        const Duration(seconds: 60),
+      );
+      expect((await setById(unplannedNext)).plannedRestAfter, isNull);
+      expect(await entriesFor(changedBatch), hasLength(2));
+
+      final undo = await repositories.activityLog.undoBatch(changedBatch);
+      expect(undo.hasConflicts, isFalse);
+      expect((await setById(first)).plannedRestAfter, ninety);
+      expect((await setById(first)).isCompleted, isFalse);
+      expect((await setById(second)).plannedRestAfter, ninety);
+    });
+
+    test(
+        'logSet on a completed, deleted or missing Current Set returns '
+        'alreadyLogged and writes nothing', () async {
+      final completed = await plannedSet(0, isCompleted: true);
+      final deleted = await plannedSet(1);
+      await repositories.sets.softDelete(deleted);
+      final completedBefore = await setById(completed);
+      final entryCount = (await repositories.activityLog.listEntries()).length;
+
+      for (final currentSetId in <String>[
+        completed,
+        deleted,
+        '00000000-0000-7000-8000-000000000000',
+      ]) {
+        final batchId = newBatchId();
+        final result = await repositories.sets.logSet(
+          LogSetRequest(
+            workoutId: workoutId,
+            exerciseId: exerciseId,
+            currentSetId: currentSetId,
+            values: _loadRepsValues(load: '99', reps: '1'),
+            restChanged: true,
+            rest: const Duration(seconds: 30),
+          ),
+          batchId: batchId,
+        );
+
+        expect(result.alreadyLogged, isTrue);
+        expect(result.setId, currentSetId);
+        expect(result.carriedCount, 0);
+        expect(await entriesFor(batchId), isEmpty);
+      }
+
+      expect(
+        (await repositories.activityLog.listEntries()).length,
+        entryCount,
+      );
+      final completedAfter = await setById(completed);
+      expect(completedAfter.values, completedBefore.values);
+      expect(completedAfter.updatedAt, completedBefore.updatedAt);
+    });
+
+    test(
+        'logSet without a Current Set creates a Performed Set at the next '
+        'position', () async {
+      await plannedSet(0, isCompleted: true);
+      await plannedSet(4, isCompleted: true);
+      final loggedAfter = nowInSeconds();
+
+      final batchId = newBatchId();
+      final result = await repositories.sets.logSet(
+        LogSetRequest(
+          workoutId: workoutId,
+          exerciseId: exerciseId,
+          values: _loadRepsValues(load: '40', reps: '8'),
+          comment: 'extra',
+          restChanged: false,
+          rest: const Duration(seconds: 120),
+        ),
+        batchId: batchId,
+      );
+
+      expect(result.alreadyLogged, isFalse);
+      expect(result.carriedCount, 0);
+      final created = await setById(result.setId);
+      expect(created.position, 5);
+      expect(created.isCompleted, isTrue);
+      expect(created.values, _loadRepsValues(load: '40', reps: '8'));
+      expect(created.comment, 'extra');
+      expect(created.plannedRestAfter, isNull);
+      expect(created.performedAt!.isBefore(loggedAfter), isFalse);
+      final entries = await entriesFor(batchId);
+      expect(entries, hasLength(1));
+      expect(entries.single.beforeImage, isNull);
+
+      final withRest = await repositories.sets.logSet(
+        LogSetRequest(
+          workoutId: workoutId,
+          exerciseId: exerciseId,
+          values: _loadRepsValues(load: '40', reps: '8'),
+          restChanged: true,
+          rest: const Duration(seconds: 75),
+        ),
+        batchId: newBatchId(),
+      );
+      final second = await setById(withRest.setId);
+      expect(second.position, 6);
+      expect(second.plannedRestAfter, const Duration(seconds: 75));
+    });
+
+    test('logSet rejects a hard-invalid value and writes nothing', () async {
+      final current = await plannedSet(0);
+      final later = await plannedSet(1);
+      final batchId = newBatchId();
+
+      await expectLater(
+        repositories.sets.logSet(
+          LogSetRequest(
+            workoutId: workoutId,
+            exerciseId: exerciseId,
+            currentSetId: current,
+            values: _loadRepsValues(load: '-1', reps: '10'),
+            restChanged: false,
+          ),
+          batchId: batchId,
+        ),
+        throwsA(isA<SetValidationException>()),
+      );
+
+      expect((await setById(current)).isCompleted, isFalse);
+      expect((await setById(later)).values.load?.entered, '0');
+      expect(await entriesFor(batchId), isEmpty);
+    });
+
+    test(
+        'findRememberedRest takes the latest Performed Set with a rest, '
+        'skipping null and zero rests, Planned Sets and deleted Workouts',
+        () async {
+      expect(await repositories.sets.findRememberedRest(exerciseId), isNull);
+
+      // A later-started Workout whose Set was performed earlier: performedAt
+      // decides, not the Workout's start.
+      final laterStartedWorkout = await repositories.workoutSessions.create(
+        WorkoutSessionDraft(
+          startedAt: startedAt.add(const Duration(days: 1)),
+          timezone: 'UTC',
+        ),
+      );
+      await plannedSet(
+        0,
+        rest: const Duration(seconds: 45),
+        isCompleted: true,
+        inWorkoutId: laterStartedWorkout,
+        performedAt: startedAt.add(const Duration(minutes: 5)),
+      );
+      await plannedSet(
+        0,
+        rest: ninety,
+        isCompleted: true,
+        performedAt: startedAt.add(const Duration(minutes: 10)),
+      );
+      expect(await repositories.sets.findRememberedRest(exerciseId), ninety);
+
+      await plannedSet(
+        1,
+        rest: null,
+        isCompleted: true,
+        performedAt: startedAt.add(const Duration(minutes: 20)),
+      );
+      await plannedSet(
+        2,
+        rest: Duration.zero,
+        isCompleted: true,
+        performedAt: startedAt.add(const Duration(minutes: 30)),
+      );
+      await plannedSet(
+        3,
+        rest: const Duration(seconds: 30),
+        performedAt: startedAt.add(const Duration(minutes: 40)),
+      );
+      expect(await repositories.sets.findRememberedRest(exerciseId), ninety);
+
+      // The Workout row deleted on its own (as a synced tombstone can land),
+      // with its Set still active.
+      final deletedWorkout = await repositories.workoutSessions.create(
+        WorkoutSessionDraft(
+          startedAt: startedAt.add(const Duration(days: 2)),
+          timezone: 'UTC',
+        ),
+      );
+      await plannedSet(
+        0,
+        rest: const Duration(seconds: 15),
+        isCompleted: true,
+        inWorkoutId: deletedWorkout,
+        performedAt: startedAt.add(const Duration(days: 2)),
+      );
+      await (database.update(database.workoutSessions)
+            ..where((row) => row.id.equals(deletedWorkout)))
+          .write(
+        WorkoutSessionsCompanion(
+          deletedAt: Value<DateTime?>(DateTime.utc(2026, 11, 5)),
+        ),
+      );
+      expect(await repositories.sets.findRememberedRest(exerciseId), ninety);
+
+      final otherExercise = await repositories.exercises.create(
+        ExerciseDraft(
+          name: 'Pull-Up',
+          type: ExerciseType(const <DimensionId>[DimensionId.reps]),
+        ),
+      );
+      expect(
+        await repositories.sets.findRememberedRest(otherExercise),
+        isNull,
+      );
+    });
+
+    test('updatePerformed writes one row with one Activity Log entry',
+        () async {
+      final performed = await plannedSet(0, load: '60', isCompleted: true);
+      final later = await plannedSet(1, load: '60');
+      final batchId = newBatchId();
+
+      await repositories.sets.updatePerformed(
+        performed,
+        values: _loadRepsValues(load: '62.5', reps: '9'),
+        comment: 'grip slipped',
+        rpe: 9,
+        restChanged: false,
+        rest: const Duration(seconds: 150),
+        batchId: batchId,
+      );
+
+      final updated = await setById(performed);
+      expect(updated.values, _loadRepsValues(load: '62.5', reps: '9'));
+      expect(updated.comment, 'grip slipped');
+      expect(updated.rpe, 9);
+      expect(updated.isCompleted, isTrue);
+      expect(updated.plannedRestAfter, ninety);
+      expect((await setById(later)).values.load?.entered, '60');
+      final entries = await entriesFor(batchId);
+      expect(entries, hasLength(1));
+      expect(entries.single.entityId, performed);
+
+      await repositories.sets.updatePerformed(
+        performed,
+        values: _loadRepsValues(load: '62.5', reps: '9'),
+        restChanged: true,
+        rest: const Duration(seconds: 45),
+        batchId: newBatchId(),
+      );
+      final rested = await setById(performed);
+      expect(rested.plannedRestAfter, const Duration(seconds: 45));
+      expect(rested.comment, isNull);
+      expect((await setById(later)).plannedRestAfter, ninety);
+    });
+
+    test(
+        'adjust extends, shortens, shortens past now and clears the prepare '
+        'cue', () async {
+      final timerId = await repositories.restTimers.start(
+        RestTimerDraft(workoutId: workoutId, duration: ninety),
+        now: startedAt,
+      );
+
+      await repositories.restTimers.adjust(
+        timerId,
+        const Duration(seconds: 15),
+        now: startedAt.add(const Duration(seconds: 10)),
+      );
+      var timer = (await repositories.restTimers.getById(timerId))!;
+      expect(timer.deadlineAt, startedAt.add(const Duration(seconds: 105)));
+      expect(timer.duration, const Duration(seconds: 105));
+
+      await repositories.restTimers.adjust(
+        timerId,
+        const Duration(seconds: -15),
+        now: startedAt.add(const Duration(seconds: 20)),
+      );
+      timer = (await repositories.restTimers.getById(timerId))!;
+      expect(timer.deadlineAt, startedAt.add(ninety));
+      expect(timer.duration, ninety);
+
+      // The prepare cue fired close to the deadline; +15 s leaves more than
+      // 3 s, so it plays again.
+      final nearEnd = startedAt.add(const Duration(seconds: 88));
+      await repositories.restTimers.markPrepareAlertFired(
+        timerId,
+        now: nearEnd,
+      );
+      await repositories.restTimers.adjust(
+        timerId,
+        const Duration(seconds: 15),
+        now: nearEnd,
+      );
+      timer = (await repositories.restTimers.getById(timerId))!;
+      expect(timer.prepareAlertFiredAt, isNull);
+
+      // With 3 s or less left after the adjust, a fired cue stays fired.
+      final almostDone = startedAt.add(const Duration(seconds: 102));
+      await repositories.restTimers.markPrepareAlertFired(
+        timerId,
+        now: almostDone,
+      );
+      await repositories.restTimers.adjust(
+        timerId,
+        const Duration(seconds: -1),
+        now: almostDone,
+      );
+      timer = (await repositories.restTimers.getById(timerId))!;
+      expect(timer.deadlineAt, startedAt.add(const Duration(seconds: 104)));
+      expect(timer.prepareAlertFiredAt, isNotNull);
+
+      final pastNow = startedAt.add(const Duration(seconds: 103));
+      await repositories.restTimers.adjust(
+        timerId,
+        const Duration(seconds: -200),
+        now: pastNow,
+      );
+      timer = (await repositories.restTimers.getById(timerId))!;
+      expect(timer.deadlineAt, pastNow);
+      expect(timer.duration, const Duration(seconds: 1));
+      expect(timer.status, RestTimerStatus.running);
+
+      final timerEntries = (await repositories.activityLog.listEntries())
+          .where((entry) => entry.entityId == timerId)
+          .toList(growable: false);
+      // The start, five adjusts and two prepare cues.
+      expect(timerEntries, hasLength(8));
+
+      await repositories.restTimers.cancel(timerId);
+      final canceled = (await repositories.restTimers.getById(timerId))!;
+      await repositories.restTimers.adjust(
+        timerId,
+        const Duration(seconds: 15),
+        now: pastNow,
+      );
+      final untouched = (await repositories.restTimers.getById(timerId))!;
+      expect(untouched.deadlineAt, canceled.deadlineAt);
+      expect(untouched.updatedAt, canceled.updatedAt);
+    });
+
+    test('watchActiveForWorkout orders tied positions by id', () async {
+      // Ids that sort against insertion order.
+      const earliestId = '00000000-0000-7000-8000-000000000000';
+      const latestId = 'ffffffff-ffff-7fff-bfff-ffffffffffff';
+      for (final id in <String>[latestId, earliestId]) {
+        final created = await plannedSet(0);
+        await (database.update(database.loggedSets)
+              ..where((row) => row.id.equals(created)))
+            .write(LoggedSetsCompanion(id: Value<String>(id)));
+      }
+
+      final sets =
+          await repositories.sets.watchActiveForWorkout(workoutId).first;
+
+      expect(sets.map((set) => set.id), <String>[earliestId, latestId]);
+    });
+
+    test(
+        'a Template with no rests, logged unchanged through logSet, gives no '
+        'divergence (CUJ 6)', () async {
+      final templateId = await repositories.workoutTemplates.create(
+        const WorkoutTemplateDraft(name: 'Upper B'),
+      );
+      final entryId = await repositories.workoutTemplates.addExercise(
+        templateId,
+        exerciseId,
+      );
+      await repositories.workoutTemplates.addPrescription(
+        entryId,
+        PrescriptionDraft(
+          mode: PrescriptionMode.fixed,
+          values: _loadRepsValues(load: '60', reps: '10'),
+          repeat: 3,
+        ),
+      );
+      final materialized = await repositories.templateMaterialize.materialize(
+        TemplateMaterializeRequest(workoutTemplateId: templateId),
+        now: DateTime(2026, 11, 2, 8),
+      );
+
+      final planned =
+          await repositories.sets.listActiveForWorkout(materialized.workoutId);
+      expect(planned, hasLength(3));
+      for (final set in planned) {
+        expect(set.plannedRestAfter, isNull);
+        await repositories.sets.logSet(
+          LogSetRequest(
+            workoutId: materialized.workoutId,
+            exerciseId: exerciseId,
+            currentSetId: set.id,
+            values: set.values,
+            restChanged: false,
+            rest: RestTimerRepository.defaultDuration,
+          ),
+          batchId: newBatchId(),
+        );
+      }
+
+      final performed =
+          await repositories.sets.listActiveForWorkout(materialized.workoutId);
+      expect(performed.every((set) => set.isCompleted), isTrue);
+      expect(performed.every((set) => set.plannedRestAfter == null), isTrue);
+      final summary = await repositories.templateDivergence.summaryForWorkout(
+        materialized.workoutId,
+      );
+      expect(summary, isNotNull);
+      expect(summary!.hasDivergence, isFalse);
     });
   });
 }

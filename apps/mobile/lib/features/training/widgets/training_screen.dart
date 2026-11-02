@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/analytics/exercise_analytics.dart';
+import '../../../domain/training/plan_logging.dart';
 import '../../../domain/training/training_dimensions.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
@@ -549,9 +550,23 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       }
       _notifyRestTimerChanged();
     }
-    final nextWorkoutExerciseId =
-        await repositories.exerciseGroups.findNextWorkoutExerciseIdAfter(
-      state.workoutExercise.id,
+    final groups = await repositories.exerciseGroups.listActiveForWorkout(
+      state.workoutExercise.workoutId,
+    );
+    final group = groups
+        .where(
+          (group) =>
+              group.workoutExerciseIds.contains(state.workoutExercise.id),
+        )
+        .firstOrNull;
+    // Save set always creates a new Set, so it takes the freestyle branch:
+    // the next member in order, wrapping.
+    final nextWorkoutExerciseId = nextGroupMemberAfterLog(
+      memberIdsInOrder: group?.workoutExerciseIds ?? const <String>[],
+      loggedWorkoutExerciseId: state.workoutExercise.id,
+      membersWithPlannedSetBefore: const <String>{},
+      loggedAPlannedSet: false,
+      autoSelectNextSet: settings.autoSelectNextSet,
     );
 
     _setDimensionControllerDefaults(state.exercise, values);
@@ -563,9 +578,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       }
     });
     FocusManager.instance.primaryFocus?.unfocus();
-    if (settings.autoSelectNextSet &&
-        nextWorkoutExerciseId != null &&
-        mounted) {
+    if (nextWorkoutExerciseId != null && mounted) {
       _selectWorkoutExercise(nextWorkoutExerciseId);
     }
   }

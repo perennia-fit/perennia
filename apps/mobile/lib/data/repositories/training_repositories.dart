@@ -25,7 +25,8 @@ import '../../domain/protocols/protocols.dart';
 import '../../domain/settings/account_settings.dart';
 import '../../domain/settings/settings_validation.dart';
 import '../../domain/training/exercise_catalog_merge.dart';
-import '../../domain/training/plan_logging.dart' show defaultRestAfter;
+import '../../domain/training/plan_logging.dart'
+    show carryForwardFor, defaultRestAfter;
 import '../../domain/training/plan_validation.dart' as plan_validation;
 import '../../domain/training/routine_cadence.dart';
 import '../../domain/training/routine_up_next.dart';
@@ -8848,54 +8849,6 @@ class ExerciseGroupRepository {
     return controller.stream;
   }
 
-  Future<String?> findNextWorkoutExerciseIdAfter(
-    String workoutExerciseId,
-  ) async {
-    final memberships = await (_database.select(_database.exerciseGroupMembers)
-          ..where(
-            (row) =>
-                row.deletedAt.isNull() &
-                row.workoutExerciseId.equals(workoutExerciseId),
-          )
-          ..orderBy([(row) => OrderingTerm.asc(row.position)]))
-        .get();
-
-    for (final membership in memberships) {
-      final group = await (_database.select(_database.exerciseGroups)
-            ..where(
-              (row) =>
-                  row.id.equals(membership.groupId) & row.deletedAt.isNull(),
-            ))
-          .getSingleOrNull();
-      if (group == null) {
-        continue;
-      }
-
-      final members =
-          await _activeExerciseGroupMemberQuery(groupId: group.id).get();
-      if (members.length < 2) {
-        continue;
-      }
-
-      final currentIndex = members.indexWhere(
-        (member) => member.workoutExerciseId == workoutExerciseId,
-      );
-      if (currentIndex == -1) {
-        continue;
-      }
-
-      final next = members[(currentIndex + 1) % members.length];
-      final nextWorkoutExercise =
-          await _repositories.workoutExercises.getById(next.workoutExerciseId);
-      if (nextWorkoutExercise != null &&
-          nextWorkoutExercise.deletedAt == null) {
-        return nextWorkoutExercise.id;
-      }
-    }
-
-    return null;
-  }
-
   SimpleSelectStatement<$ExerciseGroupsTable, ExerciseGroupRow>
       _activeExerciseGroupQuery({
     String? workoutId,
@@ -9350,6 +9303,10 @@ class RestTimerRepository {
   static const defaultDuration = defaultRestAfter;
   static const defaultAlertVolume = 1.0;
 
+  /// How long before the deadline the 3-2-1 prepare cue plays; [adjust]
+  /// clears a fired cue when more than this remains.
+  static const prepareCueLead = Duration(seconds: 3);
+
   final TrainingRepositories _repositories;
 
   AppDatabase get _database => _repositories.database;
@@ -9556,6 +9513,65 @@ class RestTimerRepository {
           .write(
         RestTimersCompanion(
           alertVolume: Value<double>(normalized),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      final after = await _requireRow(id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.restTimersTable,
+        entityId: id,
+        beforeImage: _restTimerImage(before),
+        afterImage: _restTimerImage(after),
+      );
+    });
+  }
+
+  /// The rest strip's −15 s / +15 s: moves a running timer's `deadlineAt`
+  /// and `durationSeconds` by [delta].
+  ///
+  /// `durationSeconds` stays at least 1. A new deadline at or before [now]
+  /// becomes [now], so the strip fires the end alert on its next tick, as
+  /// for a timer that ran out. When more than 3 s remain afterwards the
+  /// prepare cue is cleared, so it plays again before the new deadline. A
+  /// timer that is no longer running (it expired or was stopped while the
+  /// tap was in flight) is left as it is.
+  Future<void> adjust(
+    String id,
+    Duration delta, {
+    String actor = 'app',
+    String? batchId,
+    DateTime? now,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+    final adjustedAt = (now ?? DateTime.now()).toUtc();
+
+    return _database.transaction(() async {
+      final before = await _requireRow(id);
+      if (before.deletedAt != null ||
+          before.status != RestTimerStatus.running.name) {
+        return;
+      }
+
+      final shifted = before.deadlineAt.toUtc().add(delta);
+      final deadlineAt = shifted.isAfter(adjustedAt) ? shifted : adjustedAt;
+      final durationSeconds =
+          math.max(1, before.durationSeconds + delta.inSeconds);
+      final clearsPrepareCue =
+          deadlineAt.difference(adjustedAt) > prepareCueLead;
+
+      await (_database.update(_database.restTimers)
+            ..where((row) => row.id.equals(id)))
+          .write(
+        RestTimersCompanion(
+          deadlineAt: Value<DateTime>(deadlineAt),
+          durationSeconds: Value<int>(durationSeconds),
+          prepareAlertFiredAt: clearsPrepareCue
+              ? const Value<DateTime?>(null)
+              : const Value<DateTime?>.absent(),
           updatedAt: Value<DateTime>(context.timestamp),
         ),
       );
@@ -9944,6 +9960,247 @@ class LoggedSetRepository {
     });
   }
 
+  /// The Training Screen's Log set: performs the Current Set (or a new Set)
+  /// with the form's values and carries its new load, placeholder values or
+  /// changed rest forward to the later Planned Sets (`carryForwardFor`).
+  ///
+  /// One transaction, and every touched row gets exactly one update and one
+  /// Activity Log entry under [batchId], so `undoBatch(batchId)` reverses the
+  /// whole action (the Set back to planned, or a new one removed, and every
+  /// carry target restored) without conflicts.
+  ///
+  /// A Current Set that is already complete, deleted or gone is a silent
+  /// no-op (`alreadyLogged`): a second tap, or another device logged it.
+  /// `performedAt` becomes the completion time, unlike [setCompleted], which
+  /// leaves the time the Set was planned. `plannedRestAfter` is written only
+  /// when the rest changed, so an untouched Template rest of null stays null
+  /// and never shows as Template divergence.
+  Future<LogSetResult> logSet(
+    LogSetRequest request, {
+    required String batchId,
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+    final currentSetId = request.currentSetId;
+
+    return _database.transaction(() async {
+      if (currentSetId == null) {
+        final position = await nextPositionForWorkout(request.workoutId);
+        final id = await _create(
+          LoggedSetDraft(
+            workoutId: request.workoutId,
+            exerciseId: request.exerciseId,
+            position: position,
+            values: request.values,
+            plannedRestAfter: request.restChanged ? request.rest : null,
+            performedAt: context.timestamp,
+            isCompleted: true,
+            comment: request.comment,
+            side: request.side,
+            rpe: request.rpe,
+          ),
+          context,
+        );
+        return LogSetResult(setId: id, carriedCount: 0, alreadyLogged: false);
+      }
+
+      final before = await (_database.select(_database.loggedSets)
+            ..where((row) => row.id.equals(currentSetId)))
+          .getSingleOrNull();
+      if (before == null || before.deletedAt != null || before.isCompleted) {
+        return LogSetResult(
+          setId: currentSetId,
+          carriedCount: 0,
+          alreadyLogged: true,
+        );
+      }
+      if (before.workoutId != request.workoutId ||
+          before.exerciseId != request.exerciseId) {
+        throw ArgumentError.value(
+          currentSetId,
+          'currentSetId',
+          'The Current Set must belong to the requested Workout and Exercise.',
+        );
+      }
+
+      final normalizedSide = request.side?.name;
+      final validation = await _validateValuesForExercise(
+        exerciseId: before.exerciseId,
+        values: request.values.values.values,
+        rpe: request.rpe,
+        side: normalizedSide,
+      );
+      validation.throwIfRejected();
+
+      final exerciseRowById = <String, LoggedSetRow>{
+        for (final row
+            in await _activeLoggedSetQuery(workoutId: request.workoutId).get())
+          if (row.exerciseId == before.exerciseId) row.id: row,
+      };
+      final targets = carryForwardFor(
+        exerciseSets: exerciseRowById.values
+            .map(_loggedSetFromRow)
+            .toList(growable: false),
+        logged: _loggedSetFromRow(before),
+        newValues: request.values,
+        restChanged: request.restChanged,
+        newRest: request.rest,
+      );
+
+      await (_database.update(_database.loggedSets)
+            ..where((row) => row.id.equals(currentSetId)))
+          .write(
+        _loggedSetValueCompanion(
+          _setColumns(request.values),
+          updatedAt: context.timestamp,
+        ).copyWith(
+          comment: Value<String?>(_normalizeOptionalText(request.comment)),
+          side: Value<String?>(normalizedSide),
+          rpe: Value<double?>(request.rpe),
+          plannedRestAfter: request.restChanged
+              ? Value<int?>(request.rest?.inSeconds)
+              : const Value<int?>.absent(),
+          isCompleted: const Value<bool>(true),
+          performedAt: Value<DateTime?>(context.timestamp),
+        ),
+      );
+      await _appendLoggedSetUpdate(before, context);
+
+      for (final target in targets) {
+        // A target takes only the carried dimensions; its others stay.
+        final targetBefore = exerciseRowById[target.setId]!;
+        final merged = LoggedSet.fromValues(<DimensionId, SetDimensionValue>{
+          ..._loggedSetValuesFromRow(targetBefore).values,
+          for (final value in target.values) value.dimension: value,
+        }.values);
+        await (_database.update(_database.loggedSets)
+              ..where((row) => row.id.equals(target.setId)))
+            .write(
+          _loggedSetValueCompanion(
+            _setColumns(merged),
+            updatedAt: context.timestamp,
+          ).copyWith(
+            plannedRestAfter: target.restChanged
+                ? Value<int?>(target.rest?.inSeconds)
+                : const Value<int?>.absent(),
+          ),
+        );
+        await _appendLoggedSetUpdate(targetBefore, context);
+      }
+
+      return LogSetResult(
+        setId: currentSetId,
+        carriedCount: targets.length,
+        alreadyLogged: false,
+      );
+    });
+  }
+
+  /// Update mode's save on a Performed Set: values, annotations and (only
+  /// when [restChanged]) `plannedRestAfter`, in one row update with one
+  /// Activity Log entry. Validated like [updateValues], with the new
+  /// annotations. No carry-forward and no timer: fixing a logged Set never
+  /// rewrites the plan after it.
+  Future<void> updatePerformed(
+    String id, {
+    required LoggedSet values,
+    String? comment,
+    SetSide? side,
+    double? rpe,
+    required bool restChanged,
+    Duration? rest,
+    required String batchId,
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final before = await _requireRow(id);
+      final normalizedSide = side?.name;
+      final validation = await _validateValuesForExercise(
+        exerciseId: before.exerciseId,
+        values: values.values.values,
+        rpe: rpe,
+        side: normalizedSide,
+      );
+      validation.throwIfRejected();
+
+      await (_database.update(_database.loggedSets)
+            ..where((row) => row.id.equals(id)))
+          .write(
+        _loggedSetValueCompanion(
+          _setColumns(values),
+          updatedAt: context.timestamp,
+        ).copyWith(
+          comment: Value<String?>(_normalizeOptionalText(comment)),
+          side: Value<String?>(normalizedSide),
+          rpe: Value<double?>(rpe),
+          plannedRestAfter: restChanged
+              ? Value<int?>(rest?.inSeconds)
+              : const Value<int?>.absent(),
+        ),
+      );
+      await _appendLoggedSetUpdate(before, context);
+    });
+  }
+
+  /// The Remembered Rest of [exerciseId]: the `plannedRestAfter` of its
+  /// latest Performed Set that has one, or null.
+  ///
+  /// Latest by `performedAt` (nulls last), then the Workout's `startedAt`,
+  /// then `position`, then `id`, all descending, over Workouts that are not
+  /// deleted. A rest of zero is skipped: it is a statement about one plan (go
+  /// straight to the next superset member), not a preference for the
+  /// exercise, so Off is never remembered. Derived on every read and never
+  /// stored; Sets sync, so every device and an Agent see the same answer.
+  Future<Duration?> findRememberedRest(String exerciseId) async {
+    final sets = _database.loggedSets;
+    final workouts = _database.workoutSessions;
+    final query = _database.select(sets).join([
+      innerJoin(workouts, workouts.id.equalsExp(sets.workoutId)),
+    ])
+      ..where(
+        sets.deletedAt.isNull() &
+            sets.isCompleted.equals(true) &
+            sets.exerciseId.equals(exerciseId) &
+            sets.plannedRestAfter.isBiggerThanValue(0) &
+            workouts.deletedAt.isNull(),
+      )
+      ..orderBy([
+        OrderingTerm.asc(sets.performedAt.isNull()),
+        OrderingTerm.desc(sets.performedAt),
+        OrderingTerm.desc(workouts.startedAt),
+        OrderingTerm.desc(sets.position),
+        OrderingTerm.desc(sets.id),
+      ])
+      ..limit(1);
+    final row = await query.getSingleOrNull();
+    final seconds = row?.readTable(sets).plannedRestAfter;
+    return seconds == null ? null : Duration(seconds: seconds);
+  }
+
+  /// Appends the Activity Log entry for a Set row just updated from
+  /// [before].
+  Future<void> _appendLoggedSetUpdate(
+    LoggedSetRow before,
+    WriteContext context,
+  ) async {
+    final after = await _requireRow(before.id);
+    await _repositories._activityLogWriter.append(
+      context,
+      entityTable: AppDatabase.loggedSetsTable,
+      entityId: before.id,
+      beforeImage: _loggedSetImage(before),
+      afterImage: _loggedSetImage(after),
+    );
+  }
+
   Future<void> reorderForWorkoutExercise({
     required String workoutId,
     required String exerciseId,
@@ -10214,7 +10471,13 @@ class LoggedSetRepository {
       ..where((row) => row.deletedAt.isNull());
     if (workoutId != null) {
       query.where((row) => row.workoutId.equals(workoutId));
-      query.orderBy([(row) => OrderingTerm.asc(row.position)]);
+      // `id` breaks position ties (Materialize numbers each exercise from 0,
+      // and Agents supply their own), so the screen lists Sets in the order
+      // the plan logging rules use (`compareSetsInPlanOrder`).
+      query.orderBy([
+        (row) => OrderingTerm.asc(row.position),
+        (row) => OrderingTerm.asc(row.id),
+      ]);
     } else if (workoutIds != null) {
       query.where((row) => row.workoutId.isIn(workoutIds));
       query.orderBy([
@@ -13974,6 +14237,56 @@ class LoggedSetDraft {
       rpe: rpe ?? this.rpe,
     );
   }
+}
+
+/// What the Training Screen's Log set writes: the form, for one Exercise of
+/// one Workout.
+class LogSetRequest {
+  const LogSetRequest({
+    required this.workoutId,
+    required this.exerciseId,
+    this.currentSetId,
+    required this.values,
+    this.comment,
+    this.side,
+    this.rpe,
+    required this.restChanged,
+    this.rest,
+  });
+
+  final String workoutId;
+  final String exerciseId;
+
+  /// The Current Set the form filled, or null to create a new Performed Set.
+  final String? currentSetId;
+  final LoggedSet values;
+  final String? comment;
+  final SetSide? side;
+  final double? rpe;
+
+  /// Whether the user changed Rest after since the form last loaded; only a
+  /// changed rest is written as `plannedRestAfter` and carried forward.
+  final bool restChanged;
+
+  /// The form's rest; written only when [restChanged].
+  final Duration? rest;
+}
+
+class LogSetResult {
+  const LogSetResult({
+    required this.setId,
+    required this.carriedCount,
+    required this.alreadyLogged,
+  });
+
+  final String setId;
+
+  /// How many later Planned Sets carry-forward rewrote.
+  final int carriedCount;
+
+  /// The Current Set was already complete, deleted or gone (a second tap, or
+  /// another device logged it), so nothing was written.
+  final bool alreadyLogged;
 }
 
 class WorkoutPlanExerciseDraft {
