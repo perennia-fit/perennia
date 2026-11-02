@@ -37,7 +37,7 @@ class StatusWordLabel extends StatelessWidget {
   }
 }
 
-/// The text label of each Day Status (D6).
+/// The text label of each Day Status (D6, D8).
 String dayStatusLabel(AppLocalizations l10n, DayStatusKind status) =>
     switch (status) {
       DayStatusKind.notPlanned => l10n.dayStatusNotPlanned,
@@ -47,6 +47,7 @@ String dayStatusLabel(AppLocalizations l10n, DayStatusKind status) =>
       DayStatusKind.logged => l10n.dayStatusLogged,
       DayStatusKind.partlyLogged => l10n.dayStatusPartlyLogged,
       DayStatusKind.notLogged => l10n.dayStatusNotLogged,
+      DayStatusKind.skipped => l10n.dayStatusSkipped,
     };
 
 /// A planned amount as entered, with its unit; empty when the plan holds

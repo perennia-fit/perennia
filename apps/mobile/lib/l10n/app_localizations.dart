@@ -4478,6 +4478,12 @@ abstract class AppLocalizations {
   /// **'Not logged'**
   String get plannedListRowNotLogged;
 
+  /// No description provided for @plannedListRowSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped'**
+  String get plannedListRowSkipped;
+
   /// No description provided for @plannedListAnyTime.
   ///
   /// In en, this message translates to:
@@ -4537,6 +4543,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not logged'**
   String get dayStatusNotLogged;
+
+  /// No description provided for @dayStatusSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped'**
+  String get dayStatusSkipped;
 
   /// No description provided for @notPlannedReasonNotScheduledToday.
   ///

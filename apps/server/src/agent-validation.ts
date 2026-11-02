@@ -1732,8 +1732,9 @@ function parseDoseRoute(route: string): DoseRoute | null {
 
 // ---------------------------------------------------------------------------
 // Protocol Plan tier (docs/designs/protocol-schedules-and-reminders.md, D7).
-// The same shared two-tier module, extended for Schedule Rules and Protocol
-// Periods. Twins the Dart `validateScheduleRule` / `validateProtocolPeriod`
+// The same shared two-tier module, extended for Schedule Rules, Protocol
+// Periods and Skips (D8). Twins the Dart `validateScheduleRule`,
+// `validateProtocolPeriod` and `validateProtocolSkip`
 // (apps/mobile/lib/domain/protocols/protocol_plan_validation.dart): the same
 // stable rule ids and limits, agreeing on
 // packages/golden-vectors/vectors/m36-protocol-plan-validation.json. Results
@@ -2018,6 +2019,54 @@ export function validateAgentProtocolPeriod(
     );
   }
 
+  return { errors, warnings: [] };
+}
+
+/// `localDate` and `today` must already be real `YYYY-MM-DD` dates (the Dart
+/// twin takes parsed dates); anything else throws a RangeError, which the
+/// Agent path answers 400 before calling the validator (D8).
+export type AgentProtocolSkipValidationInput = {
+  localDate: string;
+  plannedLocalTime: string | null;
+  today: string;
+};
+
+/// Validates one Skip (D8): its planned time is `HH:MM` or null (untimed),
+/// and its date is not after the writer's today. Both are hard rejects,
+/// reported in that order; there is no soft warning. It doesn't check that
+/// the Skip names a planned dose: the plan can change after a Skip is
+/// written, and a Skip that marks nothing is valid.
+export function validateAgentProtocolSkip(
+  input: AgentProtocolSkipValidationInput
+): AgentDoseValidationResult {
+  const errors: AgentDoseValidationIssue[] = [];
+  const localDate = requireBoundDate(input.localDate, "localDate");
+  const today = requireBoundDate(input.today, "today");
+  const { plannedLocalTime } = input;
+  if (
+    plannedLocalTime !== null &&
+    (typeof plannedLocalTime !== "string" || !isPlanLocalTime(plannedLocalTime))
+  ) {
+    errors.push(
+      doseIssue({
+        field: "plannedLocalTime",
+        rule: "skip_time_format",
+        message: "A planned time must be HH:MM, from 00:00 to 23:59.",
+        limit: "HH:MM"
+      })
+    );
+  }
+  // Real `YYYY-MM-DD` dates order as text.
+  if (localDate > today) {
+    errors.push(
+      doseIssue({
+        field: "localDate",
+        rule: "skip_future",
+        message: "A Skip can't be for a day after today.",
+        limit: "today"
+      })
+    );
+  }
   return { errors, warnings: [] };
 }
 

@@ -1,6 +1,6 @@
 /// Validation for the Protocol plan (docs/designs/protocol-schedules-and-reminders.md,
-/// D7): a Schedule Version's rule and amount, and a Protocol's bounds and
-/// Period, in the shared two-tier module.
+/// D7 and D8): a Schedule Version's rule and amount, a Protocol's bounds and
+/// Period, and a Skip, in the shared two-tier module.
 ///
 /// Both validators read the stored rule and period JSON rather than the
 /// decoded `protocol_plan.dart` types, because they must judge values a
@@ -16,7 +16,8 @@
 /// `times_count`, `times_distinct`, `untimed_count`, `weekdays_valid`,
 /// `every_n_range`, `anchor_date`, `amount_required`, `amount_absent`,
 /// `cycle_lengths`, `bounds_order`, `pause_count`, `pause_order`,
-/// `pause_bounds`, `pause_overlap`. Soft-warn check: `times_many`.
+/// `pause_bounds`, `pause_overlap`; for a Skip (D8), `skip_time_format`,
+/// `skip_future`. Soft-warn check: `times_many`.
 library;
 
 import 'dose_validation.dart';
@@ -354,6 +355,43 @@ DoseValidationResult validateProtocolPeriod({
     );
   }
 
+  return DoseValidationResult(
+    errors: List<DoseValidationIssue>.unmodifiable(errors),
+    warnings: const <DoseValidationIssue>[],
+  );
+}
+
+/// Validates one Skip (D8): its [plannedLocalTime] is `HH:MM` or null
+/// (untimed), and its [localDate] is not after the writer's [today]. Both
+/// are hard rejects, reported in that order; there is no soft warning. It
+/// doesn't check that the Skip names a planned dose: the plan can change
+/// after a Skip is written, and a Skip that marks nothing is valid.
+DoseValidationResult validateProtocolSkip({
+  required ProtocolDayDate localDate,
+  required String? plannedLocalTime,
+  required ProtocolDayDate today,
+}) {
+  final errors = <DoseValidationIssue>[];
+  if (plannedLocalTime != null && !isPlanLocalTime(plannedLocalTime)) {
+    errors.add(
+      const DoseValidationIssue(
+        field: 'plannedLocalTime',
+        rule: 'skip_time_format',
+        message: 'A planned time must be HH:MM, from 00:00 to 23:59.',
+        limit: 'HH:MM',
+      ),
+    );
+  }
+  if (localDate.compareTo(today) > 0) {
+    errors.add(
+      const DoseValidationIssue(
+        field: 'localDate',
+        rule: 'skip_future',
+        message: "A Skip can't be for a day after today.",
+        limit: 'today',
+      ),
+    );
+  }
   return DoseValidationResult(
     errors: List<DoseValidationIssue>.unmodifiable(errors),
     warnings: const <DoseValidationIssue>[],

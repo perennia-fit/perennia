@@ -1546,16 +1546,18 @@ PlannedDay _plannedDay(
 }) {
   final days = planDays(protocols ?? _protocols(), localDate, localDate);
   final isFuture = localDate.compareTo(_today) > 0;
-  final statuses =
-      isFuture ? const <DayStatus>[] : dayStatuses(days, doses, _today);
+  final statuses = isFuture
+      ? const <DayStatus>[]
+      : dayStatuses(days, doses, const <PlanSkip>[], _today);
   return PlannedDay(
     localDate: localDate,
     today: _today,
     day: day ?? _emptyDay(localDate),
     planDays: days,
     dayStatuses: statuses,
-    rowStatuses:
-        isFuture ? dayStatuses(days, const <PlanDose>[], localDate) : statuses,
+    rowStatuses: isFuture
+        ? dayStatuses(days, const <PlanDose>[], const <PlanSkip>[], localDate)
+        : statuses,
     compounds: <String, CompoundRecord>{
       for (final (id, name, unit) in <(String, String, DoseUnit)>[
         ('c-trt', 'TRT', DoseUnit.milliliter),

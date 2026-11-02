@@ -1103,7 +1103,8 @@ const DAY_STATUS_VALUES = unionValues<DayStatusValue>()([
   "pending",
   "logged",
   "partly_logged",
-  "not_logged"
+  "not_logged",
+  "skipped"
 ]);
 
 const NOT_PLANNED_REASONS = unionValues<NotPlannedReason>()([
@@ -3037,6 +3038,8 @@ export function createDrizzleAgentProtocolsStore(
       const statuses = dayStatuses(
         planDays(protocols, query.fromLocalDate, query.toLocalDate),
         doses,
+        // No Skips are stored until Phase 8, which reads them here (D8).
+        [],
         query.today
       );
       return AgentProtocolDayStatusesResponseSchema.parse({

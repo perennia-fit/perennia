@@ -2702,6 +2702,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get plannedListRowNotLogged => 'Not logged';
 
   @override
+  String get plannedListRowSkipped => 'Skipped';
+
+  @override
   String get plannedListAnyTime => 'Any time';
 
   @override
@@ -2730,6 +2733,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dayStatusNotLogged => 'Not logged';
+
+  @override
+  String get dayStatusSkipped => 'Skipped';
 
   @override
   String get notPlannedReasonNotScheduledToday => 'Not scheduled that day';

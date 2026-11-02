@@ -1630,7 +1630,7 @@ export type AgentProtocolBatchWriteTargetOutcome = {
 export type AgentProtocolDayStatus = {
   "compoundId": string;
   "localDate": string;
-  "status": "not_planned" | "paused" | "off_cycle" | "pending" | "logged" | "partly_logged" | "not_logged";
+  "status": "not_planned" | "paused" | "off_cycle" | "pending" | "logged" | "partly_logged" | "not_logged" | "skipped";
   "notPlannedReason"?: "not_scheduled_today" | "as_needed" | "no_schedule" | "removed" | "outside";
   "plannedCount": number;
   "loggedCount": number;

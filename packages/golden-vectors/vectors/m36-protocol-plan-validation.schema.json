@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "m36-protocol-plan-validation.schema.json",
   "title": "M36 Protocol plan validation golden vector",
-  "description": "Language-neutral parity cases for the two-tier Protocol plan validators (D7). A schedule_rule case passes `rule` (the stored Schedule Rule JSON) and the Schedule Version's amountValue, amountEntered, unit and route to validateScheduleRule; a protocol_period case passes startLocalDate, endLocalDate and period (the stored Protocol Period JSON, or null) to validateProtocolPeriod. `expected` lists the stable check ids of the hard-reject errors and soft warnings, in the order the validator reports them; `accepted` is true when there is no error. Inputs deliberately carry out-of-range values, so the rule and period shapes here constrain types and kinds only. The `limits` block must equal ProtocolPlanValidationLimits (Dart) and PROTOCOL_PLAN_VALIDATION_LIMITS (TypeScript).",
+  "description": "Language-neutral parity cases for the three two-tier Protocol plan validators (D7, D8). A schedule_rule case passes `rule` (the stored Schedule Rule JSON) and the Schedule Version's amountValue, amountEntered, unit and route to validateScheduleRule; a protocol_period case passes startLocalDate, endLocalDate and period (the stored Protocol Period JSON, or null) to validateProtocolPeriod; a protocol_skip case passes localDate, plannedLocalTime (HH:MM, or null for an untimed planned dose) and today to validateProtocolSkip (validateAgentProtocolSkip in TypeScript). `expected` lists the stable check ids of the hard-reject errors and soft warnings, in the order the validator reports them; `accepted` is true when there is no error. Inputs deliberately carry out-of-range values, so the rule and period shapes here constrain types and kinds only. The `limits` block must equal ProtocolPlanValidationLimits (Dart) and PROTOCOL_PLAN_VALIDATION_LIMITS (TypeScript).",
   "type": "object",
   "additionalProperties": false,
   "required": ["name", "domain", "schemaVersion", "schema", "limits", "cases"],
@@ -49,6 +49,8 @@
         "pause_order",
         "pause_bounds",
         "pause_overlap",
+        "skip_time_format",
+        "skip_future",
         "times_many"
       ]
     },
@@ -201,6 +203,21 @@
                 "startLocalDate": {"$ref": "#/$defs/dateString"},
                 "endLocalDate": {"type": ["string", "null"]},
                 "period": {"$ref": "#/$defs/period"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "validator": {"const": "protocol_skip"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["localDate", "plannedLocalTime", "today"],
+              "properties": {
+                "localDate": {"$ref": "#/$defs/dateString"},
+                "plannedLocalTime": {"type": ["string", "null"]},
+                "today": {"$ref": "#/$defs/dateString"}
               }
             }
           }

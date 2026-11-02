@@ -58,6 +58,7 @@ void main() {
       final statuses = dayStatuses(
         planDays(<PlanProtocol>[protocol], from, to),
         const <PlanDose>[],
+        const <PlanSkip>[],
         to,
       );
       final tuesday =
@@ -190,7 +191,8 @@ void main() {
         from: from,
         to: to,
         planDays: days,
-        dayStatuses: dayStatuses(days, const <PlanDose>[], _date(2026, 10, 31)),
+        dayStatuses: dayStatuses(
+            days, const <PlanDose>[], const <PlanSkip>[], _date(2026, 10, 31)),
         doses: const <DoseRecord>[],
         extraDoseIds: const <String>{},
       );
@@ -491,7 +493,7 @@ ConsistencyRange _range(
     to: to,
     today: to,
     planDays: days,
-    dayStatuses: dayStatuses(days, planDoses, to),
+    dayStatuses: dayStatuses(days, planDoses, const <PlanSkip>[], to),
     doses: doses,
     compound: null,
     protocols: const <String, ProtocolOptionRecord>{},

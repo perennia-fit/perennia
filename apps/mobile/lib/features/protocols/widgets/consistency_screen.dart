@@ -574,6 +574,10 @@ class _DayStatusLabel extends StatelessWidget {
           Icons.radio_button_unchecked,
           colors.textSecondary,
         ),
+      DayStatusKind.skipped => (
+          Icons.do_not_disturb_on_outlined,
+          colors.textSecondary,
+        ),
     };
     return StatusWordLabel(
       icon: icon,

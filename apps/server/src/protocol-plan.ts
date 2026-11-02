@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // Protocol Plan core (docs/designs/protocol-schedules-and-reminders.md, D1, D4,
-// D6). The TypeScript twin of the app's
+// D6, D8). The TypeScript twin of the app's
 // apps/mobile/lib/domain/protocols/protocol_plan.dart and
 // protocol_plan_days.dart: the same Schedule Rule and Protocol Period JSON,
 // and the same `planDays`, `dayStatuses` and `dueUnfilled`. Both run
@@ -116,6 +116,14 @@ export type PlanDay = {
   state: PlanDayState;
   /** Non-empty exactly when `state` is `planned`. */
   planned: PlannedDose[];
+  /**
+   * True exactly when `state` is `planned` and `localDate` is the Protocol's
+   * `archivedOn` or the covering member row's (D8, "The archive day"). On
+   * that day a planned dose counts only if a Dose fills it: `dayStatuses`
+   * drops the unfilled ones, which `planDays` cannot do itself because it
+   * doesn't see Doses.
+   */
+  archiveDay: boolean;
 };
 
 /**
@@ -130,6 +138,20 @@ export type PlanDose = {
   sequence: number;
 };
 
+/**
+ * One Skip as the core sees it (D8): "not taken, on purpose" for one planned
+ * dose of `protocolId`'s `compoundId` on `localDate`, at `plannedLocalTime`
+ * (null for an untimed planned dose). It names no slot number, because slot
+ * numbers shift whenever another Protocol's plan for the Compound changes.
+ */
+export type PlanSkip = {
+  skipId: string;
+  protocolId: string;
+  compoundId: string;
+  localDate: LocalDate;
+  plannedLocalTime: LocalTime | null;
+};
+
 export type DayStatusValue =
   | "not_planned"
   | "paused"
@@ -137,7 +159,8 @@ export type DayStatusValue =
   | "pending"
   | "logged"
   | "partly_logged"
-  | "not_logged";
+  | "not_logged"
+  | "skipped";
 
 export type NotPlannedReason =
   | "not_scheduled_today"
@@ -151,9 +174,11 @@ export type DayStatusFill = PlanAmount & {
   protocolId: string;
   plannedLocalTime: LocalTime | null;
   doseId: string | null;
+  /** The Skip that marks this slot, or null. Never set together with `doseId`. */
+  skipId: string | null;
 };
 
-/** How one Compound's logged Doses lined up with its plan on one date (D6). */
+/** How one Compound's logged Doses and Skips lined up with its plan on one date (D6, D8). */
 export type DayStatus = {
   compoundId: string;
   localDate: LocalDate;
@@ -162,6 +187,8 @@ export type DayStatus = {
   notPlannedReason?: NotPlannedReason;
   plannedCount: number;
   loggedCount: number;
+  /** Slots a Skip marks (D8), so `loggedCount + skippedCount <= plannedCount`. */
+  skippedCount: number;
   extraCount: number;
   fills: DayStatusFill[];
 };
@@ -655,7 +682,8 @@ function planDayFor(
     compoundId,
     localDate,
     state,
-    planned: []
+    planned: [],
+    archiveDay: false
   });
 
   if (
@@ -703,7 +731,10 @@ function planDayFor(
     planned:
       rule.kind === "timed"
         ? rule.times.map((localTime) => ({ localTime, ...amount }))
-        : Array.from({ length: rule.count }, () => ({ localTime: null, ...amount }))
+        : Array.from({ length: rule.count }, () => ({ localTime: null, ...amount })),
+    // The covering row's date, not any row's: a member removed and re-added
+    // the same day is covered by the newer row, which isn't archived (D8).
+    archiveDay: localDate === plan.archivedOn || localDate === row.archivedOn
   };
 }
 
@@ -790,7 +821,7 @@ export function pushToGroup<T>(groups: Map<string, T[]>, key: string, item: T): 
 }
 
 // ---------------------------------------------------------------------------
-// dayStatuses (D6).
+// dayStatuses (D6, with D8's Skips and archive day).
 // ---------------------------------------------------------------------------
 
 const NOT_PLANNED_REASON_ORDER: readonly NotPlannedReason[] = [
@@ -801,19 +832,34 @@ const NOT_PLANNED_REASON_ORDER: readonly NotPlannedReason[] = [
   "outside"
 ];
 
-type Slot = DayStatusFill & { position: number; minutes: number | null };
+type Slot = DayStatusFill & { position: number; minutes: number | null; archiveDay: boolean };
 
 /**
  * One Day Status per Compound and date in `planDays`, up to and including
  * `today`, ordered by date and then Compound id. Dates after `today` have no
- * Day Status. Each logged Dose fills the unfilled timed slot nearest its time
- * (the earlier slot on a tie), else the first unfilled untimed slot, else it
- * is an extra. The Protocol a Dose was tagged with never decides what it
+ * Day Status. The Protocol a Dose was tagged with never decides what it
  * fills: the tag records provenance, never adherence.
+ *
+ * Matching, for one Compound on one date (D8, which replaces D6's steps):
+ * 1. every planned dose of every Protocol is numbered as a slot, by time
+ *    (untimed last), then Protocol id, then position in its PlanDay;
+ * 2. the Doses are taken in local-time order, then `sequence`, then id;
+ * 3. each Skip, in id order, marks the lowest-numbered slot of its own
+ *    Protocol at its planned time (both null when untimed) that no earlier
+ *    Skip marked; one that finds none marks nothing;
+ * 4. each Dose fills, by the first rule that finds a slot: the nearest
+ *    unfilled timed slot with no Skip (the earlier on a tie), the first
+ *    unfilled untimed slot with no Skip, then the same two among the skipped
+ *    slots, clearing that Skip; with none, it is an extra;
+ * 5. on an archive day (`PlanDay.archiveDay`), every slot no Dose filled is
+ *    dropped, Skip or not, and the rest are renumbered in order.
+ *
+ * `skips` may be empty; until Skips are stored, every caller passes none.
  */
 export function dayStatuses(
   planDays: readonly PlanDay[],
   doses: readonly PlanDose[],
+  skips: readonly PlanSkip[],
   today: LocalDate
 ): DayStatus[] {
   const daysByGroup = new Map<string, PlanDay[]>();
@@ -826,6 +872,10 @@ export function dayStatuses(
   for (const dose of doses) {
     pushToGroup(dosesByGroup, groupKey(dose.compoundId, dose.localDate), dose);
   }
+  const skipsByGroup = new Map<string, PlanSkip[]>();
+  for (const skip of skips) {
+    pushToGroup(skipsByGroup, groupKey(skip.compoundId, skip.localDate), skip);
+  }
 
   // Every group holds at least one PlanDay, which names its Compound and date.
   return [...daysByGroup.entries()]
@@ -836,7 +886,14 @@ export function dayStatuses(
         compareIds(left.first.compoundId, right.first.compoundId)
     )
     .map(({ key, days, first }) =>
-      dayStatusFor(first.compoundId, first.localDate, days, dosesByGroup.get(key) ?? [], today)
+      dayStatusFor(
+        first.compoundId,
+        first.localDate,
+        days,
+        dosesByGroup.get(key) ?? [],
+        skipsByGroup.get(key) ?? [],
+        today
+      )
     );
 }
 
@@ -845,10 +902,12 @@ function dayStatusFor(
   localDate: LocalDate,
   days: readonly PlanDay[],
   doses: readonly PlanDose[],
+  skips: readonly PlanSkip[],
   today: LocalDate
 ): DayStatus {
-  // Step 1: every planned dose of every Protocol, numbered by time (untimed
-  // last), then Protocol id, then position within its Protocol's list.
+  // Step 1: every planned dose of every Protocol, ordered by time (untimed
+  // last), then Protocol id, then position within its Protocol's list. Slot
+  // numbers are given after step 5.
   const slots: Slot[] = days
     .filter((day) => day.state === "planned")
     .flatMap((day) =>
@@ -858,66 +917,84 @@ function dayStatusFor(
         plannedLocalTime: planned.localTime,
         ...planAmount(planned),
         doseId: null,
+        skipId: null,
         position,
-        minutes: planned.localTime === null ? null : minutesOfDay(planned.localTime)
+        minutes: planned.localTime === null ? null : minutesOfDay(planned.localTime),
+        archiveDay: day.archiveDay
       }))
     )
     .sort(compareSlots);
-  slots.forEach((slot, index) => {
-    slot.slot = index;
-  });
 
-  // Steps 2-3: Doses in local-time order (then sequence, then id), each
-  // filling the nearest unfilled timed slot, else the first unfilled untimed.
-  let extraCount = 0;
+  // Step 3: each Skip, in id order, marks the first slot of its own Protocol
+  // at its planned time that no earlier Skip marked.
+  for (const skip of [...skips].sort((left, right) => compareIds(left.skipId, right.skipId))) {
+    const target = slots.find(
+      (slot) =>
+        slot.skipId === null &&
+        slot.protocolId === skip.protocolId &&
+        slot.plannedLocalTime === skip.plannedLocalTime
+    );
+    if (target !== undefined) {
+      target.skipId = skip.skipId;
+    }
+  }
+
+  // Steps 2 and 4: Doses in local-time order (then sequence, then id), each
+  // preferring a slot no Skip marked. A Dose placed on a skipped slot clears
+  // its Skip, which then marks nothing.
   const orderedDoses = [...doses].sort(
     (left, right) =>
       compareIds(left.localTime, right.localTime) ||
       left.sequence - right.sequence ||
       compareIds(left.doseId, right.doseId)
   );
+  let extraCount = 0;
   for (const dose of orderedDoses) {
     const doseMinutes = minutesOfDay(dose.localTime);
-    let target: Slot | null = null;
-    let targetDistance = Number.POSITIVE_INFINITY;
-    for (const slot of slots) {
-      if (slot.doseId !== null || slot.minutes === null) {
-        continue;
-      }
-      // Slots are in slot order, so a strict `<` keeps the earlier on a tie.
-      const distance = Math.abs(slot.minutes - doseMinutes);
-      if (distance < targetDistance) {
-        target = slot;
-        targetDistance = distance;
-      }
-    }
-    target ??=
-      slots.find((slot) => slot.doseId === null && slot.minutes === null) ?? null;
+    const target =
+      openSlotFor(slots, doseMinutes, false) ?? openSlotFor(slots, doseMinutes, true);
     if (target === null) {
       extraCount += 1;
     } else {
       target.doseId = dose.doseId;
+      target.skipId = null;
     }
   }
 
-  const plannedCount = slots.length;
-  const loggedCount = slots.filter((slot) => slot.doseId !== null).length;
-  const fills = slots.map(({ position: _position, minutes: _minutes, ...fill }) => fill);
-  const counts = { plannedCount, loggedCount, extraCount, fills };
+  // Step 5: close the archive day. Only unfilled slots drop, so the extras
+  // are unchanged, and a dropped slot's Skip marks nothing. Step 6 numbers
+  // what is left.
+  const fills: DayStatusFill[] = slots
+    .filter((slot) => slot.doseId !== null || !slot.archiveDay)
+    .map(({ position: _position, minutes: _minutes, archiveDay: _archiveDay, ...fill }, index) => ({
+      ...fill,
+      slot: index
+    }));
+
+  const plannedCount = fills.length;
+  const loggedCount = fills.filter((fill) => fill.doseId !== null).length;
+  const skippedCount = fills.filter((fill) => fill.skipId !== null).length;
+  const counts = { plannedCount, loggedCount, skippedCount, extraCount, fills };
 
   if (plannedCount > 0) {
     let status: DayStatusValue;
-    if (loggedCount >= plannedCount) {
-      status = "logged";
+    if (loggedCount + skippedCount >= plannedCount) {
+      status = loggedCount > 0 ? "logged" : "skipped";
     } else if (localDate === today) {
       status = "pending";
     } else {
+      // Skips never raise "Not logged" to "Partly logged": that label is
+      // about what was taken.
       status = loggedCount > 0 ? "partly_logged" : "not_logged";
     }
     return { compoundId, localDate, status, ...counts };
   }
 
-  const states = new Set(days.map((day) => day.state));
+  // A planned PlanDay whose slots step 5 all dropped reads as `removed` (D8),
+  // in that reason's place in NOT_PLANNED_REASON_ORDER.
+  const states = new Set(
+    days.map((day) => (day.state === "planned" && day.archiveDay ? "removed" : day.state))
+  );
   if (states.has("paused")) {
     return { compoundId, localDate, status: "paused", ...counts };
   }
@@ -932,6 +1009,33 @@ function dayStatusFor(
     throw new Error("A Compound date with nothing planned has no reason.");
   }
   return { compoundId, localDate, status: "not_planned", notPlannedReason, ...counts };
+}
+
+/**
+ * The slot a Dose at `doseMinutes` fills among the unfilled slots that a Skip
+ * marks (`skipped`) or doesn't: the nearest timed one, the earlier on a tie,
+ * else the first untimed one, else null (D8 step 4).
+ */
+function openSlotFor(slots: readonly Slot[], doseMinutes: number, skipped: boolean): Slot | null {
+  let target: Slot | null = null;
+  let targetDistance = Number.POSITIVE_INFINITY;
+  let firstUntimed: Slot | null = null;
+  for (const slot of slots) {
+    if (slot.doseId !== null || (slot.skipId !== null) !== skipped) {
+      continue;
+    }
+    if (slot.minutes === null) {
+      firstUntimed ??= slot;
+      continue;
+    }
+    // Slots are in slot order, so a strict `<` keeps the earlier on a tie.
+    const distance = Math.abs(slot.minutes - doseMinutes);
+    if (distance < targetDistance) {
+      target = slot;
+      targetDistance = distance;
+    }
+  }
+  return target ?? firstUntimed;
 }
 
 function compareSlots(left: Slot, right: Slot): number {
@@ -975,14 +1079,15 @@ export function compareIds(left: string, right: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// dueUnfilled (D6).
+// dueUnfilled (D6, D8).
 // ---------------------------------------------------------------------------
 
 /**
  * Today's unfilled planned doses that are due now: timed at or before
- * `nowLocalTime`, or untimed. "Log all planned" logs exactly these. Rows come
- * in Compound id order (Day Status order), then slot order; other dates
- * contribute nothing.
+ * `nowLocalTime`, or untimed. A slot a Skip marks is left out as a filled one
+ * is, so "Log all planned" never logs a skipped dose (D8). "Log all planned"
+ * logs exactly these. Rows come in Compound id order (Day Status order), then
+ * slot order; other dates contribute nothing.
  */
 export function dueUnfilled(
   dayStatuses: readonly DayStatus[],
@@ -999,6 +1104,7 @@ export function dueUnfilled(
     for (const fill of fills) {
       if (
         fill.doseId === null &&
+        fill.skipId === null &&
         (fill.plannedLocalTime === null || minutesOfDay(fill.plannedLocalTime) <= now)
       ) {
         due.push({

@@ -1005,6 +1005,7 @@ ConsistencyRange _range(
             sequence: index,
           ),
       ],
+      const <PlanSkip>[],
       _today,
     ),
     doses: doses,

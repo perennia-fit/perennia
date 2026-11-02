@@ -3831,6 +3831,7 @@ test(
       const expectedStatuses = dayStatuses(
         expectedDays,
         expectedPlanDoses(Object.values(doses)),
+        [],
         today
       );
 
@@ -3948,7 +3949,7 @@ test(
       });
       assert.deepEqual(
         p2Statuses.dayStatuses,
-        dayStatuses(p2Days, planDoses, today).map((status) => dayStatusJson(status, "summary"))
+        dayStatuses(p2Days, planDoses, [], today).map((status) => dayStatusJson(status, "summary"))
       );
       const p2Yesterday = p2Statuses.dayStatuses.find((status) => status.localDate === day(-1));
       assert.deepEqual(
@@ -3975,7 +3976,7 @@ test(
       });
       assert.deepEqual(
         bStatuses.dayStatuses,
-        dayStatuses(allDays, planDoses, today)
+        dayStatuses(allDays, planDoses, [], today)
           .filter((status) => status.compoundId === ids.compoundB)
           .map((status) => dayStatusJson(status, "doses"))
       );

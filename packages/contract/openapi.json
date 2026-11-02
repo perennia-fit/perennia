@@ -8702,7 +8702,8 @@
               "pending",
               "logged",
               "partly_logged",
-              "not_logged"
+              "not_logged",
+              "skipped"
             ],
             "description": "One per Compound and date, summed across the Protocols read: every Protocol in effect, or with protocolId only that Protocol, whose planned doses alone are then matched against the Compound's Doses (so for a Compound also in another Protocol it can differ from the app's Day Status, which sums them all). pending is today with planned doses still unfilled."
           },

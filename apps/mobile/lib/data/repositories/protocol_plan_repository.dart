@@ -13,6 +13,9 @@ enum PlannedRowStatus {
   /// The slot is unfilled, and the day is in the past.
   notLogged,
 
+  /// A Skip marks the slot (D8): not taken, on purpose.
+  skipped,
+
   /// The day is after today: nothing to label.
   none,
 }
@@ -497,7 +500,7 @@ final class ProtocolPlanRepository {
     final isFuture = localDate.compareTo(today) > 0;
     final statuses = isFuture
         ? const <DayStatus>[]
-        : dayStatuses(days, _planDoses(day.doses), today);
+        : dayStatuses(days, _planDoses(day.doses), const <PlanSkip>[], today);
     return PlannedDay(
       localDate: localDate,
       today: today,
@@ -505,7 +508,7 @@ final class ProtocolPlanRepository {
       planDays: days,
       dayStatuses: statuses,
       rowStatuses: isFuture
-          ? dayStatuses(days, const <PlanDose>[], localDate)
+          ? dayStatuses(days, const <PlanDose>[], const <PlanSkip>[], localDate)
           : statuses,
       compounds: plan.compounds,
       protocols: plan.protocolOptions,
@@ -539,6 +542,7 @@ final class ProtocolPlanRepository {
     final todays = dayStatuses(
       days.where((day) => day.localDate == from),
       _planDoses(today.doses),
+      const <PlanSkip>[],
       from,
     );
     for (final status in todays) {
@@ -678,6 +682,7 @@ final class ProtocolPlanRepository {
         dayStatuses(
           planDays(plan.protocols, from, to),
           _planDoses(doses),
+          const <PlanSkip>[],
           today,
         ),
       ),
@@ -733,9 +738,12 @@ final class ProtocolPlanRepository {
             () => <DayStatusKind, int>{},
           );
           counts[status.status] = (counts[status.status] ?? 0) + 1;
+        // No Skip is stored yet, so no day reads `skipped`. Its count joins
+        // CompoundConsistencySummary with the Progress card (D8, file 76).
         case DayStatusKind.pending ||
               DayStatusKind.offCycle ||
-              DayStatusKind.notPlanned:
+              DayStatusKind.notPlanned ||
+              DayStatusKind.skipped:
           break;
       }
     }
@@ -793,7 +801,8 @@ final class ProtocolPlanRepository {
       to: to,
       today: today,
       planDays: days,
-      dayStatuses: dayStatuses(days, _planDoses(doses), today),
+      dayStatuses:
+          dayStatuses(days, _planDoses(doses), const <PlanSkip>[], today),
       doses: doses,
       compound: plan.compounds[compoundId],
       protocols: <String, ProtocolOptionRecord>{

@@ -208,7 +208,7 @@ function planReadStore() {
         toLocalDate: query.toLocalDate,
         today: query.today,
         detail: query.detail,
-        dayStatuses: dayStatuses(plan(query), doses, query.today).map(({ fills, ...summary }) =>
+        dayStatuses: dayStatuses(plan(query), doses, [], query.today).map(({ fills, ...summary }) =>
           query.detail === "doses"
             ? {
                 ...summary,
