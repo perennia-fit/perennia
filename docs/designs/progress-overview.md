@@ -1,7 +1,7 @@
 # Progress Overview
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved
+*   **Status:** Current
 *   **Date:** 2026-10-31
 
 --------------------------------------------------------------------------------
@@ -601,6 +601,13 @@ differs from the server readings list's sort key, which also considers
 `windowEndedAt`. In the app the inputs are mapped from the
 `MeasurementHistoryEntry` records that Body Tracker reads.
 
+`at` is compared at whole seconds. Drift stores the app's times as whole Unix
+seconds, while Postgres keeps the server's in microseconds, so the server
+truncates `at` to the second (toward zero, as Drift does) before calling the
+core. Two Readings in the same second then sort by id on both sides, and an
+Agent's `trendValue` matches the Body card. The cores themselves compare
+whole milliseconds, then id.
+
 `metricTrend(readings)` takes `{id, at, value}` points, sorts them by
 `(at, id)`, skips any whose value is null or not finite (a skipped point has
 no Trend point), and returns `{id, at, value, trend}` for each remaining
@@ -983,15 +990,33 @@ below it once, when its data arrives.
         (`MeasurementRepository.watchCuratedActive`) with at least one
         Reading in the period, in Body Tracker's order. Each row's Readings
         come from `watchHistoryEntries(measurementId: id)`.
+    *   Only measurements that are `enabled`, the ones Body Tracker's track
+        list shows: a measurement the user switched off there is off the
+        card too, even while its Readings keep arriving.
+    *   A Trend point whose value is not finite (finite Readings whose
+        arithmetic overflows) is dropped, and so is a change that is not
+        finite, as the server leaves such a `trendValue` off (D9).
     *   Each row has the name, the latest Trend value with unit, and the
         change over the period (D5), for example "↓ 1.6 kg". Both use one
         decimal, rounded half up, and the Reading's own unit label as Body
         Tracker shows it. Readings are not converted to the unit system
         (D5). A change that rounds to 0.0 reads "No change".
+        *   Rounding is applied to the magnitude, and the arrow follows the
+            sign: "↑" for a rise, "↓" for a fall, so −1.65 and 1.65 show the
+            same number. The value keeps its trailing ".0" ("80.0 kg"),
+            unlike Key exercises' loads.
+        *   The name takes at most two lines, then an ellipsis. The change
+            line is in the secondary text color, never red or green: a fall
+            is good for one measurement and bad for another.
     *   The Trend label carries the hint "Smoothed over about 10 days" as a
         line of secondary text under the card title.
     *   Each row has a 64 dp chart of the period's Readings, drawn as dots in
         the secondary text color under the Trend line in the accent color.
+        *   The height is the `bodyHeight` of DESIGN.md's
+            `progress-sparkline` token. `ProgressSparkline` draws its overlay
+            last, so the line sits over the dots, as DESIGN.md describes it.
+        *   Its semantics label is "{name}: {n} readings and their trend in
+            this period" ("1 reading and its trend" for one).
     *   Empty state: "Log a measurement to see its trend", action "Body
         Tracker".
 7.  **Protocols.** As D7.
@@ -1012,7 +1037,10 @@ below it once, when its data arrives.
 *   Nutrition's `_SparklinePainter` is not changed.
 *   The Trained days calendar and the This week row are plain widgets, not
     charts.
-*   All colors come from `context.colors` and `resolvedFocusColor`.
+*   All colors come from `context.colors` and `resolvedFocusColor`, except
+    the Body Trend line's accent: `AppColors` has no accent token, so it
+    uses Signal Cyan through `Theme.of(context).colorScheme.primary`, as
+    the app's other accent uses do.
 
 **Values.** Key exercises and New bests format values with one new
 function, `formatProgressValue(ProgressMeasureKind measure, double value,
@@ -1139,7 +1167,11 @@ callers are unchanged.
     attached after the `fields` projection whenever `includeTrend` is
     `"true"`.
 *   The computation lives in `createDrizzleAgentMetricStore`'s
-    `listMetricReadings`, which REST and MCP share.
+    `listMetricReadings`, which REST and MCP share. That method already
+    reads every Reading of the account and filters in memory, so the history
+    of the page's Metrics is taken from that same read, with no second
+    query. Any other value of `includeTrend` is a 400 from the request
+    validator.
 
 **Server store.** A new `AgentProgressReadStore` type in
 `apps/server/src/agent-progress-reads.ts`, built by
@@ -1255,7 +1287,7 @@ Repository-side types, which add display names:
 | :--- | :--- | :----- |
 | `WeeklyPlanFacts` | `routine_up_next_repository.dart` | `routineId`, `routineName`, `entries: WeeklyPlanEntry[]`; `toWeeklyPlan()` drops the name |
 | `CompoundConsistencySummary` | `protocol_plan_repository.dart` | `compoundId`, `compoundName`, `logged`, `partlyLogged`, `notLogged`, `paused` |
-| `ProgressBodyRow` | `progress_controller.dart` | `measurementId`, `name`, `unitLabel`, `readings: TrendPoint[]` (the period's), `latestTrend: double`, `change: double?` |
+| `ProgressBodyRow` | `progress_controller.dart` | `measurementId`, `name`, `unit: MeasurementUnit` (the card renders Body Tracker's label for it, since the controller has no localizations), `readings: TrendPoint[]` (the period's), `latestTrend: double`, `change: double?` |
 
 The Workout loader returns `ProgressWorkout` directly; there is no separate
 facts type.
@@ -1272,7 +1304,10 @@ the shape `m36-protocol-plan.json` uses:
 Each file's header is `{name, domain, schemaVersion: 1, schema, cases}`, as
 in `m36-protocol-plan.json`. `m37-metric-trend.json` adds a top-level
 `tolerance: 1e-9`. Its runners compare the `trend` fields within it and
-everything else exactly. `packages/golden-vectors/vectors/README.md` gains a
+everything else exactly. JSON has no non-finite numbers, so a `TrendInput`
+`value` in that file is a number, `null`, or one of the strings `"NaN"`,
+`"Infinity"` and `"-Infinity"`, which the runners decode to the IEEE value
+before calling the core. `packages/golden-vectors/vectors/README.md` gains a
 section for each new file.
 
 An example taken from CUJ 2, reduced to the Thursday plan:
@@ -2220,13 +2255,29 @@ source:
     *   `Stream<List<MeasurementHistoryEntry>>
         watchMeasurementEntries(String measurementId)`, delegating to
         `MeasurementRepository.watchHistoryEntries(measurementId: id)`.
+
+    `MeasurementRepository`'s history mapping leaves out a Reading whose
+    value cannot be read (no `scalarValue` and no numeric `valueJson.value`,
+    or an undecodable row) instead of throwing, so one malformed synced
+    Reading neither fails the Body card nor Body Tracker's history; the next
+    readable Reading becomes the predecessor. Such a Reading has no scalar
+    value, so D5 already leaves it out of the Trend. Body Tracker's track
+    list skips it the same way among the two latest rows it reads, so its
+    summary may then have no previous entry.
+
+    Likewise, `watchCuratedActive`, the history mapping and the track list
+    leave out a curated Metric whose `unit` or `goalType` this build does
+    not know (a newer client or an Agent can sync one), with its Readings,
+    instead of failing the stream.
 59. **`progress_controller.dart`** (modify). Add the `autoDispose`
     `progressBodyProvider`, emitting `List<ProgressBodyRow>` under a
     Timeline span named `progress.body`. For the curated measurements, it:
     *   watches a `StreamProvider.autoDispose.family` of each
         measurement's entries, keyed by measurement id;
     *   maps each entry to `TrendInput` (D5) and runs `metricTrend`;
-    *   keeps measurements with at least one Reading in the period;
+    *   keeps `enabled` measurements with at least one Reading in the
+        period (D8 card 6), filtering before it watches their entries;
+    *   drops Trend points, and a change, that are not finite (D8 card 6);
     *   computes `trendChange` with `start` and `end` built from the period's
         dates in the device zone;
     *   takes `latestTrend` from the last `TrendPoint` in the period.
@@ -2240,14 +2291,20 @@ source:
         *   `AgentMetricReadingListItemSchema` gains optional `trendValue`;
         *   `createDrizzleAgentMetricStore`'s `listMetricReadings` loads all
             live readings of each Metric in the page when `includeTrend` is
-            `"true"`, maps them to `TrendInput` (D5), runs `metricTrend`,
-            and attaches `trendValue` after the `fields` projection.
+            `"true"`, maps them to `TrendInput` (D5, with `at` truncated to
+            the second), runs `metricTrend`, and attaches `trendValue` after
+            the `fields` projection.
     *   `agent-mcp.ts` (modify): add `includeTrend` to the readings tool's
         input schema. The shared store does the rest.
     *   Regenerate the contract outputs.
 62. **`performance_budget_thresholds.dart` and
     `performance_budgets_test.dart`** (modify). Add `progressTrendBudget`
-    over the item 36 fixture's Readings, plus its README row.
+    over the item 36 fixture's Readings, plus its README row. The fixture's
+    Metric becomes a curated Body Tracker measurement (pinned, with a goal
+    type), so the test reads the Readings through `watchHistoryEntries`, as
+    the card does. Only `metricTrend` is timed, the fastest of three runs, as
+    the Food History budget does: the first run can pay for compiling the
+    core.
 63. **`CONTEXT.md`** (modify). Add Trend.
 64. **Tests.**
     *   `apps/mobile/test/features/progress/body_card_test.dart` (create):
@@ -2263,8 +2320,12 @@ source:
         *   `includeTrend=false` (no `trendValue`);
         *   a reading whose value is only in `valueJson.value` (carries
             `trendValue`);
-        *   an archived reading with `includeArchived` (no `trendValue`).
-65. **This spec** (modify). Status Current once PR 4 merges.
+        *   an archived reading with `includeArchived` (no `trendValue`);
+        *   paging with `limit=1` and the returned cursor (each page still
+            carries the Trend over the whole history);
+        *   two readings in the same second, ordered by id (D5).
+65. **This spec** (modify). Status Current, set in PR 4 itself, with the
+    SITEMAP entry, since PR 4 completes the spec.
 
 ## Verification Plan
 

@@ -126,6 +126,8 @@ void main() {
     ..writeln(
         '  static const double progressSparklineHeight = ${_num(progressSparkline['height'])};')
     ..writeln(
+        '  static const double progressSparklineBodyHeight = ${_num(progressSparkline['bodyHeight'])};')
+    ..writeln(
         '  static const double progressSparklinePointRadius = ${_num(progressSparkline['pointRadius'])};')
     ..writeln(
         '  static const double progressSparklineRingWidth = ${_num(progressSparkline['ringWidth'])};')

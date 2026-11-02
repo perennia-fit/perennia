@@ -180,7 +180,7 @@ class ProgressHistoryFixture {
 ///     [progressHistoryExerciseCount] exercises in turn, every twentieth Set
 ///     left incomplete (95% complete);
 /// *   [progressHistoryReadingCount] Readings of one body-weight Metric over
-///     the same years.
+///     the same years, curated in Body Tracker so the Body card reads it.
 Future<ProgressHistoryFixture> buildProgressHistoryFixture() async {
   final database = AppDatabase.inMemory();
   final repositories = TrainingRepositories(database);
@@ -354,6 +354,8 @@ Future<ProgressHistoryFixture> buildProgressHistoryFixture() async {
           unit: MeasurementUnit.kilogram.name,
           valueShape: MetricValueShape.scalar.name,
           metricGroup: MetricGroup.bodyComposition.name,
+          goalType: Value<String?>(MeasurementGoalType.decrease.name),
+          pinned: const Value<bool>(true),
           sortOrder: 0,
           updatedAt: updatedAt,
         ),

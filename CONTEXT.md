@@ -257,6 +257,12 @@ Metric — it is authored data, like a Set; nutrition totals such as energy or
 protein consumed are derived analytics, never Metric Readings. A logged Dose (the
 Protocols domain) is likewise authored, not a Metric; a protocol's Effect is derived.
 
+## Trend
+The smoothed series over a Metric's scalar Readings: an exponentially weighted
+average whose weight grows with the time between Readings, so a single day's swing
+moves it little while a lasting change shows within about two weeks. Derived, never
+stored, and always drawn over the raw Readings.
+
 ## Monitoring Data
 The subset of Metrics captured automatically from an external tracker — heart rate,
 calories, GPS track, cadence, power, and the like, often as dense time series.

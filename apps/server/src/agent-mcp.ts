@@ -1862,7 +1862,7 @@ export function createAgentMcpServer({
     {
       title: "List Agent Metric Readings",
       description:
-        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients.",
+        "List bounded normalized Metric Readings through the same REST contract used by code-mode clients. Set query.includeTrend to \"true\" for each live scalar Reading's trendValue, the Metric's Trend over its whole history.",
       inputSchema: AgentMcpMetricReadingsInputSchema,
       outputSchema: AgentMetricReadingsResponseSchema
     },

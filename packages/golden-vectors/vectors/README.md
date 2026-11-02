@@ -106,3 +106,27 @@ kilometres, seconds, and seconds per kilometre for pace with unit `second`),
 and the `m4-analytics-pr-e1rm-volume` vectors stay the engine's own. Values are
 compared exactly: both languages compute them in IEEE doubles with the same
 operations.
+
+## Trend
+
+`m37-metric-trend.json` (domain `metric-trend`) pins the Trend core in both
+languages: `metricTrend`, a time-weighted moving average of a Metric's
+Readings in which one Reading a day moves the Trend 10% of the way towards it.
+The app runs it in `apps/mobile/test/domain/metric_trend_golden_test.dart`
+against `apps/mobile/lib/domain/metrics/metric_trend.dart`; the server runs it
+in `apps/server/test/metric-trend.golden.test.mjs` against
+`apps/server/src/analytics/metric-trend.ts`. The behaviour is specified in
+[`docs/designs/progress-overview.md`](../../../docs/designs/progress-overview.md)
+(D5).
+
+Each case names its `function`, gives that function's arguments by parameter
+name in `input`, and its full return value in `expected`. A Reading's `value`
+is a number, `null`, or one of the strings `"NaN"`, `"Infinity"` and
+`"-Infinity"`, which the runners decode to the IEEE value, because JSON cannot
+spell a non-finite number. The file is governed by the adjacent
+`m37-metric-trend.schema.json`; its `schemaVersion`, the schema's constant and
+both runners' constants move together.
+
+Unlike the other M37 files, this one has a top-level `tolerance` (`1e-9`). The
+runners compare every `trend` field within it, because `pow` can differ in the
+last bit between Dart and JavaScript, and compare everything else exactly.

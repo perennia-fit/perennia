@@ -22,6 +22,7 @@ import {
   owlMetricSchemaForImportKey,
   type PerenniaMetricSchema
 } from "./metric-catalog.js";
+import { metricTrend, type TrendInput } from "./analytics/metric-trend.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import { METRICS_SYNC_ENTITY, METRIC_READINGS_SYNC_ENTITY } from "./sync.js";
 
@@ -168,7 +169,11 @@ const AgentMetricReadingListItemSchema = z
     comment: z.string().nullable().optional(),
     warnings: z.array(z.string().min(1)).optional(),
     updatedAt: ISO8601StringSchema.optional(),
-    deletedAt: ISO8601StringSchema.nullable().optional()
+    deletedAt: ISO8601StringSchema.nullable().optional(),
+    trendValue: z.number().optional().openapi({
+      description:
+        "The Metric's Trend at this Reading: a time-weighted moving average over all of the Metric's live Readings with a scalar value, not only this page. Present only when includeTrend is true, on live Readings with a scalar value. Not one of the selectable fields; it is added after the fields projection. Readings are not converted between units."
+    })
   })
   .openapi("AgentMetricReadingListItem");
 
@@ -266,6 +271,16 @@ export const AgentMetricReadingsQuerySchema = z
       param: { name: "includeArchived", in: "query" },
       description: "When true, archived Readings are included."
     }),
+    // Not z.coerce.boolean(): it reads "false" as true (D9 in
+    // docs/designs/progress-overview.md).
+    includeTrend: z
+      .enum(["true", "false"])
+      .default("false")
+      .openapi({
+        param: { name: "includeTrend", in: "query" },
+        description:
+          "When true, each returned live Reading with a scalar value carries trendValue, the Metric's Trend computed over all of that Metric's live Readings."
+      }),
     limit: z.coerce
       .number()
       .int()
@@ -849,10 +864,18 @@ export function createDrizzleAgentMetricStore(db: ServerDatabase): AgentMetricSt
       const start = cursorOffset(filtered, query.cursor);
       const page = filtered.slice(start, start + query.limit);
 
+      const trendByReadingId =
+        query.includeTrend === "true" ? readingTrendsForPage(rows, page) : null;
+
       return AgentMetricReadingsResponseSchema.parse({
-        readings: page.map((row) =>
-          projectMetricReadingRow(serializeMetricReadingRow(row, []), fields)
-        ),
+        readings: page.map((row) => {
+          const projected = projectMetricReadingRow(
+            serializeMetricReadingRow(row, []),
+            fields
+          );
+          const trendValue = trendByReadingId?.get(row.id);
+          return trendValue === undefined ? projected : { ...projected, trendValue };
+        }),
         fields,
         limit: query.limit,
         nextCursor:
@@ -1976,6 +1999,72 @@ function cursorOffset<T extends { id: string }>(
 
   const index = rows.findIndex((row) => row.id === cursor);
   return index < 0 ? 0 : index + 1;
+}
+
+/**
+ * The Trend (D5) at each live page Reading that has a scalar value, keyed by
+ * Reading id. Each Metric on the page gets its Trend over all of its live
+ * Readings, not only the page. `rows` is the list's own read of every Reading
+ * the account has, before the query's filters, so it already holds that
+ * history and no second query is made; if those filters ever move into SQL,
+ * this needs its own read, bounded to the page's Metric ids.
+ */
+function readingTrendsForPage(
+  rows: readonly MetricReadingRow[],
+  page: readonly MetricReadingRow[]
+) {
+  const pageMetricIds = new Set(
+    page.filter((row) => row.deletedAt === null).map((row) => row.metricId)
+  );
+  const inputsByMetricId = new Map<string, TrendInput[]>();
+  for (const row of rows) {
+    if (row.deletedAt !== null || !pageMetricIds.has(row.metricId)) {
+      continue;
+    }
+    const inputs = inputsByMetricId.get(row.metricId) ?? [];
+    inputs.push({
+      id: row.id,
+      at: wholeSecondIso(row.atTime ?? row.windowStartedAt ?? row.updatedAt),
+      value: readingScalarValue(row)
+    });
+    inputsByMetricId.set(row.metricId, inputs);
+  }
+
+  const trendByReadingId = new Map<string, number>();
+  for (const inputs of inputsByMetricId.values()) {
+    for (const point of metricTrend(inputs)) {
+      // Finite inputs keep the Trend finite unless the sum overflows; an
+      // overflowed value would serialize as null, so it is left off.
+      if (Number.isFinite(point.trend)) {
+        trendByReadingId.set(point.id, point.trend);
+      }
+    }
+  }
+  return trendByReadingId;
+}
+
+/**
+ * [at] truncated to whole seconds, as ISO-8601. The app stores Reading times
+ * as whole Unix seconds, so the Trend is computed at that precision here too:
+ * two Readings in the same second are then ordered by id on both sides, and
+ * `trendValue` matches the Body card (D5).
+ */
+function wholeSecondIso(at: Date) {
+  return new Date(Math.trunc(at.getTime() / 1000) * 1000).toISOString();
+}
+
+/**
+ * A Reading's scalar value, the rule the app's `_metricReadingScalarValue`
+ * applies: `scalarValue`, or else a numeric `value` key in `valueJson`. Null
+ * when it has neither, so a structured, series or malformed Reading is skipped
+ * by the Trend rather than failing the read.
+ */
+function readingScalarValue(row: MetricReadingRow) {
+  if (row.scalarValue !== null) {
+    return row.scalarValue;
+  }
+  const value = row.valueJson?.value;
+  return typeof value === "number" ? value : null;
 }
 
 function readingAnchor(row: MetricReadingRow) {
