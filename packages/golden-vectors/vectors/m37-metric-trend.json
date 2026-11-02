@@ -1,0 +1,124 @@
+{
+  "name": "m37-metric-trend",
+  "domain": "metric-trend",
+  "schemaVersion": 1,
+  "schema": "m37-metric-trend.schema.json",
+  "tolerance": 1e-9,
+  "cases": [
+    {
+      "name": "one-reading",
+      "function": "metric_trend",
+      "note": "A single Reading is its own Trend.",
+      "input": {"readings": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.4}
+      ]},
+      "expected": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.4, "trend": 80.4}
+      ]
+    },
+    {
+      "name": "daily-readings",
+      "function": "metric_trend",
+      "note": "CUJ 11's noisy scale: one Reading a day moves the Trend 10% of the way towards it (a = 1 - 0.9).",
+      "input": {"readings": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 81.0},
+        {"id": "r2", "at": "2026-10-02T07:00:00.000Z", "value": 80.4},
+        {"id": "r3", "at": "2026-10-03T07:00:00.000Z", "value": 81.9},
+        {"id": "r4", "at": "2026-10-04T07:00:00.000Z", "value": 80.6},
+        {"id": "r5", "at": "2026-10-05T07:00:00.000Z", "value": 81.2}
+      ]},
+      "expected": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 81.0, "trend": 81.0},
+        {"id": "r2", "at": "2026-10-02T07:00:00.000Z", "value": 80.4, "trend": 80.94},
+        {"id": "r3", "at": "2026-10-03T07:00:00.000Z", "value": 81.9, "trend": 81.036},
+        {"id": "r4", "at": "2026-10-04T07:00:00.000Z", "value": 80.6, "trend": 80.9924},
+        {"id": "r5", "at": "2026-10-05T07:00:00.000Z", "value": 81.2, "trend": 81.01316}
+      ]
+    },
+    {
+      "name": "five-day-gap",
+      "function": "metric_trend",
+      "note": "Five days apart, a = 1 - 0.9^5: a Reading after a gap moves the Trend further than a daily one.",
+      "input": {"readings": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0},
+        {"id": "r2", "at": "2026-10-06T07:00:00.000Z", "value": 82.0}
+      ]},
+      "expected": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0, "trend": 80.0},
+        {"id": "r2", "at": "2026-10-06T07:00:00.000Z", "value": 82.0, "trend": 80.81902}
+      ]
+    },
+    {
+      "name": "ten-minutes-apart",
+      "function": "metric_trend",
+      "note": "Days are fractional: a second Reading ten minutes later barely moves the Trend.",
+      "input": {"readings": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0},
+        {"id": "r2", "at": "2026-10-01T07:10:00.000Z", "value": 82.0}
+      ]},
+      "expected": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0, "trend": 80.0},
+        {"id": "r2", "at": "2026-10-01T07:10:00.000Z", "value": 82.0, "trend": 80.00146280528443}
+      ]
+    },
+    {
+      "name": "non-finite-skipped",
+      "function": "metric_trend",
+      "note": "Non-finite values have no Trend point, and the gap is measured from the previous kept Reading (three days).",
+      "input": {"readings": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0},
+        {"id": "r2", "at": "2026-10-02T07:00:00.000Z", "value": "NaN"},
+        {"id": "r3", "at": "2026-10-03T07:00:00.000Z", "value": "Infinity"},
+        {"id": "r4", "at": "2026-10-04T07:00:00.000Z", "value": 81.0}
+      ]},
+      "expected": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0, "trend": 80.0},
+        {"id": "r4", "at": "2026-10-04T07:00:00.000Z", "value": 81.0, "trend": 80.271}
+      ]
+    },
+    {
+      "name": "equal-timestamps-by-id",
+      "function": "metric_trend",
+      "note": "Readings at the same instant are ordered by id; zero days leaves the Trend where it was.",
+      "input": {"readings": [
+        {"id": "r-b", "at": "2026-10-01T07:00:00.000Z", "value": 81.0},
+        {"id": "r-a", "at": "2026-10-01T07:00:00.000Z", "value": 80.0},
+        {"id": "r-c", "at": "2026-10-02T07:00:00.000Z", "value": 82.0}
+      ]},
+      "expected": [
+        {"id": "r-a", "at": "2026-10-01T07:00:00.000Z", "value": 80.0, "trend": 80.0},
+        {"id": "r-b", "at": "2026-10-01T07:00:00.000Z", "value": 81.0, "trend": 80.0},
+        {"id": "r-c", "at": "2026-10-02T07:00:00.000Z", "value": 82.0, "trend": 80.2}
+      ]
+    },
+    {
+      "name": "unsorted-input",
+      "function": "metric_trend",
+      "note": "Input order does not matter: Readings are sorted by (at, id) first.",
+      "input": {"readings": [
+        {"id": "r3", "at": "2026-10-03T07:00:00.000Z", "value": 79.5},
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0},
+        {"id": "r2", "at": "2026-10-02T07:00:00.000Z", "value": 81.0}
+      ]},
+      "expected": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0, "trend": 80.0},
+        {"id": "r2", "at": "2026-10-02T07:00:00.000Z", "value": 81.0, "trend": 80.1},
+        {"id": "r3", "at": "2026-10-03T07:00:00.000Z", "value": 79.5, "trend": 80.03999999999999}
+      ]
+    },
+    {
+      "name": "null-value",
+      "function": "metric_trend",
+      "note": "A Reading with no scalar value is skipped; the next one is measured from the previous kept Reading (two days).",
+      "input": {"readings": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0},
+        {"id": "r2", "at": "2026-10-02T07:00:00.000Z", "value": null},
+        {"id": "r3", "at": "2026-10-03T07:00:00.000Z", "value": 81.0}
+      ]},
+      "expected": [
+        {"id": "r1", "at": "2026-10-01T07:00:00.000Z", "value": 80.0, "trend": 80.0},
+        {"id": "r3", "at": "2026-10-03T07:00:00.000Z", "value": 81.0, "trend": 80.19}
+      ]
+    }
+  ]
+}

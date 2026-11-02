@@ -1949,5 +1949,45 @@
         "type": "int"
       }
     }
+  },
+  "progressBodyTitle": "Body",
+  "progressBodyTrackerAction": "Body Tracker",
+  "progressBodyEmpty": "Log a measurement to see its trend",
+  "progressBodyTrendHint": "Smoothed over about 10 days",
+  "@progressBodyTrendHint": {
+    "description": "Under the Body card's title: how the Trend shown beside each measurement is smoothed."
+  },
+  "progressBodyChangeUp": "↑ {change}",
+  "@progressBodyChangeUp": {
+    "description": "The Trend rose over the period by {change}, a value with its unit.",
+    "placeholders": {
+      "change": {
+        "type": "String"
+      }
+    }
+  },
+  "progressBodyChangeDown": "↓ {change}",
+  "@progressBodyChangeDown": {
+    "description": "The Trend fell over the period by {change}, a value with its unit.",
+    "placeholders": {
+      "change": {
+        "type": "String"
+      }
+    }
+  },
+  "progressBodyNoChange": "No change",
+  "@progressBodyNoChange": {
+    "description": "The Trend's change over the period rounds to 0.0."
+  },
+  "progressBodyChartSemantics": "{count, plural, =1{{name}: 1 reading and its trend in this period} other{{name}: {count} readings and their trend in this period}}",
+  "@progressBodyChartSemantics": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }

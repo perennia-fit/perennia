@@ -919,6 +919,7 @@ export type AgentMetricReadingListItem = {
   "warnings"?: Array<string>;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
+  "trendValue"?: number;
 };
 
 export type AgentMetricReadingTimeAnchor = {
@@ -2349,6 +2350,7 @@ export type ListAgentMetricReadingsInput = {
   "provenance"?: string;
   "source"?: string;
   "includeArchived"?: boolean | null;
+  "includeTrend"?: "true" | "false";
   "limit"?: number;
   "cursor"?: string;
   "fields"?: string;
@@ -2884,7 +2886,7 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/metrics/readings",
       expectedStatus: 200,
-      query: { "metricId": input.metricId, "metricKey": input.metricKey, "from": input.from, "to": input.to, "provenance": input.provenance, "source": input.source, "includeArchived": input.includeArchived, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      query: { "metricId": input.metricId, "metricKey": input.metricKey, "from": input.from, "to": input.to, "provenance": input.provenance, "source": input.source, "includeArchived": input.includeArchived, "includeTrend": input.includeTrend, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
       signal: options.signal
     });
   }

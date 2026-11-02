@@ -16,7 +16,8 @@ final class ProgressSparklinePoint {
 /// A small chart of values over time (D8 Charts), drawn with fl_chart's
 /// `LineChart`: [points] as dots in [pointColor], the ones at
 /// [markedIndexes] as hollow rings instead, and [overlay], when given, as a
-/// line in [overlayColor] under them.
+/// line in [overlayColor] over them, so the Body card's Trend reads above its
+/// Readings (D8).
 ///
 /// Points sit on the x axis by time, not by index, so uneven gaps between
 /// sessions show as gaps. The y range is the drawn values' minimum and
@@ -120,7 +121,10 @@ class ProgressSparkline extends StatelessWidget {
         gridData: const FlGridData(show: false),
         lineTouchData: const LineTouchData(enabled: false),
         titlesData: const FlTitlesData(show: false),
+        // Drawn in order, so the overlay line is last, over the dots.
         lineBarsData: <LineChartBarData>[
+          if (plain.isNotEmpty) dots(plain, ring: false),
+          if (rings.isNotEmpty) dots(rings, ring: true),
           if (overlay.isNotEmpty)
             LineChartBarData(
               spots: overlay.map(spot).toList(growable: false),
@@ -129,8 +133,6 @@ class ProgressSparkline extends StatelessWidget {
               isCurved: false,
               dotData: const FlDotData(show: false),
             ),
-          if (plain.isNotEmpty) dots(plain, ring: false),
-          if (rings.isNotEmpty) dots(rings, ring: true),
         ],
       ),
       duration: Duration.zero,

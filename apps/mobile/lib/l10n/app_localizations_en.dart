@@ -3331,4 +3331,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String progressValueSeconds(int seconds) {
     return '$seconds s';
   }
+
+  @override
+  String get progressBodyTitle => 'Body';
+
+  @override
+  String get progressBodyTrackerAction => 'Body Tracker';
+
+  @override
+  String get progressBodyEmpty => 'Log a measurement to see its trend';
+
+  @override
+  String get progressBodyTrendHint => 'Smoothed over about 10 days';
+
+  @override
+  String progressBodyChangeUp(String change) {
+    return '↑ $change';
+  }
+
+  @override
+  String progressBodyChangeDown(String change) {
+    return '↓ $change';
+  }
+
+  @override
+  String get progressBodyNoChange => 'No change';
+
+  @override
+  String progressBodyChartSemantics(int count, String name) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$name: $count readings and their trend in this period',
+      one: '$name: 1 reading and its trend in this period',
+    );
+    return '$_temp0';
+  }
 }

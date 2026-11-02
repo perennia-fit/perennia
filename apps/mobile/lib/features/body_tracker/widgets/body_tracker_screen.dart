@@ -158,7 +158,10 @@ class _MeasurementTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final summary = item.summary;
     final latestEntry = summary.latestEntry;
-    final unitLabel = _unitLabel(context.l10n, summary.measurement.unit);
+    final unitLabel = measurementUnitLabel(
+      context.l10n,
+      summary.measurement.unit,
+    );
     final latestValue = latestEntry == null
         ? null
         : context.l10n.bodyTrackerValueWithUnit(
@@ -371,7 +374,7 @@ class _MeasurementEntryScreenState
               controller: _valueController,
               decoration: InputDecoration(
                 labelText: l10n.bodyTrackerValueLabel,
-                suffixText: _unitLabel(l10n, widget.measurement.unit),
+                suffixText: measurementUnitLabel(l10n, widget.measurement.unit),
                 errorText: _valueError,
               ),
               keyboardType: const TextInputType.numberWithOptions(
@@ -513,7 +516,7 @@ class _MeasurementEntryScreenState
       MeasurementValidationWarningCode.suspiciouslyHigh =>
         l10n.bodyTrackerSuspiciousValueMessage(
           _valueController.text.trim(),
-          _unitLabel(l10n, widget.measurement.unit),
+          measurementUnitLabel(l10n, widget.measurement.unit),
         ),
     };
 
@@ -684,7 +687,7 @@ class _MeasurementManagementTile extends ConsumerWidget {
     final l10n = context.l10n;
     final targetValue = measurement.targetValue;
     final subtitleParts = <String>[
-      _unitLabel(l10n, measurement.unit),
+      measurementUnitLabel(l10n, measurement.unit),
       _goalLabel(l10n, measurement.goalType),
       if (targetValue != null)
         '${l10n.bodyTrackerMeasurementTargetLabel}: '
@@ -833,7 +836,7 @@ class _MeasurementFormScreenState
                 for (final unit in MeasurementUnit.values)
                   DropdownMenuItem<MeasurementUnit>(
                     value: unit,
-                    child: Text(_unitLabel(l10n, unit)),
+                    child: Text(measurementUnitLabel(l10n, unit)),
                   ),
               ],
               onChanged: (unit) {
@@ -874,7 +877,7 @@ class _MeasurementFormScreenState
                 controller: _targetValueController,
                 decoration: InputDecoration(
                   labelText: l10n.bodyTrackerMeasurementTargetLabel,
-                  suffixText: _unitLabel(l10n, _unit),
+                  suffixText: measurementUnitLabel(l10n, _unit),
                   errorText: _targetValueError,
                 ),
                 keyboardType: const TextInputType.numberWithOptions(
@@ -1000,7 +1003,7 @@ class _MeasurementProgressScreenState
     final l10n = context.l10n;
     final selectedPoint = _selectedPoint;
     final hasPoints = graph.renderPoints.isNotEmpty;
-    final unitLabel = _unitLabel(l10n, graph.measurement.unit);
+    final unitLabel = measurementUnitLabel(l10n, graph.measurement.unit);
     final targetValue = graph.targetValue;
     final selectedSourceLabels = selectedPoint == null
         ? const <String>[]
@@ -1480,7 +1483,7 @@ class _MeasurementHistoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final unitLabel = _unitLabel(l10n, item.measurement.unit);
+    final unitLabel = measurementUnitLabel(l10n, item.measurement.unit);
     final value = l10n.bodyTrackerValueWithUnit(
       item.entry.valueEntered,
       unitLabel,
@@ -1578,7 +1581,9 @@ String _metricReadingProvenanceLabel(
   };
 }
 
-String _unitLabel(AppLocalizations l10n, MeasurementUnit unit) {
+/// [unit]'s label as Body Tracker shows it; Progress Overview's Body card
+/// labels its values the same way.
+String measurementUnitLabel(AppLocalizations l10n, MeasurementUnit unit) {
   return switch (unit) {
     MeasurementUnit.kilogram => l10n.bodyTrackerUnitKilogram,
     MeasurementUnit.pound => l10n.bodyTrackerUnitPound,

@@ -111,6 +111,7 @@ components:
     fillOpacity: 0.7
   progress-sparkline:
     height: 40px
+    bodyHeight: 64px
     pointRadius: 3px
     ringWidth: 1.5px
     lineWidth: 2px

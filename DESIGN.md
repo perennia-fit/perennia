@@ -108,6 +108,7 @@ components:
     fillOpacity: 0.7
   progress-sparkline:
     height: 40px
+    bodyHeight: 64px
     pointRadius: 3px
     ringWidth: 1.5px
     lineWidth: 2px
@@ -266,7 +267,10 @@ with `md` corners, never FABs.
   points placed by time as 3px-radius dots, a New Best as a hollow ring (1.5px
   stroke, surface fill), an optional 2px line over them; the y range is the drawn
   values with 10% padding, never zero-based. Key exercises tiles draw it 40px tall
-  in the primary text color.
+  in the primary text color. Body rows draw it 64px tall (`bodyHeight`): the
+  Readings as dots in the secondary text color, the Trend as the line in Signal
+  Cyan. The change beside it is an arrow and a number in the secondary text color,
+  never red or green.
 - **Key exercises tile:** two per row, each a 48px-minimum tap target: the exercise
   name (two lines, then an ellipsis), the measure label, the sparkline, "Best" and
   one comparison line in the secondary text color. A New Best ring is named in the
