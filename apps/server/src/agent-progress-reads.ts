@@ -26,6 +26,7 @@ import {
 import {
   agentAnalyticsProfile,
   AgentProgressMeasureSchema,
+  integerValue,
   loggedSetValues,
   TrainingUnitSchema
 } from "./agent-read-surface.js";
@@ -533,10 +534,9 @@ async function loadPerformedWorkoutSets(
       };
       workouts.set(row.workoutId, workout);
     }
-    const position = row.payload.position;
     workout.sets.push({
       id: row.id,
-      position: typeof position === "number" && Number.isInteger(position) && position >= 0 ? position : 0,
+      position: integerValue(row.payload.position) ?? 0,
       // The query reads Performed Sets only.
       isCompleted: true,
       values: loggedSetValues(row.payload)

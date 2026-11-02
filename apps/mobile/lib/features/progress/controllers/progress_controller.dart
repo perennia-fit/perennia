@@ -109,6 +109,10 @@ final class ProgressRange {
   final TrainingDayDate from;
   final TrainingDayDate to;
 
+  /// Whether [date] is in [from]..[to], both included.
+  bool contains(TrainingDayDate date) =>
+      date.compareTo(from) >= 0 && date.compareTo(to) <= 0;
+
   // Value equality: a settings change that leaves the dates alone rebuilds
   // this range without notifying the cards that watch it.
   @override
@@ -561,9 +565,7 @@ final progressKeyExercisesProvider =
                 measure: one.measure,
                 points: <ProgressPoint>[
                   for (final point in one.points)
-                    if (point.localDate.compareTo(range.from) >= 0 &&
-                        point.localDate.compareTo(range.to) <= 0)
-                      point,
+                    if (range.contains(point.localDate)) point,
                 ],
                 periodBest: periodBest(one, range.from, range.to),
               ),

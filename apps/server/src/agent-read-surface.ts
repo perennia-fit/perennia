@@ -2722,7 +2722,8 @@ function dateValue(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function integerValue(value: unknown): number | null {
+/** A non-negative integer payload value, or null. */
+export function integerValue(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value >= 0
     ? value
     : null;

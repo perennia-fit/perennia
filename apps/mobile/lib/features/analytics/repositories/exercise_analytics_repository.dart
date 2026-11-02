@@ -129,15 +129,7 @@ class ExerciseAnalyticsRepository {
     return watchProgressHistory(exerciseIds: ids).map(
       (history) => List<ProgressSeries>.unmodifiable(<ProgressSeries>[
         for (final id in ids)
-          if (history.profiles[id] case final profile?)
-            if (progressSeries(
-              exerciseId: id,
-              profile: profile,
-              workouts: history.workoutsByExercise[id] ??
-                  const <ProgressWorkoutSets>[],
-            )
-                case final series?)
-              series,
+          if (history.seriesOf(id) case final series?) series,
       ]),
     );
   }
@@ -357,6 +349,21 @@ final class ProgressHistory {
   /// Each exercise's Performed Sets by Workout; an exercise with none is
   /// absent.
   final Map<String, List<ProgressWorkoutSets>> workoutsByExercise;
+
+  /// [exerciseId]'s `progressSeries`, or null when it is not an active
+  /// exercise here or its Record Profile has no series.
+  ProgressSeries? seriesOf(String exerciseId) {
+    final profile = profiles[exerciseId];
+    if (profile == null) {
+      return null;
+    }
+    return progressSeries(
+      exerciseId: exerciseId,
+      profile: profile,
+      workouts: workoutsByExercise[exerciseId] ??
+          const <ProgressWorkoutSets>[],
+    );
+  }
 }
 
 /// `progressSeries` for every exercise of [input]'s history plus
@@ -369,16 +376,8 @@ List<NewBest> newBestsInHistory(
   final history = input.history;
   return newBestsBetween(
     <ProgressSeries>[
-      for (final MapEntry(key: exerciseId, value: profile)
-          in history.profiles.entries)
-        if (progressSeries(
-          exerciseId: exerciseId,
-          profile: profile,
-          workouts: history.workoutsByExercise[exerciseId] ??
-              const <ProgressWorkoutSets>[],
-        )
-            case final series?)
-          series,
+      for (final exerciseId in history.profiles.keys)
+        if (history.seriesOf(exerciseId) case final series?) series,
     ],
     input.from,
     input.to,
