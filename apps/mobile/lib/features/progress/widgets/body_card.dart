@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../data/repositories/training_repositories.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../body_tracker/widgets/body_tracker_screen.dart';
@@ -84,7 +83,7 @@ class _Row extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final colors = context.colors;
-    final unit = _unitLabel(l10n, row.unit);
+    final unit = measurementUnitLabel(l10n, row.unit);
     final change = row.change;
     const numerals = [FontFeature.tabularFigures()];
     return Column(
@@ -169,14 +168,11 @@ class _Row extends StatelessWidget {
     double change,
     String unit,
   ) {
-    final tenths = (change.abs() * 10).round();
-    if (tenths == 0) {
+    final magnitude = _oneDecimal(change.abs());
+    if (magnitude == '0.0') {
       return l10n.progressBodyNoChange;
     }
-    final value = l10n.bodyTrackerValueWithUnit(
-      (tenths / 10).toStringAsFixed(1),
-      unit,
-    );
+    final value = l10n.bodyTrackerValueWithUnit(magnitude, unit);
     return change > 0
         ? l10n.progressBodyChangeUp(value)
         : l10n.progressBodyChangeDown(value);
@@ -189,15 +185,4 @@ String _oneDecimal(double value) {
   final tenths = (value.abs() * 10).round();
   final text = (tenths / 10).toStringAsFixed(1);
   return value < 0 && tenths != 0 ? '-$text' : text;
-}
-
-/// [unit]'s label as Body Tracker shows it.
-String _unitLabel(AppLocalizations l10n, MeasurementUnit unit) {
-  return switch (unit) {
-    MeasurementUnit.kilogram => l10n.bodyTrackerUnitKilogram,
-    MeasurementUnit.pound => l10n.bodyTrackerUnitPound,
-    MeasurementUnit.centimeter => l10n.bodyTrackerUnitCentimeter,
-    MeasurementUnit.inch => l10n.bodyTrackerUnitInch,
-    MeasurementUnit.percent => l10n.bodyTrackerUnitPercent,
-  };
 }
