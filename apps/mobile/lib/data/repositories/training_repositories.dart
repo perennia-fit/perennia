@@ -9401,14 +9401,25 @@ class RestTimerRepository {
     });
   }
 
-  Future<String> startForSet(
+  /// Starts the rest after [set], for its planned rest or [defaultDuration].
+  ///
+  /// A planned rest of zero means the plan wants no rest after this Set (the
+  /// first member of a superset, say), so no timer starts and this returns
+  /// null; a timer already running for the Workout is left as it is. The
+  /// Template editor accepts a zero rest, so this case must not reach
+  /// [start], which rejects it.
+  Future<String?> startForSet(
     LoggedSetRecord set, {
     Duration defaultDuration = RestTimerRepository.defaultDuration,
     double alertVolume = defaultAlertVolume,
     String actor = 'app',
     String? batchId,
     DateTime? now,
-  }) {
+  }) async {
+    final plannedRestAfter = set.plannedRestAfter;
+    if (plannedRestAfter != null && plannedRestAfter <= Duration.zero) {
+      return null;
+    }
     return start(
       RestTimerDraft(
         workoutId: set.workoutId,
@@ -10072,6 +10083,12 @@ class LoggedSetRepository {
     return rows.map(_loggedSetFromRow).toList(growable: false);
   }
 
+  /// The last Performed Set of [exerciseId] before [beforeWorkoutId], for
+  /// the Track prefill.
+  ///
+  /// Only completed Sets count: a placeholder a Workout Template left
+  /// incomplete in an abandoned Workout was never performed, and must not
+  /// become the prefill (the same rule copy-previous Prescriptions follow).
   Future<LoggedSetRecord?> findLatestPriorForExercise({
     required String exerciseId,
     required String beforeWorkoutId,
@@ -10102,6 +10119,7 @@ class LoggedSetRepository {
           ..where(
             (row) =>
                 row.deletedAt.isNull() &
+                row.isCompleted.equals(true) &
                 row.exerciseId.equals(exerciseId) &
                 (excludeWorkoutId == null
                     ? const Constant(true)
