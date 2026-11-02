@@ -44,3 +44,8 @@ const progressHistoryFocusCount = 4;
 const progressHistoryReadingCount = 2000;
 const progressTrainingRangeDays = 366;
 const progressTrainingBudget = Duration(milliseconds: 50);
+
+/// `progressSeries` for every exercise of the fixture over its whole history
+/// plus `newBestsBetween` over the 1-year period: the work
+/// `ExerciseAnalyticsRepository.watchNewBests` runs in a background isolate.
+const progressNewBestsBudget = Duration(milliseconds: 1000);

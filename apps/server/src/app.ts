@@ -174,10 +174,12 @@ import {
   type AgentPlanReadStore
 } from "./agent-plan-reads.js";
 import {
+  agentNewBestsRoute,
   agentTrainingDaysRoute,
   AgentProgressReadInvalidRangeResponseSchema,
   AgentProgressReadUnavailableResponseSchema,
   checkAgentTrainingDaysQuery,
+  readAgentExerciseProgressSeries,
   type AgentProgressReadStore
 } from "./agent-progress-reads.js";
 import {
@@ -3816,19 +3818,26 @@ export function createApp(options: CreateAppOptions = {}) {
       );
     }
 
-    const sets = await agentReadStore.readExerciseSets({
-      userId: agent.userId,
-      exerciseId: params.exerciseId,
-      from: query.from,
-      to: query.to
-    });
+    const [sets, progressSeries] = await Promise.all([
+      agentReadStore.readExerciseSets({
+        userId: agent.userId,
+        exerciseId: params.exerciseId,
+        from: query.from,
+        to: query.to
+      }),
+      readAgentExerciseProgressSeries(agentProgressReadStore, {
+        userId: agent.userId,
+        exercise
+      })
+    ]);
 
     return context.json(
       AgentExerciseAnalyticsResponseSchema.parse(
         buildAgentExerciseAnalyticsResponse({
           exercise,
           maxPoints: query.maxPoints,
-          sets
+          sets,
+          progressSeries
         })
       ),
       200
@@ -4648,6 +4657,63 @@ export function createApp(options: CreateAppOptions = {}) {
       from: query.fromLocalDate,
       to: query.toLocalDate,
       today: query.today
+    });
+    return context.json(result, 200);
+  });
+
+  app.openapi(agentNewBestsRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProgressReadStore === undefined) {
+      return context.json(
+        AgentProgressReadUnavailableResponseSchema.parse({
+          code: "agent_progress_read_unavailable",
+          message: "Agent progress read storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const query = context.req.valid("query");
+    const checked = checkAgentTrainingDaysQuery(query);
+    if (!checked.ok) {
+      return context.json(
+        AgentProgressReadInvalidRangeResponseSchema.parse({
+          code: "agent_progress_read_invalid_range",
+          message: checked.message
+        }),
+        400
+      );
+    }
+    // The store parses its response against the route's schema already.
+    const result = await agentProgressReadStore.readNewBests({
+      userId: agentAuth.agent.userId,
+      from: query.fromLocalDate,
+      to: query.toLocalDate
     });
     return context.json(result, 200);
   });

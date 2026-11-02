@@ -51,6 +51,7 @@ const DOMAINS_OWNED_ELSEWHERE = new Set([
   "barcode-candidates", // barcode-candidates.golden.test.mjs
   "food-history", // food-history.golden.test.mjs
   "training-progress", // training-progress.golden.test.mjs
+  "progress-measure", // progress-measure.golden.test.mjs
   // Dart only: Body Tracker measurements have no server implementation, so
   // these vectors pin the app against its own spec.
   "measurement-validation",

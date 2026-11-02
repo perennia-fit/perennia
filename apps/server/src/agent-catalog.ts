@@ -566,6 +566,12 @@ export type AgentExerciseGetInput = {
 export type AgentExercisesGetInput = {
   userId: string;
   exerciseIds: string[];
+  /**
+   * Also return a Platform exercise that a same-named active User Library
+   * exercise hides. The Progress reads set it: the app still counts such an
+   * exercise as active, since its row there is not deleted.
+   */
+  includeShadowed?: boolean;
 };
 export type AgentCatalogCategory = {
   id: string;
@@ -738,7 +744,11 @@ export function createInMemoryAgentCatalogStore(
       const exerciseIds = new Set(
         input.exerciseIds.map(resolvePlatformExerciseId),
       );
-      return filterVisibleExercises(exercises, input.userId)
+      const candidates =
+        input.includeShadowed === true
+          ? callerCatalogExercises(exercises, input.userId)
+          : filterVisibleExercises(exercises, input.userId);
+      return candidates
         .filter((exercise) => exerciseIds.has(exercise.id))
         .map(stripOwner);
     },
@@ -886,15 +896,22 @@ function resolveAmbiguous(
   });
 }
 
-function filterVisibleExercises(
+function callerCatalogExercises(
   exercises: readonly AgentCatalogExercise[],
   userId: string,
 ) {
-  const callerExercises = exercises.filter(
+  return exercises.filter(
     (exercise) =>
       exercise.library === "platform" ||
       (exercise.library === "user" && exercise.ownerUserId === userId),
   );
+}
+
+function filterVisibleExercises(
+  exercises: readonly AgentCatalogExercise[],
+  userId: string,
+) {
+  const callerExercises = callerCatalogExercises(exercises, userId);
   const activeUserExerciseNames = new Set(
     callerExercises
       .filter((exercise) => exercise.library === "user" && exercise.active)
@@ -1134,6 +1151,20 @@ const platformExerciseRedirects = new Map(
 
 export function resolvePlatformExerciseId(exerciseId: string): string {
   return platformExerciseRedirects.get(exerciseId) ?? exerciseId;
+}
+
+/**
+ * Every stored exercise id that `resolvePlatformExerciseId` maps to
+ * `exerciseId`: the id itself and each seed redirect's source, so a SQL
+ * filter on a Set's `exercise_id` misses none of the exercise's Sets.
+ */
+export function exerciseIdsResolvingTo(exerciseId: string): string[] {
+  return [
+    exerciseId,
+    ...PLATFORM_EXERCISE_SEED_REDIRECTS.filter(
+      (redirect) => redirect.toExerciseId === exerciseId,
+    ).map((redirect) => redirect.fromExerciseId),
+  ];
 }
 
 // Builds the Platform Library slice of the catalog from the bundled wger seed,

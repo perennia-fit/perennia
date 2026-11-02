@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/local/app_database.dart';
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/analytics/exercise_analytics.dart';
+import '../../../domain/analytics/progress_measure.dart';
+import '../../../domain/training/training_day.dart';
 import '../../../domain/training/training_dimensions.dart';
 
 final exerciseAnalyticsRepositoryProvider =
@@ -105,12 +108,221 @@ class ExerciseAnalyticsRepository {
     }
 
     return _engine.compute(
-      profile: ExerciseAnalyticsProfile(
-        type: _decodeDimensions(exercise.dimensionIds),
-        loadMode: ExerciseLoadMode.values.byName(exercise.loadMode),
-        recordProfile: RecordProfile.values.byName(exercise.recordProfile),
-      ),
+      profile: _profileFromRow(exercise),
       sets: analyticsSets,
+    );
+  }
+
+  /// Each of [exerciseIds]' Progress Measure over its whole history
+  /// (docs/designs/progress-overview.md, D0 and D4), in the order given. An
+  /// archived or missing exercise, or one whose Record Profile has no series,
+  /// is left out. Computed on this isolate, because Key exercises asks for at
+  /// most six (D8).
+  Stream<List<ProgressSeries>> watchProgressSeries(
+    Iterable<String> exerciseIds,
+  ) {
+    final ids = exerciseIds.toSet();
+    if (ids.isEmpty) {
+      return Stream<List<ProgressSeries>>.value(const <ProgressSeries>[]);
+    }
+
+    return watchProgressHistory(exerciseIds: ids).map(
+      (history) => List<ProgressSeries>.unmodifiable(<ProgressSeries>[
+        for (final id in ids)
+          if (history.seriesOf(id) case final series?) series,
+      ]),
+    );
+  }
+
+  /// Every active exercise's New Bests dated in [from]..[to] (D4), each
+  /// judged against the exercise's whole history, newest first.
+  ///
+  /// Every exercise's whole history runs through the engine, tens of
+  /// thousands of Sets after a few years, so the series are built in a
+  /// background isolate (`compute`, D8), which receives only the plain
+  /// [ProgressHistory]. One isolate runs at a time: a history that arrives
+  /// while one computes waits, replacing any history already waiting, so a
+  /// sync pull's burst of writes costs at most one further run, not one
+  /// isolate and one copy of the history per write. Only the latest
+  /// history's result is emitted.
+  Stream<List<NewBest>> watchNewBests(
+    TrainingDayDate from,
+    TrainingDayDate to,
+  ) {
+    late final StreamSubscription<ProgressHistory> subscription;
+    final controller = StreamController<List<NewBest>>();
+    ProgressHistory? pending;
+    var computing = false;
+
+    Future<void> drain() async {
+      computing = true;
+      while (pending != null && !controller.isClosed) {
+        final history = pending!;
+        pending = null;
+        try {
+          final bests = await compute(
+            newBestsInHistory,
+            (history: history, from: from, to: to),
+            debugLabel: 'progress.newBests',
+          );
+          if (pending == null && !controller.isClosed) {
+            controller.add(bests);
+          }
+        } on Object catch (error, stackTrace) {
+          if (pending == null && !controller.isClosed) {
+            controller.addError(error, stackTrace);
+          }
+        }
+      }
+      computing = false;
+    }
+
+    controller.onListen = () {
+      subscription = watchProgressHistory().listen(
+        (history) {
+          pending = history;
+          if (!computing) {
+            unawaited(drain());
+          }
+        },
+        onError: controller.addError,
+      );
+    };
+    controller.onCancel = () => subscription.cancel();
+
+    return controller.stream;
+  }
+
+  /// The Progress Measure inputs (D0): active exercises' profiles, limited to
+  /// [exerciseIds] when given, and their Performed Sets grouped by Workout.
+  ///
+  /// Sets are joined to their Workout for `localDate` and `startedAt`, and
+  /// the join drops Sets of deleted Workouts. It is a watched join rather
+  /// than a lookup after the Set query, so deleting a Workout whose Sets stay
+  /// undeleted (a synced delete does not cascade) re-emits too. A Workout
+  /// whose stored date cannot be read is left out, as the Workout loader
+  /// does. Sync copies payloads into columns unchecked, so a row this app
+  /// cannot read is skipped rather than failing the whole history: an
+  /// exercise whose profile cannot be decoded has no series, and a Set value
+  /// with an unknown or disallowed unit, or a non-numeric entry, is left out
+  /// of its Set, as the server's loader leaves it out (D9).
+  @visibleForTesting
+  Stream<ProgressHistory> watchProgressHistory({Set<String>? exerciseIds}) {
+    final exercises = _database.select(_database.exercises)
+      ..where((row) {
+        final active = row.deletedAt.isNull();
+        return exerciseIds == null ? active : active & row.id.isIn(exerciseIds);
+      });
+    final sets = _database.loggedSets;
+    final workouts = _database.workoutSessions;
+    final performed = sets.deletedAt.isNull() & sets.isCompleted.isValue(true);
+    final setQuery = _database.select(sets).join([
+      innerJoin(
+        workouts,
+        workouts.id.equalsExp(sets.workoutId) & workouts.deletedAt.isNull(),
+        useColumns: false,
+      ),
+    ])
+      ..addColumns([workouts.localDate, workouts.startedAt])
+      ..where(
+        exerciseIds == null
+            ? performed
+            : performed & sets.exerciseId.isIn(exerciseIds),
+      );
+
+    late final StreamSubscription<List<ExerciseRow>> exerciseSubscription;
+    late final StreamSubscription<List<TypedResult>> setSubscription;
+    final controller = StreamController<ProgressHistory>();
+    List<ExerciseRow>? latestExercises;
+    List<TypedResult>? latestSets;
+
+    void emitIfReady() {
+      final exerciseRows = latestExercises;
+      final setRows = latestSets;
+      if (exerciseRows == null || setRows == null || controller.isClosed) {
+        return;
+      }
+      // A listen callback's throw would never reach the controller, leaving
+      // the card loading for good; forwarded, it shows Unavailable.
+      try {
+        controller.add(
+          _progressHistoryFromRows(exerciseRows, setRows, workouts),
+        );
+      } on Object catch (error, stackTrace) {
+        controller.addError(error, stackTrace);
+      }
+    }
+
+    controller.onListen = () {
+      exerciseSubscription = exercises.watch().listen((rows) {
+        latestExercises = rows;
+        emitIfReady();
+      }, onError: controller.addError);
+      setSubscription = setQuery.watch().listen((rows) {
+        latestSets = rows;
+        emitIfReady();
+      }, onError: controller.addError);
+    };
+    controller.onCancel = () async {
+      await exerciseSubscription.cancel();
+      await setSubscription.cancel();
+    };
+
+    return controller.stream;
+  }
+
+  ProgressHistory _progressHistoryFromRows(
+    List<ExerciseRow> exerciseRows,
+    List<TypedResult> setRows,
+    $WorkoutSessionsTable workouts,
+  ) {
+    final profiles = <String, ExerciseAnalyticsProfile>{
+      for (final row in exerciseRows)
+        if (_decodedOrNull(() => _profileFromRow(row)) case final profile?)
+          row.id: profile,
+    };
+    final workoutFacts = <String, (TrainingDayDate, DateTime)>{};
+    final setsByWorkoutByExercise = <String, Map<String, List<ProgressSet>>>{};
+    for (final result in setRows) {
+      final set = result.readTable(_database.loggedSets);
+      if (!profiles.containsKey(set.exerciseId)) {
+        continue;
+      }
+      final localDate = _parseTrainingDayDate(result.read(workouts.localDate));
+      final startedAt = result.read(workouts.startedAt);
+      if (localDate == null || startedAt == null) {
+        continue;
+      }
+      workoutFacts[set.workoutId] = (localDate, startedAt.toUtc());
+      setsByWorkoutByExercise
+          .putIfAbsent(set.exerciseId, () => <String, List<ProgressSet>>{})
+          .putIfAbsent(set.workoutId, () => <ProgressSet>[])
+          .add(
+            ProgressSet(
+              id: set.id,
+              position: set.position,
+              isCompleted: set.isCompleted,
+              values: _loggedSetValuesFromRow(set, skipUnreadable: true),
+            ),
+          );
+    }
+
+    return ProgressHistory(
+      profiles: profiles,
+      workoutsByExercise: <String, List<ProgressWorkoutSets>>{
+        for (final MapEntry(key: exerciseId, value: byWorkout)
+            in setsByWorkoutByExercise.entries)
+          exerciseId: <ProgressWorkoutSets>[
+            for (final MapEntry(key: workoutId, value: sets)
+                in byWorkout.entries)
+              ProgressWorkoutSets(
+                workoutId: workoutId,
+                localDate: workoutFacts[workoutId]!.$1,
+                startedAt: workoutFacts[workoutId]!.$2,
+                sets: sets,
+              ),
+          ],
+      },
     );
   }
 
@@ -149,6 +361,74 @@ class ExerciseAnalyticsRepository {
   }
 }
 
+/// The Progress Measure inputs [ExerciseAnalyticsRepository.watchNewBests]
+/// sends to its background isolate: plain data only, keyed by exercise id.
+final class ProgressHistory {
+  const ProgressHistory({
+    required this.profiles,
+    required this.workoutsByExercise,
+  });
+
+  /// Active exercises only.
+  final Map<String, ExerciseAnalyticsProfile> profiles;
+
+  /// Each exercise's Performed Sets by Workout; an exercise with none is
+  /// absent.
+  final Map<String, List<ProgressWorkoutSets>> workoutsByExercise;
+
+  /// [exerciseId]'s `progressSeries`, or null when it is not an active
+  /// exercise here or its Record Profile has no series.
+  ProgressSeries? seriesOf(String exerciseId) {
+    final profile = profiles[exerciseId];
+    if (profile == null) {
+      return null;
+    }
+    return progressSeries(
+      exerciseId: exerciseId,
+      profile: profile,
+      workouts: workoutsByExercise[exerciseId] ??
+          const <ProgressWorkoutSets>[],
+    );
+  }
+}
+
+/// `progressSeries` for every exercise of [input]'s history plus
+/// `newBestsBetween` over its period: the work
+/// [ExerciseAnalyticsRepository.watchNewBests] runs in a background isolate.
+/// Top level, so `compute` can send it.
+List<NewBest> newBestsInHistory(
+  ({ProgressHistory history, TrainingDayDate from, TrainingDayDate to}) input,
+) {
+  final history = input.history;
+  return newBestsBetween(
+    <ProgressSeries>[
+      for (final exerciseId in history.profiles.keys)
+        if (history.seriesOf(exerciseId) case final series?) series,
+    ],
+    input.from,
+    input.to,
+  );
+}
+
+ExerciseAnalyticsProfile _profileFromRow(ExerciseRow exercise) {
+  return ExerciseAnalyticsProfile(
+    type: _decodeDimensions(exercise.dimensionIds),
+    loadMode: ExerciseLoadMode.values.byName(exercise.loadMode),
+    recordProfile: RecordProfile.values.byName(exercise.recordProfile),
+  );
+}
+
+TrainingDayDate? _parseTrainingDayDate(String? value) {
+  if (value == null) {
+    return null;
+  }
+  try {
+    return TrainingDayDate.parse(value);
+  } on FormatException {
+    return null;
+  }
+}
+
 ExerciseType _decodeDimensions(String encoded) {
   final dimensionNames = jsonDecode(encoded) as List<Object?>;
   return ExerciseType(
@@ -156,31 +436,55 @@ ExerciseType _decodeDimensions(String encoded) {
   );
 }
 
-LoggedSet _loggedSetValuesFromRow(LoggedSetRow row) {
+/// [decode]'s result, or null when a stored value it reads is not one this
+/// app knows.
+T? _decodedOrNull<T>(T Function() decode) {
+  try {
+    return decode();
+  } on FormatException {
+    return null;
+  } on ArgumentError {
+    return null;
+  } on TypeError {
+    return null;
+  }
+}
+
+/// [row]'s values. With [skipUnreadable], a value with an unknown or
+/// disallowed unit, or an entry that is not a number, is left out instead of
+/// throwing.
+LoggedSet _loggedSetValuesFromRow(
+  LoggedSetRow row, {
+  bool skipUnreadable = false,
+}) {
   final values = <SetDimensionValue>[];
   _addSetValue(
     values,
     dimension: DimensionId.load,
     entered: row.loadEntered,
     unitName: row.loadUnit,
+    skipUnreadable: skipUnreadable,
   );
   _addSetValue(
     values,
     dimension: DimensionId.reps,
     entered: row.repsEntered,
     unitName: row.repsUnit,
+    skipUnreadable: skipUnreadable,
   );
   _addSetValue(
     values,
     dimension: DimensionId.duration,
     entered: row.durationEntered,
     unitName: row.durationUnit,
+    skipUnreadable: skipUnreadable,
   );
   _addSetValue(
     values,
     dimension: DimensionId.distance,
     entered: row.distanceEntered,
     unitName: row.distanceUnit,
+    skipUnreadable: skipUnreadable,
   );
 
   return values.isEmpty ? LoggedSet.completion() : LoggedSet.fromValues(values);
@@ -191,8 +495,17 @@ void _addSetValue(
   required DimensionId dimension,
   required String? entered,
   required String? unitName,
+  required bool skipUnreadable,
 }) {
   if (entered == null || unitName == null) {
+    return;
+  }
+
+  final unit = TrainingUnit.values.asNameMap()[unitName];
+  if (skipUnreadable &&
+      (unit == null ||
+          !DimensionRegistry.byId(dimension).allowsUnit(unit) ||
+          double.tryParse(entered) == null)) {
     return;
   }
 
@@ -200,7 +513,7 @@ void _addSetValue(
     SetDimensionValue(
       dimension: dimension,
       entered: entered,
-      unit: TrainingUnit.values.byName(unitName),
+      unit: unit ?? TrainingUnit.values.byName(unitName),
     ),
   );
 }

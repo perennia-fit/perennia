@@ -93,6 +93,20 @@ void main() {
         DesignTokens.trainedDaysFillOpacity,
         px(trainedDaysCell['fillOpacity']),
       );
+      final sparkline = components['progress-sparkline'] as YamlMap;
+      expect(DesignTokens.progressSparklineHeight, px(sparkline['height']));
+      expect(
+        DesignTokens.progressSparklinePointRadius,
+        px(sparkline['pointRadius']),
+      );
+      expect(
+        DesignTokens.progressSparklineRingWidth,
+        px(sparkline['ringWidth']),
+      );
+      expect(
+        DesignTokens.progressSparklineLineWidth,
+        px(sparkline['lineWidth']),
+      );
     });
 
     test('typography', () {

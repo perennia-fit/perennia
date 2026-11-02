@@ -17,6 +17,8 @@ void main() {
       'lib/features/progress/widgets/this_week_card.dart',
       'lib/features/progress/widgets/trained_days_card.dart',
       'lib/features/progress/widgets/focus_time_card.dart',
+      'lib/features/progress/widgets/key_exercises_card.dart',
+      'lib/features/progress/widgets/new_bests_card.dart',
       'lib/features/progress/widgets/protocols_progress_card.dart',
       'lib/features/progress/widgets/progress_format.dart',
     ];

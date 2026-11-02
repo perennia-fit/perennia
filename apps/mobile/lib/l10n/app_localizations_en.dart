@@ -3147,4 +3147,142 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get progressKeyExercisesTitle => 'Key exercises';
+
+  @override
+  String get progressKeyExercisesEmpty =>
+      'Mark exercises as favorites to chart them here';
+
+  @override
+  String get progressKeyExercisesNoCharted =>
+      'Your favorites have no charted records';
+
+  @override
+  String get progressKeyExercisesNoSessions => 'No sessions this period';
+
+  @override
+  String get progressMeasureEstimatedOneRepMax => 'e1RM';
+
+  @override
+  String get progressMeasureMaxLoad => 'heaviest';
+
+  @override
+  String get progressMeasureMaxReps => 'most reps';
+
+  @override
+  String get progressMeasureMaxDuration => 'longest';
+
+  @override
+  String get progressMeasureMinDuration => 'shortest';
+
+  @override
+  String get progressMeasureMaxDistance => 'farthest';
+
+  @override
+  String get progressMeasureFastestPace => 'fastest pace';
+
+  @override
+  String progressBest(String value) {
+    return 'Best $value';
+  }
+
+  @override
+  String progressComparisonHigher(String difference) {
+    return '↑ $difference on before';
+  }
+
+  @override
+  String progressComparisonFaster(String difference) {
+    return '$difference faster than before';
+  }
+
+  @override
+  String progressComparisonShorter(String difference) {
+    return '$difference shorter than before';
+  }
+
+  @override
+  String get progressComparisonSame => 'Same as before';
+
+  @override
+  String progressComparisonBestBefore(String value) {
+    return 'Best before $value';
+  }
+
+  @override
+  String get progressComparisonFirst => 'First sessions';
+
+  @override
+  String progressNewBestOn(String date) {
+    return 'New best on $date';
+  }
+
+  @override
+  String get progressNewBestsTitle => 'New bests';
+
+  @override
+  String progressNewBestsTitleCount(int count) {
+    return 'New bests · $count';
+  }
+
+  @override
+  String get progressNewBestsEmpty => 'No new bests in this period';
+
+  @override
+  String progressNewBestRow(String exercise, String value) {
+    return '$exercise · $value';
+  }
+
+  @override
+  String progressNewBestEstimated(String value) {
+    return 'e1RM $value';
+  }
+
+  @override
+  String progressValueKilograms(String value) {
+    return '$value kg';
+  }
+
+  @override
+  String progressValuePounds(String value) {
+    return '$value lb';
+  }
+
+  @override
+  String progressValueReps(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count reps',
+      one: '1 rep',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressValueKilometers(String value) {
+    return '$value km';
+  }
+
+  @override
+  String progressValueMiles(String value) {
+    return '$value mi';
+  }
+
+  @override
+  String progressValuePacePerKilometer(String pace) {
+    return '$pace /km';
+  }
+
+  @override
+  String progressValuePacePerMile(String pace) {
+    return '$pace /mi';
+  }
+
+  @override
+  String progressValueSeconds(int seconds) {
+    return '$seconds s';
+  }
 }
