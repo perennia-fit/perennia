@@ -38,15 +38,9 @@ class FocusTimeCard extends ConsumerWidget {
     final l10n = context.l10n;
     final title = l10n.progressFocusTimeTitle;
     final state = ref.watch(progressFocusTimeProvider);
-    if (state.hasError) {
-      return ProgressCard.empty(
-        title: title,
-        message: l10n.progressCardUnavailable,
-      );
-    }
     final data = state.value;
-    if (data == null) {
-      return ProgressCard.loading(title: title);
+    if (state.hasError || data == null) {
+      return ProgressCard.pending(title: title, failed: state.hasError);
     }
     final focuses = ProgressCardAction(
       key: focusesButtonKey,
@@ -117,13 +111,18 @@ class FocusTimeCard extends ConsumerWidget {
                     children: [
                       _Dot(color: entry.color),
                       const SizedBox(width: AppDimens.dense / 3),
-                      Text(
-                        l10n.progressFocusTimeEntry(
-                          entry.name,
-                          formatFocusDuration(entry.seconds, l10n),
-                        ),
-                        style: caption.copyWith(
-                          fontFeatures: const [FontFeature.tabularFigures()],
+                      // Flexible: a Focus name has no length limit, so a
+                      // long one wraps within the card instead of
+                      // overflowing it.
+                      Flexible(
+                        child: Text(
+                          l10n.progressFocusTimeEntry(
+                            entry.name,
+                            formatFocusDuration(entry.seconds, l10n),
+                          ),
+                          style: caption.copyWith(
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         ),
                       ),
                     ],

@@ -117,8 +117,7 @@ class _ProtocolsSlot extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(progressProtocolsProvider);
-    if (!state.hasError && state.value == null) {
+    if (ref.watch(progressProtocolsProvider).value == null) {
       return const SizedBox.shrink();
     }
     return Column(

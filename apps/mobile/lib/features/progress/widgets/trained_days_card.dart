@@ -26,23 +26,17 @@ class TrainedDaysCard extends ConsumerWidget {
   static Key cellKey(TrainingDayDate date, String kind) =>
       Key('progress.trainedDays.$kind.${date.storageValue}');
 
-  static const double maxCellSize = 24;
-  static const double cellGap = 2;
+  static const double maxCellSize = AppDimens.trainedDaysCell;
+  static const double cellGap = AppDimens.trainedDaysCellGap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final title = l10n.progressTrainedDaysTitle;
     final state = ref.watch(progressTrainedDaysProvider);
-    if (state.hasError) {
-      return ProgressCard.empty(
-        title: title,
-        message: l10n.progressCardUnavailable,
-      );
-    }
     final data = state.value;
-    if (data == null) {
-      return ProgressCard.loading(title: title);
+    if (state.hasError || data == null) {
+      return ProgressCard.pending(title: title, failed: state.hasError);
     }
     if (data.trainedDayCount == 0) {
       return ProgressCard.empty(
@@ -99,10 +93,6 @@ class _Calendar extends StatelessWidget {
       for (var row = 0; row < 7; row += 1)
         initialFormat.format(from.addDays(row).toLocalDateTime()),
     ];
-    final days = <TrainingDayDate, TrainingDay>{
-      for (final day in data.days) day.localDate: day,
-    };
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final textScaler = MediaQuery.textScalerOf(context);
@@ -178,12 +168,9 @@ class _Calendar extends StatelessWidget {
                   Positioned(
                     left: gridLeft + week * pitch,
                     top: gridTop + row * pitch,
-                    child: _cell(
-                      context,
-                      from.addDays(week * 7 + row),
-                      days,
-                      cell,
-                    ),
+                    // `data.days` holds one day per date from `from`, so
+                    // the grid indexes it directly.
+                    child: _cell(context, data.days[week * 7 + row], cell),
                   ),
             ],
           ),
@@ -192,27 +179,26 @@ class _Calendar extends StatelessWidget {
     );
   }
 
-  Widget _cell(
-    BuildContext context,
-    TrainingDayDate date,
-    Map<TrainingDayDate, TrainingDay> days,
-    double size,
-  ) {
+  Widget _cell(BuildContext context, TrainingDay day, double size) {
     final colors = context.colors;
+    final date = day.localDate;
     if (date.compareTo(data.range.today) > 0) {
       return SizedBox.square(
         key: TrainedDaysCard.cellKey(date, 'future'),
         dimension: size,
       );
     }
-    final day = days[date];
-    final trained = day != null && data.isTrained(day);
+    final trained = data.isTrained(day);
     return SizedBox.square(
       key: TrainedDaysCard.cellKey(date, trained ? 'trained' : 'untrained'),
       dimension: size,
       child: DecoratedBox(
         decoration: trained
-            ? BoxDecoration(color: colors.textPrimary.withValues(alpha: 0.7))
+            ? BoxDecoration(
+                color: colors.textPrimary.withValues(
+                  alpha: AppDimens.trainedDaysFillOpacity,
+                ),
+              )
             : BoxDecoration(border: Border.all(color: colors.divider)),
       ),
     );

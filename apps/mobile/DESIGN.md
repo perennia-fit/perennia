@@ -101,6 +101,14 @@ components:
   stepper-button:
     rounded: "{rounded.md}"
     size: "{spacing.touch-target}"
+  status-icon:
+    size: 24px
+  legend-icon:
+    size: 16px
+  trained-days-cell:
+    size: 24px
+    gap: 2px
+    fillOpacity: 0.7
 ---
 
 # Design System: Perennia

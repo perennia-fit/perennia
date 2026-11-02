@@ -106,6 +106,20 @@ final class ProgressRange {
   final TrainingDayDate firstWeekStart;
   final TrainingDayDate from;
   final TrainingDayDate to;
+
+  // Value equality: a settings change that leaves the dates alone rebuilds
+  // this range without notifying the cards that watch it.
+  @override
+  bool operator ==(Object other) =>
+      other is ProgressRange &&
+      other.period == period &&
+      other.today == today &&
+      other.weekStart == weekStart &&
+      other.from == from &&
+      other.to == to;
+
+  @override
+  int get hashCode => Object.hash(period, today, weekStart, from, to);
 }
 
 /// The settings Progress reads, or null while they load. A failed load
@@ -263,29 +277,32 @@ final class ProgressProtocolsUnavailable extends ProgressProtocols {
   const ProgressProtocolsUnavailable();
 }
 
+/// The unlocked card's rows. With a lock set and no rows the card still
+/// shows, empty, so unlocking never reveals whether Protocols exist.
 final class ProgressProtocolsRows extends ProgressProtocols {
-  const ProgressProtocolsRows({required this.rows, required this.lockSet});
+  const ProgressProtocolsRows({required this.rows});
 
   final List<CompoundConsistencySummary> rows;
-
-  /// Whether a lock is set (and unlocked). With no rows the card then stays,
-  /// so unlocking never reveals whether Protocols exist.
-  final bool lockSet;
 }
 
 final progressThisWeekProvider =
     Provider.autoDispose<AsyncValue<ProgressThisWeek>>((ref) {
-  final range = ref.watch(progressRangeProvider);
-  if (range == null) {
+  // The week alone, not the period: switching the period neither recomputes
+  // This week nor makes it wait on a year of Workouts it does not read
+  // (Goal 2, D8).
+  final dates = ref.watch(
+    progressRangeProvider.select(
+      (range) => range == null ? null : (range.weekStart, range.today),
+    ),
+  );
+  if (dates == null) {
     return const AsyncLoading<ProgressThisWeek>();
   }
+  final (weekStart, today) = dates;
   final plans = ref.watch(progressWeeklyPlansProvider);
   final rotating = ref.watch(progressHasRotatingRoutineProvider);
-  // Keyed by the week alone, not the period: switching the period keeps
-  // this stream, so This week neither reloads nor waits on a year of
-  // Workouts it does not read (Goal 2, D8).
   final workouts = ref.watch(
-    progressWorkoutsProvider((range.weekStart, range.weekStart.addDays(6))),
+    progressWorkoutsProvider((weekStart, weekStart.addDays(6))),
   );
   return _whenAll(
     <AsyncValue<Object?>>[plans, rotating, workouts],
@@ -295,8 +312,8 @@ final progressThisWeekProvider =
       final week = trainingWeek(
         plans: facts.map((plan) => plan.toWeeklyPlan()),
         workouts: workouts.requireValue,
-        weekStart: range.weekStart,
-        today: range.today,
+        weekStart: weekStart,
+        today: today,
       );
       final compared = week.comparedRoutineIds.toSet();
       final names = <String>[
@@ -310,7 +327,7 @@ final progressThisWeekProvider =
         counts: summarizeTrainingWeek(week.days),
         comparedRoutineNames: names,
         hasRotatingRoutine: rotating.requireValue,
-        today: range.today,
+        today: today,
       );
     },
   );
@@ -397,7 +414,8 @@ int _compareFocusKeys(
 /// The Protocols card's state (D7): data null means the card is absent, and
 /// loading renders nothing, because the card may turn out absent. The lock
 /// is read on every build and before any summary, so no Compound is loaded
-/// for the card while Protocols are locked, and an error fails closed.
+/// for the card while Protocols are locked. Every error fails closed as
+/// [ProgressProtocolsUnavailable], so this provider is never an error.
 final progressProtocolsProvider =
     Provider.autoDispose<AsyncValue<ProgressProtocols?>>((ref) {
   final range = ref.watch(progressRangeProvider);
@@ -429,7 +447,7 @@ final progressProtocolsProvider =
   final summaries = ref.watch(
     progressConsistencySummaryProvider((range.from, range.to, range.today)),
   );
-  return _whenAll<ProgressProtocols?>(
+  final protocols = _whenAll<ProgressProtocols?>(
     <AsyncValue<Object?>>[summaries],
     'progress.protocols',
     () {
@@ -437,9 +455,12 @@ final progressProtocolsProvider =
       if (rows.isEmpty && !lockState.isEnabled) {
         return null;
       }
-      return ProgressProtocolsRows(rows: rows, lockSet: lockState.isEnabled);
+      return ProgressProtocolsRows(rows: rows);
     },
   );
+  return protocols.hasError
+      ? const AsyncData<ProgressProtocols?>(ProgressProtocolsUnavailable())
+      : protocols;
 });
 
 /// Loading until every input has data, the first error otherwise; then

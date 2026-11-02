@@ -415,10 +415,7 @@ class AppSettings {
   }
 
   TrainingDayDate weekStartFor(TrainingDayDate localDate) {
-    final weekday =
-        DateTime.utc(localDate.year, localDate.month, localDate.day).weekday;
-    final startWeekday = weekStartDay.dateTimeWeekday;
-    final delta = (weekday - startWeekday + 7) % 7;
+    final delta = (localDate.isoWeekday - weekStartDay.dateTimeWeekday + 7) % 7;
     return localDate.addDays(-delta);
   }
 

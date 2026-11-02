@@ -81,6 +81,20 @@ void main() {
       expect(DesignTokens.touchTarget, px(spacing['touch-target']));
     });
 
+    test('Progress components', () {
+      final statusIcon = components['status-icon'] as YamlMap;
+      final legendIcon = components['legend-icon'] as YamlMap;
+      final trainedDaysCell = components['trained-days-cell'] as YamlMap;
+      expect(DesignTokens.statusIconSize, px(statusIcon['size']));
+      expect(DesignTokens.legendIconSize, px(legendIcon['size']));
+      expect(DesignTokens.trainedDaysCellSize, px(trainedDaysCell['size']));
+      expect(DesignTokens.trainedDaysCellGap, px(trainedDaysCell['gap']));
+      expect(
+        DesignTokens.trainedDaysFillOpacity,
+        px(trainedDaysCell['fillOpacity']),
+      );
+    });
+
     test('typography', () {
       void check(TokenTextStyle style, String key) {
         final token = typography[key] as YamlMap;

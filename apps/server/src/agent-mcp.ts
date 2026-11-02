@@ -154,6 +154,7 @@ import {
   AgentProgressReadUnavailableResponseSchema,
   AgentTrainingDaysQuerySchema,
   AgentTrainingDaysResponseSchema,
+  checkAgentTrainingDaysQuery,
   type AgentProgressReadStore
 } from "./agent-progress-reads.js";
 import {
@@ -1282,7 +1283,7 @@ export function createAgentMcpServer({
         );
       }
       const query = AgentTrainingDaysQuerySchema.parse(input.query);
-      const checked = checkAgentProtocolDaysQuery(query);
+      const checked = checkAgentTrainingDaysQuery(query);
       if (!checked.ok) {
         return errorResult(
           AgentProgressReadInvalidRangeResponseSchema.parse({

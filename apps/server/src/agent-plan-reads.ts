@@ -1192,7 +1192,7 @@ function upNextCards(entries: readonly AgentUpNextRoutineEntry[], doneTemplateId
   }));
 }
 
-export function isoWeekday(localDate: string) {
+function isoWeekday(localDate: string) {
   const date = new Date(`${localDate}T00:00:00.000Z`);
   const weekday = date.getUTCDay();
   return weekday === 0 ? 7 : weekday;

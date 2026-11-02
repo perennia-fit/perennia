@@ -640,32 +640,17 @@ final class ProtocolPlanRepository {
     ProtocolDayDate to, {
     required ProtocolDayDate today,
   }) {
-    _checkConsistencyRange(from, to);
-    return _combineLatest2(
-      _planQuery().watch().map(_planFromJoinedRows),
-      _repositories.protocols
-          ._activeDoseQuery(
-            (row) =>
-                row.compoundId.equals(compoundId) &
-                row.localDate.isBetweenValues(
-                  from.storageValue,
-                  to.storageValue,
-                ),
-          )
-          .watch()
-          .map(
-            (rows) => rows
-                .map(_repositories.protocols._doseFromRow)
-                .toList(growable: false)
-              ..sort(_compareConsistencyDoses),
-          ),
-      (_PlanRows plan, List<DoseRecord> doses) => _consistencyRange(
+    return _watchPlanAndDoses(
+      from,
+      to,
+      compoundId: compoundId,
+      (plan, doses) => _consistencyRange(
         compoundId,
         from,
         to,
         today,
         plan,
-        doses,
+        doses..sort(_compareConsistencyDoses),
       ),
     );
   }
@@ -685,23 +670,10 @@ final class ProtocolPlanRepository {
     ProtocolDayDate to, {
     required ProtocolDayDate today,
   }) {
-    _checkConsistencyRange(from, to);
-    return _combineLatest2(
-      _planQuery().watch().map(_planFromJoinedRows),
-      _repositories.protocols
-          ._activeDoseQuery(
-            (row) => row.localDate.isBetweenValues(
-              from.storageValue,
-              to.storageValue,
-            ),
-          )
-          .watch()
-          .map(
-            (rows) => rows
-                .map(_repositories.protocols._doseFromRow)
-                .toList(growable: false),
-          ),
-      (_PlanRows plan, List<DoseRecord> doses) => _consistencySummaries(
+    return _watchPlanAndDoses(
+      from,
+      to,
+      (plan, doses) => _consistencySummaries(
         plan,
         dayStatuses(
           planDays(plan.protocols, from, to),
@@ -709,6 +681,39 @@ final class ProtocolPlanRepository {
           today,
         ),
       ),
+    );
+  }
+
+  /// The plan and the Doses dated [from] through [to], of [compoundId] alone
+  /// when given, combined by [combine] on every change to either: the one
+  /// read behind both [watchConsistency] and [watchConsistencySummary], so a
+  /// Compound's counts and its Consistency view never read different rows.
+  Stream<R> _watchPlanAndDoses<R>(
+    ProtocolDayDate from,
+    ProtocolDayDate to,
+    R Function(_PlanRows plan, List<DoseRecord> doses) combine, {
+    String? compoundId,
+  }) {
+    _checkConsistencyRange(from, to);
+    return _combineLatest2(
+      _planQuery().watch().map(_planFromJoinedRows),
+      _repositories.protocols
+          ._activeDoseQuery((row) {
+            final inRange = row.localDate.isBetweenValues(
+              from.storageValue,
+              to.storageValue,
+            );
+            return compoundId == null
+                ? inRange
+                : row.compoundId.equals(compoundId) & inRange;
+          })
+          .watch()
+          .map(
+            (rows) => rows
+                .map(_repositories.protocols._doseFromRow)
+                .toList(growable: false),
+          ),
+      combine,
     );
   }
 

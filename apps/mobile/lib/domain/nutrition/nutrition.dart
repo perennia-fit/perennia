@@ -51,9 +51,13 @@ class NutritionDayDate implements Comparable<NutritionDayDate> {
 
   DateTime toLocalDateTime() => DateTime(year, month, day);
 
+  /// Calendar arithmetic on a UTC midnight, as `TrainingDayDate.addDays` and
+  /// `ProtocolDayDate.addDays` do: adding whole days to a local midnight
+  /// would land on the wrong date whenever the span crosses a daylight-saving
+  /// change.
   NutritionDayDate addDays(int days) {
-    final next = toLocalDateTime().add(Duration(days: days));
-    return NutritionDayDate.fromDateTime(next);
+    final next = DateTime.utc(year, month, day + days);
+    return NutritionDayDate(year: next.year, month: next.month, day: next.day);
   }
 
   @override

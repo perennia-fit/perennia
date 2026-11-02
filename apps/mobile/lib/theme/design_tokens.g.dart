@@ -55,6 +55,13 @@ class DesignTokens {
   static const double rowHeight = 48;
   static const double touchTarget = 48;
 
+  // ---- components (logical px) ----
+  static const double statusIconSize = 24;
+  static const double legendIconSize = 16;
+  static const double trainedDaysCellSize = 24;
+  static const double trainedDaysCellGap = 2;
+  static const double trainedDaysFillOpacity = 0.7;
+
   // ---- typography ----
   static const TokenTextStyle numeralHero = TokenTextStyle(family: 'Roboto', size: 34, weight: 600, height: 1.1, tabularFigures: true);
   static const TokenTextStyle numeralRow = TokenTextStyle(family: 'Roboto', size: 18, weight: 600, height: 1.3, tabularFigures: true);

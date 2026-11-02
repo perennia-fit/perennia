@@ -62,17 +62,37 @@ class TrainingDayDate implements Comparable<TrainingDayDate> {
     );
   }
 
-  /// Calendar arithmetic on a UTC midnight, as `ProtocolDayDate.addDays`
-  /// does: adding whole days to a local midnight would land on the wrong date
-  /// whenever the span crosses a daylight-saving change.
+  /// This date as UTC midnight, where the calendar arithmetic below runs, as
+  /// `ProtocolDayDate`'s does: adding whole days to a local midnight would
+  /// land on the wrong date whenever the span crosses a daylight-saving
+  /// change.
+  DateTime utcMidnight() => DateTime.utc(year, month, day);
+
+  /// The date [days] calendar days after this one (before it, when negative).
   TrainingDayDate addDays(int days) {
     final next = DateTime.utc(year, month, day + days);
     return TrainingDayDate(year: next.year, month: next.month, day: next.day);
   }
 
+  /// The number of calendar days from [other] to this date: positive when
+  /// this date is later, so `other.addDays(daysBetween(other)) == this`.
+  int daysBetween(TrainingDayDate other) {
+    return utcMidnight().difference(other.utcMidnight()).inDays;
+  }
+
+  /// The ISO 8601 weekday of this date: 1 is Monday and 7 is Sunday.
+  int get isoWeekday => utcMidnight().weekday;
+
+  /// Calendar order, compared field by field so it never builds a string.
   @override
   int compareTo(TrainingDayDate other) {
-    return storageValue.compareTo(other.storageValue);
+    if (year != other.year) {
+      return year.compareTo(other.year);
+    }
+    if (month != other.month) {
+      return month.compareTo(other.month);
+    }
+    return day.compareTo(other.day);
   }
 
   @override

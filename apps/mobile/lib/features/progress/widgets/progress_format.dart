@@ -1,5 +1,8 @@
 import '../../../l10n/l10n.dart';
 
+/// The separator between the parts of a Progress summary line.
+const String progressSeparator = ' · ';
+
 /// [seconds] as "2h 40m" or "35m", after rounding half up to whole minutes
 /// once (D3), so the display agrees with an Agent summing the per-date
 /// seconds itself.

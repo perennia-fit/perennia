@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 
 /// A text button on a Progress card: the trailing link to a detail screen,
@@ -20,7 +21,7 @@ class ProgressCardAction {
 /// (surface color, `md` corners, no shadow) with an `h2` [title] and an
 /// optional trailing [action] over its [child].
 ///
-/// Use [ProgressCard.loading] while the card's data loads and
+/// Use [ProgressCard.pending] until the card has data and
 /// [ProgressCard.empty] when it has nothing to show. An empty state's own
 /// action replaces the trailing one, so a card never offers more than one
 /// action while it is empty.
@@ -32,12 +33,18 @@ class ProgressCard extends StatelessWidget {
     required this.child,
   });
 
-  /// The title over a fixed-height empty body, so a card that is still
-  /// computing holds its place and moves the cards below it once, when its
-  /// data arrives.
-  const ProgressCard.loading({super.key, required this.title})
-      : action = null,
-        child = const SizedBox(height: loadingBodyHeight);
+  /// A card without data: when its data [failed] to load, the one-line
+  /// "Unavailable right now" with no action; otherwise the title over a
+  /// fixed-height empty body, so a card that is still computing holds its
+  /// place and moves the cards below it once, when its data arrives.
+  const ProgressCard.pending({
+    super.key,
+    required this.title,
+    bool failed = false,
+  })  : action = null,
+        child = failed
+            ? const _UnavailableBody()
+            : const SizedBox(height: loadingBodyHeight);
 
   /// The card's one-line empty state, with at most one action. Without an
   /// [emptyAction], the card keeps its trailing [action].
@@ -147,5 +154,14 @@ class _EmptyBody extends StatelessWidget {
         if (action != null) Center(child: ProgressTextButton(action: action)),
       ],
     );
+  }
+}
+
+class _UnavailableBody extends StatelessWidget {
+  const _UnavailableBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return _EmptyBody(message: context.l10n.progressCardUnavailable);
   }
 }

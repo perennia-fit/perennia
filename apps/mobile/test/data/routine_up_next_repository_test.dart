@@ -385,6 +385,37 @@ void main() {
       });
     });
 
+    test('a Routine whose Cadence cannot be decoded plans nothing, and Up '
+        'next leaves it out instead of failing', () async {
+      final lower = await createTemplate('Lower');
+      final upper = await createTemplate('Upper');
+      final (goodId, _) = await weeklyRoutine('Hybrid block', {
+        lower: DateTime.monday,
+      });
+      final (brokenId, _) = await weeklyRoutine('Broken', {
+        upper: DateTime.thursday,
+      });
+      // A weekly Cadence never stores a window; only a malformed synced row
+      // can.
+      await (database.update(database.planRoutines)
+            ..where((row) => row.id.equals(brokenId)))
+          .write(const PlanRoutinesCompanion(cadenceWindow: Value<int?>(3)));
+
+      final plans =
+          await repositories.routineUpNext.watchWeeklyPlans().first;
+      final suggestions = await repositories.routineUpNext
+          .watchSuggestions(
+            const TrainingDayDate(year: 2026, month: 10, day: 26),
+          )
+          .first;
+
+      expect(plans.map((plan) => plan.routineId), <String>[goodId]);
+      expect(
+        suggestions.map((summary) => summary.routineId),
+        isNot(contains(brokenId)),
+      );
+    });
+
     test('an entry without a slot plans nothing', () async {
       final lower = await createTemplate('Lower');
       final upper = await createTemplate('Upper');

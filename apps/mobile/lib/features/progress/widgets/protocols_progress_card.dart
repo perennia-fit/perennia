@@ -9,7 +9,7 @@ import '../../protocols/widgets/consistency_screen.dart';
 import '../../protocols/widgets/protocols_lock_screen.dart';
 import '../controllers/progress_controller.dart';
 import 'progress_card.dart';
-import 'this_week_card.dart' show progressSeparator;
+import 'progress_format.dart';
 
 /// Each Compound's Day Status counts for the period (D7, D8 card 7), behind
 /// the Protocols lock. While a lock is set and locked, or its state cannot be
@@ -33,11 +33,9 @@ class ProtocolsProgressCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final state = ref.watch(progressProtocolsProvider);
-    // Loading renders nothing: the card may turn out absent. An error fails
-    // closed, like the lock's own unavailable state.
-    final protocols =
-        state.hasError ? const ProgressProtocolsUnavailable() : state.value;
+    // Loading renders nothing: the card may turn out absent. The provider
+    // has already turned any error into the unavailable state.
+    final protocols = ref.watch(progressProtocolsProvider).value;
     if (protocols == null) {
       return const SizedBox.shrink();
     }
