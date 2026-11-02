@@ -12,6 +12,8 @@
 /// `docs/designs/plan-guided-logging.md`.
 library;
 
+import 'package:flutter/foundation.dart' show listEquals;
+
 import 'training_dimensions.dart';
 import 'training_records.dart';
 
@@ -93,7 +95,7 @@ final class CarryTarget {
             other.setId == setId &&
             other.rest == rest &&
             other.restChanged == restChanged &&
-            _sameValues(other.values, values);
+            listEquals(other.values, values);
   }
 
   @override
@@ -104,18 +106,6 @@ final class CarryTarget {
   String toString() =>
       'CarryTarget($setId, values: ${values.map(_describe).join(', ')}, '
       'rest: $rest, restChanged: $restChanged)';
-}
-
-bool _sameValues(List<SetDimensionValue> a, List<SetDimensionValue> b) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var index = 0; index < a.length; index += 1) {
-    if (a[index] != b[index]) {
-      return false;
-    }
-  }
-  return true;
 }
 
 String _describe(SetDimensionValue value) =>

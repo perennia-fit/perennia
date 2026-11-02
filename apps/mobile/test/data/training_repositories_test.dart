@@ -4555,6 +4555,48 @@ void main() {
     });
 
     test(
+        'appendToWorkout gives drafts consecutive positions after the last '
+        'Set, under one batch that one Undo removes', () async {
+      await plannedSet(0);
+      await plannedSet(4);
+      final batchId = newBatchId();
+
+      final ids = await repositories.sets.appendToWorkout(
+        workoutId,
+        <LoggedSetDraft>[
+          for (final load in <String>['60', '62.5'])
+            LoggedSetDraft(
+              workoutId: workoutId,
+              exerciseId: exerciseId,
+              position: 0,
+              values: _loadRepsValues(load: load, reps: '8'),
+              plannedRestAfter: ninety,
+            ),
+        ],
+        batchId: batchId,
+      );
+
+      expect(ids, hasLength(2));
+      final appended = <LoggedSetRecord>[
+        for (final id in ids) await setById(id),
+      ];
+      expect(appended.map((set) => set.position), <int>[5, 6]);
+      expect(
+        appended.map((set) => set.values.load?.entered),
+        <String>['60', '62.5'],
+      );
+      expect(appended.every((set) => !set.isCompleted), isTrue);
+      expect(appended.every((set) => set.plannedRestAfter == ninety), isTrue);
+      expect(await entriesFor(batchId), hasLength(2));
+
+      final undo = await repositories.activityLog.undoBatch(batchId);
+      expect(undo.hasConflicts, isFalse);
+      final active = await repositories.sets.listActiveForWorkout(workoutId);
+      expect(active.map((set) => set.id), isNot(contains(ids.first)));
+      expect(active.map((set) => set.id), isNot(contains(ids.last)));
+    });
+
+    test(
         'adjust extends, shortens, shortens past now and clears the prepare '
         'cue', () async {
       final timerId = await repositories.restTimers.start(

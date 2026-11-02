@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart'
+    show ApplyInterceptor, QueryExecutor, QueryInterceptor, driftRuntimeOptions;
+import 'package:drift/native.dart' show NativeDatabase;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -2496,6 +2498,10 @@ void main() {
       expect(sets, hasLength(3));
       expect(sets.every((set) => set.isCompleted), isTrue);
       expect(sets[2].values, _loadRepsValues(load: '20', reps: '12'));
+      // The extra Set keeps the plan's Off it was shown, so the Set after
+      // it shows Off too rather than falling back to 2:00.
+      expect(sets[2].plannedRestAfter, Duration.zero);
+      expect(_restText(tester), 'Off');
       expect(find.text('Set 3 logged'), findsOneWidget);
       expect(
         await tester.runAsync(
@@ -2519,9 +2525,62 @@ void main() {
       expect(sets, hasLength(4));
       expect(sets[3].isCompleted, isFalse);
       expect(sets[3].values, _loadRepsValues(load: '20', reps: '12'));
-      expect(sets[3].plannedRestAfter, isNull);
+      expect(sets[3].plannedRestAfter, Duration.zero);
       expect(_rowLabel(tester, sets[3].id), 'Set 4, next, 20 kg x 12');
       expect(_logSetLabel(tester), 'Log set 4 of 4');
+      expect(_restText(tester), 'Off');
+    });
+
+    _testTrainingScreen(
+        'a rest changed on an unplanned exercise sticks across unchanged Sets',
+        (tester) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: const <LoggedSet>[],
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '60',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '10',
+      );
+      expect(_restText(tester), '2:00');
+      for (var step = 0; step < 2; step += 1) {
+        await tester.tap(find.byKey(TrainingScreen.restAfterIncrementKey));
+        await tester.pump();
+      }
+      expect(_restText(tester), '2:30');
+
+      // Set 1 with the changed rest, then Sets 2 and 3 left at 2:30.
+      for (var index = 0; index < 3; index += 1) {
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+        await _settle(tester);
+        expect(_restText(tester), '2:30');
+        final timer = await tester.runAsync(
+          () => repositories.restTimers.getCurrentForWorkout(plan.workoutId),
+        );
+        expect(timer?.duration, const Duration(seconds: 150));
+      }
+
+      final sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(sets, hasLength(3));
+      expect(
+        sets.map((set) => set.plannedRestAfter),
+        List<Duration>.filled(3, const Duration(seconds: 150)),
+      );
     });
 
     _testTrainingScreen('CUJ 9: fixes a logged Set in Update mode', (
@@ -2714,6 +2773,86 @@ void main() {
 
       final sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
       expect(sets.map((set) => set.isCompleted), <bool>[true, false, false]);
+    });
+
+    _testTrainingScreen(
+        'a second tap after the write but before the superset move is ignored',
+        (tester) async {
+      // Holds the rest's start after the Set is written, so a second tap
+      // lands after the Sets stream shows Set 1 logged but before the
+      // screen moves to Pull-Up.
+      final gate = _RestTimerReadGate();
+      final gatedDatabase =
+          AppDatabase(NativeDatabase.memory().interceptWith(gate));
+      addTearDown(() => tester.runAsync(gatedDatabase.close));
+      final gatedRepositories = TrainingRepositories(gatedDatabase);
+      final incline = (await tester.runAsync(
+        () => _createPlannedExercise(
+          gatedRepositories,
+          name: 'Incline Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '26', reps: '10'),
+          ),
+          rest: const Duration(seconds: 60),
+        ),
+      ))!;
+      final pullUp = (await tester.runAsync(
+        () => _createPlannedExercise(
+          gatedRepositories,
+          workoutId: incline.workoutId,
+          name: 'Pull-Up',
+          type: ExerciseType(const <DimensionId>[DimensionId.reps]),
+          planned: List<LoggedSet>.filled(3, _repsValues('8')),
+          rest: const Duration(seconds: 60),
+        ),
+      ))!;
+      await tester.runAsync(
+        () => gatedRepositories.exerciseGroups.create(
+          ExerciseGroupDraft(
+            workoutId: incline.workoutId,
+            name: 'Superset',
+            colorHex: '#2F6FED',
+            workoutExerciseIds: <String>[
+              incline.workoutExerciseId,
+              pullUp.workoutExerciseId,
+            ],
+          ),
+        ),
+      );
+
+      await _pumpTrainingScreen(
+        tester,
+        gatedRepositories,
+        incline.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      final ids = incline.setIds;
+
+      gate.arm();
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      for (var attempt = 0;
+          attempt < 50 &&
+              _rowLabel(tester, ids[0]) != 'Set 1, done, 26 kg x 10';
+          attempt += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump();
+      }
+      expect(_rowLabel(tester, ids[0]), 'Set 1, done, 26 kg x 10');
+      expect(gate.holding, isTrue);
+      expect(find.widgetWithText(AppBar, 'Incline Press'), findsOneWidget);
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      gate.release();
+      await _settle(tester);
+
+      final sets =
+          (await tester.runAsync(() => _setsOf(gatedRepositories, incline)))!;
+      expect(sets.map((set) => set.isCompleted), <bool>[true, false, false]);
+      expect(sets.first.id, ids.first);
+      expect(find.widgetWithText(AppBar, 'Pull-Up'), findsOneWidget);
     });
 
     _testTrainingScreen('a kg plan on an imperial unit setting logs kg', (
@@ -3453,6 +3592,52 @@ class _RecordingRestTimerAlert implements RestTimerAlert {
   @override
   Future<void> firePrepare(double volume) async {
     prepareVolumes.add(volume);
+  }
+}
+
+/// Once armed, holds the first read of the rest timer that follows a rest
+/// timer insert (the Training Screen reading back the timer it started)
+/// until [release].
+class _RestTimerReadGate extends QueryInterceptor {
+  var _armed = false;
+  var _inserted = false;
+  final _released = Completer<void>();
+  var holding = false;
+
+  void arm() => _armed = true;
+
+  void release() {
+    if (!_released.isCompleted) {
+      _released.complete();
+    }
+  }
+
+  @override
+  Future<int> runInsert(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    if (_armed && statement.contains(AppDatabase.restTimersTable)) {
+      _inserted = true;
+    }
+    return super.runInsert(executor, statement, args);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) async {
+    if (_inserted && statement.contains(AppDatabase.restTimersTable)) {
+      _inserted = false;
+      _armed = false;
+      holding = true;
+      await _released.future;
+      holding = false;
+    }
+    return super.runSelect(executor, statement, args);
   }
 }
 

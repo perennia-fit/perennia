@@ -9988,23 +9988,29 @@ class LoggedSetRepository {
 
     return _database.transaction(() async {
       if (currentSetId == null) {
-        final position = await nextPositionForWorkout(request.workoutId);
-        final id = await _create(
-          LoggedSetDraft(
-            workoutId: request.workoutId,
-            exerciseId: request.exerciseId,
-            position: position,
-            values: request.values,
-            plannedRestAfter: request.restChanged ? request.rest : null,
-            performedAt: context.timestamp,
-            isCompleted: true,
-            comment: request.comment,
-            side: request.side,
-            rpe: request.rpe,
-          ),
+        final ids = await _appendToWorkout(
+          request.workoutId,
+          <LoggedSetDraft>[
+            LoggedSetDraft(
+              workoutId: request.workoutId,
+              exerciseId: request.exerciseId,
+              position: 0,
+              values: request.values,
+              plannedRestAfter: request.restChanged ? request.rest : null,
+              performedAt: context.timestamp,
+              isCompleted: true,
+              comment: request.comment,
+              side: request.side,
+              rpe: request.rpe,
+            ),
+          ],
           context,
         );
-        return LogSetResult(setId: id, carriedCount: 0, alreadyLogged: false);
+        return LogSetResult(
+          setId: ids.single,
+          carriedCount: 0,
+          alreadyLogged: false,
+        );
       }
 
       final before = await (_database.select(_database.loggedSets)
@@ -10053,16 +10059,15 @@ class LoggedSetRepository {
       await (_database.update(_database.loggedSets)
             ..where((row) => row.id.equals(currentSetId)))
           .write(
-        _loggedSetValueCompanion(
-          _setColumns(request.values),
+        _performedSetCompanion(
+          values: request.values,
+          comment: request.comment,
+          side: normalizedSide,
+          rpe: request.rpe,
+          restChanged: request.restChanged,
+          rest: request.rest,
           updatedAt: context.timestamp,
         ).copyWith(
-          comment: Value<String?>(_normalizeOptionalText(request.comment)),
-          side: Value<String?>(normalizedSide),
-          rpe: Value<double?>(request.rpe),
-          plannedRestAfter: request.restChanged
-              ? Value<int?>(request.rest?.inSeconds)
-              : const Value<int?>.absent(),
           isCompleted: const Value<bool>(true),
           performedAt: Value<DateTime?>(context.timestamp),
         ),
@@ -10083,9 +10088,10 @@ class LoggedSetRepository {
             _setColumns(merged),
             updatedAt: context.timestamp,
           ).copyWith(
-            plannedRestAfter: target.restChanged
-                ? Value<int?>(target.rest?.inSeconds)
-                : const Value<int?>.absent(),
+            plannedRestAfter: _plannedRestValue(
+              changed: target.restChanged,
+              rest: target.rest,
+            ),
           ),
         );
         await _appendLoggedSetUpdate(targetBefore, context);
@@ -10134,20 +10140,93 @@ class LoggedSetRepository {
       await (_database.update(_database.loggedSets)
             ..where((row) => row.id.equals(id)))
           .write(
-        _loggedSetValueCompanion(
-          _setColumns(values),
+        _performedSetCompanion(
+          values: values,
+          comment: comment,
+          side: normalizedSide,
+          rpe: rpe,
+          restChanged: restChanged,
+          rest: rest,
           updatedAt: context.timestamp,
-        ).copyWith(
-          comment: Value<String?>(_normalizeOptionalText(comment)),
-          side: Value<String?>(normalizedSide),
-          rpe: Value<double?>(rpe),
-          plannedRestAfter: restChanged
-              ? Value<int?>(rest?.inSeconds)
-              : const Value<int?>.absent(),
         ),
       );
       await _appendLoggedSetUpdate(before, context);
     });
+  }
+
+  /// The columns Log set and Update both write on a performed Set: its
+  /// values, annotations and, only when [restChanged], `plannedRestAfter`.
+  LoggedSetsCompanion _performedSetCompanion({
+    required LoggedSet values,
+    required String? comment,
+    required String? side,
+    required double? rpe,
+    required bool restChanged,
+    required Duration? rest,
+    required DateTime updatedAt,
+  }) {
+    return _loggedSetValueCompanion(
+      _setColumns(values),
+      updatedAt: updatedAt,
+    ).copyWith(
+      comment: Value<String?>(_normalizeOptionalText(comment)),
+      side: Value<String?>(side),
+      rpe: Value<double?>(rpe),
+      plannedRestAfter: _plannedRestValue(changed: restChanged, rest: rest),
+    );
+  }
+
+  /// `plannedRestAfter` as written by Log set, Update and carry-forward:
+  /// absent unless the rest changed, so an untouched null stays null.
+  Value<int?> _plannedRestValue({
+    required bool changed,
+    required Duration? rest,
+  }) {
+    return changed ? Value<int?>(rest?.inSeconds) : const Value<int?>.absent();
+  }
+
+  /// Adds [drafts] after the Workout's last Set, in order, in one
+  /// transaction under one write context (so one batch id): Add set, Add
+  /// round and Log set of a new Set. The next position is read once inside
+  /// the transaction and each draft takes the one after the previous, so
+  /// another writer cannot take a position between two of them and the
+  /// Sets stream shows the whole round at once. Each draft's own `position`
+  /// is ignored. Returns the new ids in the order of [drafts].
+  Future<List<String>> appendToWorkout(
+    String workoutId,
+    List<LoggedSetDraft> drafts, {
+    String actor = 'app',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(
+      () => _appendToWorkout(workoutId, drafts, context),
+    );
+  }
+
+  Future<List<String>> _appendToWorkout(
+    String workoutId,
+    List<LoggedSetDraft> drafts,
+    WriteContext context,
+  ) async {
+    var position = await nextPositionForWorkout(workoutId);
+    final ids = <String>[];
+    for (final draft in drafts) {
+      if (draft.workoutId != workoutId) {
+        throw ArgumentError.value(
+          draft,
+          'drafts',
+          'Every appended Set must belong to the Workout.',
+        );
+      }
+      ids.add(await _create(draft.copyWith(position: position), context));
+      position += 1;
+    }
+    return ids;
   }
 
   /// The Remembered Rest of [exerciseId]: the `plannedRestAfter` of its
@@ -10472,8 +10551,9 @@ class LoggedSetRepository {
     if (workoutId != null) {
       query.where((row) => row.workoutId.equals(workoutId));
       // `id` breaks position ties (Materialize numbers each exercise from 0,
-      // and Agents supply their own), so the screen lists Sets in the order
-      // the plan logging rules use (`compareSetsInPlanOrder`).
+      // and Agents supply their own), so every reader of one Workout's Sets
+      // gets the order the plan logging rules use (`compareSetsInPlanOrder`)
+      // and two reads never disagree.
       query.orderBy([
         (row) => OrderingTerm.asc(row.position),
         (row) => OrderingTerm.asc(row.id),
@@ -11203,8 +11283,8 @@ class MeasurementRepository {
       // Of the two latest rows read, an unreadable one is skipped, so the
       // summary may then have no previous entry.
       final entries = <MeasurementEntryRecord>[
-        for (final entry in entryRowsByMeasurementId[row.id] ??
-            const <MetricReadingRow>[])
+        for (final entry
+            in entryRowsByMeasurementId[row.id] ?? const <MetricReadingRow>[])
           if (_readableMeasurementEntry(entry) case final record?) record,
       ];
       summaries.add(

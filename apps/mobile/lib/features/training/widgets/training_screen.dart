@@ -156,8 +156,17 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   List<LoggedSetRecord>? _workoutSets;
   List<WorkoutExerciseRecord> _workoutExercises =
       const <WorkoutExerciseRecord>[];
-  List<ExerciseGroupRecord> _groups = const <ExerciseGroupRecord>[];
+  Map<String, WorkoutExerciseRecord> _workoutExercisesById =
+      const <String, WorkoutExerciseRecord>{};
+  Map<String, ExerciseGroupRecord> _groupByWorkoutExerciseId =
+      const <String, ExerciseGroupRecord>{};
   Map<String, ExerciseRecord> _exercisesById = const <String, ExerciseRecord>{};
+
+  /// The Workout's Sets by exercise, in plan order, without Planned Sets
+  /// being swiped away; null until next read after the Sets or the swiped
+  /// Sets change. Every build reads it once per group member (context line,
+  /// Next, rounds), so it is bucketed once rather than rescanned per read.
+  Map<String, List<LoggedSetRecord>>? _setsByExerciseIdCache;
 
   // The form's controls.
   final _controllers = <DimensionId, TextEditingController>{};
@@ -335,9 +344,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
             beforeWorkoutId: workoutExercise.workoutId,
             dimensions: exercise.type.dimensions,
           );
-    // Read once per opening, with the prefill: Log set writes a changed
-    // rest onto its Set, so within this visit the exercise's last Set
-    // carries it (`restShownFor`) and this value never needs a refresh.
+    // Read once per opening, with the prefill. Within this visit the
+    // exercise's last Set carries any rest since (`restShownFor`): Log set
+    // writes a changed rest onto its Set, and a new Set also writes the rest
+    // it took from the Set before it (`_logSetInFlight`), so this value
+    // never needs a refresh.
     final rememberedRest =
         await repositories.sets.findRememberedRest(exercise.id);
 
@@ -356,8 +367,10 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     }
     _subscribedWorkoutId = workoutId;
     _workoutSets = null;
+    _setsByExerciseIdCache = null;
     _workoutExercises = const <WorkoutExerciseRecord>[];
-    _groups = const <ExerciseGroupRecord>[];
+    _workoutExercisesById = const <String, WorkoutExerciseRecord>{};
+    _groupByWorkoutExerciseId = const <String, ExerciseGroupRecord>{};
     _exercisesById = const <String, ExerciseRecord>{};
     _subscribedExerciseIds = const <String>{};
     _removingSetIds.clear();
@@ -372,8 +385,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         return;
       }
       setState(() {
-        _workoutExercises = List<WorkoutExerciseRecord>.of(rows)
-          ..sort((a, b) => a.position.compareTo(b.position));
+        // Already in Workout order, the order the Navigation Panel shows.
+        _workoutExercises = rows;
+        _workoutExercisesById = <String, WorkoutExerciseRecord>{
+          for (final row in rows) row.id: row,
+        };
         _subscribeToExercises(rows);
       });
     });
@@ -382,7 +398,17 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         repositories.exerciseGroups.watchActiveForWorkout(workoutId).listen(
       (rows) {
         if (mounted) {
-          setState(() => _groups = rows);
+          setState(() {
+            // A Workout Exercise is in at most one group; should two
+            // claim it, the first in stream order wins.
+            final byMemberId = <String, ExerciseGroupRecord>{};
+            for (final group in rows) {
+              for (final memberId in group.workoutExerciseIds) {
+                byMemberId.putIfAbsent(memberId, () => group);
+              }
+            }
+            _groupByWorkoutExerciseId = byMemberId;
+          });
         }
       },
     );
@@ -400,6 +426,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       }
       setState(() {
         _workoutSets = rows;
+        _setsByExerciseIdCache = null;
         _removingSetIds.removeWhere(
           (id) => !rows.any((set) => set.id == id),
         );
@@ -438,24 +465,36 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// The open exercise's Sets in plan order, without Planned Sets being
   /// swiped away.
   List<LoggedSetRecord> _exerciseSetsFor(_TrainingExerciseState state) {
-    return _setsOfExercise(
-      workoutId: state.workoutExercise.workoutId,
-      exerciseId: state.workoutExercise.exerciseId,
-    );
+    return _setsOfExercise(state.workoutExercise.exerciseId);
   }
 
-  List<LoggedSetRecord> _setsOfExercise({
-    required String workoutId,
-    required String exerciseId,
-  }) {
-    return <LoggedSetRecord>[
-      for (final set in _workoutSets ?? const <LoggedSetRecord>[])
-        if (set.workoutId == workoutId &&
-            set.exerciseId == exerciseId &&
-            set.deletedAt == null &&
-            !_removingSetIds.contains(set.id))
-          set,
-    ]..sort(compareSetsInPlanOrder);
+  List<LoggedSetRecord> _setsOfExercise(String exerciseId) {
+    return _setsByExerciseId[exerciseId] ?? const <LoggedSetRecord>[];
+  }
+
+  /// See [_setsByExerciseIdCache]. Sorted here, not trusted from the
+  /// stream, because a test's `setsStream` need not come from the query.
+  Map<String, List<LoggedSetRecord>> get _setsByExerciseId {
+    final cached = _setsByExerciseIdCache;
+    if (cached != null) {
+      return cached;
+    }
+    final byExerciseId = <String, List<LoggedSetRecord>>{};
+    for (final set in _workoutSets ?? const <LoggedSetRecord>[]) {
+      if (set.workoutId == _subscribedWorkoutId &&
+          set.deletedAt == null &&
+          !_removingSetIds.contains(set.id)) {
+        byExerciseId
+            .putIfAbsent(set.exerciseId, () => <LoggedSetRecord>[])
+            .add(set);
+      }
+    }
+    return _setsByExerciseIdCache = <String, List<LoggedSetRecord>>{
+      for (final entry in byExerciseId.entries)
+        entry.key: List<LoggedSetRecord>.unmodifiable(
+          entry.value..sort(compareSetsInPlanOrder),
+        ),
+    };
   }
 
   WorkoutExerciseRecord? _workoutExerciseById(String workoutExerciseId) {
@@ -463,12 +502,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     if (state != null && state.workoutExercise.id == workoutExerciseId) {
       return state.workoutExercise;
     }
-    for (final workoutExercise in _workoutExercises) {
-      if (workoutExercise.id == workoutExerciseId) {
-        return workoutExercise;
-      }
-    }
-    return null;
+    return _workoutExercisesById[workoutExerciseId];
   }
 
   List<LoggedSetRecord> _setsOfWorkoutExercise(String workoutExerciseId) {
@@ -476,10 +510,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     if (workoutExercise == null) {
       return const <LoggedSetRecord>[];
     }
-    return _setsOfExercise(
-      workoutId: workoutExercise.workoutId,
-      exerciseId: workoutExercise.exerciseId,
-    );
+    return _setsOfExercise(workoutExercise.exerciseId);
   }
 
   ({int performed, int planned}) _countsFor(String workoutExerciseId) {
@@ -500,12 +531,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   }
 
   ExerciseGroupRecord? _groupFor(String workoutExerciseId) {
-    for (final group in _groups) {
-      if (group.workoutExerciseIds.contains(workoutExerciseId)) {
-        return group;
-      }
-    }
-    return null;
+    return _groupByWorkoutExerciseId[workoutExerciseId];
   }
 
   /// Applies the spec's reload rules after the data or the screen state
@@ -1018,6 +1044,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// Log set, step by step as the spec lists it: the confirmation shows
   /// before any await (within one frame), the write runs under its own
   /// batch so Undo reverses it, and the rest starts under another batch.
+  ///
+  /// `_logInFlight` stays set until the superset move (step 8), not just
+  /// until the write returns: the Sets stream re-emits as soon as the write
+  /// commits, so a second tap while the rest starts would otherwise log
+  /// this member's next Set instead of being absorbed.
   Future<void> _logSet(_TrainingExerciseState state) async {
     if (_logInFlight ||
         _selectedSetId != null ||
@@ -1032,6 +1063,19 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     }
 
     _logInFlight = true;
+    try {
+      await _logSetInFlight(state, settings, values);
+    } finally {
+      _logInFlight = false;
+    }
+  }
+
+  Future<void> _logSetInFlight(
+    _TrainingExerciseState state,
+    AppSettings settings,
+    LoggedSet values,
+  ) async {
+    final exercise = state.exercise;
     final repositories = ref.read(trainingRepositoriesProvider);
     final scheduler = ref.read(timerBackgroundSchedulerProvider);
     final messenger = ScaffoldMessenger.of(context);
@@ -1049,6 +1093,15 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         if (_countsFor(memberId).planned > 0) memberId,
     };
     final rest = _rest;
+    // A new Set also writes a rest it took unchanged from the exercise's
+    // last Set in this Workout. Otherwise it stores null, and the Set after
+    // it, whose rest comes from this one, falls back to the Remembered Rest
+    // read when the exercise opened, losing a rest changed since (or a
+    // plan's Off). A new Set is never Template divergence of rest: it
+    // already diverges by count.
+    final restChanged = rest != _loadedRest ||
+        (currentSet == null &&
+            exerciseSets.lastOrNull?.plannedRestAfter != null);
 
     _showSnackBar(
       messenger,
@@ -1067,7 +1120,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
           comment: _commentController.text,
           side: exercise.isUnilateral ? _selectedSide : null,
           rpe: exercise.usesRpe ? _rpeFromController(_rpeController) : null,
-          restChanged: rest != _loadedRest,
+          restChanged: restChanged,
           rest: rest,
         ),
         batchId: batchId,
@@ -1075,8 +1128,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     } catch (error) {
       _showSnackBar(messenger, l10n.trainingSetNotLogged(_errorReason(error)));
       return;
-    } finally {
-      _logInFlight = false;
     }
     if (result.alreadyLogged) {
       messenger.removeCurrentSnackBar();
@@ -1324,6 +1375,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     final batchId = repositories.uuidGenerator.generate();
     setState(() {
       _removingSetIds.add(set.id);
+      _setsByExerciseIdCache = null;
       _reconcileForm();
     });
     await repositories.sets.softDelete(set.id, batchId: batchId);
@@ -1334,7 +1386,10 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       onUndo: () => unawaited(
         _undoBatch(repositories, messenger, l10n, batchId).then((undone) {
           if (undone && mounted) {
-            setState(() => _removingSetIds.remove(set.id));
+            setState(() {
+              _removingSetIds.remove(set.id);
+              _setsByExerciseIdCache = null;
+            });
           }
         }),
       ),
@@ -1357,17 +1412,18 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         : _rest != _loadedRest
             ? _rest
             : null;
-    final sets = ref.read(trainingRepositoriesProvider).sets;
-    final position =
-        await sets.nextPositionForWorkout(state.workoutExercise.workoutId);
-    await sets.create(
-      LoggedSetDraft(
-        workoutId: state.workoutExercise.workoutId,
-        exerciseId: state.workoutExercise.exerciseId,
-        position: position,
-        values: values,
-        plannedRestAfter: plannedRestAfter,
-      ),
+    final workoutId = state.workoutExercise.workoutId;
+    await ref.read(trainingRepositoriesProvider).sets.appendToWorkout(
+      workoutId,
+      <LoggedSetDraft>[
+        LoggedSetDraft(
+          workoutId: workoutId,
+          exerciseId: state.workoutExercise.exerciseId,
+          position: 0,
+          values: values,
+          plannedRestAfter: plannedRestAfter,
+        ),
+      ],
     );
   }
 
@@ -1428,18 +1484,15 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         ),
       );
     }
-    for (final draft in drafts) {
-      final position = await repositories.sets.nextPositionForWorkout(
-        workoutId,
-      );
-      await repositories.sets.create(
-        draft.copyWith(position: position),
-        batchId: batchId,
-      );
-    }
     if (drafts.isEmpty) {
       return;
     }
+    // One transaction, so the Sets stream shows the whole round at once.
+    await repositories.sets.appendToWorkout(
+      workoutId,
+      drafts,
+      batchId: batchId,
+    );
     _showSnackBar(
       messenger,
       l10n.trainingRoundAdded,
