@@ -57,6 +57,15 @@ abstract interface class ProgressFeatureRepository {
 
   /// Every active exercise's New Bests dated in [from]..[to], newest first.
   Stream<List<NewBest>> watchNewBests(TrainingDayDate from, TrainingDayDate to);
+
+  /// Body Tracker's curated measurements, in Body Tracker's order.
+  Stream<List<MeasurementRecord>> watchCuratedMeasurements();
+
+  /// Every live Reading of the measurement [measurementId], as Body Tracker
+  /// reads its history. A Reading whose value cannot be read is left out.
+  Stream<List<MeasurementHistoryEntry>> watchMeasurementEntries(
+    String measurementId,
+  );
 }
 
 /// Fixed-data [ProgressFeatureRepository] for app roots composed without a
@@ -73,6 +82,8 @@ class StubProgressFeatureRepository implements ProgressFeatureRepository {
     this.exerciseNames = const <String, String>{},
     this.progressSeries = const <ProgressSeries>[],
     this.newBests = const <NewBest>[],
+    this.curatedMeasurements = const <MeasurementRecord>[],
+    this.measurementEntries = const <String, List<MeasurementHistoryEntry>>{},
   });
 
   final List<WeeklyPlanFacts> weeklyPlans;
@@ -87,6 +98,10 @@ class StubProgressFeatureRepository implements ProgressFeatureRepository {
   /// for, in the order asked.
   final List<ProgressSeries> progressSeries;
   final List<NewBest> newBests;
+  final List<MeasurementRecord> curatedMeasurements;
+
+  /// Each measurement's entries by measurement id; one not listed has none.
+  final Map<String, List<MeasurementHistoryEntry>> measurementEntries;
 
   @override
   Stream<List<WeeklyPlanFacts>> watchWeeklyPlans() {
@@ -151,6 +166,20 @@ class StubProgressFeatureRepository implements ProgressFeatureRepository {
     TrainingDayDate to,
   ) {
     return Stream<List<NewBest>>.value(newBests);
+  }
+
+  @override
+  Stream<List<MeasurementRecord>> watchCuratedMeasurements() {
+    return Stream<List<MeasurementRecord>>.value(curatedMeasurements);
+  }
+
+  @override
+  Stream<List<MeasurementHistoryEntry>> watchMeasurementEntries(
+    String measurementId,
+  ) {
+    return Stream<List<MeasurementHistoryEntry>>.value(
+      measurementEntries[measurementId] ?? const <MeasurementHistoryEntry>[],
+    );
   }
 }
 
@@ -243,6 +272,20 @@ class RepositoryProgressFeatureRepository implements ProgressFeatureRepository {
     TrainingDayDate to,
   ) {
     return _analytics.watchNewBests(from, to);
+  }
+
+  @override
+  Stream<List<MeasurementRecord>> watchCuratedMeasurements() {
+    return _repositories.measurements.watchCuratedActive();
+  }
+
+  @override
+  Stream<List<MeasurementHistoryEntry>> watchMeasurementEntries(
+    String measurementId,
+  ) {
+    return _repositories.measurements.watchHistoryEntries(
+      measurementId: measurementId,
+    );
   }
 
   static ProtocolDayDate _protocolDay(TrainingDayDate date) {

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
@@ -411,6 +411,47 @@ void main() {
       expect(bodyWeightHistory[0].previousEntry?.valueEntered, '81');
       expect(bodyWeightHistory[1].previousEntry?.valueEntered, '82');
       expect(bodyWeightHistory[2].previousEntry, isNull);
+    });
+
+    test('leaves a Reading whose value cannot be read out of the history',
+        () async {
+      await repositories.measurements.ensureDefaultMeasurements(
+        bodyWeightUnit: MeasurementUnit.kilogram,
+      );
+      final bodyWeight = (await repositories.measurements.listEnabled())
+          .firstWhere((measurement) => measurement.name == 'Body Weight');
+      for (final (day, value) in <(int, String)>[(23, '82'), (25, '80')]) {
+        await repositories.measurements.createEntry(
+          MeasurementEntryDraft(
+            measurementId: bodyWeight.id,
+            valueEntered: value,
+            measuredAt: DateTime.utc(2026, 6, day, 7, 30),
+          ),
+        );
+      }
+      // A synced Reading with no scalar value, between the two.
+      await database.into(database.metricReadings).insert(
+            MetricReadingsCompanion.insert(
+              id: 'synced-structured',
+              metricId: bodyWeight.id,
+              valueJson: '{"shape":"structured"}',
+              atTime: Value<DateTime?>(DateTime.utc(2026, 6, 24, 7, 30)),
+              provenance: MetricReadingProvenance.manual.name,
+              source: 'manual',
+              updatedAt: DateTime.utc(2026, 6, 24, 7, 30),
+            ),
+          );
+
+      final history = await repositories.measurements
+          .watchHistoryEntries(measurementId: bodyWeight.id)
+          .first;
+
+      expect(
+        history.map((item) => item.entry.valueEntered),
+        <String>['80', '82'],
+      );
+      expect(history[0].previousEntry?.valueEntered, '82');
+      expect(history[1].previousEntry, isNull);
     });
 
     test('watchHistoryEntries ignores unrelated measurement entry changes',

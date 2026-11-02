@@ -1259,7 +1259,7 @@ Repository-side types, which add display names:
 | :--- | :--- | :----- |
 | `WeeklyPlanFacts` | `routine_up_next_repository.dart` | `routineId`, `routineName`, `entries: WeeklyPlanEntry[]`; `toWeeklyPlan()` drops the name |
 | `CompoundConsistencySummary` | `protocol_plan_repository.dart` | `compoundId`, `compoundName`, `logged`, `partlyLogged`, `notLogged`, `paused` |
-| `ProgressBodyRow` | `progress_controller.dart` | `measurementId`, `name`, `unitLabel`, `readings: TrendPoint[]` (the period's), `latestTrend: double`, `change: double?` |
+| `ProgressBodyRow` | `progress_controller.dart` | `measurementId`, `name`, `unit: MeasurementUnit` (the card renders Body Tracker's label for it, since the controller has no localizations), `readings: TrendPoint[]` (the period's), `latestTrend: double`, `change: double?` |
 
 The Workout loader returns `ProgressWorkout` directly; there is no separate
 facts type.
@@ -2227,6 +2227,13 @@ source:
     *   `Stream<List<MeasurementHistoryEntry>>
         watchMeasurementEntries(String measurementId)`, delegating to
         `MeasurementRepository.watchHistoryEntries(measurementId: id)`.
+
+    `MeasurementRepository`'s history mapping leaves out a Reading whose
+    value cannot be read (no `scalarValue` and no numeric `valueJson.value`,
+    or an undecodable row) instead of throwing, so one malformed synced
+    Reading neither fails the Body card nor Body Tracker's history; the next
+    readable Reading becomes the predecessor. Such a Reading has no scalar
+    value, so D5 already leaves it out of the Trend.
 59. **`progress_controller.dart`** (modify). Add the `autoDispose`
     `progressBodyProvider`, emitting `List<ProgressBodyRow>` under a
     Timeline span named `progress.body`. For the curated measurements, it:
@@ -2254,7 +2261,12 @@ source:
     *   Regenerate the contract outputs.
 62. **`performance_budget_thresholds.dart` and
     `performance_budgets_test.dart`** (modify). Add `progressTrendBudget`
-    over the item 36 fixture's Readings, plus its README row.
+    over the item 36 fixture's Readings, plus its README row. The fixture's
+    Metric becomes a curated Body Tracker measurement (pinned, with a goal
+    type), so the test reads the Readings through `watchHistoryEntries`, as
+    the card does. Only `metricTrend` is timed, the fastest of three runs, as
+    the Food History budget does: the first run can pay for compiling the
+    core.
 63. **`CONTEXT.md`** (modify). Add Trend.
 64. **Tests.**
     *   `apps/mobile/test/features/progress/body_card_test.dart` (create):

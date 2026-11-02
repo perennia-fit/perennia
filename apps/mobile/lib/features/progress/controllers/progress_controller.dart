@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/analytics/progress_measure.dart';
+import '../../../domain/metrics/metric_trend.dart';
 import '../../../domain/training/training_day.dart';
 import '../../../domain/training/training_progress.dart';
 import '../../protocols/controllers/protocols_lock_controller.dart';
@@ -224,6 +225,22 @@ final progressNewBestsBetweenProvider = StreamProvider.autoDispose
       .watchNewBests(range.$1, range.$2);
 });
 
+final progressCuratedMeasurementsProvider =
+    StreamProvider.autoDispose<List<MeasurementRecord>>((ref) {
+  return ref
+      .watch(progressFeatureRepositoryProvider)
+      .watchCuratedMeasurements();
+});
+
+/// Keyed by measurement id, so adding or removing a curated measurement
+/// starts or stops only its own stream.
+final progressMeasurementEntriesProvider = StreamProvider.autoDispose
+    .family<List<MeasurementHistoryEntry>, String>((ref, measurementId) {
+  return ref
+      .watch(progressFeatureRepositoryProvider)
+      .watchMeasurementEntries(measurementId);
+});
+
 /// Exercise ids compared by value, as a family key. The ids are kept in
 /// code-unit order, so the key does not depend on the order they are given in.
 @immutable
@@ -369,6 +386,35 @@ final class ProgressNewBestRow {
 
   final NewBest best;
   final String exerciseName;
+}
+
+/// One curated measurement's row on the Body card (D8 card 6).
+final class ProgressBodyRow {
+  const ProgressBodyRow({
+    required this.measurementId,
+    required this.name,
+    required this.unit,
+    required this.readings,
+    required this.latestTrend,
+    required this.change,
+  });
+
+  final String measurementId;
+  final String name;
+
+  /// The measurement's own unit; the card labels it as Body Tracker does.
+  /// Readings are not converted to the unit system (D5).
+  final MeasurementUnit unit;
+
+  /// The Trend points dated in the period, in [metricTrend]'s order; never
+  /// empty.
+  final List<TrendPoint> readings;
+
+  /// The Trend at the period's last Reading.
+  final double latestTrend;
+
+  /// The Trend's change over the period ([trendChange]).
+  final double? change;
 }
 
 /// One Compound's counted Day Statuses in the period (D7).
@@ -621,6 +667,70 @@ final progressNewBestsProvider =
     },
   );
 });
+
+/// The Body card's rows (D8 card 6): each curated measurement with a
+/// Reading in the period, in Body Tracker's order. The Trend runs over each
+/// measurement's whole history and is then clipped to the period, whose
+/// bounds are the start of its first local day and of the day after its
+/// last, in the device's zone (D5).
+final progressBodyProvider =
+    Provider.autoDispose<AsyncValue<List<ProgressBodyRow>>>((ref) {
+  final range = ref.watch(progressRangeProvider);
+  if (range == null) {
+    return const AsyncLoading<List<ProgressBodyRow>>();
+  }
+  final measurements = ref.watch(progressCuratedMeasurementsProvider);
+  final curated = measurements.value;
+  final entries = <AsyncValue<List<MeasurementHistoryEntry>>>[
+    for (final measurement in curated ?? const <MeasurementRecord>[])
+      ref.watch(progressMeasurementEntriesProvider(measurement.id)),
+  ];
+  return _whenAll(
+    <AsyncValue<Object?>>[measurements, ...entries],
+    'progress.body',
+    () {
+      final start = range.from.toLocalDateTime();
+      final end = range.to.addDays(1).toLocalDateTime();
+      return List<ProgressBodyRow>.unmodifiable(<ProgressBodyRow>[
+        for (final (index, measurement) in curated!.indexed)
+          if (_bodyRow(measurement, entries[index].requireValue, start, end)
+              case final row?)
+            row,
+      ]);
+    },
+  );
+});
+
+/// [measurement]'s row, or null when none of its Readings is in
+/// [start, end). Each entry is a live Reading at Body Tracker's time,
+/// `atTime ?? windowStartedAt ?? updatedAt` (D5); the repository has
+/// already left out a Reading whose value cannot be read.
+ProgressBodyRow? _bodyRow(
+  MeasurementRecord measurement,
+  List<MeasurementHistoryEntry> entries,
+  DateTime start,
+  DateTime end,
+) {
+  final points = metricTrend(<TrendInput>[
+    for (final MeasurementHistoryEntry(:entry) in entries)
+      TrendInput(id: entry.id, at: entry.measuredAt, value: entry.value),
+  ]);
+  final readings = <TrendPoint>[
+    for (final point in points)
+      if (!point.at.isBefore(start) && point.at.isBefore(end)) point,
+  ];
+  if (readings.isEmpty) {
+    return null;
+  }
+  return ProgressBodyRow(
+    measurementId: measurement.id,
+    name: measurement.name,
+    unit: measurement.unit,
+    readings: List<TrendPoint>.unmodifiable(readings),
+    latestTrend: readings.last.trend,
+    change: trendChange(points, start, end),
+  );
+}
 
 /// The Protocols card's state (D7): data null means the card is absent, and
 /// loading renders nothing, because the card may turn out absent. The lock

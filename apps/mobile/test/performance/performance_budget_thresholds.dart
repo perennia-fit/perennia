@@ -49,3 +49,8 @@ const progressTrainingBudget = Duration(milliseconds: 50);
 /// plus `newBestsBetween` over the 1-year period: the work
 /// `ExerciseAnalyticsRepository.watchNewBests` runs in a background isolate.
 const progressNewBestsBudget = Duration(milliseconds: 1000);
+
+/// `metricTrend` over every one of the fixture's
+/// [progressHistoryReadingCount] Readings: the work the Body card runs per
+/// measurement on each change.
+const progressTrendBudget = Duration(milliseconds: 20);

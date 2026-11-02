@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:perennia/data/local/food_reference_database.dart';
 import 'package:perennia/data/open_food_facts/open_food_facts_client.dart';
 import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/metrics/metric_trend.dart';
 import 'package:perennia/domain/nutrition/open_food_facts.dart';
 import 'package:perennia/domain/protocols/protocol_plan_days.dart';
 import 'package:perennia/domain/training/training_day.dart';
@@ -313,6 +315,57 @@ void main() {
         lessThan(progressNewBestsBudget),
         reason: 'New bests must judge every exercise\'s whole history within '
             'the budget the spec pins.',
+      );
+    });
+
+    test(
+        'The Trend over five years of one measurement\'s Readings stays '
+        'under 20 ms', () async {
+      final fixture = await buildProgressHistoryFixture();
+      addTearDown(fixture.database.close);
+      // The repository read the Body card waits on, and its mapping to the
+      // core's inputs, outside the timed work.
+      final entries = await fixture.repositories.measurements
+          .watchHistoryEntries(measurementId: fixture.metricId)
+          .first;
+      final inputs = <TrendInput>[
+        for (final MeasurementHistoryEntry(:entry) in entries)
+          TrendInput(id: entry.id, at: entry.measuredAt, value: entry.value),
+      ];
+
+      // The fastest of three runs: the first can pay for compiling the core,
+      // and the host is shared with other test files. A slower core still
+      // fails every one of the three.
+      late List<TrendPoint> points;
+      Duration? fastest;
+      for (var run = 0; run < 3; run += 1) {
+        final stopwatch = Stopwatch()..start();
+        points = metricTrend(inputs);
+        stopwatch.stop();
+        if (fastest == null || stopwatch.elapsed < fastest) {
+          fastest = stopwatch.elapsed;
+        }
+      }
+
+      // Every Reading was read and kept, oldest first, and the Trend stays
+      // within the Readings' range.
+      expect(entries, hasLength(progressHistoryReadingCount));
+      expect(points, hasLength(progressHistoryReadingCount));
+      expect(points.first.id, 'perf-reading-0000');
+      final values = points.map((point) => point.value);
+      final lowest = values.reduce(math.min);
+      final highest = values.reduce(math.max);
+      expect(
+        points.every(
+          (point) => point.trend >= lowest && point.trend <= highest,
+        ),
+        isTrue,
+      );
+      expect(
+        fastest,
+        lessThan(progressTrendBudget),
+        reason: 'The Body card must compute a measurement\'s whole Trend '
+            'within the budget the spec pins.',
       );
     });
 
