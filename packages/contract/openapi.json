@@ -6476,6 +6476,10 @@
             ],
             "minLength": 1,
             "description": "ISO-8601 timestamp."
+          },
+          "trendValue": {
+            "type": "number",
+            "description": "The Metric's Trend at this Reading: a time-weighted moving average over all of the Metric's live Readings with a scalar value, not only this page. Present only when includeTrend is true, on live Readings with a scalar value. Not one of the selectable fields; it is added after the fields projection. Readings are not converted between units."
           }
         },
         "required": [
@@ -20188,6 +20192,21 @@
             "required": false,
             "description": "When true, archived Readings are included.",
             "name": "includeArchived",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false",
+              "description": "When true, each returned live Reading with a scalar value carries trendValue, the Metric's Trend computed over all of that Metric's live Readings."
+            },
+            "required": false,
+            "description": "When true, each returned live Reading with a scalar value carries trendValue, the Metric's Trend computed over all of that Metric's live Readings.",
+            "name": "includeTrend",
             "in": "query"
           },
           {

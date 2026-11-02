@@ -586,6 +586,7 @@ export class PortableOwlAgentClient {
         "provenance",
         "source",
         "includeArchived",
+        "includeTrend",
         "limit",
         "cursor",
         "fields"

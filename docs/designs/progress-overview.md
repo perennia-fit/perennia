@@ -1139,7 +1139,11 @@ callers are unchanged.
     attached after the `fields` projection whenever `includeTrend` is
     `"true"`.
 *   The computation lives in `createDrizzleAgentMetricStore`'s
-    `listMetricReadings`, which REST and MCP share.
+    `listMetricReadings`, which REST and MCP share. That method already
+    reads every Reading of the account and filters in memory, so the history
+    of the page's Metrics is taken from that same read, with no second
+    query. Any other value of `includeTrend` is a 400 from the request
+    validator.
 
 **Server store.** A new `AgentProgressReadStore` type in
 `apps/server/src/agent-progress-reads.ts`, built by

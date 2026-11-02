@@ -434,6 +434,219 @@ test(
   }
 );
 
+test(
+  "agent metric readings carry the Trend over the Metric's whole live history when includeTrend is true",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-metric-trend-${randomUUID()}`;
+    const otherUserId = `agent-metric-trend-other-${randomUUID()}`;
+    const app = createAgentMetricApp({
+      userId,
+      agentMetricStore: createDrizzleAgentMetricStore(database.db)
+    });
+    const metricId = `metric-trend-${randomUUID()}`;
+    const ids = {
+      first: `reading-first-${randomUUID()}`,
+      archived: `reading-archived-${randomUUID()}`,
+      windowed: `reading-windowed-${randomUUID()}`,
+      otherUser: `reading-other-user-${randomUUID()}`,
+      valueJsonOnly: `reading-value-json-${randomUUID()}`,
+      structured: `reading-structured-${randomUUID()}`
+    };
+    // One Reading a day, so each moves the Trend 10% of the way towards it:
+    // 80, then 80 + 0.1 * (81 - 80) = 80.1, then 80.1 + 0.1 * (82 - 80.1) = 80.29.
+    // The archived Reading and the other account's Reading would change the
+    // last two if they took part.
+    const expectedTrend = {
+      [ids.first]: 80,
+      [ids.windowed]: 80.1,
+      [ids.valueJsonOnly]: 80.29
+    };
+
+    try {
+      await seedUser(database, userId);
+      await seedUser(database, otherUserId);
+      await insertBodyWeightMetric(database, { id: metricId, userId });
+      await insertReading(database, {
+        id: ids.first,
+        userId,
+        metricId,
+        scalarValue: 80,
+        atTime: new Date("2026-06-01T06:00:00.000Z")
+      });
+      await insertReading(database, {
+        id: ids.archived,
+        userId,
+        metricId,
+        scalarValue: 100,
+        atTime: new Date("2026-06-01T18:00:00.000Z"),
+        deletedAt: new Date("2026-06-02T00:00:00.000Z")
+      });
+      await insertReading(database, {
+        id: ids.windowed,
+        userId,
+        metricId,
+        scalarValue: 81,
+        atTime: null,
+        windowStartedAt: new Date("2026-06-02T06:00:00.000Z")
+      });
+      await insertReading(database, {
+        id: ids.otherUser,
+        userId: otherUserId,
+        metricId,
+        scalarValue: 1000,
+        atTime: new Date("2026-06-02T18:00:00.000Z")
+      });
+      await insertReading(database, {
+        id: ids.valueJsonOnly,
+        userId,
+        metricId,
+        scalarValue: null,
+        valueJson: { value: 82, unit: "kilogram" },
+        atTime: new Date("2026-06-03T06:00:00.000Z")
+      });
+      await insertReading(database, {
+        id: ids.structured,
+        userId,
+        metricId,
+        scalarValue: null,
+        valueJson: { shape: "structured", unit: "kilogram", fields: { left: 1 } },
+        atTime: new Date("2026-06-04T06:00:00.000Z")
+      });
+
+      const readingsPath = (query) =>
+        `/agent/metrics/readings?metricId=${metricId}&${query}`;
+
+      const pageResponse = await getAgent(
+        app,
+        readingsPath("from=2026-06-03T00:00:00.000Z&includeTrend=true")
+      );
+      assert.equal(pageResponse.status, 200);
+      const pageBody = await pageResponse.json();
+      assert.deepEqual(
+        pageBody.readings.map((reading) => reading.id),
+        [ids.valueJsonOnly, ids.structured]
+      );
+      assertTrend(pageBody.readings[0], expectedTrend[ids.valueJsonOnly]);
+      assert.equal("trendValue" in pageBody.readings[1], false);
+
+      const projectedResponse = await getAgent(
+        app,
+        readingsPath("from=2026-06-03T00:00:00.000Z&includeTrend=true&fields=id,metricId")
+      );
+      assert.equal(projectedResponse.status, 200);
+      const projectedBody = await projectedResponse.json();
+      assert.deepEqual(projectedBody.fields, ["id", "metricId"]);
+      assert.deepEqual(Object.keys(projectedBody.readings[0]).sort(), [
+        "id",
+        "metricId",
+        "trendValue"
+      ]);
+      assertTrend(projectedBody.readings[0], expectedTrend[ids.valueJsonOnly]);
+
+      for (const query of ["includeTrend=false", "includeArchived=true"]) {
+        const withoutTrendResponse = await getAgent(app, readingsPath(query));
+        assert.equal(withoutTrendResponse.status, 200);
+        const withoutTrendBody = await withoutTrendResponse.json();
+        assert.ok(withoutTrendBody.readings.length > 0);
+        assert.ok(
+          withoutTrendBody.readings.every((reading) => !("trendValue" in reading)),
+          query
+        );
+      }
+
+      const archivedResponse = await getAgent(
+        app,
+        readingsPath("includeArchived=true&includeTrend=true")
+      );
+      assert.equal(archivedResponse.status, 200);
+      const archivedBody = await archivedResponse.json();
+      const byId = new Map(archivedBody.readings.map((reading) => [reading.id, reading]));
+      assert.deepEqual(
+        [...byId.keys()].sort(),
+        [ids.first, ids.archived, ids.windowed, ids.valueJsonOnly, ids.structured].sort()
+      );
+      assert.equal("trendValue" in byId.get(ids.archived), false);
+      assert.equal("trendValue" in byId.get(ids.structured), false);
+      for (const [id, trend] of Object.entries(expectedTrend)) {
+        assertTrend(byId.get(id), trend);
+      }
+
+      const invalidResponse = await getAgent(app, readingsPath("includeTrend=yes"));
+      assert.equal(invalidResponse.status, 400);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+function assertTrend(reading, expected) {
+  assert.equal(typeof reading.trendValue, "number", reading.id);
+  assert.ok(
+    Math.abs(reading.trendValue - expected) < 1e-9,
+    `${reading.id}: ${reading.trendValue} is not ${expected}`
+  );
+}
+
+async function insertBodyWeightMetric(database, { id, userId }) {
+  const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+  await database.db.insert(schema.metrics).values({
+    id,
+    userId,
+    deviceId: "device-trend",
+    name: "Body Weight",
+    unit: "kilogram",
+    valueShape: "scalar",
+    metricGroup: "body",
+    goalType: null,
+    goalTargetValue: null,
+    enabled: true,
+    pinned: true,
+    sortOrder: 0,
+    updatedAt,
+    deletedAt: null,
+    receivedAt: updatedAt
+  });
+}
+
+async function insertReading(
+  database,
+  {
+    id,
+    userId,
+    metricId,
+    scalarValue,
+    valueJson = { value: scalarValue, unit: "kilogram" },
+    atTime,
+    windowStartedAt = null,
+    deletedAt = null
+  }
+) {
+  const updatedAt = new Date("2026-06-05T00:00:00.000Z");
+  await database.db.insert(schema.metricReadings).values({
+    id,
+    userId,
+    deviceId: "device-trend",
+    metricId,
+    externalActivityId: null,
+    valueJson,
+    scalarValue,
+    scalarEntered: scalarValue === null ? null : String(scalarValue),
+    atTime,
+    windowStartedAt,
+    windowEndedAt: null,
+    provenance: "manual",
+    source: "perennia",
+    externalId: null,
+    comment: null,
+    updatedAt,
+    deletedAt,
+    receivedAt: updatedAt
+  });
+}
+
 function createAgentMetricApp({
   agentMetricStore,
   syncNudgePublisher,
