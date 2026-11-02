@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/analytics/progress_measure.dart';
 import '../../../domain/training/training_day.dart';
 import '../../../domain/training/training_progress.dart';
 import '../../protocols/controllers/protocols_lock_controller.dart';
@@ -191,6 +193,47 @@ final progressConsistencySummaryProvider = StreamProvider.autoDispose.family<
   },
 );
 
+final progressFavoritesProvider =
+    StreamProvider.autoDispose<List<ExerciseRecord>>((ref) {
+  return ref.watch(progressFeatureRepositoryProvider).watchFavorites();
+});
+
+final progressExerciseNamesProvider =
+    StreamProvider.autoDispose<Map<String, String>>((ref) {
+  return ref.watch(progressFeatureRepositoryProvider).watchExerciseNames();
+});
+
+/// Keyed by the charted Favorites' ids, so renaming one keeps its series
+/// stream rather than restarting it.
+final progressSeriesProvider = StreamProvider.autoDispose
+    .family<List<ProgressSeries>, ProgressExerciseIds>((ref, ids) {
+  return ref
+      .watch(progressFeatureRepositoryProvider)
+      .watchProgressSeries(ids.ids);
+});
+
+final progressNewBestsBetweenProvider = StreamProvider.autoDispose
+    .family<List<NewBest>, (TrainingDayDate, TrainingDayDate)>((ref, range) {
+  return ref
+      .watch(progressFeatureRepositoryProvider)
+      .watchNewBests(range.$1, range.$2);
+});
+
+/// Exercise ids compared by value, as a family key.
+@immutable
+final class ProgressExerciseIds {
+  const ProgressExerciseIds(this.ids);
+
+  final List<String> ids;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProgressExerciseIds && listEquals(other.ids, ids);
+
+  @override
+  int get hashCode => Object.hashAll(ids);
+}
+
 /// This week against the weekly Routines (D1), with what the card says
 /// around it.
 final class ProgressThisWeek {
@@ -260,6 +303,65 @@ final class ProgressFocusTime {
   bool get isEmpty => keys.isEmpty;
 
   WeeklyFocusSeconds get currentWeek => weeks.last;
+}
+
+/// The Key exercises card (D8 card 4): a tile per charted Favorite.
+final class ProgressKeyExercises {
+  const ProgressKeyExercises({
+    required this.hasFavorites,
+    required this.tiles,
+    required this.unitSystem,
+    required this.today,
+  });
+
+  /// Whether any active exercise is a Favorite, charted or not: with none,
+  /// the card asks for one; with some but no tile, it says none is charted.
+  final bool hasFavorites;
+  final List<ProgressKeyExercise> tiles;
+  final UnitSystem unitSystem;
+  final TrainingDayDate today;
+}
+
+/// One Favorite's tile: its series' points in the period and [periodBest].
+final class ProgressKeyExercise {
+  const ProgressKeyExercise({
+    required this.exerciseId,
+    required this.name,
+    required this.measure,
+    required this.points,
+    required this.periodBest,
+  });
+
+  final String exerciseId;
+  final String name;
+  final ProgressMeasureKind measure;
+
+  /// The series' points dated in the period, in series order.
+  final List<ProgressPoint> points;
+  final PeriodBest periodBest;
+}
+
+/// The New bests card (D8 card 5).
+final class ProgressNewBests {
+  const ProgressNewBests({
+    required this.count,
+    required this.rows,
+    required this.unitSystem,
+    required this.today,
+  });
+
+  /// Every New Best in the period, of which [rows] are the most recent.
+  final int count;
+  final List<ProgressNewBestRow> rows;
+  final UnitSystem unitSystem;
+  final TrainingDayDate today;
+}
+
+final class ProgressNewBestRow {
+  const ProgressNewBestRow({required this.best, required this.exerciseName});
+
+  final NewBest best;
+  final String exerciseName;
 }
 
 /// One Compound's counted Day Statuses in the period (D7).
@@ -410,6 +512,110 @@ int _compareFocusKeys(
   }
   return a.compareTo(b);
 }
+
+/// Key exercises' tiles: the first [maxTiles] Favorites, in the order
+/// [ProgressFeatureRepository.watchFavorites] gives, whose Record Profile has
+/// a series (D4, D8). Only those few series are computed, on this isolate.
+final progressKeyExercisesProvider =
+    Provider.autoDispose<AsyncValue<ProgressKeyExercises>>((ref) {
+  final range = ref.watch(progressRangeProvider);
+  final unitSystem = ref.watch(
+    _progressSettingsProvider.select((settings) => settings?.unitSystem),
+  );
+  if (range == null || unitSystem == null) {
+    return const AsyncLoading<ProgressKeyExercises>();
+  }
+  final favorites = ref.watch(progressFavoritesProvider);
+  final charted = favorites.value
+      ?.where(
+        (exercise) =>
+            ProgressMeasureKind.forRecordProfile(exercise.recordProfile) !=
+            null,
+      )
+      .take(progressKeyExercisesMaxTiles)
+      .toList(growable: false);
+  final series = charted == null
+      ? const AsyncLoading<List<ProgressSeries>>()
+      : ref.watch(
+          progressSeriesProvider(
+            ProgressExerciseIds(<String>[
+              for (final exercise in charted) exercise.id,
+            ]),
+          ),
+        );
+  return _whenAll(
+    <AsyncValue<Object?>>[favorites, series],
+    'progress.keyExercises',
+    () {
+      final byId = <String, ProgressSeries>{
+        for (final one in series.requireValue) one.exerciseId: one,
+      };
+      return ProgressKeyExercises(
+        hasFavorites: favorites.requireValue.isNotEmpty,
+        tiles: <ProgressKeyExercise>[
+          for (final exercise in charted!)
+            if (byId[exercise.id] case final one?)
+              ProgressKeyExercise(
+                exerciseId: exercise.id,
+                name: exercise.name,
+                measure: one.measure,
+                points: <ProgressPoint>[
+                  for (final point in one.points)
+                    if (point.localDate.compareTo(range.from) >= 0 &&
+                        point.localDate.compareTo(range.to) <= 0)
+                      point,
+                ],
+                periodBest: periodBest(one, range.from, range.to),
+              ),
+        ],
+        unitSystem: unitSystem,
+        today: range.today,
+      );
+    },
+  );
+});
+
+/// The most Key exercises tiles shown (D8).
+const int progressKeyExercisesMaxTiles = 6;
+
+/// The most New Bests listed (D8); the title counts all of them.
+const int progressNewBestsMaxRows = 5;
+
+/// The period's New Bests with their exercises' names. A New Best whose
+/// exercise has no active name yet (its archive is still reaching this
+/// stream) is left out of the rows and the count alike.
+final progressNewBestsProvider =
+    Provider.autoDispose<AsyncValue<ProgressNewBests>>((ref) {
+  final range = ref.watch(progressRangeProvider);
+  final unitSystem = ref.watch(
+    _progressSettingsProvider.select((settings) => settings?.unitSystem),
+  );
+  if (range == null || unitSystem == null) {
+    return const AsyncLoading<ProgressNewBests>();
+  }
+  final bests = ref.watch(
+    progressNewBestsBetweenProvider((range.from, range.to)),
+  );
+  final names = ref.watch(progressExerciseNamesProvider);
+  return _whenAll(
+    <AsyncValue<Object?>>[bests, names],
+    'progress.newBests',
+    () {
+      final nameById = names.requireValue;
+      final rows = <ProgressNewBestRow>[
+        for (final best in bests.requireValue)
+          if (nameById[best.exerciseId] case final name?)
+            ProgressNewBestRow(best: best, exerciseName: name),
+      ];
+      return ProgressNewBests(
+        count: rows.length,
+        rows: rows.take(progressNewBestsMaxRows).toList(growable: false),
+        unitSystem: unitSystem,
+        today: range.today,
+      );
+    },
+  );
+});
 
 /// The Protocols card's state (D7): data null means the card is absent, and
 /// loading renders nothing, because the card may turn out absent. The lock

@@ -106,6 +106,11 @@ components:
     size: 24px
     gap: 2px
     fillOpacity: 0.7
+  progress-sparkline:
+    height: 40px
+    pointRadius: 3px
+    ringWidth: 1.5px
+    lineWidth: 2px
 ---
 
 # Design System: Perennia
@@ -257,6 +262,18 @@ with `md` corners, never FABs.
   stored color, or its default category token; "No Focus" and a Focus not yet on
   the device use `other`. Every colored segment has its Focus named in a legend
   beside it, and adjacent segments are separated by a 1px gap in the surface color.
+- **Progress sparkline:** a small time chart with no axes (`progress-sparkline`):
+  points placed by time as 3px-radius dots, a New Best as a hollow ring (1.5px
+  stroke, surface fill), an optional 2px line over them; the y range is the drawn
+  values with 10% padding, never zero-based. Key exercises tiles draw it 40px tall
+  in the primary text color.
+- **Key exercises tile:** two per row, each a 48px-minimum tap target: the exercise
+  name (two lines, then an ellipsis), the measure label, the sparkline, "Best" and
+  one comparison line in the secondary text color. A New Best ring is named in the
+  tile's label, so the ring is never the only signal.
+- **New best row:** a Trophy Gold trophy glyph beside "{exercise} · {value}" and the
+  date in the secondary text color, at least 48px tall; gold always comes with the
+  glyph and the words.
 
 ## Do's and Don'ts
 

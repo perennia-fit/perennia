@@ -24,6 +24,17 @@ class AppDimens {
   /// How opaque a Trained Day's fill of the primary text color is.
   static const double trainedDaysFillOpacity =
       DesignTokens.trainedDaysFillOpacity;
+
+  /// A Key exercises tile's sparkline height, and the sparkline's point
+  /// radius, New Best ring stroke and overlay line width.
+  static const double progressSparklineHeight =
+      DesignTokens.progressSparklineHeight;
+  static const double progressSparklinePoint =
+      DesignTokens.progressSparklinePointRadius;
+  static const double progressSparklineRing =
+      DesignTokens.progressSparklineRingWidth;
+  static const double progressSparklineLine =
+      DesignTokens.progressSparklineLineWidth;
 }
 
 class AppRadii {

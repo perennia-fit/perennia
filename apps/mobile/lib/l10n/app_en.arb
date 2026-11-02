@@ -1749,5 +1749,167 @@
         "type": "int"
       }
     }
+  },
+  "progressKeyExercisesTitle": "Key exercises",
+  "progressKeyExercisesEmpty": "Mark exercises as favorites to chart them here",
+  "progressKeyExercisesNoCharted": "Your favorites have no charted records",
+  "progressKeyExercisesNoSessions": "No sessions this period",
+  "progressMeasureEstimatedOneRepMax": "e1RM",
+  "@progressMeasureEstimatedOneRepMax": {
+    "description": "The estimated one-rep max measure's label."
+  },
+  "progressMeasureMaxLoad": "heaviest",
+  "progressMeasureMaxReps": "most reps",
+  "progressMeasureMaxDuration": "longest",
+  "progressMeasureMinDuration": "shortest",
+  "progressMeasureMaxDistance": "farthest",
+  "progressMeasureFastestPace": "fastest pace",
+  "progressBest": "Best {value}",
+  "@progressBest": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonHigher": "↑ {difference} on before",
+  "@progressComparisonHigher": {
+    "description": "A higher-is-better measure beat the best before the period by {difference}.",
+    "placeholders": {
+      "difference": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonFaster": "{difference} faster than before",
+  "@progressComparisonFaster": {
+    "placeholders": {
+      "difference": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonShorter": "{difference} shorter than before",
+  "@progressComparisonShorter": {
+    "placeholders": {
+      "difference": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonSame": "Same as before",
+  "progressComparisonBestBefore": "Best before {value}",
+  "@progressComparisonBestBefore": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressComparisonFirst": "First sessions",
+  "@progressComparisonFirst": {
+    "description": "The exercise has no point before the period."
+  },
+  "progressNewBestOn": "New best on {date}",
+  "@progressNewBestOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "progressNewBestsTitle": "New bests",
+  "progressNewBestsTitleCount": "New bests · {count}",
+  "@progressNewBestsTitleCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressNewBestsEmpty": "No new bests in this period",
+  "progressNewBestRow": "{exercise} · {value}",
+  "@progressNewBestRow": {
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressNewBestEstimated": "e1RM {value}",
+  "@progressNewBestEstimated": {
+    "description": "An estimated one-rep max New Best's value.",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValueKilograms": "{value} kg",
+  "@progressValueKilograms": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValuePounds": "{value} lb",
+  "@progressValuePounds": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValueReps": "{count, plural, =1{1 rep} other{{count} reps}}",
+  "@progressValueReps": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressValueKilometers": "{value} km",
+  "@progressValueKilometers": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValueMiles": "{value} mi",
+  "@progressValueMiles": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValuePacePerKilometer": "{pace} /km",
+  "@progressValuePacePerKilometer": {
+    "placeholders": {
+      "pace": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValuePacePerMile": "{pace} /mi",
+  "@progressValuePacePerMile": {
+    "placeholders": {
+      "pace": {
+        "type": "String"
+      }
+    }
+  },
+  "progressValueSeconds": "{seconds} s",
+  "@progressValueSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
   }
 }

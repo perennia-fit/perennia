@@ -5077,6 +5077,198 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, other{{count} paused}}'**
   String progressCountPaused(int count);
+
+  /// No description provided for @progressKeyExercisesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Key exercises'**
+  String get progressKeyExercisesTitle;
+
+  /// No description provided for @progressKeyExercisesEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark exercises as favorites to chart them here'**
+  String get progressKeyExercisesEmpty;
+
+  /// No description provided for @progressKeyExercisesNoCharted.
+  ///
+  /// In en, this message translates to:
+  /// **'Your favorites have no charted records'**
+  String get progressKeyExercisesNoCharted;
+
+  /// No description provided for @progressKeyExercisesNoSessions.
+  ///
+  /// In en, this message translates to:
+  /// **'No sessions this period'**
+  String get progressKeyExercisesNoSessions;
+
+  /// The estimated one-rep max measure's label.
+  ///
+  /// In en, this message translates to:
+  /// **'e1RM'**
+  String get progressMeasureEstimatedOneRepMax;
+
+  /// No description provided for @progressMeasureMaxLoad.
+  ///
+  /// In en, this message translates to:
+  /// **'heaviest'**
+  String get progressMeasureMaxLoad;
+
+  /// No description provided for @progressMeasureMaxReps.
+  ///
+  /// In en, this message translates to:
+  /// **'most reps'**
+  String get progressMeasureMaxReps;
+
+  /// No description provided for @progressMeasureMaxDuration.
+  ///
+  /// In en, this message translates to:
+  /// **'longest'**
+  String get progressMeasureMaxDuration;
+
+  /// No description provided for @progressMeasureMinDuration.
+  ///
+  /// In en, this message translates to:
+  /// **'shortest'**
+  String get progressMeasureMinDuration;
+
+  /// No description provided for @progressMeasureMaxDistance.
+  ///
+  /// In en, this message translates to:
+  /// **'farthest'**
+  String get progressMeasureMaxDistance;
+
+  /// No description provided for @progressMeasureFastestPace.
+  ///
+  /// In en, this message translates to:
+  /// **'fastest pace'**
+  String get progressMeasureFastestPace;
+
+  /// No description provided for @progressBest.
+  ///
+  /// In en, this message translates to:
+  /// **'Best {value}'**
+  String progressBest(String value);
+
+  /// A higher-is-better measure beat the best before the period by {difference}.
+  ///
+  /// In en, this message translates to:
+  /// **'↑ {difference} on before'**
+  String progressComparisonHigher(String difference);
+
+  /// No description provided for @progressComparisonFaster.
+  ///
+  /// In en, this message translates to:
+  /// **'{difference} faster than before'**
+  String progressComparisonFaster(String difference);
+
+  /// No description provided for @progressComparisonShorter.
+  ///
+  /// In en, this message translates to:
+  /// **'{difference} shorter than before'**
+  String progressComparisonShorter(String difference);
+
+  /// No description provided for @progressComparisonSame.
+  ///
+  /// In en, this message translates to:
+  /// **'Same as before'**
+  String get progressComparisonSame;
+
+  /// No description provided for @progressComparisonBestBefore.
+  ///
+  /// In en, this message translates to:
+  /// **'Best before {value}'**
+  String progressComparisonBestBefore(String value);
+
+  /// The exercise has no point before the period.
+  ///
+  /// In en, this message translates to:
+  /// **'First sessions'**
+  String get progressComparisonFirst;
+
+  /// No description provided for @progressNewBestOn.
+  ///
+  /// In en, this message translates to:
+  /// **'New best on {date}'**
+  String progressNewBestOn(String date);
+
+  /// No description provided for @progressNewBestsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New bests'**
+  String get progressNewBestsTitle;
+
+  /// No description provided for @progressNewBestsTitleCount.
+  ///
+  /// In en, this message translates to:
+  /// **'New bests · {count}'**
+  String progressNewBestsTitleCount(int count);
+
+  /// No description provided for @progressNewBestsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No new bests in this period'**
+  String get progressNewBestsEmpty;
+
+  /// No description provided for @progressNewBestRow.
+  ///
+  /// In en, this message translates to:
+  /// **'{exercise} · {value}'**
+  String progressNewBestRow(String exercise, String value);
+
+  /// An estimated one-rep max New Best's value.
+  ///
+  /// In en, this message translates to:
+  /// **'e1RM {value}'**
+  String progressNewBestEstimated(String value);
+
+  /// No description provided for @progressValueKilograms.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} kg'**
+  String progressValueKilograms(String value);
+
+  /// No description provided for @progressValuePounds.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} lb'**
+  String progressValuePounds(String value);
+
+  /// No description provided for @progressValueReps.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 rep} other{{count} reps}}'**
+  String progressValueReps(int count);
+
+  /// No description provided for @progressValueKilometers.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} km'**
+  String progressValueKilometers(String value);
+
+  /// No description provided for @progressValueMiles.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} mi'**
+  String progressValueMiles(String value);
+
+  /// No description provided for @progressValuePacePerKilometer.
+  ///
+  /// In en, this message translates to:
+  /// **'{pace} /km'**
+  String progressValuePacePerKilometer(String pace);
+
+  /// No description provided for @progressValuePacePerMile.
+  ///
+  /// In en, this message translates to:
+  /// **'{pace} /mi'**
+  String progressValuePacePerMile(String pace);
+
+  /// No description provided for @progressValueSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{seconds} s'**
+  String progressValueSeconds(int seconds);
 }
 
 class _AppLocalizationsDelegate
