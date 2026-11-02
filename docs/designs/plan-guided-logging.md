@@ -1117,7 +1117,8 @@ rest strip and semantics labels); regenerate the localizations.
     `apps/mobile/DESIGN.md` where it has the matching section.
 *   AGENTS.md: the Training Screen bullet ("Save/Clear buttons that become
     Update/Delete", "complete checkboxes") becomes Log set, Update/Delete/Not
-    done and the row states; the UX rule "(open exercise → Save)" becomes
+    done and the row states, and its "App bar gives rest timer" loses the rest
+    timer (the rest strip replaces it); the UX rule "(open exercise → Save)" becomes
     "(open exercise → Log set)"; the Navigation Panel bullet's "auto-advance to
     the next group member after a save" becomes "after Log set"; the Routines
     bullet's "one-tap **materialize**" becomes "preview, then **Start**

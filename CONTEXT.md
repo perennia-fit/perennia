@@ -149,10 +149,31 @@ sets default into the Open Session.
 
 ## Performed Set
 A Set that is not deleted, belongs to a Workout that is not deleted, and is marked
-complete. Saving a Set on the Track tab marks it complete. A Set that a Workout
+complete. Logging a Set on the Training Screen marks it complete. A Set that a Workout
 Template or a quick log placed in a Workout stays incomplete until the user completes
 it. On the server, a Set payload without `is_completed` is not performed, matching how
 the app decodes it.
+
+## Planned Set
+A Set that is not deleted, belongs to a Workout that is not deleted, and is not
+complete: a target placed by a Workout Template, a quick log, an Agent, Add set, or
+Not done. It holds the values the plan expects and never counts as training. Logging
+it makes it a Performed Set.
+
+## Current Set
+For one Workout Exercise, the Planned Set the Track form fills on Log set: the first
+Planned Set in order, unless the user picked another. Derived, never stored.
+
+## Current Exercise
+The Workout Exercise, or the Exercise Group, the user is working through, marked
+**Now**. Derived from the Workout's Sets, never stored.
+
+## Remembered Rest
+For one Exercise, the planned rest of its most recently performed Set that has one.
+Used as the rest when a Set has no planned rest. Derived, never stored.
+
+UI copy uses "set", "planned", "done", "Now" and "Rest after"; "Current Set",
+"Current Exercise" and "Remembered Rest" are code and spec words.
 
 ## Logged Workout
 A Workout that is not deleted and has at least one Performed Set. A Workout started

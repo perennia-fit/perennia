@@ -162,6 +162,15 @@ a new key. A `422` error with rule `idempotency_key_conflict` means the key was
 reused for different work, so keep the original key with the original payload and
 use a new key only for the new request.
 
+When completing a planned Set (one a Template, a quick log, or an earlier write
+left incomplete) with `log-workout`, read the Workout first and send that Set back
+with every stored field unchanged except `values`, `isCompleted: true`, and
+`performedAt` (when it was done). `batchWriteAgentWorkout` writes whole Set rows
+and omitted fields default to null, so a missing `plannedRestAfter` erases the
+planned rest. Send a new `plannedRestAfter` only for a rest the user chose. When
+the user's load differs from the plan, also write it on the later planned Sets of
+that exercise that had the same planned load, as the app does.
+
 Use `list-workout-templates`/`get-workout-template` and
 `list-routines`/`get-routine` for the redesigned plan layer. Lists are
 cursor-bounded with minimal default projections; detail reads carry explicit
