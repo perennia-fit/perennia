@@ -851,7 +851,7 @@ below it once, when its data arrives.
 | 2 | Trained days | "Trained days" | none | none |
 | 3 | Time by Focus | "Time by Focus" | "Focuses" | `FocusManagerScreen` |
 | 4 | Key exercises | "Key exercises" | none | none |
-| 5 | New bests | "New bests · {count}" | none | none |
+| 5 | New bests | "New bests · {count}" ("New bests" while loading, on error and when empty) | none | none |
 | 6 | Body | "Body" | "Body Tracker" | `BodyTrackerScreen.routeName` |
 | 7 | Protocols | "Protocols" | none | none |
 | 8 | More | none | none | the two existing tiles |
@@ -955,7 +955,10 @@ below it once, when its data arrives.
         | no earlier point | "First sessions" | "First sessions" |
 
     *   New Best points are drawn as hollow rings in the primary text color,
-        and the tile's semantics label adds "New best on {date}".
+        and the tile's semantics label adds "New best on {date}", naming
+        the most recent New Best in the period and dated as New bests rows
+        are. The tile's full label is the exercise name, the measure label,
+        the Best line and the comparison line, joined with ", ".
     *   A tile with no point in the period shows "No sessions this period"
         in place of the sparkline, "Best" and the comparison line.
     *   Tapping a tile pushes `ExerciseOverviewScreen(exerciseId: …)`.
@@ -971,6 +974,9 @@ below it once, when its data arrives.
         for an earlier date in the current year, and "12 Oct 2025"
         otherwise.
     *   Tapping a row pushes `ExerciseOverviewScreen(exerciseId: …)`.
+    *   A New Best whose exercise has no name in `watchExerciseNames` (an
+        archive that has not reached the computation yet) is left out of
+        both the rows and the count, so they always agree.
     *   Empty state: "No new bests in this period", no action.
 6.  **Body.**
     *   One row per curated Body Tracker measurement
@@ -1055,7 +1061,10 @@ in words instead of an arrow. No change is drawn in red, green or gold.
 
 **Accessibility.**
 *   Each chart is wrapped as `Semantics(container: true, label: …, child:
-    ExcludeSemantics(chart))`, the existing pattern.
+    ExcludeSemantics(chart))`, the existing pattern. A Key exercises tile is
+    itself one labelled button node with its content excluded, so its
+    sparkline has no wrapper of its own; a second node inside the tap
+    target would only repeat the label.
 *   Every tappable row, tile and button is at least 48 dp.
 *   With the stub repository showing a populated state for every card, the
     screen passes the text contrast, tap target and labelled tap target
@@ -2139,6 +2148,10 @@ source:
     `performance_budgets_test.dart`** (modify). Add
     `progressNewBestsBudget` over the item 36 fixture, plus its README row.
 52. **`CONTEXT.md`** (modify). Add Progress Measure and New Best.
+    **`DESIGN.md` and `apps/mobile/DESIGN.md`** (modify): the Progress
+    sparkline component and its front-matter token `progress-sparkline`
+    (40px height, 3px point radius, 1.5px ring stroke, 2px line width),
+    generated and read through `AppDimens` as item 37's tokens are.
 53. **Tests.**
     *   `apps/mobile/test/features/progress/key_exercises_card_test.dart`
         and `new_bests_card_test.dart` (create), with the stub:
