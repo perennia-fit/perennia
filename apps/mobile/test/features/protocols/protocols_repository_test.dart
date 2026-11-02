@@ -5390,6 +5390,333 @@ void main() {
       expect(await database.select(database.schedules).get(), isEmpty);
     });
   });
+
+  group('Deleting a Protocol (D8)', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    const start = ProtocolDayDate(year: 2026, month: 7, day: 1);
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<String> createCompoundId(String name) async {
+      final result = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: name,
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      );
+      return result.compoundId;
+    }
+
+    ScheduleDraft daily() => ScheduleDraft(
+          rule: _onceDaily,
+          doseAmountValue: 5,
+          doseAmountEntered: '5',
+          doseUnit: DoseUnit.gram,
+          route: DoseRoute.oral,
+        );
+
+    Future<String> createProtocol(
+      List<String> compoundIds, {
+      ProtocolDayDate? endLocalDate,
+    }) async {
+      final created = await repositories.protocols.createProtocol(
+        ProtocolDraft(
+          name: 'Lean bulk',
+          startLocalDate: start,
+          endLocalDate: endLocalDate,
+          compoundIds: compoundIds,
+          schedulesByCompoundId: <String, ScheduleDraft?>{
+            for (final id in compoundIds) id: daily(),
+          },
+          targetOutcomes: const <ProtocolTargetOutcomeDraft>[
+            ProtocolTargetOutcomeDraft.performance,
+          ],
+        ),
+        today: start,
+      );
+      return created.protocolId;
+    }
+
+    Future<LogDoseResult> logDose(
+      String compoundId,
+      DateTime tookAt, {
+      String? protocolId,
+    }) {
+      return repositories.protocols.logDose(
+        DoseSnapshotDraft(
+          compoundId: compoundId,
+          compoundName: 'Creatine',
+          amountValue: 5,
+          amountEntered: '5',
+          unit: DoseUnit.gram,
+          route: DoseRoute.oral,
+          tookAt: tookAt,
+          protocolId: protocolId,
+          protocolName: protocolId == null ? null : 'Lean bulk',
+        ),
+      );
+    }
+
+    Future<ProtocolRow> protocolRow(String id) =>
+        (database.select(database.protocols)..where((r) => r.id.equals(id)))
+            .getSingle();
+
+    Future<List<Object>> childRows() async => <Object>[
+          ...await database.select(database.protocolCompounds).get(),
+          ...await database.select(database.schedules).get(),
+          ...await database.select(database.protocolTargetOutcomes).get(),
+          ...await database.select(database.doses).get(),
+        ];
+
+    test(
+        'writes one protocols row and one Activity Log entry, and leaves '
+        'members, Schedule Versions and target outcomes untouched', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final protocolId = await createProtocol(<String>[creatineId]);
+      final childrenBefore = await childRows();
+      final before = await protocolRow(protocolId);
+
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isFalse);
+      final batchId = await repositories.protocols.deleteProtocol(protocolId);
+
+      final after = await protocolRow(protocolId);
+      expect(after.deletedAt, isNotNull);
+      expect(after.archivedOn, isNull);
+      expect(after.updatedAt, after.deletedAt);
+      expect(after.updatedAt.isBefore(before.updatedAt), isFalse);
+      expect(after.name, before.name);
+      expect(await childRows(), childrenBefore);
+
+      final entries = (await repositories.activityLog.listEntries())
+          .where((entry) => entry.batchId == batchId)
+          .toList();
+      expect(entries, hasLength(1));
+      expect(entries.single.entityTable, AppDatabase.protocolsTable);
+      expect(entries.single.entityId, protocolId);
+
+      expect(await repositories.protocols.listProtocols(), isEmpty);
+    });
+
+    test('undoBatch restores a live Protocol exactly', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final protocolId = await createProtocol(<String>[creatineId]);
+      final before = await protocolRow(protocolId);
+
+      final batchId = await repositories.protocols.deleteProtocol(protocolId);
+      await repositories.activityLog.undoBatch(batchId);
+
+      final restored = await protocolRow(protocolId);
+      expect(restored.deletedAt, isNull);
+      expect(restored.archivedOn, isNull);
+      expect(restored.name, before.name);
+      expect(restored.startLocalDate, before.startLocalDate);
+      final listed = await repositories.protocols.listProtocols();
+      expect(listed.single.id, protocolId);
+      expect(listed.single.members.single.compoundId, creatineId);
+      expect(listed.single.members.single.currentVersion, isNotNull);
+      expect(listed.single.targetOutcomes, hasLength(1));
+    });
+
+    test(
+        'an archived Protocol with no history can be deleted, which clears '
+        'its archive date, and undo restores it archived', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final protocolId = await createProtocol(<String>[creatineId]);
+      // archiveProtocol accepts a Protocol with no history.
+      await repositories.protocols.archiveProtocol(
+        protocolId,
+        today: const ProtocolDayDate(year: 2026, month: 7, day: 3),
+      );
+      final archived = await protocolRow(protocolId);
+      expect(archived.archivedOn, '2026-07-03');
+
+      final batchId = await repositories.protocols.deleteProtocol(protocolId);
+      final deleted = await protocolRow(protocolId);
+      expect(deleted.archivedOn, isNull);
+      expect(deleted.deletedAt, isNotNull);
+
+      await repositories.activityLog.undoBatch(batchId);
+      final restored = await protocolRow(protocolId);
+      expect(restored.archivedOn, '2026-07-03');
+      expect(restored.deletedAt, archived.deletedAt);
+      expect(await repositories.protocols.listProtocols(), isEmpty);
+    });
+
+    test('archiveProtocol still accepts a Protocol with no history', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final protocolId = await createProtocol(<String>[creatineId]);
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isFalse);
+
+      await repositories.protocols.archiveProtocol(protocolId);
+
+      final row = await protocolRow(protocolId);
+      expect(row.deletedAt, isNotNull);
+      expect(row.archivedOn, isNotNull);
+    });
+
+    test('refuses a Protocol with a tagged Dose, even of another Compound',
+        () async {
+      final creatineId = await createCompoundId('Creatine');
+      final zincId = await createCompoundId('Zinc');
+      final protocolId = await createProtocol(<String>[creatineId]);
+      // Before the start, and not a member Compound: only the tag counts.
+      await logDose(zincId, DateTime(2026, 6, 1, 8), protocolId: protocolId);
+
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isTrue);
+      await expectLater(
+        repositories.protocols.deleteProtocol(protocolId),
+        throwsA(
+          isA<ProtocolHasHistoryException>()
+              .having((e) => e.protocolId, 'protocolId', protocolId),
+        ),
+      );
+      final row = await protocolRow(protocolId);
+      expect(row.deletedAt, isNull);
+    });
+
+    test(
+        'refuses a Protocol with an untagged Dose of a member Compound inside '
+        'its dates', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final protocolId = await createProtocol(<String>[creatineId]);
+      await logDose(creatineId, DateTime(2026, 7, 5, 8));
+
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isTrue);
+      await expectLater(
+        repositories.protocols.deleteProtocol(protocolId),
+        throwsA(isA<ProtocolHasHistoryException>()),
+      );
+      expect((await protocolRow(protocolId)).deletedAt, isNull);
+    });
+
+    test('an archived member counts, an undo-removed member does not',
+        () async {
+      final creatineId = await createCompoundId('Creatine');
+      final zincId = await createCompoundId('Zinc');
+      final magnesiumId = await createCompoundId('Magnesium');
+      final protocolId = await createProtocol(<String>[creatineId, zincId]);
+      ProtocolDraft draft(List<String> compoundIds) => ProtocolDraft(
+            name: 'Lean bulk',
+            startLocalDate: start,
+            compoundIds: compoundIds,
+            schedulesByCompoundId: <String, ScheduleDraft?>{
+              for (final id in compoundIds) id: daily(),
+            },
+          );
+
+      // Magnesium is added, then the edit is undone: its member row never
+      // existed (D1), so its Dose is no history.
+      final added = await repositories.protocols.editProtocol(
+        protocolId,
+        draft(<String>[creatineId, zincId, magnesiumId]),
+        today: const ProtocolDayDate(year: 2026, month: 7, day: 2),
+      );
+      await repositories.activityLog.undoBatch(added);
+      await logDose(magnesiumId, DateTime(2026, 7, 5, 8));
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isFalse);
+
+      // Zinc is removed, so its member row is archived; it still counts.
+      await repositories.protocols.editProtocol(
+        protocolId,
+        draft(<String>[creatineId]),
+        today: const ProtocolDayDate(year: 2026, month: 7, day: 3),
+      );
+      await logDose(zincId, DateTime(2026, 7, 10, 8));
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isTrue);
+    });
+
+    test(
+        'an untagged Dose outside its dates, and a deleted Dose, are not '
+        'history', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final protocolId = await createProtocol(
+        <String>[creatineId],
+        endLocalDate: const ProtocolDayDate(year: 2026, month: 7, day: 31),
+      );
+      await logDose(creatineId, DateTime(2026, 6, 30, 8));
+      await logDose(creatineId, DateTime(2026, 8, 1, 8));
+      final deleted = await logDose(creatineId, DateTime(2026, 7, 5, 8));
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isTrue);
+      await repositories.protocols.deleteDose(deleted.doseId);
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isFalse);
+
+      await repositories.protocols.deleteProtocol(protocolId);
+      expect((await protocolRow(protocolId)).deletedAt, isNotNull);
+    });
+
+    test('a Dose after the archive date is not history', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final protocolId = await createProtocol(<String>[creatineId]);
+      await repositories.protocols.archiveProtocol(
+        protocolId,
+        today: const ProtocolDayDate(year: 2026, month: 7, day: 3),
+      );
+      await logDose(creatineId, DateTime(2026, 7, 4, 8));
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isFalse);
+      await logDose(creatineId, DateTime(2026, 7, 3, 20));
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isTrue);
+    });
+
+    test('refuses an unknown id, and one already deleted', () async {
+      await expectLater(
+        repositories.protocols.deleteProtocol('missing'),
+        throwsStateError,
+      );
+
+      final creatineId = await createCompoundId('Creatine');
+      final protocolId = await createProtocol(<String>[creatineId]);
+      await repositories.protocols.deleteProtocol(protocolId);
+      final entries = (await repositories.activityLog.listEntries()).length;
+
+      await expectLater(
+        repositories.protocols.deleteProtocol(protocolId),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            'Protocol is deleted: $protocolId.',
+          ),
+        ),
+      );
+      expect((await repositories.activityLog.listEntries()).length, entries);
+    });
+
+    test('watchProtocolHasHistory re-emits when a Dose is logged', () async {
+      final creatineId = await createCompoundId('Creatine');
+      final protocolId = await createProtocol(<String>[creatineId]);
+      final emissions = <bool>[];
+      final subscription = repositories.protocols
+          .watchProtocolHasHistory(protocolId)
+          .listen(emissions.add);
+      addTearDown(subscription.cancel);
+      await _waitFor(() => emissions.isNotEmpty);
+      expect(emissions.last, isFalse);
+
+      await logDose(creatineId, DateTime(2026, 7, 5, 8));
+
+      await _waitFor(() => emissions.last);
+      expect(emissions, <bool>[false, true]);
+    });
+  });
 }
 
 /// Reconstructs the persisted snapshot image of a `Dose` row for an immutability

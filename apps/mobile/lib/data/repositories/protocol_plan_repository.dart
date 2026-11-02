@@ -31,6 +31,7 @@ final class PlannedRow {
     required this.plannedLocalTime,
     required this.amount,
     required this.status,
+    this.skipId,
   });
 
   final String protocolId;
@@ -46,6 +47,11 @@ final class PlannedRow {
   /// The planned amount, unit and route.
   final PlanAmount amount;
   final PlannedRowStatus status;
+
+  /// The id of the Skip that marks the slot, read from its fill as [status]
+  /// is, or null when none does (D8). Set exactly when [status] is
+  /// [PlannedRowStatus.skipped].
+  final String? skipId;
 }
 
 /// One Protocol's rows on the Planned list, in display order.
@@ -135,6 +141,7 @@ final class PlannedDay {
                 plannedLocalTime: fill.plannedLocalTime,
                 amount: fill.amount,
                 status: _rowStatus(fill),
+                skipId: fill.skipId,
               ),
             );
       }
@@ -162,6 +169,9 @@ final class PlannedDay {
     }
     if (fill.isFilled) {
       return PlannedRowStatus.logged;
+    }
+    if (fill.isSkipped) {
+      return PlannedRowStatus.skipped;
     }
     return isToday ? PlannedRowStatus.pending : PlannedRowStatus.notLogged;
   }
@@ -221,8 +231,10 @@ final class ProtocolReminderInput {
   /// The planning Protocol's reminders flag (`PlanProtocol.remindersEnabled`).
   final bool remindersEnabled;
 
-  /// Whether a logged Dose fills this planned dose. Only today's can be:
-  /// a later date has no Day Status, so its planned doses are unfilled.
+  /// Whether a logged Dose fills this planned dose, or a Skip marks it
+  /// (D8): filled or skipped, its own reminder is not wanted. Only today's
+  /// can be: a later date has no Day Status, so its planned doses are
+  /// unfilled.
   final bool filled;
 
   @override
@@ -300,7 +312,8 @@ final class ConsistencyDay {
   /// with no status label, and none of them is an extra.
   final DayStatus? status;
 
-  /// Every slot of the date, in slot order.
+  /// Every slot of the date, in slot order. On an archive day, only the
+  /// slots a Dose filled: matching drops the others (D8).
   final List<ConsistencySlot> slots;
 
   /// The Doses that filled no slot (`extraCount` of them), in log order.
@@ -416,7 +429,8 @@ final class ConsistencyRange {
 }
 
 /// One Compound's counted Day Statuses over a range, for Progress Overview's
-/// Protocols card (docs/designs/progress-overview.md, D7). `pending`,
+/// Protocols card (docs/designs/progress-overview.md, D7; `skipped` from
+/// docs/designs/protocol-schedules-and-reminders.md, D8). `pending`,
 /// `offCycle` and `notPlanned` are not counted. Derived on read, never
 /// stored.
 final class CompoundConsistencySummary {
@@ -427,6 +441,7 @@ final class CompoundConsistencySummary {
     required this.partlyLogged,
     required this.notLogged,
     required this.paused,
+    this.skipped = 0,
   });
 
   final String compoundId;
@@ -435,6 +450,10 @@ final class CompoundConsistencySummary {
   final int partlyLogged;
   final int notLogged;
   final int paused;
+
+  /// Days every planned dose of which was skipped (D8). A "Logged" day with
+  /// skipped slots counts in [logged].
+  final int skipped;
 }
 
 /// Read-only local repository deriving the Planned list and the Consistency
@@ -448,9 +467,12 @@ final class CompoundConsistencySummary {
 /// shows.
 ///
 /// It builds `PlanProtocol`s and `PlanDose`s from Drift. Rows tombstoned by
-/// undo are left out, and archived Protocols and Protocol Members are kept
-/// with their `archived_on` (D1): an archived Protocol still plans its past
-/// days through that date, and a removed member reads `removed` after it.
+/// undo, and a deleted Protocol (stored the same way, D8), are left out with
+/// every member, Schedule Version and target outcome reached through them.
+/// Archived Protocols and Protocol Members are kept with their `archived_on`
+/// (D1): an archived Protocol still plans its past days, its archive day
+/// keeps only the planned doses a Dose filled (D8), and a removed member
+/// reads `removed` after it.
 final class ProtocolPlanRepository {
   const ProtocolPlanRepository._(this._repositories);
 
@@ -519,8 +541,10 @@ final class ProtocolPlanRepository {
   /// [ProtocolReminderInput] per timed planned dose from [from] through [to],
   /// inclusive. [from] is the caller's today, read from its clock: today's
   /// planned doses carry `filled` from today's Day Status fills (matching,
-  /// D6), so a Dose logged before its time stops that reminder; later dates
-  /// come from `planDays` and are always unfilled. `remindersEnabled` is the
+  /// D6), so a Dose logged before its time, or a Skip, stops that reminder;
+  /// a dropped archive-day slot has no fill, so it has no input (D8). Later
+  /// dates come from `planDays` and are always unfilled, and a later archive
+  /// day is left out. `remindersEnabled` is the
   /// planning Protocol's flag. Untimed planned doses are left out, because
   /// they never get a reminder.
   ///
@@ -559,13 +583,19 @@ final class ProtocolPlanRepository {
             localDate: from,
             localTime: time,
             remindersEnabled: remindersByProtocol[fill.protocolId] ?? false,
-            filled: fill.isFilled,
+            filled: fill.isFilled || fill.isSkipped,
           ),
         );
       }
     }
     for (final day in days) {
-      if (day.localDate == from || day.state != PlanDayState.planned) {
+      // A later date has no Doses read, so every planned dose of an archive
+      // day there is unfilled and matching's step 5 would drop it (D8). Such
+      // a date comes from an Agent's `today` a day ahead, or another
+      // device's later zone.
+      if (day.localDate == from ||
+          day.state != PlanDayState.planned ||
+          day.archiveDay) {
         continue;
       }
       for (final dose in day.planned) {
@@ -732,18 +762,16 @@ final class ProtocolPlanRepository {
         case DayStatusKind.logged ||
               DayStatusKind.partlyLogged ||
               DayStatusKind.notLogged ||
-              DayStatusKind.paused:
+              DayStatusKind.paused ||
+              DayStatusKind.skipped:
           final counts = countsByCompound.putIfAbsent(
             status.compoundId,
             () => <DayStatusKind, int>{},
           );
           counts[status.status] = (counts[status.status] ?? 0) + 1;
-        // No Skip is stored yet, so no day reads `skipped`. Its count joins
-        // CompoundConsistencySummary with the Progress card (D8, file 76).
         case DayStatusKind.pending ||
               DayStatusKind.offCycle ||
-              DayStatusKind.notPlanned ||
-              DayStatusKind.skipped:
+              DayStatusKind.notPlanned:
           break;
       }
     }
@@ -757,6 +785,7 @@ final class ProtocolPlanRepository {
           partlyLogged: counts[DayStatusKind.partlyLogged] ?? 0,
           notLogged: counts[DayStatusKind.notLogged] ?? 0,
           paused: counts[DayStatusKind.paused] ?? 0,
+          skipped: counts[DayStatusKind.skipped] ?? 0,
         ),
     ]..sort((a, b) {
         final byName = a.compoundName.toLowerCase().compareTo(

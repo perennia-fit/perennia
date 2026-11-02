@@ -2604,6 +2604,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get protocolEditorArchive => 'Archive';
 
   @override
+  String get protocolEditorDelete => 'Delete';
+
+  @override
+  String protocolArchiveConfirmTitle(String name) {
+    return 'Archive $name?';
+  }
+
+  @override
+  String get protocolArchiveConfirmMessage =>
+      'Doses you logged stay in your history. From tomorrow it plans nothing, and today\'s doses you haven\'t logged are no longer expected.';
+
+  @override
+  String protocolDeleteConfirmTitle(String name) {
+    return 'Delete $name?';
+  }
+
+  @override
+  String get protocolDeleteConfirmMessage =>
+      'Nothing has been logged for this Protocol, so it is removed completely. You can still recover it from the Activity Log.';
+
+  @override
+  String get protocolOnlyArchivable =>
+      'Something was logged for this Protocol, so it can only be archived.';
+
+  @override
   String get protocolEditorNameRequired => 'Name is required.';
 
   @override
@@ -3150,6 +3175,16 @@ class AppLocalizationsEn extends AppLocalizations {
       count,
       locale: localeName,
       other: '$count paused',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String progressCountSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count skipped',
     );
     return '$_temp0';
   }

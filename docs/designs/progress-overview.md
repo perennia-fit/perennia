@@ -762,6 +762,11 @@ absent when that setting is off. Otherwise it watches
     the Compound name and its non-zero counts of `logged`, `partlyLogged`,
     `notLogged` and `paused`, in that order, for example "26 logged · 2 not
     logged". `pending`, `offCycle` and `notPlanned` are not counted.
+    A non-zero `skipped` count, "{n} skipped", follows `paused`: days every
+    planned dose of which was skipped, with a "Logged" day that has skipped
+    slots counted as logged
+    ([protocol-schedules-and-reminders.md](protocol-schedules-and-reminders.md),
+    D8).
     *   At most six rows show. When there are more, an "All protocols" text
         button under the rows switches to Today with the Protocols tab
         selected: it sets `selectedHomeDestinationProvider` to `today` and
@@ -1254,7 +1259,7 @@ Repository-side types, which add display names:
 | Type | File | Fields |
 | :--- | :--- | :----- |
 | `WeeklyPlanFacts` | `routine_up_next_repository.dart` | `routineId`, `routineName`, `entries: WeeklyPlanEntry[]`; `toWeeklyPlan()` drops the name |
-| `CompoundConsistencySummary` | `protocol_plan_repository.dart` | `compoundId`, `compoundName`, `logged`, `partlyLogged`, `notLogged`, `paused` |
+| `CompoundConsistencySummary` | `protocol_plan_repository.dart` | `compoundId`, `compoundName`, `logged`, `partlyLogged`, `notLogged`, `paused`, `skipped` |
 | `ProgressBodyRow` | `progress_controller.dart` | `measurementId`, `name`, `unitLabel`, `readings: TrendPoint[]` (the period's), `latestTrend: double`, `change: double?` |
 
 The Workout loader returns `ProgressWorkout` directly; there is no separate

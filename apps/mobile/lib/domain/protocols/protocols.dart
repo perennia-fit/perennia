@@ -1097,3 +1097,18 @@ class ProtocolDayRecord {
 
   int get doseCount => doses.length;
 }
+
+/// Thrown by `ProtocolsRepository.deleteProtocol` when the Protocol has
+/// history (D8): a Dose that isn't tombstoned is tagged to it, or is of one
+/// of its member Compounds within its dates. Such a Protocol can only be
+/// archived. The check runs inside the delete's transaction, so a Dose
+/// synced in after the editor read "no history" still refuses the delete.
+final class ProtocolHasHistoryException implements Exception {
+  const ProtocolHasHistoryException(this.protocolId);
+
+  final String protocolId;
+
+  @override
+  String toString() =>
+      'Protocol has history and can only be archived: $protocolId.';
+}

@@ -9,6 +9,16 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Added
+
+- **Delete a Protocol nothing was logged for**, from its editor or through the
+  Agent API (`delete-protocols`).
+
+### Changed
+
+- **Archiving a Protocol** stops asking for that day's doses you haven't
+  logged, and asks for confirmation first.
+
 ## [0.1.0] - 2026-11-01
 
 A minor release: new features in the add-food picker, a reworked way to start

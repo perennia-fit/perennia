@@ -22,7 +22,10 @@ import '../../../data/repositories/training_repositories.dart';
 /// * Each planned time is a horizontal segment over the run of consecutive
 ///   days it is planned on, read from the PlanDays, so a Schedule Version
 ///   change moves the line on the day it applies from (CUJ 6). Two Protocols
-///   planning the same time on a day draw one segment.
+///   planning the same time on a day draw one segment. On an archive day
+///   (`PlanDay.archiveDay`), only the planned times a Dose filled are drawn,
+///   read from that date's Day Status fills: matching drops the unfilled
+///   ones (D8), and the day list shows no row for them either.
 /// * Days with an untimed planned dose are a segment in the untimed band.
 /// * Paused and off-cycle days, by their Day Status, are shaded runs that
 ///   carry their kind for the widget to label (CUJ 3 and 5). A day after
@@ -107,6 +110,24 @@ class ConsistencyChartData {
       return byY != 0 ? byY : a.dose.id.compareTo(b.dose.id);
     });
 
+    // An archive day keeps only the slots a Dose filled (D8). Its planned
+    // times are read against the fills that survived matching's drop, by
+    // Protocol, so another Protocol's slot at the same time doesn't keep it.
+    // A later archive day has no Day Status, so it keeps nothing.
+    final statusByCompoundDate = <(String, ProtocolDayDate), DayStatus>{
+      for (final status in dayStatuses)
+        (status.compoundId, status.localDate): status,
+    };
+    bool keptOnArchiveDay(PlanDay day, String? time) {
+      final fills =
+          statusByCompoundDate[(day.compoundId, day.localDate)]?.fills ??
+              const <PlanSlotFill>[];
+      return fills.any(
+        (fill) =>
+            fill.protocolId == day.protocolId && fill.plannedLocalTime == time,
+      );
+    }
+
     // Each day's distinct planned times, and whether it plans an untimed dose.
     final timedDaysByTime = <String, Set<int>>{};
     final untimedDays = <int>{};
@@ -117,6 +138,9 @@ class ConsistencyChartData {
       }
       for (final planned in day.planned) {
         final time = planned.localTime;
+        if (day.archiveDay && !keptOnArchiveDay(day, time)) {
+          continue;
+        }
         if (time == null) {
           untimedDays.add(index);
         } else {

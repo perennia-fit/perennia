@@ -300,9 +300,9 @@ final class ProtocolReminderStatus {
   final bool deviceSwitchOn;
 
   /// Whether a Protocol has reminders on: any Protocol not archived with
-  /// its Reminders switch on, or one that still plans a reminders-on timed
-  /// dose in the scheduling horizon (a Protocol archived today keeps
-  /// today's planned doses).
+  /// its Reminders switch on (D5). A Protocol archived today no longer
+  /// counts: its archive day keeps only filled doses (D8), which schedule
+  /// nothing.
   final bool remindersRequested;
 
   /// The last day reminders are scheduled through (CUJ 11), or null when
@@ -590,8 +590,9 @@ class ProtocolReminderScheduler {
       today,
       today.addDays(protocolReminderHorizonDays - 1),
     );
-    final remindersRequested = inputs.any((input) => input.remindersEnabled) ||
-        await _anyProtocolRemindersOn();
+    // Read from the Protocols alone (D5, D8): after D8 a Protocol archived
+    // today keeps only filled doses, so the horizon's inputs add nothing.
+    final remindersRequested = await _anyProtocolRemindersOn();
     final scheduling = deviceSwitchOn &&
         remindersRequested &&
         permission == TimerBackgroundPermissionStatus.granted;

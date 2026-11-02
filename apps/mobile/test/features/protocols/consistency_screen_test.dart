@@ -97,11 +97,23 @@ void main() {
         findsOneWidget,
       );
       expect(_dayText(tester, _date(2026, 10, 13)), contains('Removed'));
-      // The archive day itself is still planned (D1).
+      // Nothing was logged on the archive day, so its planned dose is
+      // dropped and the day reads Not planned, Removed too (D8).
       expect(
         find.descendant(
           of: find.byKey(
             ConsistencyScreen.dayStatusKey(_trt, _date(2026, 10, 12)),
+          ),
+          matching: find.text('Not planned'),
+        ),
+        findsOneWidget,
+      );
+      expect(_dayText(tester, _date(2026, 10, 12)), contains('Removed'));
+      // The day before it is still planned (D1).
+      expect(
+        find.descendant(
+          of: find.byKey(
+            ConsistencyScreen.dayStatusKey(_trt, _date(2026, 10, 11)),
           ),
           matching: find.text('Not logged'),
         ),
@@ -505,9 +517,13 @@ void main() {
       await repositories.activityLog.undoBatch(added);
 
       final ageMate = await read(ids.ageMate);
-      // The archive day itself is still planned (D1).
+      // Nothing was logged on the archive day, so its unfilled planned
+      // doses are dropped (D8); the day before is still planned (D1).
+      final archiveDay = statusOn(ageMate, _date(2026, 10, 12));
+      expect(archiveDay.status, DayStatusKind.notPlanned);
+      expect(archiveDay.notPlannedReason, NotPlannedReason.removed);
       expect(
-        statusOn(ageMate, _date(2026, 10, 12)).status,
+        statusOn(ageMate, _date(2026, 10, 11)).status,
         DayStatusKind.notLogged,
       );
       final removed = statusOn(ageMate, _date(2026, 10, 13));
@@ -524,8 +540,8 @@ void main() {
     });
 
     test(
-        'an archived Protocol still plans its past days through its archive '
-        'day', () async {
+        'an archived Protocol still plans its past days, and its unlogged '
+        'archive day reads Not planned, Removed (D8)', () async {
       await repositories.protocols.archiveProtocol(
         ids.protocolId,
         today: _date(2026, 10, 12),
@@ -536,14 +552,70 @@ void main() {
       expect(range.isPlanned, isTrue);
       expect(range.protocols[ids.protocolId]?.name, 'Daily');
       expect(
-        statusOn(range, _date(2026, 10, 12)).status,
+        statusOn(range, _date(2026, 10, 11)).status,
         DayStatusKind.notLogged,
       );
+      final archiveDay = statusOn(range, _date(2026, 10, 12));
+      expect(archiveDay.status, DayStatusKind.notPlanned);
+      expect(archiveDay.notPlannedReason, NotPlannedReason.removed);
+      expect(archiveDay.plannedCount, 0);
       final after = statusOn(range, _date(2026, 10, 13));
       expect(after.status, DayStatusKind.notPlanned);
       expect(after.notPlannedReason, NotPlannedReason.removed);
       // The 13th's Dose is kept, and with no slot to fill it is an extra.
       expect(after.extraCount, 1);
+    });
+
+    test(
+        'a deleted Protocol is hidden from the Consistency view and its '
+        'summary, with its members and Schedule Versions (D8)', () async {
+      final zinc = (await repositories.protocols.createCompound(
+        const CompoundDraft(
+          name: 'Zinc',
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      ))
+          .compoundId;
+      final unused = await repositories.protocols.createProtocol(
+        ProtocolDraft(
+          name: 'Unused',
+          startLocalDate: _start,
+          compoundIds: <String>[zinc],
+          schedulesByCompoundId: <String, ScheduleDraft?>{
+            zinc: ScheduleDraft(
+              rule: TimedScheduleRule(
+                days: const DailyScheduleDays(),
+                times: const <String>['08:00'],
+              ),
+              doseAmountValue: 1,
+              doseAmountEntered: '1',
+              doseUnit: DoseUnit.milligram,
+              route: DoseRoute.oral,
+            ),
+          },
+        ),
+        today: _start,
+      );
+      Future<List<String>> summaryIds() async =>
+          (await repositories.protocolPlan
+                  .watchConsistencySummary(_start, _today, today: _today)
+                  .first)
+              .map((summary) => summary.compoundId)
+              .toList();
+
+      expect((await read(zinc)).isPlanned, isTrue);
+      expect(await summaryIds(), contains(zinc));
+
+      await repositories.protocols.deleteProtocol(unused.protocolId);
+
+      final range = await read(zinc);
+      expect(range.isPlanned, isFalse);
+      expect(range.planDays, isEmpty);
+      expect(range.dayStatuses, isEmpty);
+      expect(await summaryIds(), isNot(contains(zinc)));
+      // The other Protocol reads as before.
+      expect(await summaryIds(), containsAll(<String>[ids.trt, ids.ageMate]));
     });
 
     test('logging a Dose or adding a Schedule Version re-emits the range',
@@ -640,6 +712,40 @@ void main() {
         (ageMate.logged, ageMate.partlyLogged, ageMate.notLogged,
             ageMate.paused),
         (0, 0, 4, 0),
+      );
+    });
+
+    test(
+        'an archive day with nothing logged counts nothing; with one of two '
+        'slots logged it counts as Logged (D8)', () async {
+      await repositories.protocols.archiveProtocol(
+        ids.protocolId,
+        today: _date(2026, 10, 12),
+      );
+      Future<CompoundConsistencySummary> trtSummary() async =>
+          (await repositories.protocolPlan
+                  .watchConsistencySummary(_start, _today, today: _today)
+                  .first)
+              .singleWhere((summary) => summary.compoundId == ids.trt);
+
+      // The 10th and 11th are unlogged; the 12th's slots are dropped.
+      final unlogged = await trtSummary();
+      expect(
+        (
+          unlogged.logged,
+          unlogged.partlyLogged,
+          unlogged.notLogged,
+          unlogged.skipped,
+        ),
+        (0, 0, 2, 0),
+      );
+
+      // A Dose on the archive day fills 09:00, and 21:00 is dropped.
+      await _logTrt(repositories, ids, DateTime(2026, 10, 12, 9));
+      final logged = await trtSummary();
+      expect(
+        (logged.logged, logged.partlyLogged, logged.notLogged, logged.skipped),
+        (1, 0, 2, 0),
       );
     });
 

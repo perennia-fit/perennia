@@ -1358,6 +1358,26 @@
   "protocolEditorPerformance": "Performance",
   "protocolEditorSave": "Save",
   "protocolEditorArchive": "Archive",
+  "protocolEditorDelete": "Delete",
+  "protocolArchiveConfirmTitle": "Archive {name}?",
+  "@protocolArchiveConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolArchiveConfirmMessage": "Doses you logged stay in your history. From tomorrow it plans nothing, and today's doses you haven't logged are no longer expected.",
+  "protocolDeleteConfirmTitle": "Delete {name}?",
+  "@protocolDeleteConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolDeleteConfirmMessage": "Nothing has been logged for this Protocol, so it is removed completely. You can still recover it from the Activity Log.",
+  "protocolOnlyArchivable": "Something was logged for this Protocol, so it can only be archived.",
   "protocolEditorNameRequired": "Name is required.",
   "protocolEditorCompoundRequired": "A Protocol requires at least one Compound.",
   "protocolEditorFixIssues": "Fix the marked fields to save.",
@@ -1746,6 +1766,14 @@
   },
   "progressCountPaused": "{count, plural, other{{count} paused}}",
   "@progressCountPaused": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "progressCountSkipped": "{count, plural, other{{count} skipped}}",
+  "@progressCountSkipped": {
     "placeholders": {
       "count": {
         "type": "int"

@@ -306,6 +306,9 @@ class ProtocolFormScreen extends ConsumerStatefulWidget {
   static const addPauseKey = Key('protocols.form.pause.add');
   static const saveButtonKey = Key('protocols.form.save');
   static const archiveButtonKey = Key('protocols.form.archive');
+  static const deleteButtonKey = Key('protocols.form.delete');
+  static const confirmArchiveButtonKey = Key('protocols.form.confirmArchive');
+  static const confirmDeleteButtonKey = Key('protocols.form.confirmDelete');
   static const errorTextKey = Key('protocols.form.error');
   static const consistencyButtonKey = Key('protocols.form.consistency');
   static const remindersSwitchKey = Key('protocols.form.reminders');
@@ -1069,19 +1072,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
                 child: Text(l10n.protocolEditorSave),
               ),
             ),
-            if (_isEditing) ...[
-              const SizedBox(height: AppDimens.dense),
-              OutlinedButton.icon(
-                key: ProtocolFormScreen.archiveButtonKey,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: colors.textPrimary,
-                  side: BorderSide(color: colors.divider),
-                ),
-                onPressed: _saving ? null : _archive,
-                icon: const Icon(Icons.archive_outlined),
-                label: Text(l10n.protocolEditorArchive),
-              ),
-            ],
+            if (widget.protocol case final protocol?) ..._endButton(protocol),
           ],
         ),
       ),
@@ -1383,9 +1374,61 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
         .requestPermissionIfNotAsked();
   }
 
-  Future<void> _archive() async {
-    final protocol = widget.protocol;
-    if (protocol == null) {
+  /// A saved Protocol's one way out (D8): Archive when it has history, or
+  /// Delete when it has none, read from [protocolHasHistoryProvider]. While
+  /// that read loads, neither shows. Both are full-width 48 dp targets with
+  /// text, so the destructive color is never the only signal.
+  List<Widget> _endButton(ProtocolRecord protocol) {
+    final hasHistory = ref.watch(protocolHasHistoryProvider(protocol.id)).value;
+    if (hasHistory == null) {
+      return const <Widget>[];
+    }
+    final colors = context.colors;
+    final l10n = context.l10n;
+    final scheme = Theme.of(context).colorScheme;
+    return <Widget>[
+      const SizedBox(height: AppDimens.dense),
+      SizedBox(
+        height: AppDimens.touchTarget,
+        child: hasHistory
+            ? OutlinedButton.icon(
+                key: ProtocolFormScreen.archiveButtonKey,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: colors.textPrimary,
+                  side: BorderSide(color: colors.divider),
+                ),
+                onPressed: _saving ? null : () => _archive(protocol),
+                icon: const Icon(Icons.archive_outlined),
+                label: Text(l10n.protocolEditorArchive),
+              )
+            // DESIGN.md `button-destructive`: the theme's error color, which
+            // is the destructive token, with its on-color text.
+            : FilledButton.icon(
+                key: ProtocolFormScreen.deleteButtonKey,
+                style: FilledButton.styleFrom(
+                  backgroundColor: scheme.error,
+                  foregroundColor: scheme.onError,
+                ),
+                onPressed: _saving ? null : () => _delete(protocol),
+                icon: const Icon(Icons.delete_outline),
+                label: Text(l10n.protocolEditorDelete),
+              ),
+      ),
+    ];
+  }
+
+  /// Asks before archiving (D8), because archiving also closes today: its
+  /// planned doses no Dose filled are no longer expected.
+  Future<void> _archive(ProtocolRecord protocol) async {
+    final l10n = context.l10n;
+    final confirmed = await _confirm(
+      title: l10n.protocolArchiveConfirmTitle(protocol.name),
+      message: l10n.protocolArchiveConfirmMessage,
+      confirmKey: ProtocolFormScreen.confirmArchiveButtonKey,
+      confirmLabel: l10n.protocolEditorArchive,
+      destructive: false,
+    );
+    if (!confirmed || !mounted) {
       return;
     }
     setState(() => _saving = true);
@@ -1395,6 +1438,80 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     if (mounted) {
       Navigator.of(context).pop();
     }
+  }
+
+  /// Asks before deleting (D8). The repository checks history again inside
+  /// its transaction: a Dose synced in since the editor read "no history"
+  /// refuses the delete, and the button then follows the fresh read.
+  Future<void> _delete(ProtocolRecord protocol) async {
+    final l10n = context.l10n;
+    final confirmed = await _confirm(
+      title: l10n.protocolDeleteConfirmTitle(protocol.name),
+      message: l10n.protocolDeleteConfirmMessage,
+      confirmKey: ProtocolFormScreen.confirmDeleteButtonKey,
+      confirmLabel: l10n.protocolEditorDelete,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) {
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(protocolListControllerProvider.notifier)
+          .deleteProtocol(protocol.id);
+    } on ProtocolHasHistoryException {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.protocolOnlyArchivable)),
+        );
+      }
+      return;
+    }
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    required Key confirmKey,
+    required String confirmLabel,
+    required bool destructive,
+  }) async {
+    final l10n = context.l10n;
+    final colors = context.colors;
+    final scheme = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: <Widget>[
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: colors.textPrimary,
+              minimumSize: const Size(0, AppDimens.touchTarget),
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.protocolEditorCancel),
+          ),
+          FilledButton(
+            key: confirmKey,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, AppDimens.touchTarget),
+              backgroundColor: destructive ? scheme.error : null,
+              foregroundColor: destructive ? scheme.onError : null,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   /// The declared target outcomes from the chip selection; empty is valid.
