@@ -401,6 +401,7 @@ class _WorkoutContent extends ConsumerWidget {
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
                   key: WorkoutScreen.notesButtonKey(workout.id),
+                  style: _outlinedActionStyle(context),
                   onPressed: () {
                     Navigator.of(context).push<void>(
                       MaterialPageRoute(
@@ -938,24 +939,34 @@ class _WorkoutHeader extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            // A Wrap, not a Row: at large text scales the status and the
+            // duration do not fit on one line, so the duration moves below.
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: AppDimens.dense,
               children: [
-                Icon(
-                  workout.isOpen
-                      ? Icons.play_circle_outline
-                      : Icons.check_circle_outline,
-                  color: workout.isOpen
-                      ? Theme.of(context).colorScheme.primary
-                      : context.colors.save,
-                ),
-                const SizedBox(width: AppDimens.dense),
-                Expanded(
-                  child: Text(
-                    workout.isOpen
-                        ? context.l10n.workoutOpenStatus
-                        : context.l10n.workoutFinishedStatus,
-                    style: context.textStyles.h2,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      workout.isOpen
+                          ? Icons.play_circle_outline
+                          : Icons.check_circle_outline,
+                      color: workout.isOpen
+                          ? Theme.of(context).colorScheme.primary
+                          : context.colors.save,
+                    ),
+                    const SizedBox(width: AppDimens.dense),
+                    Flexible(
+                      child: Text(
+                        workout.isOpen
+                            ? context.l10n.workoutOpenStatus
+                            : context.l10n.workoutFinishedStatus,
+                        style: context.textStyles.h2,
+                      ),
+                    ),
+                  ],
                 ),
                 Text(
                   _formatWorkoutDuration(context.l10n, workout.duration),
@@ -994,12 +1005,14 @@ class _WorkoutHeader extends StatelessWidget {
               child: workout.isOpen
                   ? OutlinedButton.icon(
                       key: WorkoutScreen.finishButtonKey(workout.id),
+                      style: _outlinedActionStyle(context),
                       onPressed: () => unawaited(onFinish()),
                       icon: const Icon(Icons.flag_outlined),
                       label: Text(context.l10n.workoutFinish),
                     )
                   : OutlinedButton.icon(
                       key: WorkoutScreen.resumeButtonKey(workout.id),
+                      style: _outlinedActionStyle(context),
                       onPressed: () => unawaited(onResume()),
                       icon: const Icon(Icons.play_arrow_outlined),
                       label: Text(context.l10n.workoutResume),
@@ -1652,6 +1665,15 @@ String _formatWorkoutTimeRange(
     TimeOfDay.fromDateTime(endedAt.toLocal()),
   );
   return context.l10n.workoutTimeRange(started, ended);
+}
+
+/// Outlined buttons draw their label in Signal Cyan by default, which falls
+/// below AA contrast on the light surface; the label takes the primary text
+/// color instead, as the Settings screens' outlined buttons do.
+ButtonStyle _outlinedActionStyle(BuildContext context) {
+  return OutlinedButton.styleFrom(
+    foregroundColor: context.colors.textPrimary,
+  );
 }
 
 String _formatWorkoutDuration(AppLocalizations l10n, Duration? duration) {

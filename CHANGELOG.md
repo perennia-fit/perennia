@@ -96,6 +96,9 @@ planned workouts, Protocols on Today, and a new agent read.
 - Starting a Template with no exercises now says so and asks before starting
   an empty workout, instead of opening one silently.
   ([#78](https://github.com/perennia-fit/perennia/pull/78))
+- With large text on a narrow phone, the Today app bar and the Workout header
+  no longer cut off their content, and the Workout's **Finish Workout**,
+  **Resume Workout** and **Notes** buttons meet AA contrast in the light theme.
 
 ## [0.0.1] - 2026-10-29
 
