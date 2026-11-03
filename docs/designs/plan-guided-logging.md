@@ -1,7 +1,7 @@
 # Plan-Guided Logging
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved
+*   **Status:** Current
 *   **Date:** 2026-11-02
 
 --------------------------------------------------------------------------------
