@@ -830,7 +830,9 @@ as Log set does; Update mode stays.
     card of a group with a round also shows "Round *r* of *R*" or "All rounds
     done" beside the existing group bar. The Current Exercise's card (or its
     group's first card) shows **Now** (text, `label` style, primary colour),
-    on open Workouts only.
+    on open Workouts only. Its text is on-primary ink on a primary fill,
+    not primary-coloured text: Signal Cyan text on the light theme's white
+    card is about 2.4:1, below AA.
 *   **Cards, link icons, reordering, swipe to remove:** unchanged.
 *   **Today.** A Workout tile's last segment reads "*performed* of *total*
     sets" when the Workout has a Planned Set, else "*n* sets" (today's

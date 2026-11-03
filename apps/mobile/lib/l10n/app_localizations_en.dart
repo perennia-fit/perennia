@@ -401,6 +401,30 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get workoutExerciseDone => 'Done';
+
+  @override
+  String workoutPerformedSetFraction(int performed, int total) {
+    return '$performed/$total sets';
+  }
+
+  @override
+  String workoutPerformedSetsOfTotal(int performed, int total) {
+    return '$performed of $total sets';
+  }
+
+  @override
+  String workoutGroupRound(int round, int total) {
+    return 'Round $round of $total';
+  }
+
+  @override
+  String get workoutGroupAllRoundsDone => 'All rounds done';
+
+  @override
+  String get workoutCurrentExercise => 'Now';
+
+  @override
   String get cancelAction => 'Cancel';
 
   @override

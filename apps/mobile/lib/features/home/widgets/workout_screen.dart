@@ -6,6 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart'
     show ExerciseRecord, FocusRecord, TemplateDivergenceSummary;
+import '../../../domain/training/plan_logging.dart'
+    show
+        GroupRound,
+        GroupRoundAllDone,
+        GroupRoundInProgress,
+        ProgressExercise,
+        groupRoundFor;
 import '../../../domain/training/training_day.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
@@ -19,6 +26,8 @@ import '../../template_divergence/repositories/template_divergence_feature_repos
 import '../../template_divergence/widgets/template_update_prompt_dialog.dart';
 import '../../template_materialize/widgets/template_guidance_card.dart';
 import '../../training/services/timer_notification_router.dart';
+import '../../training/widgets/training_screen.dart'
+    show CurrentExerciseLabel, ExerciseProgressCount, nowCardWorkoutExerciseId;
 import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
@@ -185,7 +194,8 @@ class _WorkoutContent extends ConsumerWidget {
     final focus = ref.watch(focusRecordProvider(workout.focusId));
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.l10n.workoutTitle),
+        // The Template's current name, read through its Template Link.
+        title: Text(workout.templateName ?? context.l10n.workoutTitle),
         actions: [
           PopupMenuButton<_WorkoutMenuAction>(
             key: WorkoutScreen.optionsButtonKey(workout.id),
@@ -355,6 +365,7 @@ class _WorkoutContent extends ConsumerWidget {
                 _WorkoutExerciseList(
                   exercises: workout.workoutExercises,
                   exerciseGroups: workout.exerciseGroups,
+                  isWorkoutOpen: workout.isOpen,
                   onRemove: (exercise) {
                     return _removeExerciseFromWorkout(
                       context,
@@ -1074,6 +1085,7 @@ class _WorkoutExerciseList extends StatefulWidget {
   const _WorkoutExerciseList({
     required this.exercises,
     required this.exerciseGroups,
+    required this.isWorkoutOpen,
     required this.onRemove,
     required this.onReorder,
     required this.onLinkAsSuperset,
@@ -1082,6 +1094,9 @@ class _WorkoutExerciseList extends StatefulWidget {
 
   final List<HomeWorkoutExerciseSummary> exercises;
   final List<HomeExerciseGroupSummary> exerciseGroups;
+
+  /// Whether the Workout has not ended: only an open Workout marks Now.
+  final bool isWorkoutOpen;
   final Future<bool> Function(HomeWorkoutExerciseSummary exercise) onRemove;
   final ValueChanged<List<String>> onReorder;
   final Future<void> Function(
@@ -1107,6 +1122,35 @@ class _WorkoutExerciseListState extends State<_WorkoutExerciseList> {
         for (final workoutExerciseId in group.workoutExerciseIds)
           workoutExerciseId: group,
     };
+    final exerciseById = <String, HomeWorkoutExerciseSummary>{
+      for (final exercise in widget.exercises) exercise.id: exercise,
+    };
+    final nowWorkoutExerciseId = widget.isWorkoutOpen
+        ? nowCardWorkoutExerciseId(<ProgressExercise>[
+            for (final exercise in widget.exercises)
+              ProgressExercise(
+                workoutExerciseId: exercise.id,
+                groupId: groupByWorkoutExerciseId[exercise.id]?.id,
+                performed: exercise.performedCount,
+                planned: exercise.plannedCount,
+                latestPerformedAt: exercise.latestPerformedAt,
+              ),
+          ])
+        : null;
+    // The round shows on each group's first card in Workout order.
+    final roundByFirstCardId = <String, GroupRound?>{};
+    final groupsWithRound = <String>{};
+    for (final exercise in widget.exercises) {
+      final group = groupByWorkoutExerciseId[exercise.id];
+      if (group == null || !groupsWithRound.add(group.id)) {
+        continue;
+      }
+      roundByFirstCardId[exercise.id] = groupRoundFor([
+        for (final memberId in group.workoutExerciseIds)
+          if (exerciseById[memberId] case final member?)
+            (performed: member.performedCount, planned: member.plannedCount),
+      ]);
+    }
     return ReorderableListView.builder(
       buildDefaultDragHandles: false,
       shrinkWrap: true,
@@ -1157,6 +1201,8 @@ class _WorkoutExerciseListState extends State<_WorkoutExerciseList> {
                 child: _WorkoutExerciseCard(
                   exercise: exercise,
                   exerciseGroup: exerciseGroup,
+                  isNow: exercise.id == nowWorkoutExerciseId,
+                  groupRound: roundByFirstCardId[exercise.id],
                   index: index,
                   isDragArmed: _armedDragExerciseId == exercise.id,
                   onDragHandleDown: () => _setArmedDragExercise(exercise.id),
@@ -1275,6 +1321,8 @@ class _WorkoutExerciseCard extends StatelessWidget {
   const _WorkoutExerciseCard({
     required this.exercise,
     required this.exerciseGroup,
+    required this.isNow,
+    required this.groupRound,
     required this.index,
     required this.isDragArmed,
     required this.onDragHandleDown,
@@ -1283,6 +1331,12 @@ class _WorkoutExerciseCard extends StatelessWidget {
 
   final HomeWorkoutExerciseSummary exercise;
   final HomeExerciseGroupSummary? exerciseGroup;
+
+  /// Whether this card is the Current Exercise, or its group's first card.
+  final bool isNow;
+
+  /// The group's round, on the group's first card only.
+  final GroupRound? groupRound;
   final int index;
   final bool isDragArmed;
   final VoidCallback onDragHandleDown;
@@ -1299,6 +1353,15 @@ class _WorkoutExerciseCard extends StatelessWidget {
         : context.colors.surface;
     final borderColor =
         isDragArmed ? colorScheme.primary : context.colors.divider;
+    final roundText = switch (groupRound) {
+      null => null,
+      GroupRoundInProgress(:final round, :final of) =>
+        context.l10n.workoutGroupRound(round, of),
+      GroupRoundAllDone() => context.l10n.workoutGroupAllRoundsDone,
+    };
+    final secondaryLabel = context.textStyles.label.copyWith(
+      color: context.colors.textSecondary,
+    );
     return Material(
       key: WorkoutScreen.exerciseCardKey(exercise.id),
       color: cardColor,
@@ -1327,29 +1390,50 @@ class _WorkoutExerciseCard extends StatelessWidget {
                       horizontal: AppDimens.base,
                       vertical: AppDimens.dense,
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            exercise.name,
-                            style: context.textStyles.h2,
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                exercise.name,
+                                style: context.textStyles.h2,
+                              ),
+                            ),
+                            const SizedBox(width: AppDimens.dense),
+                            // Flexible, so a large text scale wraps the
+                            // count instead of overflowing the card.
+                            Flexible(
+                              child: ExerciseProgressCount(
+                                performed: exercise.performedCount,
+                                planned: exercise.plannedCount,
+                                style: secondaryLabel,
+                              ),
+                            ),
+                            const SizedBox(width: AppDimens.dense),
+                            Icon(
+                              Icons.chevron_right,
+                              color: context.colors.textSecondary,
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: AppDimens.dense),
-                        Text(
-                          _formatSetCount(
-                            context.l10n,
-                            exercise.setCount,
+                        if (isNow || roundText != null)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              top: AppDimens.dense / 3,
+                            ),
+                            child: Wrap(
+                              spacing: AppDimens.dense / 2,
+                              runSpacing: AppDimens.dense / 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                if (isNow) const CurrentExerciseLabel(),
+                                if (roundText != null)
+                                  Text(roundText, style: secondaryLabel),
+                              ],
+                            ),
                           ),
-                          style: context.textStyles.label.copyWith(
-                            color: context.colors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(width: AppDimens.dense),
-                        Icon(
-                          Icons.chevron_right,
-                          color: context.colors.textSecondary,
-                        ),
                       ],
                     ),
                   ),
@@ -1576,12 +1660,4 @@ String _formatWorkoutDuration(AppLocalizations l10n, Duration? duration) {
     return l10n.workoutDurationMinutes(minutes);
   }
   return l10n.workoutDurationSeconds(seconds);
-}
-
-String _formatSetCount(AppLocalizations l10n, int count) {
-  return switch (count) {
-    0 => l10n.workoutNoSets,
-    1 => l10n.workoutOneSet,
-    _ => l10n.workoutSetCount(count),
-  };
 }

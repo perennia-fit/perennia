@@ -773,6 +773,42 @@ abstract class AppLocalizations {
   /// **'{count} sets'**
   String workoutSetCount(int count);
 
+  /// A Workout Exercise with Sets and no Planned Set left, shown with a check icon.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get workoutExerciseDone;
+
+  /// A Workout Exercise's Performed Sets out of all its Sets, while it still has a Planned Set.
+  ///
+  /// In en, this message translates to:
+  /// **'{performed}/{total} sets'**
+  String workoutPerformedSetFraction(int performed, int total);
+
+  /// Performed Sets out of all Sets: Today's Workout tile while the Workout has a Planned Set, and the spoken form of workoutPerformedSetFraction.
+  ///
+  /// In en, this message translates to:
+  /// **'{performed} of {total} sets'**
+  String workoutPerformedSetsOfTotal(int performed, int total);
+
+  /// The round an Exercise Group is on, on its first card.
+  ///
+  /// In en, this message translates to:
+  /// **'Round {round} of {total}'**
+  String workoutGroupRound(int round, int total);
+
+  /// No description provided for @workoutGroupAllRoundsDone.
+  ///
+  /// In en, this message translates to:
+  /// **'All rounds done'**
+  String get workoutGroupAllRoundsDone;
+
+  /// Marks the Current Exercise (or its group's first card) on an open Workout.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get workoutCurrentExercise;
+
   /// No description provided for @cancelAction.
   ///
   /// In en, this message translates to:

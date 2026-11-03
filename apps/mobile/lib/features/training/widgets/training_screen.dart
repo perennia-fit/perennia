@@ -714,6 +714,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
           : _NavigationPanelDrawer(
               workoutId: state.workoutExercise.workoutId,
               activeWorkoutExerciseId: state.workoutExercise.id,
+              isWorkoutOpen: state.workout.endedAt == null,
               onWorkoutExerciseSelected: _selectWorkoutExercise,
               onExerciseAdded: _selectWorkoutExercise,
             ),
@@ -1596,12 +1597,16 @@ class _NavigationPanelDrawer extends ConsumerStatefulWidget {
   const _NavigationPanelDrawer({
     required this.workoutId,
     required this.activeWorkoutExerciseId,
+    required this.isWorkoutOpen,
     required this.onWorkoutExerciseSelected,
     required this.onExerciseAdded,
   });
 
   final String workoutId;
   final String activeWorkoutExerciseId;
+
+  /// Whether the Workout has not ended: only an open Workout marks Now.
+  final bool isWorkoutOpen;
   final ValueChanged<String> onWorkoutExerciseSelected;
   final ValueChanged<String> onExerciseAdded;
 
@@ -1660,6 +1665,18 @@ class _NavigationPanelDrawerState
             if (model == null) {
               return const SizedBox.expand();
             }
+            final nowWorkoutExerciseId = widget.isWorkoutOpen
+                ? nowCardWorkoutExerciseId(<ProgressExercise>[
+                    for (final item in model.items)
+                      ProgressExercise(
+                        workoutExerciseId: item.workoutExercise.id,
+                        groupId: item.group?.id,
+                        performed: item.performedCount,
+                        planned: item.plannedCount,
+                        latestPerformedAt: item.latestPerformedAt,
+                      ),
+                  ])
+                : null;
 
             return ListView(
               padding: const EdgeInsets.all(AppDimens.base),
@@ -1694,6 +1711,7 @@ class _NavigationPanelDrawerState
                       item: item,
                       isSelected: item.workoutExercise.id ==
                           widget.activeWorkoutExerciseId,
+                      isNow: item.workoutExercise.id == nowWorkoutExerciseId,
                       onOverview: () {
                         final navigator = Navigator.of(context);
                         navigator.pop();
@@ -1877,12 +1895,16 @@ class _NavigationExerciseTile extends StatelessWidget {
   const _NavigationExerciseTile({
     required this.item,
     required this.isSelected,
+    required this.isNow,
     required this.onOverview,
     required this.onTap,
   });
 
   final _NavigationExerciseItem item;
   final bool isSelected;
+
+  /// Whether this row is the Current Exercise, or its group's first row.
+  final bool isNow;
   final VoidCallback onOverview;
   final VoidCallback onTap;
 
@@ -1920,14 +1942,24 @@ class _NavigationExerciseTile extends StatelessWidget {
         ),
       ),
       title: Text(item.exercise.name),
-      subtitle: group == null
-          ? Text(l10n.trainingSetCount(item.setCount))
-          : Text(
-              '${l10n.trainingSetCount(item.setCount)} '
+      // The same count text as the exercise's Workout screen card.
+      subtitle: Wrap(
+        spacing: AppDimens.dense / 2,
+        runSpacing: AppDimens.dense / 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (isNow) const CurrentExerciseLabel(),
+          ExerciseProgressCount(
+            performed: item.performedCount,
+            planned: item.plannedCount,
+          ),
+          if (group != null)
+            Text(
               '\u00B7 ${group.name}',
-              semanticsLabel: '${l10n.trainingSetCount(item.setCount)}, '
-                  '${l10n.trainingExerciseGroupIndicator(group.name)}',
+              semanticsLabel: l10n.trainingExerciseGroupIndicator(group.name),
             ),
+        ],
+      ),
       trailing: IconButton(
         key: TrainingScreen.overviewButtonKey(item.workoutExercise.id),
         tooltip: l10n.trainingOpenExerciseOverviewTooltip,
@@ -1935,6 +1967,94 @@ class _NavigationExerciseTile extends StatelessWidget {
         icon: const Icon(Icons.insights_outlined),
       ),
       onTap: onTap,
+    );
+  }
+}
+
+/// The Workout Exercise that shows **Now**: the Current Exercise from
+/// [currentExerciseFor], or, when that is a group, the group's first member
+/// in Workout order. [exercises] are in Workout order; null when nothing is
+/// current. Shared by the Workout screen's cards and the Navigation Panel so
+/// both mark the same exercise.
+String? nowCardWorkoutExerciseId(List<ProgressExercise> exercises) {
+  return switch (currentExerciseFor(exercises)) {
+    null => null,
+    CurrentWorkoutExercise(:final workoutExerciseId) => workoutExerciseId,
+    CurrentGroup(:final groupId) => exercises
+        .firstWhere((exercise) => exercise.groupId == groupId)
+        .workoutExerciseId,
+  };
+}
+
+/// A Workout Exercise's progress against its plan, the same text on its
+/// Workout screen card and its Navigation Panel row: "No sets" with no Sets;
+/// a check icon and "Done" when it has Sets and no Planned Set; otherwise
+/// "*performed*/*total* sets", spoken "*performed* of *total* sets". The
+/// state is always in the text, never only in the icon or a colour.
+class ExerciseProgressCount extends StatelessWidget {
+  const ExerciseProgressCount({
+    super.key,
+    required this.performed,
+    required this.planned,
+    this.style,
+  });
+
+  final int performed;
+  final int planned;
+
+  /// Defaults to the ambient text style (a ListTile subtitle's, say).
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final total = performed + planned;
+    if (total == 0) {
+      return Text(l10n.workoutNoSets, style: style);
+    }
+    if (planned == 0) {
+      final color = style?.color ?? DefaultTextStyle.of(context).style.color;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check, size: AppDimens.legendIcon, color: color),
+          const SizedBox(width: AppDimens.dense / 3),
+          Flexible(child: Text(l10n.workoutExerciseDone, style: style)),
+        ],
+      );
+    }
+    return Text(
+      l10n.workoutPerformedSetFraction(performed, total),
+      semanticsLabel: l10n.workoutPerformedSetsOfTotal(performed, total),
+      style: style,
+    );
+  }
+}
+
+/// **Now**, on the Current Exercise (or its group's first card or row) of
+/// an open Workout: text in the `label` style on a Signal Cyan (primary)
+/// fill. Its ink is on-primary rather than cyan text on the card, because
+/// cyan text on the light theme's white card falls below AA contrast.
+class CurrentExerciseLabel extends StatelessWidget {
+  const CurrentExerciseLabel({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.primary,
+        borderRadius: AppRadii.chipFull,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppDimens.dense / 2),
+        child: Text(
+          context.l10n.workoutCurrentExercise,
+          style: context.textStyles.label.copyWith(
+            color: colorScheme.onPrimary,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2098,13 +2218,21 @@ Stream<_NavigationPanelModel> _watchNavigationPanel(
     final exerciseById = <String, ExerciseRecord>{
       for (final exercise in exercises) exercise.id: exercise,
     };
-    final setCountsByExerciseId = <String, int>{};
+    final performedCountsByExerciseId = <String, int>{};
+    final plannedCountsByExerciseId = <String, int>{};
+    final latestPerformedAtByExerciseId = <String, DateTime>{};
     for (final set in sets) {
-      setCountsByExerciseId.update(
-        set.exerciseId,
-        (count) => count + 1,
-        ifAbsent: () => 1,
-      );
+      final counts = set.isCompleted
+          ? performedCountsByExerciseId
+          : plannedCountsByExerciseId;
+      counts.update(set.exerciseId, (count) => count + 1, ifAbsent: () => 1);
+      final performedAt = set.performedAt;
+      final latest = latestPerformedAtByExerciseId[set.exerciseId];
+      if (set.isCompleted &&
+          performedAt != null &&
+          (latest == null || performedAt.isAfter(latest))) {
+        latestPerformedAtByExerciseId[set.exerciseId] = performedAt;
+      }
     }
     final groupByWorkoutExerciseId = <String, ExerciseGroupRecord>{};
     for (final group in groups) {
@@ -2124,7 +2252,12 @@ Stream<_NavigationPanelModel> _watchNavigationPanel(
         _NavigationExerciseItem(
           workoutExercise: workoutExercise,
           exercise: exercise,
-          setCount: setCountsByExerciseId[workoutExercise.exerciseId] ?? 0,
+          performedCount:
+              performedCountsByExerciseId[workoutExercise.exerciseId] ?? 0,
+          plannedCount:
+              plannedCountsByExerciseId[workoutExercise.exerciseId] ?? 0,
+          latestPerformedAt:
+              latestPerformedAtByExerciseId[workoutExercise.exerciseId],
           group: groupByWorkoutExerciseId[workoutExercise.id],
         ),
       );
@@ -2216,7 +2349,9 @@ List<Object?> _navigationPanelSignature(_NavigationPanelModel model) {
       item.workoutExercise.position,
       item.exercise.id,
       item.exercise.name,
-      item.setCount,
+      item.performedCount,
+      item.plannedCount,
+      item.latestPerformedAt,
       item.group?.id,
       item.group?.name,
       item.group?.colorHex,
@@ -2268,13 +2403,21 @@ class _NavigationExerciseItem {
   const _NavigationExerciseItem({
     required this.workoutExercise,
     required this.exercise,
-    required this.setCount,
+    required this.performedCount,
+    required this.plannedCount,
+    required this.latestPerformedAt,
     required this.group,
   });
 
   final WorkoutExerciseRecord workoutExercise;
   final ExerciseRecord exercise;
-  final int setCount;
+
+  /// The exercise's Performed and Planned Sets in this Workout.
+  final int performedCount;
+  final int plannedCount;
+
+  /// The latest `performedAt` over its Performed Sets.
+  final DateTime? latestPerformedAt;
   final ExerciseGroupRecord? group;
 }
 
