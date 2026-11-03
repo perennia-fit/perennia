@@ -841,6 +841,18 @@
   },
   "trainingScreenMenuTooltip": "More options",
   "trainingExerciseOverviewMenuItem": "Exercise overview",
+  "replaceExerciseMenuItem": "Replace exercise",
+  "replaceExerciseReplaced": "Replaced",
+  "replaceExerciseAlreadyInWorkout": "Already in this workout",
+  "replaceExerciseNotReplaced": "Exercise not replaced",
+  "workoutExerciseOptionsTooltip": "Options for {exerciseName}",
+  "@workoutExerciseOptionsTooltip": {
+    "placeholders": {
+      "exerciseName": {
+        "type": "String"
+      }
+    }
+  },
   "trainingSetRowDoneLabel": "Set {number}, done, {values}",
   "@trainingSetRowDoneLabel": {
     "placeholders": {

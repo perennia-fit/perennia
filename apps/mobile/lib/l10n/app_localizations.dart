@@ -2258,6 +2258,36 @@ abstract class AppLocalizations {
   /// **'Exercise overview'**
   String get trainingExerciseOverviewMenuItem;
 
+  /// No description provided for @replaceExerciseMenuItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace exercise'**
+  String get replaceExerciseMenuItem;
+
+  /// No description provided for @replaceExerciseReplaced.
+  ///
+  /// In en, this message translates to:
+  /// **'Replaced'**
+  String get replaceExerciseReplaced;
+
+  /// No description provided for @replaceExerciseAlreadyInWorkout.
+  ///
+  /// In en, this message translates to:
+  /// **'Already in this workout'**
+  String get replaceExerciseAlreadyInWorkout;
+
+  /// No description provided for @replaceExerciseNotReplaced.
+  ///
+  /// In en, this message translates to:
+  /// **'Exercise not replaced'**
+  String get replaceExerciseNotReplaced;
+
+  /// No description provided for @workoutExerciseOptionsTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Options for {exerciseName}'**
+  String workoutExerciseOptionsTooltip(String exerciseName);
+
   /// No description provided for @trainingSetRowDoneLabel.
   ///
   /// In en, this message translates to:

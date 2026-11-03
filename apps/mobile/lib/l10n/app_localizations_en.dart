@@ -1293,6 +1293,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingExerciseOverviewMenuItem => 'Exercise overview';
 
   @override
+  String get replaceExerciseMenuItem => 'Replace exercise';
+
+  @override
+  String get replaceExerciseReplaced => 'Replaced';
+
+  @override
+  String get replaceExerciseAlreadyInWorkout => 'Already in this workout';
+
+  @override
+  String get replaceExerciseNotReplaced => 'Exercise not replaced';
+
+  @override
+  String workoutExerciseOptionsTooltip(String exerciseName) {
+    return 'Options for $exerciseName';
+  }
+
+  @override
   String trainingSetRowDoneLabel(int number, String values) {
     return 'Set $number, done, $values';
   }

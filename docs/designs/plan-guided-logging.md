@@ -899,13 +899,19 @@ Workout when it keeps a Performed Set, so picking it reports "Already in this
 workout".
 
 **Entry points** (pull request 4): the Training Screen's app-bar menu, and a
-new ⋮ button (48 dp) on each Workout screen card with **Replace exercise**.
+new ⋮ button (48 dp) on each Workout screen card with **Replace exercise**,
+in place of the card's chevron (with the drag handle beside it, a chevron
+too would leave a 360 dp card's name narrower than its progress count).
 Both call `Future<String?> replaceExercise(BuildContext, WidgetRef, String
 workoutExerciseId)` in `replace_exercise.dart`: it opens the existing
 `ExerciseCatalogPicker` in a modal sheet with `initialFocusId` set to the
 Workout's Focus, calls `replace`, shows "Replaced" with **Undo** or "Already in
 this workout", and returns the new id (null when cancelled or refused). The
-Training Screen switches to the new id; the Workout screen stays.
+Training Screen switches to the new id, and back to the old one when Undo
+succeeds while the new one is still open; the Workout screen stays. A
+`StateError` from `replace` (the exercise was removed since the screen read
+it) writes nothing and shows "Exercise not replaced". Like Add exercise and
+Remove, Replace is offered on a finished Workout too.
 
 ### Agent surface
 

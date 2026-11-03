@@ -11,6 +11,8 @@ import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/analytics/repositories/exercise_analytics_repository.dart';
+import 'package:perennia/features/catalog/repositories/exercise_catalog_repository.dart';
+import 'package:perennia/features/catalog/widgets/exercise_catalog_picker.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/features/analytics/widgets/exercise_overview_screen.dart';
 import 'package:perennia/features/training/services/timer_background_scheduler.dart';
@@ -2665,6 +2667,123 @@ void main() {
     });
 
     _testTrainingScreen(
+        'CUJ 13: Replace exercise swaps the superset member, and Undo '
+        'restores it', (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _createReplaceFixture(repositories),
+      ))!;
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        fixture.incline.workoutExerciseId,
+        liveSets: true,
+        catalogRepository: fixture.catalog,
+      );
+      await _settle(tester);
+      expect(find.widgetWithText(AppBar, 'Incline Press'), findsOneWidget);
+
+      await _chooseReplace(tester, fixture.machinePress.id);
+
+      await _waitForFinder(
+        tester,
+        find.widgetWithText(AppBar, 'Incline Machine Press'),
+      );
+      await _settle(tester);
+      expect(find.widgetWithText(SnackBar, 'Replaced'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget);
+      expect(_logSetLabel(tester), 'Log set 1 of 2');
+      // Its own last performed values, not Incline Press's plan.
+      expect(
+        _fieldText(tester, TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '40',
+      );
+      // Incline Press's planned rest.
+      expect(_restText(tester), '1:30');
+      expect(
+        _contextLine(tester),
+        'Superset · Round 2 of 3 · Next: Pull-Up',
+      );
+
+      final order = (await tester.runAsync(
+        () => _exerciseNamesInOrder(repositories, fixture.incline.workoutId),
+      ))!;
+      expect(order, <String>[
+        'Pull-Up',
+        'Incline Machine Press',
+        'Incline Press',
+      ]);
+      final groups = (await tester.runAsync(
+        () => repositories.exerciseGroups.listActiveForWorkout(
+          fixture.incline.workoutId,
+        ),
+      ))!;
+      expect(groups.single.workoutExerciseIds, hasLength(2));
+      expect(
+        groups.single.workoutExerciseIds.first,
+        fixture.pullUp.workoutExerciseId,
+      );
+      expect(
+        groups.single.workoutExerciseIds,
+        isNot(contains(fixture.incline.workoutExerciseId)),
+      );
+
+      await _tapUndo(tester);
+      await _waitForFinder(
+          tester, find.widgetWithText(AppBar, 'Incline Press'));
+      await _settle(tester);
+      expect(_logSetLabel(tester), 'Log set 2 of 3');
+      expect(
+        _contextLine(tester),
+        'Superset · Round 2 of 3 · Next: Pull-Up',
+      );
+      final restored = (await tester.runAsync(
+        () => _exerciseNamesInOrder(repositories, fixture.incline.workoutId),
+      ))!;
+      expect(restored, <String>['Pull-Up', 'Incline Press']);
+      final inclineSets = (await tester.runAsync(
+        () => _setsOf(repositories, fixture.incline),
+      ))!;
+      expect(inclineSets.map((set) => set.id), fixture.incline.setIds);
+      expect(
+        inclineSets.map((set) => set.isCompleted),
+        <bool>[true, false, false],
+      );
+    });
+
+    _testTrainingScreen(
+        'Replace exercise with one already in the Workout says so and '
+        'writes nothing', (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _createReplaceFixture(repositories),
+      ))!;
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        fixture.incline.workoutExerciseId,
+        liveSets: true,
+        catalogRepository: fixture.catalog,
+      );
+      await _settle(tester);
+      final before = (await tester.runAsync(
+        () => _workoutSnapshot(repositories, fixture.incline.workoutId),
+      ))!;
+
+      await _chooseReplace(tester, fixture.pullUpExercise.id);
+      await _settle(tester);
+
+      expect(
+        find.widgetWithText(SnackBar, 'Already in this workout'),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(SnackBarAction, 'Undo'), findsNothing);
+      expect(find.widgetWithText(AppBar, 'Incline Press'), findsOneWidget);
+      final after = (await tester.runAsync(
+        () => _workoutSnapshot(repositories, fixture.incline.workoutId),
+      ))!;
+      expect(after, before);
+    });
+
+    _testTrainingScreen(
         'CUJ 8: one more Set after a 0 s plan starts no timer, then Add set',
         (tester) async {
       final plan = (await tester.runAsync(
@@ -3613,6 +3732,7 @@ Future<void> _pumpTrainingScreen(
   bool enableRestTimerTicker = false,
   bool liveSets = false,
   Size surfaceSize = const Size(800, 1600),
+  ExerciseCatalogRepository? catalogRepository,
 }) async {
   // A phone-tall surface, so the rows, the form and the pinned buttons are
   // all on screen without scrolling.
@@ -3639,6 +3759,10 @@ Future<void> _pumpTrainingScreen(
         trainingRepositoriesProvider.overrideWith((ref) => repositories),
         if (settingsRepository != null)
           settingsRepositoryProvider.overrideWith((ref) => settingsRepository),
+        if (catalogRepository != null)
+          exerciseCatalogRepositoryProvider.overrideWith(
+            (ref) => catalogRepository,
+          ),
         if (restTimerAlert != null)
           restTimerAlertProvider.overrideWith((ref) => restTimerAlert),
         if (timerBackgroundScheduler != null)
@@ -3979,6 +4103,151 @@ Future<_PlanFixture> _createPlannedExercise(
     workoutExerciseId: workoutExerciseId,
     setIds: setIds,
   );
+}
+
+/// CUJ 13: the superset [Pull-Up, Incline Press], each with one performed
+/// and two planned Sets, and Incline Machine Press last performed at
+/// 40 kg x 10 in an earlier Workout. The catalogue offers both exercises
+/// the tests pick.
+Future<_ReplaceFixture> _createReplaceFixture(
+  TrainingRepositories repositories,
+) async {
+  final pullUp = await _createPlannedExercise(
+    repositories,
+    name: 'Pull-Up',
+    type: ExerciseType(const <DimensionId>[DimensionId.reps]),
+    planned: List<LoggedSet>.filled(3, _repsValues('8')),
+    rest: const Duration(seconds: 60),
+    performedCount: 1,
+  );
+  final incline = await _createPlannedExercise(
+    repositories,
+    workoutId: pullUp.workoutId,
+    name: 'Incline Press',
+    planned: List<LoggedSet>.filled(
+      3,
+      _loadRepsValues(load: '26', reps: '10'),
+    ),
+    rest: const Duration(seconds: 90),
+    performedCount: 1,
+  );
+  await repositories.exerciseGroups.create(
+    ExerciseGroupDraft(
+      workoutId: pullUp.workoutId,
+      name: 'Superset',
+      colorHex: '#2F6FED',
+      workoutExerciseIds: <String>[
+        pullUp.workoutExerciseId,
+        incline.workoutExerciseId,
+      ],
+    ),
+  );
+  // An earlier Workout, so its Set is the machine's last performed one.
+  final earlierWorkoutId = await repositories.workoutSessions.create(
+    WorkoutSessionDraft(
+      startedAt: DateTime.utc(2026, 10, 30, 6),
+      timezone: 'UTC',
+    ),
+  );
+  final earlier = await _createPlannedExercise(
+    repositories,
+    workoutId: earlierWorkoutId,
+    name: 'Incline Machine Press',
+    planned: <LoggedSet>[_loadRepsValues(load: '40', reps: '10')],
+    performedCount: 1,
+  );
+  final machinePress =
+      (await repositories.exercises.getById(earlier.exerciseId))!;
+  final pullUpExercise =
+      (await repositories.exercises.getById(pullUp.exerciseId))!;
+  return _ReplaceFixture(
+    pullUp: pullUp,
+    incline: incline,
+    machinePress: machinePress,
+    pullUpExercise: pullUpExercise,
+    catalog: StubExerciseCatalogRepository(
+      sections: <ExerciseCatalogSectionRecord>[
+        ExerciseCatalogSectionRecord(
+          category: ExerciseCategoryRecord(
+            id: 'category-strength',
+            name: 'Strength',
+            sortOrder: 0,
+            colorHex: '#2F6FED',
+            updatedAt: DateTime.utc(2026),
+          ),
+          exercises: <ExerciseRecord>[machinePress, pullUpExercise],
+        ),
+      ],
+    ),
+  );
+}
+
+class _ReplaceFixture {
+  const _ReplaceFixture({
+    required this.pullUp,
+    required this.incline,
+    required this.machinePress,
+    required this.pullUpExercise,
+    required this.catalog,
+  });
+
+  final _PlanFixture pullUp;
+  final _PlanFixture incline;
+  final ExerciseRecord machinePress;
+  final ExerciseRecord pullUpExercise;
+  final ExerciseCatalogRepository catalog;
+}
+
+/// Chooses Replace exercise in the app-bar menu and picks [exerciseId].
+Future<void> _chooseReplace(WidgetTester tester, String exerciseId) async {
+  await tester.tap(find.byKey(TrainingScreen.screenMenuButtonKey));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.tap(find.byKey(TrainingScreen.replaceExerciseMenuItemKey));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  final pick = find.byKey(ExerciseCatalogPicker.selectButtonKey(exerciseId));
+  await _waitForFinder(tester, pick);
+  await tester.tap(pick);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
+/// The Workout's rows Replace would write, with the times they were last
+/// written, to show a refused Replace wrote nothing.
+Future<List<String>> _workoutSnapshot(
+  TrainingRepositories repositories,
+  String workoutId,
+) async {
+  final workoutExercises =
+      await repositories.workoutExercises.listActiveForWorkout(workoutId);
+  final groups = await repositories.exerciseGroups.listActiveForWorkout(
+    workoutId,
+  );
+  final sets = await repositories.sets.listActiveForWorkout(workoutId);
+  return <String>[
+    for (final row in workoutExercises)
+      'exercise ${row.id} ${row.position} ${row.updatedAt}',
+    for (final group in groups) ...<String>[
+      'group ${group.id} ${group.updatedAt}',
+      for (final member in group.members)
+        'member ${member.id} ${member.workoutExerciseId} ${member.updatedAt}',
+    ],
+    for (final set in sets) 'set ${set.id} ${set.updatedAt}',
+  ];
+}
+
+Future<List<String>> _exerciseNamesInOrder(
+  TrainingRepositories repositories,
+  String workoutId,
+) async {
+  final rows = await repositories.workoutExercises.listActiveForWorkout(
+    workoutId,
+  );
+  return <String>[
+    for (final row in rows)
+      (await repositories.exercises.getById(row.exerciseId))!.name,
+  ];
 }
 
 Future<List<LoggedSetRecord>> _setsOf(

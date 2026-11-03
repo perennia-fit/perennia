@@ -19,6 +19,7 @@ import '../../catalog/widgets/exercise_catalog_picker.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../services/timer_background_scheduler.dart';
 import 'plan_progress_labels.dart';
+import 'replace_exercise.dart';
 import 'rest_strip.dart';
 
 class TrainingScreen extends ConsumerStatefulWidget {
@@ -66,6 +67,7 @@ class TrainingScreen extends ConsumerStatefulWidget {
   /// The alert volume slider, in the sheet the rest strip's time opens.
   static const restTimerVolumeSliderKey = RestStrip.volumeSliderKey;
   static const screenMenuButtonKey = Key('training.menu');
+  static const replaceExerciseMenuItemKey = Key('training.menu.replace');
   static const commentFieldKey = Key('training.comment');
   static const sideFieldKey = Key('training.side');
   static const rpeFieldKey = Key('training.rpe');
@@ -678,6 +680,8 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
                 return;
               }
               switch (action) {
+                case _TrainingScreenMenuAction.replaceExercise:
+                  unawaited(_replaceOpenExercise());
                 case _TrainingScreenMenuAction.exerciseOverview:
                   unawaited(
                     Navigator.of(context).push<void>(
@@ -690,6 +694,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
               }
             },
             itemBuilder: (context) => [
+              PopupMenuItem<_TrainingScreenMenuAction>(
+                key: TrainingScreen.replaceExerciseMenuItemKey,
+                value: _TrainingScreenMenuAction.replaceExercise,
+                child: Text(context.l10n.replaceExerciseMenuItem),
+              ),
               PopupMenuItem<_TrainingScreenMenuAction>(
                 value: _TrainingScreenMenuAction.exerciseOverview,
                 child: Text(context.l10n.trainingExerciseOverviewMenuItem),
@@ -735,6 +744,29 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         ),
       ),
     );
+  }
+
+  /// Replace exercise: the screen switches to the new Workout Exercise, and
+  /// back to the old one when the Replace is undone while the new one is
+  /// still open (otherwise the screen would sit on a soft-deleted row).
+  Future<void> _replaceOpenExercise() async {
+    final oldId = _activeWorkoutExerciseId;
+    String? newId;
+    newId = await replaceExercise(
+      context,
+      ref,
+      oldId,
+      snackBarMargin: _snackBarMargin,
+      onUndone: () {
+        if (mounted && newId != null && _activeWorkoutExerciseId == newId) {
+          _selectWorkoutExercise(oldId);
+        }
+      },
+    );
+    final replacedBy = newId;
+    if (replacedBy != null && mounted) {
+      _selectWorkoutExercise(replacedBy);
+    }
   }
 
   void _selectWorkoutExercise(String workoutExerciseId) {
@@ -1518,12 +1550,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
           content: Text(message),
           duration: Duration(seconds: onUndo == null ? 2 : 4),
           behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(
-            AppDimens.base * 2,
-            AppDimens.base * 2,
-            AppDimens.base * 2,
-            AppDimens.base * 12,
-          ),
+          margin: _snackBarMargin,
           action: onUndo == null || undoLabel == null
               ? null
               : SnackBarAction(label: undoLabel, onPressed: onUndo),
@@ -1552,7 +1579,15 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   }
 }
 
-enum _TrainingScreenMenuAction { exerciseOverview }
+enum _TrainingScreenMenuAction { replaceExercise, exerciseOverview }
+
+/// Floats the screen's confirmations above the pinned Log set buttons.
+const _snackBarMargin = EdgeInsets.fromLTRB(
+  AppDimens.base * 2,
+  AppDimens.base * 2,
+  AppDimens.base * 2,
+  AppDimens.base * 12,
+);
 
 /// What the form last loaded, for the reload rules: a different Current Set
 /// always reloads, and changed stored values or rest reload a clean form.

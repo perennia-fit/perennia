@@ -28,6 +28,7 @@ import '../../template_divergence/widgets/template_update_prompt_dialog.dart';
 import '../../template_materialize/widgets/template_guidance_card.dart';
 import '../../training/services/timer_notification_router.dart';
 import '../../training/widgets/plan_progress_labels.dart';
+import '../../training/widgets/replace_exercise.dart';
 import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
@@ -62,6 +63,14 @@ class WorkoutScreen extends ConsumerWidget {
 
   static Key openExerciseButtonKey(String workoutExerciseId) {
     return Key('workout.exercise.$workoutExerciseId.open');
+  }
+
+  static Key exerciseOptionsButtonKey(String workoutExerciseId) {
+    return Key('workout.exercise.$workoutExerciseId.options');
+  }
+
+  static Key replaceExerciseMenuItemKey(String workoutExerciseId) {
+    return Key('workout.exercise.$workoutExerciseId.replace');
   }
 
   static Key finishButtonKey(String workoutId) {
@@ -180,6 +189,8 @@ enum _WorkoutMenuAction {
   share,
   delete,
 }
+
+enum _WorkoutExerciseMenuAction { replace }
 
 class _WorkoutContent extends ConsumerWidget {
   const _WorkoutContent({
@@ -366,6 +377,10 @@ class _WorkoutContent extends ConsumerWidget {
                   exercises: workout.workoutExercises,
                   exerciseGroups: workout.exerciseGroups,
                   isWorkoutOpen: workout.isOpen,
+                  // The Workout screen stays: its cards follow the stream.
+                  onReplace: (exercise) => unawaited(
+                    replaceExercise(context, ref, exercise.id),
+                  ),
                   onRemove: (exercise) {
                     return _removeExerciseFromWorkout(
                       context,
@@ -1099,6 +1114,7 @@ class _WorkoutExerciseList extends StatefulWidget {
     required this.exercises,
     required this.exerciseGroups,
     required this.isWorkoutOpen,
+    required this.onReplace,
     required this.onRemove,
     required this.onReorder,
     required this.onLinkAsSuperset,
@@ -1110,6 +1126,7 @@ class _WorkoutExerciseList extends StatefulWidget {
 
   /// Whether the Workout has not ended: only an open Workout marks Now.
   final bool isWorkoutOpen;
+  final ValueChanged<HomeWorkoutExerciseSummary> onReplace;
   final Future<bool> Function(HomeWorkoutExerciseSummary exercise) onRemove;
   final ValueChanged<List<String>> onReorder;
   final Future<void> Function(
@@ -1218,6 +1235,7 @@ class _WorkoutExerciseListState extends State<_WorkoutExerciseList> {
                   groupRound: roundByFirstCardId[exercise.id],
                   index: index,
                   isDragArmed: _armedDragExerciseId == exercise.id,
+                  onReplace: () => widget.onReplace(exercise),
                   onDragHandleDown: () => _setArmedDragExercise(exercise.id),
                   onDragHandleRelease: _clearArmedDragExercise,
                 ),
@@ -1342,6 +1360,7 @@ class _WorkoutExerciseCard extends StatelessWidget {
     required this.groupRound,
     required this.index,
     required this.isDragArmed,
+    required this.onReplace,
     required this.onDragHandleDown,
     required this.onDragHandleRelease,
   });
@@ -1356,6 +1375,7 @@ class _WorkoutExerciseCard extends StatelessWidget {
   final GroupRound? groupRound;
   final int index;
   final bool isDragArmed;
+  final VoidCallback onReplace;
   final VoidCallback onDragHandleDown;
   final VoidCallback onDragHandleRelease;
 
@@ -1434,11 +1454,6 @@ class _WorkoutExerciseCard extends StatelessWidget {
                                   style: secondaryLabel,
                                 ),
                               ),
-                              const SizedBox(width: AppDimens.dense),
-                              Icon(
-                                Icons.chevron_right,
-                                color: context.colors.textSecondary,
-                              ),
                             ],
                           ),
                         ),
@@ -1461,6 +1476,41 @@ class _WorkoutExerciseCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                ),
+              ),
+              // Where the chevron was: a chevron as well as this and the
+              // drag handle leaves a 360 dp card's name narrower than its
+              // progress count.
+              SizedBox.square(
+                dimension: AppDimens.touchTarget,
+                child: PopupMenuButton<_WorkoutExerciseMenuAction>(
+                  key: WorkoutScreen.exerciseOptionsButtonKey(exercise.id),
+                  tooltip: context.l10n.workoutExerciseOptionsTooltip(
+                    exercise.name,
+                  ),
+                  padding: EdgeInsets.zero,
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: context.colors.textSecondary,
+                  ),
+                  onSelected: (action) {
+                    switch (action) {
+                      case _WorkoutExerciseMenuAction.replace:
+                        onReplace();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem<_WorkoutExerciseMenuAction>(
+                      key: WorkoutScreen.replaceExerciseMenuItemKey(
+                        exercise.id,
+                      ),
+                      value: _WorkoutExerciseMenuAction.replace,
+                      child: _MenuRow(
+                        icon: Icons.swap_horiz,
+                        label: context.l10n.replaceExerciseMenuItem,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Listener(
