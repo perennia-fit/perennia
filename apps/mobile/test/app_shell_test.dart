@@ -1360,6 +1360,58 @@ void main() {
     }
   });
 
+  testWidgets('Today app bar fits a 360 dp screen at text scale 2.0', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            upNextFeatureRepositoryProvider.overrideWith(
+              (ref) => const StubUpNextFeatureRepository(),
+            ),
+            settingsRepositoryProvider.overrideWith(
+              (ref) => InMemorySettingsRepository(),
+            ),
+            homeRepositoryProvider.overrideWith(
+              (ref) => const _DateEchoHomeRepository(),
+            ),
+            _homeNutritionDayOverride(),
+          ],
+          child: MaterialApp(
+            theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: const TextScaler.linear(2),
+              ),
+              child: child!,
+            ),
+            home: const HomeScreen(),
+          ),
+        ),
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(HomeScreen.trainingDomainBodyKey),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(HomeScreen.domainToggleKey), findsOneWidget);
+      expect(find.byKey(HomeScreen.protocolsDomainButtonKey), findsOneWidget);
+      expect(find.byKey(HomeScreen.accountAndAppButtonKey), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('home nutrition start meal uses the shared selected date', (
     tester,
   ) async {

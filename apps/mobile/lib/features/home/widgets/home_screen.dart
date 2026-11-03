@@ -278,30 +278,6 @@ class HomeScreen extends ConsumerWidget {
             HomeDestination.library => l10n.homeLibraryTitle,
           },
         ),
-        bottom: isToday
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(
-                  AppDimens.touchTarget + AppDimens.dense,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppDimens.base,
-                    0,
-                    AppDimens.base,
-                    AppDimens.dense,
-                  ),
-                  child: _HomeDomainToggle(
-                    selectedDomain: selectedDomain,
-                    showProtocols: showProtocols,
-                    onChanged: (domain) {
-                      ref
-                          .read(selectedHomeDomainProvider.notifier)
-                          .select(domain);
-                    },
-                  ),
-                ),
-              )
-            : null,
         actions: const [_AccountAndAppButton()],
       ),
       floatingActionButton: isToday
@@ -328,7 +304,37 @@ class HomeScreen extends ConsumerWidget {
       body: IndexedStack(
         index: selectedDestination.index,
         children: [
-          todayBody,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Under the app bar, not in its `bottom`: an AppBar bottom has a
+              // fixed preferred height, and at large text scales the toggle's
+              // labels wrap past it. Here it takes the height they need.
+              Material(
+                color: context.colors.chrome,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppDimens.base,
+                    0,
+                    AppDimens.base,
+                    AppDimens.dense,
+                  ),
+                  child: Center(
+                    child: _HomeDomainToggle(
+                      selectedDomain: selectedDomain,
+                      showProtocols: showProtocols,
+                      onChanged: (domain) {
+                        ref
+                            .read(selectedHomeDomainProvider.notifier)
+                            .select(domain);
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(child: todayBody),
+            ],
+          ),
           // Built only while selected: Progress Overview's providers are
           // autoDispose, so nothing on it is computed while the user is on
           // Today or Library. Its list's PageStorageKey restores the scroll.
