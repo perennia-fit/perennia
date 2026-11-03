@@ -8,15 +8,32 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
 
+/// A Replace that its **Undo** reverted: [newWorkoutExerciseId] is
+/// soft-deleted and [oldWorkoutExerciseId] is back in its place.
+typedef ReplaceUndone = ({
+  String oldWorkoutExerciseId,
+  String newWorkoutExerciseId,
+});
+
+/// Every undone Replace, wherever it started. A Training Screen open on the
+/// new Workout Exercise switches back on it, including one opened from a
+/// Workout screen card while that screen's "Replaced" confirmation, which
+/// follows the user onto the pushed route, was still showing.
+final replaceUndoneProvider = Provider<StreamController<ReplaceUndone>>((ref) {
+  final controller = StreamController<ReplaceUndone>.broadcast();
+  ref.onDispose(controller.close);
+  return controller;
+});
+
 /// Replaces the Workout Exercise [workoutExerciseId] with an Exercise the
 /// user picks, and returns the new Workout Exercise's id; null when the
 /// user cancels the picker or the Replace is refused.
 ///
 /// The picker opens on the Workout's Focus. The Replace runs under its own
 /// batch id, which the "Replaced" confirmation's **Undo** hands to
-/// `undoBatch`; [onUndone] runs once that Undo has reverted it. A pick
-/// already active in the Workout (the exercise itself included) shows
-/// "Already in this workout" and writes nothing.
+/// `undoBatch`; once that Undo has reverted it, [replaceUndoneProvider]
+/// reports it. A pick already active in the Workout (the exercise itself
+/// included) shows "Already in this workout" and writes nothing.
 ///
 /// [snackBarMargin] floats the confirmation above a screen's pinned
 /// buttons, as the Training Screen's own confirmations do.
@@ -24,10 +41,11 @@ Future<String?> replaceExercise(
   BuildContext context,
   WidgetRef ref,
   String workoutExerciseId, {
-  VoidCallback? onUndone,
   EdgeInsetsGeometry? snackBarMargin,
 }) async {
   final repositories = ref.read(trainingRepositoriesProvider);
+  // Read now: the calling screen may be gone by the time Undo is tapped.
+  final undoneEvents = ref.read(replaceUndoneProvider);
   final messenger = ScaffoldMessenger.of(context);
   final l10n = context.l10n;
 
@@ -56,16 +74,16 @@ Future<String?> replaceExercise(
       batchId: batchId,
     );
   } on AlreadyInWorkoutException {
-    _showSnackBar(
+    showTrainingSnackBar(
       messenger,
       l10n.replaceExerciseAlreadyInWorkout,
       margin: snackBarMargin,
     );
     return null;
   } on StateError {
-    // The exercise was removed (or its Exercise deleted) since the screen
-    // read it; nothing was written.
-    _showSnackBar(
+    // The exercise was removed, or the picked Exercise was archived, since
+    // the screen read it; nothing was written.
+    showTrainingSnackBar(
       messenger,
       l10n.replaceExerciseNotReplaced,
       margin: snackBarMargin,
@@ -73,20 +91,28 @@ Future<String?> replaceExercise(
     return null;
   }
 
-  _showSnackBar(
+  showTrainingSnackBar(
     messenger,
     l10n.replaceExerciseReplaced,
     margin: snackBarMargin,
     undoLabel: l10n.trainingUndo,
     onUndo: () => unawaited(
-      _undoReplace(
+      undoTrainingBatch(
         repositories,
         messenger,
         l10n,
-        batchId: batchId,
+        batchId,
         margin: snackBarMargin,
-        onUndone: onUndone,
-      ),
+      ).then((undone) {
+        if (undone && !undoneEvents.isClosed) {
+          undoneEvents.add(
+            (
+              oldWorkoutExerciseId: workoutExerciseId,
+              newWorkoutExerciseId: newWorkoutExerciseId,
+            ),
+          );
+        }
+      }),
     ),
   );
   return newWorkoutExerciseId;
@@ -125,35 +151,39 @@ Future<ExerciseRecord?> _pickExercise(
   );
 }
 
-/// Reverses the Replace's batch; on a conflict (another write touched its
-/// rows since) nothing is reverted and "Couldn't undo: changed since"
-/// shows.
-Future<void> _undoReplace(
+/// Reverses one action's batch and returns whether it did; on a conflict
+/// (another write touched its rows since) nothing is reverted and "Couldn't
+/// undo: changed since" shows. The Training Screen's Undo and Replace's
+/// share it, so every Undo on the gym-floor path behaves alike.
+Future<bool> undoTrainingBatch(
   TrainingRepositories repositories,
   ScaffoldMessengerState messenger,
-  AppLocalizations l10n, {
-  required String batchId,
-  required EdgeInsetsGeometry? margin,
-  required VoidCallback? onUndone,
+  AppLocalizations l10n,
+  String batchId, {
+  EdgeInsetsGeometry? margin,
 }) async {
   final ActivityLogUndoResult result;
   try {
     result = await repositories.activityLog.undoBatch(batchId);
   } on StateError {
-    _showSnackBar(messenger, l10n.trainingUndoConflict, margin: margin);
-    return;
+    showTrainingSnackBar(messenger, l10n.trainingUndoConflict, margin: margin);
+    return false;
   }
   if (result.hasConflicts) {
-    _showSnackBar(messenger, l10n.trainingUndoConflict, margin: margin);
-    return;
+    showTrainingSnackBar(messenger, l10n.trainingUndoConflict, margin: margin);
+    return false;
   }
-  onUndone?.call();
+  return true;
 }
 
-void _showSnackBar(
+/// Replaces the current confirmation with [message]: 4 s with **Undo**
+/// ([undoLabel], [onUndo]), else 2 s. With [margin] it floats there, as the
+/// Training Screen's do above its pinned buttons.
+void showTrainingSnackBar(
   ScaffoldMessengerState messenger,
   String message, {
-  required EdgeInsetsGeometry? margin,
+  Key? key,
+  EdgeInsetsGeometry? margin,
   String? undoLabel,
   VoidCallback? onUndo,
 }) {
@@ -161,6 +191,7 @@ void _showSnackBar(
     ..removeCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
+        key: key,
         content: Text(message),
         duration: Duration(seconds: onUndo == null ? 2 : 4),
         behavior: margin == null ? null : SnackBarBehavior.floating,

@@ -102,6 +102,64 @@ void main() {
       findsOneWidget,
     );
   });
+
+  _testReplace(
+      'an exercise removed while the picker is open is not replaced, and '
+      'nothing is written', (tester) async {
+    final fixture = (await tester.runAsync(
+      () => _createFixture(repositories),
+    ))!;
+    final results = <String?>[];
+    await _pumpHarness(tester, repositories, fixture, results);
+
+    await tester.tap(find.byKey(_replaceButtonKey));
+    await _settle(tester);
+    await tester.pump(const Duration(milliseconds: 400));
+    // Another device removes it before the pick lands.
+    await tester.runAsync(
+      () => repositories.workoutExercises.softDelete(
+        fixture.workoutExerciseId,
+        actor: 'sync',
+      ),
+    );
+    final before = (await tester.runAsync(
+      () => _replaceEntries(repositories),
+    ))!;
+    await tester.tap(
+      find.byKey(ExerciseCatalogPicker.selectButtonKey(fixture.squat.id)),
+    );
+    await _settle(tester);
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(results, <String?>[null]);
+    expect(
+      find.widgetWithText(SnackBar, 'Exercise not replaced'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(SnackBarAction, 'Undo'), findsNothing);
+    final after = (await tester.runAsync(
+      () => _replaceEntries(repositories),
+    ))!;
+    expect(after, before);
+    final rows = (await tester.runAsync(
+      () => repositories.workoutExercises.listActiveForWorkout(
+        fixture.workoutId,
+      ),
+    ))!;
+    expect(rows, isEmpty);
+  });
+}
+
+/// The Activity Log entries of the tables Replace writes.
+Future<List<String>> _replaceEntries(TrainingRepositories repositories) async {
+  final entries = await repositories.activityLog.listEntries();
+  return <String>[
+    for (final entry in entries)
+      if (entry.entityTable == AppDatabase.workoutExercisesTable ||
+          entry.entityTable == AppDatabase.loggedSetsTable ||
+          entry.entityTable == AppDatabase.exerciseGroupMembersTable)
+        '${entry.entityTable} ${entry.entityId}',
+  ];
 }
 
 /// A widget test that tears the tree down before the database closes: the

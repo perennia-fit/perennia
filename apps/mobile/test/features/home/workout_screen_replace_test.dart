@@ -81,6 +81,42 @@ void main() {
   });
 
   _testWorkoutScreen(
+      'Undo of a card Replace while its new exercise is open switches that '
+      'Training Screen back', (tester) async {
+    final fixture = (await tester.runAsync(
+      () => _createReplaceFixture(repositories),
+    ))!;
+    await _pumpWorkoutScreen(tester, repositories, fixture);
+
+    await _chooseReplace(
+      tester,
+      fixture.inclineWorkoutExerciseId,
+      fixture.machinePress.id,
+    );
+    await _waitFor(tester, () => _cardNames(tester).length == 3);
+    final machineCardId = _cardIds(tester)[1];
+
+    // The "Replaced" confirmation follows the user onto the new card's
+    // Training Screen.
+    await tester.tap(find.byKey(WorkoutScreen.openExerciseButtonKey(
+      machineCardId,
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await _settle(tester);
+    expect(
+      find.widgetWithText(AppBar, 'Incline Machine Press'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+    await _settle(tester);
+    await _settle(tester);
+
+    expect(find.widgetWithText(AppBar, 'Incline Press'), findsOneWidget);
+    expect(find.text("Couldn't undo: changed since"), findsNothing);
+  });
+
+  _testWorkoutScreen(
       'Replace exercise with one already in the Workout says so and '
       'changes nothing', (tester) async {
     final fixture = (await tester.runAsync(

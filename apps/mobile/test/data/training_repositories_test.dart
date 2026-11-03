@@ -5187,6 +5187,40 @@ void main() {
       expect(await orderNames(), <String>['Old', 'Other']);
     });
 
+    test('a removed old or an archived Exercise throws and writes nothing',
+        () async {
+      final oldId = await addExercise('Old');
+      final archivedId = await exercise('Archived');
+      await repositories.exercises.softDelete(archivedId);
+      final removedId = await addExercise('Removed');
+      await repositories.workoutExercises.softDelete(removedId);
+      final newExerciseId = await exercise('New');
+      final entriesBefore = await repositories.activityLog.listEntries();
+
+      for (final (workoutExerciseId, exerciseId) in <(String, String)>[
+        (oldId, archivedId),
+        (oldId, 'missing-exercise'),
+        (removedId, newExerciseId),
+      ]) {
+        final batchId = newBatchId();
+        await expectLater(
+          repositories.workoutExercises.replace(
+            workoutExerciseId,
+            exerciseId,
+            batchId: batchId,
+          ),
+          throwsA(isA<StateError>()),
+        );
+        expect(await entriesFor(batchId), isEmpty);
+      }
+
+      expect(
+        await repositories.activityLog.listEntries(),
+        hasLength(entriesBefore.length),
+      );
+      expect(await orderNames(), <String>['Old']);
+    });
+
     test('the group survives a later reorder', () async {
       await addExercise('Warm-up');
       final pullUpId = await addExercise('Pull-Up', performed: 1);

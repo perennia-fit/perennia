@@ -2784,6 +2784,105 @@ void main() {
     });
 
     _testTrainingScreen(
+        'Undo of a Replace that soft-deleted the exercise switches back to it',
+        (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _createUngroupedReplaceFixture(repositories),
+      ))!;
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        fixture.incline.workoutExerciseId,
+        liveSets: true,
+        catalogRepository: fixture.catalog,
+      );
+      await _settle(tester);
+
+      await _chooseReplace(tester, fixture.machinePress.id);
+      await _waitForFinder(
+        tester,
+        find.widgetWithText(AppBar, 'Incline Machine Press'),
+      );
+      await _settle(tester);
+      // Nothing performed: Incline Press left the Workout.
+      final replaced = (await tester.runAsync(
+        () => _exerciseNamesInOrder(repositories, fixture.incline.workoutId),
+      ))!;
+      expect(replaced, <String>['Incline Machine Press']);
+
+      await _tapUndo(tester);
+      await _waitForFinder(
+        tester,
+        find.widgetWithText(AppBar, 'Incline Press'),
+      );
+      await _settle(tester);
+      expect(_logSetLabel(tester), 'Log set 1 of 2');
+      final restored = (await tester.runAsync(
+        () => repositories.workoutExercises.listActiveForWorkout(
+          fixture.incline.workoutId,
+        ),
+      ))!;
+      expect(
+        restored.map((row) => row.id),
+        <String>[fixture.incline.workoutExerciseId],
+      );
+    });
+
+    _testTrainingScreen(
+        'Undo of a Replace whose rows changed since reverts nothing and says '
+        'so', (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _createUngroupedReplaceFixture(repositories),
+      ))!;
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        fixture.incline.workoutExerciseId,
+        liveSets: true,
+        catalogRepository: fixture.catalog,
+      );
+      await _settle(tester);
+
+      await _chooseReplace(tester, fixture.machinePress.id);
+      await _waitForFinder(
+        tester,
+        find.widgetWithText(AppBar, 'Incline Machine Press'),
+      );
+      await _settle(tester);
+      // Another device performs one of the new Planned Sets.
+      final newSets = (await tester.runAsync(
+        () => repositories.sets.listActiveForWorkout(fixture.incline.workoutId),
+      ))!;
+      await tester.runAsync(
+        () => repositories.sets.setCompleted(
+          newSets.first.id,
+          isCompleted: true,
+          actor: 'sync',
+        ),
+      );
+      await _settle(tester);
+      final before = (await tester.runAsync(
+        () => _workoutSnapshot(repositories, fixture.incline.workoutId),
+      ))!;
+
+      await _tapUndo(tester);
+      await _settle(tester);
+
+      expect(
+        find.widgetWithText(SnackBar, "Couldn't undo: changed since"),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(AppBar, 'Incline Machine Press'),
+        findsOneWidget,
+      );
+      final after = (await tester.runAsync(
+        () => _workoutSnapshot(repositories, fixture.incline.workoutId),
+      ))!;
+      expect(after, before);
+    });
+
+    _testTrainingScreen(
         'CUJ 8: one more Set after a 0 s plan starts no timer, then Add set',
         (tester) async {
       final plan = (await tester.runAsync(
@@ -4165,20 +4264,66 @@ Future<_ReplaceFixture> _createReplaceFixture(
     incline: incline,
     machinePress: machinePress,
     pullUpExercise: pullUpExercise,
-    catalog: StubExerciseCatalogRepository(
-      sections: <ExerciseCatalogSectionRecord>[
-        ExerciseCatalogSectionRecord(
-          category: ExerciseCategoryRecord(
-            id: 'category-strength',
-            name: 'Strength',
-            sortOrder: 0,
-            colorHex: '#2F6FED',
-            updatedAt: DateTime.utc(2026),
-          ),
-          exercises: <ExerciseRecord>[machinePress, pullUpExercise],
-        ),
-      ],
+    catalog: _strengthCatalog(<ExerciseRecord>[machinePress, pullUpExercise]),
+  );
+}
+
+/// Incline Press alone, with two Planned Sets and none performed, and
+/// Incline Machine Press last performed at 40 kg x 10 in an earlier
+/// Workout.
+Future<
+    ({
+      _PlanFixture incline,
+      ExerciseRecord machinePress,
+      ExerciseCatalogRepository catalog,
+    })> _createUngroupedReplaceFixture(
+  TrainingRepositories repositories,
+) async {
+  final incline = await _createPlannedExercise(
+    repositories,
+    name: 'Incline Press',
+    planned: List<LoggedSet>.filled(
+      2,
+      _loadRepsValues(load: '26', reps: '10'),
     ),
+    rest: const Duration(seconds: 90),
+  );
+  final earlierWorkoutId = await repositories.workoutSessions.create(
+    WorkoutSessionDraft(
+      startedAt: DateTime.utc(2026, 10, 30, 6),
+      timezone: 'UTC',
+    ),
+  );
+  final earlier = await _createPlannedExercise(
+    repositories,
+    workoutId: earlierWorkoutId,
+    name: 'Incline Machine Press',
+    planned: <LoggedSet>[_loadRepsValues(load: '40', reps: '10')],
+    performedCount: 1,
+  );
+  final machinePress =
+      (await repositories.exercises.getById(earlier.exerciseId))!;
+  return (
+    incline: incline,
+    machinePress: machinePress,
+    catalog: _strengthCatalog(<ExerciseRecord>[machinePress]),
+  );
+}
+
+ExerciseCatalogRepository _strengthCatalog(List<ExerciseRecord> exercises) {
+  return StubExerciseCatalogRepository(
+    sections: <ExerciseCatalogSectionRecord>[
+      ExerciseCatalogSectionRecord(
+        category: ExerciseCategoryRecord(
+          id: 'category-strength',
+          name: 'Strength',
+          sortOrder: 0,
+          colorHex: '#2F6FED',
+          updatedAt: DateTime.utc(2026),
+        ),
+        exercises: exercises,
+      ),
+    ],
   );
 }
 

@@ -907,11 +907,15 @@ workoutExerciseId)` in `replace_exercise.dart`: it opens the existing
 `ExerciseCatalogPicker` in a modal sheet with `initialFocusId` set to the
 Workout's Focus, calls `replace`, shows "Replaced" with **Undo** or "Already in
 this workout", and returns the new id (null when cancelled or refused). The
-Training Screen switches to the new id, and back to the old one when Undo
-succeeds while the new one is still open; the Workout screen stays. A
-`StateError` from `replace` (the exercise was removed since the screen read
-it) writes nothing and shows "Exercise not replaced". Like Add exercise and
-Remove, Replace is offered on a finished Workout too.
+Training Screen switches to the new id; the Workout screen stays. A Training
+Screen open on the new id when Undo succeeds switches back to the old one,
+wherever the Replace started: the Workout screen's "Replaced" confirmation
+follows the user onto a card's Training Screen, so `replace_exercise.dart`
+reports each undone Replace (`replaceUndoneProvider`) for the Training Screen
+to act on. A `StateError` from `replace` (the exercise was removed, or the
+picked Exercise archived, since the screen read it; `replace` refuses an
+archived Exercise) writes nothing and shows "Exercise not replaced". Like Add
+exercise and Remove, Replace is offered on a finished Workout too.
 
 ### Agent surface
 

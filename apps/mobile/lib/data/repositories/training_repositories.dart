@@ -8606,29 +8606,11 @@ class WorkoutExerciseRepository {
         );
       }
 
-      for (var index = 0; index < orderedIds.length; index += 1) {
-        final row = rowById[orderedIds[index]]!;
-        if (row.position == index) {
-          continue;
-        }
-
-        await (_database.update(_database.workoutExercises)
-              ..where((table) => table.id.equals(row.id)))
-            .write(
-          WorkoutExercisesCompanion(
-            position: Value<int>(index),
-            updatedAt: Value<DateTime>(context.timestamp),
-          ),
-        );
-        final after = await _requireRow(row.id);
-        await _repositories._activityLogWriter.append(
-          context,
-          entityTable: AppDatabase.workoutExercisesTable,
-          entityId: row.id,
-          beforeImage: _workoutExerciseImage(row),
-          afterImage: _workoutExerciseImage(after),
-        );
-      }
+      await _writePositions(
+        [for (final id in orderedIds) rowById[id]!],
+        [for (var index = 0; index < orderedIds.length; index += 1) index],
+        context,
+      );
 
       await _repositories.exerciseGroups._reconcileAfterWorkoutExerciseReorder(
         workoutId: workoutId,
@@ -8685,13 +8667,15 @@ class WorkoutExerciseRepository {
           exerciseId: newExerciseId,
         );
       }
-      final exerciseRow = await (_database.select(_database.exercises)
-            ..where((row) => row.id.equals(newExerciseId)))
-          .getSingleOrNull();
-      if (exerciseRow == null) {
+      // An archived Exercise is refused too: the picker offers only active
+      // ones, so it was archived (here or by a sync) after the pick.
+      final newExercise = await _repositories.exercises.getById(newExerciseId);
+      if (newExercise == null) {
         throw StateError('Exercise not found: $newExerciseId.');
       }
-      final newExercise = _exerciseFromRow(exerciseRow);
+      if (newExercise.deletedAt != null) {
+        throw StateError('Exercise is archived: $newExerciseId.');
+      }
 
       // `_activeLoggedSetQuery` ignores `exerciseId` alongside `workoutId`,
       // so the exercise is filtered here, as [softDelete] does.
@@ -8729,17 +8713,15 @@ class WorkoutExerciseRepository {
       ];
       final newIndex = activeRows.indexWhere((row) => row.id == old.id);
       if (oldKeepsPerformedSet) {
-        var lastIndex = newIndex;
-        for (var index = 0; index < order.length; index += 1) {
-          if (index > lastIndex && groupMemberIds.contains(order[index])) {
-            lastIndex = index;
-          }
-        }
-        order.insert(lastIndex + 1, old.id);
+        // After the new one, or after the group's last member (old's own
+        // slot is null, so it never matches).
+        final lastMember = order.lastIndexWhere(groupMemberIds.contains);
+        order.insert(math.max(newIndex, lastMember) + 1, old.id);
       }
 
       // 2. Insert the new one at its place; write each other row whose
-      // position changes, once (`old` included when it moves).
+      // position changes, once (`old` included when it moves). No group
+      // reconciliation: see above.
       final rowById = <String, WorkoutExerciseRow>{
         for (final row in activeRows) row.id: row,
       };
@@ -8749,32 +8731,16 @@ class WorkoutExerciseRepository {
         position: newIndex,
         context: context,
       );
+      final movedRows = <WorkoutExerciseRow>[];
+      final movedPositions = <int>[];
       for (var index = 0; index < order.length; index += 1) {
         final id = order[index];
-        if (id == null) {
-          continue;
+        if (id != null) {
+          movedRows.add(rowById[id]!);
+          movedPositions.add(index);
         }
-        final row = rowById[id]!;
-        if (row.position == index) {
-          continue;
-        }
-        await (_database.update(_database.workoutExercises)
-              ..where((table) => table.id.equals(row.id)))
-            .write(
-          WorkoutExercisesCompanion(
-            position: Value<int>(index),
-            updatedAt: Value<DateTime>(context.timestamp),
-          ),
-        );
-        final after = await _requireRow(row.id);
-        await _repositories._activityLogWriter.append(
-          context,
-          entityTable: AppDatabase.workoutExercisesTable,
-          entityId: row.id,
-          beforeImage: _workoutExerciseImage(row),
-          afterImage: _workoutExerciseImage(after),
-        );
       }
+      await _writePositions(movedRows, movedPositions, context);
 
       // 3. The member row points at the new one: same group, same position.
       if (membership != null) {
@@ -8908,32 +8874,17 @@ class WorkoutExerciseRepository {
 
     final activeRows =
         await _activeWorkoutExerciseQuery(workoutId: draft.workoutId).get();
-    final id = _repositories._ids.create(context.timestamp);
-    await _database.into(_database.workoutExercises).insert(
-          WorkoutExercisesCompanion.insert(
-            id: id,
-            workoutId: draft.workoutId,
-            exerciseId: draft.exerciseId,
-            position: _nextPosition(activeRows, (row) => row.position),
-            updatedAt: context.timestamp,
-          ),
-        );
-
-    final after = await _requireRow(id);
-    await _repositories._activityLogWriter.append(
-      context,
-      entityTable: AppDatabase.workoutExercisesTable,
-      entityId: id,
-      beforeImage: null,
-      afterImage: _workoutExerciseImage(after),
+    return _insertAt(
+      workoutId: draft.workoutId,
+      exerciseId: draft.exerciseId,
+      position: _nextPosition(activeRows, (row) => row.position),
+      context: context,
     );
-
-    return id;
   }
 
-  /// Inserts a Workout Exercise at [position], for [replace]: unlike
-  /// [_create], it neither returns an existing row nor appends at the end,
-  /// and it writes no other row.
+  /// Inserts a Workout Exercise at [position] and logs it, writing no other
+  /// row. [_create] appends through it; [replace] calls it directly because
+  /// it must neither return an existing row nor append at the end.
   Future<String> _insertAt({
     required String workoutId,
     required String exerciseId,
@@ -8961,6 +8912,39 @@ class WorkoutExerciseRepository {
     );
 
     return id;
+  }
+
+  /// Writes each of [rows] whose stored position differs from its entry in
+  /// [positions], once, and logs it; for [reorderForWorkout] and [replace].
+  Future<void> _writePositions(
+    List<WorkoutExerciseRow> rows,
+    List<int> positions,
+    WriteContext context,
+  ) async {
+    for (var index = 0; index < rows.length; index += 1) {
+      final row = rows[index];
+      final position = positions[index];
+      if (row.position == position) {
+        continue;
+      }
+
+      await (_database.update(_database.workoutExercises)
+            ..where((table) => table.id.equals(row.id)))
+          .write(
+        WorkoutExercisesCompanion(
+          position: Value<int>(position),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      final after = await _requireRow(row.id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.workoutExercisesTable,
+        entityId: row.id,
+        beforeImage: _workoutExerciseImage(row),
+        afterImage: _workoutExerciseImage(after),
+      );
+    }
   }
 
   Future<void> _softDeleteAffectedExerciseGroupMemberships(
