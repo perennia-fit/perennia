@@ -217,6 +217,39 @@
       }
     }
   },
+  "workoutExerciseDone": "Done",
+  "@workoutExerciseDone": {
+    "description": "A Workout Exercise with Sets and no Planned Set left, shown with a check icon."
+  },
+  "workoutPerformedSetFraction": "{performed}/{total} sets",
+  "@workoutPerformedSetFraction": {
+    "description": "A Workout Exercise's Performed Sets out of all its Sets, while it still has a Planned Set.",
+    "placeholders": {
+      "performed": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "workoutPerformedSetsOfTotal": "{performed} of {total} sets",
+  "@workoutPerformedSetsOfTotal": {
+    "description": "Performed Sets out of all Sets: Today's Workout tile while the Workout has a Planned Set, and the spoken form of workoutPerformedSetFraction.",
+    "placeholders": {
+      "performed": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "workoutGroupRound": "Round {round} of {total}",
+  "@workoutGroupRound": {
+    "description": "The round an Exercise Group is on, on its first card.",
+    "placeholders": {
+      "round": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "workoutGroupAllRoundsDone": "All rounds done",
+  "workoutCurrentExercise": "Now",
+  "@workoutCurrentExercise": {
+    "description": "Marks the Current Exercise (or its group's first card) on an open Workout."
+  },
   "cancelAction": "Cancel",
   "workoutDurationInProgress": "In progress",
   "workoutDurationHours": "{hours}h",

@@ -1115,6 +1115,199 @@ void main() {
       );
     });
 
+    for (final ended in <bool>[false, true]) {
+      _testTrainingScreen(
+          'CUJ 11: the Navigation Panel shows each exercise\'s progress'
+          '${ended ? ' and no Now on an ended Workout' : ' and Now'}', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        final incline = await tester.runAsync(
+          () => _createPlannedExercise(
+            repositories,
+            name: 'Incline Press',
+            planned: List<LoggedSet>.filled(3, _repsValues('8')),
+            performedCount: 2,
+            endedAt: ended ? DateTime.utc(2026, 11, 2, 7) : null,
+          ),
+        );
+        final workoutId = incline!.workoutId;
+        final pullUp = await tester.runAsync(
+          () => _createPlannedExercise(
+            repositories,
+            workoutId: workoutId,
+            name: 'Pull-Up',
+            planned: List<LoggedSet>.filled(3, _repsValues('8')),
+            performedCount: 2,
+          ),
+        );
+        final pushdown = await tester.runAsync(
+          () => _createPlannedExercise(
+            repositories,
+            workoutId: workoutId,
+            name: 'Triceps Pushdown',
+            planned: List<LoggedSet>.filled(2, _repsValues('12')),
+          ),
+        );
+        final curl = await tester.runAsync(
+          () => _createPlannedExercise(
+            repositories,
+            workoutId: workoutId,
+            name: 'Dumbbell Curl',
+            planned: List<LoggedSet>.filled(2, _repsValues('10')),
+            performedCount: 2,
+          ),
+        );
+        await tester.runAsync(
+          () => repositories.exerciseGroups.create(
+            ExerciseGroupDraft(
+              workoutId: workoutId,
+              name: 'Superset A',
+              colorHex: '#2F6FED',
+              workoutExerciseIds: <String>[
+                incline.workoutExerciseId,
+                pullUp!.workoutExerciseId,
+              ],
+            ),
+          ),
+        );
+
+        await _pumpTrainingScreen(
+          tester,
+          repositories,
+          pushdown!.workoutExerciseId,
+        );
+        await tester.tap(find.byKey(TrainingScreen.navigationPanelButtonKey));
+        await _pumpDrawerAnimation(tester);
+
+        Finder inRow(String workoutExerciseId, Finder matching) {
+          return find.descendant(
+            of: find.byKey(TrainingScreen.navigationItemKey(workoutExerciseId)),
+            matching: matching,
+          );
+        }
+
+        // The same count text as the Workout screen's cards.
+        expect(
+          inRow(incline.workoutExerciseId, find.text('2/3 sets')),
+          findsOneWidget,
+        );
+        expect(
+          inRow(pullUp!.workoutExerciseId, find.text('2/3 sets')),
+          findsOneWidget,
+        );
+        expect(
+          inRow(pushdown.workoutExerciseId, find.text('0/2 sets')),
+          findsOneWidget,
+        );
+        expect(
+            inRow(curl!.workoutExerciseId, find.text('Done')), findsOneWidget);
+        expect(
+          inRow(curl.workoutExerciseId, find.byIcon(Icons.check)),
+          findsOneWidget,
+        );
+        // Now is on the superset's first row, not on the open exercise.
+        expect(
+          inRow(incline.workoutExerciseId, find.text('Now')),
+          ended ? findsNothing : findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(TrainingScreen.navigationPanelKey),
+            matching: find.text('Now'),
+          ),
+          ended ? findsNothing : findsOneWidget,
+        );
+        if (!ended) {
+          expect(
+            find.bySemanticsLabel(RegExp('Incline Press.*Now', dotAll: true)),
+            findsOneWidget,
+          );
+        }
+        // The open exercise stays highlighted.
+        expect(
+          tester
+              .widget<ListTile>(
+                find.byKey(
+                  TrainingScreen.navigationItemKey(pushdown.workoutExerciseId),
+                ),
+              )
+              .selected,
+          isTrue,
+        );
+        expect(
+          tester
+              .widget<ListTile>(
+                find.byKey(
+                  TrainingScreen.navigationItemKey(incline.workoutExerciseId),
+                ),
+              )
+              .selected,
+          isFalse,
+        );
+        for (final plan in <_PlanFixture>[incline, pullUp, pushdown, curl]) {
+          _expectMinimumTargetSize(
+            tester,
+            find.byKey(
+                TrainingScreen.navigationItemKey(plan.workoutExerciseId)),
+          );
+        }
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        semantics.dispose();
+      });
+    }
+
+    _testTrainingScreen(
+        'the Navigation Panel works out Now over an archived exercise too', (
+      tester,
+    ) async {
+      // In progress and first in Workout order, so it is Now on the
+      // Workout screen, which keeps its card after the archive.
+      final archived = await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Archived Press',
+          planned: List<LoggedSet>.filled(3, _repsValues('8')),
+          performedCount: 1,
+        ),
+      );
+      final row = await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          workoutId: archived!.workoutId,
+          name: 'Cable Row',
+          planned: List<LoggedSet>.filled(2, _repsValues('10')),
+        ),
+      );
+      await tester.runAsync(
+        () => repositories.exercises.softDelete(archived!.exerciseId),
+      );
+
+      await _pumpTrainingScreen(tester, repositories, row!.workoutExerciseId);
+      await tester.tap(find.byKey(TrainingScreen.navigationPanelButtonKey));
+      await _pumpDrawerAnimation(tester);
+
+      final panel = find.byKey(TrainingScreen.navigationPanelKey);
+      expect(
+        find.descendant(of: panel, matching: find.text('Cable Row')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.text('Archived Press')),
+        findsNothing,
+      );
+      // Now belongs to the archived exercise, which has no row here, so
+      // the panel does not move it onto Cable Row.
+      expect(
+        find.descendant(of: panel, matching: find.text('0/2 sets')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.text('Now')),
+        findsNothing,
+      );
+    });
+
     _testTrainingScreen(
         'navigation drawer lists set counts and jumps exercises', (
       tester,
@@ -1174,8 +1367,18 @@ void main() {
       expect(find.byKey(TrainingScreen.navigationPanelKey), findsOneWidget);
       expect(find.text('Bench Press'), findsWidgets);
       expect(find.text('Barbell Row'), findsOneWidget);
-      expect(find.text('2 sets'), findsOneWidget);
-      expect(find.text('0 sets'), findsOneWidget);
+      // Two Planned Sets and none performed: Bench Press is Now.
+      expect(find.text('0/2 sets'), findsOneWidget);
+      expect(find.text('No sets'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(
+            TrainingScreen.navigationItemKey(benchWorkoutExerciseId),
+          ),
+          matching: find.text('Now'),
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(
         find.byKey(TrainingScreen.navigationItemKey(rowWorkoutExerciseId!)),

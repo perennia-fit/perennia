@@ -18,6 +18,7 @@ import '../../analytics/widgets/exercise_overview_screen.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../services/timer_background_scheduler.dart';
+import 'plan_progress_labels.dart';
 import 'rest_strip.dart';
 
 class TrainingScreen extends ConsumerStatefulWidget {
@@ -714,6 +715,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
           : _NavigationPanelDrawer(
               workoutId: state.workoutExercise.workoutId,
               activeWorkoutExerciseId: state.workoutExercise.id,
+              isWorkoutOpen: state.workout.endedAt == null,
               onWorkoutExerciseSelected: _selectWorkoutExercise,
               onExerciseAdded: _selectWorkoutExercise,
             ),
@@ -988,12 +990,10 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   }
 
   ProgressExercise _progressFor(String workoutExerciseId) {
-    final counts = _countsFor(workoutExerciseId);
-    return ProgressExercise(
+    return progressExerciseFor(
       workoutExerciseId: workoutExerciseId,
       groupId: _groupFor(workoutExerciseId)?.id,
-      performed: counts.performed,
-      planned: counts.planned,
+      sets: _setsOfWorkoutExercise(workoutExerciseId).map(progressSetOf),
     );
   }
 
@@ -1596,12 +1596,16 @@ class _NavigationPanelDrawer extends ConsumerStatefulWidget {
   const _NavigationPanelDrawer({
     required this.workoutId,
     required this.activeWorkoutExerciseId,
+    required this.isWorkoutOpen,
     required this.onWorkoutExerciseSelected,
     required this.onExerciseAdded,
   });
 
   final String workoutId;
   final String activeWorkoutExerciseId;
+
+  /// Whether the Workout has not ended: only an open Workout marks Now.
+  final bool isWorkoutOpen;
   final ValueChanged<String> onWorkoutExerciseSelected;
   final ValueChanged<String> onExerciseAdded;
 
@@ -1660,6 +1664,8 @@ class _NavigationPanelDrawerState
             if (model == null) {
               return const SizedBox.expand();
             }
+            final nowWorkoutExerciseId =
+                widget.isWorkoutOpen ? model.nowWorkoutExerciseId : null;
 
             return ListView(
               padding: const EdgeInsets.all(AppDimens.base),
@@ -1694,6 +1700,7 @@ class _NavigationPanelDrawerState
                       item: item,
                       isSelected: item.workoutExercise.id ==
                           widget.activeWorkoutExerciseId,
+                      isNow: item.workoutExercise.id == nowWorkoutExerciseId,
                       onOverview: () {
                         final navigator = Navigator.of(context);
                         navigator.pop();
@@ -1877,12 +1884,16 @@ class _NavigationExerciseTile extends StatelessWidget {
   const _NavigationExerciseTile({
     required this.item,
     required this.isSelected,
+    required this.isNow,
     required this.onOverview,
     required this.onTap,
   });
 
   final _NavigationExerciseItem item;
   final bool isSelected;
+
+  /// Whether this row is the Current Exercise, or its group's first row.
+  final bool isNow;
   final VoidCallback onOverview;
   final VoidCallback onTap;
 
@@ -1920,14 +1931,24 @@ class _NavigationExerciseTile extends StatelessWidget {
         ),
       ),
       title: Text(item.exercise.name),
-      subtitle: group == null
-          ? Text(l10n.trainingSetCount(item.setCount))
-          : Text(
-              '${l10n.trainingSetCount(item.setCount)} '
+      // The same count text as the exercise's Workout screen card.
+      subtitle: Wrap(
+        spacing: AppDimens.dense / 2,
+        runSpacing: AppDimens.dense / 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (isNow) const CurrentExerciseLabel(),
+          ExerciseProgressCount(
+            performed: item.progress.performed,
+            planned: item.progress.planned,
+          ),
+          if (group != null)
+            Text(
               '\u00B7 ${group.name}',
-              semanticsLabel: '${l10n.trainingSetCount(item.setCount)}, '
-                  '${l10n.trainingExerciseGroupIndicator(group.name)}',
+              semanticsLabel: l10n.trainingExerciseGroupIndicator(group.name),
             ),
+        ],
+      ),
       trailing: IconButton(
         key: TrainingScreen.overviewButtonKey(item.workoutExercise.id),
         tooltip: l10n.trainingOpenExerciseOverviewTooltip,
@@ -2098,13 +2119,9 @@ Stream<_NavigationPanelModel> _watchNavigationPanel(
     final exerciseById = <String, ExerciseRecord>{
       for (final exercise in exercises) exercise.id: exercise,
     };
-    final setCountsByExerciseId = <String, int>{};
+    final setsByExerciseId = <String, List<LoggedSetRecord>>{};
     for (final set in sets) {
-      setCountsByExerciseId.update(
-        set.exerciseId,
-        (count) => count + 1,
-        ifAbsent: () => 1,
-      );
+      setsByExerciseId.putIfAbsent(set.exerciseId, () => []).add(set);
     }
     final groupByWorkoutExerciseId = <String, ExerciseGroupRecord>{};
     for (final group in groups) {
@@ -2113,8 +2130,21 @@ Stream<_NavigationPanelModel> _watchNavigationPanel(
       }
     }
 
+    // Every Workout Exercise counts toward Now, one whose Exercise is
+    // archived included, though it gets no row: the Workout screen keeps
+    // that exercise's card, and both must mark the same exercise.
+    final progress = <ProgressExercise>[];
     final items = <_NavigationExerciseItem>[];
     for (final workoutExercise in workoutExercises) {
+      final group = groupByWorkoutExerciseId[workoutExercise.id];
+      final exerciseProgress = progressExerciseFor(
+        workoutExerciseId: workoutExercise.id,
+        groupId: group?.id,
+        sets: (setsByExerciseId[workoutExercise.exerciseId] ??
+                const <LoggedSetRecord>[])
+            .map(progressSetOf),
+      );
+      progress.add(exerciseProgress);
       final exercise = exerciseById[workoutExercise.exerciseId];
       if (exercise == null) {
         continue;
@@ -2124,8 +2154,8 @@ Stream<_NavigationPanelModel> _watchNavigationPanel(
         _NavigationExerciseItem(
           workoutExercise: workoutExercise,
           exercise: exercise,
-          setCount: setCountsByExerciseId[workoutExercise.exerciseId] ?? 0,
-          group: groupByWorkoutExerciseId[workoutExercise.id],
+          progress: exerciseProgress,
+          group: group,
         ),
       );
     }
@@ -2134,6 +2164,7 @@ Stream<_NavigationPanelModel> _watchNavigationPanel(
       _NavigationPanelModel(
         items: List<_NavigationExerciseItem>.unmodifiable(items),
         groups: groups,
+        nowWorkoutExerciseId: nowCardWorkoutExerciseId(progress),
       ),
     );
   }
@@ -2216,12 +2247,15 @@ List<Object?> _navigationPanelSignature(_NavigationPanelModel model) {
       item.workoutExercise.position,
       item.exercise.id,
       item.exercise.name,
-      item.setCount,
+      item.progress.performed,
+      item.progress.planned,
       item.group?.id,
       item.group?.name,
       item.group?.colorHex,
       item.group?.position,
     ],
+    'now',
+    model.nowWorkoutExerciseId,
     'groups',
     model.groups.length,
     for (final group in model.groups) ...[
@@ -2258,23 +2292,30 @@ class _NavigationPanelModel {
   const _NavigationPanelModel({
     required this.items,
     required this.groups,
+    required this.nowWorkoutExerciseId,
   });
 
   final List<_NavigationExerciseItem> items;
   final List<ExerciseGroupRecord> groups;
+
+  /// [nowCardWorkoutExerciseId] over every Workout Exercise, whether or not
+  /// the Workout is open; the drawer shows it only on an open Workout.
+  final String? nowWorkoutExerciseId;
 }
 
 class _NavigationExerciseItem {
   const _NavigationExerciseItem({
     required this.workoutExercise,
     required this.exercise,
-    required this.setCount,
+    required this.progress,
     required this.group,
   });
 
   final WorkoutExerciseRecord workoutExercise;
   final ExerciseRecord exercise;
-  final int setCount;
+
+  /// The exercise's Performed and Planned Sets in this Workout.
+  final ProgressExercise progress;
   final ExerciseGroupRecord? group;
 }
 

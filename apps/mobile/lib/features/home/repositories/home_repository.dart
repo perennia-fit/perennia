@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/training/plan_logging.dart'
+    show ProgressExercise, progressExerciseFor;
 import '../../../domain/training/training_day.dart';
 import '../../../domain/training/training_dimensions.dart';
 
@@ -387,6 +389,9 @@ class RepositoryHomeRepository implements HomeRepository {
         workoutExerciseSubscription;
     StreamSubscription<List<LoggedSetRecord>>? setSubscription;
     StreamSubscription<List<ExerciseGroupRecord>>? exerciseGroupSubscription;
+    StreamSubscription<List<TemplateLinkRecord>>? templateLinkSubscription;
+    late final StreamSubscription<List<WorkoutTemplateSummaryRecord>>
+        templateSubscription;
 
     final controller = StreamController<HomeSummary>();
     List<ExerciseRecord>? latestExercises;
@@ -394,6 +399,11 @@ class RepositoryHomeRepository implements HomeRepository {
     List<WorkoutExerciseRecord>? latestWorkoutExercises;
     List<LoggedSetRecord>? latestSets;
     List<ExerciseGroupRecord>? latestExerciseGroups;
+    List<TemplateLinkRecord>? latestTemplateLinks;
+    List<WorkoutTemplateSummaryRecord>? latestTemplates;
+    // Rebuilt only after the links or the Templates change, not on every
+    // Set write.
+    Map<String, String>? templateNames;
     var subscribedWorkoutIds = const <String>{};
     var childSubscriptionVersion = 0;
     Set<String>? subscribedExerciseIds;
@@ -414,11 +424,15 @@ class RepositoryHomeRepository implements HomeRepository {
       final workoutExercises = latestWorkoutExercises;
       final sets = latestSets;
       final exerciseGroups = latestExerciseGroups;
+      final templateLinks = latestTemplateLinks;
+      final templates = latestTemplates;
       if (exercises == null ||
           workouts == null ||
           workoutExercises == null ||
           sets == null ||
-          exerciseGroups == null) {
+          exerciseGroups == null ||
+          templateLinks == null ||
+          templates == null) {
         return;
       }
 
@@ -428,6 +442,8 @@ class RepositoryHomeRepository implements HomeRepository {
         workoutExercises: workoutExercises,
         sets: sets,
         exerciseGroups: exerciseGroups,
+        templateNameByWorkoutId: templateNames ??=
+            _templateNameByWorkoutId(templateLinks, templates),
         selectedDate: localDate,
       ));
     }
@@ -470,7 +486,8 @@ class RepositoryHomeRepository implements HomeRepository {
       if (_sameStringSet(nextWorkoutIds, subscribedWorkoutIds) &&
           workoutExerciseSubscription != null &&
           setSubscription != null &&
-          exerciseGroupSubscription != null) {
+          exerciseGroupSubscription != null &&
+          templateLinkSubscription != null) {
         return;
       }
 
@@ -478,11 +495,14 @@ class RepositoryHomeRepository implements HomeRepository {
       latestWorkoutExercises = null;
       latestSets = null;
       latestExerciseGroups = null;
+      latestTemplateLinks = null;
+      templateNames = null;
       final version = ++childSubscriptionVersion;
 
       unawaited(workoutExerciseSubscription?.cancel());
       unawaited(setSubscription?.cancel());
       unawaited(exerciseGroupSubscription?.cancel());
+      unawaited(templateLinkSubscription?.cancel());
       workoutExerciseSubscription = _repositories.workoutExercises
           .watchActiveForWorkoutIds(nextWorkoutIds)
           .listen(
@@ -531,9 +551,37 @@ class RepositoryHomeRepository implements HomeRepository {
           }
         },
       );
+      templateLinkSubscription = _repositories.templateMaterialize
+          .watchByWorkoutIds(nextWorkoutIds)
+          .listen(
+        (links) {
+          if (version != childSubscriptionVersion) {
+            return;
+          }
+          latestTemplateLinks = links;
+          templateNames = null;
+          emitIfReady();
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (version == childSubscriptionVersion) {
+            controller.addError(error, stackTrace);
+          }
+        },
+      );
     }
 
     controller.onListen = () {
+      // Archived Templates are included: a Workout started from a Template
+      // that was archived later keeps its title.
+      templateSubscription =
+          _repositories.workoutTemplates.watchAllSummaries().listen(
+        (templates) {
+          latestTemplates = templates;
+          templateNames = null;
+          emitIfReady();
+        },
+        onError: controller.addError,
+      );
       workoutSubscription = _repositories.workoutSessions
           .watchActiveForLocalDate(localDate)
           .listen(
@@ -548,10 +596,12 @@ class RepositoryHomeRepository implements HomeRepository {
     controller.onCancel = () async {
       childSubscriptionVersion++;
       exerciseSubscriptionVersion++;
+      await templateSubscription.cancel();
       await workoutSubscription.cancel();
       await workoutExerciseSubscription?.cancel();
       await setSubscription?.cancel();
       await exerciseGroupSubscription?.cancel();
+      await templateLinkSubscription?.cancel();
       await exerciseSubscription?.cancel();
     };
 
@@ -567,6 +617,10 @@ class RepositoryHomeRepository implements HomeRepository {
     late final StreamSubscription<List<LoggedSetRecord>> setSubscription;
     late final StreamSubscription<List<ExerciseGroupRecord>>
         exerciseGroupSubscription;
+    late final StreamSubscription<List<TemplateLinkRecord>>
+        templateLinkSubscription;
+    late final StreamSubscription<List<WorkoutTemplateSummaryRecord>>
+        templateSubscription;
 
     final controller = StreamController<HomeWorkoutSummary?>();
     List<ExerciseRecord>? latestExercises;
@@ -574,6 +628,10 @@ class RepositoryHomeRepository implements HomeRepository {
     List<WorkoutExerciseRecord>? latestWorkoutExercises;
     List<LoggedSetRecord>? latestSets;
     List<ExerciseGroupRecord>? latestExerciseGroups;
+    List<TemplateLinkRecord>? latestTemplateLinks;
+    List<WorkoutTemplateSummaryRecord>? latestTemplates;
+    // Cached as in `_watchSummary`.
+    Map<String, String>? templateNames;
     HomeWorkoutSummary? lastEmitted;
     var emittedNull = false;
     var subscribedExerciseIds = const <String>{};
@@ -604,11 +662,15 @@ class RepositoryHomeRepository implements HomeRepository {
       final workoutExercises = latestWorkoutExercises;
       final sets = latestSets;
       final exerciseGroups = latestExerciseGroups;
+      final templateLinks = latestTemplateLinks;
+      final templates = latestTemplates;
       if (exercises == null ||
           workouts == null ||
           workoutExercises == null ||
           sets == null ||
-          exerciseGroups == null) {
+          exerciseGroups == null ||
+          templateLinks == null ||
+          templates == null) {
         return;
       }
 
@@ -624,6 +686,8 @@ class RepositoryHomeRepository implements HomeRepository {
         workoutExercises: workoutExercises,
         sets: sets,
         exerciseGroups: exerciseGroups,
+        templateNameByWorkoutId: templateNames ??=
+            _templateNameByWorkoutId(templateLinks, templates),
         selectedDate: workout.localDate,
       );
       addIfChanged(summary.workouts.single);
@@ -695,6 +759,25 @@ class RepositoryHomeRepository implements HomeRepository {
         },
         onError: controller.addError,
       );
+      templateLinkSubscription = _repositories.templateMaterialize
+          .watchByWorkoutIds(<String>{workoutId}).listen(
+        (links) {
+          latestTemplateLinks = links;
+          templateNames = null;
+          emitIfReady();
+        },
+        onError: controller.addError,
+      );
+      // Archived Templates included, as in `_watchSummary`.
+      templateSubscription =
+          _repositories.workoutTemplates.watchAllSummaries().listen(
+        (templates) {
+          latestTemplates = templates;
+          templateNames = null;
+          emitIfReady();
+        },
+        onError: controller.addError,
+      );
     };
     controller.onCancel = () async {
       exerciseSubscriptionVersion++;
@@ -703,6 +786,8 @@ class RepositoryHomeRepository implements HomeRepository {
       await workoutExerciseSubscription.cancel();
       await setSubscription.cancel();
       await exerciseGroupSubscription.cancel();
+      await templateLinkSubscription.cancel();
+      await templateSubscription.cancel();
     };
 
     return controller.stream;
@@ -768,6 +853,7 @@ class HomeWorkoutSummary {
     this.endedAt,
     this.comment,
     this.focusId,
+    this.templateName,
     Iterable<HomeWorkoutExerciseSummary> workoutExercises =
         const <HomeWorkoutExerciseSummary>[],
     Iterable<HomeExerciseGroupSummary> exerciseGroups =
@@ -785,6 +871,12 @@ class HomeWorkoutSummary {
   final DateTime? endedAt;
   final String? comment;
   final String? focusId;
+
+  /// The current name of the Workout Template this Workout was started
+  /// from, archived Templates included; null when it has no Template Link.
+  /// Read through the link on every emission, never snapshotted, so a
+  /// renamed Template renames its Workouts, past ones included.
+  final String? templateName;
   final List<HomeWorkoutExerciseSummary> workoutExercises;
   final List<HomeExerciseGroupSummary> exerciseGroups;
 
@@ -794,6 +886,15 @@ class HomeWorkoutSummary {
     var count = 0;
     for (final exercise in workoutExercises) {
       count += exercise.sets.length;
+    }
+    return count;
+  }
+
+  /// The Performed Sets across [workoutExercises].
+  int get performedSetCount {
+    var count = 0;
+    for (final exercise in workoutExercises) {
+      count += exercise.performedCount;
     }
     return count;
   }
@@ -809,6 +910,7 @@ class HomeWorkoutSummary {
             endedAt == other.endedAt &&
             comment == other.comment &&
             focusId == other.focusId &&
+            templateName == other.templateName &&
             _listEquals(other.workoutExercises, workoutExercises) &&
             _listEquals(other.exerciseGroups, exerciseGroups);
   }
@@ -821,6 +923,7 @@ class HomeWorkoutSummary {
         endedAt,
         comment,
         focusId,
+        templateName,
         Object.hashAll(workoutExercises),
         Object.hashAll(exerciseGroups),
       );
@@ -877,6 +980,26 @@ class HomeWorkoutExerciseSummary {
   final List<HomeSetSummary> sets;
   int get setCount => sets.length;
 
+  /// [sets] read by `progressExerciseFor`, the rule the Navigation Panel
+  /// and the Training Screen use too. Its group is left out: the Workout
+  /// screen adds it from [HomeWorkoutSummary.exerciseGroups].
+  late final ProgressExercise _progress = progressExerciseFor(
+    workoutExerciseId: id,
+    sets: sets.map(
+      (set) => (isCompleted: set.isCompleted, performedAt: set.performedAt),
+    ),
+  );
+
+  /// The Performed Sets (complete) among [sets].
+  int get performedCount => _progress.performed;
+
+  /// The Planned Sets (not complete) among [sets].
+  int get plannedCount => _progress.planned;
+
+  /// The latest `performedAt` over the Performed Sets, the input
+  /// `currentExerciseFor` orders by; null when none has one.
+  DateTime? get latestPerformedAt => _progress.latestPerformedAt;
+
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
@@ -928,11 +1051,13 @@ class HomeSetSummary {
     required this.id,
     required this.description,
     this.isCompleted = false,
+    this.performedAt,
   });
 
   final String id;
   final String description;
   final bool isCompleted;
+  final DateTime? performedAt;
 
   @override
   bool operator ==(Object other) {
@@ -941,11 +1066,12 @@ class HomeSetSummary {
             runtimeType == other.runtimeType &&
             id == other.id &&
             description == other.description &&
-            isCompleted == other.isCompleted;
+            isCompleted == other.isCompleted &&
+            performedAt == other.performedAt;
   }
 
   @override
-  int get hashCode => Object.hash(id, description, isCompleted);
+  int get hashCode => Object.hash(id, description, isCompleted, performedAt);
 }
 
 HomeSummary _homeSummaryFrom({
@@ -955,6 +1081,7 @@ HomeSummary _homeSummaryFrom({
   required List<LoggedSetRecord> sets,
   required TrainingDayDate selectedDate,
   List<ExerciseGroupRecord> exerciseGroups = const <ExerciseGroupRecord>[],
+  Map<String, String> templateNameByWorkoutId = const <String, String>{},
 }) {
   final workoutIds = workouts.map((workout) => workout.id).toSet();
   final exerciseById = <String, ExerciseRecord>{
@@ -967,21 +1094,30 @@ HomeSummary _homeSummaryFrom({
       .where(
           (workoutExercise) => workoutIds.contains(workoutExercise.workoutId))
       .toList(growable: false);
+  // One summary per Set, in step with trainingDaySets, shared by the
+  // Workout Exercises' lists and HomeSummary.sets.
+  final homeSets = <HomeSetSummary>[
+    for (final set in trainingDaySets)
+      HomeSetSummary(
+        id: set.id,
+        description: _formatSet(set, exerciseById[set.exerciseId]),
+        isCompleted: set.isCompleted,
+        performedAt: set.performedAt,
+      ),
+  ];
   final setsByWorkoutExerciseKey = <String, List<HomeSetSummary>>{};
-  for (final set in trainingDaySets) {
+  for (var index = 0; index < trainingDaySets.length; index += 1) {
+    final set = trainingDaySets[index];
     final key = _workoutExerciseKey(set.workoutId, set.exerciseId);
-    setsByWorkoutExerciseKey.putIfAbsent(key, () => <HomeSetSummary>[]).add(
-          HomeSetSummary(
-            id: set.id,
-            description: _formatSet(set, exerciseById[set.exerciseId]),
-            isCompleted: set.isCompleted,
-          ),
-        );
+    setsByWorkoutExerciseKey
+        .putIfAbsent(key, () => <HomeSetSummary>[])
+        .add(homeSets[index]);
   }
 
+  final performedSets = trainingDaySets.where((set) => set.isCompleted);
   final status = _formatTrainingDayStatus(
-    workoutCount: workouts.length,
-    setCount: trainingDaySets.length,
+    workoutCount: performedSets.map((set) => set.workoutId).toSet().length,
+    setCount: performedSets.length,
   );
 
   final homeWorkoutExercises = trainingDayWorkoutExercises.map(
@@ -1026,6 +1162,7 @@ HomeSummary _homeSummaryFrom({
             endedAt: workout.endedAt,
             comment: workout.comment,
             focusId: workout.focusId,
+            templateName: templateNameByWorkoutId[workout.id],
             workoutExercises: List<HomeWorkoutExerciseSummary>.unmodifiable(
               workoutExercisesByWorkoutId[workout.id] ??
                   const <HomeWorkoutExerciseSummary>[],
@@ -1052,15 +1189,7 @@ HomeSummary _homeSummaryFrom({
           ),
         )
         .toList(growable: false),
-    sets: trainingDaySets
-        .map(
-          (set) => HomeSetSummary(
-            id: set.id,
-            description: _formatSet(set, exerciseById[set.exerciseId]),
-            isCompleted: set.isCompleted,
-          ),
-        )
-        .toList(growable: false),
+    sets: homeSets,
   );
 }
 
@@ -1080,6 +1209,12 @@ String _workoutExerciseKey(String workoutId, String exerciseId) {
   return '$workoutId::$exerciseId';
 }
 
+/// The day status line, from the Workouts that hold at least one Performed
+/// Set ([workoutCount]) and their Performed Sets ([setCount]).
+///
+/// Planned Sets never count as training, so a day whose only Workout was
+/// started from a Template and not yet logged reads "No workout started",
+/// as an empty day does.
 String _formatTrainingDayStatus({
   required int workoutCount,
   required int setCount,
@@ -1090,12 +1225,27 @@ String _formatTrainingDayStatus({
 
   final workoutLabel =
       workoutCount == 1 ? '1 workout' : '$workoutCount workouts';
-  final setLabel = switch (setCount) {
-    0 => 'No sets',
-    1 => '1 set',
-    _ => '$setCount sets',
-  };
+  final setLabel = setCount == 1 ? '1 set' : '$setCount sets';
   return '$workoutLabel - $setLabel';
+}
+
+/// Each linked Workout's Template name; a link whose Template is missing
+/// from [templates] is left out, so that Workout falls back to "Workout".
+Map<String, String> _templateNameByWorkoutId(
+  List<TemplateLinkRecord> links,
+  List<WorkoutTemplateSummaryRecord> templates,
+) {
+  if (links.isEmpty) {
+    return const <String, String>{};
+  }
+  final nameByTemplateId = <String, String>{
+    for (final template in templates) template.id: template.name,
+  };
+  return <String, String>{
+    for (final link in links)
+      if (nameByTemplateId[link.workoutTemplateId] case final name?)
+        link.workoutId: name,
+  };
 }
 
 String _unitLabel(TrainingUnit unit) {

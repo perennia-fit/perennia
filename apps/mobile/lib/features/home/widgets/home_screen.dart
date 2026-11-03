@@ -1142,11 +1142,17 @@ String _formatWorkoutTileSubtitle(
     1 => context.l10n.workoutOneExercise,
     final count => context.l10n.workoutExerciseCount(count),
   };
-  final setCount = switch (workout.setCount) {
-    0 => context.l10n.workoutNoSets,
-    1 => context.l10n.workoutOneSet,
-    final count => context.l10n.workoutSetCount(count),
-  };
+  // Progress against the plan while the Workout has a Planned Set.
+  final setCount = workout.performedSetCount < workout.setCount
+      ? context.l10n.workoutPerformedSetsOfTotal(
+          workout.performedSetCount,
+          workout.setCount,
+        )
+      : switch (workout.setCount) {
+          0 => context.l10n.workoutNoSets,
+          1 => context.l10n.workoutOneSet,
+          final count => context.l10n.workoutSetCount(count),
+        };
   final duration = _formatWorkoutDuration(context.l10n, workout.duration);
   return '$status - $duration - $exerciseCount - $setCount';
 }

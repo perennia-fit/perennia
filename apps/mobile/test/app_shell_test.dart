@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderFlex;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
@@ -57,6 +58,7 @@ import 'package:perennia/features/sync/services/sync_providers.dart';
 import 'package:perennia/features/template_divergence/repositories/template_divergence_feature_repository.dart';
 import 'package:perennia/features/template_picker/repositories/template_picker_feature_repository.dart';
 import 'package:perennia/features/template_picker/widgets/template_picker_sheet.dart';
+import 'package:perennia/features/training/widgets/plan_progress_labels.dart';
 import 'package:perennia/features/up_next/repositories/up_next_feature_repository.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
@@ -1503,6 +1505,234 @@ void main() {
     );
   });
 
+  testWidgets('CUJ 11: Today and the Workout show where the user is', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pumpPlanProgressApp(tester, _PlanProgressHomeRepository());
+
+    expect(
+      find.text('Open - In progress - 4 exercises - 6 of 10 sets'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Upper B')),
+      findsOneWidget,
+    );
+    _expectCardTexts('incline', <String>['2/3 sets', 'Round 3 of 3', 'Now']);
+    _expectCardTexts('pull-up', <String>['2/3 sets']);
+    _expectCardTexts('pushdown', <String>['0/2 sets']);
+    _expectCardTexts('curl', <String>['Done']);
+    expect(
+      find.descendant(
+        of: find.byKey(WorkoutScreen.exerciseCardKey('curl')),
+        matching: find.byIcon(Icons.check),
+      ),
+      findsOneWidget,
+    );
+    // Now and the round line sit on the superset's first card only.
+    expect(find.text('Now'), findsOneWidget);
+    expect(find.textContaining('Round'), findsOneWidget);
+    // The fraction is spoken in words, not as a slash, and Now and the
+    // round are in the card's label, so its state is never colour alone.
+    expect(find.bySemanticsLabel(RegExp('2 of 3 sets')), findsNWidgets(2));
+    expect(find.bySemanticsLabel(RegExp('0 of 2 sets')), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(RegExp('Incline Press.*Now', dotAll: true)),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(RegExp('Dumbbell Curl.*Done', dotAll: true)),
+      findsOneWidget,
+    );
+    semantics.dispose();
+  });
+
+  testWidgets(
+      'an ended Workout with no Template shows no Now and is titled Workout', (
+    tester,
+  ) async {
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(templateName: null, ended: true),
+    );
+
+    expect(
+      find.text('Finished - 1h - 4 exercises - 6 of 10 sets'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Workout')),
+      findsOneWidget,
+    );
+    _expectCardTexts('incline', <String>['2/3 sets', 'Round 3 of 3']);
+    expect(find.text('Now'), findsNothing);
+  });
+
+  testWidgets(
+      'a finished superset reads All rounds done and Now moves to the next '
+      'exercise with a plan', (tester) async {
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(supersetDone: true),
+    );
+
+    expect(
+      find.text('Open - In progress - 4 exercises - 8 of 10 sets'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    _expectCardTexts('incline', <String>['Done', 'All rounds done']);
+    _expectCardTexts('pull-up', <String>['Done']);
+    // Dumbbell Curl holds the latest Performed Set; the walk from it wraps
+    // past the finished superset to Triceps Pushdown.
+    _expectCardTexts('pushdown', <String>['0/2 sets', 'Now']);
+    expect(find.text('Now'), findsOneWidget);
+  });
+
+  testWidgets('a Workout with every Set performed reads n sets on Today', (
+    tester,
+  ) async {
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(supersetDone: true, pushdownDone: true),
+    );
+
+    expect(
+      find.text('Open - In progress - 4 exercises - 10 sets'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Done'), findsNWidgets(4));
+    expect(find.text('Now'), findsNothing);
+  });
+
+  testWidgets('Workout progress cards are accessible at text scale 2.0', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(),
+      surfaceSize: const Size(360, 3200),
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    // The Home app bar and the Workout header overflow at this scale on a
+    // 360 dp phone. That predates progress and lies outside the cards, so
+    // it is cleared here and the cards' own rows are checked instead.
+    tester.takeException();
+    for (final id in <String>['incline', 'pull-up', 'pushdown', 'curl']) {
+      final flexes = tester.renderObjectList<RenderFlex>(
+        find.descendant(
+          of: find.byKey(WorkoutScreen.exerciseCardKey(id)),
+          matching: find.byWidgetPredicate((widget) => widget is Flex),
+        ),
+      );
+      expect(flexes, isNotEmpty);
+      for (final flex in flexes) {
+        expect(
+          flex.toStringShort(),
+          isNot(contains('OVERFLOWING')),
+          reason: id,
+        );
+      }
+    }
+    _expectCardTexts('incline', <String>['2/3 sets', 'Round 3 of 3', 'Now']);
+    _expectCardTexts('curl', <String>['Done']);
+    for (final id in <String>['incline', 'pull-up', 'pushdown', 'curl']) {
+      final card = tester.getSize(
+        find.byKey(WorkoutScreen.openExerciseButtonKey(id)),
+      );
+      expect(card.height, greaterThanOrEqualTo(AppDimens.touchTarget));
+    }
+    // Now is on-primary ink on a Signal Cyan fill, which passes AA in the
+    // light theme where cyan text on a white card would not. (The screen's
+    // header buttons fail textContrastGuideline in the light theme before
+    // progress, so the guideline is not run over the whole screen here.)
+    final now = tester.widget<Text>(find.text('Now'));
+    final nowFill = tester
+        .widget<DecoratedBox>(
+          find
+              .ancestor(
+                of: find.text('Now'),
+                matching: find.byType(DecoratedBox),
+              )
+              .first,
+        )
+        .decoration as BoxDecoration;
+    expect(
+      _contrastRatio(now.style!.color!, nowFill.color!),
+      greaterThanOrEqualTo(4.5),
+    );
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    semantics.dispose();
+  });
+
+  testWidgets(
+      'a card\'s exercise name keeps the row the count leaves on a 360 dp '
+      'phone', (tester) async {
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(),
+      surfaceSize: const Size(360, 3200),
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    for (final (id, name) in <(String, String)>[
+      ('incline', 'Incline Press'),
+      ('pushdown', 'Triceps Pushdown'),
+      ('curl', 'Dumbbell Curl'),
+    ]) {
+      final card = find.byKey(WorkoutScreen.exerciseCardKey(id));
+      final nameFinder = find.descendant(of: card, matching: find.text(name));
+      final row = tester.renderObject<RenderFlex>(
+        find.ancestor(of: nameFinder, matching: find.byType(Row)).first,
+      );
+      // The name is the row's only flexible child, so it takes all the
+      // width the count, the gaps and the chevron leave: nothing unclaimed,
+      // as there was when the count shared the free width half and half.
+      var claimed = 0.0;
+      var child = row.firstChild;
+      while (child != null) {
+        claimed += child.size.width;
+        child = row.childAfter(child);
+      }
+      expect(claimed, moreOrLessEquals(row.size.width), reason: id);
+      final countWidth = tester
+          .getSize(
+            find.descendant(
+              of: card,
+              matching: find.byType(ExerciseProgressCount),
+            ),
+          )
+          .width;
+      expect(tester.getSize(nameFinder).width, greaterThan(countWidth),
+          reason: id);
+    }
+  });
+
   testWidgets(
       'selecting an exercise row adds it and lands directly on the '
       'Exercise page', (tester) async {
@@ -1972,7 +2202,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Back Squat'), findsOneWidget);
-    expect(find.text('2 sets'), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
     expect(find.text('100 kg × 5 reps'), findsNothing);
     expect(find.text('105 kg × 5 reps'), findsNothing);
     expect(find.byIcon(Icons.link_off), findsNWidgets(2));
@@ -3597,6 +3828,161 @@ Future<void> _openAccountAndAppSettings(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(HomeScreen.accountAndAppSettingsKey));
   await tester.pumpAndSettle();
+}
+
+double _contrastRatio(Color a, Color b) {
+  final lighter = a.computeLuminance() > b.computeLuminance() ? a : b;
+  final darker = identical(lighter, a) ? b : a;
+  return (lighter.computeLuminance() + 0.05) /
+      (darker.computeLuminance() + 0.05);
+}
+
+Future<void> _pumpPlanProgressApp(
+  WidgetTester tester,
+  HomeRepository repository, {
+  Size surfaceSize = const Size(800, 2400),
+}) async {
+  // Tall enough for every card without scrolling.
+  tester.view.physicalSize = surfaceSize;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        upNextFeatureRepositoryProvider.overrideWith(
+          (ref) => const StubUpNextFeatureRepository(),
+        ),
+        _homeNutritionDayOverride(),
+        homeRepositoryProvider.overrideWith((ref) => repository),
+      ],
+      child: const PerenniaApp(),
+    ),
+  );
+  await tester.pump();
+  await tester.pumpAndSettle();
+}
+
+/// Expects each of [texts] once on the Workout screen card [workoutExerciseId].
+void _expectCardTexts(String workoutExerciseId, List<String> texts) {
+  for (final text in texts) {
+    expect(
+      find.descendant(
+        of: find.byKey(WorkoutScreen.exerciseCardKey(workoutExerciseId)),
+        matching: find.text(text),
+      ),
+      findsOneWidget,
+      reason: '$text on $workoutExerciseId',
+    );
+  }
+}
+
+/// CUJ 11: a Workout from "Upper B" whose superset of Incline Press and
+/// Pull-Up (2 of 3 each) is in progress, Triceps Pushdown with 0 of 2 done,
+/// and Dumbbell Curl with 2 Performed Sets and no plan.
+///
+/// [supersetDone] performs the superset's third round, and [pushdownDone]
+/// both Pushdown Sets; Dumbbell Curl's Sets are always the latest performed.
+class _PlanProgressHomeRepository extends StubHomeRepository {
+  _PlanProgressHomeRepository({
+    this.templateName = 'Upper B',
+    this.ended = false,
+    this.supersetDone = false,
+    this.pushdownDone = false,
+  });
+
+  final String? templateName;
+  final bool ended;
+  final bool supersetDone;
+  final bool pushdownDone;
+
+  static final _startedAt = DateTime(2026, 6, 14, 7);
+
+  HomeWorkoutSummary get _workout {
+    var minute = 0;
+    List<HomeSetSummary> setsFor(String id, int total, int performed) {
+      return <HomeSetSummary>[
+        for (var index = 0; index < total; index += 1)
+          HomeSetSummary(
+            id: '$id-set-$index',
+            description: '$id set ${index + 1}',
+            isCompleted: index < performed,
+            performedAt: index < performed
+                ? _startedAt.add(Duration(minutes: minute += 2))
+                : null,
+          ),
+      ];
+    }
+
+    HomeWorkoutExerciseSummary exercise(
+      String id,
+      String name,
+      List<HomeSetSummary> sets,
+    ) {
+      return HomeWorkoutExerciseSummary(
+        id: id,
+        workoutId: 'workout-1',
+        exerciseId: '$id-exercise',
+        name: name,
+        type: ExerciseType(
+          const <DimensionId>[DimensionId.load, DimensionId.reps],
+        ),
+        sets: sets,
+      );
+    }
+
+    final supersetPerformed = supersetDone ? 3 : 2;
+    return HomeWorkoutSummary(
+      id: 'workout-1',
+      startedAt: _startedAt,
+      endedAt: ended ? _startedAt.add(const Duration(hours: 1)) : null,
+      templateName: templateName,
+      workoutExercises: <HomeWorkoutExerciseSummary>[
+        exercise(
+          'incline',
+          'Incline Press',
+          setsFor('incline', 3, supersetPerformed),
+        ),
+        exercise(
+          'pull-up',
+          'Pull-Up',
+          setsFor('pull-up', 3, supersetPerformed),
+        ),
+        exercise(
+          'pushdown',
+          'Triceps Pushdown',
+          setsFor('pushdown', 2, pushdownDone ? 2 : 0),
+        ),
+        exercise('curl', 'Dumbbell Curl', setsFor('curl', 2, 2)),
+      ],
+      exerciseGroups: <HomeExerciseGroupSummary>[
+        HomeExerciseGroupSummary(
+          id: 'superset',
+          name: 'Superset A',
+          colorHex: '#2F6FED',
+          workoutExerciseIds: const <String>['incline', 'pull-up'],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Stream<HomeSummary> watchTrainingDay(TrainingDayDate localDate) {
+    final workout = _workout;
+    return Stream<HomeSummary>.value(
+      HomeSummary(
+        title: 'Training Day',
+        selectedDate: localDate,
+        status: 'In progress',
+        workouts: <HomeWorkoutSummary>[workout],
+        workoutExercises: workout.workoutExercises,
+      ),
+    );
+  }
+
+  @override
+  Stream<HomeWorkoutSummary?> watchWorkout(String workoutId) {
+    return Stream<HomeWorkoutSummary?>.value(_workout);
+  }
 }
 
 Override _homeNutritionDayOverride({

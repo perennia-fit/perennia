@@ -3266,6 +3266,8 @@ void main() {
         position: 0,
         load: '100',
         reps: '5',
+        // Performed, so the day status line counts it.
+        isCompleted: true,
       );
 
       bool hasWorkoutExerciseAndSet(
@@ -3349,6 +3351,7 @@ void main() {
         position: 0,
         load: '80',
         reps: '8',
+        isCompleted: true,
       );
 
       await _waitFor(
@@ -3399,6 +3402,7 @@ void main() {
         firstSetId,
         secondSetId,
       ]);
+      expect(expandedSummary.status, '2 workouts - 2 sets');
 
       await repositories.workoutSessions.softDelete(firstWorkoutId);
 
@@ -3681,7 +3685,8 @@ void main() {
               state.summary.workouts.length == 1,
         ),
       );
-      expect(states.last.summary.status, '1 workout - No sets');
+      // A Workout with no Performed Set is not counted as started.
+      expect(states.last.summary.status, 'No workout started');
       expect(states.last.summary.sets, isEmpty);
       expect(
         await repositories.workoutSessions.listActiveForLocalDate(trainingDay),

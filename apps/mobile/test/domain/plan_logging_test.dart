@@ -677,6 +677,76 @@ void main() {
       );
     });
   });
+
+  group('progressExerciseFor', () {
+    test('counts complete Sets as performed and keeps the latest time', () {
+      final progress = progressExerciseFor(
+        workoutExerciseId: 'bench',
+        groupId: 'g',
+        sets: [
+          (isCompleted: true, performedAt: _createdAt.add(_s(30))),
+          (isCompleted: true, performedAt: _createdAt.add(_s(90))),
+          (isCompleted: true, performedAt: null),
+          (isCompleted: false, performedAt: null),
+          (isCompleted: false, performedAt: _createdAt.add(_s(600))),
+        ],
+      );
+      expect(progress.workoutExerciseId, 'bench');
+      expect(progress.groupId, 'g');
+      expect(progress.performed, 3);
+      expect(progress.planned, 2);
+      // A planned Set's time never counts.
+      expect(progress.latestPerformedAt, _createdAt.add(_s(90)));
+    });
+
+    test('no Sets, and a LoggedSetRecord through progressSetOf', () {
+      final empty = progressExerciseFor(workoutExerciseId: 'row', sets: []);
+      expect(empty.performed, 0);
+      expect(empty.planned, 0);
+      expect(empty.latestPerformedAt, isNull);
+
+      final fromRecords = progressExerciseFor(
+        workoutExerciseId: 'squat',
+        sets: [_set('a', 0, done: true), _set('b', 1)].map(progressSetOf),
+      );
+      expect(fromRecords.performed, 1);
+      expect(fromRecords.planned, 1);
+      expect(fromRecords.latestPerformedAt, _createdAt);
+    });
+  });
+
+  group('nowCardWorkoutExerciseId', () {
+    test('an ungrouped Current Exercise is itself', () {
+      expect(
+        nowCardWorkoutExerciseId([
+          _progress('bench', performed: 3, planned: 0, at: 5),
+          _progress('squat', performed: 1, planned: 2, at: 6),
+        ]),
+        'squat',
+      );
+    });
+
+    test('a current group shows Now on its first member in Workout order', () {
+      expect(
+        nowCardWorkoutExerciseId([
+          _progress('triceps', planned: 2),
+          _progress('press', group: 'g', planned: 3),
+          _progress('pull', group: 'g', performed: 1, planned: 2, at: 4),
+        ]),
+        'press',
+      );
+    });
+
+    test('nothing current is null', () {
+      expect(nowCardWorkoutExerciseId(const []), isNull);
+      expect(
+        nowCardWorkoutExerciseId([
+          _progress('bench', performed: 3, planned: 0, at: 5),
+        ]),
+        isNull,
+      );
+    });
+  });
 }
 
 final _createdAt = DateTime.utc(2026, 11, 2, 9);

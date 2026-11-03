@@ -830,7 +830,9 @@ as Log set does; Update mode stays.
     card of a group with a round also shows "Round *r* of *R*" or "All rounds
     done" beside the existing group bar. The Current Exercise's card (or its
     group's first card) shows **Now** (text, `label` style, primary colour),
-    on open Workouts only.
+    on open Workouts only. Its text is on-primary ink on a primary fill,
+    not primary-coloured text: Signal Cyan text on the light theme's white
+    card is about 2.4:1, below AA.
 *   **Cards, link icons, reordering, swipe to remove:** unchanged.
 *   **Today.** A Workout tile's last segment reads "*performed* of *total*
     sets" when the Workout has a Planned Set, else "*n* sets" (today's
@@ -1175,14 +1177,22 @@ Title, card counts and Done, round line, Now.
 
 #### 12. `apps/mobile/lib/features/training/widgets/training_screen.dart` (Modify)
 
-The Navigation Panel's counts and Now.
+The Navigation Panel's counts and Now. The count text and the Now label
+that the panel's rows and the Workout screen's cards share live in
+`apps/mobile/lib/features/training/widgets/plan_progress_labels.dart`
+(Create); `progressExerciseFor` (one Workout Exercise's counts and latest
+`performedAt` from its Sets) and `nowCardWorkoutExerciseId` (a current
+group resolved to its first member) go in `plan_logging.dart` next to
+`currentExerciseFor`, so every screen builds its progress and finds Now
+the same way. The panel works out Now over every Workout Exercise, one
+whose Exercise is archived included, though that one has no row.
 
 #### 13. `apps/mobile/lib/l10n/app_en.arb` (Modify), tests
 
 New strings; `apps/mobile/test/features/home/home_repository_test.dart` and
 the Workout screen and Today widget tests in the Verification Plan.
 
-**Gate:** `mobile`.
+**Gate:** `mobile`, `golden` (item 12 touches `apps/mobile/lib/domain`).
 
 ### Pull request 3: Preview before start (Problem 8)
 
