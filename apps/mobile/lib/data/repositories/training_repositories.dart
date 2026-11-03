@@ -8638,6 +8638,212 @@ class WorkoutExerciseRepository {
     });
   }
 
+  /// Replaces the remaining plan of [workoutExerciseId] with the Exercise
+  /// [newExerciseId], and returns the new Workout Exercise's id.
+  ///
+  /// The new Workout Exercise takes the old one's place in the Workout order
+  /// and in its Exercise Group, and gets one Planned Set for each of the old
+  /// one's Planned Sets (same `position` and `plannedRestAfter`; values from
+  /// the new Exercise's last Performed Set before this Workout, or zero). The
+  /// old one keeps its Performed Sets: when it has any, it moves directly
+  /// after its group's last member (grouped) or after the new one
+  /// (ungrouped), outside the group; otherwise it is soft-deleted.
+  ///
+  /// Throws [AlreadyInWorkoutException] when [newExerciseId] is already
+  /// active in the Workout. That check comes first because `_create` quietly
+  /// returns the existing row, which would merge two exercises' plans.
+  ///
+  /// Writes every row at most once under [batchId], in one transaction, so
+  /// `undoBatch(batchId)` reverses the whole Replace without conflicts. That
+  /// is why it does not call [create], [reorderForWorkout] or
+  /// `exerciseGroups.update`: each writes its own entries, and the reorder's
+  /// group reconciliation rewrites rows the reorder just wrote. Every group's
+  /// members stay adjacent in the final order, so a later reorder's
+  /// reconciliation keeps the group whole.
+  Future<String> replace(
+    String workoutExerciseId,
+    String newExerciseId, {
+    required String batchId,
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final old = await _requireRow(workoutExerciseId);
+      if (old.deletedAt != null) {
+        throw StateError('Workout exercise is deleted: $workoutExerciseId.');
+      }
+      final workoutId = old.workoutId;
+      final activeRows =
+          await _activeWorkoutExerciseQuery(workoutId: workoutId).get();
+      if (activeRows.any((row) => row.exerciseId == newExerciseId)) {
+        throw AlreadyInWorkoutException(
+          workoutId: workoutId,
+          exerciseId: newExerciseId,
+        );
+      }
+      final exerciseRow = await (_database.select(_database.exercises)
+            ..where((row) => row.id.equals(newExerciseId)))
+          .getSingleOrNull();
+      if (exerciseRow == null) {
+        throw StateError('Exercise not found: $newExerciseId.');
+      }
+      final newExercise = _exerciseFromRow(exerciseRow);
+
+      // `_activeLoggedSetQuery` ignores `exerciseId` alongside `workoutId`,
+      // so the exercise is filtered here, as [softDelete] does.
+      final oldSets =
+          await (_repositories.sets._activeLoggedSetQuery(workoutId: workoutId)
+                ..where((row) => row.exerciseId.equals(old.exerciseId)))
+              .get();
+      final plannedSets =
+          oldSets.where((set) => !set.isCompleted).toList(growable: false);
+      final oldKeepsPerformedSet = oldSets.any((set) => set.isCompleted);
+
+      final membership = await (_database.select(
+        _database.exerciseGroupMembers,
+      )
+            ..where(
+              (row) =>
+                  row.deletedAt.isNull() & row.workoutExerciseId.equals(old.id),
+            )
+            ..orderBy([(row) => OrderingTerm.asc(row.position)])
+            ..limit(1))
+          .getSingleOrNull();
+      final groupMemberIds = membership == null
+          ? const <String>{}
+          : (await _repositories.exerciseGroups
+                  ._activeExerciseGroupMemberQuery(
+                    groupId: membership.groupId,
+                  )
+                  .get())
+              .map((row) => row.workoutExerciseId)
+              .toSet();
+
+      // 1. The final order, with the new Workout Exercise as a null slot.
+      final order = <String?>[
+        for (final row in activeRows) row.id == old.id ? null : row.id,
+      ];
+      final newIndex = activeRows.indexWhere((row) => row.id == old.id);
+      if (oldKeepsPerformedSet) {
+        var lastIndex = newIndex;
+        for (var index = 0; index < order.length; index += 1) {
+          if (index > lastIndex && groupMemberIds.contains(order[index])) {
+            lastIndex = index;
+          }
+        }
+        order.insert(lastIndex + 1, old.id);
+      }
+
+      // 2. Insert the new one at its place; write each other row whose
+      // position changes, once (`old` included when it moves).
+      final rowById = <String, WorkoutExerciseRow>{
+        for (final row in activeRows) row.id: row,
+      };
+      final newId = await _insertAt(
+        workoutId: workoutId,
+        exerciseId: newExerciseId,
+        position: newIndex,
+        context: context,
+      );
+      for (var index = 0; index < order.length; index += 1) {
+        final id = order[index];
+        if (id == null) {
+          continue;
+        }
+        final row = rowById[id]!;
+        if (row.position == index) {
+          continue;
+        }
+        await (_database.update(_database.workoutExercises)
+              ..where((table) => table.id.equals(row.id)))
+            .write(
+          WorkoutExercisesCompanion(
+            position: Value<int>(index),
+            updatedAt: Value<DateTime>(context.timestamp),
+          ),
+        );
+        final after = await _requireRow(row.id);
+        await _repositories._activityLogWriter.append(
+          context,
+          entityTable: AppDatabase.workoutExercisesTable,
+          entityId: row.id,
+          beforeImage: _workoutExerciseImage(row),
+          afterImage: _workoutExerciseImage(after),
+        );
+      }
+
+      // 3. The member row points at the new one: same group, same position.
+      if (membership != null) {
+        await (_database.update(_database.exerciseGroupMembers)
+              ..where((table) => table.id.equals(membership.id)))
+            .write(
+          ExerciseGroupMembersCompanion(
+            workoutExerciseId: Value<String>(newId),
+            updatedAt: Value<DateTime>(context.timestamp),
+          ),
+        );
+        final after =
+            await _repositories.exerciseGroups._requireMemberRow(membership.id);
+        await _repositories._activityLogWriter.append(
+          context,
+          entityTable: AppDatabase.exerciseGroupMembersTable,
+          entityId: membership.id,
+          beforeImage: _exerciseGroupMemberImage(membership),
+          afterImage: _exerciseGroupMemberImage(after),
+        );
+      }
+
+      // 4. Each Planned Set moves to the new Exercise: tombstoned and
+      // recreated, since a Set's values belong to its own Exercise Type.
+      if (plannedSets.isNotEmpty) {
+        final dimensions = newExercise.type.dimensions;
+        final prior = await _repositories.sets.findLatestPriorForExercise(
+          exerciseId: newExerciseId,
+          beforeWorkoutId: workoutId,
+          dimensions: dimensions,
+        );
+        final values = prior?.values ??
+            zeroLoggedSetFor(
+              dimensions: dimensions,
+              defaultLoadUnit: newExercise.defaultLoadUnit,
+            );
+        for (final planned in plannedSets) {
+          await _repositories.workoutSessions._softDeleteLoggedSet(
+            planned,
+            context,
+          );
+          await _repositories.sets._create(
+            LoggedSetDraft(
+              workoutId: workoutId,
+              exerciseId: newExerciseId,
+              position: planned.position,
+              values: values,
+              plannedRestAfter: planned.plannedRestAfter == null
+                  ? null
+                  : Duration(seconds: planned.plannedRestAfter!),
+            ),
+            context,
+          );
+        }
+      }
+
+      // 5. With nothing performed, `old` leaves the Workout. Its Sets were
+      // handled in step 4 and its membership moved in step 3.
+      if (!oldKeepsPerformedSet) {
+        await _repositories.workoutSessions._softDeleteWorkoutExercise(
+          old,
+          context,
+        );
+      }
+
+      return newId;
+    });
+  }
+
   Stream<List<WorkoutExerciseRecord>> watchAllActive() {
     return _activeWorkoutExerciseQuery().watch().map(
           (rows) => rows.map(_workoutExerciseFromRow).toList(growable: false),
@@ -8709,6 +8915,38 @@ class WorkoutExerciseRepository {
             workoutId: draft.workoutId,
             exerciseId: draft.exerciseId,
             position: _nextPosition(activeRows, (row) => row.position),
+            updatedAt: context.timestamp,
+          ),
+        );
+
+    final after = await _requireRow(id);
+    await _repositories._activityLogWriter.append(
+      context,
+      entityTable: AppDatabase.workoutExercisesTable,
+      entityId: id,
+      beforeImage: null,
+      afterImage: _workoutExerciseImage(after),
+    );
+
+    return id;
+  }
+
+  /// Inserts a Workout Exercise at [position], for [replace]: unlike
+  /// [_create], it neither returns an existing row nor appends at the end,
+  /// and it writes no other row.
+  Future<String> _insertAt({
+    required String workoutId,
+    required String exerciseId,
+    required int position,
+    required WriteContext context,
+  }) async {
+    final id = _repositories._ids.create(context.timestamp);
+    await _database.into(_database.workoutExercises).insert(
+          WorkoutExercisesCompanion.insert(
+            id: id,
+            workoutId: workoutId,
+            exerciseId: exerciseId,
+            position: position,
             updatedAt: context.timestamp,
           ),
         );
@@ -15428,6 +15666,21 @@ class DuplicateExerciseNameException implements Exception {
 
   @override
   String toString() => 'Duplicate user exercise name: $name.';
+}
+
+/// [WorkoutExerciseRepository.replace] was asked for an Exercise that is
+/// already active in the Workout; nothing was written.
+class AlreadyInWorkoutException implements Exception {
+  const AlreadyInWorkoutException({
+    required this.workoutId,
+    required this.exerciseId,
+  });
+
+  final String workoutId;
+  final String exerciseId;
+
+  @override
+  String toString() => 'Exercise $exerciseId is already in workout $workoutId.';
 }
 
 class DuplicateExerciseCategoryNameException implements Exception {

@@ -7,6 +7,9 @@ import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/local/uuid_v7.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/platform_exercise_seed.dart';
+import 'package:perennia/domain/training/plan_logging.dart';
+import 'package:perennia/domain/training/template_materialize.dart'
+    show zeroLoggedSetFor;
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/domain/training/training_progress.dart';
@@ -4753,6 +4756,538 @@ void main() {
       );
       expect(summary, isNotNull);
       expect(summary!.hasDivergence, isFalse);
+    });
+  });
+
+  group('WorkoutExerciseRepository.replace', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    late String workoutId;
+    final idGenerator = UuidV7Generator();
+    final startedAt = DateTime.utc(2026, 11, 2, 6);
+    final names = <String, String>{};
+    var nextSetPosition = 0;
+
+    setUp(() async {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(
+        database,
+        platformSeedSource: const _StarterSeedSource(),
+      );
+      names.clear();
+      nextSetPosition = 0;
+      workoutId = await repositories.workoutSessions.create(
+        WorkoutSessionDraft(startedAt: startedAt, timezone: 'UTC'),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    String newBatchId() => idGenerator.generate(timestamp: DateTime.now());
+
+    Future<String> exercise(
+      String name, {
+      List<DimensionId> dimensions = const <DimensionId>[
+        DimensionId.load,
+        DimensionId.reps,
+      ],
+      TrainingUnit defaultLoadUnit = TrainingUnit.kilogram,
+    }) async {
+      final id = await repositories.exercises.create(
+        ExerciseDraft(
+          name: name,
+          type: ExerciseType(dimensions),
+          defaultLoadUnit: defaultLoadUnit,
+        ),
+      );
+      names[id] = name;
+      return id;
+    }
+
+    /// Adds [name] to the Workout with [performed] Performed Sets, then
+    /// [planned] Planned Sets resting 90 s, 60 s, 90 s... in turn.
+    Future<String> addExercise(
+      String name, {
+      int performed = 0,
+      int planned = 2,
+    }) async {
+      final exerciseId = await exercise(name);
+      final workoutExerciseId = await repositories.workoutExercises.create(
+        WorkoutExerciseDraft(workoutId: workoutId, exerciseId: exerciseId),
+      );
+      for (var index = 0; index < performed + planned; index += 1) {
+        await repositories.sets.create(
+          LoggedSetDraft(
+            workoutId: workoutId,
+            exerciseId: exerciseId,
+            position: nextSetPosition++,
+            values: _loadRepsValues(load: '60', reps: '10'),
+            plannedRestAfter: Duration(seconds: index.isEven ? 90 : 60),
+            isCompleted: index < performed,
+          ),
+        );
+      }
+      return workoutExerciseId;
+    }
+
+    Future<String> superset(List<String> workoutExerciseIds) {
+      return repositories.exerciseGroups.create(
+        ExerciseGroupDraft(
+          workoutId: workoutId,
+          name: 'Superset',
+          colorHex: '#2F6FED',
+          workoutExerciseIds: workoutExerciseIds,
+        ),
+      );
+    }
+
+    /// A Workout before this one in which [exerciseId] was performed.
+    Future<void> performedEarlier(
+      String exerciseId, {
+      required String load,
+      required String reps,
+    }) async {
+      final earlierId = await repositories.workoutSessions.create(
+        WorkoutSessionDraft(
+          startedAt: startedAt.subtract(const Duration(days: 3)),
+          timezone: 'UTC',
+        ),
+      );
+      await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: earlierId,
+          exerciseId: exerciseId,
+          position: 0,
+          values: _loadRepsValues(load: load, reps: reps),
+          isCompleted: true,
+        ),
+      );
+    }
+
+    Future<List<WorkoutExerciseRecord>> workoutExercises() {
+      return repositories.workoutExercises.listActiveForWorkout(workoutId);
+    }
+
+    Future<List<String>> orderNames() async {
+      return (await workoutExercises())
+          .map((row) => names[row.exerciseId]!)
+          .toList(growable: false);
+    }
+
+    /// Each active group's members by name, in member position order.
+    Future<List<List<String>>> groupNames() async {
+      final byId = <String, String>{
+        for (final row in await workoutExercises()) row.id: row.exerciseId,
+      };
+      final groups =
+          await repositories.exerciseGroups.listActiveForWorkout(workoutId);
+      return <List<String>>[
+        for (final group in groups)
+          <String>[
+            for (final id in group.workoutExerciseIds) names[byId[id]]!,
+          ],
+      ];
+    }
+
+    Future<List<LoggedSetRecord>> setsOf(String exerciseId) async {
+      final sets = await repositories.sets.listActiveForWorkout(workoutId);
+      return sets
+          .where((set) => set.exerciseId == exerciseId)
+          .toList(growable: false);
+    }
+
+    Future<List<ActivityLogEntry>> entriesFor(String batchId) async {
+      final entries = await repositories.activityLog.listEntries();
+      return entries
+          .where((entry) => entry.batchId == batchId)
+          .toList(growable: false);
+    }
+
+    /// Every group's members are next to each other in the Workout order.
+    Future<void> expectGroupsAdjacent() async {
+      final order = (await workoutExercises()).map((row) => row.id).toList();
+      final groups =
+          await repositories.exerciseGroups.listActiveForWorkout(workoutId);
+      for (final group in groups) {
+        final indexes = group.workoutExerciseIds.map(order.indexOf).toList()
+          ..sort();
+        expect(indexes.first, isNonNegative);
+        expect(indexes.last - indexes.first, indexes.length - 1);
+      }
+    }
+
+    Future<void> expectEachRowWrittenOnce(String batchId) async {
+      final entries = await entriesFor(batchId);
+      final keys =
+          entries.map((entry) => '${entry.entityTable}/${entry.entityId}');
+      expect(keys.toSet(), hasLength(entries.length));
+    }
+
+    for (final size in <int>[2, 3]) {
+      for (var oldIndex = 0; oldIndex < size; oldIndex += 1) {
+        for (final withPerformed in <bool>[false, true]) {
+          final place = oldIndex == 0
+              ? 'first'
+              : oldIndex == size - 1
+                  ? 'last'
+                  : 'middle';
+          test(
+              'old $place in a $size-member group, '
+              '${withPerformed ? 'with' : 'without'} a Performed Set',
+              () async {
+            final memberNames = <String>[
+              for (var index = 0; index < size; index += 1) 'M$index',
+            ];
+            final oldName = memberNames[oldIndex];
+            await addExercise('Warm-up');
+            final memberIds = <String>[
+              for (final name in memberNames)
+                await addExercise(
+                  name,
+                  performed: name == oldName && withPerformed ? 1 : 0,
+                ),
+            ];
+            await addExercise('Finisher');
+            final groupId = await superset(memberIds);
+            final oldWorkoutExercise = (await workoutExercises())
+                .firstWhere((row) => row.id == memberIds[oldIndex]);
+            final oldPlanned = (await setsOf(oldWorkoutExercise.exerciseId))
+                .where((set) => !set.isCompleted)
+                .toList(growable: false);
+            final orderBefore = await orderNames();
+            final newExerciseId = await exercise('New');
+            await performedEarlier(newExerciseId, load: '40', reps: '8');
+            final batchId = newBatchId();
+
+            final newId = await repositories.workoutExercises.replace(
+              memberIds[oldIndex],
+              newExerciseId,
+              batchId: batchId,
+            );
+
+            final replacedMembers = <String>[...memberNames]..[oldIndex] =
+                'New';
+            expect(await orderNames(), <String>[
+              'Warm-up',
+              ...replacedMembers,
+              if (withPerformed) oldName,
+              'Finisher',
+            ]);
+            expect(await groupNames(), <List<String>>[replacedMembers]);
+            final group = await repositories.exerciseGroups.getById(groupId);
+            expect(group!.workoutExerciseIds[oldIndex], newId);
+            await expectGroupsAdjacent();
+
+            final newSets = await setsOf(newExerciseId);
+            expect(newSets.every((set) => !set.isCompleted), isTrue);
+            expect(
+              newSets.map((set) => set.position),
+              oldPlanned.map((set) => set.position),
+            );
+            expect(
+              newSets.map((set) => set.plannedRestAfter),
+              oldPlanned.map((set) => set.plannedRestAfter),
+            );
+            for (final set in newSets) {
+              expect(set.values, _loadRepsValues(load: '40', reps: '8'));
+            }
+            final oldSetsAfter = await setsOf(oldWorkoutExercise.exerciseId);
+            expect(oldSetsAfter, hasLength(withPerformed ? 1 : 0));
+            expect(oldSetsAfter.every((set) => set.isCompleted), isTrue);
+            final oldAfter = await repositories.workoutExercises
+                .getById(memberIds[oldIndex]);
+            expect(oldAfter!.deletedAt, withPerformed ? isNull : isNotNull);
+
+            await expectEachRowWrittenOnce(batchId);
+            final undo = await repositories.activityLog.undoBatch(batchId);
+            expect(undo.hasConflicts, isFalse);
+            expect(await orderNames(), orderBefore);
+            expect(await groupNames(), <List<String>>[memberNames]);
+            expect(await setsOf(newExerciseId), isEmpty);
+            expect(
+              (await setsOf(oldWorkoutExercise.exerciseId))
+                  .where((set) => !set.isCompleted)
+                  .map((set) => set.id),
+              oldPlanned.map((set) => set.id),
+            );
+          });
+        }
+      }
+    }
+
+    test('an ungrouped old without a Performed Set leaves the Workout',
+        () async {
+      await addExercise('A');
+      final oldId = await addExercise('Old');
+      await addExercise('B');
+      final newExerciseId = await exercise('New');
+      final batchId = newBatchId();
+
+      await repositories.workoutExercises.replace(
+        oldId,
+        newExerciseId,
+        batchId: batchId,
+      );
+
+      expect(await orderNames(), <String>['A', 'New', 'B']);
+      expect(await groupNames(), isEmpty);
+      expect(
+        (await workoutExercises()).map((row) => row.position),
+        <int>[0, 1, 2],
+      );
+      await expectEachRowWrittenOnce(batchId);
+      final undo = await repositories.activityLog.undoBatch(batchId);
+      expect(undo.hasConflicts, isFalse);
+      expect(await orderNames(), <String>['A', 'Old', 'B']);
+    });
+
+    test('an ungrouped old with a Performed Set moves after the new one',
+        () async {
+      await addExercise('A');
+      final oldId = await addExercise('Old', performed: 1);
+      await addExercise('B');
+      final newExerciseId = await exercise('New');
+      final batchId = newBatchId();
+
+      await repositories.workoutExercises.replace(
+        oldId,
+        newExerciseId,
+        batchId: batchId,
+      );
+
+      expect(await orderNames(), <String>['A', 'New', 'Old', 'B']);
+      expect(
+        (await workoutExercises()).map((row) => row.position),
+        <int>[0, 1, 2, 3],
+      );
+      await expectEachRowWrittenOnce(batchId);
+      final undo = await repositories.activityLog.undoBatch(batchId);
+      expect(undo.hasConflicts, isFalse);
+      expect(await orderNames(), <String>['A', 'Old', 'B']);
+    });
+
+    test('with no history the new Planned Sets are zero in its own units',
+        () async {
+      final oldId = await addExercise('Old');
+      final newExerciseId = await exercise(
+        'New',
+        defaultLoadUnit: TrainingUnit.pound,
+      );
+      final plankId = await exercise(
+        'Plank',
+        dimensions: const <DimensionId>[DimensionId.duration],
+      );
+
+      await repositories.workoutExercises.replace(
+        oldId,
+        newExerciseId,
+        batchId: newBatchId(),
+      );
+      final newSets = await setsOf(newExerciseId);
+      expect(newSets, hasLength(2));
+      for (final set in newSets) {
+        expect(
+          set.values,
+          zeroLoggedSetFor(
+            dimensions: const <DimensionId>[DimensionId.load, DimensionId.reps],
+            defaultLoadUnit: TrainingUnit.pound,
+          ),
+        );
+      }
+
+      final newId = (await workoutExercises()).single.id;
+      await repositories.workoutExercises.replace(
+        newId,
+        plankId,
+        batchId: newBatchId(),
+      );
+      final plankSets = await setsOf(plankId);
+      expect(
+        plankSets.map((set) => set.plannedRestAfter),
+        newSets.map((set) => set.plannedRestAfter),
+      );
+      for (final set in plankSets) {
+        expect(
+          set.values,
+          zeroLoggedSetFor(
+            dimensions: const <DimensionId>[DimensionId.duration],
+            defaultLoadUnit: TrainingUnit.kilogram,
+          ),
+        );
+      }
+    });
+
+    test('history with other dimensions is not used', () async {
+      final oldId = await addExercise('Old');
+      final newExerciseId = await exercise('New');
+      final earlierId = await repositories.workoutSessions.create(
+        WorkoutSessionDraft(
+          startedAt: startedAt.subtract(const Duration(days: 3)),
+          timezone: 'UTC',
+        ),
+      );
+      await repositories.sets.create(
+        LoggedSetDraft(
+          workoutId: earlierId,
+          exerciseId: newExerciseId,
+          position: 0,
+          values: LoggedSet.fromValues(<SetDimensionValue>[
+            SetDimensionValue(
+              dimension: DimensionId.reps,
+              entered: '12',
+              unit: TrainingUnit.repetition,
+            ),
+          ]),
+          isCompleted: true,
+        ),
+      );
+
+      await repositories.workoutExercises.replace(
+        oldId,
+        newExerciseId,
+        batchId: newBatchId(),
+      );
+
+      for (final set in await setsOf(newExerciseId)) {
+        expect(set.values, _loadRepsValues(load: '0', reps: '0'));
+      }
+    });
+
+    test('an Exercise already in the Workout throws and writes nothing',
+        () async {
+      final oldId = await addExercise('Old');
+      final otherId = await addExercise('Other');
+      final otherExerciseId = (await workoutExercises())
+          .firstWhere((row) => row.id == otherId)
+          .exerciseId;
+      final oldExerciseId = (await workoutExercises())
+          .firstWhere((row) => row.id == oldId)
+          .exerciseId;
+      final entriesBefore = await repositories.activityLog.listEntries();
+
+      for (final exerciseId in <String>[otherExerciseId, oldExerciseId]) {
+        final batchId = newBatchId();
+        await expectLater(
+          repositories.workoutExercises.replace(
+            oldId,
+            exerciseId,
+            batchId: batchId,
+          ),
+          throwsA(isA<AlreadyInWorkoutException>()),
+        );
+        expect(await entriesFor(batchId), isEmpty);
+      }
+
+      expect(
+        await repositories.activityLog.listEntries(),
+        hasLength(entriesBefore.length),
+      );
+      expect(await orderNames(), <String>['Old', 'Other']);
+    });
+
+    test('the group survives a later reorder', () async {
+      await addExercise('Warm-up');
+      final pullUpId = await addExercise('Pull-Up', performed: 1);
+      final pressId = await addExercise('Press', performed: 1);
+      await addExercise('Finisher');
+      await superset(<String>[pullUpId, pressId]);
+      final newExerciseId = await exercise('New');
+
+      final newId = await repositories.workoutExercises.replace(
+        pressId,
+        newExerciseId,
+        batchId: newBatchId(),
+      );
+      final ids = (await workoutExercises()).map((row) => row.id).toList();
+      // Move the Finisher to the front; the group's run is unbroken.
+      await repositories.workoutExercises.reorderForWorkout(
+        workoutId: workoutId,
+        orderedIds: <String>[ids.last, ...ids.take(ids.length - 1)],
+      );
+
+      expect(await orderNames(), <String>[
+        'Finisher',
+        'Warm-up',
+        'Pull-Up',
+        'New',
+        'Press',
+      ]);
+      expect(await groupNames(), <List<String>>[
+        <String>['Pull-Up', 'New'],
+      ]);
+      final groups =
+          await repositories.exerciseGroups.listActiveForWorkout(workoutId);
+      expect(groups.single.workoutExerciseIds, <String>[pullUpId, newId]);
+    });
+
+    test('CUJ 13: replace Incline Press in a superset mid-way', () async {
+      final pullUpId = await addExercise('Pull-Up', performed: 1);
+      final inclinePressId = await addExercise('Incline Press', performed: 1);
+      await superset(<String>[pullUpId, inclinePressId]);
+      final inclinePressExerciseId = (await workoutExercises())
+          .firstWhere((row) => row.id == inclinePressId)
+          .exerciseId;
+      final oldPlanned = (await setsOf(inclinePressExerciseId))
+          .where((set) => !set.isCompleted)
+          .toList(growable: false);
+      expect(oldPlanned, hasLength(2));
+      final machinePressExerciseId = await exercise('Incline Machine Press');
+      await performedEarlier(machinePressExerciseId, load: '50', reps: '12');
+      final batchId = newBatchId();
+
+      final newId = await repositories.workoutExercises.replace(
+        inclinePressId,
+        machinePressExerciseId,
+        batchId: batchId,
+      );
+
+      expect(await orderNames(), <String>[
+        'Pull-Up',
+        'Incline Machine Press',
+        'Incline Press',
+      ]);
+      expect(await groupNames(), <List<String>>[
+        <String>['Pull-Up', 'Incline Machine Press'],
+      ]);
+      final machineSets = await setsOf(machinePressExerciseId);
+      expect(machineSets, hasLength(2));
+      expect(
+        machineSets.map((set) => set.plannedRestAfter),
+        oldPlanned.map((set) => set.plannedRestAfter),
+      );
+      for (final set in machineSets) {
+        expect(set.isCompleted, isFalse);
+        expect(set.values, _loadRepsValues(load: '50', reps: '12'));
+      }
+      final inclineSets = await setsOf(inclinePressExerciseId);
+      expect(inclineSets, hasLength(1));
+      expect(inclineSets.single.isCompleted, isTrue);
+      await expectEachRowWrittenOnce(batchId);
+
+      // Now stays on the superset: Incline Press holds the latest Performed
+      // Set, but the group is still in progress.
+      final groups =
+          await repositories.exerciseGroups.listActiveForWorkout(workoutId);
+      final groupIdByMember = <String, String>{
+        for (final group in groups)
+          for (final id in group.workoutExerciseIds) id: group.id,
+      };
+      final allSets = await repositories.sets.listActiveForWorkout(workoutId);
+      final progress = <ProgressExercise>[
+        for (final row in await workoutExercises())
+          progressExerciseFor(
+            workoutExerciseId: row.id,
+            groupId: groupIdByMember[row.id],
+            sets: allSets
+                .where((set) => set.exerciseId == row.exerciseId)
+                .map(progressSetOf),
+          ),
+      ];
+      expect(currentExerciseFor(progress), CurrentGroup(groups.single.id));
+      expect(nowCardWorkoutExerciseId(progress), pullUpId);
+      expect(newId, isNot(inclinePressId));
     });
   });
 }
