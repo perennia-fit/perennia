@@ -58,6 +58,7 @@ import 'package:perennia/features/sync/services/sync_providers.dart';
 import 'package:perennia/features/template_divergence/repositories/template_divergence_feature_repository.dart';
 import 'package:perennia/features/template_picker/repositories/template_picker_feature_repository.dart';
 import 'package:perennia/features/template_picker/widgets/template_picker_sheet.dart';
+import 'package:perennia/features/training/widgets/plan_progress_labels.dart';
 import 'package:perennia/features/up_next/repositories/up_next_feature_repository.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
@@ -1699,31 +1700,36 @@ void main() {
     await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
     await tester.pumpAndSettle();
 
-    for (final (id, name, count) in <(String, String, String)>[
-      ('incline', 'Incline Press', '2/3 sets'),
-      ('pushdown', 'Triceps Pushdown', '0/2 sets'),
-      ('curl', 'Dumbbell Curl', 'Done'),
+    for (final (id, name) in <(String, String)>[
+      ('incline', 'Incline Press'),
+      ('pushdown', 'Triceps Pushdown'),
+      ('curl', 'Dumbbell Curl'),
     ]) {
-      final nameFinder = find.descendant(
-        of: find.byKey(WorkoutScreen.exerciseCardKey(id)),
-        matching: find.text(name),
-      );
-      final row = tester.getSize(
+      final card = find.byKey(WorkoutScreen.exerciseCardKey(id));
+      final nameFinder = find.descendant(of: card, matching: find.text(name));
+      final row = tester.renderObject<RenderFlex>(
         find.ancestor(of: nameFinder, matching: find.byType(Row)).first,
       );
-      final nameWidth = tester.getSize(nameFinder).width;
+      // The name is the row's only flexible child, so it takes all the
+      // width the count, the gaps and the chevron leave: nothing unclaimed,
+      // as there was when the count shared the free width half and half.
+      var claimed = 0.0;
+      var child = row.firstChild;
+      while (child != null) {
+        claimed += child.size.width;
+        child = row.childAfter(child);
+      }
+      expect(claimed, moreOrLessEquals(row.size.width), reason: id);
       final countWidth = tester
           .getSize(
             find.descendant(
-              of: find.byKey(WorkoutScreen.exerciseCardKey(id)),
-              matching: find.text(count),
+              of: card,
+              matching: find.byType(ExerciseProgressCount),
             ),
           )
           .width;
-      // A short count leaves the name more than half the row, not an equal
-      // split with the count's slot.
-      expect(nameWidth, greaterThan(row.width / 2), reason: id);
-      expect(nameWidth, greaterThan(countWidth), reason: id);
+      expect(tester.getSize(nameFinder).width, greaterThan(countWidth),
+          reason: id);
     }
   });
 
