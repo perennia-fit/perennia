@@ -111,6 +111,9 @@ import {
   agentProtocolDeleteRoute,
   agentProtocolListRoute,
   agentProtocolPlannedDaysRoute,
+  agentProtocolSkipBatchWriteRefusal,
+  agentProtocolSkipBatchWriteResponse,
+  agentProtocolSkipBatchWriteRoute,
   AgentProtocolBatchWriteResponseSchema,
   AgentProtocolDaysInvalidRequestResponseSchema,
   AgentProtocolListResponseSchema,
@@ -124,6 +127,7 @@ import {
   prepareAgentCompoundBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
+  prepareAgentProtocolSkipBatchWrite,
   type AgentProtocolsStore
 } from "./agent-protocols.js";
 import {
@@ -393,6 +397,7 @@ import {
 import {
   COMPOUNDS_SYNC_ENTITY,
   DOSES_SYNC_ENTITY,
+  PROTOCOL_SKIPS_SYNC_ENTITY,
   EXERCISE_CATEGORIES_SYNC_ENTITY,
   FOCUSES_SYNC_ENTITY,
   EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
@@ -3818,6 +3823,72 @@ export function createApp(options: CreateAppOptions = {}) {
       : context.json(response.body, 503);
   });
 
+  app.openapi(agentProtocolSkipBatchWriteRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProtocolsStore === undefined) {
+      return context.json(
+        AgentProtocolsUnavailableResponseSchema.parse({
+          code: "agent_protocols_unavailable",
+          message: "Agent Protocols storage is not configured."
+        }),
+        503
+      );
+    }
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const agent = agentAuth.agent;
+    const requestBody = context.req.valid("json");
+    const prepared = prepareAgentProtocolSkipBatchWrite({ request: requestBody });
+    if (!prepared.accepted) {
+      return context.json(agentProtocolSkipBatchWriteRefusal(prepared.issues).body, 422);
+    }
+    const writeResult = await agentProtocolsStore.writeProtocolSkipBatch({
+      userId: agent.userId,
+      batchId: requestBody.idempotencyKey,
+      requestFingerprint: agentProtocolsBatchRequestFingerprint(requestBody),
+      deviceId: `agent:${agent.keyId}`,
+      skips: prepared.skips
+    });
+    const response = agentProtocolSkipBatchWriteResponse(requestBody, writeResult);
+    if (response.status === 200) {
+      await maybeNudgeAgentWrite({
+        syncNudgePublisher,
+        logger,
+        agent,
+        batchId: requestBody.idempotencyKey,
+        applied: writeResult.applied.length
+      });
+      return context.json(response.body, 200);
+    }
+    return response.status === 422
+      ? context.json(response.body, 422)
+      : context.json(response.body, 503);
+  });
+
   app.openapi(agentExerciseAnalyticsRoute, async (context) => {
     if (agentApiKeyStore === undefined) {
       return context.json(
@@ -5359,6 +5430,14 @@ export function createApp(options: CreateAppOptions = {}) {
         break;
       case DOSES_SYNC_ENTITY:
         result = await syncStore.pushDoses({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
+      case PROTOCOL_SKIPS_SYNC_ENTITY:
+        result = await syncStore.pushProtocolSkips({
           userId: session.userId,
           correlationId: requestCorrelationId(context),
           deviceId: requestBody.deviceId,

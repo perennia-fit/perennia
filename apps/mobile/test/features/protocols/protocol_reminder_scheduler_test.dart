@@ -658,6 +658,65 @@ void main() {
         isEmpty,
       );
     });
+
+    test(
+        "reminderInputs marks today's skipped dose filled (D8), so only the "
+        'unfilled one sharing its time keeps it, and a Skip write reruns '
+        'the reconciler', () async {
+      container = containerWith();
+      final repositories = container.read(trainingRepositoriesProvider);
+      final stack = await _seedDailyStack(repositories, today);
+      final scheduler = container.read(protocolReminderSchedulerProvider);
+      await scheduler.start(onReminderTapped: (_) {});
+      final nine = protocolReminderId(today, '09:00');
+      final five = protocolReminderId(today, '17:00');
+      expect(platform.pending.keys, containsAll(<int>[nine, five]));
+
+      await repositories.protocols.skipPlannedDose(
+        ProtocolSkipDraft(
+          protocolId: stack.protocolId,
+          compoundId: stack.ids['trt']!,
+          localDate: today,
+          plannedLocalTime: '09:00',
+        ),
+        today: today,
+      );
+      final inputs =
+          await repositories.protocolPlan.reminderInputs(today, today);
+      final todays = <(String, String, bool)>[
+        for (final input in inputs)
+          (input.compoundId, input.localTime, input.filled),
+      ];
+      expect(
+        todays,
+        unorderedEquals(<(String, String, bool)>[
+          (stack.ids['trt']!, '09:00', true),
+          (stack.ids['agemate']!, '09:00', false),
+          (stack.ids['creatine']!, '17:00', false),
+        ]),
+      );
+      // AgeMate still wants 09:00.
+      await waitForRuns(2);
+      expect(platform.pending.keys, contains(nine));
+
+      // Skipping 17:00, the only dose at that time, cancels its reminder.
+      await repositories.protocols.skipPlannedDose(
+        ProtocolSkipDraft(
+          protocolId: stack.protocolId,
+          compoundId: stack.ids['creatine']!,
+          localDate: today,
+          plannedLocalTime: '17:00',
+        ),
+        today: today,
+      );
+      await waitForRuns(3);
+      expect(platform.pending.keys, contains(nine));
+      expect(platform.pending.keys, isNot(contains(five)));
+      expect(
+        platform.pending.keys,
+        contains(protocolReminderId(tomorrow, '17:00')),
+      );
+    });
   });
 
   group('over the repository: planned days and reminders-on Protocols', () {

@@ -250,6 +250,7 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_batch_write_metrics",
         "agent_batch_write_nutrition_goals",
         "agent_batch_write_plan_tree",
+        "agent_batch_write_protocol_skips",
         "agent_batch_write_protocols",
         "agent_batch_write_settings",
         "agent_batch_write_workout",
@@ -380,6 +381,22 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
     assert.equal(deleteRequest.properties.protocolIds.maxItems, 100);
     assert.ok(
       toolsByName.get("agent_delete_protocols").outputSchema.properties.protocols
+    );
+    // The Skip tool takes the REST body: a key, today, and 1 to 100 Skips,
+    // each a UUIDv7 id naming its planned dose.
+    const skipRequest = toolsByName.get("agent_batch_write_protocol_skips").inputSchema
+      .properties.request;
+    assert.deepEqual(skipRequest.required.sort(), ["idempotencyKey", "skips", "today"]);
+    assert.equal(skipRequest.properties.skips.maxItems, 100);
+    assert.deepEqual(
+      skipRequest.properties.skips.items.required.sort(),
+      ["compoundId", "id", "localDate", "plannedLocalTime", "protocolId"]
+    );
+    assert.ok(
+      JSON.stringify(skipRequest.properties.skips.items.properties.id).includes("[0-9a-fA-F]")
+    );
+    assert.ok(
+      toolsByName.get("agent_batch_write_protocol_skips").outputSchema.properties.skips
     );
     const doseIdSchema = toolsByName
       .get("agent_batch_write_doses")

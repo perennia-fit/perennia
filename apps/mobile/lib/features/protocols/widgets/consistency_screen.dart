@@ -455,21 +455,25 @@ class _ConsistencyDayTile extends StatelessWidget {
     );
   }
 
-  /// The reason a "Not planned" day plans nothing, and the count of extra
-  /// Doses, which sits next to the status and never changes it (D6).
+  /// The reason a "Not planned" day plans nothing, the count of skipped
+  /// planned doses (D8), and the count of extra Doses. The counts sit next
+  /// to the status, as extras do (D6).
   String? _statusDetail(AppLocalizations l10n, DayStatus status) {
     final reason = status.notPlannedReason;
     final parts = <String>[
       if (reason != null) _reasonLabel(l10n, reason),
+      if (status.skippedCount > 0)
+        l10n.consistencySkippedCount(status.skippedCount),
       if (status.extraCount > 0) l10n.consistencyExtraCount(status.extraCount),
     ];
     return parts.isEmpty ? null : _join(parts);
   }
 
   /// A slot's planned line, then the line of the Dose that filled it, or its
-  /// unfilled label: "Pending" on today, "Not logged" before it. The planned
-  /// and logged amounts read as entered; when both resolve to an active
-  /// mass, both masses show too (D6). No verdict is drawn from them.
+  /// unfilled label: "Skipped" when a Skip marks it (D8), else "Pending" on
+  /// today and "Not logged" before it. The planned and logged amounts read
+  /// as entered; when both resolve to an active mass, both masses show too
+  /// (D6). No verdict is drawn from them.
   List<Widget> _slotLines(
     BuildContext context,
     DayStatus status,
@@ -505,6 +509,8 @@ class _ConsistencyDayTile extends StatelessWidget {
         dose.amountLabel,
         if (showMasses) '≈ ${loggedMass.label}',
       ]);
+    } else if (fill.isSkipped) {
+      logged = l10n.plannedListRowSkipped;
     } else {
       logged = status.localDate == range.today
           ? l10n.plannedListRowPending

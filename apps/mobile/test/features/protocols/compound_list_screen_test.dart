@@ -597,7 +597,10 @@ class _FakeProtocolDayController extends ProtocolDayController {
   Future<DoseRecord?> lastDoseFor(String compoundId) async => nextLastDose;
 
   @override
-  Future<LogDoseResult> logDose(DoseSnapshotDraft draft) async {
+  Future<LogDoseResult> logDose(
+    DoseSnapshotDraft draft, {
+    String? unskipId,
+  }) async {
     loggedDoses.add(draft);
     return LogDoseResult(
       batchId: 'batch-${loggedDoses.length}',

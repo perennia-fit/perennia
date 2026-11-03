@@ -590,6 +590,35 @@ export const doses = pgTable(
   })
 );
 
+// A `Skip` (CONTEXT.md; docs/designs/protocol-schedules-and-reminders.md, D8)
+// on the opaque-payload sync rails: "not taken, on purpose" for one planned
+// dose on one local date. Its payload names `protocol_id`, `compound_id`,
+// `local_date` and `planned_local_time`, all soft references (no foreign key),
+// as a Dose's are. Never edited: written once, removed by `deleted_at`. Same
+// columns and index as `doses`.
+export const protocolSkips = pgTable(
+  "protocol_skips",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => ({
+    userUpdatedAtIndex: index("protocol_skips_user_updated_at_index").on(
+      table.userId,
+      table.updatedAt
+    )
+  })
+);
+
 // A `Protocol` (CONTEXT.md, PROTOCOLS.md §1.4/§7) on the payload sync rails:
 // its fields live in the JSON payload, not in domain columns, which the server
 // reads (ARCHITECTURE.md), exactly like meals/compounds. Archives via the in-payload deleted_at; merge by UUID,

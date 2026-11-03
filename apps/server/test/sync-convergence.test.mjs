@@ -8,6 +8,7 @@ import {
   createApp,
   createMigratedServerApp,
   createUuidV7,
+  dayStatuses,
   planDays,
   schema,
   SYNC_PROTOCOL_VERSION
@@ -952,6 +953,99 @@ test(
   }
 );
 
+test(
+  "two replicas that skip the same timed planned dose offline converge on both Skips and one skipped dose; removing it on one removes both everywhere",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = protocolReplicas(server, protocolSkipEntityOrder);
+      const [replicaA, replicaB, observer] = replicas;
+      const plan = await stageProtocolPlan(replicas);
+      const day = "2026-10-20";
+
+      // Offline, both devices skip the day's 09:00 dose: no unique key, so
+      // two rows with their own ids (D8, Alternative AB).
+      const skipA = skipChange(plan, { localDate: day, at: "2026-10-20T07:00:00.000Z" });
+      const skipB = skipChange(plan, { localDate: day, at: "2026-10-20T07:05:00.000Z" });
+      replicaA.stageChange("protocol_skips", skipA);
+      replicaB.stageChange("protocol_skips", skipB);
+      await settlePlanReplicas(replicas);
+      await settlePlanReplicas(replicas);
+
+      const [marking] = [skipA.id, skipB.id].sort();
+      for (const replica of replicas) {
+        assert.deepEqual(
+          liveSkips(replica)
+            .map((skip) => skip.skipId)
+            .sort(),
+          [skipA.id, skipB.id].sort(),
+          `${replica.name} holds both Skips`
+        );
+        // Matching marks the one timed planned dose once; the other Skip is inert.
+        const [status] = replicaDayStatuses(replica, day);
+        assert.equal(status.status, "skipped", replica.name);
+        assert.deepEqual(
+          [status.plannedCount, status.skippedCount],
+          [1, 1],
+          replica.name
+        );
+        assert.equal(status.fills[0].skipId, marking, replica.name);
+      }
+      assert.equal(
+        replicaA.stateSignatureFor(protocolSkipEntityOrder),
+        observer.stateSignatureFor(protocolSkipEntityOrder)
+      );
+      assert.equal(
+        replicaB.stateSignatureFor(protocolSkipEntityOrder),
+        observer.stateSignatureFor(protocolSkipEntityOrder)
+      );
+
+      // B removes the Skip its row shows. As the app's Undo skip does, the
+      // write tombstones every live Skip with the same timed key, so the
+      // inert one can't take over and leave the row Skipped.
+      const removedAt = "2026-10-20T08:00:00.000Z";
+      for (const skip of liveSkips(replicaB).filter(
+        (candidate) =>
+          candidate.protocolId === plan.protocolId &&
+          candidate.compoundId === plan.compoundId &&
+          candidate.localDate === day &&
+          candidate.plannedLocalTime === "09:00"
+      )) {
+        const row = replicaB.row("protocol_skips", skip.skipId);
+        replicaB.stageChange("protocol_skips", {
+          id: skip.skipId,
+          payload: { ...row.payload, updated_at: removedAt, deleted_at: removedAt },
+          updatedAt: removedAt,
+          deletedAt: removedAt
+        });
+      }
+      await settlePlanReplicas(replicas);
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        assert.deepEqual(liveSkips(replica), [], `${replica.name} kept a Skip`);
+        const [status] = replicaDayStatuses(replica, day);
+        assert.equal(status.status, "pending", replica.name);
+        assert.equal(status.skippedCount, 0, replica.name);
+      }
+      const stored = await server.database.db
+        .select({ id: schema.protocolSkips.id, deletedAt: schema.protocolSkips.deletedAt })
+        .from(schema.protocolSkips)
+        .where(inArray(schema.protocolSkips.id, [skipA.id, skipB.id]));
+      assert.equal(stored.length, 2);
+      assert.ok(stored.every((row) => row.deletedAt !== null));
+      assert.equal(
+        replicaA.stateSignatureFor(protocolSkipEntityOrder),
+        observer.stateSignatureFor(protocolSkipEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
 async function createConvergenceServer() {
   if (databaseUrl) {
     const serverApp = await createMigratedServerApp({
@@ -1843,15 +1937,59 @@ function storedJson(value) {
   return typeof value === "string" ? JSON.parse(value) : value;
 }
 
-function protocolReplicas(server) {
+function protocolReplicas(server, entityOrder = protocolPlanEntityOrder) {
   return ["a", "b", "c"].map(
     (name) =>
       new PlanTreeReplica({
         name: `Protocol Replica ${name.toUpperCase()}`,
         deviceId: `device-${name}`,
         server,
-        entityOrder: protocolPlanEntityOrder
+        entityOrder
       })
+  );
+}
+
+const protocolSkipEntityOrder = [...protocolPlanEntityOrder, "protocol_skips"];
+
+/** A new Skip of the staged plan's one timed planned dose, as the app writes it. */
+function skipChange(plan, { localDate, at, plannedLocalTime = "09:00" }) {
+  const id = createUuidV7(new Date(at));
+  return {
+    id,
+    payload: {
+      id,
+      protocol_id: plan.protocolId,
+      compound_id: plan.compoundId,
+      local_date: localDate,
+      planned_local_time: plannedLocalTime,
+      updated_at: at,
+      deleted_at: null
+    },
+    updatedAt: at,
+    deletedAt: null
+  };
+}
+
+/** A replica's live Skips, as the shared core reads them. */
+function liveSkips(replica) {
+  return [...replica.rows.values()]
+    .filter((row) => row.entity === "protocol_skips" && row.deletedAt === null)
+    .map((row) => ({
+      skipId: row.id,
+      protocolId: row.payload.protocol_id,
+      compoundId: row.payload.compound_id,
+      localDate: row.payload.local_date,
+      plannedLocalTime: row.payload.planned_local_time
+    }));
+}
+
+/** One date's Day Statuses on a replica, that date being its today. */
+function replicaDayStatuses(replica, localDate) {
+  return dayStatuses(
+    planDays(livePlanProtocols(replica), localDate, localDate),
+    [],
+    liveSkips(replica),
+    localDate
   );
 }
 

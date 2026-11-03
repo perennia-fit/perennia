@@ -395,5 +395,8 @@ const TRAINING_DATA_KEYS = new Set([
   "daystatuses",
   // The Agent Protocol delete (same spec, D8) names its Protocols in a
   // top-level `protocolIds`, which normalizes to this key, not `protocolid`.
-  "protocolids"
+  "protocolids",
+  // An Agent Skip write (same spec, D8) carries its Skips under a top-level
+  // `skips` key; each item names a Protocol's planned dose.
+  "skips"
 ]);

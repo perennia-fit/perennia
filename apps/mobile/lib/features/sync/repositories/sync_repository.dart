@@ -104,6 +104,7 @@ const _outboundSyncActivityTables = <String>[
   AppDatabase.metricReadingsTable,
   AppDatabase.compoundsTable,
   AppDatabase.dosesTable,
+  AppDatabase.protocolSkipsTable,
   AppDatabase.protocolsTable,
   AppDatabase.protocolCompoundsTable,
   AppDatabase.protocolTargetOutcomesTable,
@@ -480,6 +481,11 @@ class SyncRepository implements SyncCycleRepository {
         session: session,
         deviceId: deviceId,
       );
+      final protocolSkipsResult = await _pushPendingProtocolSkipsWithClient(
+        client: client,
+        session: session,
+        deviceId: deviceId,
+      );
       final protocolsResult = await _pushPendingProtocolsWithClient(
         client: client,
         session: session,
@@ -528,6 +534,7 @@ class SyncRepository implements SyncCycleRepository {
         metricReadingsResult,
         compoundsResult,
         dosesResult,
+        protocolSkipsResult,
         protocolsResult,
         protocolCompoundsResult,
         protocolTargetOutcomesResult,
@@ -760,6 +767,25 @@ class SyncRepository implements SyncCycleRepository {
       // copy once a tombstone has already won locally (mirrors food entries).
       guardPendingRows: _guardAgainstStaleDoseResurrection,
       acknowledgePushResponse: _acknowledgeDosePushResponse,
+    );
+  }
+
+  /// A Skip (D8) is never edited and a re-skip is a new row, so there is no
+  /// stale-resurrection guard as Doses have: the only change after insert is
+  /// its tombstone.
+  Future<SyncPushResult> _pushPendingProtocolSkipsWithClient({
+    required PerenniaApiClient client,
+    required AuthSession session,
+    required String deviceId,
+  }) {
+    return _pushPendingEntityRowsWithClient(
+      client: client,
+      session: session,
+      deviceId: deviceId,
+      entity: AppDatabase.protocolSkipsTable,
+      loadPendingRows: () =>
+          _loadPendingEntityRows(AppDatabase.protocolSkipsTable),
+      acknowledgePushResponse: _acknowledgeProtocolSkipPushResponse,
     );
   }
 
@@ -1097,6 +1123,11 @@ class SyncRepository implements SyncCycleRepository {
           session: session,
           deviceId: deviceId,
         );
+        await _pushPendingProtocolSkipsWithClient(
+          client: client,
+          session: session,
+          deviceId: deviceId,
+        );
         await _pushPendingProtocolsWithClient(
           client: client,
           session: session,
@@ -1203,6 +1234,7 @@ class SyncRepository implements SyncCycleRepository {
     final liveMetricReadingSnapshotIds = <String>{};
     final liveCompoundSnapshotIds = <String>{};
     final liveDoseSnapshotIds = <String>{};
+    final liveProtocolSkipSnapshotIds = <String>{};
     final liveProtocolSnapshotIds = <String>{};
     final liveProtocolCompoundSnapshotIds = <String>{};
     final liveProtocolTargetOutcomeSnapshotIds = <String>{};
@@ -1261,6 +1293,9 @@ class SyncRepository implements SyncCycleRepository {
       }
       if (entity == AppDatabase.dosesTable) {
         liveDoseSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.protocolSkipsTable) {
+        liveProtocolSkipSnapshotIds.add(id);
       }
       if (entity == AppDatabase.protocolsTable) {
         liveProtocolSnapshotIds.add(id);
@@ -1376,6 +1411,10 @@ class SyncRepository implements SyncCycleRepository {
         );
         await _markPreviouslySyncedDoseRowsAbsentFromSnapshotDeleted(
           liveDoseSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedProtocolSkipRowsAbsentFromSnapshotDeleted(
+          liveProtocolSkipSnapshotIds,
           DateTime.parse(snapshotServerClock).toUtc(),
         );
         await _markPreviouslySyncedProtocolRowsAbsentFromSnapshotDeleted(
@@ -1634,6 +1673,14 @@ class SyncRepository implements SyncCycleRepository {
     }
     if (change.entity == AppDatabase.dosesTable) {
       final applied = await _applyPulledDoseChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.protocolSkipsTable) {
+      final applied = await _applyPulledProtocolSkipChange(
         change,
         deviceId: deviceId,
         syncBatchId: syncBatchId,
@@ -2120,6 +2167,45 @@ class SyncRepository implements SyncCycleRepository {
     // need exist on this device.
     await _repositories.protocols.applySyncImage(
       entityTable: AppDatabase.dosesTable,
+      image: _syncImageFromPull(change),
+      deviceId: change.deviceId,
+      actor: _actorForPulledChange(change),
+      batchId: change.batchId ?? syncBatchId,
+      activityLogId: change.activityLogId,
+      activityBeforeImage: change.beforeImage,
+      activityAfterImage: change.afterImage,
+      activityOccurredAt: change.occurredAt == null
+          ? null
+          : DateTime.parse(change.occurredAt!).toUtc(),
+    );
+    return true;
+  }
+
+  /// A pulled Skip (D8): last-writer-wins against the local row, then the
+  /// shared apply path. Its Protocol and Compound are soft references, so no
+  /// parent row need exist on this device.
+  Future<bool> _applyPulledProtocolSkipChange(
+    SyncPulledChange change, {
+    required String deviceId,
+    required String syncBatchId,
+  }) async {
+    final existing = await (_database.select(_database.protocolSkips)
+          ..where((row) => row.id.equals(change.id)))
+        .getSingleOrNull();
+    final incomingUpdatedAt = DateTime.parse(change.updatedAt).toUtc();
+    final existingDeviceId = existing?.syncDeviceId ?? deviceId;
+    if (existing != null &&
+        !_lwwWins(
+          incomingUpdatedAt,
+          change.deviceId,
+          existing.updatedAt.toUtc(),
+          existingDeviceId,
+        )) {
+      return false;
+    }
+
+    await _repositories.protocols.applySyncImage(
+      entityTable: AppDatabase.protocolSkipsTable,
       image: _syncImageFromPull(change),
       deviceId: change.deviceId,
       actor: _actorForPulledChange(change),
@@ -2976,6 +3062,31 @@ class SyncRepository implements SyncCycleRepository {
             ..where((table) => table.id.equals(row.id)))
           .write(
         DosesCompanion(
+          updatedAt: Value<DateTime>(timestamp),
+          deletedAt: Value<DateTime?>(timestamp),
+        ),
+      );
+    }
+  }
+
+  Future<void> _markPreviouslySyncedProtocolSkipRowsAbsentFromSnapshotDeleted(
+    Set<String> liveSnapshotIds,
+    DateTime timestamp,
+  ) async {
+    final localRows = await (_database.select(_database.protocolSkips)
+          ..where(
+            (row) =>
+                row.syncPreviouslySynced.equals(true) & row.deletedAt.isNull(),
+          ))
+        .get();
+    for (final row in localRows) {
+      if (liveSnapshotIds.contains(row.id)) {
+        continue;
+      }
+      await (_database.update(_database.protocolSkips)
+            ..where((table) => table.id.equals(row.id)))
+          .write(
+        ProtocolSkipsCompanion(
           updatedAt: Value<DateTime>(timestamp),
           deletedAt: Value<DateTime?>(timestamp),
         ),
@@ -4130,6 +4241,60 @@ class SyncRepository implements SyncCycleRepository {
     return List<String>.unmodifiable(acknowledgedRows.map((row) => row.id));
   }
 
+  Future<List<String>> _acknowledgeProtocolSkipPushResponse(
+    List<ActivityLogRow> pendingRows,
+    SyncPushResponse response,
+  ) async {
+    final acceptedEntityIds = response.accepted.toSet();
+    final appliedById = <String, SyncAppliedChange>{
+      for (final change in response.applied) change.id: change,
+    };
+    final acknowledgedRows = pendingRows
+        .where((row) => acceptedEntityIds.contains(row.entityId))
+        .toList(growable: false);
+    final acknowledgedAt = DateTime.now().toUtc();
+
+    await _database.transaction(() async {
+      for (final row in acknowledgedRows) {
+        final applied = appliedById[row.entityId];
+        await (_database.update(_database.activityLog)
+              ..where((table) => table.id.equals(row.id)))
+            .write(
+          ActivityLogCompanion(
+            syncAcknowledgedAt: Value<DateTime?>(acknowledgedAt),
+            afterImage: applied == null
+                ? const Value.absent()
+                : Value<String?>(
+                    _imageWithUpdatedAt(row.afterImage, applied.updatedAt),
+                  ),
+          ),
+        );
+        await (_database.update(_database.protocolSkips)
+              ..where((table) => table.id.equals(row.entityId)))
+            .write(
+          const ProtocolSkipsCompanion(
+            syncPreviouslySynced: Value<bool>(true),
+          ),
+        );
+      }
+      for (final change in response.applied) {
+        await (_database.update(_database.protocolSkips)
+              ..where((row) => row.id.equals(change.id)))
+            .write(
+          ProtocolSkipsCompanion(
+            syncDeviceId: Value<String?>(change.deviceId),
+            syncPreviouslySynced: const Value<bool>(true),
+            updatedAt: Value<DateTime>(
+              DateTime.parse(change.updatedAt).toUtc(),
+            ),
+          ),
+        );
+      }
+    });
+
+    return List<String>.unmodifiable(acknowledgedRows.map((row) => row.id));
+  }
+
   Future<List<String>> _acknowledgeProtocolPushResponse(
     List<ActivityLogRow> pendingRows,
     SyncPushResponse response,
@@ -4989,24 +5154,27 @@ int _syncApplyOrder(String entity) {
     // self-contained and never depends on its Compound row.
     AppDatabase.compoundsTable => 12,
     AppDatabase.dosesTable => 13,
+    // A Skip after the Doses, for tidy ordering: its Protocol and Compound
+    // are soft references, so it never depends on either row (D8).
+    AppDatabase.protocolSkipsTable => 14,
     // A Protocol before its ProtocolCompound members before its Schedules
     // (a Drift FK chain) — ProtocolTargetOutcomes only need the
     // Protocol itself.
-    AppDatabase.protocolsTable => 14,
-    AppDatabase.protocolCompoundsTable => 15,
-    AppDatabase.protocolTargetOutcomesTable => 16,
-    AppDatabase.schedulesTable => 17,
-    AppDatabase.nutritionGoalsTable => 18,
-    AppDatabase.workoutTemplatesTable => 19,
-    AppDatabase.templateExercisesTable => 20,
-    AppDatabase.prescriptionsTable => 21,
-    AppDatabase.templateGroupsTable => 22,
-    AppDatabase.templateGroupMembersTable => 23,
-    _routinesSyncEntity => 24,
-    AppDatabase.routineEntriesTable => 25,
-    AppDatabase.loggedSetsTable => 26,
-    AppDatabase.templateLinksTable => 27,
-    _ => 28,
+    AppDatabase.protocolsTable => 15,
+    AppDatabase.protocolCompoundsTable => 16,
+    AppDatabase.protocolTargetOutcomesTable => 17,
+    AppDatabase.schedulesTable => 18,
+    AppDatabase.nutritionGoalsTable => 19,
+    AppDatabase.workoutTemplatesTable => 20,
+    AppDatabase.templateExercisesTable => 21,
+    AppDatabase.prescriptionsTable => 22,
+    AppDatabase.templateGroupsTable => 23,
+    AppDatabase.templateGroupMembersTable => 24,
+    _routinesSyncEntity => 25,
+    AppDatabase.routineEntriesTable => 26,
+    AppDatabase.loggedSetsTable => 27,
+    AppDatabase.templateLinksTable => 28,
+    _ => 29,
   };
 }
 

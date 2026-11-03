@@ -16,6 +16,7 @@ import {
   prepareAgentCompoundBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
+  prepareAgentProtocolSkipBatchWrite,
   schema
 } from "../src/index.ts";
 import { dayStatuses, planDays } from "../src/protocol-plan.ts";
@@ -3587,7 +3588,16 @@ function createDeleteApp(database, userId) {
 }
 
 /** Stores a Protocol with one member and one version, through the Agent write. */
-async function writeProtocol(app, { start, end = null, compoundId = createUuidV7(), name = "Plan" }) {
+async function writeProtocol(
+  app,
+  {
+    start,
+    end = null,
+    compoundId = createUuidV7(),
+    name = "Plan",
+    rule = timedDailyRule(["09:00"])
+  }
+) {
   const protocolId = createUuidV7();
   const memberId = createUuidV7();
   const response = await post(app, "/agent/protocols/batch-write", {
@@ -3604,7 +3614,7 @@ async function writeProtocol(app, { start, end = null, compoundId = createUuidV7
           {
             id: createUuidV7(),
             protocolCompoundId: memberId,
-            rule: timedDailyRule(["09:00"]),
+            rule,
             ...creatineAmount
           }
         ],
@@ -3916,6 +3926,659 @@ test(
     }
   }
 );
+
+// ---------------------------------------------------------------------------
+// Skips (docs/designs/protocol-schedules-and-reminders.md, D8)
+// ---------------------------------------------------------------------------
+
+test("prepareAgentProtocolSkipBatchWrite builds the Skip row and collects every validator and today issue before refusing", () => {
+  const now = new Date("2026-11-02T12:00:00.000Z");
+  const id = createUuidV7(now);
+  const accepted = prepareAgentProtocolSkipBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      today: "2026-11-02",
+      skips: [
+        {
+          id,
+          protocolId: "p1",
+          compoundId: "c1",
+          localDate: "2026-11-02",
+          plannedLocalTime: null
+        }
+      ]
+    },
+    now
+  });
+  assert.equal(accepted.accepted, true);
+  assert.deepEqual(accepted.skips[0].payload, {
+    id,
+    protocol_id: "p1",
+    compound_id: "c1",
+    local_date: "2026-11-02",
+    planned_local_time: null,
+    updated_at: now.toISOString(),
+    deleted_at: null
+  });
+
+  const repeated = createUuidV7(now);
+  const refused = prepareAgentProtocolSkipBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      // Three days from the server's UTC date.
+      today: "2026-11-05",
+      skips: [
+        {
+          id: repeated,
+          protocolId: "p1",
+          compoundId: "c1",
+          localDate: "2026-11-06",
+          plannedLocalTime: "9:00"
+        },
+        {
+          id: repeated,
+          protocolId: "p1",
+          compoundId: "c1",
+          localDate: "2026-11-01",
+          plannedLocalTime: "09:00"
+        }
+      ]
+    },
+    now
+  });
+  assert.equal(refused.accepted, false);
+  assert.deepEqual(
+    refused.issues.map((issue) => [issue.field, issue.rule, issue.itemIndex]),
+    [
+      ["today", "today_out_of_range", 0],
+      ["skips[0].plannedLocalTime", "skip_time_format", 0],
+      ["skips[0].localDate", "skip_future", 0],
+      ["skips[1].id", "duplicate_skip_id", 1]
+    ]
+  );
+});
+
+test(
+  "batchWriteAgentProtocolSkips writes a Skip its Day Status reads, replays a retried key, applies a removal of a Skip stamped ahead, and Agent undo reverts it",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-skips-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const today = utcToday();
+    const yesterday = addDays(today, -1);
+    const skipRow = async (id) =>
+      (await database.sql`
+        select deleted_at, updated_at, payload from protocol_skips where id = ${id}
+      `)[0];
+    const logOf = async (batchId) =>
+      database.sql`
+        select entity_table, entity_id, before_image from activity_log
+        where user_id = ${userId} and batch_id = ${batchId}
+          and entity_table <> 'agent_protocol_batches'
+        order by entity_id
+      `;
+
+    try {
+      await insertUser(database, userId);
+      const plan = await writeProtocol(app, {
+        start: addDays(today, -5),
+        rule: timedDailyRule(["09:00", "21:00"])
+      });
+      await insertStoredRows(database, schema.compounds, userId, [
+        storedCompound(plan.compoundId)
+      ]);
+      const item = (fields) => ({
+        id: createUuidV7(),
+        protocolId: plan.protocolId,
+        compoundId: plan.compoundId,
+        localDate: yesterday,
+        plannedLocalTime: "21:00",
+        ...fields
+      });
+
+      const skip = item();
+      const body = { idempotencyKey: `skip-${randomUUID()}`, today, skips: [skip] };
+      const written = await post(app, "/agent/protocols/skips/batch-write", body);
+      assert.equal(written.status, 200);
+      const writtenBody = await written.json();
+      assert.equal(writtenBody.accepted, true);
+      assert.equal(writtenBody.duplicate, false);
+      assert.equal(writtenBody.batchId, body.idempotencyKey);
+      assert.deepEqual(writtenBody.skips, [{ id: skip.id, outcome: "applied" }]);
+      const stored = await skipRow(skip.id);
+      assert.equal(stored.deleted_at, null);
+      const { updated_at: _updatedAt, ...storedFields } = stored.payload;
+      assert.deepEqual(storedFields, {
+        id: skip.id,
+        protocol_id: plan.protocolId,
+        compound_id: plan.compoundId,
+        local_date: yesterday,
+        planned_local_time: "21:00",
+        deleted_at: null
+      });
+      assert.deepEqual(
+        (await logOf(body.idempotencyKey)).map((entry) => [
+          entry.entity_table,
+          entry.entity_id,
+          entry.before_image
+        ]),
+        [["protocol_skips", skip.id, null]]
+      );
+
+      // The Day Status read passes the Skip to matching: one slot skipped,
+      // the other still open, so a past day reads not_logged (a Skip never
+      // raises it to partly_logged).
+      let [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday
+      });
+      assert.equal(status.status, "not_logged");
+      assert.deepEqual(
+        [status.plannedCount, status.loggedCount, status.skippedCount],
+        [2, 0, 1]
+      );
+      assert.deepEqual(
+        status.fills.map((fill) => [fill.plannedLocalTime, fill.doseId, fill.skipId]),
+        [
+          ["09:00", null, null],
+          ["21:00", null, skip.id]
+        ]
+      );
+      // A Dose fills the open slot, not the skipped one: logged, one skipped.
+      const doseId = await storeDose(database, userId, {
+        compoundId: plan.compoundId,
+        localDate: yesterday
+      });
+      [status] = await dayStatusesOf(app, { fromLocalDate: yesterday, toLocalDate: yesterday });
+      assert.equal(status.status, "logged");
+      assert.deepEqual(
+        status.fills.map((fill) => [fill.plannedLocalTime, fill.doseId, fill.skipId]),
+        [
+          ["09:00", doseId, null],
+          ["21:00", null, skip.id]
+        ]
+      );
+      // The summary carries the count without the fills.
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        detail: "summary"
+      });
+      assert.equal(status.skippedCount, 1);
+      assert.equal(status.fills, undefined);
+
+      // Every planned dose skipped today reads skipped.
+      const todaySkips = await post(app, "/agent/protocols/skips/batch-write", {
+        idempotencyKey: `skip-${randomUUID()}`,
+        today,
+        skips: [
+          item({ localDate: today, plannedLocalTime: "09:00" }),
+          item({ localDate: today })
+        ]
+      });
+      assert.equal(todaySkips.status, 200);
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: today,
+        toLocalDate: today,
+        protocolId: plan.protocolId
+      });
+      assert.equal(status.status, "skipped");
+      assert.equal(status.skippedCount, 2);
+
+      // A retried key replays: the same Skips, outcome duplicate, nothing written.
+      const retried = await post(app, "/agent/protocols/skips/batch-write", body);
+      assert.equal(retried.status, 200);
+      const retriedBody = await retried.json();
+      assert.equal(retriedBody.duplicate, true);
+      assert.deepEqual(retriedBody.skips, [{ id: skip.id, outcome: "duplicate" }]);
+      assert.equal((await logOf(body.idempotencyKey)).length, 1);
+      // The same key for different work is a conflict.
+      const conflict = await post(app, "/agent/protocols/skips/batch-write", {
+        ...body,
+        skips: [{ ...skip, plannedLocalTime: "09:00" }]
+      });
+      assert.equal(conflict.status, 422);
+      const conflictBody = await conflict.json();
+      assert.equal(conflictBody.code, "agent_protocol_skip_batch_write_failed");
+      assert.deepEqual(
+        conflictBody.issues.map((issue) => issue.rule),
+        ["idempotency_key_conflict"]
+      );
+
+      // A stored Skip stamped ahead of the server clock (a device clock
+      // ahead within the accepted skew), with a sibling stamped ahead too:
+      // the removal is stamped one millisecond after the stored Skip, as its
+      // swept sibling is, so both are removed (D8, settled during Phase 8's
+      // build). Stamped with the request time, the item would be superseded
+      // and its Skip left live while the sibling was swept.
+      const aheadAt = new Date(Date.now() + 60_000);
+      const aheadFields = {
+        protocolId: plan.protocolId,
+        compoundId: plan.compoundId,
+        localDate: addDays(today, -2),
+        plannedLocalTime: "09:00",
+        updatedAt: aheadAt
+      };
+      const ahead = await storeSkip(database, userId, aheadFields);
+      const aheadSibling = await storeSkip(database, userId, aheadFields);
+      const aheadRemoval = await post(app, "/agent/protocols/skips/batch-write", {
+        idempotencyKey: `skip-${randomUUID()}`,
+        today,
+        skips: [{ ...ahead.item, deletedAt: new Date().toISOString() }]
+      });
+      assert.equal(aheadRemoval.status, 200);
+      assert.deepEqual((await aheadRemoval.json()).skips, [
+        { id: ahead.item.id, outcome: "applied" },
+        { id: aheadSibling.item.id, outcome: "applied" }
+      ]);
+      for (const id of [ahead.item.id, aheadSibling.item.id]) {
+        const row = await skipRow(id);
+        assert.notEqual(row.deleted_at, null);
+        assert.equal(new Date(row.updated_at).getTime(), aheadAt.getTime() + 1);
+      }
+
+      // Undoing the first batch removes its Skip, so the slot opens again.
+      const undo = await post(app, "/agent/activity/undo-batch", {
+        batchId: body.idempotencyKey,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(undo.status, 200);
+      const undoBody = await undo.json();
+      assert.equal(undoBody.applied, true);
+      assert.deepEqual(
+        undoBody.entries.map((entry) => entry.outcome),
+        ["reverted"]
+      );
+      assert.notEqual((await skipRow(skip.id)).deleted_at, null);
+      [status] = await dayStatusesOf(app, { fromLocalDate: yesterday, toLocalDate: yesterday });
+      assert.equal(status.status, "partly_logged");
+      assert.equal(status.skippedCount, 0);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "batchWriteAgentProtocolSkips refuses each rule as a whole-batch 422, accepts an archived Protocol and any removal, and answers a malformed body 400",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-skips-refused-${randomUUID()}`;
+    const otherUserId = `agent-protocol-skips-other-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const otherApp = createDeleteApp(database, otherUserId);
+    const today = utcToday();
+    const yesterday = addDays(today, -1);
+    const start = addDays(today, -5);
+    const item = (plan, fields = {}) => ({
+      id: createUuidV7(),
+      protocolId: plan.protocolId,
+      compoundId: plan.compoundId,
+      localDate: yesterday,
+      plannedLocalTime: "09:00",
+      ...fields
+    });
+    const write = (skips, extra = {}) =>
+      post(app, "/agent/protocols/skips/batch-write", {
+        idempotencyKey: `skip-${randomUUID()}`,
+        today,
+        skips,
+        ...extra
+      });
+    const issuesOf = async (response) => {
+      assert.equal(response.status, 422);
+      const body = await response.json();
+      assert.equal(body.code, "agent_protocol_skip_batch_write_failed");
+      return body.issues;
+    };
+    const storedCount = async () =>
+      (await database.sql`
+        select count(*)::int as count from protocol_skips where user_id = ${userId}
+      `)[0].count;
+
+    try {
+      await insertUser(database, userId);
+      await insertUser(database, otherUserId);
+      const live = await writeProtocol(app, { start });
+      const archived = await writeProtocol(app, { start });
+      await database.sql`
+        update protocols
+        set deleted_at = now(),
+            payload = jsonb_set(payload, '{archived_on}', to_jsonb(${today}::text))
+        where id = ${archived.protocolId}
+      `;
+      const deleted = await writeProtocol(app, { start });
+      const deleteResponse = await post(app, "/agent/protocols/delete", {
+        idempotencyKey: `delete-${randomUUID()}`,
+        protocolIds: [deleted.protocolId]
+      });
+      assert.equal(deleteResponse.status, 200);
+      const others = await writeProtocol(otherApp, { start });
+
+      // The shared validator's rules, every issue collected.
+      const badTime = item(live, { plannedLocalTime: "9:00" });
+      const future = item(live, { localDate: addDays(today, 1) });
+      assert.deepEqual(await issuesOf(await write([badTime, future])), [
+        {
+          field: "skips[0].plannedLocalTime",
+          rule: "skip_time_format",
+          message: "A planned time must be HH:MM, from 00:00 to 23:59.",
+          itemIndex: 0,
+          entityId: badTime.id
+        },
+        {
+          field: "skips[1].localDate",
+          rule: "skip_future",
+          message: "A Skip can't be for a day after today.",
+          itemIndex: 1,
+          entityId: future.id
+        }
+      ]);
+      // The Protocol batch write's one-day bound on today.
+      assert.deepEqual(
+        (await issuesOf(await write([item(live)], { today: addDays(today, 3) }))).map(
+          (issue) => [issue.field, issue.rule]
+        ),
+        [["today", "today_out_of_range"]]
+      );
+
+      // protocol_not_found: an unknown id, another account's Protocol, and a
+      // deleted one; the live item beside them is refused with them.
+      const unknown = item({ protocolId: createUuidV7(), compoundId: createUuidV7() });
+      const foreign = item(others);
+      const gone = item(deleted);
+      assert.deepEqual(
+        await issuesOf(await write([item(live), unknown, foreign, gone])),
+        [unknown, foreign, gone].map((skipItem, index) => ({
+          field: `skips[${index + 1}].protocolId`,
+          rule: "protocol_not_found",
+          message: "No Protocol with this id exists for this account.",
+          itemIndex: index + 1,
+          entityId: skipItem.id
+        }))
+      );
+      assert.equal(await storedCount(), 0);
+
+      // An archived Protocol's past day can be skipped, and removing a Skip
+      // is accepted whatever its Protocol names.
+      const archivedSkip = item(archived, { localDate: addDays(today, -2) });
+      const accepted = await write([
+        archivedSkip,
+        { ...unknown, deletedAt: new Date().toISOString() },
+        { ...gone, deletedAt: new Date().toISOString() }
+      ]);
+      assert.equal(accepted.status, 200);
+      assert.deepEqual(
+        (await accepted.json()).skips.map((result) => result.outcome),
+        ["applied", "applied", "applied"]
+      );
+
+      // skip_immutable: a stored Skip's fields never change, and a removed
+      // Skip is never brought back.
+      const kept = item(live);
+      assert.equal((await write([kept])).status, 200);
+      assert.deepEqual(
+        await issuesOf(
+          await write([{ ...kept, plannedLocalTime: "21:00", localDate: addDays(today, -2) }])
+        ),
+        ["localDate", "plannedLocalTime"].map((field) => ({
+          field: `skips[0].${field}`,
+          rule: "skip_immutable",
+          message:
+            "A Skip is never edited. Remove it with deletedAt and skip again with a new id.",
+          itemIndex: 0,
+          entityId: kept.id
+        }))
+      );
+      assert.equal((await write([{ ...kept, deletedAt: new Date().toISOString() }])).status, 200);
+      for (const revived of [kept, { ...kept, deletedAt: null }]) {
+        assert.deepEqual(await issuesOf(await write([item(live), revived])), [
+          {
+            field: "skips[1].deletedAt",
+            rule: "skip_immutable",
+            message: "A removed Skip is never brought back. Skip again with a new id.",
+            itemIndex: 1,
+            entityId: kept.id
+          }
+        ]);
+      }
+      // Nothing from a refused batch was written.
+      assert.equal(await storedCount(), 4);
+
+      // A malformed body is a 400 before any rule.
+      for (const body of [
+        { today, skips: [item(live)] },
+        { idempotencyKey: "k", skips: [item(live)] },
+        { idempotencyKey: "k", today, skips: [] },
+        { idempotencyKey: "k", today, skips: [item(live, { localDate: "2026-02-30" })] },
+        { idempotencyKey: "k", today, skips: [item(live, { id: "skip-1" })] },
+        { idempotencyKey: "k", today, skips: [item(live, { amount: 5 })] },
+        { idempotencyKey: "k", today, skips: [item(live, { deletedAt: "yesterday" })] },
+        { idempotencyKey: "k", today, skips: [item(live)], archived: true }
+      ]) {
+        const response = await post(app, "/agent/protocols/skips/batch-write", body);
+        assert.equal(response.status, 400, JSON.stringify(body).slice(0, 120));
+      }
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "batchWriteAgentProtocolSkips removing a timed Skip sweeps its stored siblings into the same batch, an untimed one never, and a replay lists them",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocol-skips-sweep-${randomUUID()}`;
+    const app = createDeleteApp(database, userId);
+    const today = utcToday();
+    const yesterday = addDays(today, -1);
+    const start = addDays(today, -5);
+    const deletedAtOf = async (id) =>
+      (await database.sql`select deleted_at from protocol_skips where id = ${id}`)[0]
+        .deleted_at;
+    const remove = (skipItem, idempotencyKey = `skip-${randomUUID()}`) =>
+      post(app, "/agent/protocols/skips/batch-write", {
+        idempotencyKey,
+        today,
+        skips: [{ ...skipItem, deletedAt: new Date().toISOString() }]
+      });
+
+    try {
+      await insertUser(database, userId);
+      const timed = await writeProtocol(app, { start });
+      const untimed = await writeProtocol(app, {
+        start,
+        rule: { v: 1, kind: "untimed", days: { kind: "daily" }, count: 2 }
+      });
+      await insertStoredRows(database, schema.compounds, userId, [
+        storedCompound(timed.compoundId),
+        storedCompound(untimed.compoundId)
+      ]);
+      const timedSkip = (fields) =>
+        storeSkip(database, userId, {
+          protocolId: timed.protocolId,
+          compoundId: timed.compoundId,
+          localDate: yesterday,
+          plannedLocalTime: "09:00",
+          ...fields
+        });
+      // Two devices skipped yesterday's 09:00 offline. Beside them: a Skip
+      // at another time (it marks nothing), another day's 09:00, and one
+      // already removed.
+      const first = await timedSkip();
+      const second = await timedSkip();
+      const otherTime = await timedSkip({ plannedLocalTime: "21:00" });
+      const otherDay = await timedSkip({ localDate: addDays(today, -2) });
+      const removed = await timedSkip({ deletedAt: new Date(Date.now() - 60_000) });
+      const removedAt = await deletedAtOf(removed.item.id);
+
+      let [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: timed.compoundId
+      });
+      assert.equal(status.status, "skipped");
+      // The Skip a fill names is the lower id; the other is inert.
+      const marking = status.fills[0].skipId;
+      const [lower, higher] = [first.item.id, second.item.id].sort();
+      assert.equal(marking, lower);
+
+      // Removing the Skip the Day Status names sweeps its sibling, which
+      // gets its own entry after it.
+      const sweepKey = `skip-${randomUUID()}`;
+      const swept = await remove(
+        lower === first.item.id ? first.item : second.item,
+        sweepKey
+      );
+      assert.equal(swept.status, 200);
+      const sweptBody = await swept.json();
+      assert.deepEqual(sweptBody.skips, [
+        { id: lower, outcome: "applied" },
+        { id: higher, outcome: "applied" }
+      ]);
+      assert.notEqual(await deletedAtOf(lower), null);
+      assert.notEqual(await deletedAtOf(higher), null);
+      assert.equal(await deletedAtOf(otherTime.item.id), null);
+      assert.equal(await deletedAtOf(otherDay.item.id), null);
+      assert.deepEqual(await deletedAtOf(removed.item.id), removedAt);
+      const log = await database.sql`
+        select entity_id, before_image, after_image from activity_log
+        where user_id = ${userId} and batch_id = ${sweepKey}
+          and entity_table = 'protocol_skips'
+        order by entity_id
+      `;
+      assert.deepEqual(
+        log.map((entry) => entry.entity_id),
+        [lower, higher]
+      );
+      const siblingEntry = log.find((entry) => entry.entity_id === higher);
+      assert.equal(siblingEntry.before_image.deleted_at, null);
+      assert.notEqual(siblingEntry.after_image.deleted_at, null);
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: timed.compoundId
+      });
+      assert.equal(status.status, "not_logged");
+      assert.equal(status.skippedCount, 0);
+
+      // A replay of a sweeping request (the same body, so the same deletedAt)
+      // lists its swept Skip again, after its item, read back from the batch.
+      const sameBody = {
+        idempotencyKey: `skip-${randomUUID()}`,
+        today,
+        skips: [{ ...otherDay.item, deletedAt: new Date().toISOString() }]
+      };
+      const sameDayTwin = await timedSkip({ localDate: addDays(today, -2) });
+      const firstAnswer = await post(app, "/agent/protocols/skips/batch-write", sameBody);
+      assert.deepEqual((await firstAnswer.json()).skips, [
+        { id: otherDay.item.id, outcome: "applied" },
+        { id: sameDayTwin.item.id, outcome: "applied" }
+      ]);
+      const replay = await post(app, "/agent/protocols/skips/batch-write", sameBody);
+      assert.equal(replay.status, 200);
+      const replayBody = await replay.json();
+      assert.equal(replayBody.duplicate, true);
+      assert.deepEqual(replayBody.skips, [
+        { id: otherDay.item.id, outcome: "duplicate" },
+        { id: sameDayTwin.item.id, outcome: "duplicate" }
+      ]);
+
+      // Untimed Skips are removed alone: each answers a different planned dose.
+      const untimedSkip = () =>
+        storeSkip(database, userId, {
+          protocolId: untimed.protocolId,
+          compoundId: untimed.compoundId,
+          localDate: yesterday,
+          plannedLocalTime: null
+        });
+      const untimedFirst = await untimedSkip();
+      const untimedSecond = await untimedSkip();
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: untimed.compoundId
+      });
+      assert.equal(status.status, "skipped");
+      assert.equal(status.skippedCount, 2);
+      const untimedRemoval = await remove(untimedFirst.item);
+      assert.deepEqual((await untimedRemoval.json()).skips, [
+        { id: untimedFirst.item.id, outcome: "applied" }
+      ]);
+      assert.equal(await deletedAtOf(untimedSecond.item.id), null);
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: untimed.compoundId
+      });
+      assert.equal(status.status, "not_logged");
+      assert.equal(status.skippedCount, 1);
+
+      // Undoing the sweep restores both timed Skips.
+      const undo = await post(app, "/agent/activity/undo-batch", {
+        batchId: sweepKey,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(undo.status, 200);
+      assert.deepEqual(
+        (await undo.json()).entries.map((entry) => entry.outcome),
+        ["reverted", "reverted"]
+      );
+      assert.equal(await deletedAtOf(lower), null);
+      assert.equal(await deletedAtOf(higher), null);
+      [status] = await dayStatusesOf(app, {
+        fromLocalDate: yesterday,
+        toLocalDate: yesterday,
+        compoundId: timed.compoundId
+      });
+      assert.equal(status.status, "skipped");
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+/** Stores a Skip row as a sync push would, and the Agent item that names it. */
+async function storeSkip(
+  database,
+  userId,
+  { protocolId, compoundId, localDate, plannedLocalTime, updatedAt = new Date(), deletedAt = null }
+) {
+  const id = createUuidV7();
+  await insertOpaqueFixture(database, schema.protocolSkips, {
+    id,
+    userId,
+    updatedAt,
+    deletedAt,
+    payload: {
+      id,
+      protocol_id: protocolId,
+      compound_id: compoundId,
+      local_date: localDate,
+      planned_local_time: plannedLocalTime,
+      updated_at: updatedAt.toISOString(),
+      deleted_at: deletedAt?.toISOString() ?? null
+    }
+  });
+  return { item: { id, protocolId, compoundId, localDate, plannedLocalTime } };
+}
+
+/** The Day Status read, with fills unless `detail` says otherwise. */
+async function dayStatusesOf(app, params) {
+  const response = await app.request(
+    protocolDaysPath("day-statuses", { today: utcToday(), detail: "doses", ...params }),
+    { headers: authHeaders() }
+  );
+  assert.equal(response.status, 200);
+  return (await response.json()).dayStatuses;
+}
 
 test(
   "history counts archived members but not ones removed by undo, and an archived Protocol with no history can be deleted",
@@ -5132,6 +5795,7 @@ function stubStore(overrides) {
     writeCompoundBatch: notImplemented("writeCompoundBatch"),
     writeProtocolBatch: notImplemented("writeProtocolBatch"),
     deleteProtocols: notImplemented("deleteProtocols"),
+    writeProtocolSkipBatch: notImplemented("writeProtocolSkipBatch"),
     ...overrides
   };
 }

@@ -18,6 +18,10 @@ import 'protocols_lock_screen.dart';
 import '../../../widgets/grouped_rows.dart';
 import '../controllers/protocols_lock_controller.dart';
 
+// The log sheet's planned-dose target (D8) lives beside the controller that
+// writes it; it is exported here, where the Planned list builds it.
+export '../controllers/protocols_day_controller.dart' show PlannedDoseTarget;
+
 /// The Protocol Day view: a derived `Protocol Day` list, topped by the
 /// Planned list (D6) when the day has anything planned. Its FAB hands off to
 /// the Compound list
@@ -736,7 +740,8 @@ class _PlannedRowTile extends ConsumerWidget {
     ].join(' · ');
     // A future day has no log action (D6); nor can a row whose Compound
     // row is missing, which no validated plan holds. A "Logged" row opens
-    // the Dose that fills it for edit instead.
+    // the Dose that fills it for edit instead. A "Skipped" row opens the
+    // same log sheet as a "Pending" one, with Undo skip where Skip was (D8).
     final VoidCallback? onTap;
     if (row.status == PlannedRowStatus.logged) {
       final fillingDose = _fillingDose();
@@ -810,7 +815,9 @@ class _PlannedRowTile extends ConsumerWidget {
   /// Opens the log sheet for this row (D6): prefilled with the planned
   /// amount, unit and route, tagged with the row's Protocol, on the row's
   /// date. The sheet decides the time: now on today; on a past day the
-  /// planned time on that date, or 12:00 for an untimed row.
+  /// planned time on that date, or 12:00 for an untimed row. The sheet also
+  /// gets the row's planned dose (D8), which its Skip writes, or, on a
+  /// "Skipped" row, whose Skip its Undo skip and Save remove.
   Future<void> _openLogSheet(
     BuildContext context,
     CompoundRecord compound,
@@ -825,6 +832,7 @@ class _PlannedRowTile extends ConsumerWidget {
         plannedAmount: row.amount,
         plannedRoute: row.amount.route,
         protocol: protocol,
+        plannedDose: PlannedDoseTarget.fromRow(row, plannedDay.localDate),
       ),
     );
   }
@@ -1080,6 +1088,7 @@ class LogDoseSheet extends ConsumerStatefulWidget {
     this.plannedAmount,
     this.plannedRoute,
     this.protocol,
+    this.plannedDose,
   }) : editingDose = null;
 
   const LogDoseSheet.edit({super.key, required DoseRecord dose})
@@ -1090,6 +1099,7 @@ class LogDoseSheet extends ConsumerStatefulWidget {
         plannedAmount = null,
         plannedRoute = null,
         protocol = null,
+        plannedDose = null,
         editingDose = dose;
 
   /// The Compound this Dose logs against. Null in edit mode (a Dose reads its
@@ -1125,6 +1135,12 @@ class LogDoseSheet extends ConsumerStatefulWidget {
   /// tag. Null logs an untagged Dose by default.
   final ProtocolOptionRecord? protocol;
 
+  /// The planned dose a Planned list row names (D8), or null when the sheet
+  /// isn't opened from one. With it, Save shares its row with Skip, or with
+  /// Undo skip when the row is "Skipped" ([PlannedDoseTarget.skipId]); Save
+  /// then also removes that Skip in the Dose's own Batch (CUJ 16).
+  final PlannedDoseTarget? plannedDose;
+
   static const amountFieldKey = Key('protocols.logDose.amount');
   static const decrementButtonKey = Key('protocols.logDose.decrement');
   static const incrementButtonKey = Key('protocols.logDose.increment');
@@ -1137,6 +1153,14 @@ class LogDoseSheet extends ConsumerStatefulWidget {
   /// first-class.
   static const protocolFieldKey = Key('protocols.logDose.protocol');
   static const saveButtonKey = Key('protocols.logDose.save');
+
+  /// Skip (D8): shown beside Save when the sheet has a [plannedDose] whose
+  /// row isn't "Skipped".
+  static const skipButtonKey = Key('protocols.logDose.skip');
+
+  /// Undo skip (D8): shown beside Save when [plannedDose]'s row is
+  /// "Skipped".
+  static const unskipButtonKey = Key('protocols.logDose.unskip');
   static const deleteButtonKey = Key('protocols.logDose.delete');
   static const confirmDeleteButtonKey = Key('protocols.logDose.confirmDelete');
 
@@ -1174,6 +1198,11 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   /// (self-description, §1.1) — the fallback label if the Protocol has since
   /// been archived and dropped from the active picker list.
   String? _protocolName;
+
+  /// True while a write runs: Save, Delete, Skip or Undo skip. Every button
+  /// is disabled until it finishes, and each write checks it first, so a
+  /// double tap can't write twice. That matters most for Skip on an untimed
+  /// row, where two Skips would answer two planned doses (D8).
   bool _saving = false;
 
   @override
@@ -1395,18 +1424,54 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
               },
             ),
             const SizedBox(height: AppDimens.base),
-            SizedBox(
-              height: AppDimens.touchTarget,
-              child: FilledButton(
-                key: LogDoseSheet.saveButtonKey,
-                style: FilledButton.styleFrom(backgroundColor: colors.save),
-                onPressed: _saving || _amountOrNull() == null ? null : _save,
-                child: const Text('Save'),
-              ),
-            ),
+            _actions(context),
           ],
         ),
       ),
+    );
+  }
+
+  /// Save, full width; or, opened from a Planned list row (D8), a row of two
+  /// equal buttons, each at least 48 dp: Skip (or Undo skip on a "Skipped"
+  /// row) as a text button, then Save.
+  Widget _actions(BuildContext context) {
+    final colors = context.colors;
+    final save = SizedBox(
+      height: AppDimens.touchTarget,
+      child: FilledButton(
+        key: LogDoseSheet.saveButtonKey,
+        style: FilledButton.styleFrom(backgroundColor: colors.save),
+        onPressed: _saving || _amountOrNull() == null ? null : _save,
+        child: const Text('Save'),
+      ),
+    );
+    final plannedDose = widget.plannedDose;
+    if (plannedDose == null) {
+      return save;
+    }
+    final l10n = context.l10n;
+    final skipped = plannedDose.skipId != null;
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: SizedBox(
+            height: AppDimens.touchTarget,
+            child: TextButton(
+              key: skipped
+                  ? LogDoseSheet.unskipButtonKey
+                  : LogDoseSheet.skipButtonKey,
+              style: TextButton.styleFrom(
+                foregroundColor: colors.textPrimary,
+                minimumSize: const Size(0, AppDimens.touchTarget),
+              ),
+              onPressed: _saving ? null : (skipped ? _unskip : _skip),
+              child: Text(skipped ? l10n.logDoseUnskip : l10n.logDoseSkip),
+            ),
+          ),
+        ),
+        const SizedBox(width: AppDimens.dense),
+        Expanded(child: save),
+      ],
     );
   }
 
@@ -1575,7 +1640,7 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
   /// logging path.
   Future<void> _save() async {
     final amountValue = _amountOrNull();
-    if (amountValue == null) {
+    if (amountValue == null || _saving) {
       return;
     }
     final amountEntered = _amountController.text.trim();
@@ -1621,8 +1686,54 @@ class _LogDoseSheetState extends ConsumerState<LogDoseSheet> {
             tookAt: _instant,
             protocol: _selectedProtocol(),
           ),
+          // From a "Skipped" row, the Dose's Batch also removes the Skip.
+          unskipId: widget.plannedDose?.skipId,
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+
+    if (mounted) {
+      await Navigator.of(context).maybePop();
+    }
+  }
+
+  /// Skip (D8): writes a Skip for the row's own Protocol, Compound, date and
+  /// planned time, whatever the date, time and amount fields hold, then
+  /// closes the sheet. No confirmation, since Undo skip reverses it in two
+  /// taps. A failed write shows no message, as Save's doesn't (D6).
+  Future<void> _skip() {
+    final plannedDose = widget.plannedDose!;
+    return _runPlannedDoseWrite(
+      (controller) => controller.skipPlannedDose(plannedDose),
+    );
+  }
+
+  /// Undo skip (D8): removes the row's Skip, with its timed siblings, then
+  /// closes the sheet. The row reads "Pending" or "Not logged" again.
+  Future<void> _unskip() {
+    final skipId = widget.plannedDose!.skipId!;
+    return _runPlannedDoseWrite(
+      (controller) => controller.unskipPlannedDose(skipId),
+    );
+  }
+
+  /// Runs one Skip or Undo skip write under the sheet's in-flight guard, then
+  /// pops the sheet. On failure the guard is released and the error
+  /// propagates, with no message, as Save's does.
+  Future<void> _runPlannedDoseWrite(
+    Future<String> Function(ProtocolDayController controller) write,
+  ) async {
+    if (_saving) {
+      return;
+    }
+    setState(() => _saving = true);
+    final controller = ref.read(protocolDayControllerProvider.notifier);
+    try {
+      await write(controller);
     } finally {
       if (mounted) {
         setState(() => _saving = false);

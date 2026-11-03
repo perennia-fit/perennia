@@ -5717,6 +5717,405 @@ void main() {
       expect(emissions, <bool>[false, true]);
     });
   });
+
+  group('Skips (D8)', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    late String creatineId;
+    late String protocolId;
+    const start = ProtocolDayDate(year: 2026, month: 7, day: 1);
+    const today = ProtocolDayDate(year: 2026, month: 7, day: 10);
+    const yesterday = ProtocolDayDate(year: 2026, month: 7, day: 9);
+
+    setUp(() async {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+      creatineId = (await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: 'Creatine',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      ))
+          .compoundId;
+      protocolId = (await repositories.protocols.createProtocol(
+        ProtocolDraft(
+          name: 'Lean bulk',
+          startLocalDate: start,
+          compoundIds: <String>[creatineId],
+          schedulesByCompoundId: <String, ScheduleDraft?>{
+            creatineId: ScheduleDraft(
+              rule: TimedScheduleRule(
+                days: const DailyScheduleDays(),
+                times: const <String>['08:00', '21:00'],
+              ),
+              doseAmountValue: 5,
+              doseAmountEntered: '5',
+              doseUnit: DoseUnit.gram,
+              route: DoseRoute.oral,
+            ),
+          },
+        ),
+        today: start,
+      ))
+          .protocolId;
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    ProtocolSkipDraft draft({
+      ProtocolDayDate localDate = today,
+      String? plannedLocalTime = '21:00',
+      String? protocol,
+    }) =>
+        ProtocolSkipDraft(
+          protocolId: protocol ?? protocolId,
+          compoundId: creatineId,
+          localDate: localDate,
+          plannedLocalTime: plannedLocalTime,
+        );
+
+    Future<List<ProtocolSkipRow>> skipRows() =>
+        (database.select(database.protocolSkips)
+              ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+            .get();
+
+    Future<ProtocolSkipRow> skipRow(String id) =>
+        (database.select(database.protocolSkips)
+              ..where((row) => row.id.equals(id)))
+            .getSingle();
+
+    /// Writes a Skip and returns its id.
+    Future<String> skip(ProtocolSkipDraft value) async {
+      final before = (await skipRows()).map((row) => row.id).toSet();
+      await repositories.protocols.skipPlannedDose(value, today: today);
+      return (await skipRows())
+          .map((row) => row.id)
+          .toSet()
+          .difference(before)
+          .single;
+    }
+
+    Future<List<ActivityLogEntry>> batchEntries(String batchId) async =>
+        (await repositories.activityLog.listEntries())
+            .where((entry) => entry.batchId == batchId)
+            .toList();
+
+    DoseSnapshotDraft creatineDose(DateTime tookAt) => DoseSnapshotDraft(
+          compoundId: creatineId,
+          compoundName: 'Creatine',
+          amountValue: 5,
+          amountEntered: '5',
+          unit: DoseUnit.gram,
+          route: DoseRoute.oral,
+          tookAt: tookAt,
+          protocolId: protocolId,
+          protocolName: 'Lean bulk',
+        );
+
+    test(
+        'skipPlannedDose writes one row and one Activity Log entry in one '
+        'batch, and the day reads it', () async {
+      final batchId = await repositories.protocols.skipPlannedDose(
+        draft(),
+        today: today,
+      );
+
+      final row = (await skipRows()).single;
+      expect(row.protocolId, protocolId);
+      expect(row.compoundId, creatineId);
+      expect(row.localDate, '2026-07-10');
+      expect(row.plannedLocalTime, '21:00');
+      expect(row.deletedAt, equals(null));
+      expect(row.syncPreviouslySynced, isFalse);
+
+      final entries = await batchEntries(batchId);
+      expect(entries, hasLength(1));
+      expect(entries.single.entityTable, AppDatabase.protocolSkipsTable);
+      expect(entries.single.entityId, row.id);
+      expect(entries.single.beforeImage, equals(null));
+      expect(
+        entries.single.afterImage!.keys,
+        unorderedEquals(<String>[
+          'id',
+          'protocol_id',
+          'compound_id',
+          'local_date',
+          'planned_local_time',
+          'updated_at',
+          'deleted_at',
+        ]),
+      );
+
+      final day = await repositories.protocols.protocolDay(today);
+      expect(day.skips.single.id, row.id);
+      expect(day.skips.single.plannedLocalTime, '21:00');
+      expect(day.isEmpty, isTrue, reason: 'a Skip records no intake');
+      expect((await repositories.protocols.protocolDay(yesterday)).skips,
+          isEmpty);
+    });
+
+    test(
+        'skipPlannedDose validates: a malformed time or a date after today '
+        'throws and writes nothing', () async {
+      await expectLater(
+        repositories.protocols.skipPlannedDose(
+          draft(plannedLocalTime: '25:00'),
+          today: today,
+        ),
+        throwsA(
+          isA<DoseValidationException>().having(
+            (e) => e.errors.map((issue) => issue.rule),
+            'rules',
+            <String>['skip_time_format'],
+          ),
+        ),
+      );
+      await expectLater(
+        repositories.protocols.skipPlannedDose(
+          draft(localDate: today.addDays(1)),
+          today: today,
+        ),
+        throwsA(
+          isA<DoseValidationException>().having(
+            (e) => e.errors.map((issue) => issue.rule),
+            'rules',
+            <String>['skip_future'],
+          ),
+        ),
+      );
+      expect(await skipRows(), isEmpty);
+
+      // An untimed Skip, and one for a past day, are valid.
+      await skip(draft(plannedLocalTime: null));
+      await skip(draft(localDate: yesterday));
+      expect(await skipRows(), hasLength(2));
+    });
+
+    test(
+        'skipPlannedDose refuses a missing or deleted Protocol and accepts '
+        'an archived one', () async {
+      await expectLater(
+        repositories.protocols.skipPlannedDose(
+          draft(protocol: 'missing'),
+          today: today,
+        ),
+        throwsStateError,
+      );
+
+      await repositories.protocols.archiveProtocol(protocolId, today: today);
+      final archivedSkip = await skip(draft(localDate: yesterday));
+      expect((await skipRow(archivedSkip)).protocolId, protocolId);
+
+      final other = (await repositories.protocols.createProtocol(
+        ProtocolDraft(
+          name: 'Unused',
+          startLocalDate: start,
+          compoundIds: <String>[creatineId],
+        ),
+        today: start,
+      ))
+          .protocolId;
+      await repositories.protocols.deleteProtocol(other);
+      await expectLater(
+        repositories.protocols.skipPlannedDose(
+          draft(protocol: other),
+          today: today,
+        ),
+        throwsStateError,
+      );
+      expect(await skipRows(), hasLength(1));
+    });
+
+    test(
+        'unskipPlannedDose removes every Skip with the timed key, one '
+        'Activity Log entry each in one batch, and leaves the others',
+        () async {
+      final first = await skip(draft());
+      // Another device's Skip of the same planned dose, synced in.
+      final sibling = await skip(draft());
+      final otherTime = await skip(draft(plannedLocalTime: '08:00'));
+      final otherDay = await skip(draft(localDate: yesterday));
+
+      final batchId = await repositories.protocols.unskipPlannedDose(first);
+
+      expect((await skipRow(first)).deletedAt, isNotNull);
+      expect((await skipRow(sibling)).deletedAt, isNotNull);
+      expect((await skipRow(first)).updatedAt, (await skipRow(first)).deletedAt);
+      expect((await skipRow(otherTime)).deletedAt, equals(null));
+      expect((await skipRow(otherDay)).deletedAt, equals(null));
+      final entries = await batchEntries(batchId);
+      expect(
+        entries.map((entry) => entry.entityId),
+        unorderedEquals(<String>[first, sibling]),
+      );
+      for (final entry in entries) {
+        expect(entry.entityTable, AppDatabase.protocolSkipsTable);
+        expect(entry.beforeImage!['deleted_at'], equals(null));
+        expect(entry.afterImage!['deleted_at'], isNotNull);
+      }
+      expect(
+        (await repositories.protocols.protocolDay(today))
+            .skips
+            .map((skip) => skip.id),
+        <String>[otherTime],
+      );
+    });
+
+    test('unskipPlannedDose removes only the named untimed Skip', () async {
+      final first = await skip(draft(plannedLocalTime: null));
+      final second = await skip(draft(plannedLocalTime: null));
+
+      final batchId = await repositories.protocols.unskipPlannedDose(second);
+
+      expect((await skipRow(second)).deletedAt, isNotNull);
+      expect((await skipRow(first)).deletedAt, equals(null));
+      expect(await batchEntries(batchId), hasLength(1));
+    });
+
+    test(
+        'unskipPlannedDose of a Skip already removed still sweeps its '
+        'timed siblings and never brings it back; an unknown id throws',
+        () async {
+      final first = await skip(draft());
+      await repositories.protocols.unskipPlannedDose(first);
+      final removedAt = (await skipRow(first)).deletedAt;
+      final sibling = await skip(draft());
+
+      final batchId = await repositories.protocols.unskipPlannedDose(first);
+
+      expect((await skipRow(first)).deletedAt, removedAt);
+      expect((await skipRow(sibling)).deletedAt, isNotNull);
+      expect(
+        (await batchEntries(batchId)).map((entry) => entry.entityId),
+        <String>[sibling],
+      );
+      await expectLater(
+        repositories.protocols.unskipPlannedDose('missing'),
+        throwsStateError,
+      );
+    });
+
+    test(
+        'logDose(unskipId:) logs the Dose and removes the Skip with its '
+        'timed siblings in one transaction and batch', () async {
+      final skipId = await skip(draft());
+      final sibling = await skip(draft());
+
+      final result = await repositories.protocols.logDose(
+        creatineDose(DateTime(2026, 7, 10, 21, 5)),
+        unskipId: skipId,
+      );
+
+      expect((await skipRow(skipId)).deletedAt, isNotNull);
+      expect((await skipRow(sibling)).deletedAt, isNotNull);
+      final entries = await batchEntries(result.batchId);
+      expect(
+        entries.map((entry) => (entry.entityTable, entry.entityId)),
+        unorderedEquals(<(String, String)>[
+          (AppDatabase.dosesTable, result.doseId),
+          (AppDatabase.protocolSkipsTable, skipId),
+          (AppDatabase.protocolSkipsTable, sibling),
+        ]),
+      );
+      final day = await repositories.protocols.protocolDay(today);
+      expect(day.doses.single.id, result.doseId);
+      expect(day.skips, isEmpty);
+    });
+
+    test(
+        'logDose(unskipId:) with an unknown Skip throws and writes no Dose',
+        () async {
+      await expectLater(
+        repositories.protocols.logDose(
+          creatineDose(DateTime(2026, 7, 10, 21, 5)),
+          unskipId: 'missing',
+        ),
+        throwsStateError,
+      );
+      expect(await database.select(database.doses).get(), isEmpty);
+    });
+
+    test('undo reverses a skip, an unskip and a log-with-unskip', () async {
+      // Undoing the skip tombstones the Skip.
+      final skipBatch = await repositories.protocols.skipPlannedDose(
+        draft(),
+        today: today,
+      );
+      final skipId = (await skipRows()).single.id;
+      final undoSkip = await repositories.activityLog.undoBatch(skipBatch);
+      expect(undoSkip.conflicts, isEmpty);
+      expect((await skipRow(skipId)).deletedAt, isNotNull);
+      expect((await repositories.protocols.protocolDay(today)).skips, isEmpty);
+
+      // Undoing an unskip brings both timed Skips back.
+      final first = await skip(draft(localDate: yesterday));
+      final sibling = await skip(draft(localDate: yesterday));
+      final unskipBatch =
+          await repositories.protocols.unskipPlannedDose(first);
+      final undoUnskip = await repositories.activityLog.undoBatch(unskipBatch);
+      expect(undoUnskip.conflicts, isEmpty);
+      expect((await skipRow(first)).deletedAt, equals(null));
+      expect((await skipRow(sibling)).deletedAt, equals(null));
+
+      // Undoing a log-with-unskip removes the Dose and restores the Skip.
+      final logged = await repositories.protocols.logDose(
+        creatineDose(DateTime(2026, 7, 9, 21, 5)),
+        unskipId: first,
+      );
+      final undoLog = await repositories.activityLog.undoBatch(logged.batchId);
+      expect(undoLog.conflicts, isEmpty);
+      final day = await repositories.protocols.protocolDay(yesterday);
+      expect(day.doses, isEmpty);
+      expect(
+        day.skips.map((skip) => skip.id),
+        unorderedEquals(<String>[first, sibling]),
+      );
+    });
+
+    test(
+        'a Skip is not history: a Protocol with only Skips can be deleted, '
+        'its Skips stay stored, and undo brings the Protocol back', () async {
+      final skipId = await skip(draft(localDate: yesterday));
+      await skip(draft(plannedLocalTime: '08:00'));
+
+      expect(
+          await repositories.protocols.protocolHasHistory(protocolId), isFalse);
+      final batchId = await repositories.protocols.deleteProtocol(protocolId);
+
+      final skips = await skipRows();
+      expect(skips, hasLength(2));
+      expect(skips.every((row) => row.deletedAt == null), isTrue);
+      expect(await batchEntries(batchId), hasLength(1));
+
+      await repositories.activityLog.undoBatch(batchId);
+      expect(
+        (await repositories.protocols.listProtocols()).single.id,
+        protocolId,
+      );
+      expect((await skipRow(skipId)).deletedAt, equals(null));
+    });
+
+    test('watchProtocolDay re-emits when a Skip is written or removed',
+        () async {
+      final emissions = <ProtocolDayRecord>[];
+      final subscription = repositories.protocols
+          .watchProtocolDay(today)
+          .listen(emissions.add);
+      addTearDown(subscription.cancel);
+      await _waitFor(() => emissions.isNotEmpty);
+      expect(emissions.last.skips, isEmpty);
+
+      final skipId = await skip(draft());
+      await _waitFor(() => emissions.last.skips.isNotEmpty);
+      expect(emissions.last.skips.single.id, skipId);
+
+      await repositories.protocols.unskipPlannedDose(skipId);
+      await _waitFor(() => emissions.last.skips.isEmpty);
+    });
+  });
 }
 
 /// Reconstructs the persisted snapshot image of a `Dose` row for an immutability

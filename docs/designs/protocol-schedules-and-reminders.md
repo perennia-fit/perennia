@@ -1,8 +1,8 @@
 # Protocol Schedules and Reminders
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved (the 2026-11-02 revision: D8, CUJs 13 to 18, Phases 7 and 8, approved in perennia-fit/perennia#91). Phases 1 to 6 are Current (2026-10-28).
-*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, to record the decisions made building file 46a and Phase 5, and to record the decisions made building Phase 6; 2026-11-02 to close the archive day, add Protocol delete, and add Skips: D8)
+*   **Status:** Current (2026-11-02). Phases 1 to 8 are built; the 2026-11-02 revision (D8, CUJs 13 to 18, Phases 7 and 8) was approved in perennia-fit/perennia#91.
+*   **Date:** 2026-10-25 (revised 2026-10-26 after Goldfish review; 2026-10-27 to record the decisions made building Phases 1 and 2; 2026-10-28 to record the decisions made building file 34a and Phase 3, to close the question on nearest-time matching, to record behaviour a drift report found, to record the decisions made building file 40a and Phase 4, to record the decisions made building file 46a and Phase 5, and to record the decisions made building Phase 6; 2026-11-02 to close the archive day, add Protocol delete, and add Skips: D8, and to record the decisions made building Phases 7 and 8)
 
 --------------------------------------------------------------------------------
 
@@ -2070,7 +2070,7 @@ fill      += skipId: string | null         always present
 ```
 
 `skips` comes third so that `today` stays last. Every caller passes its
-Skips. Until Phase 8 stores them, callers pass an empty list.
+stored, non-tombstoned Skips; the list is empty only when there are none.
 
 #### Skips in the app
 
@@ -2246,6 +2246,44 @@ store types are exported from `apps/server/src/index.ts`, as Phase 6's were.
         non-tombstoned Skip with the same Protocol, Compound, date and time.
         That is the app's Undo skip, so an Agent removing the `skipId` it
         reads from a Day Status fill gets the same Day Status the app shows.
+    *   **Settled during Phase 8's build:**
+        *   **`duplicate_skip_id`** joins the 422 rules: a Skip id that
+            appears more than once in one batch is refused (`field`
+            `skips[i].id`, message "A Skip id may appear only once per
+            batch."), as a repeated Dose id is. Two rows for one id in one
+            push would leave which one wins to the push order.
+        *   **Where the rules run.** The validator's rules, the `today`
+            bound and `duplicate_skip_id` run in the pure step
+            (`prepareAgentProtocolSkipBatchWrite`); `protocol_not_found` and
+            `skip_immutable` read stored data, so they run in the store,
+            inside the write's transaction after the idempotency receipt, as
+            the Protocol batch write's stored checks do. A refusal there
+            rolls the receipt back.
+        *   **One stamp for every removal.** A swept sibling, and an item
+            that sets `deletedAt` on a stored, non-tombstoned Skip, are
+            stamped (`updated_at`) with the server clock, unless the stored
+            Skip is stamped at or after it (a device clock ahead within the
+            sync push's accepted skew). Then the stamp is one millisecond
+            after the stored `updated_at`, as a Protocol delete's is (above),
+            so last-writer-wins applies the removal. Stamping the item with
+            the request time would leave it `superseded` and its Skip live
+            while its siblings were swept. The siblings are read in one
+            query over the removal items' dates and grouped by key in
+            memory.
+        *   **A replay lists the swept Skips again.** A retried
+            `idempotencyKey` doesn't sweep again; the store reads the Skips
+            the first write swept from that batch's Activity Log entries,
+            and lists each, with outcome `duplicate`, after the first
+            removal item with its Protocol, Compound, date and time, as the
+            first answer did.
+        *   **Unreadable stored Skips are left out of every read.** The sync
+            push stores a Skip as sent, so a row can carry a `local_date`
+            that isn't a real date or a `planned_local_time` that isn't
+            `HH:MM`. `readPlanSkips` drops such a row, as it drops one with
+            no readable `protocol_id`, `compound_id` or `local_date`, and the
+            app's Skip reads (the Protocol Day and Consistency) drop the same
+            rows, so the app and the Agent read one Day Status and a
+            malformed row never breaks a read.
     *   **No list operation.** An Agent finds the Skips that matter in the
         Day Status read's fills (`detail=doses`). An inert Skip blocks
         nothing and needs no removal.
@@ -5463,6 +5501,13 @@ the constructor.
 *   **No change** to
     `apps/mobile/lib/features/activity/repositories/activity_feed_repository.dart`:
     the table reads "protocol skips" through the existing fallback.
+*   **Settled during Phase 8's build:** removing a Skip that is already a
+    tombstone (another device removed it first) doesn't rewrite it, since a
+    tombstoned Skip is never brought back, but a timed one still removes
+    its live siblings, so the row the user saw as "Skipped" ends up
+    unmarked. An unknown `skipId` throws `StateError`. `skipPlannedDose`
+    reports a validation failure as a failed `Future`
+    (`DoseValidationException`), as `logDose` does.
 
 ##### 90. `apps/mobile/lib/data/repositories/protocol_plan_repository.dart` (Modify, Phase 8 part)
 
@@ -5481,6 +5526,10 @@ the constructor.
         `protocolSkips`.
     *   **Conversion.** A `_planSkips` helper turns `ProtocolSkipRecord`s
         into `PlanSkip`s, as `_planDoses` does.
+    *   **A future day** (settled during Phase 8's build): `_plannedDay`'s
+        numbering run for a date after today passes no Skips. Its rows read
+        no status (D6), and a `skipId` there would contradict
+        `PlannedRow.skipId`'s meaning. Every Day Status read passes them.
 
 ##### 91. `apps/mobile/lib/features/sync/repositories/sync_repository.dart` (Modify)
 
@@ -5511,6 +5560,12 @@ the constructor.
         row is rejected as a malformed Dose is. It is not judged against
         today, because an archive is a past record.
     *   **Format.** The format version stays 1.
+    *   **How the import check runs** (settled during Phase 8's build): it
+        calls `validateProtocolSkip` with the row's own `local_date` as
+        `today`, so only `skip_time_format` can fire, and parses the date
+        with `ProtocolDayDate.parse`. Either failure is a
+        `PortableArchiveException` ("Archive row N is invalid"), as a row
+        that fails to decode is.
 
 ##### 93. `apps/mobile/lib/features/protocols/widgets/protocols_day_view.dart` and `apps/mobile/lib/features/protocols/controllers/protocols_day_controller.dart` (Modify, Phase 8 part)
 
@@ -5536,11 +5591,18 @@ the constructor.
             the sheet pops when it completes.
         *   **Failure.** A failure shows no message, as Save's doesn't.
         *   **Skip writes the target's values**, not the sheet's fields.
+        *   **Settled during Phase 8's build:** Save also returns at once
+            when `_saving` is already set, so a second tap before the next
+            frame can't write twice.
     *   **`ProtocolDayController`:**
         *   `skipPlannedDose(PlannedDoseTarget target)`, with the Protocols
             clock's today;
         *   `unskipPlannedDose(String skipId)`;
         *   `logDose(DoseSnapshotDraft draft, {String? unskipId})`.
+    *   **Where `PlannedDoseTarget` lives** (settled during Phase 8's
+        build): in `protocols_day_controller.dart`, not the view, because
+        the controller takes it and must not import the widget layer.
+        `protocols_day_view.dart` re-exports it.
 
 ##### 94. `apps/mobile/lib/features/protocols/widgets/consistency_screen.dart` (Modify, Phase 8 part)
 
@@ -5618,6 +5680,17 @@ the constructor.
     *   `SKILL.md`: one example of `log-protocol-skips`, and the rule that
         removing a timed Skip removes its siblings.
 *   **Generated contract** (Regenerate), as file 64.
+*   **Settled during Phase 8's build:**
+    *   **The opaque-table key** is `protocolSkips`, matching the existing
+        camelCase keys (`protocolCompounds`, `protocolTargetOutcomes`). The
+        sync entity, the Activity Log `entity_table` and `operationKind`
+        are `protocol_skips`.
+    *   **Request validation.** `id` uses `ClientUuidV7Schema` and
+        `localDate` and `today` use `LocalDateSchema`, so a value that
+        isn't one is a 400, as D8 says. `plannedLocalTime` accepts any
+        string or null, so the validator answers a bad time with a 422
+        `skip_time_format`. `deletedAt` must parse as a timestamp, or the
+        request is a 400.
 
 ##### 98. `CHANGELOG.md` (Modify, Phase 8 part)
 

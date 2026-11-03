@@ -37,6 +37,10 @@ export const EXERCISE_GROUPS_SYNC_ENTITY = "exercise_groups";
 export const EXERCISE_GROUP_MEMBERS_SYNC_ENTITY = "exercise_group_members";
 export const COMPOUNDS_SYNC_ENTITY = "compounds";
 export const DOSES_SYNC_ENTITY = "doses";
+// A Skip (docs/designs/protocol-schedules-and-reminders.md, D8). Additive:
+// an older client's pull skips the unknown entity, so SYNC_PROTOCOL_VERSION
+// stays 2.
+export const PROTOCOL_SKIPS_SYNC_ENTITY = "protocol_skips";
 export const PROTOCOLS_SYNC_ENTITY = "protocols";
 export const PROTOCOL_COMPOUNDS_SYNC_ENTITY = "protocol_compounds";
 export const SCHEDULES_SYNC_ENTITY = "schedules";
@@ -62,6 +66,7 @@ const SYNC_PULL_ENTITIES = [
   EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
   COMPOUNDS_SYNC_ENTITY,
   DOSES_SYNC_ENTITY,
+  PROTOCOL_SKIPS_SYNC_ENTITY,
   FOODS_SYNC_ENTITY,
   MEAL_TYPES_SYNC_ENTITY,
   FOOD_ENTRIES_SYNC_ENTITY,
@@ -95,6 +100,7 @@ const SYNC_PUSH_ENTITIES = [
   EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
   COMPOUNDS_SYNC_ENTITY,
   DOSES_SYNC_ENTITY,
+  PROTOCOL_SKIPS_SYNC_ENTITY,
   FOODS_SYNC_ENTITY,
   MEAL_TYPES_SYNC_ENTITY,
   FOOD_ENTRIES_SYNC_ENTITY,
@@ -521,6 +527,12 @@ export type SyncStore = {
     changes: SyncPushChange[];
   }): Promise<SyncPushResult>;
   pushDoses(input: {
+    userId: string;
+    correlationId?: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+  }): Promise<SyncPushResult>;
+  pushProtocolSkips(input: {
     userId: string;
     correlationId?: string;
     deviceId: string;
@@ -1603,6 +1615,47 @@ export async function pushDosesInTransaction(
     serverClock: serverClock.toISOString(),
     applied
   };
+}
+
+// A Skip (D8) rides the shared opaque push: per-row LWW, tenant isolation,
+// and the Activity Log envelope when present. No parent check: its
+// `protocol_id` and `compound_id` are soft references.
+export async function pushProtocolSkipsInTransaction(
+  transaction: LoggedSetMutationDatabase,
+  input: {
+    userId: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+    serverClock: Date;
+  }
+): Promise<SyncPushResult> {
+  return pushOpaqueSyncRowsInTransaction(transaction, {
+    ...input,
+    entityTable: PROTOCOL_SKIPS_SYNC_ENTITY,
+    async readExisting(id) {
+      const rows = await transaction
+        .select({
+          userId: schema.protocolSkips.userId,
+          updatedAt: schema.protocolSkips.updatedAt,
+          deviceId: schema.protocolSkips.deviceId,
+          payload: schema.protocolSkips.payload
+        })
+        .from(schema.protocolSkips)
+        .where(eq(schema.protocolSkips.id, id))
+        .limit(1);
+      return rows[0];
+    },
+    async writeRow(existing, row) {
+      if (existing === undefined) {
+        await transaction.insert(schema.protocolSkips).values(row);
+      } else {
+        await transaction
+          .update(schema.protocolSkips)
+          .set(row)
+          .where(eq(schema.protocolSkips.id, row.id));
+      }
+    }
+  });
 }
 
 export async function pushProtocolsInTransaction(
@@ -3914,6 +3967,19 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
 
       return result;
     },
+    async pushProtocolSkips({ userId, deviceId, changes }) {
+      const serverClock = new Date();
+      const result = await db.transaction((transaction) =>
+        pushProtocolSkipsInTransaction(transaction, {
+          userId,
+          deviceId,
+          changes,
+          serverClock
+        })
+      );
+
+      return result;
+    },
     async pushProtocols({ userId, deviceId, changes }) {
       const serverClock = new Date();
       const result = await db.transaction((transaction) =>
@@ -4295,6 +4361,12 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         schema.doses.id,
         cursorPosition
       );
+      const protocolSkipCursorFilter = pullCursorFilter(
+        PROTOCOL_SKIPS_SYNC_ENTITY,
+        schema.protocolSkips.receivedAt,
+        schema.protocolSkips.id,
+        cursorPosition
+      );
       const protocolCursorFilter = pullCursorFilter(
         PROTOCOLS_SYNC_ENTITY,
         schema.protocols.receivedAt,
@@ -4441,6 +4513,10 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
           : undefined;
       const liveDoseSnapshotFilter =
         mode === SYNC_PULL_MODE_SNAPSHOT ? isNull(schema.doses.deletedAt) : undefined;
+      const liveProtocolSkipSnapshotFilter =
+        mode === SYNC_PULL_MODE_SNAPSHOT
+          ? isNull(schema.protocolSkips.deletedAt)
+          : undefined;
       const liveProtocolSnapshotFilter =
         mode === SYNC_PULL_MODE_SNAPSHOT
           ? isNull(schema.protocols.deletedAt)
@@ -4861,6 +4937,28 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
           )
         )
         .orderBy(asc(schema.doses.receivedAt), asc(schema.doses.id))
+        .limit(limit);
+      const protocolSkipRows = await db
+        .select({
+          id: schema.protocolSkips.id,
+          deviceId: schema.protocolSkips.deviceId,
+          payload: schema.protocolSkips.payload,
+          updatedAt: schema.protocolSkips.updatedAt,
+          deletedAt: schema.protocolSkips.deletedAt,
+          receivedAt: schema.protocolSkips.receivedAt
+        })
+        .from(schema.protocolSkips)
+        .where(
+          and(
+            eq(schema.protocolSkips.userId, userId),
+            liveProtocolSkipSnapshotFilter,
+            protocolSkipCursorFilter
+          )
+        )
+        .orderBy(
+          asc(schema.protocolSkips.receivedAt),
+          asc(schema.protocolSkips.id)
+        )
         .limit(limit);
       const protocolRows = await db
         .select({
@@ -5293,6 +5391,15 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         })),
         ...doseRows.map((row): PullRow => ({
           entity: DOSES_SYNC_ENTITY,
+          id: row.id,
+          deviceId: row.deviceId,
+          payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
+          updatedAt: row.updatedAt,
+          deletedAt: row.deletedAt,
+          receivedAt: row.receivedAt
+        })),
+        ...protocolSkipRows.map((row): PullRow => ({
+          entity: PROTOCOL_SKIPS_SYNC_ENTITY,
           id: row.id,
           deviceId: row.deviceId,
           payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
@@ -5908,6 +6015,7 @@ function pullCursorFilter(
     | typeof schema.integrationDataClassConsents.receivedAt
     | typeof schema.compounds.receivedAt
     | typeof schema.doses.receivedAt
+    | typeof schema.protocolSkips.receivedAt
     | typeof schema.protocols.receivedAt
     | typeof schema.protocolCompounds.receivedAt
     | typeof schema.protocolTargetOutcomes.receivedAt
@@ -5940,6 +6048,7 @@ function pullCursorFilter(
     | typeof schema.integrationDataClassConsents.id
     | typeof schema.compounds.id
     | typeof schema.doses.id
+    | typeof schema.protocolSkips.id
     | typeof schema.protocols.id
     | typeof schema.protocolCompounds.id
     | typeof schema.protocolTargetOutcomes.id
@@ -6019,6 +6128,10 @@ function syncEntitySortRank(entity: SyncPullEntity) {
       return 2;
     case DOSES_SYNC_ENTITY:
       return 3;
+    // A Skip after the Doses it sits beside, before Foods. Its references are
+    // soft, so this is cosmetic ordering only (no PULL_PARENT_REFERENCES).
+    case PROTOCOL_SKIPS_SYNC_ENTITY:
+      return 3.5;
     // A Food before its Food Entries — a Food Entry's `food_id` is a soft
     // reference (never a Drift FK), so this is cosmetic ordering only,
     // mirroring Compound-before-Dose above.

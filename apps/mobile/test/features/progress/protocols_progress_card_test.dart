@@ -344,6 +344,88 @@ void main() {
     );
   });
 
+  test(
+      'the summary counts stored Skips: an all-skipped day as skipped, and '
+      'a day taken and skipped as logged (D8)', () async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+    const start = ProtocolDayDate(year: 2026, month: 10, day: 26);
+    const today = ProtocolDayDate(year: 2026, month: 10, day: 28);
+    final creatine = (await repositories.protocols.createCompound(
+      const CompoundDraft(
+        name: 'Creatine',
+        defaultUnit: DoseUnit.gram,
+        defaultRoute: DoseRoute.oral,
+      ),
+    ))
+        .compoundId;
+    final created = await repositories.protocols.createProtocol(
+      ProtocolDraft(
+        name: 'Daily',
+        startLocalDate: start,
+        compoundIds: <String>[creatine],
+        schedulesByCompoundId: <String, ScheduleDraft?>{
+          creatine: ScheduleDraft(
+            rule: TimedScheduleRule(
+              days: const DailyScheduleDays(),
+              times: const <String>['09:00', '21:00'],
+            ),
+            doseAmountValue: 5,
+            doseAmountEntered: '5',
+            doseUnit: DoseUnit.gram,
+            route: DoseRoute.oral,
+          ),
+        },
+      ),
+      today: start,
+    );
+    Future<void> skip(ProtocolDayDate date, String time) {
+      return repositories.protocols.skipPlannedDose(
+        ProtocolSkipDraft(
+          protocolId: created.protocolId,
+          compoundId: creatine,
+          localDate: date,
+          plannedLocalTime: time,
+        ),
+        today: today,
+      );
+    }
+
+    // The 26th: both skipped. The 27th: 09:00 taken, 21:00 skipped.
+    await skip(start, '09:00');
+    await skip(start, '21:00');
+    await repositories.protocols.logDose(
+      DoseSnapshotDraft(
+        compoundId: creatine,
+        compoundName: 'Creatine',
+        amountValue: 5,
+        amountEntered: '5',
+        unit: DoseUnit.gram,
+        route: DoseRoute.oral,
+        tookAt: DateTime(2026, 10, 27, 9),
+      ),
+    );
+    await skip(const ProtocolDayDate(year: 2026, month: 10, day: 27), '21:00');
+
+    final summary = (await repositories.protocolPlan
+            .watchConsistencySummary(start, today, today: today)
+            .first)
+        .single;
+
+    // Today (the 28th) is pending, so it is not counted.
+    expect(
+      (
+        summary.logged,
+        summary.partlyLogged,
+        summary.notLogged,
+        summary.paused,
+        summary.skipped,
+      ),
+      (1, 0, 0, 0, 1),
+    );
+  });
+
   testWidgets(
       'seven Compounds show six rows and "All protocols", which '
       'opens Today on its Protocols tab', (tester) async {
