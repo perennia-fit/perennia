@@ -19,6 +19,7 @@ import '../../catalog/widgets/exercise_catalog_picker.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../services/timer_background_scheduler.dart';
 import 'plan_progress_labels.dart';
+import 'replace_exercise.dart';
 import 'rest_strip.dart';
 
 class TrainingScreen extends ConsumerStatefulWidget {
@@ -66,6 +67,7 @@ class TrainingScreen extends ConsumerStatefulWidget {
   /// The alert volume slider, in the sheet the rest strip's time opens.
   static const restTimerVolumeSliderKey = RestStrip.volumeSliderKey;
   static const screenMenuButtonKey = Key('training.menu');
+  static const replaceExerciseMenuItemKey = Key('training.menu.replace');
   static const commentFieldKey = Key('training.comment');
   static const sideFieldKey = Key('training.side');
   static const rpeFieldKey = Key('training.rpe');
@@ -153,6 +155,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       _workoutExercisesSubscription;
   StreamSubscription<List<ExerciseGroupRecord>>? _groupsSubscription;
   StreamSubscription<List<ExerciseRecord>>? _exercisesSubscription;
+  StreamSubscription<ReplaceUndone>? _replaceUndoneSubscription;
   Set<String> _subscribedExerciseIds = const <String>{};
   List<LoggedSetRecord>? _workoutSets;
   List<WorkoutExerciseRecord> _workoutExercises =
@@ -228,6 +231,15 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         widget.recordSetIdsStream?.asBroadcastStream();
     _trackFormChanges(_commentController);
     _trackFormChanges(_rpeController);
+    // Undo of a Replace while its new Workout Exercise is open switches
+    // back, so the screen never sits on a soft-deleted row; the Replace may
+    // have started here or on the Workout screen.
+    _replaceUndoneSubscription =
+        ref.read(replaceUndoneProvider).stream.listen((undone) {
+      if (mounted && _activeWorkoutExerciseId == undone.newWorkoutExerciseId) {
+        _selectWorkoutExercise(undone.oldWorkoutExerciseId);
+      }
+    });
     _startLoad(
       _activeWorkoutExerciseId,
       useInitial: widget.initialWorkoutExercise != null &&
@@ -259,6 +271,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     unawaited(_workoutExercisesSubscription?.cancel());
     unawaited(_groupsSubscription?.cancel());
     unawaited(_exercisesSubscription?.cancel());
+    unawaited(_replaceUndoneSubscription?.cancel());
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -678,6 +691,8 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
                 return;
               }
               switch (action) {
+                case _TrainingScreenMenuAction.replaceExercise:
+                  unawaited(_replaceOpenExercise());
                 case _TrainingScreenMenuAction.exerciseOverview:
                   unawaited(
                     Navigator.of(context).push<void>(
@@ -690,6 +705,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
               }
             },
             itemBuilder: (context) => [
+              PopupMenuItem<_TrainingScreenMenuAction>(
+                key: TrainingScreen.replaceExerciseMenuItemKey,
+                value: _TrainingScreenMenuAction.replaceExercise,
+                child: Text(context.l10n.replaceExerciseMenuItem),
+              ),
               PopupMenuItem<_TrainingScreenMenuAction>(
                 value: _TrainingScreenMenuAction.exerciseOverview,
                 child: Text(context.l10n.trainingExerciseOverviewMenuItem),
@@ -735,6 +755,20 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         ),
       ),
     );
+  }
+
+  /// Replace exercise: the screen switches to the new Workout Exercise (and
+  /// back on its Undo: see [initState]).
+  Future<void> _replaceOpenExercise() async {
+    final newId = await replaceExercise(
+      context,
+      ref,
+      _activeWorkoutExerciseId,
+      snackBarMargin: _snackBarMargin,
+    );
+    if (newId != null && mounted) {
+      _selectWorkoutExercise(newId);
+    }
   }
 
   void _selectWorkoutExercise(String workoutExerciseId) {
@@ -1267,26 +1301,20 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     _notifyRestTimerChanged();
   }
 
-  /// Reverses one action's batch; on a conflict nothing is reverted and
-  /// "Couldn't undo: changed since" shows.
+  /// See [undoTrainingBatch].
   Future<bool> _undoBatch(
     TrainingRepositories repositories,
     ScaffoldMessengerState messenger,
     AppLocalizations l10n,
     String batchId,
-  ) async {
-    final ActivityLogUndoResult result;
-    try {
-      result = await repositories.activityLog.undoBatch(batchId);
-    } on StateError {
-      _showSnackBar(messenger, l10n.trainingUndoConflict);
-      return false;
-    }
-    if (result.hasConflicts) {
-      _showSnackBar(messenger, l10n.trainingUndoConflict);
-      return false;
-    }
-    return true;
+  ) {
+    return undoTrainingBatch(
+      repositories,
+      messenger,
+      l10n,
+      batchId,
+      margin: _snackBarMargin,
+    );
   }
 
   Future<void> _updateSelected(
@@ -1503,6 +1531,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     );
   }
 
+  /// See [showTrainingSnackBar].
   void _showSnackBar(
     ScaffoldMessengerState messenger,
     String message, {
@@ -1510,25 +1539,14 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     String? undoLabel,
     VoidCallback? onUndo,
   }) {
-    messenger
-      ..removeCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          key: key,
-          content: Text(message),
-          duration: Duration(seconds: onUndo == null ? 2 : 4),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(
-            AppDimens.base * 2,
-            AppDimens.base * 2,
-            AppDimens.base * 2,
-            AppDimens.base * 12,
-          ),
-          action: onUndo == null || undoLabel == null
-              ? null
-              : SnackBarAction(label: undoLabel, onPressed: onUndo),
-        ),
-      );
+    showTrainingSnackBar(
+      messenger,
+      message,
+      key: key,
+      margin: _snackBarMargin,
+      undoLabel: undoLabel,
+      onUndo: onUndo,
+    );
   }
 
   void _notifyRestTimerChanged() {
@@ -1552,7 +1570,15 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   }
 }
 
-enum _TrainingScreenMenuAction { exerciseOverview }
+enum _TrainingScreenMenuAction { replaceExercise, exerciseOverview }
+
+/// Floats the screen's confirmations above the pinned Log set buttons.
+const _snackBarMargin = EdgeInsets.fromLTRB(
+  AppDimens.base * 2,
+  AppDimens.base * 2,
+  AppDimens.base * 2,
+  AppDimens.base * 12,
+);
 
 /// What the form last loaded, for the reload rules: a different Current Set
 /// always reloads, and changed stored values or rest reload a clean form.

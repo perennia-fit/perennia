@@ -34,6 +34,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   Pending or Not logged, and the Agent API can do the same
   (`log-protocol-skips`). Update every device: older versions show skipped
   doses as not yet logged.
+- **Replace an exercise inside a Workout**, from the Training Screen's menu or
+  the ⋮ button on a Workout card. The new exercise takes the old one's place in
+  the order and in its superset, with the remaining planned sets at the same
+  rests and the values you last did it with. Sets you already did stay with
+  the old exercise, and **Undo** puts everything back.
 
 ### Changed
 
