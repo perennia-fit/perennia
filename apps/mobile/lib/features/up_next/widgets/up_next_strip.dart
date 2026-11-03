@@ -119,7 +119,7 @@ class _RoutineUpNextGroup extends StatelessWidget {
   }
 }
 
-class _UpNextCardTile extends ConsumerWidget {
+class _UpNextCardTile extends ConsumerStatefulWidget {
   const _UpNextCardTile({
     required this.routineId,
     required this.slot,
@@ -131,8 +131,21 @@ class _UpNextCardTile extends ConsumerWidget {
   final UpNextCardView card;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_UpNextCardTile> createState() => _UpNextCardTileState();
+}
+
+class _UpNextCardTileState extends ConsumerState<_UpNextCardTile> {
+  /// Set while a start is in flight. A quick double tap on ▶ (easy with
+  /// gloves) would otherwise run [_start] twice and materialize two
+  /// Workouts with the same Template Link. Not shown in the UI, so it is a
+  /// plain field rather than state that rebuilds the tile.
+  bool _starting = false;
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final card = widget.card;
+    final routineId = widget.routineId;
     if (card.isDone) {
       return Semantics(
         key: UpNextStrip.doneKey(routineId, card.workoutTemplateId),
@@ -157,8 +170,7 @@ class _UpNextCardTile extends ConsumerWidget {
       );
     }
 
-    final isEmpty =
-        ref
+    final isEmpty = ref
             .watch(emptyWorkoutTemplateIdsProvider)
             .value
             ?.contains(card.workoutTemplateId) ??
@@ -170,7 +182,7 @@ class _UpNextCardTile extends ConsumerWidget {
             color: Colors.transparent,
             child: InkWell(
               key: UpNextStrip.cardKey(routineId, card.workoutTemplateId),
-              onTap: () => unawaited(_preview(context, ref)),
+              onTap: () => unawaited(_preview()),
               child: Semantics(
                 button: true,
                 label: l10n.homeUpNextPreviewLabel(card.templateName),
@@ -217,7 +229,7 @@ class _UpNextCardTile extends ConsumerWidget {
             minWidth: AppDimens.touchTarget,
             minHeight: AppDimens.touchTarget,
           ),
-          onPressed: () => unawaited(_start(context, ref)),
+          onPressed: () => unawaited(_start()),
           icon: Icon(
             Icons.play_arrow,
             color: Theme.of(context).colorScheme.primary,
@@ -230,24 +242,36 @@ class _UpNextCardTile extends ConsumerWidget {
   /// The card body's look before starting: the preview's Start runs the
   /// same [_start] as the ▶ button, so both record the same Template Link
   /// and pass the same empty-Template prompt.
-  Future<void> _preview(BuildContext context, WidgetRef ref) async {
+  Future<void> _preview() async {
     final confirmed = await showTemplatePickerPreviewSheet(
       context,
-      templateId: card.workoutTemplateId,
-      templateName: card.templateName,
+      templateId: widget.card.workoutTemplateId,
+      templateName: widget.card.templateName,
     );
-    if (confirmed == true && context.mounted) {
-      await _start(context, ref);
+    if (confirmed == true && mounted) {
+      await _start();
     }
   }
 
-  Future<void> _start(BuildContext context, WidgetRef ref) async {
+  Future<void> _start() async {
+    if (_starting) {
+      return;
+    }
+    _starting = true;
+    try {
+      await _startOnce();
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<void> _startOnce() async {
     final proceed = await confirmTemplateStart(
       context,
       ref,
-      workoutTemplateId: card.workoutTemplateId,
+      workoutTemplateId: widget.card.workoutTemplateId,
     );
-    if (!proceed || !context.mounted) {
+    if (!proceed || !mounted) {
       return;
     }
     final messenger = ScaffoldMessenger.of(context);
@@ -256,11 +280,11 @@ class _UpNextCardTile extends ConsumerWidget {
     try {
       final workoutId =
           await ref.read(templateMaterializeControllerProvider).start(
-                workoutTemplateId: card.workoutTemplateId,
-                routineId: routineId,
-                slot: slot,
+                workoutTemplateId: widget.card.workoutTemplateId,
+                routineId: widget.routineId,
+                slot: widget.slot,
               );
-      if (!context.mounted) {
+      if (!mounted) {
         return;
       }
       await navigator.push(
@@ -269,7 +293,7 @@ class _UpNextCardTile extends ConsumerWidget {
         ),
       );
     } on Object {
-      if (context.mounted) {
+      if (mounted) {
         messenger.showSnackBar(SnackBar(content: Text(failureMessage)));
       }
     }

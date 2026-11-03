@@ -687,15 +687,7 @@ class TemplatePickerPreviewSheet extends ConsumerWidget {
                   }
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final block in _previewBlocks(template))
-                        switch (block) {
-                          _PreviewExerciseBlock(:final exercise) =>
-                            _PreviewExercise(exercise: exercise),
-                          _PreviewGroupBlock(:final group, :final members) =>
-                            _PreviewGroup(group: group, members: members),
-                        },
-                    ],
+                    children: _previewEntries(template),
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -721,32 +713,13 @@ class TemplatePickerPreviewSheet extends ConsumerWidget {
   }
 }
 
-/// One entry of the preview's list: an ungrouped exercise, or a Template
-/// Group with its members.
-sealed class _PreviewBlock {
-  const _PreviewBlock();
-}
-
-final class _PreviewExerciseBlock extends _PreviewBlock {
-  const _PreviewExerciseBlock(this.exercise);
-
-  final TemplateExerciseDetail exercise;
-}
-
-final class _PreviewGroupBlock extends _PreviewBlock {
-  const _PreviewGroupBlock(this.group, this.members);
-
-  final TemplateGroupDetail group;
-  final List<TemplateExerciseDetail> members;
-}
-
 /// The preview's list in Template order, with each Template Group's members
 /// gathered under it where its first member sits.
 ///
 /// Members are listed in member order, the order a started Workout walks
 /// the group in, so a group whose members are not adjacent in the Template
 /// still reads as one superset here rather than splitting its header.
-List<_PreviewBlock> _previewBlocks(WorkoutTemplateDetail template) {
+List<Widget> _previewEntries(WorkoutTemplateDetail template) {
   final exerciseById = {
     for (final exercise in template.exercises) exercise.id: exercise,
   };
@@ -755,22 +728,26 @@ List<_PreviewBlock> _previewBlocks(WorkoutTemplateDetail template) {
       for (final member in group.members) member.templateExerciseId: group,
   };
   final shownGroupIds = <String>{};
-  final blocks = <_PreviewBlock>[];
+  final entries = <Widget>[];
   for (final exercise in template.exercises) {
     final group = groupByExerciseId[exercise.id];
     if (group == null) {
-      blocks.add(_PreviewExerciseBlock(exercise));
+      entries.add(_PreviewExercise(exercise: exercise));
     } else if (shownGroupIds.add(group.id)) {
-      blocks.add(
-        _PreviewGroupBlock(group, [
-          for (final member in group.members)
-            if (exerciseById[member.templateExerciseId] case final member?)
-              member,
-        ]),
+      entries.add(
+        _PreviewGroup(
+          group: group,
+          members: [
+            for (final member in group.members)
+              if (exerciseById[member.templateExerciseId]
+                  case final memberExercise?)
+                memberExercise,
+          ],
+        ),
       );
     }
   }
-  return blocks;
+  return entries;
 }
 
 /// One exercise's name with a line per Prescription under it, in the

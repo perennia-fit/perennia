@@ -43,6 +43,10 @@ String prescriptionSummary(
 }
 
 /// The short label a Training Unit is written with after a value ("kg").
+///
+/// The Training Screen keeps its own copy of this mapping
+/// (`_unitShortLabel` in training_screen.dart); a new Training Unit or a
+/// changed label has to land in both until they are merged.
 String trainingUnitLabel(BuildContext context, TrainingUnit unit) {
   final l10n = context.l10n;
   return switch (unit) {

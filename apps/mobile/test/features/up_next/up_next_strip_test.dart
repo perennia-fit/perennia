@@ -338,6 +338,78 @@ void main() {
   });
 
   testWidgets(
+      "the preview's Start on an empty Template asks before starting, like "
+      'the ▶', (tester) async {
+    await _setLargePhone(tester);
+    final materializeRepository = _EmptyTemplateMaterializeFeatureRepository(
+      emptyTemplateNames: const {'template-remaining': 'Push A'},
+    );
+    final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository();
+    addTearDown(workoutTemplateRepository.close);
+    await tester.pumpWidget(
+      _testApp(
+        repository: _repositoryWith(<UpNextSuggestionView>[
+          _weeklySuggestion(doneSecondCard: false),
+        ]),
+        materializeRepository: materializeRepository,
+        workoutTemplateRepository: workoutTemplateRepository,
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(UpNextStrip.cardKey('routine-1', 'template-remaining')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(TemplatePickerPreviewSheet.startButtonKey),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(TemplatePickerPreviewSheet.startButtonKey));
+    await _pumpUntilFound(tester, find.byType(EmptyTemplateStartDialog));
+
+    expect(find.byType(EmptyTemplateStartDialog), findsOneWidget);
+    expect(find.text('"Push A" has no exercises'), findsOneWidget);
+    expect(materializeRepository.calls, isEmpty);
+
+    await tester.tap(find.byKey(EmptyTemplateStartDialog.confirmButtonKey));
+    await tester.pump();
+
+    expect(materializeRepository.calls, ['template-remaining']);
+  });
+
+  testWidgets("a double tap on a card's ▶ starts one Workout, not two",
+      (tester) async {
+    await _setLargePhone(tester);
+    final materializeRepository =
+        _RecordingTemplateMaterializeFeatureRepository();
+    await tester.pumpWidget(
+      _testApp(
+        repository: _repositoryWith(<UpNextSuggestionView>[
+          _weeklySuggestion(doneSecondCard: false),
+        ]),
+        materializeRepository: materializeRepository,
+        home: const Scaffold(body: UpNextStrip()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final start = find
+        .byKey(UpNextStrip.startButtonKey('routine-1', 'template-remaining'));
+    // Both taps land before the first start has finished: the recording
+    // repository never resolves, so the first start is still in flight.
+    await tester.tap(start);
+    await tester.tap(start);
+    await tester.pump();
+    await tester.tap(start);
+    await tester.pump();
+
+    expect(materializeRepository.calls, hasLength(1));
+  });
+
+  testWidgets(
       "a card's ▶ is a 48 dp target labelled \"Start <name>\", and its body "
       'is labelled as a preview', (tester) async {
     await _setLargePhone(tester);
@@ -439,12 +511,11 @@ class _StubUpNextFeatureRepository implements UpNextFeatureRepository {
 class _RecordingTemplateMaterializeFeatureRepository
     implements TemplateMaterializeFeatureRepository {
   final List<
-          ({
-            String workoutTemplateId,
-            String? routineId,
-            int? slot,
-          })> calls =
-      <({String workoutTemplateId, String? routineId, int? slot})>[];
+      ({
+        String workoutTemplateId,
+        String? routineId,
+        int? slot,
+      })> calls = <({String workoutTemplateId, String? routineId, int? slot})>[];
   final Completer<String> _completer = Completer<String>();
 
   @override
@@ -480,12 +551,11 @@ class _ResolvingTemplateMaterializeFeatureRepository
 
   final String _workoutId;
   final List<
-          ({
-            String workoutTemplateId,
-            String? routineId,
-            int? slot,
-          })> calls =
-      <({String workoutTemplateId, String? routineId, int? slot})>[];
+      ({
+        String workoutTemplateId,
+        String? routineId,
+        int? slot,
+      })> calls = <({String workoutTemplateId, String? routineId, int? slot})>[];
 
   @override
   Future<String> materializeTemplate({
