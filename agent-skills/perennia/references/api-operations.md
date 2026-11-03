@@ -56,6 +56,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `log-meal` | POST | `/agent/meals/batch-write` |
 | `log-metrics` | POST | `/agent/metrics/batch-write` |
 | `log-nutrition-goals` | POST | `/agent/nutrition/goals/batch-write` |
+| `log-protocol-skips` | POST | `/agent/protocols/skips/batch-write` |
 | `log-workout` | POST | `/agent/workouts/batch-write` |
 | `manage-compounds` | POST | `/agent/protocols/compounds/batch-write` |
 | `manage-exercise-catalog` | POST | `/agent/exercises/batch-write` |

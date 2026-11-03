@@ -233,6 +233,7 @@ class TrainingRepositories {
     AppDatabase.metricReadingsTable,
     AppDatabase.metricsTable,
     AppDatabase.dosesTable,
+    AppDatabase.protocolSkipsTable,
     AppDatabase.schedulesTable,
     AppDatabase.protocolTargetOutcomesTable,
     AppDatabase.protocolCompoundsTable,
@@ -5095,10 +5096,15 @@ class ProtocolsRepository {
   /// Logs a self-describing `Dose` (PROTOCOLS.md §1.1/§1.2). Snapshots the
   /// Compound's name now; captures the timezone and freezes the local date at
   /// log time. One reversible Activity Log batch; local-first.
+  ///
+  /// With [unskipId] (Save from a "Skipped" row, D8 and CUJ 16), the same
+  /// transaction and batch also does [unskipPlannedDose]'s writes for that
+  /// Skip, so the row reads "Logged" with no stray Skip behind it.
   Future<LogDoseResult> logDose(
     DoseSnapshotDraft draft, {
     String actor = 'manual',
     String? batchId,
+    String? unskipId,
   }) {
     final context = _repositories._writeContexts.create(
       actor: actor,
@@ -5107,6 +5113,9 @@ class ProtocolsRepository {
 
     return _database.transaction(() async {
       final outcome = await _logDose(draft, context);
+      if (unskipId != null) {
+        await _unskipPlannedDose(unskipId, context);
+      }
       return LogDoseResult(
         batchId: context.batchId,
         doseId: outcome.doseId,
@@ -5144,6 +5153,139 @@ class ProtocolsRepository {
       }
       return List<LogDoseResult>.unmodifiable(results);
     });
+  }
+
+  /// Writes a Skip (D8): "not taken, on purpose" for the planned dose
+  /// [draft] names. Runs the shared `validateProtocolSkip` first, so a
+  /// malformed planned time or a date after [today] throws before anything
+  /// is written. Throws a [StateError] when the Protocol row is missing or
+  /// tombstoned by undo or delete (`deleted_at` without `archived_on`); an
+  /// archived Protocol is accepted, because a Skip records without editing
+  /// the Protocol. It doesn't check that the Skip names a planned dose: the
+  /// plan can change after a Skip is written, and a Skip that marks nothing
+  /// is valid. One row and one Activity Log entry in one transaction and
+  /// batch; returns the batch id.
+  Future<String> skipPlannedDose(
+    ProtocolSkipDraft draft, {
+    required ProtocolDayDate today,
+    String actor = 'manual',
+    String? batchId,
+  }) async {
+    validateProtocolSkip(
+      localDate: draft.localDate,
+      plannedLocalTime: draft.plannedLocalTime,
+      today: today,
+    ).throwIfRejected();
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      final protocol = await _requireProtocolRow(draft.protocolId);
+      if (protocol.deletedAt != null && protocol.archivedOn == null) {
+        throw StateError('Protocol is deleted: ${draft.protocolId}.');
+      }
+      final id = _repositories._ids.create(context.timestamp);
+      await _database.into(_database.protocolSkips).insert(
+            ProtocolSkipsCompanion.insert(
+              id: id,
+              protocolId: draft.protocolId,
+              compoundId: draft.compoundId,
+              localDate: draft.localDate.storageValue,
+              plannedLocalTime: Value<String?>(draft.plannedLocalTime),
+              updatedAt: context.timestamp,
+            ),
+          );
+      final after = await _requireProtocolSkipRow(id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.protocolSkipsTable,
+        entityId: id,
+        beforeImage: null,
+        afterImage: _protocolSkipImage(after),
+      );
+      return context.batchId;
+    });
+  }
+
+  /// Removes a Skip (D8's Undo skip): tombstones [skipId]. When it is timed,
+  /// the same write also tombstones every other non-tombstoned Skip with
+  /// the same Protocol, Compound, date and time: two devices can each write
+  /// one, only one marks the planned dose, and removing just that one would
+  /// leave the row "Skipped". An untimed Skip is removed alone, because each
+  /// one answers a different planned dose. Each row gets its own Activity
+  /// Log entry, all in one transaction and batch; returns the batch id.
+  /// Throws a [StateError] for an unknown id.
+  Future<String> unskipPlannedDose(
+    String skipId, {
+    String actor = 'manual',
+    String? batchId,
+  }) {
+    final context = _repositories._writeContexts.create(
+      actor: actor,
+      batchId: batchId,
+    );
+
+    return _database.transaction(() async {
+      await _unskipPlannedDose(skipId, context);
+      return context.batchId;
+    });
+  }
+
+  /// [unskipPlannedDose]'s writes, inside the caller's transaction. A Skip
+  /// already tombstoned (another device removed it first) is not written
+  /// again, but a timed one still sweeps its siblings: the row the caller
+  /// read as "Skipped" may be marked by one of them, and removing the Skip
+  /// the user tapped must leave it unmarked. Never brings a tombstoned Skip
+  /// back.
+  Future<void> _unskipPlannedDose(String skipId, WriteContext context) async {
+    final target = await _requireProtocolSkipRow(skipId);
+    final plannedLocalTime = target.plannedLocalTime;
+    final rows = <ProtocolSkipRow>[
+      if (target.deletedAt == null) target,
+      if (plannedLocalTime != null)
+        ...await (_database.select(_database.protocolSkips)
+              ..where(
+                (row) =>
+                    row.deletedAt.isNull() &
+                    row.id.equals(skipId).not() &
+                    row.protocolId.equals(target.protocolId) &
+                    row.compoundId.equals(target.compoundId) &
+                    row.localDate.equals(target.localDate) &
+                    row.plannedLocalTime.equals(plannedLocalTime),
+              )
+              ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+            .get(),
+    ];
+    for (final before in rows) {
+      await (_database.update(_database.protocolSkips)
+            ..where((row) => row.id.equals(before.id)))
+          .write(
+        ProtocolSkipsCompanion(
+          updatedAt: Value<DateTime>(context.timestamp),
+          deletedAt: Value<DateTime?>(context.timestamp),
+        ),
+      );
+      final after = await _requireProtocolSkipRow(before.id);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.protocolSkipsTable,
+        entityId: before.id,
+        beforeImage: _protocolSkipImage(before),
+        afterImage: _protocolSkipImage(after),
+      );
+    }
+  }
+
+  Future<ProtocolSkipRow> _requireProtocolSkipRow(String id) async {
+    final row = await (_database.select(_database.protocolSkips)
+          ..where((row) => row.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) {
+      throw StateError('Skip not found: $id.');
+    }
+    return row;
   }
 
   /// Edits a logged `Dose` in place (amount/unit/route/time), keeping its
@@ -5319,6 +5461,7 @@ class ProtocolsRepository {
   static const _syncEntityTables = <String>{
     AppDatabase.compoundsTable,
     AppDatabase.dosesTable,
+    AppDatabase.protocolSkipsTable,
     AppDatabase.protocolsTable,
     AppDatabase.protocolCompoundsTable,
     AppDatabase.schedulesTable,
@@ -5366,6 +5509,13 @@ class ProtocolsRepository {
         case AppDatabase.dosesTable:
           await _database.into(_database.doses).insertOnConflictUpdate(
                 _doseSyncCompanionFromImage(
+                  image,
+                  syncDeviceId: deviceId,
+                ),
+              );
+        case AppDatabase.protocolSkipsTable:
+          await _database.into(_database.protocolSkips).insertOnConflictUpdate(
+                _protocolSkipSyncCompanionFromImage(
                   image,
                   syncDeviceId: deviceId,
                 ),
@@ -6035,7 +6185,10 @@ class ProtocolsRepository {
     final rows = await _activeDoseQuery(
       (row) => row.localDate.equals(localDate.storageValue),
     ).get();
-    return _protocolDayFromRows(localDate, rows);
+    final skipRows = await _activeProtocolSkipQuery(
+      (row) => row.localDate.equals(localDate.storageValue),
+    ).get();
+    return _protocolDayFromRows(localDate, rows, skipRows);
   }
 
   /// Reactive variant of [protocolDay]: re-emits whenever any `Dose` changes,
@@ -6044,12 +6197,20 @@ class ProtocolsRepository {
   /// ([_compareDosesByClock]): matching's order (D6 step 2) whenever every
   /// Dose's clock falls on the Protocol Day, so the day's log and the Planned
   /// list then take them in the same order.
+  ///
+  /// The day's Skips (D8) are read too, from a second watch combined with
+  /// the Doses', so a Skip written or removed re-emits the day.
   Stream<ProtocolDayRecord> watchProtocolDay(ProtocolDayDate localDate) {
-    return _activeDoseQuery(
-      (row) => row.localDate.equals(localDate.storageValue),
-    ).watch().map(
-          (rows) => _protocolDayFromRows(localDate, rows),
-        );
+    return _combineLatest2(
+      _activeDoseQuery(
+        (row) => row.localDate.equals(localDate.storageValue),
+      ).watch(),
+      _activeProtocolSkipQuery(
+        (row) => row.localDate.equals(localDate.storageValue),
+      ).watch(),
+      (List<DoseRow> rows, List<ProtocolSkipRow> skipRows) =>
+          _protocolDayFromRows(localDate, rows, skipRows),
+    );
   }
 
   SimpleSelectStatement<$CompoundsTable, CompoundRow> _activeCompoundQuery({
@@ -6084,6 +6245,45 @@ class ProtocolsRepository {
       ]);
   }
 
+  /// The Skips that aren't tombstoned (D8) that [filter] keeps, ordered by
+  /// id: matching's order (D8, step 3). The Protocol Day and the
+  /// Consistency reads share it, so they share one tombstone filter.
+  SimpleSelectStatement<$ProtocolSkipsTable, ProtocolSkipRow>
+      _activeProtocolSkipQuery(
+    Expression<bool> Function($ProtocolSkipsTable row) filter,
+  ) {
+    return _database.select(_database.protocolSkips)
+      ..where((row) => row.deletedAt.isNull() & filter(row))
+      ..orderBy([(row) => OrderingTerm.asc(row.id)]);
+  }
+
+  /// A stored Skip as the reads take it, or null for a row they can't read:
+  /// a `local_date` that isn't a real `YYYY-MM-DD` date, or a
+  /// `planned_local_time` that isn't `HH:MM`. The sync push stores a Skip
+  /// as sent, so such a row can arrive from another writer, and a text
+  /// range (`isBetweenValues`) can still match a malformed date. Dropping it
+  /// keeps the Protocol Day and Consistency reads alive, and matches the
+  /// server's `readPlanSkips`, so the app and the Agent read one Day Status.
+  ProtocolSkipRecord? _protocolSkipFromRow(ProtocolSkipRow row) {
+    final ProtocolDayDate localDate;
+    try {
+      localDate = ProtocolDayDate.parse(row.localDate);
+    } on FormatException {
+      return null;
+    }
+    final plannedLocalTime = row.plannedLocalTime;
+    if (plannedLocalTime != null && !isPlanLocalTime(plannedLocalTime)) {
+      return null;
+    }
+    return ProtocolSkipRecord(
+      id: row.id,
+      protocolId: row.protocolId,
+      compoundId: row.compoundId,
+      localDate: localDate,
+      plannedLocalTime: plannedLocalTime,
+    );
+  }
+
   /// The day's Doses, sorted after the read into clock order, then id
   /// ([_compareDosesByClock]), which is matching's order (D6 step 2) whenever
   /// every Dose's clock falls on the Protocol Day. The query keeps its instant
@@ -6093,11 +6293,13 @@ class ProtocolsRepository {
   ProtocolDayRecord _protocolDayFromRows(
     ProtocolDayDate localDate,
     List<DoseRow> rows,
+    List<ProtocolSkipRow> skipRows,
   ) {
     return ProtocolDayRecord(
       localDate: localDate,
       doses: rows.map(_doseFromRow).toList(growable: false)
         ..sort(_compareDosesByClock),
+      skips: skipRows.map(_protocolSkipFromRow).nonNulls,
     );
   }
 
@@ -14110,6 +14312,11 @@ class ActivityLogRepository {
               ..where((row) => row.id.equals(entityId)))
             .getSingleOrNull();
         return row == null ? null : _doseImage(row);
+      case AppDatabase.protocolSkipsTable:
+        final row = await (_database.select(_database.protocolSkips)
+              ..where((row) => row.id.equals(entityId)))
+            .getSingleOrNull();
+        return row == null ? null : _protocolSkipImage(row);
       case AppDatabase.protocolsTable:
         final row = await (_database.select(_database.protocols)
               ..where((row) => row.id.equals(entityId)))
@@ -14249,6 +14456,10 @@ class ActivityLogRepository {
       AppDatabase.dosesTable => (_database.update(_database.doses)
             ..where((row) => row.id.equals(entityId)))
           .write(_doseCompanionFromImage(image)),
+      AppDatabase.protocolSkipsTable =>
+        (_database.update(_database.protocolSkips)
+              ..where((row) => row.id.equals(entityId)))
+            .write(_protocolSkipCompanionFromImage(image)),
       AppDatabase.protocolsTable => (_database.update(_database.protocols)
             ..where((row) => row.id.equals(entityId)))
           .write(_protocolCompanionFromImage(image)),
@@ -16055,6 +16266,20 @@ Map<String, Object?> _doseImage(DoseRow row) {
   };
 }
 
+/// The `protocol_skips` sync and Activity Log image (D8): the Data shapes'
+/// fields and nothing else, since a Skip carries no amount, note or reason.
+Map<String, Object?> _protocolSkipImage(ProtocolSkipRow row) {
+  return <String, Object?>{
+    'id': row.id,
+    'protocol_id': row.protocolId,
+    'compound_id': row.compoundId,
+    'local_date': row.localDate,
+    'planned_local_time': row.plannedLocalTime,
+    'updated_at': _iso(row.updatedAt),
+    'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
+  };
+}
+
 /// The `protocols` sync and Activity Log image. `period` rides JSON-encoded,
 /// exactly as the column stores it, like every other JSON column's image
 /// (`equipment_ids`, `recipe_ingredients_json`).
@@ -16753,6 +16978,20 @@ DosesCompanion _doseCompanionFromImage(Map<String, Object?> image) {
   );
 }
 
+ProtocolSkipsCompanion _protocolSkipCompanionFromImage(
+  Map<String, Object?> image,
+) {
+  return ProtocolSkipsCompanion(
+    protocolId: Value<String>(_activityRequiredString(image, 'protocol_id')),
+    compoundId: Value<String>(_activityRequiredString(image, 'compound_id')),
+    localDate: Value<String>(_activityRequiredString(image, 'local_date')),
+    plannedLocalTime:
+        Value<String?>(_activityNullableString(image, 'planned_local_time')),
+    updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
+    deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
+  );
+}
+
 /// A `protocols` image in the plan shape. An image without
 /// `start_local_date` or `reminders_enabled` (every image written before
 /// the plan shape, which carried `start_date` instead), or with a bound or
@@ -16965,6 +17204,17 @@ DosesCompanion _doseSyncCompanionFromImage(
   required String syncDeviceId,
 }) {
   return _doseCompanionFromImage(image).copyWith(
+    id: Value<String>(_activityRequiredString(image, 'id')),
+    syncDeviceId: Value<String?>(syncDeviceId),
+    syncPreviouslySynced: const Value<bool>(true),
+  );
+}
+
+ProtocolSkipsCompanion _protocolSkipSyncCompanionFromImage(
+  Map<String, Object?> image, {
+  required String syncDeviceId,
+}) {
+  return _protocolSkipCompanionFromImage(image).copyWith(
     id: Value<String>(_activityRequiredString(image, 'id')),
     syncDeviceId: Value<String?>(syncDeviceId),
     syncPreviouslySynced: const Value<bool>(true),

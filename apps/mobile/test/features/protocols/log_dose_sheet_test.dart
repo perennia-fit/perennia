@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -663,6 +665,200 @@ void main() {
     },
   );
 
+  group('Skip and Undo skip (D8)', () {
+    testWidgets(
+      'without a planned dose the sheet has Save alone, full width',
+      (tester) async {
+        await _pumpSheet(
+          tester,
+          compound: _vitaminD(),
+          lastDose: null,
+          controller: _FakeProtocolDayController(),
+        );
+
+        expect(find.byKey(LogDoseSheet.skipButtonKey), findsNothing);
+        expect(find.byKey(LogDoseSheet.unskipButtonKey), findsNothing);
+        expect(find.byKey(LogDoseSheet.saveButtonKey), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Skip and Save share one row as two equal buttons, each at least 48 dp',
+      (tester) async {
+        await _pumpPlannedSheet(tester, _FakeProtocolDayController());
+
+        final skip = tester.getRect(find.byKey(LogDoseSheet.skipButtonKey));
+        final save = tester.getRect(find.byKey(LogDoseSheet.saveButtonKey));
+        expect(find.text('Skip'), findsOneWidget);
+        expect(find.byKey(LogDoseSheet.unskipButtonKey), findsNothing);
+        expect(tester.widget(find.byKey(LogDoseSheet.skipButtonKey)),
+            isA<TextButton>());
+        expect(tester.widget(find.byKey(LogDoseSheet.saveButtonKey)),
+            isA<FilledButton>());
+        expect(skip.center.dy, save.center.dy);
+        expect(skip.width, save.width);
+        expect(skip.left, lessThan(save.left));
+        expect(skip.height, greaterThanOrEqualTo(48));
+        expect(save.height, greaterThanOrEqualTo(48));
+      },
+    );
+
+    testWidgets(
+      'Skip writes the planned dose\'s own values, not the sheet\'s fields',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpPlannedSheet(tester, controller);
+
+        // Changing the amount and the date doesn't change what Skip names.
+        await tester.ensureVisible(
+          find.byKey(LogDoseSheet.incrementButtonKey),
+        );
+        await tester.tap(find.byKey(LogDoseSheet.incrementButtonKey));
+        await _pickDay(tester, '20');
+        await _tapSkip(tester);
+
+        final target = controller.skippedTargets.single;
+        expect(target.protocolId, 'protocol-1');
+        expect(target.compoundId, 'compound-vitamin-d');
+        expect(target.localDate, _today);
+        expect(target.plannedLocalTime, '09:00');
+        expect(controller.loggedDoses, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'a double tap on Skip writes one Skip: both buttons are disabled while '
+      'it runs',
+      (tester) async {
+        final gate = Completer<void>();
+        final controller = _FakeProtocolDayController()..writeGate = gate;
+        await _pumpPlannedSheet(
+          tester,
+          controller,
+          target: _plannedTarget(plannedLocalTime: null),
+        );
+
+        await tester.ensureVisible(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+        await tester.tap(
+          find.byKey(LogDoseSheet.skipButtonKey),
+          warnIfMissed: false,
+        );
+        await tester.pump();
+
+        expect(controller.skippedTargets, hasLength(1));
+        expect(
+          tester
+              .widget<TextButton>(find.byKey(LogDoseSheet.skipButtonKey))
+              .onPressed,
+          isNull,
+        );
+        expect(
+          tester
+              .widget<FilledButton>(find.byKey(LogDoseSheet.saveButtonKey))
+              .onPressed,
+          isNull,
+        );
+        await tester.tap(
+          find.byKey(LogDoseSheet.saveButtonKey),
+          warnIfMissed: false,
+        );
+        await tester.pump();
+        expect(controller.loggedDoses, isEmpty);
+
+        gate.complete();
+        await tester.pump();
+        expect(controller.skippedTargets, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'a Skipped row\'s sheet offers Undo skip where Skip was, and it removes '
+      'that Skip',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpPlannedSheet(
+          tester,
+          controller,
+          target: _plannedTarget(skipId: 'skip-1'),
+        );
+
+        expect(find.byKey(LogDoseSheet.skipButtonKey), findsNothing);
+        expect(find.text('Undo skip'), findsOneWidget);
+        await tester.ensureVisible(find.byKey(LogDoseSheet.unskipButtonKey));
+        await tester.tap(find.byKey(LogDoseSheet.unskipButtonKey));
+        await tester.pump();
+
+        expect(controller.unskippedIds, <String>['skip-1']);
+        expect(controller.skippedTargets, isEmpty);
+        expect(controller.loggedDoses, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'Save from a Skipped row logs the Dose and removes the Skip in the same '
+      'write (CUJ 16)',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpPlannedSheet(
+          tester,
+          controller,
+          target: _plannedTarget(skipId: 'skip-1'),
+        );
+
+        await _save(tester);
+
+        expect(controller.loggedDoses, hasLength(1));
+        expect(controller.unskipIdsOnLog, <String?>['skip-1']);
+        // Not a separate Undo skip write: the Dose's own write removes it.
+        expect(controller.unskippedIds, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'Save from a Pending row removes no Skip',
+      (tester) async {
+        final controller = _FakeProtocolDayController();
+        await _pumpPlannedSheet(tester, controller);
+
+        await _save(tester);
+
+        expect(controller.unskipIdsOnLog, <String?>[null]);
+      },
+    );
+
+    testWidgets(
+      'the Skip and Undo skip rows meet accessibility guidelines in both '
+      'themes',
+      (tester) async {
+        for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+          for (final skipId in <String?>[null, 'skip-1']) {
+            final semantics = tester.ensureSemantics();
+            await _pumpPlannedSheet(
+              tester,
+              _FakeProtocolDayController(),
+              target: _plannedTarget(skipId: skipId),
+              theme: theme,
+            );
+
+            await expectLater(tester, meetsGuideline(textContrastGuideline));
+            await expectLater(
+              tester,
+              meetsGuideline(androidTapTargetGuideline),
+            );
+            await expectLater(
+              tester,
+              meetsGuideline(labeledTapTargetGuideline),
+            );
+
+            semantics.dispose();
+            await tester.pumpWidget(const SizedBox.shrink());
+          }
+        }
+      },
+    );
+  });
+
   testWidgets('Log Dose sheet meets accessibility guidelines in both themes', (
     tester,
   ) async {
@@ -702,6 +898,55 @@ String? _fieldValue(WidgetTester tester, Key key) {
       )
       .toList();
   return texts.last.data;
+}
+
+Future<void> _tapSkip(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(LogDoseSheet.skipButtonKey));
+  await tester.tap(find.byKey(LogDoseSheet.skipButtonKey));
+  await tester.pump();
+}
+
+/// A Planned list row's target: "Lean bulk"'s 09:00 Vitamin D today.
+PlannedDoseTarget _plannedTarget({
+  String? plannedLocalTime = '09:00',
+  String? skipId,
+}) {
+  return PlannedDoseTarget(
+    protocolId: 'protocol-1',
+    compoundId: 'compound-vitamin-d',
+    localDate: _today,
+    plannedLocalTime: plannedLocalTime,
+    skipId: skipId,
+  );
+}
+
+/// The sheet as a Planned list row opens it: the planned amount, route and
+/// Protocol, and the row's target.
+Future<void> _pumpPlannedSheet(
+  WidgetTester tester,
+  _FakeProtocolDayController controller, {
+  PlannedDoseTarget? target,
+  ThemeData? theme,
+}) {
+  return _pumpSheet(
+    tester,
+    compound: _vitaminD(),
+    lastDose: null,
+    controller: controller,
+    theme: theme,
+    protocolOptions: <ProtocolOptionRecord>[_leanBulkProtocolOption()],
+    initialDate: _today,
+    initialTime: const TimeOfDay(hour: 9, minute: 0),
+    plannedAmount: const PlanAmount(
+      amountValue: 2,
+      amountEntered: '2',
+      unit: DoseUnit.capsule,
+      route: DoseRoute.oral,
+    ),
+    plannedRoute: DoseRoute.oral,
+    protocol: _leanBulkProtocolOption(),
+    plannedDose: target ?? _plannedTarget(),
+  );
 }
 
 Future<void> _save(WidgetTester tester) async {
@@ -838,13 +1083,39 @@ class _FakeProtocolDayController extends ProtocolDayController {
     );
   }
 
+  final unskipIdsOnLog = <String?>[];
+  final skippedTargets = <PlannedDoseTarget>[];
+  final unskippedIds = <String>[];
+
+  /// When set, Skip and Undo skip wait for it, so a test can tap again while
+  /// a write is in flight.
+  Completer<void>? writeGate;
+
   @override
-  Future<LogDoseResult> logDose(DoseSnapshotDraft draft) async {
+  Future<LogDoseResult> logDose(
+    DoseSnapshotDraft draft, {
+    String? unskipId,
+  }) async {
     loggedDoses.add(draft);
+    unskipIdsOnLog.add(unskipId);
     return LogDoseResult(
       batchId: 'batch-${loggedDoses.length}',
       doseId: 'dose-${loggedDoses.length}',
     );
+  }
+
+  @override
+  Future<String> skipPlannedDose(PlannedDoseTarget target) async {
+    skippedTargets.add(target);
+    await writeGate?.future;
+    return 'batch-skip-${skippedTargets.length}';
+  }
+
+  @override
+  Future<String> unskipPlannedDose(String skipId) async {
+    unskippedIds.add(skipId);
+    await writeGate?.future;
+    return 'batch-unskip-${unskippedIds.length}';
   }
 
   @override
@@ -872,6 +1143,7 @@ Future<void> _pumpSheet(
   PlanAmount? plannedAmount,
   DoseRoute? plannedRoute,
   ProtocolOptionRecord? protocol,
+  PlannedDoseTarget? plannedDose,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -895,6 +1167,7 @@ Future<void> _pumpSheet(
             plannedAmount: plannedAmount,
             plannedRoute: plannedRoute,
             protocol: protocol,
+            plannedDose: plannedDose,
           ),
         ),
       ),

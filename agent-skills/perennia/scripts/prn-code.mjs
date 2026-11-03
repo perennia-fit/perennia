@@ -274,6 +274,16 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async batchWriteAgentProtocolSkips(body, options = {}) {
+    return this.request({
+      method: "POST",
+      path: "/agent/protocols/skips/batch-write",
+      expectedStatus: 200,
+      body,
+      signal: options.signal
+    });
+  }
+
   async deleteAgentProtocols(body, options = {}) {
     return this.request({
       method: "POST",

@@ -2520,6 +2520,310 @@ void main() {
   });
 
   test(
+      'pushes a Skip after the Doses and then its removal, and a second '
+      'device pulls both onto its Protocol Day (D8)', () async {
+    final repositories = TrainingRepositories(database);
+    const localDate = ProtocolDayDate(year: 2026, month: 6, day: 30);
+    final compound = await repositories.protocols.createCompound(
+      CompoundDraft(
+        name: 'Creatine',
+        defaultUnit: DoseUnit.gram,
+        defaultRoute: DoseRoute.oral,
+      ),
+    );
+    final protocol = await repositories.protocols.createProtocol(
+      ProtocolDraft(
+        name: 'Daily',
+        startLocalDate: localDate,
+        compoundIds: <String>[compound.compoundId],
+      ),
+      today: localDate,
+    );
+    await repositories.protocols.skipPlannedDose(
+      ProtocolSkipDraft(
+        protocolId: protocol.protocolId,
+        compoundId: compound.compoundId,
+        localDate: localDate,
+        plannedLocalTime: '21:00',
+      ),
+      today: localDate,
+    );
+    final skipId = (await database.select(database.protocolSkips).get())
+        .single
+        .id;
+
+    final pushRequests = <http.Request>[];
+    final pushRepository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          pushRequests.add(request);
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          final changes =
+              (body['changes']! as List<Object?>).cast<Map<String, Object?>>();
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'accepted': changes
+                  .map((change) => change['id']! as String)
+                  .toList(growable: false),
+              'serverClock': '2026-06-30T08:00:01.000Z',
+              'applied': changes
+                  .map(
+                    (change) => <String, Object?>{
+                      'id': change['id'],
+                      'updatedAt': change['updatedAt'],
+                      'deviceId': 'device-a',
+                    },
+                  )
+                  .toList(growable: false),
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+    List<Map<String, Object?>> bodies() => pushRequests
+        .map((request) => jsonDecode(request.body) as Map<String, Object?>)
+        .toList(growable: false);
+
+    await pushRepository.pushPendingLoggedSets(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+    final entities = bodies().map((body) => body['entity']).toList();
+    expect(entities, contains(AppDatabase.protocolSkipsTable));
+    expect(
+      entities.indexOf(AppDatabase.protocolSkipsTable),
+      greaterThan(entities.indexOf(AppDatabase.compoundsTable)),
+    );
+    final skipBody = bodies()
+        .singleWhere((body) => body['entity'] == AppDatabase.protocolSkipsTable);
+    final pushedSkip = (skipBody['changes']! as List<Object?>)
+        .cast<Map<String, Object?>>()
+        .single;
+    expect(pushedSkip['id'], skipId);
+    expect(pushedSkip['payload'], <String, Object?>{
+      'id': skipId,
+      'protocol_id': protocol.protocolId,
+      'compound_id': compound.compoundId,
+      'local_date': '2026-06-30',
+      'planned_local_time': '21:00',
+      'updated_at': pushedSkip['updatedAt'],
+      'deleted_at': null,
+    });
+    final storedSkip =
+        await database.select(database.protocolSkips).getSingle();
+    expect(storedSkip.syncPreviouslySynced, isTrue);
+    expect(storedSkip.syncDeviceId, 'device-a');
+
+    // Undo skip pushes the tombstone, and nothing else is pending. Stored
+    // stamps have whole seconds, so the pause keeps the removal's after the
+    // Skip's, as a user's later tap would; a tie would lose LWW.
+    await Future<void>.delayed(const Duration(milliseconds: 1100));
+    await repositories.protocols.unskipPlannedDose(skipId);
+    pushRequests.clear();
+    await pushRepository.pushPendingLoggedSets(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+    expect(
+      bodies().map((body) => body['entity']),
+      <String>[AppDatabase.protocolSkipsTable],
+    );
+    final pushedRemoval = (bodies().single['changes']! as List<Object?>)
+        .cast<Map<String, Object?>>()
+        .single;
+    expect(pushedRemoval['deletedAt'], isNotNull);
+
+    // A second device, with no Protocol or Compound rows, pulls the Skip and
+    // then its removal: both are soft references.
+    final targetDatabase = AppDatabase.inMemory();
+    addTearDown(targetDatabase.close);
+    var page = 0;
+    final targetRepository = SyncRepository(
+      database: targetDatabase,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((_) async {
+          page += 1;
+          final change = page == 1 ? pushedSkip : pushedRemoval;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-skip-$page',
+              'serverClock': '2026-06-30T08:00:0$page.000Z',
+              'changes': <Object?>[
+                _pulledChangeFromPush(
+                  entity: AppDatabase.protocolSkipsTable,
+                  deviceId: 'device-a',
+                  change: change,
+                ),
+              ],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+    final targetRepositories = TrainingRepositories(targetDatabase);
+
+    final first = await targetRepository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-b',
+    );
+    expect(first.appliedCount, 1);
+    final pulledDay = await targetRepositories.protocols.protocolDay(localDate);
+    expect(pulledDay.skips.single.id, skipId);
+    expect(pulledDay.skips.single.plannedLocalTime, '21:00');
+    final pulledRow =
+        await targetDatabase.select(targetDatabase.protocolSkips).getSingle();
+    expect(pulledRow.syncDeviceId, 'device-a');
+    expect(pulledRow.syncPreviouslySynced, isTrue);
+    expect(
+      (await targetRepositories.activityLog.listEntries())
+          .map((entry) => entry.entityTable),
+      contains(AppDatabase.protocolSkipsTable),
+    );
+
+    final second = await targetRepository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-b',
+    );
+    expect(second.appliedCount, 1);
+    expect(
+      (await targetRepositories.protocols.protocolDay(localDate)).skips,
+      isEmpty,
+    );
+  });
+
+  test(
+      'a full re-sync tombstones a previously synced Skip the snapshot no '
+      'longer has, and keeps a local-only one (D8)', () async {
+    final localUpdatedAt = DateTime.utc(2026, 6, 22, 8);
+    final snapshotUpdatedAt = DateTime.utc(2026, 6, 22, 9);
+    const keptId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d001';
+    const missingId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d002';
+    const localOnlyId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d003';
+    Future<void> insertSkip(String id, {required bool previouslySynced}) {
+      return database.into(database.protocolSkips).insert(
+            ProtocolSkipsCompanion.insert(
+              id: id,
+              protocolId: 'protocol-1',
+              compoundId: 'compound-1',
+              localDate: '2026-06-21',
+              plannedLocalTime: const Value<String?>('09:00'),
+              syncDeviceId: const Value<String?>('device-b'),
+              syncPreviouslySynced: Value<bool>(previouslySynced),
+              updatedAt: localUpdatedAt,
+            ),
+          );
+    }
+
+    await insertSkip(keptId, previouslySynced: true);
+    await insertSkip(missingId, previouslySynced: true);
+    await insertSkip(localOnlyId, previouslySynced: false);
+    await database.into(database.syncStates).insert(
+          SyncStatesCompanion.insert(
+            id: syncStateId,
+            pullCursor: const Value<String?>(
+              '2000-01-01T00:00:00.000Z|expired-row',
+            ),
+            updatedAt: localUpdatedAt,
+          ),
+        );
+
+    final repository = SyncRepository(
+      database: database,
+      apiClientFactory: (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          if (request.url.path == '/sync/pull' && body['mode'] == null) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': true,
+                'nextCursor': '2000-01-01T00:00:00.000Z|expired-row',
+                'serverClock': '2026-06-22T09:00:00.000Z',
+                'changes': <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          if (request.url.path == '/sync/pull' &&
+              body['mode'] == 'snapshot' &&
+              body['cursor'] == null) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': false,
+                'nextCursor': 'snapshot-cursor-1',
+                'serverClock': '2026-06-22T09:00:02.000Z',
+                'changes': <Object?>[
+                  <String, Object?>{
+                    'entity': AppDatabase.protocolSkipsTable,
+                    'id': keptId,
+                    'deviceId': 'device-b',
+                    'payload': <String, Object?>{
+                      'id': keptId,
+                      'protocol_id': 'protocol-1',
+                      'compound_id': 'compound-1',
+                      'local_date': '2026-06-21',
+                      'planned_local_time': '09:00',
+                      'updated_at': snapshotUpdatedAt.toIso8601String(),
+                      'deleted_at': null,
+                    },
+                    'updatedAt': snapshotUpdatedAt.toIso8601String(),
+                    'deletedAt': null,
+                  },
+                ],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          if (request.url.path == '/sync/pull' &&
+              body['mode'] == 'snapshot' &&
+              body['cursor'] == 'snapshot-cursor-1') {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': false,
+                'nextCursor': 'snapshot-cursor-1',
+                'serverClock': '2026-06-22T09:00:03.000Z',
+                'changes': <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          fail('Unexpected sync request: ${request.url.path} ${request.body}');
+        }),
+      ),
+    );
+
+    final result = await repository.pullLoggedSetChanges(
+      session: _session(),
+      deviceId: 'device-a',
+    );
+    Future<ProtocolSkipRow> row(String id) =>
+        (database.select(database.protocolSkips)
+              ..where((row) => row.id.equals(id)))
+            .getSingle();
+
+    expect(result.fullResyncRequired, isTrue);
+    expect((await row(keptId)).deletedAt, isNull);
+    expect((await row(keptId)).updatedAt.toUtc(), snapshotUpdatedAt);
+    expect((await row(missingId)).deletedAt, isNotNull);
+    expect((await row(localOnlyId)).deletedAt, isNull);
+  });
+
+  test(
       'round-trips a Protocol and its member Schedule as LWW rows with '
       'provenance', () async {
     final repositories = TrainingRepositories(database);

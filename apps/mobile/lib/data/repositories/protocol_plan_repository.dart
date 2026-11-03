@@ -459,9 +459,10 @@ final class CompoundConsistencySummary {
 /// Read-only local repository deriving the Planned list and the Consistency
 /// view from the plan rows and the Doses (D6), the way
 /// [RoutineUpNextRepository] derives Up next: nothing is stored, so there is
-/// nothing here to write, batch or Activity-Log. Each read combines two Drift
-/// watches (the plan; the Doses it is matched against) and re-derives through
-/// the shared core (`planDays`, `dayStatuses`) on every emission from either.
+/// nothing here to write, batch or Activity-Log. Each read combines Drift
+/// watches (the plan; the Doses and Skips it is matched against, D8) and
+/// re-derives through the shared core (`planDays`, `dayStatuses`) on every
+/// emission from any of them.
 /// The Planned list reads the day's Doses through
 /// `ProtocolsRepository.watchProtocolDay`, the same watch the day's log
 /// shows.
@@ -522,13 +523,17 @@ final class ProtocolPlanRepository {
     final isFuture = localDate.compareTo(today) > 0;
     final statuses = isFuture
         ? const <DayStatus>[]
-        : dayStatuses(days, _planDoses(day.doses), const <PlanSkip>[], today);
+        : dayStatuses(
+            days, _planDoses(day.doses), _planSkips(day.skips), today);
     return PlannedDay(
       localDate: localDate,
       today: today,
       day: day,
       planDays: days,
       dayStatuses: statuses,
+      // A future day's rows read no status (D6), so its numbering run takes
+      // no Skips either: a Skip there would only set `skipId` on a row whose
+      // status is `none`.
       rowStatuses: isFuture
           ? dayStatuses(days, const <PlanDose>[], const <PlanSkip>[], localDate)
           : statuses,
@@ -565,7 +570,7 @@ final class ProtocolPlanRepository {
     final todays = dayStatuses(
       days.where((day) => day.localDate == from),
       _planDoses(today.doses),
-      const <PlanSkip>[],
+      _planSkips(today.skips),
       from,
     );
     for (final status in todays) {
@@ -634,8 +639,8 @@ final class ProtocolPlanRepository {
   }
 
   /// Fires after any write to the tables [reminderInputs] reads: Protocols,
-  /// Protocol Members, Schedule Versions and Doses. The reconciler debounces
-  /// it (D5) and re-reads; nothing about the change is passed on.
+  /// Protocol Members, Schedule Versions, Doses and Skips. The reconciler
+  /// debounces it (D5) and re-reads; nothing about the change is passed on.
   Stream<void> watchReminderInputChanges() {
     return _database
         .tableUpdates(
@@ -644,6 +649,7 @@ final class ProtocolPlanRepository {
             _database.protocolCompounds,
             _database.schedules,
             _database.doses,
+            _database.protocolSkips,
           ]),
         )
         .map((_) {});
@@ -677,13 +683,14 @@ final class ProtocolPlanRepository {
       from,
       to,
       compoundId: compoundId,
-      (plan, doses) => _consistencyRange(
+      (plan, doses, skips) => _consistencyRange(
         compoundId,
         from,
         to,
         today,
         plan,
         doses..sort(_compareConsistencyDoses),
+        skips,
       ),
     );
   }
@@ -706,30 +713,35 @@ final class ProtocolPlanRepository {
     return _watchPlanAndDoses(
       from,
       to,
-      (plan, doses) => _consistencySummaries(
+      (plan, doses, skips) => _consistencySummaries(
         plan,
         dayStatuses(
           planDays(plan.protocols, from, to),
           _planDoses(doses),
-          const <PlanSkip>[],
+          _planSkips(skips),
           today,
         ),
       ),
     );
   }
 
-  /// The plan and the Doses dated [from] through [to], of [compoundId] alone
-  /// when given, combined by [combine] on every change to either: the one
-  /// read behind both [watchConsistency] and [watchConsistencySummary], so a
-  /// Compound's counts and its Consistency view never read different rows.
+  /// The plan, and the Doses and Skips (D8) dated [from] through [to], of
+  /// [compoundId] alone when given, combined by [combine] on every change to
+  /// any of them: the one read behind both [watchConsistency] and
+  /// [watchConsistencySummary], so a Compound's counts and its Consistency
+  /// view never read different rows.
   Stream<R> _watchPlanAndDoses<R>(
     ProtocolDayDate from,
     ProtocolDayDate to,
-    R Function(_PlanRows plan, List<DoseRecord> doses) combine, {
+    R Function(
+      _PlanRows plan,
+      List<DoseRecord> doses,
+      List<ProtocolSkipRecord> skips,
+    ) combine, {
     String? compoundId,
   }) {
     _checkConsistencyRange(from, to);
-    return _combineLatest2(
+    return _combineLatest3(
       _planQuery().watch().map(_planFromJoinedRows),
       _repositories.protocols
           ._activeDoseQuery((row) {
@@ -745,6 +757,23 @@ final class ProtocolPlanRepository {
           .map(
             (rows) => rows
                 .map(_repositories.protocols._doseFromRow)
+                .toList(growable: false),
+          ),
+      _repositories.protocols
+          ._activeProtocolSkipQuery((row) {
+            final inRange = row.localDate.isBetweenValues(
+              from.storageValue,
+              to.storageValue,
+            );
+            return compoundId == null
+                ? inRange
+                : row.compoundId.equals(compoundId) & inRange;
+          })
+          .watch()
+          .map(
+            (rows) => rows
+                .map(_repositories.protocols._protocolSkipFromRow)
+                .nonNulls
                 .toList(growable: false),
           ),
       combine,
@@ -802,6 +831,7 @@ final class ProtocolPlanRepository {
     ProtocolDayDate today,
     _PlanRows plan,
     List<DoseRecord> doses,
+    List<ProtocolSkipRecord> skips,
   ) {
     // Every Protocol the Compound is a member of, narrowed to this
     // Compound's member rows. `planDays` decides each Compound and date from
@@ -830,7 +860,7 @@ final class ProtocolPlanRepository {
       today: today,
       planDays: days,
       dayStatuses:
-          dayStatuses(days, _planDoses(doses), const <PlanSkip>[], today),
+          dayStatuses(days, _planDoses(doses), _planSkips(skips), today),
       doses: doses,
       compound: plan.compounds[compoundId],
       protocols: <String, ProtocolOptionRecord>{
@@ -971,6 +1001,23 @@ final class ProtocolPlanRepository {
     );
   }
 
+  /// The Skips as matching reads them (D8, step 3), in the order given:
+  /// every read takes them from `_activeProtocolSkipQuery`, ordered by id,
+  /// which is matching's order.
+  List<PlanSkip> _planSkips(Iterable<ProtocolSkipRecord> skips) {
+    return List<PlanSkip>.unmodifiable(
+      skips.map(
+        (skip) => PlanSkip(
+          skipId: skip.id,
+          protocolId: skip.protocolId,
+          compoundId: skip.compoundId,
+          localDate: skip.localDate,
+          plannedLocalTime: skip.plannedLocalTime,
+        ),
+      ),
+    );
+  }
+
   ScheduleVersion _scheduleVersionFromRow(ScheduleRow row) {
     final record = _repositories.protocols._scheduleRecordFromRow(row);
     return ScheduleVersion(
@@ -992,4 +1039,20 @@ final class _PlanRows {
   final List<PlanProtocol> protocols;
   final Map<String, CompoundRecord> compounds;
   final Map<String, ProtocolOptionRecord> protocolOptions;
+}
+
+/// Combines the latest values of three Streams, emitting only once each has
+/// produced at least one value: `_combineLatest2` over a pair of the first
+/// two and the third, so it shares its subscription and error handling.
+Stream<T> _combineLatest3<A, B, C, T>(
+  Stream<A> streamA,
+  Stream<B> streamB,
+  Stream<C> streamC,
+  T Function(A, B, C) combine,
+) {
+  return _combineLatest2(
+    _combineLatest2(streamA, streamB, (A a, B b) => (a, b)),
+    streamC,
+    ((A, B) ab, C c) => combine(ab.$1, ab.$2, c),
+  );
 }

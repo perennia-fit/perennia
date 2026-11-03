@@ -254,6 +254,12 @@ const COMMANDS = {
     body: true,
     operationId: "deleteAgentProtocols"
   },
+  "log-protocol-skips": {
+    method: "POST",
+    path: "/agent/protocols/skips/batch-write",
+    body: true,
+    operationId: "batchWriteAgentProtocolSkips"
+  },
   "read-settings": {
     method: "GET",
     path: "/agent/settings",

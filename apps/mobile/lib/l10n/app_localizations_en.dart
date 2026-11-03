@@ -2852,6 +2852,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get logDoseDateLabel => 'Date';
 
   @override
+  String get logDoseSkip => 'Skip';
+
+  @override
+  String get logDoseUnskip => 'Undo skip';
+
+  @override
   String get dayStatusNotPlanned => 'Not planned';
 
   @override
@@ -2915,6 +2921,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String consistencyExtraCount(int count) {
     return '$count extra';
+  }
+
+  @override
+  String consistencySkippedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count skipped',
+    );
+    return '$_temp0';
   }
 
   @override

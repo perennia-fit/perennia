@@ -217,8 +217,40 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   /// Logs a `Dose` through the repository Activity Log write path. The Dose
   /// snapshots the Compound's name, captures its timezone, and freezes its
   /// local date at log time.
-  Future<LogDoseResult> logDose(DoseSnapshotDraft draft) {
-    return ref.read(protocolsRepositoryProvider).logDose(draft);
+  ///
+  /// With [unskipId] (Save from a "Skipped" row, D8 and CUJ 16), the same
+  /// transaction and Batch also removes that Skip, so the row reads "Logged"
+  /// with no stray Skip behind it.
+  Future<LogDoseResult> logDose(DoseSnapshotDraft draft, {String? unskipId}) {
+    return ref
+        .read(protocolsRepositoryProvider)
+        .logDose(draft, unskipId: unskipId);
+  }
+
+  /// Skips the planned dose [target] names (D8, CUJ 15 and 17): writes a Skip
+  /// for its own Protocol, Compound, date and planned time, never the log
+  /// sheet's fields. "Today" is the Protocols clock's, so the repository's
+  /// `skip_future` check reads the same day the view labels. Returns the
+  /// Batch id.
+  Future<String> skipPlannedDose(PlannedDoseTarget target) {
+    final today =
+        ProtocolDayDate.fromDateTime(ref.read(protocolsClockProvider)());
+    return ref.read(protocolsRepositoryProvider).skipPlannedDose(
+          ProtocolSkipDraft(
+            protocolId: target.protocolId,
+            compoundId: target.compoundId,
+            localDate: target.localDate,
+            plannedLocalTime: target.plannedLocalTime,
+          ),
+          today: today,
+        );
+  }
+
+  /// Removes a Skip (D8's Undo skip). A timed Skip's siblings with the same
+  /// Protocol, Compound, date and time go in the same Batch, so the row reads
+  /// "Pending" or "Not logged" again. Returns the Batch id.
+  Future<String> unskipPlannedDose(String skipId) {
+    return ref.read(protocolsRepositoryProvider).unskipPlannedDose(skipId);
   }
 
   /// Idempotently loads the tiny OTC seed `Compound` library (PROTOCOLS.md §3),
@@ -295,6 +327,41 @@ DoseSnapshotDraft _plannedDoseDraft(
     protocol: plannedDay.protocols[row.protocolId] ??
         (throw StateError('Planned dose has no Protocol ${row.protocolId}.')),
   );
+}
+
+/// The planned dose a Planned list row names (D8): what the log sheet's Skip
+/// writes and Undo skip removes. A Skip names its planned dose by Protocol,
+/// Compound, date and planned time, never by slot number, because slot
+/// numbers shift when another Protocol's plan for the Compound changes.
+/// [skipId] is the Skip marking the row, or null when the row isn't
+/// "Skipped".
+final class PlannedDoseTarget {
+  const PlannedDoseTarget({
+    required this.protocolId,
+    required this.compoundId,
+    required this.localDate,
+    required this.plannedLocalTime,
+    this.skipId,
+  });
+
+  /// The target of [row], on [localDate].
+  factory PlannedDoseTarget.fromRow(PlannedRow row, ProtocolDayDate localDate) {
+    return PlannedDoseTarget(
+      protocolId: row.protocolId,
+      compoundId: row.compoundId,
+      localDate: localDate,
+      plannedLocalTime: row.plannedLocalTime,
+      skipId: row.skipId,
+    );
+  }
+
+  final String protocolId;
+  final String compoundId;
+  final ProtocolDayDate localDate;
+
+  /// The planned `HH:MM` time, or null for an untimed planned dose.
+  final String? plannedLocalTime;
+  final String? skipId;
 }
 
 class ProtocolDayState {

@@ -149,12 +149,13 @@ node scripts/prn-agent.mjs log-doses --file doses.json
 node scripts/prn-agent.mjs manage-compounds --file compounds.json
 node scripts/prn-agent.mjs manage-protocols --file protocols.json
 node scripts/prn-agent.mjs delete-protocols --json '{"idempotencyKey":"delete-key","protocolIds":["protocol-id"]}'
+node scripts/prn-agent.mjs log-protocol-skips --json '{"idempotencyKey":"skip-key","today":"2026-11-02","skips":[{"id":"skip-uuidv7","protocolId":"protocol-id","compoundId":"compound-id","localDate":"2026-11-02","plannedLocalTime":"21:00"}]}'
 node scripts/prn-agent.mjs update-settings --file settings.json
 node scripts/prn-agent.mjs undo-activity-batch --json '{"batchId":"batch-id","idempotencyKey":"undo-key"}'
 ```
 
-For `log-doses`, `manage-compounds`, and `manage-protocols`, generate UUIDv7 ids
-for every newly authored row and reuse both those ids and the same
+For `log-doses`, `manage-compounds`, `manage-protocols`, and `log-protocol-skips`,
+generate UUIDv7 ids for every newly authored row and reuse both those ids and the same
 `idempotencyKey` on retry. Existing legacy ids remain valid only when editing or
 archiving rows that already belong to the account. Results report `applied`,
 `superseded`, `duplicate`, or `refused` per item; Dose results also carry the shared
@@ -179,6 +180,18 @@ plan as if it never existed; `undo-activity-batch` on the delete's `batchId`
 brings it back. A delete of a Protocol with history is refused
 (`protocol_has_history`), and archiving one without history returns the
 `protocol_has_no_history` warning.
+
+To record that a planned dose was not taken on purpose, write a Skip with
+`log-protocol-skips`: a new UUIDv7 `id`, the planned dose's `protocolId`,
+`compoundId`, `localDate` (today or a past day, never after the request's
+`today`) and `plannedLocalTime` (`HH:MM`, or `null` for an untimed planned
+dose). Its Day Status then reads `skipped` instead of `pending` or
+`not_logged`. A Skip is never edited: remove it by sending the same item with
+`deletedAt`, and skip again with a new id. Removing a timed Skip also removes
+every other Skip with the same Protocol, Compound, date and time, in the same
+batch (each swept Skip gets its own result after the item that removed it), so
+the day reads as the app's Undo skip leaves it. Find the `skipId` to remove in
+`list-protocol-day-statuses` fills (`detail=doses`); there is no Skip list.
 
 Use `list-workout-templates`/`get-workout-template` and
 `list-routines`/`get-routine` for the redesigned plan layer. Lists are

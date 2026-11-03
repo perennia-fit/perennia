@@ -76,6 +76,32 @@ void main() {
     });
   }
 
+  test('v63 to v64 creates the protocol_skips table and its local-date index',
+      () async {
+    final connection = await verifier.startAt(63);
+    final database = AppDatabase(connection);
+    addTearDown(database.close);
+    await verifier.migrateAndValidate(database, 64);
+
+    final objects = await database.customSelect(
+      'SELECT type, name, tbl_name FROM sqlite_master '
+      "WHERE tbl_name = 'protocol_skips' ORDER BY type, name",
+    ).get();
+    expect(
+      objects
+          .map((row) => (row.read<String>('type'), row.read<String>('name'))),
+      containsAll(<(String, String)>[
+        ('table', 'protocol_skips'),
+        ('index', 'protocol_skips_local_date_index'),
+      ]),
+    );
+    final indexColumns = await database
+        .customSelect("PRAGMA index_info('protocol_skips_local_date_index')")
+        .get();
+    expect(indexColumns.map((row) => row.read<String>('name')), ['local_date']);
+    expect(await database.select(database.protocolSkips).get(), isEmpty);
+  });
+
   test('rows written at the first release survive to the current version',
       () async {
     final schema = await verifier.schemaAt(_firstReleasedSchemaVersion);

@@ -801,6 +801,36 @@ class Doses extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+// A `Skip` (CONTEXT.md; docs/designs/protocol-schedules-and-reminders.md,
+// D8): "not taken, on purpose" for one planned dose of one Protocol's
+// Compound on one local date. It names the planned dose by its Protocol,
+// Compound, date and planned `HH:MM` time (null for an untimed planned
+// dose), never by slot number, because slot numbers shift whenever another
+// Protocol's plan for the Compound changes. Both ids are soft references,
+// like a Dose's: no foreign key, so a Skip outlives an archived or deleted
+// Protocol and undo brings it back with it. A Skip is never edited: it is
+// written once and removed by setting `deleted_at`; skipping again writes a
+// new row. No unique key: two devices skipping the same planned dose offline
+// keep both rows, and matching marks it once.
+@DataClassName('ProtocolSkipRow')
+@TableIndex(name: 'protocol_skips_local_date_index', columns: {#localDate})
+class ProtocolSkips extends Table {
+  TextColumn get id => text()();
+  TextColumn get protocolId => text()();
+  TextColumn get compoundId => text()();
+  TextColumn get localDate => text()();
+  TextColumn get plannedLocalTime => text().nullable()();
+  TextColumn get syncDeviceId => text().nullable()();
+  BoolColumn get syncPreviouslySynced => boolean().withDefault(
+        const Constant(false),
+      )();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 // A `Protocol` (CONTEXT.md): a named course associating one or more
 // `Compound`s (a multi-Compound Protocol is a "stack"). A **mutable plan**:
 // creating or editing it never reads or writes a logged `Dose`. Archives via
@@ -1176,6 +1206,7 @@ class RoutineEntries extends Table {
     MetricReadings,
     Compounds,
     Doses,
+    ProtocolSkips,
     Protocols,
     ProtocolCompounds,
     Schedules,
@@ -1245,6 +1276,7 @@ class AppDatabase extends _$AppDatabase {
   static const metricReadingsTable = 'metric_readings';
   static const compoundsTable = 'compounds';
   static const dosesTable = 'doses';
+  static const protocolSkipsTable = 'protocol_skips';
   static const protocolsTable = 'protocols';
   static const protocolCompoundsTable = 'protocol_compounds';
   static const schedulesTable = 'schedules';
@@ -1288,6 +1320,7 @@ class AppDatabase extends _$AppDatabase {
     metricReadingsTable,
     compoundsTable,
     dosesTable,
+    protocolSkipsTable,
     protocolsTable,
     protocolCompoundsTable,
     schedulesTable,
@@ -1306,7 +1339,7 @@ class AppDatabase extends _$AppDatabase {
   ];
 
   @override
-  int get schemaVersion => 63;
+  int get schemaVersion => 64;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -2012,6 +2045,16 @@ class AppDatabase extends _$AppDatabase {
                   focuses.colorHex.name,
                 )) {
               await migrator.addColumn(focuses, focuses.colorHex);
+            }
+          }
+          if (from < 64) {
+            // Skips (docs/designs/protocol-schedules-and-reminders.md, D8).
+            // A new table, so nothing to backfill. createTable() does not
+            // install @TableIndex declarations, so the index is created on
+            // its own.
+            if (!await _tableExists(protocolSkips.actualTableName)) {
+              await migrator.createTable(protocolSkips);
+              await migrator.createIndex(protocolSkipsLocalDateIndex);
             }
           }
         },

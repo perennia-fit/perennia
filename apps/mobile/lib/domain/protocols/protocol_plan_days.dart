@@ -286,8 +286,9 @@ class _VersionPlan {
 /// including [today]; later dates are not returned. Ordered by date, then
 /// Compound id. [doses] are the Compound's non-archived logged Doses, tagged
 /// with a Protocol or not; the tag never decides whether a Dose counts.
-/// [skips] are the Skips that may answer a planned dose (D8); until Skips
-/// are stored, every caller passes none.
+/// [skips] are the Skips that may answer a planned dose (D8): every caller
+/// passes its stored, non-tombstoned Skips, so the list is empty only when
+/// there are none.
 ///
 /// Matching, for one Compound on one date (D8, which replaces D6's steps):
 /// 1. Every planned dose of every Protocol is numbered as a slot, ordered by

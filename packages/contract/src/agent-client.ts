@@ -1747,6 +1747,35 @@ export type AgentProtocolScheduleVersion = {
   "updatedAt": string;
 };
 
+export type AgentProtocolSkipBatchWriteRequest = {
+  "idempotencyKey": string;
+  "today": string;
+  "skips": Array<AgentProtocolSkipBatchWriteSkip>;
+};
+
+export type AgentProtocolSkipBatchWriteResponse = {
+  "accepted": true;
+  "duplicate": boolean;
+  "idempotencyKey": string;
+  "batchId": string;
+  "serverClock": string;
+  "skips": Array<AgentProtocolSkipBatchWriteResult>;
+};
+
+export type AgentProtocolSkipBatchWriteResult = {
+  "id": string;
+  "outcome": "applied" | "superseded" | "duplicate" | "refused";
+};
+
+export type AgentProtocolSkipBatchWriteSkip = {
+  "id": string;
+  "protocolId": string;
+  "compoundId": string;
+  "localDate": string;
+  "plannedLocalTime": string | null;
+  "deletedAt"?: string | null;
+};
+
 export type AgentProtocolTargetOutcome = {
   "id": string;
   "metricId": string | null;
@@ -2459,6 +2488,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "batchWriteAgentMetrics",
   "batchWriteAgentNutritionGoals",
   "batchWriteAgentPlanTree",
+  "batchWriteAgentProtocolSkips",
   "batchWriteAgentProtocols",
   "batchWriteAgentSettings",
   "batchWriteAgentWorkout",
@@ -2630,6 +2660,16 @@ export class PerenniaAgentClient {
     return this.request<AgentProtocolBatchWriteResponse>({
       method: "POST",
       path: "/agent/protocols/batch-write",
+      expectedStatus: 200,
+      body: body,
+      signal: options.signal
+    });
+  }
+
+  async batchWriteAgentProtocolSkips(body: AgentProtocolSkipBatchWriteRequest, options: AgentClientRequestOptions = {}): Promise<AgentProtocolSkipBatchWriteResponse> {
+    return this.request<AgentProtocolSkipBatchWriteResponse>({
+      method: "POST",
+      path: "/agent/protocols/skips/batch-write",
       expectedStatus: 200,
       body: body,
       signal: options.signal

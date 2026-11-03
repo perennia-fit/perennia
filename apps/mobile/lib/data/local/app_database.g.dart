@@ -15123,6 +15123,509 @@ class DosesCompanion extends UpdateCompanion<DoseRow> {
   }
 }
 
+class $ProtocolSkipsTable extends ProtocolSkips
+    with TableInfo<$ProtocolSkipsTable, ProtocolSkipRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProtocolSkipsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _protocolIdMeta =
+      const VerificationMeta('protocolId');
+  @override
+  late final GeneratedColumn<String> protocolId = GeneratedColumn<String>(
+      'protocol_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _compoundIdMeta =
+      const VerificationMeta('compoundId');
+  @override
+  late final GeneratedColumn<String> compoundId = GeneratedColumn<String>(
+      'compound_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _localDateMeta =
+      const VerificationMeta('localDate');
+  @override
+  late final GeneratedColumn<String> localDate = GeneratedColumn<String>(
+      'local_date', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _plannedLocalTimeMeta =
+      const VerificationMeta('plannedLocalTime');
+  @override
+  late final GeneratedColumn<String> plannedLocalTime = GeneratedColumn<String>(
+      'planned_local_time', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _syncDeviceIdMeta =
+      const VerificationMeta('syncDeviceId');
+  @override
+  late final GeneratedColumn<String> syncDeviceId = GeneratedColumn<String>(
+      'sync_device_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _syncPreviouslySyncedMeta =
+      const VerificationMeta('syncPreviouslySynced');
+  @override
+  late final GeneratedColumn<bool> syncPreviouslySynced = GeneratedColumn<bool>(
+      'sync_previously_synced', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("sync_previously_synced" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        protocolId,
+        compoundId,
+        localDate,
+        plannedLocalTime,
+        syncDeviceId,
+        syncPreviouslySynced,
+        updatedAt,
+        deletedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'protocol_skips';
+  @override
+  VerificationContext validateIntegrity(Insertable<ProtocolSkipRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('protocol_id')) {
+      context.handle(
+          _protocolIdMeta,
+          protocolId.isAcceptableOrUnknown(
+              data['protocol_id']!, _protocolIdMeta));
+    } else if (isInserting) {
+      context.missing(_protocolIdMeta);
+    }
+    if (data.containsKey('compound_id')) {
+      context.handle(
+          _compoundIdMeta,
+          compoundId.isAcceptableOrUnknown(
+              data['compound_id']!, _compoundIdMeta));
+    } else if (isInserting) {
+      context.missing(_compoundIdMeta);
+    }
+    if (data.containsKey('local_date')) {
+      context.handle(_localDateMeta,
+          localDate.isAcceptableOrUnknown(data['local_date']!, _localDateMeta));
+    } else if (isInserting) {
+      context.missing(_localDateMeta);
+    }
+    if (data.containsKey('planned_local_time')) {
+      context.handle(
+          _plannedLocalTimeMeta,
+          plannedLocalTime.isAcceptableOrUnknown(
+              data['planned_local_time']!, _plannedLocalTimeMeta));
+    }
+    if (data.containsKey('sync_device_id')) {
+      context.handle(
+          _syncDeviceIdMeta,
+          syncDeviceId.isAcceptableOrUnknown(
+              data['sync_device_id']!, _syncDeviceIdMeta));
+    }
+    if (data.containsKey('sync_previously_synced')) {
+      context.handle(
+          _syncPreviouslySyncedMeta,
+          syncPreviouslySynced.isAcceptableOrUnknown(
+              data['sync_previously_synced']!, _syncPreviouslySyncedMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ProtocolSkipRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProtocolSkipRow(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      protocolId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}protocol_id'])!,
+      compoundId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}compound_id'])!,
+      localDate: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}local_date'])!,
+      plannedLocalTime: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}planned_local_time']),
+      syncDeviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
+      syncPreviouslySynced: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool, data['${effectivePrefix}sync_previously_synced'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
+    );
+  }
+
+  @override
+  $ProtocolSkipsTable createAlias(String alias) {
+    return $ProtocolSkipsTable(attachedDatabase, alias);
+  }
+}
+
+class ProtocolSkipRow extends DataClass implements Insertable<ProtocolSkipRow> {
+  final String id;
+  final String protocolId;
+  final String compoundId;
+  final String localDate;
+  final String? plannedLocalTime;
+  final String? syncDeviceId;
+  final bool syncPreviouslySynced;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+  const ProtocolSkipRow(
+      {required this.id,
+      required this.protocolId,
+      required this.compoundId,
+      required this.localDate,
+      this.plannedLocalTime,
+      this.syncDeviceId,
+      required this.syncPreviouslySynced,
+      required this.updatedAt,
+      this.deletedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['protocol_id'] = Variable<String>(protocolId);
+    map['compound_id'] = Variable<String>(compoundId);
+    map['local_date'] = Variable<String>(localDate);
+    if (!nullToAbsent || plannedLocalTime != null) {
+      map['planned_local_time'] = Variable<String>(plannedLocalTime);
+    }
+    if (!nullToAbsent || syncDeviceId != null) {
+      map['sync_device_id'] = Variable<String>(syncDeviceId);
+    }
+    map['sync_previously_synced'] = Variable<bool>(syncPreviouslySynced);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  ProtocolSkipsCompanion toCompanion(bool nullToAbsent) {
+    return ProtocolSkipsCompanion(
+      id: Value(id),
+      protocolId: Value(protocolId),
+      compoundId: Value(compoundId),
+      localDate: Value(localDate),
+      plannedLocalTime: plannedLocalTime == null && nullToAbsent
+          ? const Value.absent()
+          : Value(plannedLocalTime),
+      syncDeviceId: syncDeviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncDeviceId),
+      syncPreviouslySynced: Value(syncPreviouslySynced),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+    );
+  }
+
+  factory ProtocolSkipRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProtocolSkipRow(
+      id: serializer.fromJson<String>(json['id']),
+      protocolId: serializer.fromJson<String>(json['protocolId']),
+      compoundId: serializer.fromJson<String>(json['compoundId']),
+      localDate: serializer.fromJson<String>(json['localDate']),
+      plannedLocalTime: serializer.fromJson<String?>(json['plannedLocalTime']),
+      syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
+      syncPreviouslySynced:
+          serializer.fromJson<bool>(json['syncPreviouslySynced']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'protocolId': serializer.toJson<String>(protocolId),
+      'compoundId': serializer.toJson<String>(compoundId),
+      'localDate': serializer.toJson<String>(localDate),
+      'plannedLocalTime': serializer.toJson<String?>(plannedLocalTime),
+      'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
+      'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  ProtocolSkipRow copyWith(
+          {String? id,
+          String? protocolId,
+          String? compoundId,
+          String? localDate,
+          Value<String?> plannedLocalTime = const Value.absent(),
+          Value<String?> syncDeviceId = const Value.absent(),
+          bool? syncPreviouslySynced,
+          DateTime? updatedAt,
+          Value<DateTime?> deletedAt = const Value.absent()}) =>
+      ProtocolSkipRow(
+        id: id ?? this.id,
+        protocolId: protocolId ?? this.protocolId,
+        compoundId: compoundId ?? this.compoundId,
+        localDate: localDate ?? this.localDate,
+        plannedLocalTime: plannedLocalTime.present
+            ? plannedLocalTime.value
+            : this.plannedLocalTime,
+        syncDeviceId:
+            syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
+        syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
+        updatedAt: updatedAt ?? this.updatedAt,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+      );
+  ProtocolSkipRow copyWithCompanion(ProtocolSkipsCompanion data) {
+    return ProtocolSkipRow(
+      id: data.id.present ? data.id.value : this.id,
+      protocolId:
+          data.protocolId.present ? data.protocolId.value : this.protocolId,
+      compoundId:
+          data.compoundId.present ? data.compoundId.value : this.compoundId,
+      localDate: data.localDate.present ? data.localDate.value : this.localDate,
+      plannedLocalTime: data.plannedLocalTime.present
+          ? data.plannedLocalTime.value
+          : this.plannedLocalTime,
+      syncDeviceId: data.syncDeviceId.present
+          ? data.syncDeviceId.value
+          : this.syncDeviceId,
+      syncPreviouslySynced: data.syncPreviouslySynced.present
+          ? data.syncPreviouslySynced.value
+          : this.syncPreviouslySynced,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProtocolSkipRow(')
+          ..write('id: $id, ')
+          ..write('protocolId: $protocolId, ')
+          ..write('compoundId: $compoundId, ')
+          ..write('localDate: $localDate, ')
+          ..write('plannedLocalTime: $plannedLocalTime, ')
+          ..write('syncDeviceId: $syncDeviceId, ')
+          ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      protocolId,
+      compoundId,
+      localDate,
+      plannedLocalTime,
+      syncDeviceId,
+      syncPreviouslySynced,
+      updatedAt,
+      deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProtocolSkipRow &&
+          other.id == this.id &&
+          other.protocolId == this.protocolId &&
+          other.compoundId == this.compoundId &&
+          other.localDate == this.localDate &&
+          other.plannedLocalTime == this.plannedLocalTime &&
+          other.syncDeviceId == this.syncDeviceId &&
+          other.syncPreviouslySynced == this.syncPreviouslySynced &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class ProtocolSkipsCompanion extends UpdateCompanion<ProtocolSkipRow> {
+  final Value<String> id;
+  final Value<String> protocolId;
+  final Value<String> compoundId;
+  final Value<String> localDate;
+  final Value<String?> plannedLocalTime;
+  final Value<String?> syncDeviceId;
+  final Value<bool> syncPreviouslySynced;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<int> rowid;
+  const ProtocolSkipsCompanion({
+    this.id = const Value.absent(),
+    this.protocolId = const Value.absent(),
+    this.compoundId = const Value.absent(),
+    this.localDate = const Value.absent(),
+    this.plannedLocalTime = const Value.absent(),
+    this.syncDeviceId = const Value.absent(),
+    this.syncPreviouslySynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ProtocolSkipsCompanion.insert({
+    required String id,
+    required String protocolId,
+    required String compoundId,
+    required String localDate,
+    this.plannedLocalTime = const Value.absent(),
+    this.syncDeviceId = const Value.absent(),
+    this.syncPreviouslySynced = const Value.absent(),
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        protocolId = Value(protocolId),
+        compoundId = Value(compoundId),
+        localDate = Value(localDate),
+        updatedAt = Value(updatedAt);
+  static Insertable<ProtocolSkipRow> custom({
+    Expression<String>? id,
+    Expression<String>? protocolId,
+    Expression<String>? compoundId,
+    Expression<String>? localDate,
+    Expression<String>? plannedLocalTime,
+    Expression<String>? syncDeviceId,
+    Expression<bool>? syncPreviouslySynced,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (protocolId != null) 'protocol_id': protocolId,
+      if (compoundId != null) 'compound_id': compoundId,
+      if (localDate != null) 'local_date': localDate,
+      if (plannedLocalTime != null) 'planned_local_time': plannedLocalTime,
+      if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
+      if (syncPreviouslySynced != null)
+        'sync_previously_synced': syncPreviouslySynced,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ProtocolSkipsCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? protocolId,
+      Value<String>? compoundId,
+      Value<String>? localDate,
+      Value<String?>? plannedLocalTime,
+      Value<String?>? syncDeviceId,
+      Value<bool>? syncPreviouslySynced,
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? deletedAt,
+      Value<int>? rowid}) {
+    return ProtocolSkipsCompanion(
+      id: id ?? this.id,
+      protocolId: protocolId ?? this.protocolId,
+      compoundId: compoundId ?? this.compoundId,
+      localDate: localDate ?? this.localDate,
+      plannedLocalTime: plannedLocalTime ?? this.plannedLocalTime,
+      syncDeviceId: syncDeviceId ?? this.syncDeviceId,
+      syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (protocolId.present) {
+      map['protocol_id'] = Variable<String>(protocolId.value);
+    }
+    if (compoundId.present) {
+      map['compound_id'] = Variable<String>(compoundId.value);
+    }
+    if (localDate.present) {
+      map['local_date'] = Variable<String>(localDate.value);
+    }
+    if (plannedLocalTime.present) {
+      map['planned_local_time'] = Variable<String>(plannedLocalTime.value);
+    }
+    if (syncDeviceId.present) {
+      map['sync_device_id'] = Variable<String>(syncDeviceId.value);
+    }
+    if (syncPreviouslySynced.present) {
+      map['sync_previously_synced'] =
+          Variable<bool>(syncPreviouslySynced.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProtocolSkipsCompanion(')
+          ..write('id: $id, ')
+          ..write('protocolId: $protocolId, ')
+          ..write('compoundId: $compoundId, ')
+          ..write('localDate: $localDate, ')
+          ..write('plannedLocalTime: $plannedLocalTime, ')
+          ..write('syncDeviceId: $syncDeviceId, ')
+          ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ProtocolsTable extends Protocols
     with TableInfo<$ProtocolsTable, ProtocolRow> {
   @override
@@ -23518,6 +24021,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MetricReadingsTable metricReadings = $MetricReadingsTable(this);
   late final $CompoundsTable compounds = $CompoundsTable(this);
   late final $DosesTable doses = $DosesTable(this);
+  late final $ProtocolSkipsTable protocolSkips = $ProtocolSkipsTable(this);
   late final $ProtocolsTable protocols = $ProtocolsTable(this);
   late final $ProtocolCompoundsTable protocolCompounds =
       $ProtocolCompoundsTable(this);
@@ -23620,6 +24124,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       'CREATE INDEX doses_local_date_index ON doses (local_date)');
   late final Index dosesCompoundIdIndex = Index('doses_compound_id_index',
       'CREATE INDEX doses_compound_id_index ON doses (compound_id)');
+  late final Index protocolSkipsLocalDateIndex = Index(
+      'protocol_skips_local_date_index',
+      'CREATE INDEX protocol_skips_local_date_index ON protocol_skips (local_date)');
   late final Index protocolCompoundsProtocolIdIndex = Index(
       'protocol_compounds_protocol_id_index',
       'CREATE INDEX protocol_compounds_protocol_id_index ON protocol_compounds (protocol_id)');
@@ -23712,6 +24219,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         metricReadings,
         compounds,
         doses,
+        protocolSkips,
         protocols,
         protocolCompounds,
         schedules,
@@ -23756,6 +24264,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         compoundsNameIndex,
         dosesLocalDateIndex,
         dosesCompoundIdIndex,
+        protocolSkipsLocalDateIndex,
         protocolCompoundsProtocolIdIndex,
         protocolCompoundsCompoundIdIndex,
         schedulesProtocolCompoundEffectiveFromIndex,
@@ -33451,6 +33960,244 @@ typedef $$DosesTableProcessedTableManager = ProcessedTableManager<
     (DoseRow, BaseReferences<_$AppDatabase, $DosesTable, DoseRow>),
     DoseRow,
     PrefetchHooks Function()>;
+typedef $$ProtocolSkipsTableCreateCompanionBuilder = ProtocolSkipsCompanion
+    Function({
+  required String id,
+  required String protocolId,
+  required String compoundId,
+  required String localDate,
+  Value<String?> plannedLocalTime,
+  Value<String?> syncDeviceId,
+  Value<bool> syncPreviouslySynced,
+  required DateTime updatedAt,
+  Value<DateTime?> deletedAt,
+  Value<int> rowid,
+});
+typedef $$ProtocolSkipsTableUpdateCompanionBuilder = ProtocolSkipsCompanion
+    Function({
+  Value<String> id,
+  Value<String> protocolId,
+  Value<String> compoundId,
+  Value<String> localDate,
+  Value<String?> plannedLocalTime,
+  Value<String?> syncDeviceId,
+  Value<bool> syncPreviouslySynced,
+  Value<DateTime> updatedAt,
+  Value<DateTime?> deletedAt,
+  Value<int> rowid,
+});
+
+class $$ProtocolSkipsTableFilterComposer
+    extends Composer<_$AppDatabase, $ProtocolSkipsTable> {
+  $$ProtocolSkipsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get protocolId => $composableBuilder(
+      column: $table.protocolId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get compoundId => $composableBuilder(
+      column: $table.compoundId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get localDate => $composableBuilder(
+      column: $table.localDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get plannedLocalTime => $composableBuilder(
+      column: $table.plannedLocalTime,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$ProtocolSkipsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ProtocolSkipsTable> {
+  $$ProtocolSkipsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get protocolId => $composableBuilder(
+      column: $table.protocolId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get compoundId => $composableBuilder(
+      column: $table.compoundId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get localDate => $composableBuilder(
+      column: $table.localDate, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get plannedLocalTime => $composableBuilder(
+      column: $table.plannedLocalTime,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$ProtocolSkipsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ProtocolSkipsTable> {
+  $$ProtocolSkipsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get protocolId => $composableBuilder(
+      column: $table.protocolId, builder: (column) => column);
+
+  GeneratedColumn<String> get compoundId => $composableBuilder(
+      column: $table.compoundId, builder: (column) => column);
+
+  GeneratedColumn<String> get localDate =>
+      $composableBuilder(column: $table.localDate, builder: (column) => column);
+
+  GeneratedColumn<String> get plannedLocalTime => $composableBuilder(
+      column: $table.plannedLocalTime, builder: (column) => column);
+
+  GeneratedColumn<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId, builder: (column) => column);
+
+  GeneratedColumn<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$ProtocolSkipsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $ProtocolSkipsTable,
+    ProtocolSkipRow,
+    $$ProtocolSkipsTableFilterComposer,
+    $$ProtocolSkipsTableOrderingComposer,
+    $$ProtocolSkipsTableAnnotationComposer,
+    $$ProtocolSkipsTableCreateCompanionBuilder,
+    $$ProtocolSkipsTableUpdateCompanionBuilder,
+    (
+      ProtocolSkipRow,
+      BaseReferences<_$AppDatabase, $ProtocolSkipsTable, ProtocolSkipRow>
+    ),
+    ProtocolSkipRow,
+    PrefetchHooks Function()> {
+  $$ProtocolSkipsTableTableManager(_$AppDatabase db, $ProtocolSkipsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProtocolSkipsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProtocolSkipsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProtocolSkipsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> protocolId = const Value.absent(),
+            Value<String> compoundId = const Value.absent(),
+            Value<String> localDate = const Value.absent(),
+            Value<String?> plannedLocalTime = const Value.absent(),
+            Value<String?> syncDeviceId = const Value.absent(),
+            Value<bool> syncPreviouslySynced = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ProtocolSkipsCompanion(
+            id: id,
+            protocolId: protocolId,
+            compoundId: compoundId,
+            localDate: localDate,
+            plannedLocalTime: plannedLocalTime,
+            syncDeviceId: syncDeviceId,
+            syncPreviouslySynced: syncPreviouslySynced,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String protocolId,
+            required String compoundId,
+            required String localDate,
+            Value<String?> plannedLocalTime = const Value.absent(),
+            Value<String?> syncDeviceId = const Value.absent(),
+            Value<bool> syncPreviouslySynced = const Value.absent(),
+            required DateTime updatedAt,
+            Value<DateTime?> deletedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ProtocolSkipsCompanion.insert(
+            id: id,
+            protocolId: protocolId,
+            compoundId: compoundId,
+            localDate: localDate,
+            plannedLocalTime: plannedLocalTime,
+            syncDeviceId: syncDeviceId,
+            syncPreviouslySynced: syncPreviouslySynced,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$ProtocolSkipsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $ProtocolSkipsTable,
+    ProtocolSkipRow,
+    $$ProtocolSkipsTableFilterComposer,
+    $$ProtocolSkipsTableOrderingComposer,
+    $$ProtocolSkipsTableAnnotationComposer,
+    $$ProtocolSkipsTableCreateCompanionBuilder,
+    $$ProtocolSkipsTableUpdateCompanionBuilder,
+    (
+      ProtocolSkipRow,
+      BaseReferences<_$AppDatabase, $ProtocolSkipsTable, ProtocolSkipRow>
+    ),
+    ProtocolSkipRow,
+    PrefetchHooks Function()>;
 typedef $$ProtocolsTableCreateCompanionBuilder = ProtocolsCompanion Function({
   required String id,
   required String name,
@@ -39863,6 +40610,8 @@ class $AppDatabaseManager {
       $$CompoundsTableTableManager(_db, _db.compounds);
   $$DosesTableTableManager get doses =>
       $$DosesTableTableManager(_db, _db.doses);
+  $$ProtocolSkipsTableTableManager get protocolSkips =>
+      $$ProtocolSkipsTableTableManager(_db, _db.protocolSkips);
   $$ProtocolsTableTableManager get protocols =>
       $$ProtocolsTableTableManager(_db, _db.protocols);
   $$ProtocolCompoundsTableTableManager get protocolCompounds =>

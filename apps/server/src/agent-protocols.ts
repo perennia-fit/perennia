@@ -19,6 +19,7 @@ import {
   doseValidationLimitsResponse,
   validateAgentDose,
   validateAgentProtocolPeriod,
+  validateAgentProtocolSkip,
   validateAgentScheduleRule,
   type AgentDoseValidationIssue,
   type AgentDoseValidationResult
@@ -37,6 +38,7 @@ import {
   encodeScheduleRule,
   epochDay,
   isJsonObject,
+  isPlanLocalTime,
   isValidLocalDate,
   planDays,
   pushToGroup,
@@ -48,6 +50,7 @@ import {
   type PlanDayState,
   type PlanDose,
   type PlanProtocol,
+  type PlanSkip,
   type ProtocolPeriod,
   type ScheduleRule
 } from "./protocol-plan.js";
@@ -57,11 +60,13 @@ import {
   DOSES_SYNC_ENTITY,
   PROTOCOLS_SYNC_ENTITY,
   PROTOCOL_COMPOUNDS_SYNC_ENTITY,
+  PROTOCOL_SKIPS_SYNC_ENTITY,
   PROTOCOL_TARGET_OUTCOMES_SYNC_ENTITY,
   SCHEDULES_SYNC_ENTITY,
   pushCompoundsInTransaction,
   pushDosesInTransaction,
   pushProtocolCompoundsInTransaction,
+  pushProtocolSkipsInTransaction,
   pushProtocolsInTransaction,
   pushProtocolTargetOutcomesInTransaction,
   pushSchedulesInTransaction,
@@ -82,6 +87,7 @@ export const AGENT_PROTOCOL_BATCH_WRITE_MAX_MEMBERS = 100;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_SCHEDULES = 100;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_TARGET_OUTCOMES = 50;
 export const AGENT_PROTOCOL_DELETE_MAX_PROTOCOLS = 100;
+export const AGENT_PROTOCOL_SKIP_BATCH_WRITE_MAX_SKIPS = 100;
 
 // Effect-window bucketing bounds — a descriptive read, never stored.
 export const AGENT_EFFECT_WINDOW_MAX_DOSES = 500;
@@ -863,6 +869,61 @@ export const AgentProtocolDeleteRequestSchema = z
   .strict()
   .openapi("AgentProtocolDeleteRequest");
 
+export const AgentProtocolSkipBatchWriteSkipSchema = z
+  .object({
+    id: ClientUuidV7Schema.openapi({
+      description:
+        "The Skip's id: a client-supplied UUIDv7 for a new Skip, or the id of a stored one (a fill's skipId) to remove it."
+    }),
+    protocolId: AgentProtocolsReferenceIdSchema.openapi({
+      description:
+        "The Protocol whose planned dose this Skip answers. It must name a Protocol of this account that wasn't deleted; an archived one is accepted, for its past days."
+    }),
+    compoundId: AgentProtocolsReferenceIdSchema.openapi({
+      description: "The planned dose's Compound."
+    }),
+    localDate: LocalDateSchema.openapi({
+      description: "The planned dose's local date (YYYY-MM-DD); not after today."
+    }),
+    plannedLocalTime: z.string().nullable().openapi({
+      description:
+        "The planned dose's time, HH:MM, or null for an untimed planned dose. A timed Skip names exactly one planned dose; an untimed one answers any one of that Protocol's untimed planned doses of the Compound that day."
+    }),
+    deletedAt: ISO8601StringSchema.refine((value) => !Number.isNaN(Date.parse(value)), {
+      message: "Must be an ISO 8601 timestamp."
+    })
+      .nullable()
+      .optional()
+      .openapi({
+        description:
+          "Set to remove the Skip. Removing a timed Skip also removes every other Skip with the same Protocol, Compound, date and time, as the app's Undo skip does. A removed Skip is never brought back: skip again with a new id."
+      })
+  })
+  .strict()
+  .openapi("AgentProtocolSkipBatchWriteSkip");
+
+export const AgentProtocolSkipBatchWriteRequestSchema = z
+  .object({
+    idempotencyKey: z.string().min(1).max(200).openapi({
+      description:
+        "Stable key for this agent request. The whole request is one Activity Log batch with this batchId, and a replay with the same key writes nothing."
+    }),
+    today: LocalDateSchema.openapi({
+      description:
+        "The user's local date (YYYY-MM-DD), within one day of the server's UTC date. A Skip may not be for a day after it."
+    }),
+    skips: z
+      .array(AgentProtocolSkipBatchWriteSkipSchema)
+      .min(1)
+      .max(AGENT_PROTOCOL_SKIP_BATCH_WRITE_MAX_SKIPS)
+      .openapi({
+        description:
+          "Skips to write or remove atomically as one Activity Log batch. A Skip is never edited: it is written once and removed with deletedAt."
+      })
+  })
+  .strict()
+  .openapi("AgentProtocolSkipBatchWriteRequest");
+
 // ---------------------------------------------------------------------------
 // Write issue + response shapes
 // ---------------------------------------------------------------------------
@@ -990,6 +1051,41 @@ export const AgentProtocolDeleteErrorResponseSchema = z
     issues: z.array(AgentProtocolsBatchWriteIssueSchema)
   })
   .openapi("AgentProtocolDeleteErrorResponse");
+
+const AgentProtocolSkipBatchWriteResultSchema = z
+  .object({
+    id: z.string().min(1),
+    outcome: z.enum(["applied", "superseded", "duplicate", "refused"]).openapi({
+      description:
+        "As for Doses: applied, superseded (a newer stored version won), duplicate (an idempotent replay), or refused (the sync push didn't accept the row)."
+    })
+  })
+  .openapi("AgentProtocolSkipBatchWriteResult");
+
+export const AgentProtocolSkipBatchWriteResponseSchema = z
+  .object({
+    accepted: z.literal(true),
+    duplicate: z.boolean(),
+    idempotencyKey: z.string().min(1),
+    batchId: z.string().min(1).openapi({
+      description:
+        "The Activity Log batch. Undoing it (undo-activity-batch) reverses every row this request wrote, swept Skips included."
+    }),
+    serverClock: z.string().min(1),
+    skips: z.array(AgentProtocolSkipBatchWriteResultSchema).openapi({
+      description:
+        "One entry per Skip sent, in order. A Skip removed because it shares a removed timed Skip's Protocol, Compound, date and time gets its own entry, right after the item that removed it."
+    })
+  })
+  .openapi("AgentProtocolSkipBatchWriteResponse");
+
+export const AgentProtocolSkipBatchWriteErrorResponseSchema = z
+  .object({
+    code: z.literal("agent_protocol_skip_batch_write_failed"),
+    message: z.string().min(1),
+    issues: z.array(AgentProtocolsBatchWriteIssueSchema)
+  })
+  .openapi("AgentProtocolSkipBatchWriteErrorResponse");
 
 export const AgentProtocolsUnavailableResponseSchema = z
   .object({
@@ -1594,6 +1690,41 @@ export const agentProtocolDeleteRoute = createRoute({
   }
 });
 
+export const agentProtocolSkipBatchWriteRoute = createRoute({
+  method: "post",
+  path: "/agent/protocols/skips/batch-write",
+  operationId: "batchWriteAgentProtocolSkips",
+  tags: ["Agent Writes"],
+  summary: "Skip planned doses, or remove Skips, as one Activity Log batch.",
+  description:
+    "Authenticated agent write for Skips: a Skip answers one planned dose on one local date as not taken, on purpose, so its Day Status reads skipped rather than pending or not_logged. It names the planned dose by Protocol, Compound, date and planned time (null when untimed), never by slot. A Skip is never edited: it is written once and removed with deletedAt, and removing a timed Skip also removes every other Skip with the same Protocol, Compound, date and time, in the same batch. Find the Skips that matter in the Day Status read's fills (detail=doses). Any refused item refuses the whole request. Idempotent by idempotency key.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": { schema: AgentProtocolSkipBatchWriteRequestSchema }
+      }
+    }
+  },
+  responses: {
+    200: {
+      description: "The batch was accepted, or recognized as an idempotent replay.",
+      content: {
+        "application/json": { schema: AgentProtocolSkipBatchWriteResponseSchema }
+      }
+    },
+    422: {
+      description:
+        "A Skip failed validation, names no live Protocol, or edits a stored Skip, or today is out of range, or the idempotency key conflicts with an earlier request; nothing was written.",
+      content: {
+        "application/json": { schema: AgentProtocolSkipBatchWriteErrorResponseSchema }
+      }
+    },
+    ...writeResponses401_429_503()
+  }
+});
+
 export const agentEffectWindowRoute = createRoute({
   method: "get",
   path: "/agent/protocols/effect-window",
@@ -1714,6 +1845,15 @@ export type AgentProtocolDeleteResponse = z.infer<typeof AgentProtocolDeleteResp
 export type AgentProtocolDeleteErrorResponse = z.infer<
   typeof AgentProtocolDeleteErrorResponseSchema
 >;
+export type AgentProtocolSkipBatchWriteRequest = z.infer<
+  typeof AgentProtocolSkipBatchWriteRequestSchema
+>;
+export type AgentProtocolSkipBatchWriteResponse = z.infer<
+  typeof AgentProtocolSkipBatchWriteResponseSchema
+>;
+export type AgentProtocolSkipBatchWriteErrorResponse = z.infer<
+  typeof AgentProtocolSkipBatchWriteErrorResponseSchema
+>;
 export type AgentDoseBatchWriteIssue = z.infer<typeof AgentDoseBatchWriteIssueSchema>;
 
 type PreparedReference = {
@@ -1781,6 +1921,14 @@ export type AgentProtocolsStoreWriteResult = {
 /** A delete's store result: the write result plus one outcome per distinct id. */
 export type AgentProtocolDeleteStoreResult = AgentProtocolsStoreWriteResult & {
   protocols: z.infer<typeof AgentProtocolDeleteResultSchema>[];
+};
+
+/**
+ * A Skip write's store result: the write result plus one outcome per Skip
+ * sent, each followed by the Skips its removal swept (D8).
+ */
+export type AgentProtocolSkipStoreResult = AgentProtocolsStoreWriteResult & {
+  skips: z.infer<typeof AgentProtocolSkipBatchWriteResultSchema>[];
 };
 
 export type AgentProtocolsStore = {
@@ -1854,6 +2002,19 @@ export type AgentProtocolsStore = {
     idempotencyKey: string;
     protocolIds: string[];
   }): Promise<AgentProtocolDeleteStoreResult>;
+  /**
+   * Writes and removes Skips (D8) as one Activity Log batch. Refuses the
+   * whole batch for an item naming no live Protocol (`protocol_not_found`)
+   * or editing a stored Skip (`skip_immutable`). A removed timed Skip's
+   * stored siblings are tombstoned in the same batch.
+   */
+  writeProtocolSkipBatch(input: {
+    userId: string;
+    batchId: string;
+    requestFingerprint: string;
+    deviceId: string;
+    skips: PreparedRow[];
+  }): Promise<AgentProtocolSkipStoreResult>;
 };
 
 // ---------------------------------------------------------------------------
@@ -2322,6 +2483,110 @@ export function prepareAgentProtocolBatchWrite({
   };
 }
 
+/**
+ * The pure half of a Skip write (D8): the shared Skip validator
+ * (`skip_time_format`, `skip_future`) and the `today` bound, each issue
+ * collected before refusing. The checks that read stored data
+ * (`protocol_not_found`, `skip_immutable`) run in the store, inside the
+ * write's transaction, as the Protocol batch write's do; the pure step
+ * refuses first, so a batch refused here never reaches them.
+ *
+ * A Skip id repeated in one batch is refused (`duplicate_skip_id`), as a
+ * repeated Dose id is: two rows for one id in one push would leave which one
+ * wins to the push order.
+ */
+export function prepareAgentProtocolSkipBatchWrite({
+  request,
+  now = new Date()
+}: {
+  request: AgentProtocolSkipBatchWriteRequest;
+  now?: Date;
+}):
+  | { accepted: true; skips: PreparedRow[] }
+  | { accepted: false; issues: AgentProtocolsBatchWriteIssue[] } {
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  const skips: PreparedRow[] = [];
+  const nowIso = now.toISOString();
+  const seen = new Set<string>();
+
+  const todayMessage = todayOutOfRangeMessage(request.today, now);
+  if (todayMessage !== null) {
+    issues.push(
+      entityIssue(0, null, {
+        field: "today",
+        rule: "today_out_of_range",
+        message: todayMessage
+      })
+    );
+  }
+
+  for (const [itemIndex, skip] of request.skips.entries()) {
+    if (seen.has(skip.id)) {
+      issues.push(
+        entityIssue(itemIndex, skip.id, {
+          field: `skips[${itemIndex}].id`,
+          rule: "duplicate_skip_id",
+          message: "A Skip id may appear only once per batch."
+        })
+      );
+      continue;
+    }
+    seen.add(skip.id);
+
+    const validation = validateAgentProtocolSkip({
+      localDate: skip.localDate,
+      plannedLocalTime: skip.plannedLocalTime,
+      today: request.today
+    });
+    for (const error of validation.errors) {
+      issues.push(
+        entityIssue(itemIndex, skip.id, {
+          field: `skips[${itemIndex}].${error.field}`,
+          rule: error.rule,
+          message: error.message
+        })
+      );
+    }
+
+    const deletedAt = skip.deletedAt ?? null;
+    skips.push({
+      id: skip.id,
+      itemIndex,
+      field: `skips[${itemIndex}].id`,
+      updatedAt: nowIso,
+      deletedAt,
+      payload: {
+        id: skip.id,
+        protocol_id: skip.protocolId,
+        compound_id: skip.compoundId,
+        local_date: skip.localDate,
+        planned_local_time: skip.plannedLocalTime,
+        updated_at: nowIso,
+        deleted_at: deletedAt
+      }
+    });
+  }
+
+  if (issues.length > 0) {
+    return { accepted: false, issues };
+  }
+  return { accepted: true, skips };
+}
+
+/** The 422 answer to a Skip write the pure step refused; nothing was written. */
+export function agentProtocolSkipBatchWriteRefusal(
+  issues: AgentProtocolsBatchWriteIssue[]
+): { status: 422; body: AgentProtocolSkipBatchWriteErrorResponse } {
+  return {
+    status: 422,
+    body: AgentProtocolSkipBatchWriteErrorResponseSchema.parse({
+      code: "agent_protocol_skip_batch_write_failed",
+      message: "One or more Skips can't be written; nothing was written.",
+      issues
+    })
+  };
+}
+
 /** How far the request's `today` may be from the server's UTC date (D6). */
 const AGENT_TODAY_MAX_SKEW_DAYS = 1;
 
@@ -2626,6 +2891,44 @@ export function agentProtocolDeleteResponse(
       batchId: request.idempotencyKey,
       serverClock: result.serverClock,
       protocols: result.protocols
+    })
+  };
+}
+
+/**
+ * The REST and MCP answer to a Skip write the store ran (D8): 200 with one
+ * outcome per Skip sent and per Skip swept, 422 for a refused item or a
+ * conflicting idempotency key (nothing written), and 503 while the
+ * idempotency receipt is unavailable.
+ */
+export function agentProtocolSkipBatchWriteResponse(
+  request: AgentProtocolSkipBatchWriteRequest,
+  result: AgentProtocolSkipStoreResult
+):
+  | { status: 200; body: AgentProtocolSkipBatchWriteResponse }
+  | { status: 422; body: AgentProtocolSkipBatchWriteErrorResponse }
+  | { status: 503; body: z.infer<typeof AgentProtocolsUnavailableResponseSchema> } {
+  const failure = agentProtocolsWriteFailure(result, []);
+  if (failure?.status === 503) {
+    return failure;
+  }
+  if (failure !== null) {
+    const refusal = agentProtocolSkipBatchWriteRefusal(failure.body.errors);
+    if (result.idempotencyConflict) {
+      refusal.body.message =
+        "This idempotency key was already used with a different request; nothing was written.";
+    }
+    return refusal;
+  }
+  return {
+    status: 200,
+    body: AgentProtocolSkipBatchWriteResponseSchema.parse({
+      accepted: true,
+      duplicate: result.duplicate,
+      idempotencyKey: request.idempotencyKey,
+      batchId: request.idempotencyKey,
+      serverClock: result.serverClock,
+      skips: result.skips
     })
   };
 }
@@ -3219,15 +3522,15 @@ export function createDrizzleAgentProtocolsStore(
     },
 
     async listProtocolDayStatuses({ userId, query }) {
-      const [protocols, doses] = await Promise.all([
+      const [protocols, doses, skips] = await Promise.all([
         readPlanProtocols(db, userId, query),
-        readPlanDoses(db, userId, query)
+        readPlanDoses(db, userId, query),
+        readPlanSkips(db, userId, query)
       ]);
       const statuses = dayStatuses(
         planDays(protocols, query.fromLocalDate, query.toLocalDate),
         doses,
-        // No Skips are stored until Phase 8, which reads them here (D8).
-        [],
+        skips,
         query.today
       );
       return AgentProtocolDayStatusesResponseSchema.parse({
@@ -3422,6 +3725,101 @@ export function createDrizzleAgentProtocolsStore(
         ...result,
         protocols: written ? ids.map((id) => ({ id, outcome: outcomes.get(id)! })) : []
       };
+    },
+
+    async writeProtocolSkipBatch({
+      userId,
+      batchId,
+      requestFingerprint,
+      deviceId,
+      skips
+    }) {
+      // The group's rows: the items, then the siblings finalize sweeps.
+      const rows = [...skips];
+      // Each item's swept siblings, in the order they were swept.
+      const sweptBy = new Map<string, string[]>();
+      const result = await writeOpaqueBatch(db, {
+        userId,
+        batchId,
+        requestFingerprint,
+        deviceId,
+        operationKind: "protocol_skips",
+        finalize: (transaction, serverClock) =>
+          finalizeProtocolSkips(transaction, {
+            userId,
+            serverClock,
+            items: skips,
+            rows,
+            sweptBy
+          }),
+        groups: [
+          {
+            keyPrefix: "skip",
+            rows,
+            tableKey: "protocolSkips",
+            table: schema.protocolSkips,
+            push: pushProtocolSkipsInTransaction
+          }
+        ]
+      });
+      const written =
+        result.validationErrors.length === 0 &&
+        !result.idempotencyConflict &&
+        !result.receiptUnavailable;
+      if (!written) {
+        return { ...result, skips: [] };
+      }
+      if (result.duplicate) {
+        // A replay skips finalize, so the Skips the replayed batch swept are
+        // read back from its Activity Log, each placed after the first
+        // removal item sharing its timed key, as the first answer placed it.
+        const logged = await db
+          .select({
+            entityId: schema.activityLog.entityId,
+            afterImage: schema.activityLog.afterImage
+          })
+          .from(schema.activityLog)
+          .where(
+            and(
+              eq(schema.activityLog.userId, userId),
+              eq(schema.activityLog.actor, "agent"),
+              eq(schema.activityLog.batchId, batchId),
+              eq(schema.activityLog.entityTable, PROTOCOL_SKIPS_SYNC_ENTITY)
+            )
+          )
+          .orderBy(asc(schema.activityLog.entityId));
+        const itemIds = new Set(skips.map((item) => item.id));
+        for (const entry of logged) {
+          if (itemIds.has(entry.entityId)) {
+            continue;
+          }
+          const image = readJsonObject(entry.afterImage);
+          const key = image === null ? null : timedSkipKey(image);
+          const remover = skips.find(
+            (item) => item.deletedAt !== null && key !== null && timedSkipKey(item.payload) === key
+          );
+          if (remover !== undefined) {
+            sweptBy.set(remover.id, [...(sweptBy.get(remover.id) ?? []), entry.entityId]);
+          }
+        }
+      }
+      const appliedIds = new Set(result.applied.map((row) => row.id));
+      const acceptedIds = new Set(result.accepted);
+      const outcome = (id: string) =>
+        result.duplicate
+          ? ("duplicate" as const)
+          : appliedIds.has(id)
+            ? ("applied" as const)
+            : acceptedIds.has(id)
+              ? ("superseded" as const)
+              : ("refused" as const);
+      return {
+        ...result,
+        skips: skips.flatMap((item) => [
+          { id: item.id, outcome: outcome(item.id) },
+          ...(sweptBy.get(item.id) ?? []).map((id) => ({ id, outcome: outcome(id) }))
+        ])
+      };
     }
   };
 }
@@ -3442,6 +3840,7 @@ type PushInTransaction = (
 
 type OpaqueTable =
   | typeof schema.doses
+  | typeof schema.protocolSkips
   | typeof schema.compounds
   | typeof schema.protocols
   | typeof schema.protocolCompounds
@@ -3450,6 +3849,7 @@ type OpaqueTable =
 
 type OpaqueTableKey =
   | "doses"
+  | "protocolSkips"
   | "compounds"
   | "protocols"
   | "protocolCompounds"
@@ -3466,6 +3866,7 @@ type OpaqueBatchGroup = {
 
 const OPAQUE_TABLES: Record<OpaqueTableKey, OpaqueTable> = {
   doses: schema.doses,
+  protocolSkips: schema.protocolSkips,
   compounds: schema.compounds,
   protocols: schema.protocols,
   protocolCompounds: schema.protocolCompounds,
@@ -3488,7 +3889,12 @@ type OpaqueBatchOptions = {
   requestFingerprint: string;
   deviceId: string;
   /** Keys the receipt, so one idempotency key can't serve two operations. */
-  operationKind: "doses" | "compounds" | "protocols" | "protocol_deletes";
+  operationKind:
+    | "doses"
+    | "compounds"
+    | "protocols"
+    | "protocol_deletes"
+    | "protocol_skips";
   groups: OpaqueBatchGroup[];
   /**
    * Work that needs stored data and must not run on a replay: it runs once
@@ -4059,6 +4465,213 @@ async function finalizeProtocolDeletes(
     }
   }
   return issues;
+}
+
+/** The fields that name a Skip's planned dose; a Skip never changes them. */
+const SKIP_KEY_FIELDS = [
+  ["protocol_id", "protocolId"],
+  ["compound_id", "compoundId"],
+  ["local_date", "localDate"],
+  ["planned_local_time", "plannedLocalTime"]
+] as const;
+
+/**
+ * A timed Skip's Protocol, Compound, date and time as one key, or null for
+ * an untimed Skip (or a payload missing one of them).
+ */
+function timedSkipKey(payload: Record<string, unknown>): string | null {
+  const parts = SKIP_KEY_FIELDS.map(([column]) => nullableString(payload[column]));
+  return parts.some((part) => part === null) ? null : parts.join("\u0000");
+}
+
+/**
+ * The half of a Skip write that reads stored data (D8), inside the write's
+ * transaction after the idempotency receipt, so a refusal rolls the receipt
+ * back and a replay never sweeps again:
+ *
+ * - `protocol_not_found` for an item without `deletedAt` whose Protocol is
+ *   not this account's, or was deleted (an undo tombstone). An archived
+ *   Protocol is accepted, and removing a Skip always is;
+ * - `skip_immutable` for an item whose id names a stored Skip and that
+ *   changes any field but `deletedAt`, or clears a `deletedAt` that is set.
+ *
+ * With no issue, every item that removes a timed Skip also tombstones each
+ * stored, non-tombstoned Skip with the same Protocol, Compound, date and
+ * time, which the app's Undo skip removes too. Those rows join `rows` (the
+ * write's group) and `sweptBy`; a sibling that is itself an item, or was
+ * already swept, is left to that. The siblings are read in one query (the
+ * items' dates), then grouped by their timed key in memory.
+ *
+ * Every removal is stamped by one rule (D8, settled during Phase 8's build):
+ * the server clock, unless the stored Skip is stamped at or after it (a
+ * device clock ahead within the sync push's accepted skew), then one
+ * millisecond after the stored stamp, so last-writer-wins applies it, as a
+ * Protocol delete does. That holds for a swept sibling and for an item that
+ * removes a stored, non-tombstoned Skip alike: stamping the item with the
+ * request time would leave it `superseded`, and its Skip live, while its
+ * siblings were swept.
+ */
+async function finalizeProtocolSkips(
+  transaction: OpaqueTransaction,
+  {
+    userId,
+    serverClock,
+    items,
+    rows,
+    sweptBy
+  }: {
+    userId: string;
+    serverClock: Date;
+    items: readonly PreparedRow[];
+    rows: PreparedRow[];
+    sweptBy: Map<string, string[]>;
+  }
+): Promise<AgentProtocolsBatchWriteIssue[]> {
+  const stored = byId(
+    await transaction
+      .select({
+        id: schema.protocolSkips.id,
+        payload: schema.protocolSkips.payload,
+        updatedAt: schema.protocolSkips.updatedAt,
+        deletedAt: schema.protocolSkips.deletedAt
+      })
+      .from(schema.protocolSkips)
+      .where(
+        and(
+          eq(schema.protocolSkips.userId, userId),
+          inArray(
+            schema.protocolSkips.id,
+            items.map((item) => item.id)
+          )
+        )
+      )
+  );
+  const namedProtocolIds = [
+    ...new Set(
+      items
+        .filter((item) => item.deletedAt === null)
+        .map((item) => String(item.payload.protocol_id))
+    )
+  ];
+  const protocols = byId(
+    namedProtocolIds.length === 0
+      ? []
+      : await selectStoredPlanRows(transaction, schema.protocols, userId, [
+          inArray(schema.protocols.id, namedProtocolIds)
+        ])
+  );
+
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  for (const item of items) {
+    const prefix = `skips[${item.itemIndex}]`;
+    if (item.deletedAt === null) {
+      const protocol = protocols.get(String(item.payload.protocol_id));
+      if (protocol === undefined || isUndoTombstone(protocol)) {
+        issues.push(
+          entityIssue(item.itemIndex, item.id, {
+            field: `${prefix}.protocolId`,
+            rule: "protocol_not_found",
+            message: "No Protocol with this id exists for this account."
+          })
+        );
+      }
+    }
+    const storedSkip = stored.get(item.id);
+    if (storedSkip === undefined) {
+      continue;
+    }
+    for (const [column, field] of SKIP_KEY_FIELDS) {
+      if ((storedSkip.payload[column] ?? null) !== (item.payload[column] ?? null)) {
+        issues.push(
+          entityIssue(item.itemIndex, item.id, {
+            field: `${prefix}.${field}`,
+            rule: "skip_immutable",
+            message:
+              "A Skip is never edited. Remove it with deletedAt and skip again with a new id."
+          })
+        );
+      }
+    }
+    if (storedSkip.deletedAt !== null && item.deletedAt === null) {
+      issues.push(
+        entityIssue(item.itemIndex, item.id, {
+          field: `${prefix}.deletedAt`,
+          rule: "skip_immutable",
+          message:
+            "A removed Skip is never brought back. Skip again with a new id."
+        })
+      );
+    }
+  }
+  if (issues.length > 0) {
+    return issues;
+  }
+
+  // One stamp rule for every removal: see the docstring.
+  const removalStamp = (storedUpdatedAt: Date) =>
+    new Date(Math.max(serverClock.getTime(), storedUpdatedAt.getTime() + 1)).toISOString();
+  for (const item of items) {
+    const storedSkip = stored.get(item.id);
+    if (item.deletedAt === null || storedSkip === undefined || storedSkip.deletedAt !== null) {
+      continue;
+    }
+    const stamp = removalStamp(storedSkip.updatedAt);
+    item.updatedAt = stamp;
+    item.payload.updated_at = stamp;
+  }
+
+  const removals = items.filter(
+    (item) => item.deletedAt !== null && timedSkipKey(item.payload) !== null
+  );
+  if (removals.length === 0) {
+    return [];
+  }
+  const candidates = await transaction
+    .select({
+      id: schema.protocolSkips.id,
+      payload: schema.protocolSkips.payload,
+      updatedAt: schema.protocolSkips.updatedAt
+    })
+    .from(schema.protocolSkips)
+    .where(
+      and(
+        eq(schema.protocolSkips.userId, userId),
+        isNull(schema.protocolSkips.deletedAt),
+        inArray(sql`${schema.protocolSkips.payload}->>'local_date'`, [
+          ...new Set(removals.map((item) => String(item.payload.local_date)))
+        ])
+      )
+    )
+    .orderBy(asc(schema.protocolSkips.id));
+  const siblingsByKey = new Map<string, typeof candidates>();
+  for (const candidate of candidates) {
+    const key = timedSkipKey(candidate.payload);
+    if (key !== null) {
+      siblingsByKey.set(key, [...(siblingsByKey.get(key) ?? []), candidate]);
+    }
+  }
+
+  const itemIds = new Set(items.map((item) => item.id));
+  const swept = new Set<string>();
+  for (const item of removals) {
+    for (const sibling of siblingsByKey.get(timedSkipKey(item.payload)!) ?? []) {
+      if (itemIds.has(sibling.id) || swept.has(sibling.id)) {
+        continue;
+      }
+      swept.add(sibling.id);
+      const stamp = removalStamp(sibling.updatedAt);
+      rows.push({
+        id: sibling.id,
+        itemIndex: item.itemIndex,
+        field: `skips[${item.itemIndex}].deletedAt`,
+        updatedAt: stamp,
+        deletedAt: stamp,
+        payload: { ...sibling.payload, updated_at: stamp, deleted_at: stamp }
+      });
+      sweptBy.set(item.id, [...(sweptBy.get(item.id) ?? []), sibling.id]);
+    }
+  }
+  return [];
 }
 
 /** What D8's history check reads of one Protocol: its id, dates and members. */
@@ -4763,6 +5376,73 @@ async function readPlanDoses(
     sequenceByGroup.set(key, sequence + 1);
     return { ...dose, sequence };
   });
+}
+
+/**
+ * The range's Skips as matching reads them (D8, step 3): every Skip not
+ * removed, of this account, on its written local date. A `compoundId` keeps
+ * only that Compound's Skips and a `protocolId` only that Protocol's; a Skip
+ * can only mark its own Protocol's planned dose anyway. A row with no
+ * readable `protocol_id`, `compound_id` or `local_date` is left out, as
+ * `readPlanDoses` leaves out an unreadable Dose. So is one whose
+ * `planned_local_time` is neither null nor `HH:MM`: reading it as untimed
+ * would let it mark an untimed planned dose it never named, and no writer
+ * stores one (both validate it).
+ */
+async function readPlanSkips(
+  db: ServerDatabase,
+  userId: string,
+  query: {
+    fromLocalDate: string;
+    toLocalDate: string;
+    compoundId?: string;
+    protocolId?: string;
+  }
+): Promise<PlanSkip[]> {
+  // Byte order ("C"), as readPlanDoses, so the range compares dates whatever
+  // the database's default collation.
+  const localDate = sql`(${schema.protocolSkips.payload}->>'local_date') collate "C"`;
+  const rows = await selectOpaque(
+    db,
+    schema.protocolSkips,
+    userId,
+    and(
+      isNull(schema.protocolSkips.deletedAt),
+      sql`${localDate} between ${query.fromLocalDate} and ${query.toLocalDate}`,
+      query.compoundId === undefined
+        ? undefined
+        : sql`${schema.protocolSkips.payload}->>'compound_id' = ${query.compoundId}`,
+      query.protocolId === undefined
+        ? undefined
+        : sql`${schema.protocolSkips.payload}->>'protocol_id' = ${query.protocolId}`
+    )
+  );
+
+  const skips: PlanSkip[] = [];
+  for (const row of rows) {
+    const protocolId = nullableString(row.payload.protocol_id);
+    const compoundId = nullableString(row.payload.compound_id);
+    const skipLocalDate = localDateOrNull(row.payload.local_date);
+    const time = row.payload.planned_local_time ?? null;
+    const plannedLocalTime =
+      time === null ? null : typeof time === "string" && isPlanLocalTime(time) ? time : undefined;
+    if (
+      protocolId === null ||
+      compoundId === null ||
+      skipLocalDate === null ||
+      plannedLocalTime === undefined
+    ) {
+      continue;
+    }
+    skips.push({
+      skipId: row.id,
+      protocolId,
+      compoundId,
+      localDate: skipLocalDate,
+      plannedLocalTime
+    });
+  }
+  return skips;
 }
 
 /**

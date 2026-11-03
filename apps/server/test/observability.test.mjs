@@ -266,6 +266,50 @@ test("privacy logger strips the Protocol ids of a logged Protocol delete", () =>
   }
 });
 
+test("privacy logger strips the Skips of a logged Skip write", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  // A logged Skip write request, its body spread as it arrives (D8). The
+  // items' `localDate` and `plannedLocalTime` are not denied keys on their
+  // own, so only the `skips` parent key keeps them out of the log.
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/agent/protocols/skips/batch-write",
+      idempotencyKey: "skip-1",
+      skips: [
+        {
+          id: "skip-a",
+          protocolId: "protocol-skin",
+          compoundId: "compound-ghk",
+          localDate: "2026-10-31",
+          plannedLocalTime: "21:17"
+        }
+      ]
+    },
+    "synthetic Skip write"
+  );
+
+  assert.equal(logEvents.length, 1);
+  const serialized = JSON.stringify(logEvents[0].payload);
+  assert.equal(logEvents[0].payload.userId, "user-1");
+  assert.doesNotMatch(serialized, /"skips":(?!"\[Filtered\]")/);
+  for (const value of [
+    "skip-a",
+    "protocol-skin",
+    "compound-ghk",
+    "2026-10-31",
+    "21:17"
+  ]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+});
+
 test("Sentry crash reporting is opt-in and requires a DSN", () => {
   const sdk = createFakeSentrySdk();
 

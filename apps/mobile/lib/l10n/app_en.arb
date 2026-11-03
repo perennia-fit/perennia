@@ -1616,6 +1616,8 @@
   "plannedListAnyTime": "Any time",
   "plannedListLogAll": "Log all planned",
   "logDoseDateLabel": "Date",
+  "logDoseSkip": "Skip",
+  "logDoseUnskip": "Undo skip",
   "dayStatusNotPlanned": "Not planned",
   "dayStatusPaused": "Paused",
   "dayStatusOffCycle": "Off cycle",
@@ -1651,6 +1653,14 @@
   "consistencyExtra": "Extra",
   "consistencyExtraCount": "{count} extra",
   "@consistencyExtraCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "consistencySkippedCount": "{count, plural, other{{count} skipped}}",
+  "@consistencySkippedCount": {
     "placeholders": {
       "count": {
         "type": "int"
