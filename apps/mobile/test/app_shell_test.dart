@@ -1688,6 +1688,46 @@ void main() {
   });
 
   testWidgets(
+      'a card\'s exercise name keeps the row the count leaves on a 360 dp '
+      'phone', (tester) async {
+    await _pumpPlanProgressApp(
+      tester,
+      _PlanProgressHomeRepository(),
+      surfaceSize: const Size(360, 3200),
+    );
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    for (final (id, name, count) in <(String, String, String)>[
+      ('incline', 'Incline Press', '2/3 sets'),
+      ('pushdown', 'Triceps Pushdown', '0/2 sets'),
+      ('curl', 'Dumbbell Curl', 'Done'),
+    ]) {
+      final nameFinder = find.descendant(
+        of: find.byKey(WorkoutScreen.exerciseCardKey(id)),
+        matching: find.text(name),
+      );
+      final row = tester.getSize(
+        find.ancestor(of: nameFinder, matching: find.byType(Row)).first,
+      );
+      final nameWidth = tester.getSize(nameFinder).width;
+      final countWidth = tester
+          .getSize(
+            find.descendant(
+              of: find.byKey(WorkoutScreen.exerciseCardKey(id)),
+              matching: find.text(count),
+            ),
+          )
+          .width;
+      // A short count leaves the name more than half the row, not an equal
+      // split with the count's slot.
+      expect(nameWidth, greaterThan(row.width / 2), reason: id);
+      expect(nameWidth, greaterThan(countWidth), reason: id);
+    }
+  });
+
+  testWidgets(
       'selecting an exercise row adds it and lands directly on the '
       'Exercise page', (tester) async {
     final repository = _AddExerciseHomeRepository();

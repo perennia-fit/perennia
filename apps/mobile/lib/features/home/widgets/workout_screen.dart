@@ -12,7 +12,8 @@ import '../../../domain/training/plan_logging.dart'
         GroupRoundAllDone,
         GroupRoundInProgress,
         ProgressExercise,
-        groupRoundFor;
+        groupRoundFor,
+        nowCardWorkoutExerciseId;
 import '../../../domain/training/training_day.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
@@ -26,8 +27,7 @@ import '../../template_divergence/repositories/template_divergence_feature_repos
 import '../../template_divergence/widgets/template_update_prompt_dialog.dart';
 import '../../template_materialize/widgets/template_guidance_card.dart';
 import '../../training/services/timer_notification_router.dart';
-import '../../training/widgets/training_screen.dart'
-    show CurrentExerciseLabel, ExerciseProgressCount, nowCardWorkoutExerciseId;
+import '../../training/widgets/plan_progress_labels.dart';
 import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
@@ -1317,6 +1317,10 @@ class _WorkoutExerciseDeleteBackground extends StatelessWidget {
   }
 }
 
+/// The widest an exercise card's progress count gets, as a fraction of the
+/// card's title row; the name takes everything the count leaves.
+const _progressCountMaxWidthFraction = 0.4;
+
 class _WorkoutExerciseCard extends StatelessWidget {
   const _WorkoutExerciseCard({
     required this.exercise,
@@ -1393,30 +1397,37 @@ class _WorkoutExerciseCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                exercise.name,
-                                style: context.textStyles.h2,
+                        LayoutBuilder(
+                          builder: (context, constraints) => Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  exercise.name,
+                                  style: context.textStyles.h2,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: AppDimens.dense),
-                            // Flexible, so a large text scale wraps the
-                            // count instead of overflowing the card.
-                            Flexible(
-                              child: ExerciseProgressCount(
-                                performed: exercise.performedCount,
-                                planned: exercise.plannedCount,
-                                style: secondaryLabel,
+                              const SizedBox(width: AppDimens.dense),
+                              // Inflexible, so the name keeps the rest of
+                              // the row; capped, so a large text scale
+                              // wraps the count instead of overflowing.
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: constraints.maxWidth *
+                                      _progressCountMaxWidthFraction,
+                                ),
+                                child: ExerciseProgressCount(
+                                  performed: exercise.performedCount,
+                                  planned: exercise.plannedCount,
+                                  style: secondaryLabel,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: AppDimens.dense),
-                            Icon(
-                              Icons.chevron_right,
-                              color: context.colors.textSecondary,
-                            ),
-                          ],
+                              const SizedBox(width: AppDimens.dense),
+                              Icon(
+                                Icons.chevron_right,
+                                color: context.colors.textSecondary,
+                              ),
+                            ],
+                          ),
                         ),
                         if (isNow || roundText != null)
                           Padding(

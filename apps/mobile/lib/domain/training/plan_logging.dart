@@ -360,6 +360,51 @@ final class ProgressExercise {
   final DateTime? latestPerformedAt;
 }
 
+/// One Set as progress reads it: whether it is a Performed Set (complete)
+/// and when it was performed. Each screen maps its own Set rows to this, so
+/// the counts and the latest time have one definition, [progressExerciseFor].
+typedef ProgressSet = ({bool isCompleted, DateTime? performedAt});
+
+/// [set] as progress reads it.
+ProgressSet progressSetOf(LoggedSetRecord set) =>
+    (isCompleted: set.isCompleted, performedAt: set.performedAt);
+
+/// One Workout Exercise's progress from its [sets]: complete Sets are
+/// performed, the rest planned, and [ProgressExercise.latestPerformedAt] is
+/// the latest `performedAt` over the complete ones. The caller passes only
+/// active Sets, as for [isPlannedSet].
+///
+/// The Workout screen's cards, the Navigation Panel and the Training
+/// Screen all build their [ProgressExercise]s here, so the screens cannot
+/// disagree about which exercise is Now.
+ProgressExercise progressExerciseFor({
+  required String workoutExerciseId,
+  String? groupId,
+  required Iterable<ProgressSet> sets,
+}) {
+  var performed = 0;
+  var planned = 0;
+  DateTime? latest;
+  for (final set in sets) {
+    if (!set.isCompleted) {
+      planned += 1;
+      continue;
+    }
+    performed += 1;
+    final at = set.performedAt;
+    if (at != null && (latest == null || at.isAfter(latest))) {
+      latest = at;
+    }
+  }
+  return ProgressExercise(
+    workoutExerciseId: workoutExerciseId,
+    groupId: groupId,
+    performed: performed,
+    planned: planned,
+    latestPerformedAt: latest,
+  );
+}
+
 /// The Workout Exercise, or the Exercise Group, the user is working through.
 sealed class CurrentExercise {
   const CurrentExercise();
@@ -516,4 +561,20 @@ String? nextExerciseWithPlan({
     }
   }
   return null;
+}
+
+/// The Workout Exercise that shows **Now**: the Current Exercise from
+/// [currentExerciseFor], or, when that is a group, the group's first member
+/// in Workout order. [exercises] are in Workout order and hold every Workout
+/// Exercise of the Workout; null when nothing is current. The Workout
+/// screen's cards and the Navigation Panel both call this, so both mark the
+/// same exercise.
+String? nowCardWorkoutExerciseId(List<ProgressExercise> exercises) {
+  return switch (currentExerciseFor(exercises)) {
+    null => null,
+    CurrentWorkoutExercise(:final workoutExerciseId) => workoutExerciseId,
+    CurrentGroup(:final groupId) => exercises
+        .firstWhere((exercise) => exercise.groupId == groupId)
+        .workoutExerciseId,
+  };
 }

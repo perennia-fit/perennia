@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/training/plan_logging.dart'
+    show ProgressExercise, progressExerciseFor;
 import '../../../domain/training/training_day.dart';
 import '../../../domain/training/training_dimensions.dart';
 
@@ -399,6 +401,9 @@ class RepositoryHomeRepository implements HomeRepository {
     List<ExerciseGroupRecord>? latestExerciseGroups;
     List<TemplateLinkRecord>? latestTemplateLinks;
     List<WorkoutTemplateSummaryRecord>? latestTemplates;
+    // Rebuilt only after the links or the Templates change, not on every
+    // Set write.
+    Map<String, String>? templateNames;
     var subscribedWorkoutIds = const <String>{};
     var childSubscriptionVersion = 0;
     Set<String>? subscribedExerciseIds;
@@ -437,10 +442,8 @@ class RepositoryHomeRepository implements HomeRepository {
         workoutExercises: workoutExercises,
         sets: sets,
         exerciseGroups: exerciseGroups,
-        templateNameByWorkoutId: _templateNameByWorkoutId(
-          templateLinks,
-          templates,
-        ),
+        templateNameByWorkoutId: templateNames ??=
+            _templateNameByWorkoutId(templateLinks, templates),
         selectedDate: localDate,
       ));
     }
@@ -493,6 +496,7 @@ class RepositoryHomeRepository implements HomeRepository {
       latestSets = null;
       latestExerciseGroups = null;
       latestTemplateLinks = null;
+      templateNames = null;
       final version = ++childSubscriptionVersion;
 
       unawaited(workoutExerciseSubscription?.cancel());
@@ -555,6 +559,7 @@ class RepositoryHomeRepository implements HomeRepository {
             return;
           }
           latestTemplateLinks = links;
+          templateNames = null;
           emitIfReady();
         },
         onError: (Object error, StackTrace stackTrace) {
@@ -572,6 +577,7 @@ class RepositoryHomeRepository implements HomeRepository {
           _repositories.workoutTemplates.watchAllSummaries().listen(
         (templates) {
           latestTemplates = templates;
+          templateNames = null;
           emitIfReady();
         },
         onError: controller.addError,
@@ -624,6 +630,8 @@ class RepositoryHomeRepository implements HomeRepository {
     List<ExerciseGroupRecord>? latestExerciseGroups;
     List<TemplateLinkRecord>? latestTemplateLinks;
     List<WorkoutTemplateSummaryRecord>? latestTemplates;
+    // Cached as in `_watchSummary`.
+    Map<String, String>? templateNames;
     HomeWorkoutSummary? lastEmitted;
     var emittedNull = false;
     var subscribedExerciseIds = const <String>{};
@@ -678,10 +686,8 @@ class RepositoryHomeRepository implements HomeRepository {
         workoutExercises: workoutExercises,
         sets: sets,
         exerciseGroups: exerciseGroups,
-        templateNameByWorkoutId: _templateNameByWorkoutId(
-          templateLinks,
-          templates,
-        ),
+        templateNameByWorkoutId: templateNames ??=
+            _templateNameByWorkoutId(templateLinks, templates),
         selectedDate: workout.localDate,
       );
       addIfChanged(summary.workouts.single);
@@ -757,6 +763,7 @@ class RepositoryHomeRepository implements HomeRepository {
           .watchByWorkoutIds(<String>{workoutId}).listen(
         (links) {
           latestTemplateLinks = links;
+          templateNames = null;
           emitIfReady();
         },
         onError: controller.addError,
@@ -766,6 +773,7 @@ class RepositoryHomeRepository implements HomeRepository {
           _repositories.workoutTemplates.watchAllSummaries().listen(
         (templates) {
           latestTemplates = templates;
+          templateNames = null;
           emitIfReady();
         },
         onError: controller.addError,
@@ -972,26 +980,25 @@ class HomeWorkoutExerciseSummary {
   final List<HomeSetSummary> sets;
   int get setCount => sets.length;
 
+  /// [sets] read by `progressExerciseFor`, the rule the Navigation Panel
+  /// and the Training Screen use too. Its group is left out: the Workout
+  /// screen adds it from [HomeWorkoutSummary.exerciseGroups].
+  late final ProgressExercise _progress = progressExerciseFor(
+    workoutExerciseId: id,
+    sets: sets.map(
+      (set) => (isCompleted: set.isCompleted, performedAt: set.performedAt),
+    ),
+  );
+
   /// The Performed Sets (complete) among [sets].
-  int get performedCount => sets.where((set) => set.isCompleted).length;
+  int get performedCount => _progress.performed;
 
   /// The Planned Sets (not complete) among [sets].
-  int get plannedCount => setCount - performedCount;
+  int get plannedCount => _progress.planned;
 
   /// The latest `performedAt` over the Performed Sets, the input
   /// `currentExerciseFor` orders by; null when none has one.
-  DateTime? get latestPerformedAt {
-    DateTime? latest;
-    for (final set in sets) {
-      final at = set.performedAt;
-      if (set.isCompleted &&
-          at != null &&
-          (latest == null || at.isAfter(latest))) {
-        latest = at;
-      }
-    }
-    return latest;
-  }
+  DateTime? get latestPerformedAt => _progress.latestPerformedAt;
 
   @override
   bool operator ==(Object other) {
@@ -1087,33 +1094,30 @@ HomeSummary _homeSummaryFrom({
       .where(
           (workoutExercise) => workoutIds.contains(workoutExercise.workoutId))
       .toList(growable: false);
+  // One summary per Set, in step with trainingDaySets, shared by the
+  // Workout Exercises' lists and HomeSummary.sets.
+  final homeSets = <HomeSetSummary>[
+    for (final set in trainingDaySets)
+      HomeSetSummary(
+        id: set.id,
+        description: _formatSet(set, exerciseById[set.exerciseId]),
+        isCompleted: set.isCompleted,
+        performedAt: set.performedAt,
+      ),
+  ];
   final setsByWorkoutExerciseKey = <String, List<HomeSetSummary>>{};
-  for (final set in trainingDaySets) {
+  for (var index = 0; index < trainingDaySets.length; index += 1) {
+    final set = trainingDaySets[index];
     final key = _workoutExerciseKey(set.workoutId, set.exerciseId);
-    setsByWorkoutExerciseKey.putIfAbsent(key, () => <HomeSetSummary>[]).add(
-          HomeSetSummary(
-            id: set.id,
-            description: _formatSet(set, exerciseById[set.exerciseId]),
-            isCompleted: set.isCompleted,
-            performedAt: set.performedAt,
-          ),
-        );
+    setsByWorkoutExerciseKey
+        .putIfAbsent(key, () => <HomeSetSummary>[])
+        .add(homeSets[index]);
   }
 
-  final performedSetCountByWorkoutId = <String, int>{};
-  for (final set in trainingDaySets) {
-    if (set.isCompleted) {
-      performedSetCountByWorkoutId[set.workoutId] =
-          (performedSetCountByWorkoutId[set.workoutId] ?? 0) + 1;
-    }
-  }
-  var performedSetCount = 0;
-  for (final count in performedSetCountByWorkoutId.values) {
-    performedSetCount += count;
-  }
+  final performedSets = trainingDaySets.where((set) => set.isCompleted);
   final status = _formatTrainingDayStatus(
-    workoutCount: performedSetCountByWorkoutId.length,
-    setCount: performedSetCount,
+    workoutCount: performedSets.map((set) => set.workoutId).toSet().length,
+    setCount: performedSets.length,
   );
 
   final homeWorkoutExercises = trainingDayWorkoutExercises.map(
@@ -1185,16 +1189,7 @@ HomeSummary _homeSummaryFrom({
           ),
         )
         .toList(growable: false),
-    sets: trainingDaySets
-        .map(
-          (set) => HomeSetSummary(
-            id: set.id,
-            description: _formatSet(set, exerciseById[set.exerciseId]),
-            isCompleted: set.isCompleted,
-            performedAt: set.performedAt,
-          ),
-        )
-        .toList(growable: false),
+    sets: homeSets,
   );
 }
 

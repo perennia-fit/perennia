@@ -1258,6 +1258,57 @@ void main() {
     }
 
     _testTrainingScreen(
+        'the Navigation Panel works out Now over an archived exercise too', (
+      tester,
+    ) async {
+      // In progress and first in Workout order, so it is Now on the
+      // Workout screen, which keeps its card after the archive.
+      final archived = await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Archived Press',
+          planned: List<LoggedSet>.filled(3, _repsValues('8')),
+          performedCount: 1,
+        ),
+      );
+      final row = await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          workoutId: archived!.workoutId,
+          name: 'Cable Row',
+          planned: List<LoggedSet>.filled(2, _repsValues('10')),
+        ),
+      );
+      await tester.runAsync(
+        () => repositories.exercises.softDelete(archived!.exerciseId),
+      );
+
+      await _pumpTrainingScreen(tester, repositories, row!.workoutExerciseId);
+      await tester.tap(find.byKey(TrainingScreen.navigationPanelButtonKey));
+      await _pumpDrawerAnimation(tester);
+
+      final panel = find.byKey(TrainingScreen.navigationPanelKey);
+      expect(
+        find.descendant(of: panel, matching: find.text('Cable Row')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.text('Archived Press')),
+        findsNothing,
+      );
+      // Now belongs to the archived exercise, which has no row here, so
+      // the panel does not move it onto Cable Row.
+      expect(
+        find.descendant(of: panel, matching: find.text('0/2 sets')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.text('Now')),
+        findsNothing,
+      );
+    });
+
+    _testTrainingScreen(
         'navigation drawer lists set counts and jumps exercises', (
       tester,
     ) async {
