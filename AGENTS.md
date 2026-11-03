@@ -103,14 +103,15 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
   Routines live under Training, and Protocols and Compounds under Protocols.
 - **Training Screen** — per-exercise set entry, three tabs: **Track | History |
   Graph**. Track = large value fields with ± stepper buttons, prefilled from the
-  previous session; **Save/Clear** buttons that become **Update/Delete** when an
-  existing set is selected; set list below with per-set comment icons, complete
-  checkboxes, and a trophy marker on PRs. App bar gives rest timer, records, and
-  exercise info.
+  previous session or the plan; one pinned **Log set** button that becomes
+  **Update/Delete/Not done** when a performed set is selected, with the rest strip
+  above it; set list below in performed, current, and planned row states, with
+  per-set comments and a trophy marker on PRs. App bar gives records and exercise
+  info.
 - **Navigation Panel** — drawer (logo tap or edge swipe) listing the current
   workout's exercises with set counts; jump, reorder (press-and-hold), add
-  exercise, manage superset groups; auto-advance to the next group member after a
-  save.
+  exercise, manage superset groups; auto-advance to the next group member after
+  Log set.
 - **Exercise List** — categories first, then exercises; search; favorites; "+" to
   create. (The FitNotes title-dropdown routine picker is superseded by the
   Routines picker.)
@@ -130,8 +131,8 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
 
 ### UX rules of thumb
 
-- **Logging a repeat set must take ≤ 2 taps** (open exercise → Save). Prefill from
-  last session is what makes this possible — preserve it in every redesign.
+- **Logging a repeat set must take ≤ 2 taps** (open exercise → Log set). Prefill
+  from last session is what makes this possible — preserve it in every redesign.
 - **The gym floor is the context**: one-handed reach, ≥ 48 dp touch targets, big
   numerals readable at arm's length, instant local saves, no spinners on the
   logging path.

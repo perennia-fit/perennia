@@ -1735,12 +1735,6 @@ abstract class AppLocalizations {
   /// **'Open navigation'**
   String get trainingOpenNavigationTooltip;
 
-  /// No description provided for @trainingSetSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Set saved'**
-  String get trainingSetSaved;
-
   /// No description provided for @trainingExercisesTitle.
   ///
   /// In en, this message translates to:
@@ -1837,77 +1831,65 @@ abstract class AppLocalizations {
   /// **'Save group'**
   String get trainingSaveGroup;
 
-  /// No description provided for @trainingRestTimer.
-  ///
-  /// In en, this message translates to:
-  /// **'Rest timer'**
-  String get trainingRestTimer;
-
   /// No description provided for @trainingRestCountdown.
   ///
   /// In en, this message translates to:
   /// **'Rest {remaining}'**
   String trainingRestCountdown(String remaining);
 
-  /// No description provided for @trainingRestComplete.
+  /// No description provided for @trainingRestStripRemainingLabel.
   ///
   /// In en, this message translates to:
-  /// **'Rest complete'**
-  String get trainingRestComplete;
+  /// **'Rest, {minutes} minutes {seconds} seconds left'**
+  String trainingRestStripRemainingLabel(int minutes, int seconds);
 
-  /// No description provided for @trainingRestSecondsLabel.
+  /// No description provided for @trainingRestStripShorten.
   ///
   /// In en, this message translates to:
-  /// **'Rest sec'**
-  String get trainingRestSecondsLabel;
+  /// **'−15 s'**
+  String get trainingRestStripShorten;
 
-  /// No description provided for @trainingStartTimer.
+  /// No description provided for @trainingRestStripShortenLabel.
   ///
   /// In en, this message translates to:
-  /// **'Start'**
-  String get trainingStartTimer;
+  /// **'Rest 15 seconds less'**
+  String get trainingRestStripShortenLabel;
 
-  /// No description provided for @trainingUpdateTimer.
+  /// No description provided for @trainingRestStripLengthen.
   ///
   /// In en, this message translates to:
-  /// **'Update'**
-  String get trainingUpdateTimer;
+  /// **'+15 s'**
+  String get trainingRestStripLengthen;
 
-  /// No description provided for @trainingCancelTimerTooltip.
+  /// No description provided for @trainingRestStripLengthenLabel.
   ///
   /// In en, this message translates to:
-  /// **'Cancel timer'**
-  String get trainingCancelTimerTooltip;
+  /// **'Rest 15 seconds more'**
+  String get trainingRestStripLengthenLabel;
+
+  /// No description provided for @trainingStopRestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop rest'**
+  String get trainingStopRestTooltip;
+
+  /// No description provided for @trainingStartRest.
+  ///
+  /// In en, this message translates to:
+  /// **'Start rest'**
+  String get trainingStartRest;
+
+  /// No description provided for @trainingRestVolumeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Alert volume'**
+  String get trainingRestVolumeTitle;
 
   /// No description provided for @trainingPersonalRecordTooltip.
   ///
   /// In en, this message translates to:
   /// **'Personal record'**
   String get trainingPersonalRecordTooltip;
-
-  /// No description provided for @trainingEditSetTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit set'**
-  String get trainingEditSetTooltip;
-
-  /// No description provided for @trainingDeleteSetTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete set'**
-  String get trainingDeleteSetTooltip;
-
-  /// No description provided for @trainingMarkSetCompleteLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Mark set complete'**
-  String get trainingMarkSetCompleteLabel;
-
-  /// No description provided for @trainingMarkSetIncompleteLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Mark set incomplete'**
-  String get trainingMarkSetIncompleteLabel;
 
   /// No description provided for @trainingReorderSetLabel.
   ///
@@ -1962,18 +1944,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'RPE'**
   String get trainingRpeLabel;
-
-  /// No description provided for @trainingSaveSet.
-  ///
-  /// In en, this message translates to:
-  /// **'Save set'**
-  String get trainingSaveSet;
-
-  /// No description provided for @trainingSaveChanges.
-  ///
-  /// In en, this message translates to:
-  /// **'Save changes'**
-  String get trainingSaveChanges;
 
   /// No description provided for @trainingCompletedSet.
   ///
@@ -2088,6 +2058,187 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'mi'**
   String get trainingUnitMile;
+
+  /// No description provided for @trainingLogSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Log set'**
+  String get trainingLogSet;
+
+  /// No description provided for @trainingLogSetOf.
+  ///
+  /// In en, this message translates to:
+  /// **'Log set {number} of {total}'**
+  String trainingLogSetOf(int number, int total);
+
+  /// No description provided for @trainingSetLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'Set {number} logged'**
+  String trainingSetLogged(int number);
+
+  /// No description provided for @trainingSetLoggedCarried.
+  ///
+  /// In en, this message translates to:
+  /// **'Set {number} logged · {count, plural, =1{1 later set updated} other{{count} later sets updated}}'**
+  String trainingSetLoggedCarried(int number, int count);
+
+  /// No description provided for @trainingSetNotLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'Set not logged: {reason}'**
+  String trainingSetNotLogged(String reason);
+
+  /// No description provided for @trainingSetNotUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Set not updated: {reason}'**
+  String trainingSetNotUpdated(String reason);
+
+  /// No description provided for @trainingPlannedSetRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Planned set removed'**
+  String get trainingPlannedSetRemoved;
+
+  /// No description provided for @trainingSetDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Set deleted'**
+  String get trainingSetDeleted;
+
+  /// No description provided for @trainingRoundAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Round added'**
+  String get trainingRoundAdded;
+
+  /// No description provided for @trainingUndo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get trainingUndo;
+
+  /// No description provided for @trainingUndoConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t undo: changed since'**
+  String get trainingUndoConflict;
+
+  /// No description provided for @trainingRestAfterLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest after'**
+  String get trainingRestAfterLabel;
+
+  /// No description provided for @trainingRestOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get trainingRestOff;
+
+  /// No description provided for @trainingDecreaseRestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Decrease rest'**
+  String get trainingDecreaseRestTooltip;
+
+  /// No description provided for @trainingIncreaseRestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Increase rest'**
+  String get trainingIncreaseRestTooltip;
+
+  /// No description provided for @trainingContextRoundNext.
+  ///
+  /// In en, this message translates to:
+  /// **'{groupName} · Round {round} of {total} · Next: {exerciseName}'**
+  String trainingContextRoundNext(
+      String groupName, int round, int total, String exerciseName);
+
+  /// No description provided for @trainingContextRound.
+  ///
+  /// In en, this message translates to:
+  /// **'{groupName} · Round {round} of {total}'**
+  String trainingContextRound(String groupName, int round, int total);
+
+  /// No description provided for @trainingContextAllRoundsDone.
+  ///
+  /// In en, this message translates to:
+  /// **'{groupName} · All rounds done'**
+  String trainingContextAllRoundsDone(String groupName);
+
+  /// No description provided for @trainingAddSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add set'**
+  String get trainingAddSet;
+
+  /// No description provided for @trainingAddRound.
+  ///
+  /// In en, this message translates to:
+  /// **'Add round'**
+  String get trainingAddRound;
+
+  /// No description provided for @trainingNotDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not done'**
+  String get trainingNotDone;
+
+  /// No description provided for @trainingUpdateSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get trainingUpdateSet;
+
+  /// No description provided for @trainingDeleteSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get trainingDeleteSet;
+
+  /// No description provided for @trainingNextExercise.
+  ///
+  /// In en, this message translates to:
+  /// **'Next: {exerciseName}'**
+  String trainingNextExercise(String exerciseName);
+
+  /// No description provided for @trainingScreenMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'More options'**
+  String get trainingScreenMenuTooltip;
+
+  /// No description provided for @trainingExerciseOverviewMenuItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Exercise overview'**
+  String get trainingExerciseOverviewMenuItem;
+
+  /// No description provided for @trainingSetRowDoneLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Set {number}, done, {values}'**
+  String trainingSetRowDoneLabel(int number, String values);
+
+  /// No description provided for @trainingSetRowNextLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Set {number}, next, {values}'**
+  String trainingSetRowNextLabel(int number, String values);
+
+  /// No description provided for @trainingSetRowPlannedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Set {number}, planned, {values}'**
+  String trainingSetRowPlannedLabel(int number, String values);
+
+  /// No description provided for @trainingRemovePlannedSetAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove planned set'**
+  String get trainingRemovePlannedSetAction;
 
   /// No description provided for @workoutTemplatesTitle.
   ///

@@ -570,7 +570,6 @@
   "trainingFallbackTitle": "Exercise",
   "trainingUnavailable": "Exercise unavailable",
   "trainingOpenNavigationTooltip": "Open navigation",
-  "trainingSetSaved": "Set saved",
   "trainingExercisesTitle": "Exercises",
   "trainingNoExercisesYet": "No exercises yet",
   "trainingGroupsTitle": "Groups",
@@ -615,7 +614,6 @@
   },
   "trainingCancel": "Cancel",
   "trainingSaveGroup": "Save group",
-  "trainingRestTimer": "Rest timer",
   "trainingRestCountdown": "Rest {remaining}",
   "@trainingRestCountdown": {
     "placeholders": {
@@ -624,16 +622,25 @@
       }
     }
   },
-  "trainingRestComplete": "Rest complete",
-  "trainingRestSecondsLabel": "Rest sec",
-  "trainingStartTimer": "Start",
-  "trainingUpdateTimer": "Update",
-  "trainingCancelTimerTooltip": "Cancel timer",
+  "trainingRestStripRemainingLabel": "Rest, {minutes} minutes {seconds} seconds left",
+  "@trainingRestStripRemainingLabel": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingRestStripShorten": "−15 s",
+  "trainingRestStripShortenLabel": "Rest 15 seconds less",
+  "trainingRestStripLengthen": "+15 s",
+  "trainingRestStripLengthenLabel": "Rest 15 seconds more",
+  "trainingStopRestTooltip": "Stop rest",
+  "trainingStartRest": "Start rest",
+  "trainingRestVolumeTitle": "Alert volume",
   "trainingPersonalRecordTooltip": "Personal record",
-  "trainingEditSetTooltip": "Edit set",
-  "trainingDeleteSetTooltip": "Delete set",
-  "trainingMarkSetCompleteLabel": "Mark set complete",
-  "trainingMarkSetIncompleteLabel": "Mark set incomplete",
   "trainingReorderSetLabel": "Reorder set",
   "trainingDecreaseDimensionTooltip": "Decrease {dimension}",
   "@trainingDecreaseDimensionTooltip": {
@@ -657,8 +664,6 @@
   "trainingSideRight": "R",
   "trainingSideRightTooltip": "Right side",
   "trainingRpeLabel": "RPE",
-  "trainingSaveSet": "Save set",
-  "trainingSaveChanges": "Save changes",
   "trainingCompletedSet": "Completed set",
   "trainingSetComplete": "Complete",
   "trainingSetInProgress": "In progress",
@@ -685,6 +690,150 @@
   "trainingUnitSecond": "sec",
   "trainingUnitKilometer": "km",
   "trainingUnitMile": "mi",
+  "trainingLogSet": "Log set",
+  "trainingLogSetOf": "Log set {number} of {total}",
+  "@trainingLogSetOf": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingSetLogged": "Set {number} logged",
+  "@trainingSetLogged": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingSetLoggedCarried": "Set {number} logged · {count, plural, =1{1 later set updated} other{{count} later sets updated}}",
+  "@trainingSetLoggedCarried": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingSetNotLogged": "Set not logged: {reason}",
+  "@trainingSetNotLogged": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingSetNotUpdated": "Set not updated: {reason}",
+  "@trainingSetNotUpdated": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingPlannedSetRemoved": "Planned set removed",
+  "trainingSetDeleted": "Set deleted",
+  "trainingRoundAdded": "Round added",
+  "trainingUndo": "Undo",
+  "trainingUndoConflict": "Couldn't undo: changed since",
+  "trainingRestAfterLabel": "Rest after",
+  "trainingRestOff": "Off",
+  "trainingDecreaseRestTooltip": "Decrease rest",
+  "trainingIncreaseRestTooltip": "Increase rest",
+  "trainingContextRoundNext": "{groupName} · Round {round} of {total} · Next: {exerciseName}",
+  "@trainingContextRoundNext": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      },
+      "round": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "exerciseName": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingContextRound": "{groupName} · Round {round} of {total}",
+  "@trainingContextRound": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      },
+      "round": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingContextAllRoundsDone": "{groupName} · All rounds done",
+  "@trainingContextAllRoundsDone": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingAddSet": "Add set",
+  "trainingAddRound": "Add round",
+  "trainingNotDone": "Not done",
+  "trainingUpdateSet": "Update",
+  "trainingDeleteSet": "Delete",
+  "trainingNextExercise": "Next: {exerciseName}",
+  "@trainingNextExercise": {
+    "placeholders": {
+      "exerciseName": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingScreenMenuTooltip": "More options",
+  "trainingExerciseOverviewMenuItem": "Exercise overview",
+  "trainingSetRowDoneLabel": "Set {number}, done, {values}",
+  "@trainingSetRowDoneLabel": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "values": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingSetRowNextLabel": "Set {number}, next, {values}",
+  "@trainingSetRowNextLabel": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "values": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingSetRowPlannedLabel": "Set {number}, planned, {values}",
+  "@trainingSetRowPlannedLabel": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "values": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemovePlannedSetAction": "Remove planned set",
   "workoutTemplatesTitle": "Saved workouts",
   "workoutTemplatesLibrarySubtitle": "Reusable plans for one workout",
   "workoutTemplatesNew": "New saved workout",

@@ -1,7 +1,7 @@
 # Plan-Guided Logging
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review
+*   **Status:** Approved
 *   **Date:** 2026-11-02
 
 --------------------------------------------------------------------------------
@@ -509,6 +509,15 @@ Set but the same number of Sets left as the others).
     An unchanged rest leaves the stored `plannedRestAfter` as it was (null
     stays null), so a Template with no rest never diverges because of Log set
     (CUJ 6).
+*   **A new Set keeps the rest it inherited.** When Log set creates a new Set
+    (no Current Set) and its rest was shown from `lastSetOfExercise`'s
+    `plannedRestAfter`, that rest is written even though it is unchanged (the
+    screen passes `restChanged: true`). Otherwise the new Set stores null and
+    the Set after it, whose rest comes from this one, falls back to the
+    Remembered Rest read when the exercise opened, so a rest changed two Sets
+    earlier (or a plan's Off) would be lost. A new Set is never Template
+    divergence of rest: it already diverges by count. A rest shown from the
+    Remembered Rest or the 120 s default is still written only when changed.
 *   **The rest that runs** after Log set is the form's rest (changed or not).
     When it is zero, no timer starts.
 *   **Remembered Rest** is read by
@@ -582,7 +591,8 @@ class LogSetResult {
     rows, and write the Set: values, comment, side, RPE, `plannedRestAfter`
     (only when `restChanged`), `isCompleted = true`, `performedAt = now`.
     Write each carry target in one update.
-2.  **Without it.** Create a Set at `nextPositionForWorkout` with values,
+2.  **Without it.** Append a Set after the Workout's last Set (as
+    `appendToWorkout` does, inside the same transaction) with values,
     annotations, `plannedRestAfter = rest` when `restChanged` (else null),
     `isCompleted = true`, `performedAt = now`.
 
@@ -601,9 +611,13 @@ Other writes reuse what exists, each under the batch id the screen passes:
     values, annotations and (only when `restChanged`) `plannedRestAfter` in one
     row update with one Activity Log entry. No carry-forward, no timer.
 *   **Not done:** `setCompleted(id, isCompleted: false)`.
-*   **Add set / Add round:** `create(LoggedSetDraft(isCompleted: false, ...))`
-    at `nextPositionForWorkout`, copying the exercise's last Set's values and
-    `plannedRestAfter`. For an exercise with no Sets: Add set uses the form's
+*   **Add set / Add round:** a new `Future<List<String>>
+    appendToWorkout(String workoutId, List<LoggedSetDraft> drafts, {String?
+    batchId})` that, in one transaction, reads the next position once and
+    creates each draft (`isCompleted: false`) at the next one, so another
+    writer cannot take a position between two of them and the Sets stream
+    shows a whole round at once. Each draft copies the exercise's last Set's
+    values and `plannedRestAfter`. For an exercise with no Sets: Add set uses the form's
     values and, when changed, its rest; Add round uses
     `findLatestPriorForExercise` for that member before this Workout, or else
     `zeroLoggedSetFor(its dimensions, its defaultLoadUnit)`, with no planned
@@ -618,11 +632,15 @@ Other writes reuse what exists, each under the batch id the screen passes:
 *   **The rest strip.** The rest timer panel at the top of the Training Screen
     is replaced by a strip pinned directly above the Log set button, outside
     the scrolling area, in thumb reach:
-    *   running: "Rest 1:12" (tabular figures), then **−15 s**, **+15 s** and
-        **Stop** icon buttons;
+    *   running: "Rest 1:12" (tabular figures), then **−15 s** and **+15 s**
+        text buttons (no icon reads as fifteen seconds; their semantics
+        labels are "Rest 15 seconds less" and "Rest 15 seconds more") and a
+        **Stop** icon button;
     *   idle: **Start rest** (starts the form's rest; disabled at Off).
-    *   Tapping the remaining time opens a small sheet with the existing volume
-        slider.
+    *   Tapping the remaining time opens a small sheet, "Alert volume", with
+        the existing volume slider. The time shows only while a rest runs, so
+        the volume is changed while one runs; it then holds for the next
+        rest Log set or Start rest starts.
 *   **One owner.** The strip keeps today's panel behaviour: it stays mounted
     while the Training Screen switches exercises, owns the ticker, the 3-2-1
     prepare cue and the end alert, and schedules the background notification.
@@ -634,7 +652,11 @@ Other writes reuse what exists, each under the batch id the screen passes:
     timer that ran out. When the new remaining time is more than 3 s,
     `prepareAlertFiredAt` is cleared. It appends to the Activity Log like the
     other timer writes. After an adjust the strip cancels the background
-    schedule and schedules it again; Stop cancels it (as today).
+    schedule and schedules it again, unless the adjust left no time: then
+    the strip's own end alert on its next tick is the only alert, and a
+    notification at "now" would ring on top of it. A refused notification
+    permission was reported when the rest started and is not reported again
+    on each adjust. Stop cancels the schedule (as today).
 *   **Log set** starts the rest for the logged Set, unless the rest that runs
     is zero or the Workout has ended, with `startForSet(set, defaultDuration:
     <the rest that runs>, alertVolume: <the strip's current volume>)` under
@@ -697,9 +719,12 @@ subscribes, for the whole Workout, to the streams the Navigation Panel already
 uses: `workoutExercises.watchActiveForWorkout(workoutId)`,
 `sets.watchActiveForWorkout(workoutId)` (today filtered to one exercise; the
 screen keeps the unfiltered list and filters it for the rows) and
-`exerciseGroups.watchActiveForWorkout(workoutId)`. The context line, the
-Next button, `nextGroupMemberAfterLog` and the rounds read them. The
-Navigation Panel keeps its own subscriptions.
+`exerciseGroups.watchActiveForWorkout(workoutId)`, plus
+`exercises.watchActiveByIds` over the Workout's exercises for the other
+members' names (the context line, Next) and dimensions (Add round), as the
+Navigation Panel does. The context line, the Next button,
+`nextGroupMemberAfterLog` and the rounds read them. The Navigation Panel
+keeps its own subscriptions.
 
 **Screen state** lives in the widget's state, as today:
 
@@ -729,14 +754,19 @@ Navigation Panel keeps its own subscriptions.
 
 **Form loads** a Set (the Current Set, or the selected performed Set): the
 dimension fields take its values, and `formUnits` its units (not the unit
-setting); comment, side and RPE take its annotations (empty when it has none);
-**Rest after** and `loadedRest` take the rest shown; `formDirty` becomes false.
+setting); comment and RPE take its annotations (empty when it has none), and
+side takes the Set's side, or keeps the current side when the Set has none (a
+Planned Set never has one, so the side keeps alternating across a unilateral
+plan); **Rest after** and `loadedRest` take the rest shown; `formDirty`
+becomes false.
 
 **With no Current Set and nothing selected**, the form keeps the values last
-logged on this exercise in this visit, or else takes the prefill from the
-previous Workout (as today), with `formUnits` from the unit setting; comment
-and RPE clear and side alternates after each Log set, as Save set does today;
-Rest after shows the rest for a new Set.
+logged on this exercise in this visit, in the units they were logged in, or
+else takes the prefill from the previous Workout (as today), with `formUnits`
+from the unit setting; comment and RPE clear and side alternates after each
+Log set, as Save set does today; Rest after shows the rest for a new Set.
+Until the Workout's Sets stream first emits, the screen shows no rows and no
+form, so the form never loads against a plan it has not seen.
 
 **Reloads.** While `selectedSetId` is set, the form never reloads on its own.
 Otherwise it reloads when the Current Set's id changes, or when the Current
@@ -754,7 +784,11 @@ carry-forward, a sync or an Agent write).
 4.  Show the confirmation within one frame: "Set *n* logged", without an
     action yet. *n* is the logged Set's 1-based place among the exercise's
     Sets (for a new Set, its count after the write).
-5.  Await `logSet`, inside `try`/`finally` that clears `logInFlight`.
+5.  Await `logSet`. Steps 5 to 8 run inside a `try`/`finally` that clears
+    `logInFlight` after step 8, not when `logSet` returns: the Sets stream
+    re-emits as soon as the write commits, so a second tap while the rest
+    starts would otherwise log this member's next Set instead of being
+    absorbed.
     *   It throws (a hard reject, a missing Exercise): hide the confirmation
         and show "Set not logged" with the error's message.
     *   It returns `alreadyLogged`: hide the confirmation; nothing else.
@@ -769,8 +803,11 @@ timer from step 6 is still the Workout's current timer, cancels it and its
 background schedule. Undo removes the logged values too; the user logs again.
 Undo of Remove, Delete, Add round and Replace calls `undoBatch` on that
 action's batch id. When `undoBatch` reports conflicts (another write touched
-the same rows since), nothing is reverted and "Couldn't undo: changed since"
-shows.
+the same rows since), nothing is reverted (for Log set, its timer is left
+running too, since the Set stays logged) and "Couldn't undo: changed since"
+shows. Add round shows "Round added" with **Undo**. An Update that is hard
+rejected writes nothing and shows "Set not updated" with the error's message,
+as Log set does; Update mode stays.
 
 ### Progress on the Workout screen, Today and the Navigation Panel
 
@@ -1051,8 +1088,8 @@ together.
 #### 2. `apps/mobile/lib/data/repositories/training_repositories.dart` (Modify)
 
 *   `LoggedSetRepository`: `logSet` with `LogSetRequest` and `LogSetResult`;
-    `findRememberedRest`; `updatePerformed`; `id` as the second ordering term
-    of `watchActiveForWorkout`.
+    `findRememberedRest`; `updatePerformed`; `appendToWorkout`; `id` as the
+    second ordering term of `watchActiveForWorkout`.
 *   `RestTimerRepository.adjust`.
 *   Delete `ExerciseGroupRepository.findNextWorkoutExerciseIdAfter` and its
     tests.
@@ -1098,7 +1135,8 @@ rest strip and semantics labels); regenerate the localizations.
     `apps/mobile/DESIGN.md` where it has the matching section.
 *   AGENTS.md: the Training Screen bullet ("Save/Clear buttons that become
     Update/Delete", "complete checkboxes") becomes Log set, Update/Delete/Not
-    done and the row states; the UX rule "(open exercise → Save)" becomes
+    done and the row states, and its "App bar gives rest timer" loses the rest
+    timer (the rest strip replaces it); the UX rule "(open exercise → Save)" becomes
     "(open exercise → Log set)"; the Navigation Panel bullet's "auto-advance to
     the next group member after a save" becomes "after Log set"; the Routines
     bullet's "one-tap **materialize**" becomes "preview, then **Start**
@@ -1236,6 +1274,8 @@ Strings; repository and widget tests in the Verification Plan.
     position.
 *   `findRememberedRest`: latest by `performedAt`; null and zero rests
     skipped; incomplete Sets and deleted Workouts ignored; none is null.
+*   `appendToWorkout` gives its drafts consecutive positions after the
+    Workout's last Set, under one batch that one Undo removes.
 *   `updatePerformed` writes one row; `adjust` extends, shortens, shortens past
     now, clears the prepare cue.
 *   Divergence (CUJ 6): a Template with null rests, logged unchanged through
@@ -1252,8 +1292,11 @@ Strings; repository and widget tests in the Verification Plan.
 *   Pull request 1: CUJ 1, 2, 4a, 5, 7, 8, 9, 10 on the Training Screen: rows, form
     values and units, button labels, the confirmation texts and Undo (which
     also cancels the started timer), the rest start, the move to the next
-    member; a double tap logs once; an extra Log set after a 0 s plan starts
-    no timer and leaves the button usable; a hard reject shows "Set not
+    member; a double tap logs once, including a second tap after the write
+    but before the move to the next member; an extra Log set after a 0 s plan
+    starts no timer, keeps Off for the Set after it and leaves the button
+    usable; a rest changed on Set 1 of an exercise with no plan still shows
+    and runs on Set 3 after an unchanged Set 2; a hard reject shows "Set not
     logged"; a reload by sync keeps a stepped but unsaved value; Update mode
     survives a sync and ends when its Set is un-completed elsewhere; a kg plan on an
     imperial unit setting logs kg; Log set on an ended Workout starts no timer;

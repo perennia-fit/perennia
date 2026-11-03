@@ -969,9 +969,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingOpenNavigationTooltip => 'Open navigation';
 
   @override
-  String get trainingSetSaved => 'Set saved';
-
-  @override
   String get trainingExercisesTitle => 'Exercises';
 
   @override
@@ -1040,42 +1037,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingSaveGroup => 'Save group';
 
   @override
-  String get trainingRestTimer => 'Rest timer';
-
-  @override
   String trainingRestCountdown(String remaining) {
     return 'Rest $remaining';
   }
 
   @override
-  String get trainingRestComplete => 'Rest complete';
+  String trainingRestStripRemainingLabel(int minutes, int seconds) {
+    return 'Rest, $minutes minutes $seconds seconds left';
+  }
 
   @override
-  String get trainingRestSecondsLabel => 'Rest sec';
+  String get trainingRestStripShorten => '−15 s';
 
   @override
-  String get trainingStartTimer => 'Start';
+  String get trainingRestStripShortenLabel => 'Rest 15 seconds less';
 
   @override
-  String get trainingUpdateTimer => 'Update';
+  String get trainingRestStripLengthen => '+15 s';
 
   @override
-  String get trainingCancelTimerTooltip => 'Cancel timer';
+  String get trainingRestStripLengthenLabel => 'Rest 15 seconds more';
+
+  @override
+  String get trainingStopRestTooltip => 'Stop rest';
+
+  @override
+  String get trainingStartRest => 'Start rest';
+
+  @override
+  String get trainingRestVolumeTitle => 'Alert volume';
 
   @override
   String get trainingPersonalRecordTooltip => 'Personal record';
-
-  @override
-  String get trainingEditSetTooltip => 'Edit set';
-
-  @override
-  String get trainingDeleteSetTooltip => 'Delete set';
-
-  @override
-  String get trainingMarkSetCompleteLabel => 'Mark set complete';
-
-  @override
-  String get trainingMarkSetIncompleteLabel => 'Mark set incomplete';
 
   @override
   String get trainingReorderSetLabel => 'Reorder set';
@@ -1107,12 +1100,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trainingRpeLabel => 'RPE';
-
-  @override
-  String get trainingSaveSet => 'Save set';
-
-  @override
-  String get trainingSaveChanges => 'Save changes';
 
   @override
   String get trainingCompletedSet => 'Completed set';
@@ -1172,6 +1159,127 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trainingUnitMile => 'mi';
+
+  @override
+  String get trainingLogSet => 'Log set';
+
+  @override
+  String trainingLogSetOf(int number, int total) {
+    return 'Log set $number of $total';
+  }
+
+  @override
+  String trainingSetLogged(int number) {
+    return 'Set $number logged';
+  }
+
+  @override
+  String trainingSetLoggedCarried(int number, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count later sets updated',
+      one: '1 later set updated',
+    );
+    return 'Set $number logged · $_temp0';
+  }
+
+  @override
+  String trainingSetNotLogged(String reason) {
+    return 'Set not logged: $reason';
+  }
+
+  @override
+  String trainingSetNotUpdated(String reason) {
+    return 'Set not updated: $reason';
+  }
+
+  @override
+  String get trainingPlannedSetRemoved => 'Planned set removed';
+
+  @override
+  String get trainingSetDeleted => 'Set deleted';
+
+  @override
+  String get trainingRoundAdded => 'Round added';
+
+  @override
+  String get trainingUndo => 'Undo';
+
+  @override
+  String get trainingUndoConflict => 'Couldn\'t undo: changed since';
+
+  @override
+  String get trainingRestAfterLabel => 'Rest after';
+
+  @override
+  String get trainingRestOff => 'Off';
+
+  @override
+  String get trainingDecreaseRestTooltip => 'Decrease rest';
+
+  @override
+  String get trainingIncreaseRestTooltip => 'Increase rest';
+
+  @override
+  String trainingContextRoundNext(
+      String groupName, int round, int total, String exerciseName) {
+    return '$groupName · Round $round of $total · Next: $exerciseName';
+  }
+
+  @override
+  String trainingContextRound(String groupName, int round, int total) {
+    return '$groupName · Round $round of $total';
+  }
+
+  @override
+  String trainingContextAllRoundsDone(String groupName) {
+    return '$groupName · All rounds done';
+  }
+
+  @override
+  String get trainingAddSet => 'Add set';
+
+  @override
+  String get trainingAddRound => 'Add round';
+
+  @override
+  String get trainingNotDone => 'Not done';
+
+  @override
+  String get trainingUpdateSet => 'Update';
+
+  @override
+  String get trainingDeleteSet => 'Delete';
+
+  @override
+  String trainingNextExercise(String exerciseName) {
+    return 'Next: $exerciseName';
+  }
+
+  @override
+  String get trainingScreenMenuTooltip => 'More options';
+
+  @override
+  String get trainingExerciseOverviewMenuItem => 'Exercise overview';
+
+  @override
+  String trainingSetRowDoneLabel(int number, String values) {
+    return 'Set $number, done, $values';
+  }
+
+  @override
+  String trainingSetRowNextLabel(int number, String values) {
+    return 'Set $number, next, $values';
+  }
+
+  @override
+  String trainingSetRowPlannedLabel(int number, String values) {
+    return 'Set $number, planned, $values';
+  }
+
+  @override
+  String get trainingRemovePlannedSetAction => 'Remove planned set';
 
   @override
   String get workoutTemplatesTitle => 'Saved workouts';

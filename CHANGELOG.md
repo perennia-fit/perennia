@@ -37,6 +37,17 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   logged, and asks for confirmation first.
   ([#93](https://github.com/perennia-fit/perennia/pull/93))
 
+### Changed
+
+- **Logging against the plan.** The Training Screen logs the next planned set
+  with one **Log set *n* of *m*** button pinned in thumb reach, in place of the
+  checkbox, pencil and Save. A changed weight carries to the later sets that
+  planned the same weight, a superset moves to the next exercise in the group,
+  and each set's rest is set in **Rest after** and remembered for next time. Set
+  rows show done, next and planned; a planned set is removed by swiping it away,
+  and **Not done** turns a logged set back into a planned one. The rest timer is
+  a strip above Log set with −15 s and +15 s.
+
 ## [0.1.0] - 2026-11-01
 
 A minor release: new features in the add-food picker, a reworked way to start

@@ -130,7 +130,13 @@ Use the tokens above for all colors, text styles, radii, and spacing. Flutter co
 maps these tokens through `ThemeData`, `AppColors`, `AppTextStyles`, and `AppDimens`;
 widgets should consume those APIs instead of hardcoding values.
 
-The primary accent is Signal Cyan. Save and confirm actions use Rested Teal with
-dark ink, destructive actions use Bar Red with white ink, and personal-record
-markers use Trophy Gold with dark ink whenever text sits on the marker. Category
-colors are always paired with text or another non-color signal.
+The primary accent is Signal Cyan. Log set, Save and confirm actions use Rested
+Teal with dark ink, destructive actions use Bar Red with white ink, and
+personal-record markers use Trophy Gold with dark ink whenever text sits on the
+marker. Category colors are always paired with text or another non-color signal.
+
+On the Training Screen, Log set (Update, Delete and Not done for a selected
+performed set) and the rest strip above it are pinned below the scroll, in thumb
+reach. Set rows show their state as performed (check icon), current (arrow and
+the selected-row cyan tint) or planned (secondary text) instead of a checkbox,
+and each state is also in the row's semantics label.

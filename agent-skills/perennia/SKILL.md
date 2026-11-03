@@ -163,6 +163,15 @@ a new key. A `422` error with rule `idempotency_key_conflict` means the key was
 reused for different work, so keep the original key with the original payload and
 use a new key only for the new request.
 
+When completing a planned Set (one a Template, a quick log, or an earlier write
+left incomplete) with `log-workout`, read the Workout first and send that Set back
+with every stored field unchanged except `values`, `isCompleted: true`, and
+`performedAt` (when it was done). `batchWriteAgentWorkout` writes whole Set rows
+and omitted fields default to null, so a missing `plannedRestAfter` erases the
+planned rest. Send a new `plannedRestAfter` only for a rest the user chose. When
+the user's load differs from the plan, also write it on the later planned Sets of
+that exercise that had the same planned load, as the app does.
+
 To end a Protocol, read its `hasHistory` from `list-protocols`. Archive a
 Protocol with history (`manage-protocols` with `archived: true`), which keeps its
 past days. Delete one without history with `delete-protocols`, which removes its

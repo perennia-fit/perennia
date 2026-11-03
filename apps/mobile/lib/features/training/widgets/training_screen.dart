@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/analytics/exercise_analytics.dart';
+import '../../../domain/training/plan_logging.dart';
+import '../../../domain/training/template_materialize.dart';
 import '../../../domain/training/training_dimensions.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
@@ -15,73 +18,7 @@ import '../../analytics/widgets/exercise_overview_screen.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../services/timer_background_scheduler.dart';
-
-final restTimerAlertProvider = Provider<RestTimerAlert>(
-  (ref) => const SystemRestTimerAlert(),
-);
-
-abstract interface class RestTimerAlert {
-  /// The end cue: rest/interval bout is over.
-  Future<void> fire(double volume);
-
-  /// The 3-2-1 prepare cue: rest ends soon (remaining <= 3s). A lighter,
-  /// distinct signal from [fire] so the two are never confused.
-  Future<void> firePrepare(double volume);
-}
-
-class SystemRestTimerAlert implements RestTimerAlert {
-  const SystemRestTimerAlert();
-
-  @override
-  Future<void> fire(double volume) async {
-    await HapticFeedback.vibrate();
-    if (volume > 0) {
-      await SystemSound.play(SystemSoundType.alert);
-    }
-  }
-
-  @override
-  Future<void> firePrepare(double volume) async {
-    // Lighter than the end cue: a selection click + a short click tone, paired
-    // so vibration is never the sole signal. Sound honors the volume slider;
-    // the platform still respects silent mode / DND.
-    await HapticFeedback.selectionClick();
-    if (volume > 0) {
-      await SystemSound.play(SystemSoundType.click);
-    }
-  }
-}
-
-Future<TimerBackgroundPermissionStatus> _scheduleRestBackgroundTimer(
-  WidgetRef ref,
-  RestTimerRecord timer, {
-  String? workoutExerciseId,
-  required bool soundEnabled,
-}) {
-  return ref.read(timerBackgroundSchedulerProvider).schedule(
-        TimerBackgroundSchedule.rest(
-          timer,
-          workoutExerciseId: workoutExerciseId,
-          soundEnabled: soundEnabled,
-        ),
-      );
-}
-
-void _notifyIfBackgroundAlertsDenied(
-  BuildContext context,
-  TimerBackgroundPermissionStatus status,
-) {
-  if (status != TimerBackgroundPermissionStatus.denied || !context.mounted) {
-    return;
-  }
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        context.l10n.trainingBackgroundAlertsDenied,
-      ),
-    ),
-  );
-}
+import 'rest_strip.dart';
 
 class TrainingScreen extends ConsumerStatefulWidget {
   const TrainingScreen({
@@ -99,12 +36,35 @@ class TrainingScreen extends ConsumerStatefulWidget {
   final WorkoutExerciseRecord? initialWorkoutExercise;
   final ExerciseRecord? initialExercise;
   final LoggedSetRecord? initialPriorSet;
+
+  /// Replaces the whole Workout's Sets stream (tests). The screen filters it
+  /// to the open exercise for the rows and reads it whole for the superset
+  /// walk, the round and the Next button.
   final Stream<List<LoggedSetRecord>>? setsStream;
   final Stream<Set<String>>? recordSetIdsStream;
   final bool enableRestTimerTicker;
 
-  static const saveSetButtonKey = Key('training.saveSet');
+  static const logSetButtonKey = Key('training.logSet');
+
+  /// The Log set confirmation; the performance test finds it after one frame.
   static const saveSetConfirmationKey = Key('training.saveSet.confirmation');
+  static const updateSetButtonKey = Key('training.updateSet');
+  static const deleteSelectedSetButtonKey = Key('training.deleteSelectedSet');
+  static const notDoneButtonKey = Key('training.notDone');
+  static const addSetButtonKey = Key('training.addSet');
+  static const addRoundButtonKey = Key('training.addRound');
+  static const nextExerciseButtonKey = Key('training.nextExercise');
+  static const restAfterValueKey = Key('training.restAfter.value');
+  static const restAfterDecrementKey = Key('training.restAfter.decrement');
+  static const restAfterIncrementKey = Key('training.restAfter.increment');
+  static const contextLineKey = Key('training.contextLine');
+  static const restStripKey = RestStrip.stripKey;
+  static const restStripStopKey = RestStrip.stopKey;
+  static const restStripStartKey = RestStrip.startKey;
+
+  /// The alert volume slider, in the sheet the rest strip's time opens.
+  static const restTimerVolumeSliderKey = RestStrip.volumeSliderKey;
+  static const screenMenuButtonKey = Key('training.menu');
   static const commentFieldKey = Key('training.comment');
   static const sideFieldKey = Key('training.side');
   static const rpeFieldKey = Key('training.rpe');
@@ -120,11 +80,10 @@ class TrainingScreen extends ConsumerStatefulWidget {
   static const saveGroupButtonKey = Key('training.navigation.saveGroup');
   static const groupNameFieldKey = Key('training.navigation.groupName');
   static const groupColorFieldKey = Key('training.navigation.groupColor');
-  static const restTimerPanelKey = Key('training.restTimer.panel');
-  static const restTimerDurationFieldKey = Key('training.restTimer.duration');
-  static const restTimerStartButtonKey = Key('training.restTimer.start');
-  static const restTimerCancelButtonKey = Key('training.restTimer.cancel');
-  static const restTimerVolumeSliderKey = Key('training.restTimer.volume');
+
+  static Key restStripAdjustKey(int seconds) {
+    return RestStrip.adjustKey(seconds);
+  }
 
   static Key navigationItemKey(String workoutExerciseId) {
     return Key('training.navigation.exercise.$workoutExerciseId');
@@ -162,116 +121,143 @@ class TrainingScreen extends ConsumerStatefulWidget {
     return Key('training.set.$setId.recordTrophy');
   }
 
-  static Key editSetButtonKey(String setId) {
-    return Key('training.set.$setId.edit');
-  }
-
-  static Key deleteSetButtonKey(String setId) {
-    return Key('training.set.$setId.delete');
-  }
-
-  static Key completeSetCheckboxKey(String setId) {
-    return Key('training.set.$setId.complete');
-  }
-
   static Key reorderHandleKey(String setId) {
     return Key('training.set.$setId.reorder');
-  }
-
-  static Key editDimensionFieldKey(String setId, DimensionId dimension) {
-    return Key('training.set.$setId.dimension.${dimension.name}');
-  }
-
-  static Key editDurationHoursFieldKey(String setId) {
-    return Key('training.set.$setId.dimension.duration.hours');
-  }
-
-  static Key editDurationMinutesFieldKey(String setId) {
-    return Key('training.set.$setId.dimension.duration.minutes');
-  }
-
-  static Key editDurationSecondsFieldKey(String setId) {
-    return Key('training.set.$setId.dimension.duration.seconds');
-  }
-
-  static Key editCommentFieldKey(String setId) {
-    return Key('training.set.$setId.comment');
-  }
-
-  static Key editSideFieldKey(String setId) {
-    return Key('training.set.$setId.side');
-  }
-
-  static Key editRpeFieldKey(String setId) {
-    return Key('training.set.$setId.rpe');
-  }
-
-  static Key saveEditButtonKey(String setId) {
-    return Key('training.set.$setId.saveEdit');
   }
 
   @override
   ConsumerState<TrainingScreen> createState() => _TrainingScreenState();
 }
 
+/// How far one tap on **Rest after**'s [−] or [+] moves the rest.
+const _restAfterStep = Duration(seconds: 15);
+
+/// The longest rest **Rest after** offers.
+const _restAfterMax = Duration(minutes: 60);
+
 class _TrainingScreenState extends ConsumerState<TrainingScreen> {
-  late Future<_TrainingExerciseState> _stateFuture;
   late String _activeWorkoutExerciseId;
-  Stream<List<LoggedSetRecord>>? _overrideSetsStream;
+
+  /// The loaded exercise. It stays on screen while the next one loads, so
+  /// the rest strip (and its ticker) stays mounted across a switch.
+  _TrainingExerciseState? _state;
+  bool _loadFailed = false;
+  int _loadGeneration = 0;
   Stream<Set<String>>? _overrideRecordSetIdsStream;
+
+  // The whole Workout, from the streams the Navigation Panel also reads.
+  String? _subscribedWorkoutId;
+  StreamSubscription<List<LoggedSetRecord>>? _setsSubscription;
+  StreamSubscription<List<WorkoutExerciseRecord>>?
+      _workoutExercisesSubscription;
+  StreamSubscription<List<ExerciseGroupRecord>>? _groupsSubscription;
+  StreamSubscription<List<ExerciseRecord>>? _exercisesSubscription;
+  Set<String> _subscribedExerciseIds = const <String>{};
+  List<LoggedSetRecord>? _workoutSets;
+  List<WorkoutExerciseRecord> _workoutExercises =
+      const <WorkoutExerciseRecord>[];
+  Map<String, WorkoutExerciseRecord> _workoutExercisesById =
+      const <String, WorkoutExerciseRecord>{};
+  Map<String, ExerciseGroupRecord> _groupByWorkoutExerciseId =
+      const <String, ExerciseGroupRecord>{};
+  Map<String, ExerciseRecord> _exercisesById = const <String, ExerciseRecord>{};
+
+  /// The Workout's Sets by exercise, in plan order, without Planned Sets
+  /// being swiped away; null until next read after the Sets or the swiped
+  /// Sets change. Every build reads it once per group member (context line,
+  /// Next, rounds), so it is bucketed once rather than rescanned per read.
+  Map<String, List<LoggedSetRecord>>? _setsByExerciseIdCache;
+
+  // The form's controls.
   final _controllers = <DimensionId, TextEditingController>{};
   final _commentController = TextEditingController();
   final _rpeController = TextEditingController();
   SetSide _selectedSide = SetSide.left;
-  String? _populatedWorkoutExerciseId;
+  Duration _rest = defaultRestAfter;
+
+  // Screen state (the spec's "Screen state").
+  String? _pickedSetId;
+
+  /// A Performed Set selected for Update; the form never reloads on its own
+  /// while it is set.
+  String? _selectedSetId;
+
+  /// The unit of each dimension field, from the Set the form last loaded.
+  /// A dimension missing here takes the unit setting, so a kg plan on an
+  /// imperial setting still logs kg and a prefill keeps today's units.
+  final _formUnits = <DimensionId, TrainingUnit>{};
+
+  /// The rest shown at the last form load; **Rest after** is changed (and
+  /// only then written and carried forward) when it differs from this.
+  Duration _loadedRest = defaultRestAfter;
+
+  /// Set by any change to any form control, cleared by a form load. A sync,
+  /// an Agent or a carry-forward reloads the Current Set's values only
+  /// while this is false, so a stepped but unsaved value survives them.
+  bool _formDirty = false;
+  bool _logInFlight = false;
+
+  /// The Workout Exercise the form was last loaded for; a different one is
+  /// a new visit (picked and selected rows clear).
+  String? _formVisitId;
+  _FormSource _formSource = const _FormSource(null, null, null);
+
+  /// The Set Log set just wrote; the form loads the next Current Set once
+  /// the Sets stream shows it performed.
+  String? _pendingLoggedSetId;
+
+  /// The values last logged on this exercise in this visit, which a form
+  /// with no Current Set keeps instead of the prefill.
+  LoggedSet? _lastLoggedValues;
+  bool _loadingForm = false;
+
+  /// Planned Sets swiped away whose delete the Sets stream does not show
+  /// yet; hidden so `Dismissible` leaves the tree at once.
+  final _removingSetIds = <String>{};
   int _restTimerRevision = 0;
+
+  /// The rest strip's volume, which Log set's timer starts with.
+  double _alertVolume = RestTimerRepository.defaultAlertVolume;
 
   @override
   void initState() {
     super.initState();
     _activeWorkoutExerciseId = widget.workoutExerciseId;
-    _overrideSetsStream = widget.setsStream?.asBroadcastStream();
     _overrideRecordSetIdsStream =
         widget.recordSetIdsStream?.asBroadcastStream();
-    final initialWorkoutExercise = widget.initialWorkoutExercise;
-    final initialExercise = widget.initialExercise;
-    if (initialWorkoutExercise != null && initialExercise != null) {
-      _stateFuture = Future<_TrainingExerciseState>.value(
-        _TrainingExerciseState(
-          workoutExercise: initialWorkoutExercise,
-          exercise: initialExercise,
-          priorSet: widget.initialPriorSet,
-        ),
-      );
-    } else {
-      _stateFuture = _loadState(_activeWorkoutExerciseId);
-    }
+    _trackFormChanges(_commentController);
+    _trackFormChanges(_rpeController);
+    _startLoad(
+      _activeWorkoutExerciseId,
+      useInitial: widget.initialWorkoutExercise != null &&
+          widget.initialExercise != null,
+    );
   }
 
   @override
   void didUpdateWidget(covariant TrainingScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.workoutExerciseId == widget.workoutExerciseId) {
-      if (oldWidget.setsStream != widget.setsStream) {
-        _overrideSetsStream = widget.setsStream?.asBroadcastStream();
-      }
-      if (oldWidget.recordSetIdsStream != widget.recordSetIdsStream) {
-        _overrideRecordSetIdsStream =
-            widget.recordSetIdsStream?.asBroadcastStream();
-      }
-      return;
+    if (oldWidget.recordSetIdsStream != widget.recordSetIdsStream) {
+      _overrideRecordSetIdsStream =
+          widget.recordSetIdsStream?.asBroadcastStream();
     }
-
-    _activeWorkoutExerciseId = widget.workoutExerciseId;
-    _overrideSetsStream = widget.setsStream?.asBroadcastStream();
-    _overrideRecordSetIdsStream =
-        widget.recordSetIdsStream?.asBroadcastStream();
-    _populatedWorkoutExerciseId = null;
-    _stateFuture = _loadState(_activeWorkoutExerciseId);
+    if (oldWidget.workoutExerciseId != widget.workoutExerciseId) {
+      _activeWorkoutExerciseId = widget.workoutExerciseId;
+      _startLoad(_activeWorkoutExerciseId);
+    } else if (oldWidget.setsStream != widget.setsStream) {
+      final workoutId = _subscribedWorkoutId;
+      if (workoutId != null) {
+        _subscribeToSets(workoutId);
+      }
+    }
   }
 
   @override
   void dispose() {
+    unawaited(_setsSubscription?.cancel());
+    unawaited(_workoutExercisesSubscription?.cancel());
+    unawaited(_groupsSubscription?.cancel());
+    unawaited(_exercisesSubscription?.cancel());
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -280,95 +266,472 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     super.dispose();
   }
 
-  Future<_TrainingExerciseState> _loadState(String workoutExerciseId) async {
+  /// Marks the form dirty when [controller]'s text changes outside a form
+  /// load. Text, not every notification: tapping a field selects its value,
+  /// which notifies listeners without changing anything.
+  void _trackFormChanges(TextEditingController controller) {
+    var lastText = controller.text;
+    controller.addListener(() {
+      if (controller.text == lastText) {
+        return;
+      }
+      lastText = controller.text;
+      if (!_loadingForm) {
+        _formDirty = true;
+      }
+    });
+  }
+
+  TextEditingController _dimensionController(DimensionId dimension) {
+    return _controllers.putIfAbsent(dimension, () {
+      final controller = TextEditingController();
+      _trackFormChanges(controller);
+      return controller;
+    });
+  }
+
+  void _startLoad(String workoutExerciseId, {bool useInitial = false}) {
+    final generation = ++_loadGeneration;
+    _loadState(workoutExerciseId, useInitial: useInitial).then(
+      (state) {
+        if (!mounted || generation != _loadGeneration) {
+          return;
+        }
+        setState(() {
+          _state = state;
+          _loadFailed = false;
+          _subscribeToWorkout(state.workoutExercise.workoutId);
+          _reconcileForm();
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!mounted || generation != _loadGeneration) {
+          return;
+        }
+        setState(() => _loadFailed = true);
+      },
+    );
+  }
+
+  Future<_TrainingExerciseState> _loadState(
+    String workoutExerciseId, {
+    required bool useInitial,
+  }) async {
     final repositories = ref.read(trainingRepositoriesProvider);
     final workoutExercise =
-        await repositories.workoutExercises.getById(workoutExerciseId);
+        (useInitial ? widget.initialWorkoutExercise : null) ??
+            await repositories.workoutExercises.getById(workoutExerciseId);
     if (workoutExercise == null) {
       throw StateError('Workout exercise not found.');
     }
 
-    final exercise = await repositories.exercises.getById(
-      workoutExercise.exerciseId,
-    );
+    final exercise = (useInitial ? widget.initialExercise : null) ??
+        await repositories.exercises.getById(workoutExercise.exerciseId);
     if (exercise == null) {
       throw StateError('Exercise not found.');
     }
 
-    final priorSet = await repositories.sets.findLatestPriorForExercise(
-      exerciseId: workoutExercise.exerciseId,
-      beforeWorkoutId: workoutExercise.workoutId,
-      dimensions: exercise.type.dimensions,
-    );
+    final workout =
+        await repositories.workoutSessions.getById(workoutExercise.workoutId);
+    if (workout == null) {
+      throw StateError('Workout not found.');
+    }
+
+    final priorSet = useInitial
+        ? widget.initialPriorSet
+        : await repositories.sets.findLatestPriorForExercise(
+            exerciseId: workoutExercise.exerciseId,
+            beforeWorkoutId: workoutExercise.workoutId,
+            dimensions: exercise.type.dimensions,
+          );
+    // Read once per opening, with the prefill. Within this visit the
+    // exercise's last Set carries any rest since (`restShownFor`): Log set
+    // writes a changed rest onto its Set, and a new Set also writes the rest
+    // it took from the Set before it (`_logSetInFlight`), so this value
+    // never needs a refresh.
+    final rememberedRest =
+        await repositories.sets.findRememberedRest(exercise.id);
 
     return _TrainingExerciseState(
       workoutExercise: workoutExercise,
       exercise: exercise,
       priorSet: priorSet,
+      workout: workout,
+      rememberedRest: rememberedRest,
     );
+  }
+
+  void _subscribeToWorkout(String workoutId) {
+    if (_subscribedWorkoutId == workoutId) {
+      return;
+    }
+    _subscribedWorkoutId = workoutId;
+    _workoutSets = null;
+    _setsByExerciseIdCache = null;
+    _workoutExercises = const <WorkoutExerciseRecord>[];
+    _workoutExercisesById = const <String, WorkoutExerciseRecord>{};
+    _groupByWorkoutExerciseId = const <String, ExerciseGroupRecord>{};
+    _exercisesById = const <String, ExerciseRecord>{};
+    _subscribedExerciseIds = const <String>{};
+    _removingSetIds.clear();
+
+    final repositories = ref.read(trainingRepositoriesProvider);
+    _subscribeToSets(workoutId);
+    unawaited(_workoutExercisesSubscription?.cancel());
+    _workoutExercisesSubscription = repositories.workoutExercises
+        .watchActiveForWorkout(workoutId)
+        .listen((rows) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        // Already in Workout order, the order the Navigation Panel shows.
+        _workoutExercises = rows;
+        _workoutExercisesById = <String, WorkoutExerciseRecord>{
+          for (final row in rows) row.id: row,
+        };
+        _subscribeToExercises(rows);
+      });
+    });
+    unawaited(_groupsSubscription?.cancel());
+    _groupsSubscription =
+        repositories.exerciseGroups.watchActiveForWorkout(workoutId).listen(
+      (rows) {
+        if (mounted) {
+          setState(() {
+            // A Workout Exercise is in at most one group; should two
+            // claim it, the first in stream order wins.
+            final byMemberId = <String, ExerciseGroupRecord>{};
+            for (final group in rows) {
+              for (final memberId in group.workoutExerciseIds) {
+                byMemberId.putIfAbsent(memberId, () => group);
+              }
+            }
+            _groupByWorkoutExerciseId = byMemberId;
+          });
+        }
+      },
+    );
+  }
+
+  void _subscribeToSets(String workoutId) {
+    unawaited(_setsSubscription?.cancel());
+    final stream = widget.setsStream ??
+        ref.read(trainingRepositoriesProvider).sets.watchActiveForWorkout(
+              workoutId,
+            );
+    _setsSubscription = stream.listen((rows) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _workoutSets = rows;
+        _setsByExerciseIdCache = null;
+        _removingSetIds.removeWhere(
+          (id) => !rows.any((set) => set.id == id),
+        );
+        _reconcileForm();
+      });
+    });
+  }
+
+  /// The exercises of the Workout, for the names on the context line and
+  /// the Next button and the dimensions Add round fills.
+  void _subscribeToExercises(List<WorkoutExerciseRecord> workoutExercises) {
+    final ids = workoutExercises.map((row) => row.exerciseId).toSet();
+    if (_sameStringSet(ids, _subscribedExerciseIds) &&
+        _exercisesSubscription != null) {
+      return;
+    }
+    _subscribedExerciseIds = ids;
+    unawaited(_exercisesSubscription?.cancel());
+    _exercisesSubscription = ref
+        .read(trainingRepositoriesProvider)
+        .exercises
+        .watchActiveByIds(ids)
+        .listen(
+      (rows) {
+        if (mounted) {
+          setState(() {
+            _exercisesById = <String, ExerciseRecord>{
+              for (final exercise in rows) exercise.id: exercise,
+            };
+          });
+        }
+      },
+    );
+  }
+
+  /// The open exercise's Sets in plan order, without Planned Sets being
+  /// swiped away.
+  List<LoggedSetRecord> _exerciseSetsFor(_TrainingExerciseState state) {
+    return _setsOfExercise(state.workoutExercise.exerciseId);
+  }
+
+  List<LoggedSetRecord> _setsOfExercise(String exerciseId) {
+    return _setsByExerciseId[exerciseId] ?? const <LoggedSetRecord>[];
+  }
+
+  /// See [_setsByExerciseIdCache]. Sorted here, not trusted from the
+  /// stream, because a test's `setsStream` need not come from the query.
+  Map<String, List<LoggedSetRecord>> get _setsByExerciseId {
+    final cached = _setsByExerciseIdCache;
+    if (cached != null) {
+      return cached;
+    }
+    final byExerciseId = <String, List<LoggedSetRecord>>{};
+    for (final set in _workoutSets ?? const <LoggedSetRecord>[]) {
+      if (set.workoutId == _subscribedWorkoutId &&
+          set.deletedAt == null &&
+          !_removingSetIds.contains(set.id)) {
+        byExerciseId
+            .putIfAbsent(set.exerciseId, () => <LoggedSetRecord>[])
+            .add(set);
+      }
+    }
+    return _setsByExerciseIdCache = <String, List<LoggedSetRecord>>{
+      for (final entry in byExerciseId.entries)
+        entry.key: List<LoggedSetRecord>.unmodifiable(
+          entry.value..sort(compareSetsInPlanOrder),
+        ),
+    };
+  }
+
+  WorkoutExerciseRecord? _workoutExerciseById(String workoutExerciseId) {
+    final state = _state;
+    if (state != null && state.workoutExercise.id == workoutExerciseId) {
+      return state.workoutExercise;
+    }
+    return _workoutExercisesById[workoutExerciseId];
+  }
+
+  List<LoggedSetRecord> _setsOfWorkoutExercise(String workoutExerciseId) {
+    final workoutExercise = _workoutExerciseById(workoutExerciseId);
+    if (workoutExercise == null) {
+      return const <LoggedSetRecord>[];
+    }
+    return _setsOfExercise(workoutExercise.exerciseId);
+  }
+
+  ({int performed, int planned}) _countsFor(String workoutExerciseId) {
+    final sets = _setsOfWorkoutExercise(workoutExerciseId);
+    final planned = sets.where(isPlannedSet).length;
+    return (performed: sets.length - planned, planned: planned);
+  }
+
+  String? _exerciseNameFor(String workoutExerciseId) {
+    final state = _state;
+    if (state != null && state.workoutExercise.id == workoutExerciseId) {
+      return state.exercise.name;
+    }
+    final workoutExercise = _workoutExerciseById(workoutExerciseId);
+    return workoutExercise == null
+        ? null
+        : _exercisesById[workoutExercise.exerciseId]?.name;
+  }
+
+  ExerciseGroupRecord? _groupFor(String workoutExerciseId) {
+    return _groupByWorkoutExerciseId[workoutExerciseId];
+  }
+
+  /// Applies the spec's reload rules after the data or the screen state
+  /// changed. Called inside `setState`.
+  void _reconcileForm() {
+    final state = _state;
+    if (state == null || _workoutSets == null) {
+      return;
+    }
+    final exerciseSets = _exerciseSetsFor(state);
+
+    if (_formVisitId != state.workoutExercise.id) {
+      _formVisitId = state.workoutExercise.id;
+      _pickedSetId = null;
+      _selectedSetId = null;
+      _pendingLoggedSetId = null;
+      _lastLoggedValues = null;
+      _selectedSide = SetSide.left;
+      _loadForm(state, currentSetFor(exerciseSets), exerciseSets);
+      return;
+    }
+
+    final selectedSetId = _selectedSetId;
+    if (selectedSetId != null) {
+      if (exerciseSets
+          .any((set) => set.id == selectedSetId && set.isCompleted)) {
+        return;
+      }
+      // Un-completed, deleted or undone elsewhere: Update mode ends.
+      _selectedSetId = null;
+      _loadCurrentSet(state, exerciseSets);
+      return;
+    }
+
+    final pendingLoggedSetId = _pendingLoggedSetId;
+    if (pendingLoggedSetId != null) {
+      final logged =
+          exerciseSets.where((set) => set.id == pendingLoggedSetId).firstOrNull;
+      if (logged != null && !logged.isCompleted) {
+        // The stream has not shown the write yet.
+        return;
+      }
+      _pendingLoggedSetId = null;
+      _loadCurrentSet(state, exerciseSets);
+      return;
+    }
+
+    final current = currentSetFor(exerciseSets, pickedSetId: _pickedSetId);
+    if (current?.id != _formSource.setId ||
+        (current != null && !_formDirty && _formSource.differsFrom(current))) {
+      _loadForm(state, current, exerciseSets);
+    }
+  }
+
+  void _loadCurrentSet(
+    _TrainingExerciseState state,
+    List<LoggedSetRecord> exerciseSets,
+  ) {
+    _loadForm(
+      state,
+      currentSetFor(exerciseSets, pickedSetId: _pickedSetId),
+      exerciseSets,
+    );
+  }
+
+  /// The spec's "form loads": [set] is the Current Set or the selected
+  /// Performed Set; null is a new Set, which keeps the values last logged
+  /// in this visit or else takes the prefill.
+  void _loadForm(
+    _TrainingExerciseState state,
+    LoggedSetRecord? set,
+    List<LoggedSetRecord> exerciseSets,
+  ) {
+    _loadingForm = true;
+    try {
+      final lastLoggedValues = _lastLoggedValues;
+      final LoggedSet? values;
+      final bool unitsFromValues;
+      if (set != null) {
+        values = set.values;
+        unitsFromValues = true;
+        _commentController.text = set.comment ?? '';
+        final rpe = set.rpe;
+        _rpeController.text = rpe == null ? '' : _formatRpe(rpe);
+        // A Planned Set has no side; keeping the current one lets the side
+        // alternate across a unilateral plan, as it does after Save set.
+        final side = set.side;
+        if (side != null) {
+          _selectedSide = side;
+        }
+      } else {
+        values = lastLoggedValues ?? state.priorSet?.values;
+        // The prefill takes the unit setting, as before; the values last
+        // logged keep the units they were logged in.
+        unitsFromValues = lastLoggedValues != null;
+        _commentController.clear();
+        _rpeController.clear();
+      }
+      _formUnits.clear();
+      for (final dimension in state.exercise.type.dimensions) {
+        final value = values?.valueFor(dimension);
+        _dimensionController(dimension).text = value?.entered ?? '';
+        if (unitsFromValues && value != null) {
+          _formUnits[dimension] = value.unit;
+        }
+      }
+      _rest = restShownFor(
+        shownSet: set,
+        lastSetOfExercise: exerciseSets.lastOrNull,
+        rememberedRest: state.rememberedRest,
+      );
+      _loadedRest = _rest;
+      _formDirty = false;
+      _formSource = _FormSource.of(set);
+    } finally {
+      _loadingForm = false;
+    }
+  }
+
+  TrainingUnit _unitFor(DimensionId dimension, UnitSystem unitSystem) {
+    return _formUnits[dimension] ?? _defaultUnitFor(dimension, unitSystem);
+  }
+
+  AppSettings _readSettings() {
+    return ref.read(settingsControllerProvider).value ?? AppSettings.defaults;
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<_TrainingExerciseState>(
-      future: _stateFuture,
-      builder: (context, snapshot) {
-        // Gate on data-presence, not connectionState: swapping `_stateFuture`
-        // on auto-select-next-set (after every save) makes FutureBuilder emit a
-        // transient non-done frame, but it preserves `snapshot.data` across the
-        // swap. Rendering the last-known state keeps `_RestTimerPanel` mounted
-        // so its `Timer.periodic` ticker survives the exercise switch;
-        // switching on connectionState fell to `SizedBox.expand()`
-        // and cancelled it. A genuine load failure with no prior state still
-        // surfaces the unavailable text.
-        final state = snapshot.data;
-        final hasError = snapshot.connectionState == ConnectionState.done &&
-            snapshot.hasError &&
-            state == null;
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(
-                state?.exercise.name ?? context.l10n.trainingFallbackTitle),
-            actions: [
-              Builder(
-                builder: (context) {
-                  return IconButton(
-                    key: TrainingScreen.navigationPanelButtonKey,
-                    tooltip: context.l10n.trainingOpenNavigationTooltip,
-                    onPressed: state == null
-                        ? null
-                        : () => Scaffold.of(context).openEndDrawer(),
-                    icon: const Icon(Icons.menu_open),
+    final state = _state;
+    final ready = state != null && _workoutSets != null;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(state?.exercise.name ?? context.l10n.trainingFallbackTitle),
+        actions: [
+          PopupMenuButton<_TrainingScreenMenuAction>(
+            key: TrainingScreen.screenMenuButtonKey,
+            tooltip: context.l10n.trainingScreenMenuTooltip,
+            enabled: state != null,
+            onSelected: (action) {
+              final exercise = _state?.exercise;
+              if (exercise == null) {
+                return;
+              }
+              switch (action) {
+                case _TrainingScreenMenuAction.exerciseOverview:
+                  unawaited(
+                    Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            ExerciseOverviewScreen(exerciseId: exercise.id),
+                      ),
+                    ),
                   );
-                },
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<_TrainingScreenMenuAction>(
+                value: _TrainingScreenMenuAction.exerciseOverview,
+                child: Text(context.l10n.trainingExerciseOverviewMenuItem),
               ),
             ],
           ),
-          endDrawer: state == null
-              ? null
-              : _NavigationPanelDrawer(
-                  workoutId: state.workoutExercise.workoutId,
-                  activeWorkoutExerciseId: state.workoutExercise.id,
-                  onWorkoutExerciseSelected: _selectWorkoutExercise,
-                  onExerciseAdded: _selectWorkoutExercise,
-                ),
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(AppDimens.base),
-              child: switch ((hasError, state)) {
-                (true, _) => Text(
-                    context.l10n.trainingUnavailable,
-                    style: context.textStyles.body.copyWith(
-                      color: context.colors.textSecondary,
-                    ),
-                  ),
-                (_, final state?) => _buildTrainingForm(state),
-                _ => const SizedBox.expand(),
-              },
-            ),
+          Builder(
+            builder: (context) {
+              return IconButton(
+                key: TrainingScreen.navigationPanelButtonKey,
+                tooltip: context.l10n.trainingOpenNavigationTooltip,
+                onPressed: state == null
+                    ? null
+                    : () => Scaffold.of(context).openEndDrawer(),
+                icon: const Icon(Icons.menu_open),
+              );
+            },
           ),
-        );
-      },
+        ],
+      ),
+      endDrawer: state == null
+          ? null
+          : _NavigationPanelDrawer(
+              workoutId: state.workoutExercise.workoutId,
+              activeWorkoutExerciseId: state.workoutExercise.id,
+              onWorkoutExerciseSelected: _selectWorkoutExercise,
+              onExerciseAdded: _selectWorkoutExercise,
+            ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppDimens.base),
+          child: _loadFailed
+              ? Text(
+                  context.l10n.trainingUnavailable,
+                  style: context.textStyles.body.copyWith(
+                    color: context.colors.textSecondary,
+                  ),
+                )
+              : ready
+                  ? _buildTrainingForm(state)
+                  : const SizedBox.expand(),
+        ),
+      ),
     );
   }
 
@@ -377,14 +740,8 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       return;
     }
 
-    setState(() {
-      _activeWorkoutExerciseId = workoutExerciseId;
-      _populatedWorkoutExerciseId = null;
-      _commentController.clear();
-      _rpeController.clear();
-      _selectedSide = SetSide.left;
-      _stateFuture = _loadState(workoutExerciseId);
-    });
+    setState(() => _activeWorkoutExerciseId = workoutExerciseId);
+    _startLoad(workoutExerciseId);
   }
 
   Widget _buildTrainingForm(_TrainingExerciseState state) {
@@ -426,158 +783,740 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     required AppSettings settings,
     required Set<String> recordSetIds,
   }) {
-    _populateEntryControllers(state);
+    final l10n = context.l10n;
+    final workoutExerciseId = state.workoutExercise.id;
+    final exerciseSets = _exerciseSetsFor(state);
+    final selectedSetId = _selectedSetId;
+    final selectedSet = selectedSetId == null
+        ? null
+        : exerciseSets
+            .where((set) => set.id == selectedSetId && set.isCompleted)
+            .firstOrNull;
+    final currentSet = currentSetFor(exerciseSets, pickedSetId: _pickedSetId);
+    final group = _groupFor(workoutExerciseId);
+    final contextLine = group == null
+        ? null
+        : _contextLineFor(
+            l10n,
+            group,
+            workoutExerciseId: workoutExerciseId,
+            loggedAPlannedSet: currentSet != null,
+            autoSelectNextSet: settings.autoSelectNextSet,
+          );
+    final nextExerciseId = selectedSet == null
+        ? _nextExerciseIdFor(workoutExerciseId, group)
+        : null;
+    final nextExerciseName =
+        nextExerciseId == null ? null : _exerciseNameFor(nextExerciseId);
+
+    final Widget actions;
+    if (selectedSet != null) {
+      actions = _UpdateModeButtons(
+        onNotDone: () => unawaited(_markNotDone(state, selectedSet)),
+        onUpdate: () => unawaited(_updateSelected(state, selectedSet)),
+        onDelete: () => unawaited(_deleteSelected(state, selectedSet)),
+      );
+    } else {
+      final currentNumber =
+          currentSet == null ? null : exerciseSets.indexOf(currentSet) + 1;
+      actions = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton.icon(
+            key: TrainingScreen.logSetButtonKey,
+            style: _saveButtonStyle(context),
+            onPressed: () => unawaited(_logSet(state)),
+            icon: const Icon(Icons.check),
+            label: Text(
+              currentNumber == null
+                  ? l10n.trainingLogSet
+                  : l10n.trainingLogSetOf(currentNumber, exerciseSets.length),
+            ),
+          ),
+          if (nextExerciseId != null && nextExerciseName != null) ...[
+            const SizedBox(height: AppDimens.dense),
+            OutlinedButton(
+              key: TrainingScreen.nextExerciseButtonKey,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(AppDimens.touchTarget),
+              ),
+              onPressed: () => _selectWorkoutExercise(nextExerciseId),
+              child: Text(l10n.trainingNextExercise(nextExerciseName)),
+            ),
+          ],
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _RestTimerPanel(
-          workoutId: state.workoutExercise.workoutId,
-          workoutExerciseId: state.workoutExercise.id,
-          enableTicker: widget.enableRestTimerTicker,
-          revision: _restTimerRevision,
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (group != null && contextLine != null)
+                  _ContextLine(
+                    text: contextLine,
+                    onAddRound: () => unawaited(_addRound(state, group)),
+                  ),
+                _SetRows(
+                  exercise: state.exercise,
+                  sets: exerciseSets,
+                  currentSetId: currentSet?.id,
+                  selectedSetId: selectedSet?.id,
+                  recordSetIds: recordSetIds,
+                  onTap: (set) => _onRowTapped(state, set),
+                  onRemove: (set) => unawaited(_removePlannedSet(set)),
+                  onReorder: (sets) => _reorderSets(state, sets),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: TrainingScreen.addSetButtonKey,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, AppDimens.touchTarget),
+                    ),
+                    onPressed: () => unawaited(_addSet(state)),
+                    icon: const Icon(Icons.add),
+                    label: Text(l10n.trainingAddSet),
+                  ),
+                ),
+                const Divider(),
+                const SizedBox(height: AppDimens.dense),
+                _SetEntryForm(
+                  exercise: state.exercise,
+                  controllerFor: _dimensionController,
+                  commentController: _commentController,
+                  rpeController: _rpeController,
+                  selectedSide: _selectedSide,
+                  unitFor: (dimension) =>
+                      _unitFor(dimension, settings.unitSystem),
+                  defaultWeightIncrement: settings.defaultWeightIncrement,
+                  rest: _rest,
+                  onStep: _stepDimension,
+                  onStepRest: _stepRest,
+                  onSideChanged: (side) {
+                    setState(() {
+                      _selectedSide = side;
+                      _formDirty = true;
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
         ),
         const SizedBox(height: AppDimens.dense),
-        Expanded(
-          child: _TrainingForm(
-            state: state,
-            controllers: _controllers,
-            commentController: _commentController,
-            rpeController: _rpeController,
-            selectedSide: _selectedSide,
-            sets: _watchSets(state),
-            recordSetIds: recordSetIds,
-            settings: settings,
-            onSave: () => _saveSet(state, settings),
-            onStep: _stepDimension,
-            onSideChanged: (side) {
-              setState(() => _selectedSide = side);
-            },
-            onEdit: (set) => _editSet(state, set, settings),
-            onDelete: _deleteSet,
-            onSetCompleted: (set, isCompleted) =>
-                _setCompleted(state, settings, set, isCompleted),
-            onReorder: (sets) => _reorderSets(state, sets),
+        // Always at this place in the Column, whatever the buttons below
+        // are, so the strip (the rest timer's one owner) stays mounted
+        // across exercise switches and Update mode.
+        RestStrip(
+          workoutId: state.workoutExercise.workoutId,
+          workoutExerciseId: workoutExerciseId,
+          rest: _rest,
+          enableTicker: widget.enableRestTimerTicker,
+          revision: _restTimerRevision,
+          onAlertVolumeChanged: (volume) => _alertVolume = volume,
+        ),
+        const SizedBox(height: AppDimens.dense),
+        actions,
+      ],
+    );
+  }
+
+  /// The context line, or null when the group has no round (no member has
+  /// a Set). "· Next:" is left out when Log set would not move.
+  String? _contextLineFor(
+    AppLocalizations l10n,
+    ExerciseGroupRecord group, {
+    required String workoutExerciseId,
+    required bool loggedAPlannedSet,
+    required bool autoSelectNextSet,
+  }) {
+    final memberIds = group.workoutExerciseIds;
+    final counts = <String, ({int performed, int planned})>{
+      for (final memberId in memberIds) memberId: _countsFor(memberId),
+    };
+    final round = groupRoundFor(counts.values.toList(growable: false));
+    switch (round) {
+      case null:
+        return null;
+      case GroupRoundAllDone():
+        return l10n.trainingContextAllRoundsDone(group.name);
+      case GroupRoundInProgress(:final round, :final of):
+        final nextMemberId = nextGroupMemberAfterLog(
+          memberIdsInOrder: memberIds,
+          loggedWorkoutExerciseId: workoutExerciseId,
+          membersWithPlannedSetBefore: <String>{
+            for (final entry in counts.entries)
+              if (entry.value.planned > 0) entry.key,
+          },
+          loggedAPlannedSet: loggedAPlannedSet,
+          autoSelectNextSet: autoSelectNextSet,
+        );
+        final nextName =
+            nextMemberId == null ? null : _exerciseNameFor(nextMemberId);
+        return nextName == null
+            ? l10n.trainingContextRound(group.name, round, of)
+            : l10n.trainingContextRoundNext(group.name, round, of, nextName);
+    }
+  }
+
+  /// The Next button's target: only when this exercise (and every member
+  /// of its group) has no Planned Set.
+  String? _nextExerciseIdFor(
+    String workoutExerciseId,
+    ExerciseGroupRecord? group,
+  ) {
+    final memberIds = group?.workoutExerciseIds ?? <String>[workoutExerciseId];
+    if (memberIds.any((id) => _countsFor(id).planned > 0)) {
+      return null;
+    }
+    return nextExerciseWithPlan(
+      exercises: _progressExercises(),
+      fromWorkoutExerciseId: workoutExerciseId,
+    );
+  }
+
+  List<ProgressExercise> _progressExercises() {
+    return <ProgressExercise>[
+      for (final workoutExercise in _workoutExercises)
+        _progressFor(workoutExercise.id),
+    ];
+  }
+
+  ProgressExercise _progressFor(String workoutExerciseId) {
+    final counts = _countsFor(workoutExerciseId);
+    return ProgressExercise(
+      workoutExerciseId: workoutExerciseId,
+      groupId: _groupFor(workoutExerciseId)?.id,
+      performed: counts.performed,
+      planned: counts.planned,
+    );
+  }
+
+  void _onRowTapped(_TrainingExerciseState state, LoggedSetRecord set) {
+    final exerciseSets = _exerciseSetsFor(state);
+    setState(() {
+      if (set.isCompleted) {
+        if (_selectedSetId == set.id) {
+          _selectedSetId = null;
+          _loadCurrentSet(state, exerciseSets);
+        } else {
+          _selectedSetId = set.id;
+          _loadForm(state, set, exerciseSets);
+        }
+        return;
+      }
+      _selectedSetId = null;
+      _pickedSetId = set.id;
+      _loadCurrentSet(state, exerciseSets);
+    });
+  }
+
+  void _stepDimension(DimensionId dimension, double delta) {
+    final controller = _dimensionController(dimension);
+    final currentValue = double.tryParse(controller.text.trim()) ?? 0;
+    final nextValue = (currentValue + delta).clamp(0, double.infinity);
+    controller.text = _formatEnteredNumber(nextValue);
+  }
+
+  void _stepRest(int direction) {
+    final seconds = (_rest + _restAfterStep * direction)
+        .inSeconds
+        .clamp(0, _restAfterMax.inSeconds);
+    setState(() {
+      _rest = Duration(seconds: seconds);
+      _formDirty = true;
+    });
+  }
+
+  LoggedSet? _valuesFromForm(ExerciseRecord exercise, UnitSystem unitSystem) {
+    return _valuesFromControllers(
+      controllers: _controllers,
+      exercise: exercise,
+      unitFor: (dimension) => _unitFor(dimension, unitSystem),
+    );
+  }
+
+  /// Log set, step by step as the spec lists it: the confirmation shows
+  /// before any await (within one frame), the write runs under its own
+  /// batch so Undo reverses it, and the rest starts under another batch.
+  ///
+  /// `_logInFlight` stays set until the superset move (step 8), not just
+  /// until the write returns: the Sets stream re-emits as soon as the write
+  /// commits, so a second tap while the rest starts would otherwise log
+  /// this member's next Set instead of being absorbed.
+  Future<void> _logSet(_TrainingExerciseState state) async {
+    if (_logInFlight ||
+        _selectedSetId != null ||
+        state.workoutExercise.id != _activeWorkoutExerciseId) {
+      return;
+    }
+    final settings = _readSettings();
+    final exercise = state.exercise;
+    final values = _valuesFromForm(exercise, settings.unitSystem);
+    if (values == null) {
+      return;
+    }
+
+    _logInFlight = true;
+    try {
+      await _logSetInFlight(state, settings, values);
+    } finally {
+      _logInFlight = false;
+    }
+  }
+
+  Future<void> _logSetInFlight(
+    _TrainingExerciseState state,
+    AppSettings settings,
+    LoggedSet values,
+  ) async {
+    final exercise = state.exercise;
+    final repositories = ref.read(trainingRepositoriesProvider);
+    final scheduler = ref.read(timerBackgroundSchedulerProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
+    final batchId = repositories.uuidGenerator.generate();
+    final exerciseSets = _exerciseSetsFor(state);
+    final currentSet = currentSetFor(exerciseSets, pickedSetId: _pickedSetId);
+    final number = currentSet == null
+        ? exerciseSets.length + 1
+        : exerciseSets.indexOf(currentSet) + 1;
+    final memberIds = _groupFor(state.workoutExercise.id)?.workoutExerciseIds ??
+        const <String>[];
+    final membersWithPlannedSetBefore = <String>{
+      for (final memberId in memberIds)
+        if (_countsFor(memberId).planned > 0) memberId,
+    };
+    final rest = _rest;
+    // A new Set also writes a rest it took unchanged from the exercise's
+    // last Set in this Workout. Otherwise it stores null, and the Set after
+    // it, whose rest comes from this one, falls back to the Remembered Rest
+    // read when the exercise opened, losing a rest changed since (or a
+    // plan's Off). A new Set is never Template divergence of rest: it
+    // already diverges by count.
+    final restChanged = rest != _loadedRest ||
+        (currentSet == null &&
+            exerciseSets.lastOrNull?.plannedRestAfter != null);
+
+    _showSnackBar(
+      messenger,
+      l10n.trainingSetLogged(number),
+      key: TrainingScreen.saveSetConfirmationKey,
+    );
+
+    final LogSetResult result;
+    try {
+      result = await repositories.sets.logSet(
+        LogSetRequest(
+          workoutId: state.workoutExercise.workoutId,
+          exerciseId: state.workoutExercise.exerciseId,
+          currentSetId: currentSet?.id,
+          values: values,
+          comment: _commentController.text,
+          side: exercise.isUnilateral ? _selectedSide : null,
+          rpe: exercise.usesRpe ? _rpeFromController(_rpeController) : null,
+          restChanged: restChanged,
+          rest: rest,
+        ),
+        batchId: batchId,
+      );
+    } catch (error) {
+      _showSnackBar(messenger, l10n.trainingSetNotLogged(_errorReason(error)));
+      return;
+    }
+    if (result.alreadyLogged) {
+      messenger.removeCurrentSnackBar();
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _pickedSetId = null;
+        _pendingLoggedSetId = result.setId;
+        _lastLoggedValues = values;
+        _loadingForm = true;
+        _commentController.clear();
+        _rpeController.clear();
+        _loadingForm = false;
+        if (exercise.isUnilateral) {
+          _selectedSide = _nextSide(_selectedSide);
+        }
+      });
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
+
+    final timerId = await _startRestAfterLog(
+      repositories,
+      scheduler,
+      state,
+      setId: result.setId,
+      rest: rest,
+      soundEnabled: settings.restTimerSoundsEnabled,
+    );
+
+    _showSnackBar(
+      messenger,
+      result.carriedCount > 0
+          ? l10n.trainingSetLoggedCarried(number, result.carriedCount)
+          : l10n.trainingSetLogged(number),
+      key: TrainingScreen.saveSetConfirmationKey,
+      undoLabel: l10n.trainingUndo,
+      onUndo: () => unawaited(
+        _undoLogSet(
+          repositories,
+          scheduler,
+          messenger,
+          l10n,
+          batchId: batchId,
+          timerId: timerId,
+          workoutId: state.workoutExercise.workoutId,
+        ),
+      ),
+    );
+
+    final nextWorkoutExerciseId = nextGroupMemberAfterLog(
+      memberIdsInOrder: memberIds,
+      loggedWorkoutExerciseId: state.workoutExercise.id,
+      membersWithPlannedSetBefore: membersWithPlannedSetBefore,
+      loggedAPlannedSet: currentSet != null,
+      autoSelectNextSet: settings.autoSelectNextSet,
+    );
+    if (nextWorkoutExerciseId != null && mounted) {
+      _selectWorkoutExercise(nextWorkoutExerciseId);
+    }
+  }
+
+  /// Starts the rest after a logged Set, unless the rest that runs is zero
+  /// (Off, or a plan's zero) or the Workout has ended. The timer is written
+  /// under its own batch, never the Log set's: the strip writes the timer
+  /// row again later (prepare cue, end alert, Stop), which would make the
+  /// Log set's batch impossible to undo.
+  Future<String?> _startRestAfterLog(
+    TrainingRepositories repositories,
+    TimerBackgroundScheduler scheduler,
+    _TrainingExerciseState state, {
+    required String setId,
+    required Duration rest,
+    required bool soundEnabled,
+  }) async {
+    if (rest <= Duration.zero || state.workout.endedAt != null) {
+      return null;
+    }
+    final loggedSet = await repositories.sets.getById(setId);
+    if (loggedSet == null) {
+      return null;
+    }
+    final timerId = await repositories.restTimers.startForSet(
+      loggedSet,
+      defaultDuration: rest,
+      alertVolume: _alertVolume,
+    );
+    if (timerId == null) {
+      return null;
+    }
+    final timer = await repositories.restTimers.getById(timerId);
+    if (timer != null) {
+      unawaited(
+        scheduler
+            .schedule(
+          TimerBackgroundSchedule.rest(
+            timer,
+            workoutExerciseId: state.workoutExercise.id,
+            soundEnabled: soundEnabled,
           ),
+        )
+            .then((status) {
+          if (mounted) {
+            notifyIfBackgroundAlertsDenied(context, status);
+          }
+        }),
+      );
+    }
+    _notifyRestTimerChanged();
+    return timerId;
+  }
+
+  /// Undo of Log set: reverses the Set and its carry-forward, then cancels
+  /// the rest it started if that is still the Workout's current timer.
+  Future<void> _undoLogSet(
+    TrainingRepositories repositories,
+    TimerBackgroundScheduler scheduler,
+    ScaffoldMessengerState messenger,
+    AppLocalizations l10n, {
+    required String batchId,
+    required String? timerId,
+    required String workoutId,
+  }) async {
+    final undone = await _undoBatch(repositories, messenger, l10n, batchId);
+    if (!undone || timerId == null) {
+      return;
+    }
+    final current = await repositories.restTimers.getCurrentForWorkout(
+      workoutId,
+    );
+    if (current?.id != timerId) {
+      return;
+    }
+    await repositories.restTimers.cancel(timerId);
+    await scheduler.cancel(timerId);
+    _notifyRestTimerChanged();
+  }
+
+  /// Reverses one action's batch; on a conflict nothing is reverted and
+  /// "Couldn't undo: changed since" shows.
+  Future<bool> _undoBatch(
+    TrainingRepositories repositories,
+    ScaffoldMessengerState messenger,
+    AppLocalizations l10n,
+    String batchId,
+  ) async {
+    final ActivityLogUndoResult result;
+    try {
+      result = await repositories.activityLog.undoBatch(batchId);
+    } on StateError {
+      _showSnackBar(messenger, l10n.trainingUndoConflict);
+      return false;
+    }
+    if (result.hasConflicts) {
+      _showSnackBar(messenger, l10n.trainingUndoConflict);
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _updateSelected(
+    _TrainingExerciseState state,
+    LoggedSetRecord set,
+  ) async {
+    final exercise = state.exercise;
+    final values = _valuesFromForm(exercise, _readSettings().unitSystem);
+    if (values == null) {
+      return;
+    }
+    final repositories = ref.read(trainingRepositoriesProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
+    try {
+      await repositories.sets.updatePerformed(
+        set.id,
+        values: values,
+        comment: _commentController.text,
+        side: exercise.isUnilateral ? _selectedSide : null,
+        rpe: exercise.usesRpe ? _rpeFromController(_rpeController) : null,
+        restChanged: _rest != _loadedRest,
+        rest: _rest,
+        batchId: repositories.uuidGenerator.generate(),
+      );
+    } catch (error) {
+      _showSnackBar(
+        messenger,
+        l10n.trainingSetNotUpdated(_errorReason(error)),
+      );
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _selectedSetId = null;
+      _loadCurrentSet(state, _exerciseSetsFor(state));
+    });
+  }
+
+  Future<void> _deleteSelected(
+    _TrainingExerciseState state,
+    LoggedSetRecord set,
+  ) async {
+    final repositories = ref.read(trainingRepositoriesProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
+    final batchId = repositories.uuidGenerator.generate();
+    setState(() {
+      _selectedSetId = null;
+      _loadCurrentSet(state, _exerciseSetsFor(state));
+    });
+    await repositories.sets.softDelete(set.id, batchId: batchId);
+    _showSnackBar(
+      messenger,
+      l10n.trainingSetDeleted,
+      undoLabel: l10n.trainingUndo,
+      onUndo: () => unawaited(
+        _undoBatch(repositories, messenger, l10n, batchId),
+      ),
+    );
+  }
+
+  Future<void> _markNotDone(
+    _TrainingExerciseState state,
+    LoggedSetRecord set,
+  ) async {
+    // The Set becomes the picked Current Set; its values load now, so the
+    // Sets stream showing it planned again changes nothing on the form.
+    setState(() {
+      _selectedSetId = null;
+      _pickedSetId = set.id;
+      _loadForm(state, set, _exerciseSetsFor(state));
+    });
+    await ref
+        .read(trainingRepositoriesProvider)
+        .sets
+        .setCompleted(set.id, isCompleted: false);
+  }
+
+  Future<void> _removePlannedSet(LoggedSetRecord set) async {
+    final repositories = ref.read(trainingRepositoriesProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
+    final batchId = repositories.uuidGenerator.generate();
+    setState(() {
+      _removingSetIds.add(set.id);
+      _setsByExerciseIdCache = null;
+      _reconcileForm();
+    });
+    await repositories.sets.softDelete(set.id, batchId: batchId);
+    _showSnackBar(
+      messenger,
+      l10n.trainingPlannedSetRemoved,
+      undoLabel: l10n.trainingUndo,
+      onUndo: () => unawaited(
+        _undoBatch(repositories, messenger, l10n, batchId).then((undone) {
+          if (undone && mounted) {
+            setState(() {
+              _removingSetIds.remove(set.id);
+              _setsByExerciseIdCache = null;
+            });
+          }
+        }),
+      ),
+    );
+  }
+
+  /// Add set: a Planned Set after the exercise's last Set, with its values
+  /// and planned rest; with no Set yet, the form's values and, when changed,
+  /// its rest.
+  Future<void> _addSet(_TrainingExerciseState state) async {
+    final exerciseSets = _exerciseSetsFor(state);
+    final lastSet = exerciseSets.lastOrNull;
+    final values = lastSet?.values ??
+        _valuesFromForm(state.exercise, _readSettings().unitSystem);
+    if (values == null) {
+      return;
+    }
+    final plannedRestAfter = lastSet != null
+        ? lastSet.plannedRestAfter
+        : _rest != _loadedRest
+            ? _rest
+            : null;
+    final workoutId = state.workoutExercise.workoutId;
+    await ref.read(trainingRepositoriesProvider).sets.appendToWorkout(
+      workoutId,
+      <LoggedSetDraft>[
+        LoggedSetDraft(
+          workoutId: workoutId,
+          exerciseId: state.workoutExercise.exerciseId,
+          position: 0,
+          values: values,
+          plannedRestAfter: plannedRestAfter,
         ),
       ],
     );
   }
 
-  void _populateEntryControllers(_TrainingExerciseState state) {
-    if (_populatedWorkoutExerciseId == state.workoutExercise.id) {
-      return;
-    }
-
-    _populatedWorkoutExerciseId = state.workoutExercise.id;
-    _setDimensionControllerDefaults(state.exercise, state.priorSet?.values);
-  }
-
-  void _setDimensionControllerDefaults(
-    ExerciseRecord exercise,
-    LoggedSet? values,
-  ) {
-    for (final dimension in exercise.type.dimensions) {
-      final controller = _controllers.putIfAbsent(
-        dimension,
-        TextEditingController.new,
-      );
-      controller.text = values?.valueFor(dimension)?.entered ?? '';
-    }
-  }
-
-  Stream<List<LoggedSetRecord>> _watchSets(_TrainingExerciseState state) {
-    final setsStream = _overrideSetsStream;
-    if (setsStream != null) {
-      return setsStream;
-    }
-
-    final repositories = ref.read(trainingRepositoriesProvider);
-    return repositories.sets
-        .watchActiveForWorkout(state.workoutExercise.workoutId)
-        .map(
-          (sets) => sets
-              .where(
-                  (set) => set.exerciseId == state.workoutExercise.exerciseId)
-              .toList(growable: false),
-        );
-  }
-
-  Future<void> _saveSet(
+  /// Add round: one Planned Set for every member of [group], under one
+  /// batch id so one Undo removes the round. A member with Sets copies its
+  /// last Set; one without takes its last performed values from before this
+  /// Workout, or zeros, with no planned rest.
+  Future<void> _addRound(
     _TrainingExerciseState state,
-    AppSettings settings,
+    ExerciseGroupRecord group,
   ) async {
-    final values = _valuesFromControllers(
-      controllers: _controllers,
-      exercise: state.exercise,
-      unitSystem: settings.unitSystem,
-    );
-    if (values == null) {
+    final repositories = ref.read(trainingRepositoriesProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
+    final batchId = repositories.uuidGenerator.generate();
+    final workoutId = state.workoutExercise.workoutId;
+    final drafts = <LoggedSetDraft>[];
+    for (final memberId in group.workoutExerciseIds) {
+      final workoutExercise = _workoutExerciseById(memberId);
+      if (workoutExercise == null) {
+        continue;
+      }
+      final lastSet = _setsOfWorkoutExercise(memberId).lastOrNull;
+      if (lastSet != null) {
+        drafts.add(
+          LoggedSetDraft(
+            workoutId: workoutId,
+            exerciseId: workoutExercise.exerciseId,
+            position: 0,
+            values: lastSet.values,
+            plannedRestAfter: lastSet.plannedRestAfter,
+          ),
+        );
+        continue;
+      }
+      final exercise = workoutExercise.exerciseId == state.exercise.id
+          ? state.exercise
+          : _exercisesById[workoutExercise.exerciseId] ??
+              await repositories.exercises.getById(workoutExercise.exerciseId);
+      if (exercise == null) {
+        continue;
+      }
+      final prior = await repositories.sets.findLatestPriorForExercise(
+        exerciseId: exercise.id,
+        beforeWorkoutId: workoutId,
+        dimensions: exercise.type.dimensions,
+      );
+      drafts.add(
+        LoggedSetDraft(
+          workoutId: workoutId,
+          exerciseId: exercise.id,
+          position: 0,
+          values: prior?.values ??
+              zeroLoggedSetFor(
+                dimensions: exercise.type.dimensions,
+                defaultLoadUnit: exercise.defaultLoadUnit,
+              ),
+        ),
+      );
+    }
+    if (drafts.isEmpty) {
       return;
     }
-
-    _showSetSavedConfirmation();
-
-    final repositories = ref.read(trainingRepositoriesProvider);
-    final nextPosition = await repositories.sets.nextPositionForWorkout(
-      state.workoutExercise.workoutId,
+    // One transaction, so the Sets stream shows the whole round at once.
+    await repositories.sets.appendToWorkout(
+      workoutId,
+      drafts,
+      batchId: batchId,
     );
-
-    final setId = await repositories.sets.create(
-      LoggedSetDraft(
-        workoutId: state.workoutExercise.workoutId,
-        exerciseId: state.workoutExercise.exerciseId,
-        position: nextPosition,
-        values: values,
-        isCompleted: true,
-        comment: _commentController.text,
-        side: state.exercise.isUnilateral ? _selectedSide : null,
-        rpe: state.exercise.usesRpe ? _rpeFromController(_rpeController) : null,
+    _showSnackBar(
+      messenger,
+      l10n.trainingRoundAdded,
+      undoLabel: l10n.trainingUndo,
+      onUndo: () => unawaited(
+        _undoBatch(repositories, messenger, l10n, batchId),
       ),
     );
-    final createdSet = await repositories.sets.getById(setId);
-    if (createdSet != null) {
-      final timerId = await repositories.restTimers.startForSet(createdSet);
-      final timer = timerId == null
-          ? null
-          : await repositories.restTimers.getById(timerId);
-      if (timer != null) {
-        _scheduleRestBackgroundTimerWithoutBlocking(
-          timer,
-          workoutExerciseId: state.workoutExercise.id,
-          soundEnabled: settings.restTimerSoundsEnabled,
-        );
-      }
-      _notifyRestTimerChanged();
-    }
-    final nextWorkoutExerciseId =
-        await repositories.exerciseGroups.findNextWorkoutExerciseIdAfter(
-      state.workoutExercise.id,
-    );
-
-    _setDimensionControllerDefaults(state.exercise, values);
-    _commentController.clear();
-    _rpeController.clear();
-    setState(() {
-      if (state.exercise.isUnilateral) {
-        _selectedSide = _nextSide(_selectedSide);
-      }
-    });
-    FocusManager.instance.primaryFocus?.unfocus();
-    if (settings.autoSelectNextSet &&
-        nextWorkoutExerciseId != null &&
-        mounted) {
-      _selectWorkoutExercise(nextWorkoutExerciseId);
-    }
   }
 
-  void _showSetSavedConfirmation() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
+  void _showSnackBar(
+    ScaffoldMessengerState messenger,
+    String message, {
+    Key? key,
+    String? undoLabel,
+    VoidCallback? onUndo,
+  }) {
+    messenger
+      ..removeCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          key: TrainingScreen.saveSetConfirmationKey,
-          content: Text(context.l10n.trainingSetSaved),
-          duration: const Duration(seconds: 2),
+          key: key,
+          content: Text(message),
+          duration: Duration(seconds: onUndo == null ? 2 : 4),
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.fromLTRB(
             AppDimens.base * 2,
@@ -585,113 +1524,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
             AppDimens.base * 2,
             AppDimens.base * 12,
           ),
+          action: onUndo == null || undoLabel == null
+              ? null
+              : SnackBarAction(label: undoLabel, onPressed: onUndo),
         ),
       );
-  }
-
-  void _stepDimension(DimensionId dimension, double delta) {
-    final controller = _controllers.putIfAbsent(
-      dimension,
-      TextEditingController.new,
-    );
-    final currentValue = double.tryParse(controller.text.trim()) ?? 0;
-    final nextValue = (currentValue + delta).clamp(0, double.infinity);
-    controller.text = _formatEnteredNumber(nextValue);
-  }
-
-  Future<void> _editSet(
-    _TrainingExerciseState state,
-    LoggedSetRecord set,
-    AppSettings settings,
-  ) async {
-    final initialValues = <DimensionId, String>{
-      for (final dimension in state.exercise.type.dimensions)
-        dimension: set.values.valueFor(dimension)?.entered ?? '',
-    };
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return _EditSetSheet(
-          set: set,
-          exercise: state.exercise,
-          unitSystem: settings.unitSystem,
-          initialValues: initialValues,
-          onSave: (edit) async {
-            final sets = ref.read(trainingRepositoriesProvider).sets;
-            await sets.updateValues(
-              set.id,
-              values: edit.values,
-            );
-            await sets.updateAnnotations(
-              set.id,
-              comment: edit.comment,
-              side: state.exercise.isUnilateral ? edit.side : null,
-              rpe: state.exercise.usesRpe ? edit.rpe : null,
-            );
-            if (sheetContext.mounted) {
-              Navigator.of(sheetContext).pop();
-            }
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _deleteSet(LoggedSetRecord set) {
-    return ref.read(trainingRepositoriesProvider).sets.softDelete(set.id);
-  }
-
-  Future<void> _setCompleted(
-    _TrainingExerciseState state,
-    AppSettings settings,
-    LoggedSetRecord set,
-    bool isCompleted,
-  ) async {
-    final repositories = ref.read(trainingRepositoriesProvider);
-    await repositories.sets.setCompleted(
-      set.id,
-      isCompleted: isCompleted,
-    );
-    if (!isCompleted) {
-      return;
-    }
-
-    final completedSet = await repositories.sets.getById(set.id);
-    if (completedSet != null) {
-      final timerId = await repositories.restTimers.startForSet(completedSet);
-      final timer = timerId == null
-          ? null
-          : await repositories.restTimers.getById(timerId);
-      if (timer != null) {
-        _scheduleRestBackgroundTimerWithoutBlocking(
-          timer,
-          workoutExerciseId: state.workoutExercise.id,
-          soundEnabled: settings.restTimerSoundsEnabled,
-        );
-      }
-      _notifyRestTimerChanged();
-    }
-  }
-
-  void _scheduleRestBackgroundTimerWithoutBlocking(
-    RestTimerRecord timer, {
-    required String workoutExerciseId,
-    required bool soundEnabled,
-  }) {
-    unawaited(
-      _scheduleRestBackgroundTimer(
-        ref,
-        timer,
-        workoutExerciseId: workoutExerciseId,
-        soundEnabled: soundEnabled,
-      ).then((status) {
-        if (mounted) {
-          _notifyIfBackgroundAlertsDenied(context, status);
-        }
-      }),
-    );
   }
 
   void _notifyRestTimerChanged() {
@@ -713,6 +1550,46 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
           orderedIds: sets.map((set) => set.id).toList(growable: false),
         );
   }
+}
+
+enum _TrainingScreenMenuAction { exerciseOverview }
+
+/// What the form last loaded, for the reload rules: a different Current Set
+/// always reloads, and changed stored values or rest reload a clean form.
+class _FormSource {
+  const _FormSource(this.setId, this.values, this.rest);
+
+  _FormSource.of(LoggedSetRecord? set)
+      : setId = set?.id,
+        values = set?.values,
+        rest = set?.plannedRestAfter;
+
+  final String? setId;
+  final LoggedSet? values;
+  final Duration? rest;
+
+  bool differsFrom(LoggedSetRecord set) {
+    return set.values != values || set.plannedRestAfter != rest;
+  }
+}
+
+/// The reason a hard reject or a failed write gives, for "Set not logged".
+String _errorReason(Object error) {
+  return switch (error) {
+    SetValidationException(:final errors) when errors.isNotEmpty =>
+      errors.map((issue) => issue.message).join(' '),
+    StateError(:final message) => message,
+    ArgumentError(:final message) when message != null => '$message',
+    _ => '$error',
+  };
+}
+
+ButtonStyle _saveButtonStyle(BuildContext context) {
+  return FilledButton.styleFrom(
+    backgroundColor: context.colors.save,
+    foregroundColor: Theme.of(context).colorScheme.onSecondary,
+    minimumSize: const Size.fromHeight(AppDimens.rowHeight),
+  );
 }
 
 class _NavigationPanelDrawer extends ConsumerStatefulWidget {
@@ -1401,470 +2278,122 @@ class _NavigationExerciseItem {
   final ExerciseGroupRecord? group;
 }
 
-class _RestTimerPanel extends ConsumerStatefulWidget {
-  const _RestTimerPanel({
-    required this.workoutId,
-    required this.workoutExerciseId,
-    required this.enableTicker,
-    required this.revision,
-  });
+/// "*group name* · Round *r* of *R* · Next: *member*", or "· All rounds
+/// done", ending with **Add round**.
+class _ContextLine extends StatelessWidget {
+  const _ContextLine({required this.text, required this.onAddRound});
 
-  final String workoutId;
-  final String workoutExerciseId;
-  final bool enableTicker;
-  final int revision;
-
-  @override
-  ConsumerState<_RestTimerPanel> createState() => _RestTimerPanelState();
-}
-
-class _RestTimerPanelState extends ConsumerState<_RestTimerPanel> {
-  late final TextEditingController _durationController;
-  Stream<RestTimerRecord?>? _timerStream;
-  late Future<RestTimerRecord?> _timerFuture;
-  Timer? _ticker;
-  DateTime _now = DateTime.now().toUtc();
-  String? _renderedTimerId;
-  double _alertVolume = RestTimerRepository.defaultAlertVolume;
-  final _alertsInFlight = <String>{};
-  final _prepareAlertsInFlight = <String>{};
-
-  /// The 3-2-1 prepare cue starts when the timer has <= 3s left.
-  static const _prepareWindow = Duration(seconds: 3);
-
-  @override
-  void initState() {
-    super.initState();
-    _durationController = TextEditingController(
-      text: RestTimerRepository.defaultDuration.inSeconds.toString(),
-    );
-    _timerFuture = _loadTimer(widget.workoutId);
-    if (widget.enableTicker) {
-      _timerStream = _watchTimer(widget.workoutId);
-      _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) {
-          setState(() => _now = DateTime.now().toUtc());
-        }
-      });
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _RestTimerPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.workoutId != widget.workoutId ||
-        oldWidget.revision != widget.revision) {
-      _timerStream = widget.enableTicker ? _watchTimer(widget.workoutId) : null;
-      _timerFuture = _loadTimer(widget.workoutId);
-      _renderedTimerId = null;
-    }
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    _durationController.dispose();
-    super.dispose();
-  }
+  final String text;
+  final VoidCallback onAddRound;
 
   @override
   Widget build(BuildContext context) {
-    if (widget.enableTicker) {
-      return StreamBuilder<RestTimerRecord?>(
-        stream: _timerStream!,
-        builder: (context, snapshot) => _buildPanel(context, snapshot.data),
-      );
-    }
-
-    return FutureBuilder<RestTimerRecord?>(
-      future: _timerFuture,
-      builder: (context, snapshot) => _buildPanel(context, snapshot.data),
-    );
-  }
-
-  Stream<RestTimerRecord?> _watchTimer(String workoutId) {
-    return ref
-        .read(trainingRepositoriesProvider)
-        .restTimers
-        .watchCurrentForWorkout(workoutId);
-  }
-
-  Future<RestTimerRecord?> _loadTimer(String workoutId) {
-    return ref
-        .read(trainingRepositoriesProvider)
-        .restTimers
-        .getCurrentForWorkout(workoutId);
-  }
-
-  Widget _buildPanel(BuildContext context, RestTimerRecord? timer) {
-    final repository = ref.read(trainingRepositoriesProvider).restTimers;
-    _syncControls(timer);
-    if (timer != null &&
-        timer.status == RestTimerStatus.running &&
-        timer.alertFiredAt == null &&
-        timer.isExpiredAt(_now)) {
-      _queueAlert(timer);
-    } else if (timer != null &&
-        timer.status == RestTimerStatus.running &&
-        timer.alertFiredAt == null &&
-        timer.prepareAlertFiredAt == null &&
-        _isWithinPrepareWindow(timer)) {
-      _queuePrepareAlert(timer);
-    }
-
-    final remaining = timer?.remainingAt(_now) ?? Duration.zero;
-    final isActive = timer != null &&
-        timer.status == RestTimerStatus.running &&
-        remaining > Duration.zero;
-    final l10n = context.l10n;
-    final title = timer == null
-        ? l10n.trainingRestTimer
-        : isActive
-            ? l10n.trainingRestCountdown(_formatRestDuration(remaining))
-            : l10n.trainingRestComplete;
-
-    return DecoratedBox(
-      key: TrainingScreen.restTimerPanelKey,
-      decoration: BoxDecoration(
-        border: Border.all(color: context.colors.divider),
-        borderRadius: AppRadii.cardMd,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimens.dense),
-        child: Wrap(
-          spacing: AppDimens.dense,
-          runSpacing: AppDimens.dense,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(
-              width: 136,
-              child: Text(
-                title,
-                style: context.textStyles.label,
-                overflow: TextOverflow.ellipsis,
-              ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppDimens.dense),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              key: TrainingScreen.contextLineKey,
+              style: context.textStyles.label,
             ),
-            SizedBox(
-              width: 96,
-              child: TextField(
-                key: TrainingScreen.restTimerDurationFieldKey,
-                controller: _durationController,
-                onTap: () => _selectAllOnTap(_durationController),
-                decoration: InputDecoration(
-                  labelText: l10n.trainingRestSecondsLabel,
-                  isDense: true,
-                ),
-                keyboardType: TextInputType.number,
-              ),
+          ),
+          TextButton(
+            key: TrainingScreen.addRoundButtonKey,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, AppDimens.touchTarget),
             ),
-            FilledButton.icon(
-              key: TrainingScreen.restTimerStartButtonKey,
-              onPressed: () => unawaited(_startOrAdjustTimer()),
-              icon: const Icon(Icons.timer_outlined),
-              label: Text(
-                timer == null
-                    ? l10n.trainingStartTimer
-                    : l10n.trainingUpdateTimer,
-              ),
-            ),
-            if (timer != null)
-              IconButton(
-                key: TrainingScreen.restTimerCancelButtonKey,
-                tooltip: l10n.trainingCancelTimerTooltip,
-                onPressed: () => unawaited(_cancelTimer(timer.id)),
-                icon: const Icon(Icons.close),
-              ),
-            SizedBox(
-              width: 180,
-              child: Row(
-                children: [
-                  const Icon(Icons.volume_up_outlined, size: 20),
-                  Expanded(
-                    child: Slider(
-                      key: TrainingScreen.restTimerVolumeSliderKey,
-                      value: _alertVolume,
-                      onChanged: (value) {
-                        setState(() => _alertVolume = value);
-                        final currentTimer = timer;
-                        if (currentTimer != null) {
-                          unawaited(
-                            repository
-                                .updateAlertVolume(
-                                  currentTimer.id,
-                                  alertVolume: value,
-                                )
-                                .then((_) => _refreshTimer()),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+            onPressed: onAddRound,
+            child: Text(context.l10n.trainingAddRound),
+          ),
+        ],
       ),
     );
-  }
-
-  void _syncControls(RestTimerRecord? timer) {
-    if (timer?.id == _renderedTimerId) {
-      return;
-    }
-
-    _renderedTimerId = timer?.id;
-    if (timer == null) {
-      _durationController.text =
-          RestTimerRepository.defaultDuration.inSeconds.toString();
-      return;
-    }
-
-    _durationController.text = timer.duration.inSeconds.toString();
-    _alertVolume = timer.alertVolume;
-  }
-
-  Future<void> _startOrAdjustTimer() async {
-    final seconds = int.tryParse(_durationController.text.trim()) ??
-        RestTimerRepository.defaultDuration.inSeconds;
-    final duration = Duration(
-      seconds: seconds <= 0
-          ? RestTimerRepository.defaultDuration.inSeconds
-          : seconds,
-    );
-    final repository = ref.read(trainingRepositoriesProvider).restTimers;
-    final timerId = await repository.start(
-      RestTimerDraft(
-        workoutId: widget.workoutId,
-        duration: duration,
-        alertVolume: _alertVolume,
-      ),
-    );
-    final timer = await repository.getById(timerId);
-    if (timer != null) {
-      final status = await _scheduleRestBackgroundTimer(
-        ref,
-        timer,
-        workoutExerciseId: widget.workoutExerciseId,
-        soundEnabled: _restTimerSoundsEnabled(),
-      );
-      if (mounted) {
-        _notifyIfBackgroundAlertsDenied(context, status);
-      }
-    }
-    _refreshTimer();
-  }
-
-  Future<void> _cancelTimer(String timerId) async {
-    await ref.read(trainingRepositoriesProvider).restTimers.cancel(timerId);
-    await ref.read(timerBackgroundSchedulerProvider).cancel(timerId);
-    _refreshTimer();
-  }
-
-  void _refreshTimer() {
-    if (!mounted || widget.enableTicker) {
-      return;
-    }
-    setState(() {
-      _timerFuture = _loadTimer(widget.workoutId);
-      _renderedTimerId = null;
-    });
-  }
-
-  void _queueAlert(RestTimerRecord timer) {
-    if (!_alertsInFlight.add(timer.id)) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_fireAlert(timer));
-    });
-  }
-
-  Future<void> _fireAlert(RestTimerRecord timer) async {
-    try {
-      if (_restTimerSoundsEnabled()) {
-        await ref.read(restTimerAlertProvider).fire(timer.alertVolume);
-      }
-    } finally {
-      if (mounted) {
-        await ref.read(trainingRepositoriesProvider).restTimers.markAlertFired(
-              timer.id,
-            );
-        await ref.read(timerBackgroundSchedulerProvider).cancel(timer.id);
-      }
-      _alertsInFlight.remove(timer.id);
-    }
-  }
-
-  bool _isWithinPrepareWindow(RestTimerRecord timer) {
-    final remaining = timer.remainingAt(_now);
-    return remaining > Duration.zero && remaining <= _prepareWindow;
-  }
-
-  void _queuePrepareAlert(RestTimerRecord timer) {
-    if (!_prepareAlertsInFlight.add(timer.id)) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_firePrepareAlert(timer));
-    });
-  }
-
-  Future<void> _firePrepareAlert(RestTimerRecord timer) async {
-    try {
-      final restTimers = ref.read(trainingRepositoriesProvider).restTimers;
-      final current = await restTimers.getById(timer.id);
-      // Re-check under the current row: don't prepare-cue a timer that already
-      // expired/fired its end cue, or already prepare-cued.
-      if (current == null ||
-          current.status != RestTimerStatus.running ||
-          current.alertFiredAt != null ||
-          current.prepareAlertFiredAt != null) {
-        return;
-      }
-      if (_restTimerSoundsEnabled()) {
-        await ref.read(restTimerAlertProvider).firePrepare(current.alertVolume);
-      }
-      await restTimers.markPrepareAlertFired(timer.id);
-    } finally {
-      _prepareAlertsInFlight.remove(timer.id);
-    }
-  }
-
-  bool _restTimerSoundsEnabled() {
-    return ref.read(settingsControllerProvider).value?.restTimerSoundsEnabled ??
-        AppSettings.defaults.restTimerSoundsEnabled;
   }
 }
 
-class _TrainingForm extends StatelessWidget {
-  const _TrainingForm({
-    required this.state,
-    required this.controllers,
-    required this.commentController,
-    required this.rpeController,
-    required this.selectedSide,
+/// The open exercise's Set rows in plan order. The list sits inside the
+/// screen's one scroll view with the form, so it does not scroll itself.
+class _SetRows extends StatelessWidget {
+  const _SetRows({
+    required this.exercise,
     required this.sets,
+    required this.currentSetId,
+    required this.selectedSetId,
     required this.recordSetIds,
-    required this.settings,
-    required this.onSave,
-    required this.onStep,
-    required this.onSideChanged,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onSetCompleted,
+    required this.onTap,
+    required this.onRemove,
     required this.onReorder,
   });
 
-  final _TrainingExerciseState state;
-  final Map<DimensionId, TextEditingController> controllers;
-  final TextEditingController commentController;
-  final TextEditingController rpeController;
-  final SetSide selectedSide;
-  final Stream<List<LoggedSetRecord>> sets;
+  final ExerciseRecord exercise;
+  final List<LoggedSetRecord> sets;
+  final String? currentSetId;
+  final String? selectedSetId;
   final Set<String> recordSetIds;
-  final AppSettings settings;
-  final VoidCallback onSave;
-  final void Function(DimensionId dimension, double delta) onStep;
-  final ValueChanged<SetSide> onSideChanged;
-  final ValueChanged<LoggedSetRecord> onEdit;
-  final ValueChanged<LoggedSetRecord> onDelete;
-  final void Function(LoggedSetRecord set, bool isCompleted) onSetCompleted;
+  final ValueChanged<LoggedSetRecord> onTap;
+  final ValueChanged<LoggedSetRecord> onRemove;
   final ValueChanged<List<LoggedSetRecord>> onReorder;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final setEntryForm = _SetEntryForm(
-      exercise: state.exercise,
-      controllers: controllers,
-      commentController: commentController,
-      rpeController: rpeController,
-      selectedSide: selectedSide,
-      unitSystem: settings.unitSystem,
-      defaultWeightIncrement: settings.defaultWeightIncrement,
-      onSave: onSave,
-      onStep: onStep,
-      onSideChanged: onSideChanged,
-    );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final shouldScrollEntryForm =
-            MediaQuery.textScalerOf(context).scale(1) > 1.2;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: StreamBuilder<List<LoggedSetRecord>>(
-                stream: sets,
-                builder: (context, snapshot) {
-                  final loggedSets = snapshot.data ?? const <LoggedSetRecord>[];
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      snapshot.data == null) {
-                    return const SizedBox.expand();
-                  }
-                  if (loggedSets.isEmpty) {
-                    return Align(
-                      alignment: Alignment.topLeft,
-                      child: Text(
-                        l10n.homeNoSetsYet,
-                        style: context.textStyles.body.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
-                      ),
-                    );
-                  }
+    if (sets.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppDimens.dense),
+        child: Text(
+          context.l10n.homeNoSetsYet,
+          style: context.textStyles.body.copyWith(
+            color: context.colors.textSecondary,
+          ),
+        ),
+      );
+    }
 
-                  return ReorderableListView.builder(
-                    buildDefaultDragHandles: false,
-                    itemCount: loggedSets.length,
-                    onReorderItem: (oldIndex, newIndex) {
-                      if (newIndex == oldIndex) {
-                        return;
-                      }
+    return ReorderableListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
+      itemCount: sets.length,
+      onReorderItem: (oldIndex, newIndex) {
+        if (newIndex == oldIndex) {
+          return;
+        }
 
-                      final reordered = List<LoggedSetRecord>.of(loggedSets);
-                      final moved = reordered.removeAt(oldIndex);
-                      reordered.insert(newIndex, moved);
-                      onReorder(reordered);
-                    },
-                    itemBuilder: (context, index) {
-                      final set = loggedSets[index];
-                      return _LoggedSetTile(
-                        key: TrainingScreen.setTileKey(set.id),
-                        set: set,
-                        exercise: state.exercise,
-                        index: index,
-                        isRecord: recordSetIds.contains(set.id),
-                        onEdit: () => onEdit(set),
-                        onDelete: () => onDelete(set),
-                        onCompletedChanged: (value) {
-                          onSetCompleted(set, value ?? false);
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            const Divider(),
-            if (shouldScrollEntryForm)
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: constraints.maxHeight * 0.9,
-                ),
-                child: SingleChildScrollView(child: setEntryForm),
-              )
-            else
-              setEntryForm,
-          ],
+        final reordered = List<LoggedSetRecord>.of(sets);
+        final moved = reordered.removeAt(oldIndex);
+        reordered.insert(newIndex, moved);
+        onReorder(reordered);
+      },
+      itemBuilder: (context, index) {
+        final set = sets[index];
+        final rowState = set.isCompleted
+            ? _SetRowState.performed
+            : set.id == currentSetId
+                ? _SetRowState.current
+                : _SetRowState.planned;
+        return _LoggedSetTile(
+          key: TrainingScreen.setTileKey(set.id),
+          set: set,
+          exercise: exercise,
+          index: index,
+          rowState: rowState,
+          // Only one row is highlighted: the selected Performed Set, or
+          // else the Current Set.
+          isHighlighted: selectedSetId == null
+              ? rowState == _SetRowState.current
+              : set.id == selectedSetId,
+          isRecord: recordSetIds.contains(set.id),
+          onTap: () => onTap(set),
+          onRemove:
+              rowState == _SetRowState.performed ? null : () => onRemove(set),
         );
       },
     );
   }
 }
+
+enum _SetRowState { performed, current, planned }
 
 class _LoggedSetTile extends StatelessWidget {
   const _LoggedSetTile({
@@ -1872,54 +2401,66 @@ class _LoggedSetTile extends StatelessWidget {
     required this.set,
     required this.exercise,
     required this.index,
+    required this.rowState,
+    required this.isHighlighted,
     required this.isRecord,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onCompletedChanged,
+    required this.onTap,
+    required this.onRemove,
   });
 
   final LoggedSetRecord set;
   final ExerciseRecord exercise;
   final int index;
+  final _SetRowState rowState;
+  final bool isHighlighted;
   final bool isRecord;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final ValueChanged<bool?> onCompletedChanged;
+  final VoidCallback onTap;
+
+  /// Removes a Planned Set (the swipe and its semantics action); null for a
+  /// Performed Set, which is removed from Update mode instead.
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final completeLabel = set.isCompleted
-        ? l10n.trainingMarkSetIncompleteLabel
-        : l10n.trainingMarkSetCompleteLabel;
-    return Material(
+    final number = index + 1;
+    final values = _formatSet(l10n, set, exercise);
+    final semanticsLabel = switch (rowState) {
+      _SetRowState.performed => l10n.trainingSetRowDoneLabel(number, values),
+      _SetRowState.current => l10n.trainingSetRowNextLabel(number, values),
+      _SetRowState.planned => l10n.trainingSetRowPlannedLabel(number, values),
+    };
+    final textStyle = rowState == _SetRowState.planned
+        ? context.textStyles.body.copyWith(color: context.colors.textSecondary)
+        : context.textStyles.body;
+    Widget tile = Material(
       color: Colors.transparent,
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        leading: set.isCompleted
-            ? null
-            : Semantics(
-                container: true,
-                label: completeLabel,
-                checked: false,
-                enabled: true,
-                onTap: () {
-                  onCompletedChanged(true);
-                },
-                child: ExcludeSemantics(
-                  child: Checkbox(
-                    key: TrainingScreen.completeSetCheckboxKey(set.id),
-                    value: false,
-                    onChanged: onCompletedChanged,
-                  ),
-                ),
-              ),
+        selected: isHighlighted,
+        selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
+        minLeadingWidth: 24,
+        leading: SizedBox(
+          width: 24,
+          child: rowState == _SetRowState.current
+              ? const Icon(Icons.arrow_right)
+              : null,
+        ),
         title: Row(
           children: [
             Expanded(
-              child: Text(
-                _formatSet(l10n, set, exercise),
-                style: context.textStyles.body,
+              child: Semantics(
+                label: semanticsLabel,
+                excludeSemantics: true,
+                child: Row(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: AppDimens.dense),
+                      child: Text('$number', style: textStyle),
+                    ),
+                    Expanded(child: Text(values, style: textStyle)),
+                  ],
+                ),
               ),
             ),
             if (isRecord) ...[
@@ -1940,18 +2481,8 @@ class _LoggedSetTile extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              key: TrainingScreen.editSetButtonKey(set.id),
-              tooltip: l10n.trainingEditSetTooltip,
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined),
-            ),
-            IconButton(
-              key: TrainingScreen.deleteSetButtonKey(set.id),
-              tooltip: l10n.trainingDeleteSetTooltip,
-              onPressed: onDelete,
-              icon: const Icon(Icons.delete_outline),
-            ),
+            if (rowState == _SetRowState.performed)
+              Icon(Icons.check, color: context.colors.textSecondary),
             Semantics(
               container: true,
               button: true,
@@ -1960,14 +2491,148 @@ class _LoggedSetTile extends StatelessWidget {
                 key: TrainingScreen.reorderHandleKey(set.id),
                 index: index,
                 child: const SizedBox.square(
-                  dimension: 48,
+                  dimension: AppDimens.touchTarget,
                   child: Center(child: Icon(Icons.drag_handle)),
                 ),
               ),
             ),
           ],
         ),
+        onTap: onTap,
       ),
+    );
+
+    final remove = onRemove;
+    if (remove != null) {
+      final colorScheme = Theme.of(context).colorScheme;
+      tile = Semantics(
+        customSemanticsActions: <CustomSemanticsAction, VoidCallback>{
+          CustomSemanticsAction(label: l10n.trainingRemovePlannedSetAction):
+              remove,
+        },
+        child: Dismissible(
+          key: ValueKey<String>('training.set.${set.id}.dismiss'),
+          direction: DismissDirection.endToStart,
+          onDismissed: (_) => remove(),
+          background: ColoredBox(
+            color: colorScheme.error,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: AppDimens.base),
+                child: Icon(Icons.delete_outline, color: colorScheme.onError),
+              ),
+            ),
+          ),
+          child: tile,
+        ),
+      );
+    }
+    return tile;
+  }
+}
+
+/// Update mode's buttons: **Not done** above **Update** and **Delete**.
+class _UpdateModeButtons extends StatelessWidget {
+  const _UpdateModeButtons({
+    required this.onNotDone,
+    required this.onUpdate,
+    required this.onDelete,
+  });
+
+  final VoidCallback onNotDone;
+  final VoidCallback onUpdate;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextButton(
+          key: TrainingScreen.notDoneButtonKey,
+          style: TextButton.styleFrom(
+            minimumSize: const Size.fromHeight(AppDimens.touchTarget),
+          ),
+          onPressed: onNotDone,
+          child: Text(l10n.trainingNotDone),
+        ),
+        const SizedBox(height: AppDimens.dense),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                key: TrainingScreen.updateSetButtonKey,
+                style: _saveButtonStyle(context),
+                onPressed: onUpdate,
+                child: Text(l10n.trainingUpdateSet),
+              ),
+            ),
+            const SizedBox(width: AppDimens.dense),
+            Expanded(
+              child: FilledButton(
+                key: TrainingScreen.deleteSelectedSetButtonKey,
+                style: FilledButton.styleFrom(
+                  backgroundColor: colorScheme.error,
+                  foregroundColor: colorScheme.onError,
+                  minimumSize: const Size.fromHeight(AppDimens.rowHeight),
+                ),
+                onPressed: onDelete,
+                child: Text(l10n.trainingDeleteSet),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// **Rest after**: [−] and [+] in 15 s steps, "m:ss", or "Off" at zero.
+class _RestAfterInput extends StatelessWidget {
+  const _RestAfterInput({required this.rest, required this.onStep});
+
+  final Duration rest;
+
+  /// Called with -1 or 1.
+  final ValueChanged<int> onStep;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(l10n.trainingRestAfterLabel,
+              style: context.textStyles.label),
+        ),
+        _DimensionStepButton(
+          key: TrainingScreen.restAfterDecrementKey,
+          label: l10n.trainingDecreaseRestTooltip,
+          icon: Icons.remove,
+          onPressed: () => onStep(-1),
+        ),
+        ConstrainedBox(
+          constraints:
+              const BoxConstraints(minWidth: AppDimens.touchTarget * 1.5),
+          child: Text(
+            rest <= Duration.zero
+                ? l10n.trainingRestOff
+                : formatRestDuration(rest),
+            key: TrainingScreen.restAfterValueKey,
+            textAlign: TextAlign.center,
+            style: context.textStyles.numeralRow,
+          ),
+        ),
+        _DimensionStepButton(
+          key: TrainingScreen.restAfterIncrementKey,
+          label: l10n.trainingIncreaseRestTooltip,
+          icon: Icons.add,
+          onPressed: () => onStep(1),
+        ),
+      ],
     );
   }
 }
@@ -1975,26 +2640,30 @@ class _LoggedSetTile extends StatelessWidget {
 class _SetEntryForm extends StatelessWidget {
   const _SetEntryForm({
     required this.exercise,
-    required this.controllers,
+    required this.controllerFor,
     required this.commentController,
     required this.rpeController,
     required this.selectedSide,
-    required this.unitSystem,
+    required this.unitFor,
     required this.defaultWeightIncrement,
-    required this.onSave,
+    required this.rest,
     required this.onStep,
+    required this.onStepRest,
     required this.onSideChanged,
   });
 
   final ExerciseRecord exercise;
-  final Map<DimensionId, TextEditingController> controllers;
+  final TextEditingController Function(DimensionId dimension) controllerFor;
   final TextEditingController commentController;
   final TextEditingController rpeController;
   final SetSide selectedSide;
-  final UnitSystem unitSystem;
+
+  /// The unit each dimension field shows and logs (`formUnits`).
+  final TrainingUnit Function(DimensionId dimension) unitFor;
   final double defaultWeightIncrement;
-  final VoidCallback onSave;
+  final Duration rest;
   final void Function(DimensionId dimension, double delta) onStep;
+  final ValueChanged<int> onStepRest;
   final ValueChanged<SetSide> onSideChanged;
 
   @override
@@ -2013,10 +2682,7 @@ class _SetEntryForm extends StatelessWidget {
               final increaseLabel = l10n.trainingIncreaseDimensionTooltip(
                 dimensionLabel,
               );
-              final controller = controllers.putIfAbsent(
-                dimension,
-                TextEditingController.new,
-              );
+              final controller = controllerFor(dimension);
               void decrement() {
                 onStep(
                   dimension,
@@ -2059,10 +2725,7 @@ class _SetEntryForm extends StatelessWidget {
                 incrementKey: TrainingScreen.incrementButtonKey(dimension),
                 controller: controller,
                 label: dimensionLabel,
-                unitLabel: _unitShortLabel(
-                  l10n,
-                  _defaultUnitFor(dimension, unitSystem),
-                ),
+                unitLabel: _unitShortLabel(l10n, unitFor(dimension)),
                 decreaseLabel: decreaseLabel,
                 increaseLabel: increaseLabel,
                 onDecrement: decrement,
@@ -2072,6 +2735,8 @@ class _SetEntryForm extends StatelessWidget {
           ),
           const SizedBox(height: AppDimens.base),
         ],
+        _RestAfterInput(rest: rest, onStep: onStepRest),
+        const SizedBox(height: AppDimens.base),
         TextField(
           key: TrainingScreen.commentFieldKey,
           controller: commentController,
@@ -2117,13 +2782,6 @@ class _SetEntryForm extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: AppDimens.base),
-        FilledButton.icon(
-          key: TrainingScreen.saveSetButtonKey,
-          onPressed: onSave,
-          icon: const Icon(Icons.check),
-          label: Text(l10n.trainingSaveSet),
-        ),
       ],
     );
   }
@@ -2473,220 +3131,25 @@ class _DurationPartTextField extends StatelessWidget {
   }
 }
 
-class _EditSetSheet extends StatefulWidget {
-  const _EditSetSheet({
-    required this.set,
-    required this.exercise,
-    required this.unitSystem,
-    required this.initialValues,
-    required this.onSave,
-  });
-
-  final LoggedSetRecord set;
-  final ExerciseRecord exercise;
-  final UnitSystem unitSystem;
-  final Map<DimensionId, String> initialValues;
-  final Future<void> Function(_SetEditResult edit) onSave;
-
-  @override
-  State<_EditSetSheet> createState() => _EditSetSheetState();
-}
-
-class _EditSetSheetState extends State<_EditSetSheet> {
-  late final Map<DimensionId, TextEditingController> _controllers;
-  late final TextEditingController _commentController;
-  late final TextEditingController _rpeController;
-  late SetSide _selectedSide;
-
-  @override
-  void initState() {
-    super.initState();
-    _controllers = <DimensionId, TextEditingController>{
-      for (final dimension in widget.exercise.type.dimensions)
-        dimension: TextEditingController(
-          text: widget.initialValues[dimension] ?? '',
-        ),
-    };
-    _commentController = TextEditingController(text: widget.set.comment ?? '');
-    _rpeController = TextEditingController(
-      text: widget.set.rpe == null ? '' : _formatRpe(widget.set.rpe!),
-    );
-    _selectedSide = widget.set.side ?? SetSide.left;
-  }
-
-  @override
-  void dispose() {
-    for (final controller in _controllers.values) {
-      controller.dispose();
-    }
-    _commentController.dispose();
-    _rpeController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: AppDimens.base,
-          right: AppDimens.base,
-          top: AppDimens.base,
-          bottom: MediaQuery.viewInsetsOf(context).bottom + AppDimens.base,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final dimension in widget.exercise.type.dimensions) ...[
-                if (dimension == DimensionId.duration)
-                  _DurationPartsFields(
-                    key: TrainingScreen.editDimensionFieldKey(
-                      widget.set.id,
-                      dimension,
-                    ),
-                    controller: _controllers[dimension]!,
-                    hoursKey: TrainingScreen.editDurationHoursFieldKey(
-                      widget.set.id,
-                    ),
-                    minutesKey: TrainingScreen.editDurationMinutesFieldKey(
-                      widget.set.id,
-                    ),
-                    secondsKey: TrainingScreen.editDurationSecondsFieldKey(
-                      widget.set.id,
-                    ),
-                  )
-                else
-                  TextField(
-                    key: TrainingScreen.editDimensionFieldKey(
-                      widget.set.id,
-                      dimension,
-                    ),
-                    controller: _controllers[dimension],
-                    onTap: () => _selectAllOnTap(_controllers[dimension]!),
-                    decoration: InputDecoration(
-                      labelText: _dimensionLabel(l10n, dimension),
-                      suffixText: _unitShortLabel(
-                        l10n,
-                        _defaultUnitFor(
-                          dimension,
-                          widget.unitSystem,
-                        ),
-                      ),
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-                const SizedBox(height: AppDimens.base),
-              ],
-              TextField(
-                key: TrainingScreen.editCommentFieldKey(widget.set.id),
-                controller: _commentController,
-                minLines: 1,
-                maxLines: 3,
-                textInputAction: TextInputAction.done,
-                decoration:
-                    InputDecoration(labelText: l10n.trainingCommentLabel),
-              ),
-              if (widget.exercise.isUnilateral) ...[
-                const SizedBox(height: AppDimens.base),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: SegmentedButton<SetSide>(
-                    key: TrainingScreen.editSideFieldKey(widget.set.id),
-                    selected: <SetSide>{_selectedSide},
-                    segments: <ButtonSegment<SetSide>>[
-                      ButtonSegment<SetSide>(
-                        value: SetSide.left,
-                        label: Text(l10n.trainingSideLeft),
-                        tooltip: l10n.trainingSideLeftTooltip,
-                      ),
-                      ButtonSegment<SetSide>(
-                        value: SetSide.right,
-                        label: Text(l10n.trainingSideRight),
-                        tooltip: l10n.trainingSideRightTooltip,
-                      ),
-                    ],
-                    onSelectionChanged: (selection) {
-                      setState(() => _selectedSide = selection.single);
-                    },
-                  ),
-                ),
-              ],
-              if (widget.exercise.usesRpe) ...[
-                const SizedBox(height: AppDimens.base),
-                TextField(
-                  key: TrainingScreen.editRpeFieldKey(widget.set.id),
-                  controller: _rpeController,
-                  onTap: () => _selectAllOnTap(_rpeController),
-                  decoration: InputDecoration(labelText: l10n.trainingRpeLabel),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                ),
-              ],
-              const SizedBox(height: AppDimens.base),
-              FilledButton.icon(
-                key: TrainingScreen.saveEditButtonKey(widget.set.id),
-                onPressed: () {
-                  final values = _valuesFromControllers(
-                    controllers: _controllers,
-                    exercise: widget.exercise,
-                    unitSystem: widget.unitSystem,
-                  );
-                  if (values == null) {
-                    return;
-                  }
-
-                  unawaited(
-                    widget.onSave(
-                      _SetEditResult(
-                        values: values,
-                        comment: _commentController.text,
-                        side: _selectedSide,
-                        rpe: _rpeFromController(_rpeController),
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.save_outlined),
-                label: Text(l10n.trainingSaveChanges),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _TrainingExerciseState {
   const _TrainingExerciseState({
     required this.workoutExercise,
     required this.exercise,
     required this.priorSet,
+    required this.workout,
+    required this.rememberedRest,
   });
 
   final WorkoutExerciseRecord workoutExercise;
   final ExerciseRecord exercise;
   final LoggedSetRecord? priorSet;
-}
 
-class _SetEditResult {
-  const _SetEditResult({
-    required this.values,
-    required this.comment,
-    required this.side,
-    required this.rpe,
-  });
+  /// The Workout, for `endedAt`: Log set starts no rest once it has ended.
+  final WorkoutSessionRecord workout;
 
-  final LoggedSet values;
-  final String? comment;
-  final SetSide? side;
-  final double? rpe;
+  /// The exercise's Remembered Rest (`findRememberedRest`), read with the
+  /// prefill when the exercise opens.
+  final Duration? rememberedRest;
 }
 
 Set<String> _headlineRecordSetIds(ExerciseAnalyticsResult? result) {
@@ -2697,10 +3160,12 @@ Set<String> _headlineRecordSetIds(ExerciseAnalyticsResult? result) {
   return result.headlineRecords.map((record) => record.setId).toSet();
 }
 
+/// The form's values in [unitFor]'s units (`formUnits`), or null when a
+/// field does not parse.
 LoggedSet? _valuesFromControllers({
   required Map<DimensionId, TextEditingController> controllers,
   required ExerciseRecord exercise,
-  required UnitSystem unitSystem,
+  required TrainingUnit Function(DimensionId dimension) unitFor,
 }) {
   final values = <SetDimensionValue>[];
   for (final dimension in exercise.type.dimensions) {
@@ -2713,7 +3178,7 @@ LoggedSet? _valuesFromControllers({
       SetDimensionValue(
         dimension: dimension,
         entered: entered,
-        unit: _defaultUnitFor(dimension, unitSystem),
+        unit: unitFor(dimension),
       ),
     );
   }
@@ -2826,13 +3291,6 @@ double _defaultIncrementFor(
 
 String _formatRpe(double value) {
   return _formatEnteredNumber(value);
-}
-
-String _formatRestDuration(Duration duration) {
-  final totalSeconds = duration.inSeconds;
-  final minutes = totalSeconds ~/ 60;
-  final seconds = totalSeconds.remainder(60);
-  return '$minutes:${seconds.toString().padLeft(2, '0')}';
 }
 
 String _formatClockDuration(int totalSeconds) {

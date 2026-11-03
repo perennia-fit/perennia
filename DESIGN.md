@@ -143,8 +143,8 @@ One accent, three verdict colors, and a muted stage for them to stand on.
 - **Signal Cyan** (`#1FB6CC`) — the primary accent: selected tabs, active set-row
   highlight, date-navigation arrows, links, focused inputs, comment-present icons.
   If two things on one screen are cyan, one of them is wrong.
-- **Rested Teal** (`#2FAE8F`) — the Save/confirm action. Distinct from the accent so
-  "commit a set" never competes visually with navigation.
+- **Rested Teal** (`#2FAE8F`) — the Log set, Save and confirm actions. Distinct from
+  the accent so "commit a set" never competes visually with navigation.
 - **Bar Red** (`#E5484D`) — destructive actions only (Delete, hard-delete flows).
   Never used for emphasis or warnings.
 - **Trophy Gold** (`#E2B53E`) — personal records: the trophy marker on a set row and
@@ -210,21 +210,36 @@ enough to feel current, square enough to feel like an instrument. `sm` (4px) for
 small chips like the per-set comment marker. `full` (pill) only for filter chips and
 the dimension-toggle chips in exercise editing. Calendar day-dots and category
 swatches are circles. The one exception is Today's extended **Log** FAB, whose shape is
-the platform-standard floating action affordance. Save/Update buttons remain rectangles
-with `md` corners, never FABs.
+the platform-standard floating action affordance. Log set/Update buttons remain
+rectangles with `md` corners, never FABs.
 
 ## Components
 
 - **Set entry (Training Screen, Track tab):** per dimension, a label row
   ("WEIGHT (kg)") above a horizontal cluster of [−] stepper, hero numeral field,
   [+] stepper. Steppers are `touch-target`-sized squares using the exercise's
-  configured increment. Below the fields sit two equal-width buttons:
-  **Save** (`button-save`) and **Clear** (neutral outline). When an existing set is
-  selected, the row highlights in translucent Signal Cyan and the buttons become
-  **Update** (teal) and **Delete** (`button-destructive`).
-- **Set row:** index number · comment icon (gray when empty, Signal Cyan when
-  present) · value+unit · reps, on a 48px row; a Trophy Gold marker when the set is
-  a personal record; a trailing checkbox when mark-sets-complete is enabled.
+  configured increment. Below them, **Rest after** steps the rest in 15 s with [−]
+  and [+], showing "m:ss", or "Off" at zero. The buttons are pinned below the scroll,
+  in thumb reach: one full-width **Log set *n* of *m*** (`button-save`; plain **Log
+  set** when nothing is planned) fills the Current Set and logs it. There is no
+  Clear. When a performed set is selected, the row highlights in translucent Signal
+  Cyan, Log set gives way to **Update** (teal) and **Delete** (`button-destructive`)
+  side by side, and a **Not done** text button above them turns the set back into a
+  planned one. **Add set** sits under the rows; when the exercise and its group have
+  nothing left planned, an outlined **Next: *exercise*** button sits under Log set.
+- **Set row:** index number · values · reps, on a 48px row, in one of three states
+  instead of a checkbox. *Performed*: a check icon in secondary text, the comment
+  subtitle, and a Trophy Gold marker when the set is a personal record. *Current*:
+  a leading arrow icon and the translucent Signal Cyan highlight (unless a performed
+  row is selected). *Planned*: index and values in secondary text. The state is also
+  in each row's semantics label ("done", "next", "planned"), so color is never the
+  only signal. A planned or current row is removed by swiping it away (or by its
+  semantics action), with Undo.
+- **Rest strip:** pinned directly above Log set, outside the scroll. While a rest
+  runs it shows "Rest 1:12" in tabular figures, **−15 s** and **+15 s** text buttons
+  and a Stop icon button; tapping the time opens a small "Alert volume" sheet. Idle,
+  it shows **Start rest**, disabled when Rest after is Off. It is the only timer on
+  screen, so alerts have one owner.
 - **Exercise card (Home Screen):** `h2` exercise name, hairline divider, then set
   rows; tap anywhere → Training Screen.
 - **Root navigation:** three labelled destinations — Today, Progress, Library — with
