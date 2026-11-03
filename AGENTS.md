@@ -121,9 +121,10 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
   category/exercise with thresholds.
 - **Routines & Workout Templates** — Home "Up next"
   suggestion cards computed from Cadences; picker sheet grouped Today / Routines /
-  All Templates; one-tap **materialize** into a new Workout (Template Link recorded);
-  Template editor (exercises, per-entry notes, Prescriptions, groups + rounds) and
-  Routine editor (membership + Cadence slot layout) as separate surfaces; capture
+  All Templates; preview, then **Start** (materialize) into a new Workout
+  (Template Link recorded); Template editor (exercises, per-entry notes,
+  Prescriptions, groups + rounds) and Routine editor (membership + Cadence slot
+  layout) as separate surfaces; capture
   ("save workout as template") and the Finish-time "update the template?" prompt.
 - **Workout Tools (interval/rest timer, 1RM/set/plate calculators) and Settings** —
   secondary surfaces reached contextually or through **Account & app**, not extra

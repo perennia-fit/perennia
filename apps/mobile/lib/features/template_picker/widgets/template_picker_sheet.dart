@@ -11,12 +11,14 @@ import '../../routine_plans/widgets/routine_plan_list_screen.dart';
 import '../../up_next/controllers/up_next_controller.dart';
 import '../../up_next/repositories/up_next_feature_repository.dart';
 import '../../workout_templates/controllers/workout_template_controller.dart';
+import '../../workout_templates/repositories/workout_template_feature_repository.dart';
+import '../../workout_templates/widgets/prescription_summary.dart';
 import '../../workout_templates/widgets/workout_template_list_screen.dart';
 import '../controllers/template_picker_controller.dart';
 import '../repositories/template_picker_feature_repository.dart';
 
-/// One materialize request picked from the sheet: the default tap and the
-/// preview gesture both resolve to this same shape, because both start the
+/// One materialize request picked from the sheet: a row's ▶ and the
+/// preview's Start both resolve to this same shape, because both start the
 /// whole Template the same way — preview only adds a look-before-you-start
 /// step, never a different materialize call. `routineId`/`slot` are set
 /// when the pick was made inside a Routine; an "Other saved workouts" pick
@@ -101,13 +103,13 @@ class TemplatePickerSheet extends ConsumerStatefulWidget {
       Key('templatePicker.routine.$routineId');
   static Key routineEntryTileKey(String routineEntryId) =>
       Key('templatePicker.routineEntry.tile.$routineEntryId');
-  static Key routineEntryPreviewKey(String routineEntryId) =>
-      Key('templatePicker.routineEntry.preview.$routineEntryId');
+  static Key routineEntryStartKey(String routineEntryId) =>
+      Key('templatePicker.routineEntry.start.$routineEntryId');
 
   static Key otherTemplateTileKey(String templateId) =>
       Key('templatePicker.otherTemplates.tile.$templateId');
-  static Key otherTemplatePreviewKey(String templateId) =>
-      Key('templatePicker.otherTemplates.preview.$templateId');
+  static Key otherTemplateStartKey(String templateId) =>
+      Key('templatePicker.otherTemplates.start.$templateId');
 
   @override
   ConsumerState<TemplatePickerSheet> createState() =>
@@ -247,8 +249,8 @@ class _TemplatePickerSheetState extends ConsumerState<TemplatePickerSheet> {
                   exerciseCount: template.exerciseCount,
                   tileKey:
                       TemplatePickerSheet.otherTemplateTileKey(template.id),
-                  previewKey:
-                      TemplatePickerSheet.otherTemplatePreviewKey(template.id),
+                  startKey:
+                      TemplatePickerSheet.otherTemplateStartKey(template.id),
                   result: TemplatePickerResult(workoutTemplateId: template.id),
                 ),
             ],
@@ -313,8 +315,8 @@ class _TemplatePickerSheetState extends ConsumerState<TemplatePickerSheet> {
         isNext: nextEntryIds.contains(entry.routineEntryId),
         isDone: doneEntryIds.contains(entry.routineEntryId),
         tileKey: TemplatePickerSheet.routineEntryTileKey(entry.routineEntryId),
-        previewKey:
-            TemplatePickerSheet.routineEntryPreviewKey(entry.routineEntryId),
+        startKey:
+            TemplatePickerSheet.routineEntryStartKey(entry.routineEntryId),
         result: TemplatePickerResult(
           workoutTemplateId: entry.workoutTemplateId,
           routineId: routine.routineId,
@@ -524,9 +526,9 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// One startable workout: the row tap pops the sheet with [result] at once;
-/// the trailing preview opens a read-only look at its exercises and pops
-/// with the same [result] only if the athlete confirms Start there, so both
+/// One startable workout: the row tap opens a read-only look at its
+/// exercises and pops the sheet with [result] only if the athlete confirms
+/// Start there; the trailing ▶ pops with the same [result] at once, so both
 /// paths record the same Template Link.
 class _WorkoutRow extends StatelessWidget {
   const _WorkoutRow({
@@ -534,7 +536,7 @@ class _WorkoutRow extends StatelessWidget {
     required this.name,
     required this.exerciseCount,
     required this.tileKey,
-    required this.previewKey,
+    required this.startKey,
     required this.result,
     this.isNext = false,
     this.isDone = false,
@@ -548,7 +550,7 @@ class _WorkoutRow extends StatelessWidget {
   /// Workout, which should never come as a surprise.
   final int? exerciseCount;
   final Key tileKey;
-  final Key previewKey;
+  final Key startKey;
   final TemplatePickerResult result;
 
   /// Today's Up next suggestion for its Routine, still to do.
@@ -572,10 +574,8 @@ class _WorkoutRow extends StatelessWidget {
       leading: isDone
           ? Icon(Icons.check_circle, color: context.colors.save)
           : Icon(
-              Icons.play_circle_outline,
-              color: isNext
-                  ? Theme.of(context).colorScheme.primary
-                  : context.colors.textSecondary,
+              Icons.radio_button_unchecked,
+              color: context.colors.textSecondary,
             ),
       title: Text(name, style: context.textStyles.h2),
       subtitle: subtitle.isEmpty
@@ -586,15 +586,21 @@ class _WorkoutRow extends StatelessWidget {
                 color: context.colors.textSecondary,
               ),
             ),
-      onTap: () => Navigator.of(context).pop(result),
+      onTap: () => _preview(context),
       trailing: IconButton(
-        key: previewKey,
-        tooltip: l10n.routinesSheetPreviewTooltip(name),
-        icon: Icon(
-          Icons.visibility_outlined,
-          color: context.colors.textSecondary,
+        key: startKey,
+        tooltip: l10n.routinesSheetStartTooltip(name),
+        constraints: const BoxConstraints(
+          minWidth: AppDimens.touchTarget,
+          minHeight: AppDimens.touchTarget,
         ),
-        onPressed: () => _preview(context),
+        icon: Icon(
+          Icons.play_arrow,
+          color: isNext
+              ? Theme.of(context).colorScheme.primary
+              : context.colors.textSecondary,
+        ),
+        onPressed: () => Navigator.of(context).pop(result),
       ),
     );
   }
@@ -671,8 +677,7 @@ class TemplatePickerPreviewSheet extends ConsumerWidget {
               const SizedBox(height: AppDimens.dense),
               detail.when(
                 data: (template) {
-                  final exercises = template?.exercises ?? const [];
-                  if (exercises.isEmpty) {
+                  if (template == null || template.exercises.isEmpty) {
                     return Text(
                       l10n.templatePickerPreviewEmptyExercises,
                       style: context.textStyles.body.copyWith(
@@ -681,19 +686,8 @@ class TemplatePickerPreviewSheet extends ConsumerWidget {
                     );
                   }
                   return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final exercise in exercises)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 2,
-                          ),
-                          child: Text(
-                            exercise.name,
-                            style: context.textStyles.body,
-                          ),
-                        ),
-                    ],
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _previewEntries(template),
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -713,6 +707,119 @@ class TemplatePickerPreviewSheet extends ConsumerWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The preview's list in Template order, with each Template Group's members
+/// gathered under it where its first member sits.
+///
+/// Members are listed in member order, the order a started Workout walks
+/// the group in, so a group whose members are not adjacent in the Template
+/// still reads as one superset here rather than splitting its header.
+List<Widget> _previewEntries(WorkoutTemplateDetail template) {
+  final exerciseById = {
+    for (final exercise in template.exercises) exercise.id: exercise,
+  };
+  final groupByExerciseId = {
+    for (final group in template.groups)
+      for (final member in group.members) member.templateExerciseId: group,
+  };
+  final shownGroupIds = <String>{};
+  final entries = <Widget>[];
+  for (final exercise in template.exercises) {
+    final group = groupByExerciseId[exercise.id];
+    if (group == null) {
+      entries.add(_PreviewExercise(exercise: exercise));
+    } else if (shownGroupIds.add(group.id)) {
+      entries.add(
+        _PreviewGroup(
+          group: group,
+          members: [
+            for (final member in group.members)
+              if (exerciseById[member.templateExerciseId]
+                  case final memberExercise?)
+                memberExercise,
+          ],
+        ),
+      );
+    }
+  }
+  return entries;
+}
+
+/// One exercise's name with a line per Prescription under it, in the
+/// Template editor's format, so the athlete sees the plan before Start.
+class _PreviewExercise extends StatelessWidget {
+  const _PreviewExercise({required this.exercise});
+
+  final TemplateExerciseDetail exercise;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.dense / 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(exercise.name, style: context.textStyles.body),
+          for (final prescription in exercise.prescriptions)
+            Text(
+              prescriptionSummary(context, exercise, prescription),
+              style: context.textStyles.caption.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A Template Group: its name as a header over its members, joined by the
+/// group's leading bar (DESIGN.md's superset bar). The name carries the
+/// grouping, so the bar is never its only signal. No round count is shown
+/// until Materialize uses a group's rounds.
+class _PreviewGroup extends StatelessWidget {
+  const _PreviewGroup({required this.group, required this.members});
+
+  final TemplateGroupDetail group;
+  final List<TemplateExerciseDetail> members;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.dense / 2),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ExcludeSemantics(
+              child: ColoredBox(
+                color: colorFromHex(
+                  group.colorHex,
+                  fallback: context.colors.categoryColor('other'),
+                ),
+                child: const SizedBox(width: AppDimens.supersetBar),
+              ),
+            ),
+            const SizedBox(width: AppDimens.dense),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    header: true,
+                    child: Text(group.name, style: context.textStyles.label),
+                  ),
+                  for (final member in members)
+                    _PreviewExercise(exercise: member),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

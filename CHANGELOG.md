@@ -58,6 +58,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   marks the exercise to do next. A Today tile counts "*performed* of *total*
   sets", and a day whose Workout has no logged set yet still reads "No workout
   started".
+- **Look before starting.** Tapping an Up next card or a workout in the
+  Routines sheet opens a preview of its exercises, each Prescription and its
+  supersets, with **Start workout**; the ▶ button beside it starts straight
+  away, and a quick double tap on an Up next card's ▶ starts one workout, not
+  two. The Routines sheet's eye icon is gone.
 
 ## [0.1.0] - 2026-11-01
 

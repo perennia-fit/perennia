@@ -13,6 +13,7 @@ import 'package:perennia/l10n/app_localizations.dart';
 import 'package:perennia/theme/theme.dart';
 
 import '../workout_templates/workout_template_test_repository.dart';
+import 'upper_b_template_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -47,6 +48,41 @@ void main() {
           await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
         });
       }
+
+      testWidgets(
+          'the preview meets contrast, Android target, and label guidelines '
+          'in ${brightness.name}', (tester) async {
+        await _setLargePhone(tester);
+        final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository(
+          details: <String, WorkoutTemplateDetail>{
+            'template-upper': upperBTemplateDetail(),
+          },
+        );
+        addTearDown(workoutTemplateRepository.close);
+        await tester.pumpWidget(
+          _testApp(
+            brightness: brightness,
+            upNext: _upNextRepository(),
+            picker: _pickerRepository(
+              routines: const <TemplatePickerRoutineView>[],
+              templates: const <TemplatePickerTemplateView>[],
+            ),
+            workoutTemplateRepository: workoutTemplateRepository,
+            home: const Scaffold(
+              body: TemplatePickerPreviewSheet(
+                templateId: 'template-upper',
+                templateName: 'Upper B',
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.text('Superset A'), findsOneWidget);
+
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      });
     }
   });
 
@@ -95,8 +131,8 @@ void main() {
   });
 
   testWidgets(
-      'a Routine opens onto its workouts by day, marks Up next, and starts '
-      'with the Routine and slot context', (tester) async {
+      "a Routine opens onto its workouts by day, marks Up next, and a row's "
+      '▶ starts with the Routine and slot context', (tester) async {
     await _setLargePhone(tester);
     final handle = await _openSheetForResult(
       tester,
@@ -119,7 +155,7 @@ void main() {
     expect(find.byKey(TemplatePickerSheet.backButtonKey), findsOneWidget);
 
     await tester
-        .tap(find.byKey(TemplatePickerSheet.routineEntryTileKey('entry-1')));
+        .tap(find.byKey(TemplatePickerSheet.routineEntryStartKey('entry-1')));
     await tester.pump();
     await tester.pump();
 
@@ -251,7 +287,7 @@ void main() {
       findsNothing,
     );
     await tester.tap(
-      find.byKey(TemplatePickerSheet.otherTemplateTileKey('template-recent')),
+      find.byKey(TemplatePickerSheet.otherTemplateStartKey('template-recent')),
     );
     await tester.pump();
     await tester.pump();
@@ -263,8 +299,9 @@ void main() {
   });
 
   testWidgets(
-      'preview opens a read-only look and Start still produces the same '
-      'materialize request as the default tap', (tester) async {
+      'an Other saved workouts row tap opens the preview, picks nothing '
+      "until Start, and Start produces the same request as the row's ▶",
+      (tester) async {
     await _setLargePhone(tester);
     final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository(
       details: <String, WorkoutTemplateDetail>{
@@ -286,18 +323,21 @@ void main() {
       workoutTemplateRepository: workoutTemplateRepository,
     );
 
+    var answered = false;
+    handle.future!.then((_) => answered = true);
+
     // Only other saved workouts exist, so the sheet opens straight on them.
     await tester.tap(
-      find.byKey(
-        TemplatePickerSheet.otherTemplatePreviewKey('template-recent'),
-      ),
+      find.byKey(TemplatePickerSheet.otherTemplateTileKey('template-recent')),
     );
     await _pumpUntilSettled(tester);
 
+    expect(find.byType(TemplatePickerPreviewSheet), findsOneWidget);
     expect(
       find.byKey(TemplatePickerPreviewSheet.startButtonKey),
       findsOneWidget,
     );
+    expect(answered, isFalse);
 
     await tester.tap(find.byKey(TemplatePickerPreviewSheet.startButtonKey));
     await tester.pump();
@@ -308,6 +348,208 @@ void main() {
     expect(picked?.workoutTemplateId, 'template-recent');
     expect(picked?.routineId, isNull);
   });
+
+  testWidgets(
+      'a Routine row tap previews its exercises and Start picks it with the '
+      'Routine and slot context', (tester) async {
+    await _setLargePhone(tester);
+    final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository(
+      details: <String, WorkoutTemplateDetail>{
+        'template-shared': upperBTemplateDetail(templateId: 'template-shared'),
+      },
+    );
+    addTearDown(workoutTemplateRepository.close);
+    final handle = await _openSheetForResult(
+      tester,
+      upNext: _upNextRepository(),
+      picker: _pickerRepository(
+        routines: _threeRoutines(),
+        templates: _templates(),
+      ),
+      workoutTemplateRepository: workoutTemplateRepository,
+    );
+    var picked = false;
+    handle.future!.then((_) => picked = true);
+    await tester
+        .tap(find.byKey(TemplatePickerSheet.routineRowKey('routine-1')));
+    await _pumpUntilSettled(tester);
+
+    await tester
+        .tap(find.byKey(TemplatePickerSheet.routineEntryTileKey('entry-1')));
+    await _pumpUntilSettled(tester);
+
+    expect(find.byType(TemplatePickerPreviewSheet), findsOneWidget);
+    expect(
+      find.text('3 × (60 kg · 10 reps, Rest after 90 sec)'),
+      findsOneWidget,
+    );
+    expect(find.text('Superset A'), findsOneWidget);
+    expect(picked, isFalse);
+
+    await tester.tap(find.byKey(TemplatePickerPreviewSheet.startButtonKey));
+    await _pumpUntilSettled(tester);
+
+    final result = await handle.future;
+    expect(result?.workoutTemplateId, 'template-shared');
+    expect(result?.routineId, 'routine-1');
+    expect(result?.slot, DateTime.monday);
+  });
+
+  testWidgets(
+      'a dismissed preview leaves the Routines sheet open with nothing '
+      'picked', (tester) async {
+    await _setLargePhone(tester);
+    final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository(
+      details: <String, WorkoutTemplateDetail>{
+        'template-recent': upperBTemplateDetail(templateId: 'template-recent'),
+      },
+    );
+    addTearDown(workoutTemplateRepository.close);
+    final handle = await _openSheetForResult(
+      tester,
+      upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
+      picker: _pickerRepository(
+        routines: const <TemplatePickerRoutineView>[],
+        templates: _templates().skip(1).toList(),
+      ),
+      workoutTemplateRepository: workoutTemplateRepository,
+    );
+    var picked = false;
+    handle.future!.then((_) => picked = true);
+
+    await tester.tap(
+      find.byKey(TemplatePickerSheet.otherTemplateTileKey('template-recent')),
+    );
+    await _pumpUntilSettled(tester);
+    expect(find.byType(TemplatePickerPreviewSheet), findsOneWidget);
+
+    Navigator.of(tester.element(find.byType(TemplatePickerPreviewSheet))).pop();
+    await _pumpUntilSettled(tester);
+
+    expect(find.byType(TemplatePickerPreviewSheet), findsNothing);
+    expect(find.byType(TemplatePickerSheet), findsOneWidget);
+    expect(picked, isFalse);
+  });
+
+  testWidgets(
+      "a row's ▶ is a 48 dp target labelled with the workout's name, and "
+      'the eye icon is gone', (tester) async {
+    await _setLargePhone(tester);
+    final semantics = tester.ensureSemantics();
+    await _openSheetForResult(
+      tester,
+      upNext: _upNextRepository(),
+      picker: _pickerRepository(
+        routines: _threeRoutines(),
+        templates: _templates(),
+      ),
+    );
+    await tester
+        .tap(find.byKey(TemplatePickerSheet.routineRowKey('routine-1')));
+    await _pumpUntilSettled(tester);
+
+    final start =
+        find.byKey(TemplatePickerSheet.routineEntryStartKey('entry-1'));
+    final size = tester.getSize(start);
+    expect(size.width, greaterThanOrEqualTo(AppDimens.touchTarget));
+    expect(size.height, greaterThanOrEqualTo(AppDimens.touchTarget));
+    expect(find.byTooltip('Start Push A'), findsOneWidget);
+    expect(
+      tester.getSemantics(start),
+      isSemantics(
+        tooltip: 'Start Push A',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(find.byIcon(Icons.visibility_outlined), findsNothing);
+    semantics.dispose();
+  });
+
+  testWidgets(
+      'the preview shows each Prescription under its exercise and a '
+      "Template Group's members under its name", (tester) async {
+    await _setLargePhone(tester);
+    final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository(
+      details: <String, WorkoutTemplateDetail>{
+        'template-upper': upperBTemplateDetail(),
+      },
+    );
+    addTearDown(workoutTemplateRepository.close);
+    final handle = _PreviewHandle();
+    await tester.pumpWidget(
+      _testApp(
+        upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
+        picker: _pickerRepository(
+          routines: const <TemplatePickerRoutineView>[],
+          templates: const <TemplatePickerTemplateView>[],
+        ),
+        workoutTemplateRepository: workoutTemplateRepository,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                child: const Text('Preview'),
+                onPressed: () => handle.future = showTemplatePickerPreviewSheet(
+                  context,
+                  templateId: 'template-upper',
+                  templateName: 'Upper B',
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('Preview'));
+    await _pumpUntilSettled(tester);
+
+    // The editor's format, one line per Prescription, under the name.
+    final fixedLine = find.text('3 × (60 kg · 10 reps, Rest after 90 sec)');
+    final copyLine = find.text('3 × (Copy previous values)');
+    expect(fixedLine, findsOneWidget);
+    expect(copyLine, findsOneWidget);
+    expect(find.text('1 × (20 kg · 12 reps)'), findsOneWidget);
+    expect(find.text('2 × (15 kg · 12 reps)'), findsOneWidget);
+    final benchY = tester.getTopLeft(find.text('Bench Press')).dy;
+    expect(tester.getTopLeft(fixedLine).dy, greaterThan(benchY));
+    expect(
+      tester.getTopLeft(copyLine).dy,
+      greaterThan(tester.getTopLeft(fixedLine).dy),
+    );
+
+    // The group's name heads its members, in member order, after Bench
+    // Press; no round count is shown.
+    final header = find.text('Superset A');
+    expect(header, findsOneWidget);
+    expect(
+      tester.getSemantics(header),
+      matchesSemantics(label: 'Superset A', isHeader: true),
+    );
+    final headerY = tester.getTopLeft(header).dy;
+    final rowY = tester.getTopLeft(find.text('Cable Row')).dy;
+    final curlY = tester.getTopLeft(find.text('Curl')).dy;
+    expect(headerY, greaterThan(tester.getTopLeft(copyLine).dy));
+    expect(rowY, greaterThan(headerY));
+    expect(curlY, greaterThan(rowY));
+    expect(find.textContaining('round'), findsNothing);
+
+    // Nothing starts until Start, which answers true to the caller.
+    expect(handle.future, isNotNull);
+    var answered = false;
+    handle.future!.then((_) => answered = true);
+    await tester.pump();
+    expect(answered, isFalse);
+    await tester.tap(find.byKey(TemplatePickerPreviewSheet.startButtonKey));
+    await _pumpUntilSettled(tester);
+    expect(await handle.future, isTrue);
+  });
+}
+
+/// Holds the [Future] returned by `showTemplatePickerPreviewSheet`.
+class _PreviewHandle {
+  Future<bool?>? future;
 }
 
 List<TemplatePickerRoutineView> _threeRoutines() {
