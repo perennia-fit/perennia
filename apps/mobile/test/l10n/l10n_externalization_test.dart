@@ -23,6 +23,8 @@ void main() {
       'lib/features/progress/widgets/body_card.dart',
       'lib/features/progress/widgets/protocols_progress_card.dart',
       'lib/features/progress/widgets/progress_format.dart',
+      'lib/features/template_picker/widgets/template_picker_sheet.dart',
+      'lib/features/workout_templates/widgets/prescription_summary.dart',
     ];
     final forbiddenPatterns = <String, RegExp>{
       'Text literal': RegExp(r'\bText\(\s*[' '"]'),

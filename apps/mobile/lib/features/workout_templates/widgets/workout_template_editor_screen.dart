@@ -15,6 +15,7 @@ import '../../focus/widgets/focus_visuals.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../controllers/workout_template_controller.dart';
 import '../repositories/workout_template_feature_repository.dart';
+import 'prescription_summary.dart';
 import 'template_group_editor_sheet.dart';
 
 class WorkoutTemplateEditorScreen extends ConsumerStatefulWidget {
@@ -1190,7 +1191,7 @@ class _TemplateExerciseCard extends StatelessWidget {
                           ),
                         ),
                         title: Text(
-                          _prescriptionSummary(context, exercise, prescription),
+                          prescriptionSummary(context, exercise, prescription),
                           key: WorkoutTemplateEditorScreen.prescriptionTileKey(
                             prescription.id,
                           ),
@@ -1436,7 +1437,7 @@ class _PrescriptionEditorSheetState extends State<PrescriptionEditorSheet> {
                     controller: _valueControllers[dimension],
                     decoration: InputDecoration(
                       labelText: _dimensionLabel(context, dimension),
-                      suffixText: _unitLabel(
+                      suffixText: trainingUnitLabel(
                         context,
                         _unitForDimension(dimension),
                       ),
@@ -1611,38 +1612,6 @@ class _PrescriptionEditorSheetState extends State<PrescriptionEditorSheet> {
   }
 }
 
-String _prescriptionSummary(
-  BuildContext context,
-  TemplateExerciseDetail exercise,
-  PrescriptionDetail prescription,
-) {
-  final l10n = context.l10n;
-  final valueSummary =
-      prescription.mode == TemplatePrescriptionMode.copyPrevious
-          ? l10n.workoutTemplatePrescriptionCopyPreviousSummary
-          : exercise.type.isCompletionOnly
-              ? l10n.workoutTemplatePrescriptionCompletion
-              : exercise.type.dimensions
-                  .map((dimension) {
-                    final value = prescription.values.valueFor(dimension);
-                    if (value == null) {
-                      return '';
-                    }
-                    return '${value.entered} ${_unitLabel(context, value.unit)}';
-                  })
-                  .where((segment) => segment.isNotEmpty)
-                  .join(' · ');
-  final details = <String>[valueSummary];
-  if (prescription.restAfter != null) {
-    details.add(
-      '${l10n.workoutTemplatePrescriptionRestAfter} '
-      '${prescription.restAfter!.inSeconds} '
-      '${l10n.workoutTemplatePrescriptionSeconds}',
-    );
-  }
-  return '${prescription.repeat} × (${details.join(', ')})';
-}
-
 TrainingUnit _defaultUnit(
   TemplateExerciseDetail exercise,
   DimensionId dimension,
@@ -1668,16 +1637,3 @@ String _dimensionLabel(BuildContext context, DimensionId dimension) {
     DimensionId.distance => l10n.trainingDimensionDistance,
   };
 }
-
-String _unitLabel(BuildContext context, TrainingUnit unit) {
-  final l10n = context.l10n;
-  return switch (unit) {
-    TrainingUnit.kilogram => l10n.trainingUnitKilogram,
-    TrainingUnit.pound => l10n.trainingUnitPound,
-    TrainingUnit.repetition => l10n.trainingUnitRepetition,
-    TrainingUnit.second => l10n.trainingUnitSecond,
-    TrainingUnit.kilometer => l10n.trainingUnitKilometer,
-    TrainingUnit.mile => l10n.trainingUnitMile,
-  };
-}
-

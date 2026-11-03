@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/domain/training/routine_cadence.dart';
+import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/template_picker/repositories/template_picker_feature_repository.dart';
@@ -47,6 +48,41 @@ void main() {
           await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
         });
       }
+
+      testWidgets(
+          'the preview meets contrast, Android target, and label guidelines '
+          'in ${brightness.name}', (tester) async {
+        await _setLargePhone(tester);
+        final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository(
+          details: <String, WorkoutTemplateDetail>{
+            'template-upper': _upperBDetail(),
+          },
+        );
+        addTearDown(workoutTemplateRepository.close);
+        await tester.pumpWidget(
+          _testApp(
+            brightness: brightness,
+            upNext: _upNextRepository(),
+            picker: _pickerRepository(
+              routines: const <TemplatePickerRoutineView>[],
+              templates: const <TemplatePickerTemplateView>[],
+            ),
+            workoutTemplateRepository: workoutTemplateRepository,
+            home: const Scaffold(
+              body: TemplatePickerPreviewSheet(
+                templateId: 'template-upper',
+                templateName: 'Upper B',
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.text('Superset A'), findsOneWidget);
+
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      });
     }
   });
 
@@ -308,6 +344,183 @@ void main() {
     expect(picked?.workoutTemplateId, 'template-recent');
     expect(picked?.routineId, isNull);
   });
+
+  testWidgets(
+      'the preview shows each Prescription under its exercise and a '
+      "Template Group's members under its name", (tester) async {
+    await _setLargePhone(tester);
+    final workoutTemplateRepository = StubWorkoutTemplateFeatureRepository(
+      details: <String, WorkoutTemplateDetail>{
+        'template-upper': _upperBDetail(),
+      },
+    );
+    addTearDown(workoutTemplateRepository.close);
+    final handle = _PreviewHandle();
+    await tester.pumpWidget(
+      _testApp(
+        upNext: _upNextRepository(suggestions: const <UpNextSuggestionView>[]),
+        picker: _pickerRepository(
+          routines: const <TemplatePickerRoutineView>[],
+          templates: const <TemplatePickerTemplateView>[],
+        ),
+        workoutTemplateRepository: workoutTemplateRepository,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                child: const Text('Preview'),
+                onPressed: () => handle.future = showTemplatePickerPreviewSheet(
+                  context,
+                  templateId: 'template-upper',
+                  templateName: 'Upper B',
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('Preview'));
+    await _pumpUntilSettled(tester);
+
+    // The editor's format, one line per Prescription, under the name.
+    final fixedLine = find.text('3 × (60 kg · 10 reps, Rest after 90 sec)');
+    final copyLine = find.text('3 × (Copy previous values)');
+    expect(fixedLine, findsOneWidget);
+    expect(copyLine, findsOneWidget);
+    expect(find.text('1 × (20 kg · 12 reps)'), findsOneWidget);
+    expect(find.text('2 × (15 kg · 12 reps)'), findsOneWidget);
+    final benchY = tester.getTopLeft(find.text('Bench Press')).dy;
+    expect(tester.getTopLeft(fixedLine).dy, greaterThan(benchY));
+    expect(
+      tester.getTopLeft(copyLine).dy,
+      greaterThan(tester.getTopLeft(fixedLine).dy),
+    );
+
+    // The group's name heads its members, in member order, after Bench
+    // Press; no round count is shown.
+    final header = find.text('Superset A');
+    expect(header, findsOneWidget);
+    expect(
+      tester.getSemantics(header),
+      matchesSemantics(label: 'Superset A', isHeader: true),
+    );
+    final headerY = tester.getTopLeft(header).dy;
+    final rowY = tester.getTopLeft(find.text('Cable Row')).dy;
+    final curlY = tester.getTopLeft(find.text('Curl')).dy;
+    expect(headerY, greaterThan(tester.getTopLeft(copyLine).dy));
+    expect(rowY, greaterThan(headerY));
+    expect(curlY, greaterThan(rowY));
+    expect(find.textContaining('round'), findsNothing);
+
+    // Nothing starts until Start, which answers true to the caller.
+    expect(handle.future, isNotNull);
+    var answered = false;
+    handle.future!.then((_) => answered = true);
+    await tester.pump();
+    expect(answered, isFalse);
+    await tester.tap(find.byKey(TemplatePickerPreviewSheet.startButtonKey));
+    await _pumpUntilSettled(tester);
+    expect(await handle.future, isTrue);
+  });
+}
+
+/// Holds the [Future] returned by `showTemplatePickerPreviewSheet`.
+class _PreviewHandle {
+  Future<bool?>? future;
+}
+
+/// Bench Press with a fixed and a copy-previous Prescription, then a
+/// Template Group "Superset A" whose member order (Cable Row, Curl) differs
+/// from Template order (Curl, Cable Row).
+WorkoutTemplateDetail _upperBDetail() {
+  final loadReps = ExerciseType(
+    const <DimensionId>[DimensionId.load, DimensionId.reps],
+  );
+  LoggedSet values(String load, String reps) {
+    return LoggedSet.fromValues(<SetDimensionValue>[
+      SetDimensionValue(
+        dimension: DimensionId.load,
+        entered: load,
+        unit: TrainingUnit.kilogram,
+      ),
+      SetDimensionValue(
+        dimension: DimensionId.reps,
+        entered: reps,
+        unit: TrainingUnit.repetition,
+      ),
+    ]);
+  }
+
+  TemplateExerciseDetail exercise(
+    String id,
+    String name,
+    List<PrescriptionDetail> prescriptions,
+  ) {
+    return TemplateExerciseDetail(
+      id: id,
+      exerciseId: 'exercise-$id',
+      name: name,
+      type: loadReps,
+      defaultLoadUnit: TrainingUnit.kilogram,
+      loadMode: ExerciseLoadMode.added,
+      prescriptions: prescriptions,
+    );
+  }
+
+  return WorkoutTemplateDetail(
+    id: 'template-upper',
+    name: 'Upper B',
+    exercises: <TemplateExerciseDetail>[
+      exercise('bench', 'Bench Press', <PrescriptionDetail>[
+        PrescriptionDetail(
+          id: 'p-bench-fixed',
+          mode: TemplatePrescriptionMode.fixed,
+          values: values('60', '10'),
+          repeat: 3,
+          restAfter: const Duration(seconds: 90),
+        ),
+        PrescriptionDetail(
+          id: 'p-bench-copy',
+          mode: TemplatePrescriptionMode.copyPrevious,
+          values: LoggedSet.completion(),
+          repeat: 3,
+          restAfter: null,
+        ),
+      ]),
+      exercise('curl', 'Curl', <PrescriptionDetail>[
+        PrescriptionDetail(
+          id: 'p-curl',
+          mode: TemplatePrescriptionMode.fixed,
+          values: values('15', '12'),
+          repeat: 2,
+          restAfter: null,
+        ),
+      ]),
+      exercise('row', 'Cable Row', <PrescriptionDetail>[
+        PrescriptionDetail(
+          id: 'p-row',
+          mode: TemplatePrescriptionMode.fixed,
+          values: values('20', '12'),
+          repeat: 1,
+          restAfter: null,
+        ),
+      ]),
+    ],
+    groups: <TemplateGroupDetail>[
+      TemplateGroupDetail(
+        id: 'group-a',
+        name: 'Superset A',
+        colorHex: '#3366FF',
+        rounds: 3,
+        members: const <TemplateGroupMemberDetail>[
+          TemplateGroupMemberDetail(templateExerciseId: 'row'),
+          TemplateGroupMemberDetail(templateExerciseId: 'curl'),
+        ],
+      ),
+    ],
+  );
 }
 
 List<TemplatePickerRoutineView> _threeRoutines() {

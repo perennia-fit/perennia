@@ -11,6 +11,8 @@ import '../../routine_plans/widgets/routine_plan_list_screen.dart';
 import '../../up_next/controllers/up_next_controller.dart';
 import '../../up_next/repositories/up_next_feature_repository.dart';
 import '../../workout_templates/controllers/workout_template_controller.dart';
+import '../../workout_templates/repositories/workout_template_feature_repository.dart';
+import '../../workout_templates/widgets/prescription_summary.dart';
 import '../../workout_templates/widgets/workout_template_list_screen.dart';
 import '../controllers/template_picker_controller.dart';
 import '../repositories/template_picker_feature_repository.dart';
@@ -671,8 +673,7 @@ class TemplatePickerPreviewSheet extends ConsumerWidget {
               const SizedBox(height: AppDimens.dense),
               detail.when(
                 data: (template) {
-                  final exercises = template?.exercises ?? const [];
-                  if (exercises.isEmpty) {
+                  if (template == null || template.exercises.isEmpty) {
                     return Text(
                       l10n.templatePickerPreviewEmptyExercises,
                       style: context.textStyles.body.copyWith(
@@ -681,18 +682,15 @@ class TemplatePickerPreviewSheet extends ConsumerWidget {
                     );
                   }
                   return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final exercise in exercises)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 2,
-                          ),
-                          child: Text(
-                            exercise.name,
-                            style: context.textStyles.body,
-                          ),
-                        ),
+                      for (final block in _previewBlocks(template))
+                        switch (block) {
+                          _PreviewExerciseBlock(:final exercise) =>
+                            _PreviewExercise(exercise: exercise),
+                          _PreviewGroupBlock(:final group, :final members) =>
+                            _PreviewGroup(group: group, members: members),
+                        },
                     ],
                   );
                 },
@@ -713,6 +711,134 @@ class TemplatePickerPreviewSheet extends ConsumerWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One entry of the preview's list: an ungrouped exercise, or a Template
+/// Group with its members.
+sealed class _PreviewBlock {
+  const _PreviewBlock();
+}
+
+final class _PreviewExerciseBlock extends _PreviewBlock {
+  const _PreviewExerciseBlock(this.exercise);
+
+  final TemplateExerciseDetail exercise;
+}
+
+final class _PreviewGroupBlock extends _PreviewBlock {
+  const _PreviewGroupBlock(this.group, this.members);
+
+  final TemplateGroupDetail group;
+  final List<TemplateExerciseDetail> members;
+}
+
+/// The preview's list in Template order, with each Template Group's members
+/// gathered under it where its first member sits.
+///
+/// Members are listed in member order, the order a started Workout walks
+/// the group in, so a group whose members are not adjacent in the Template
+/// still reads as one superset here rather than splitting its header.
+List<_PreviewBlock> _previewBlocks(WorkoutTemplateDetail template) {
+  final exerciseById = {
+    for (final exercise in template.exercises) exercise.id: exercise,
+  };
+  final groupByExerciseId = {
+    for (final group in template.groups)
+      for (final member in group.members) member.templateExerciseId: group,
+  };
+  final shownGroupIds = <String>{};
+  final blocks = <_PreviewBlock>[];
+  for (final exercise in template.exercises) {
+    final group = groupByExerciseId[exercise.id];
+    if (group == null) {
+      blocks.add(_PreviewExerciseBlock(exercise));
+    } else if (shownGroupIds.add(group.id)) {
+      blocks.add(
+        _PreviewGroupBlock(group, [
+          for (final member in group.members)
+            if (exerciseById[member.templateExerciseId] case final member?)
+              member,
+        ]),
+      );
+    }
+  }
+  return blocks;
+}
+
+/// One exercise's name with a line per Prescription under it, in the
+/// Template editor's format, so the athlete sees the plan before Start.
+class _PreviewExercise extends StatelessWidget {
+  const _PreviewExercise({required this.exercise});
+
+  final TemplateExerciseDetail exercise;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.dense / 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(exercise.name, style: context.textStyles.body),
+          for (final prescription in exercise.prescriptions)
+            Text(
+              prescriptionSummary(context, exercise, prescription),
+              style: context.textStyles.caption.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A Template Group: its name as a header over its members, joined by the
+/// group's leading bar (DESIGN.md's superset bar). The name carries the
+/// grouping, so the bar is never its only signal. No round count is shown
+/// until Materialize uses a group's rounds.
+class _PreviewGroup extends StatelessWidget {
+  const _PreviewGroup({required this.group, required this.members});
+
+  final TemplateGroupDetail group;
+  final List<TemplateExerciseDetail> members;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.dense / 2),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ExcludeSemantics(
+              child: ColoredBox(
+                color: colorFromHex(
+                  group.colorHex,
+                  fallback: context.colors.categoryColor('other'),
+                ),
+                child: const SizedBox(width: AppDimens.supersetBar),
+              ),
+            ),
+            const SizedBox(width: AppDimens.dense),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    header: true,
+                    child: Text(group.name, style: context.textStyles.label),
+                  ),
+                  for (final member in members)
+                    _PreviewExercise(exercise: member),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
