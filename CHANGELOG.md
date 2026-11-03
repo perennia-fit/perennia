@@ -47,6 +47,13 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   rows show done, next and planned; a planned set is removed by swiping it away,
   and **Not done** turns a logged set back into a planned one. The rest timer is
   a strip above Log set with −15 s and +15 s.
+- **Progress against the plan.** A Workout started from a Template takes the
+  Template's name as its title. Its exercise cards and the Navigation Panel read
+  "*performed*/*total* sets" while sets are still planned and **Done** once
+  none are, the first card of a group shows "Round *r* of *R*", and **Now**
+  marks the exercise to do next. A Today tile counts "*performed* of *total*
+  sets", and a day whose Workout has no logged set yet still reads "No workout
+  started".
 
 ## [0.1.0] - 2026-11-01
 
