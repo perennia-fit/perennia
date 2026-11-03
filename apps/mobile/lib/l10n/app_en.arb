@@ -81,6 +81,14 @@
       }
     }
   },
+  "homeUpNextPreviewLabel": "Preview {templateName}",
+  "@homeUpNextPreviewLabel": {
+    "placeholders": {
+      "templateName": {
+        "type": "String"
+      }
+    }
+  },
   "homeUpNextDoneLabel": "{templateName}, done",
   "@homeUpNextDoneLabel": {
     "placeholders": {
@@ -113,8 +121,8 @@
   },
   "routinesSheetOtherWorkouts": "Other saved workouts",
   "routinesSheetNotInRoutine": "Not in a routine",
-  "routinesSheetPreviewTooltip": "Preview {name}",
-  "@routinesSheetPreviewTooltip": {
+  "routinesSheetStartTooltip": "Start {name}",
+  "@routinesSheetStartTooltip": {
     "placeholders": {"name": {"type": "String"}}
   },
   "routinesSheetEmptyTitle": "No routines yet",

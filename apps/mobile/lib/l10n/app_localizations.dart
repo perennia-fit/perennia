@@ -394,6 +394,12 @@ abstract class AppLocalizations {
   /// **'Start {templateName}'**
   String homeUpNextStartTooltip(String templateName);
 
+  /// No description provided for @homeUpNextPreviewLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview {templateName}'**
+  String homeUpNextPreviewLabel(String templateName);
+
   /// No description provided for @homeUpNextDoneLabel.
   ///
   /// In en, this message translates to:
@@ -490,11 +496,11 @@ abstract class AppLocalizations {
   /// **'Not in a routine'**
   String get routinesSheetNotInRoutine;
 
-  /// No description provided for @routinesSheetPreviewTooltip.
+  /// No description provided for @routinesSheetStartTooltip.
   ///
   /// In en, this message translates to:
-  /// **'Preview {name}'**
-  String routinesSheetPreviewTooltip(String name);
+  /// **'Start {name}'**
+  String routinesSheetStartTooltip(String name);
 
   /// No description provided for @routinesSheetEmptyTitle.
   ///

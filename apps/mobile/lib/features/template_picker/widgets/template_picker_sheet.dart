@@ -17,8 +17,8 @@ import '../../workout_templates/widgets/workout_template_list_screen.dart';
 import '../controllers/template_picker_controller.dart';
 import '../repositories/template_picker_feature_repository.dart';
 
-/// One materialize request picked from the sheet: the default tap and the
-/// preview gesture both resolve to this same shape, because both start the
+/// One materialize request picked from the sheet: a row's ▶ and the
+/// preview's Start both resolve to this same shape, because both start the
 /// whole Template the same way — preview only adds a look-before-you-start
 /// step, never a different materialize call. `routineId`/`slot` are set
 /// when the pick was made inside a Routine; an "Other saved workouts" pick
@@ -103,13 +103,13 @@ class TemplatePickerSheet extends ConsumerStatefulWidget {
       Key('templatePicker.routine.$routineId');
   static Key routineEntryTileKey(String routineEntryId) =>
       Key('templatePicker.routineEntry.tile.$routineEntryId');
-  static Key routineEntryPreviewKey(String routineEntryId) =>
-      Key('templatePicker.routineEntry.preview.$routineEntryId');
+  static Key routineEntryStartKey(String routineEntryId) =>
+      Key('templatePicker.routineEntry.start.$routineEntryId');
 
   static Key otherTemplateTileKey(String templateId) =>
       Key('templatePicker.otherTemplates.tile.$templateId');
-  static Key otherTemplatePreviewKey(String templateId) =>
-      Key('templatePicker.otherTemplates.preview.$templateId');
+  static Key otherTemplateStartKey(String templateId) =>
+      Key('templatePicker.otherTemplates.start.$templateId');
 
   @override
   ConsumerState<TemplatePickerSheet> createState() =>
@@ -249,8 +249,8 @@ class _TemplatePickerSheetState extends ConsumerState<TemplatePickerSheet> {
                   exerciseCount: template.exerciseCount,
                   tileKey:
                       TemplatePickerSheet.otherTemplateTileKey(template.id),
-                  previewKey:
-                      TemplatePickerSheet.otherTemplatePreviewKey(template.id),
+                  startKey:
+                      TemplatePickerSheet.otherTemplateStartKey(template.id),
                   result: TemplatePickerResult(workoutTemplateId: template.id),
                 ),
             ],
@@ -315,8 +315,8 @@ class _TemplatePickerSheetState extends ConsumerState<TemplatePickerSheet> {
         isNext: nextEntryIds.contains(entry.routineEntryId),
         isDone: doneEntryIds.contains(entry.routineEntryId),
         tileKey: TemplatePickerSheet.routineEntryTileKey(entry.routineEntryId),
-        previewKey:
-            TemplatePickerSheet.routineEntryPreviewKey(entry.routineEntryId),
+        startKey:
+            TemplatePickerSheet.routineEntryStartKey(entry.routineEntryId),
         result: TemplatePickerResult(
           workoutTemplateId: entry.workoutTemplateId,
           routineId: routine.routineId,
@@ -526,9 +526,9 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// One startable workout: the row tap pops the sheet with [result] at once;
-/// the trailing preview opens a read-only look at its exercises and pops
-/// with the same [result] only if the athlete confirms Start there, so both
+/// One startable workout: the row tap opens a read-only look at its
+/// exercises and pops the sheet with [result] only if the athlete confirms
+/// Start there; the trailing ▶ pops with the same [result] at once, so both
 /// paths record the same Template Link.
 class _WorkoutRow extends StatelessWidget {
   const _WorkoutRow({
@@ -536,7 +536,7 @@ class _WorkoutRow extends StatelessWidget {
     required this.name,
     required this.exerciseCount,
     required this.tileKey,
-    required this.previewKey,
+    required this.startKey,
     required this.result,
     this.isNext = false,
     this.isDone = false,
@@ -550,7 +550,7 @@ class _WorkoutRow extends StatelessWidget {
   /// Workout, which should never come as a surprise.
   final int? exerciseCount;
   final Key tileKey;
-  final Key previewKey;
+  final Key startKey;
   final TemplatePickerResult result;
 
   /// Today's Up next suggestion for its Routine, still to do.
@@ -574,10 +574,8 @@ class _WorkoutRow extends StatelessWidget {
       leading: isDone
           ? Icon(Icons.check_circle, color: context.colors.save)
           : Icon(
-              Icons.play_circle_outline,
-              color: isNext
-                  ? Theme.of(context).colorScheme.primary
-                  : context.colors.textSecondary,
+              Icons.radio_button_unchecked,
+              color: context.colors.textSecondary,
             ),
       title: Text(name, style: context.textStyles.h2),
       subtitle: subtitle.isEmpty
@@ -588,15 +586,21 @@ class _WorkoutRow extends StatelessWidget {
                 color: context.colors.textSecondary,
               ),
             ),
-      onTap: () => Navigator.of(context).pop(result),
+      onTap: () => _preview(context),
       trailing: IconButton(
-        key: previewKey,
-        tooltip: l10n.routinesSheetPreviewTooltip(name),
-        icon: Icon(
-          Icons.visibility_outlined,
-          color: context.colors.textSecondary,
+        key: startKey,
+        tooltip: l10n.routinesSheetStartTooltip(name),
+        constraints: const BoxConstraints(
+          minWidth: AppDimens.touchTarget,
+          minHeight: AppDimens.touchTarget,
         ),
-        onPressed: () => _preview(context),
+        icon: Icon(
+          Icons.play_arrow,
+          color: isNext
+              ? Theme.of(context).colorScheme.primary
+              : context.colors.textSecondary,
+        ),
+        onPressed: () => Navigator.of(context).pop(result),
       ),
     );
   }

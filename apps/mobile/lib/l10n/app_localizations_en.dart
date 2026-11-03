@@ -169,6 +169,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String homeUpNextPreviewLabel(String templateName) {
+    return 'Preview $templateName';
+  }
+
+  @override
   String homeUpNextDoneLabel(String templateName) {
     return '$templateName, done';
   }
@@ -240,8 +245,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get routinesSheetNotInRoutine => 'Not in a routine';
 
   @override
-  String routinesSheetPreviewTooltip(String name) {
-    return 'Preview $name';
+  String routinesSheetStartTooltip(String name) {
+    return 'Start $name';
   }
 
   @override
