@@ -9,6 +9,14 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-03
+
+A minor release: the Progress Overview with new agent reads, logging against
+the plan on the Training Screen, Skips and delete for Protocols, and a color for
+each Focus. It adds two Drift schema versions, a server migration and new Agent
+operations. Update the server and every device: a device still on 0.1.0 shows a
+skipped dose as not yet logged.
+
 ### Added
 
 - **Progress Overview.** The Progress tab opens on one scroll of summary cards
@@ -34,20 +42,23 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   Pending or Not logged, and the Agent API can do the same
   (`log-protocol-skips`). Update every device: older versions show skipped
   doses as not yet logged.
+  ([#95](https://github.com/perennia-fit/perennia/pull/95))
 - **Replace an exercise inside a Workout**, from the Training Screen's menu or
   the ⋮ button on a Workout card. The new exercise takes the old one's place in
   the order and in its superset, with the remaining planned sets at the same
   rests and the values you last did it with. Sets you already did stay with
   the old exercise, and **Undo** puts everything back.
+  ([#99](https://github.com/perennia-fit/perennia/pull/99))
+- **A color for each Focus.** The Focus manager's row menu has **Color**, with
+  seven labelled swatches, and each row shows its Focus's color. A Focus you
+  never recolor keeps a default color, and Time by Focus uses these colors.
+  ([#83](https://github.com/perennia-fit/perennia/pull/83))
 
 ### Changed
 
 - **Archiving a Protocol** stops asking for that day's doses you haven't
   logged, and asks for confirmation first.
   ([#93](https://github.com/perennia-fit/perennia/pull/93))
-
-### Changed
-
 - **Logging against the plan.** The Training Screen logs the next planned set
   with one **Log set *n* of *m*** button pinned in thumb reach, in place of the
   checkbox, pencil and Save. A changed weight carries to the later sets that
@@ -56,18 +67,39 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   rows show done, next and planned; a planned set is removed by swiping it away,
   and **Not done** turns a logged set back into a planned one. The rest timer is
   a strip above Log set with −15 s and +15 s.
+  ([#94](https://github.com/perennia-fit/perennia/pull/94))
 - **Progress against the plan.** A Workout started from a Template takes the
   Template's name as its title. Its exercise cards and the Navigation Panel read
   "*performed*/*total* sets" while sets are still planned and **Done** once
   none are, the first card of a group shows "Round *r* of *R*", and **Now**
   marks the exercise to do next. A Today tile counts "*performed* of *total*
   sets", and a day whose Workout has no logged set yet still reads "No workout
-  started".
+  started". ([#96](https://github.com/perennia-fit/perennia/pull/96))
 - **Look before starting.** Tapping an Up next card or a workout in the
   Routines sheet opens a preview of its exercises, each Prescription and its
   supersets, with **Start workout**; the ▶ button beside it starts straight
   away, and a quick double tap on an Up next card's ▶ starts one workout, not
   two. The Routines sheet's eye icon is gone.
+  ([#98](https://github.com/perennia-fit/perennia/pull/98))
+
+### Fixed
+
+- The Track prefill comes from the sets you last did, not from planned sets
+  left behind in an unfinished workout.
+  ([#88](https://github.com/perennia-fit/perennia/pull/88))
+- Tapping a number field on the Training Screen selects its value, so typing
+  replaces it: tapping a 0 and typing 26 used to save 026.
+  ([#88](https://github.com/perennia-fit/perennia/pull/88))
+- A set with a planned rest of 0 s no longer breaks the rest timer when you
+  complete it. ([#88](https://github.com/perennia-fit/perennia/pull/88))
+- Up next no longer fails when one Routine's Cadence can't be read; that
+  Routine is skipped. ([#87](https://github.com/perennia-fit/perennia/pull/87))
+- Moving across a daylight saving change in Nutrition no longer repeats or
+  skips a date. ([#87](https://github.com/perennia-fit/perennia/pull/87))
+- With large text on a narrow phone, the Today app bar and the Workout header
+  no longer cut off their content, and the Workout's **Finish Workout**,
+  **Resume Workout** and **Notes** buttons meet AA contrast in the light theme.
+  ([#97](https://github.com/perennia-fit/perennia/pull/97))
 
 ## [0.1.0] - 2026-11-01
 
@@ -106,9 +138,6 @@ planned workouts, Protocols on Today, and a new agent read.
 - Starting a Template with no exercises now says so and asks before starting
   an empty workout, instead of opening one silently.
   ([#78](https://github.com/perennia-fit/perennia/pull/78))
-- With large text on a narrow phone, the Today app bar and the Workout header
-  no longer cut off their content, and the Workout's **Finish Workout**,
-  **Resume Workout** and **Notes** buttons meet AA contrast in the light theme.
 
 ## [0.0.1] - 2026-10-29
 
