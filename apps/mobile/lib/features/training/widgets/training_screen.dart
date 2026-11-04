@@ -1314,6 +1314,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       l10n,
       batchId,
       margin: _snackBarMargin,
+      route: _route,
     );
   }
 
@@ -1531,6 +1532,9 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     );
   }
 
+  /// This screen's route, whose closing takes its confirmations with it.
+  ModalRoute<Object?>? get _route => mounted ? ModalRoute.of(context) : null;
+
   /// See [showTrainingSnackBar].
   void _showSnackBar(
     ScaffoldMessengerState messenger,
@@ -1544,6 +1548,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       message,
       key: key,
       margin: _snackBarMargin,
+      route: _route,
       undoLabel: undoLabel,
       onUndo: onUndo,
     );

@@ -9,6 +9,14 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Fixed
+
+- **Confirmations with Undo now go away.** "Set 3 logged · Undo", "Replaced ·
+  Undo" and "Workout finished · Share" stayed on screen until the next message,
+  covering the logging form and following you to Today, where "Workout
+  finished" never got its turn. They now close after 4 seconds, and a Training
+  Screen's confirmation closes with the screen.
+
 ## [0.2.0] - 2026-11-03
 
 A minor release: the Progress Overview with new agent reads, logging against
