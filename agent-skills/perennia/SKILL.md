@@ -169,19 +169,21 @@ Before choosing a `mealType` for `log-meal`, read the user's Meal Types with
 `list-meal-types` and send one of their names: a Meal stores the name it was
 sent. `log-meal` writes only the Meal fields a request sends. An absent field
 keeps its stored value, and `null` clears `endedAt` or un-archives with
-`deletedAt`. A request whose `meal` carries only `id` adds or edits entries and
-leaves the Meal row untouched; an empty `entries` with Meal fields creates a
-Meal with no foods ("add foods later"). Creating a Meal needs `mealType` and
-the time block. Send `startedAt` with `timezoneOffsetMinutes`, an IANA
-`timezone`, or both; the offset is taken from `timezoneOffsetMinutes`, else
-derived from an IANA `timezone`, else unknown. With a known offset the server
-derives `localDate` and ignores one you send. With an unknown offset (a label
-such as `BRT`) `localDate` is required, or the write fails with
-`meal_offset_unknown`. `timezone`, `timezoneOffsetMinutes` and `localDate` are
-never sent without `startedAt`. Sending `startedAt` sets `timePrecision` to
-`instant`; send `timePrecision: "date"` with local midnight when only the date
-is known. See `references/api-operations.md` for the error rules and
-`warnings`.
+`deletedAt`. To delete a Meal, send `meal.deletedAt` with every active Food
+Entry of that Meal as its full entry with `deletedAt` set, as the app's delete
+does; otherwise the write fails with `meal_archived`. A request whose `meal`
+carries only `id` adds or edits entries and leaves the Meal row untouched; an
+empty `entries` with Meal fields creates a Meal with no foods ("add foods
+later"). Creating a Meal needs `mealType` and the time block. Send `startedAt`
+with `timezoneOffsetMinutes`, an IANA `timezone`, or both; the offset is taken
+from `timezoneOffsetMinutes`, else derived from an IANA `timezone`, else
+unknown. With a known offset the server derives `localDate` and ignores one you
+send. With an unknown offset (a label such as `BRT`) `localDate` is required, or
+the write fails with `meal_offset_unknown`. `timezone`, `timezoneOffsetMinutes`
+and `localDate` are never sent without `startedAt`. Sending `startedAt` sets
+`timePrecision` to `instant`; send `timePrecision: "date"` with local midnight
+when only the date is known. See `references/api-operations.md` for the error
+rules and `warnings`.
 
 When completing a planned Set (one a Template, a quick log, or an earlier write
 left incomplete) with `log-workout`, read the Workout first and send that Set back

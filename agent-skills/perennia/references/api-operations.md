@@ -408,6 +408,9 @@ request sends, with its entries, as one idempotent Activity Log batch.
 - **Meal fields.** `meal.id` is required. `mealType`, `endedAt`, `deletedAt`
   and `timePrecision` may each be sent on their own. An absent field keeps its
   stored value; `null` clears `endedAt`, and `deletedAt: null` un-archives.
+  To delete a Meal, send `meal.deletedAt` together with every active Food
+  Entry of that Meal, each as its full entry with `deletedAt` set (read them
+  with `list-meals`), as the app's delete does in one Batch.
 - **Entries only.** A request whose `meal` carries only `id` writes its
   entries and leaves the Meal row, and its `updatedAt`, untouched. For an id
   that doesn't exist it fails with `404` `meal_not_found`.
@@ -435,9 +438,11 @@ request sends, with its entries, as one idempotent Activity Log batch.
   belongs to another user; `422` `entry_meal_mismatch` when an existing entry
   id is sent under a different `meal.id`; `422` `meal_archived` when entries
   are added to an archived Meal (send `deletedAt: null` in the same request
-  to un-archive it first). The Meal as it will be stored is validated: `422`
-  `meal_ended_before_start` and `meal_type_required` reject the request, with
-  `itemIndex` and `entryId` `null` on Meal-level issues.
+  to un-archive it first), and when a request archives a Meal, or edits an
+  archived one, without tombstoning every Food Entry stored active in it. The
+  Meal as it will be stored is validated: `422` `meal_ended_before_start` and
+  `meal_type_required` reject the request, with `itemIndex` and `entryId`
+  `null` on Meal-level issues.
 - **Warnings.** Meal-level soft warnings, such as `meal_time_in_future` (a
   start more than 5 minutes ahead), come back in the response's top-level
   `warnings`; per-entry nutrient warnings stay on `entries[].warnings`.

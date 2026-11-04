@@ -25,6 +25,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   `deletedAt`, a request with only entries leaves the Meal untouched, and
   `entries` may be empty. `localDate` is derived when the offset is known,
   from `timezoneOffsetMinutes` or an IANA `timezone`.
+- **Archiving a Meal through `batchWriteAgentMeal` must tombstone its Food
+  Entries.** A request that sets `meal.deletedAt` sends every active Food Entry
+  of that Meal with `deletedAt` set, as the app's delete does, or fails with
+  `422` `meal_archived`.
 
 ### Fixed
 
@@ -32,7 +36,6 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   keys, or moves an entry to another Meal.**
 - **An Agent undo is refused when other writes added foods to the Meal it
   created.** The undo returns `skipped_dependent` and applies nothing.
-
 - **Confirmations with Undo now go away.** "Set 3 logged · Undo", "Replaced ·
   Undo" and "Workout finished · Share" stayed on screen until the next message,
   covering the logging form and following you to Today, where "Workout
