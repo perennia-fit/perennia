@@ -791,6 +791,23 @@ export type AgentMealEntry = {
   "updatedAt": string;
 };
 
+export type AgentMealHistoryFood = {
+  "foodSource": string;
+  "foodId": string;
+  "name": string;
+};
+
+export type AgentMealHistoryItem = {
+  "foods": Array<AgentMealHistoryFood>;
+  "count": number;
+  "lastMealId": string;
+  "lastStartedAt": string;
+};
+
+export type AgentMealHistoryResponse = {
+  "items": Array<AgentMealHistoryItem>;
+};
+
 export type AgentMealListField = "id" | "mealType" | "startedAt" | "endedAt" | "timezone" | "localDate" | "timezoneOffsetMinutes" | "timePrecision" | "entries";
 
 export type AgentMealListItem = {
@@ -2383,6 +2400,10 @@ export type ListAgentHistorySetsInput = {
   "cursor"?: string;
 };
 
+export type ListAgentMealHistoryInput = {
+  "limit"?: number;
+};
+
 export type ListAgentMealsInput = {
   "from"?: string;
   "to"?: string;
@@ -2534,6 +2555,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentFoodHistory",
   "listAgentFoods",
   "listAgentHistorySets",
+  "listAgentMealHistory",
   "listAgentMealTypes",
   "listAgentMeals",
   "listAgentMetricReadings",
@@ -2928,6 +2950,16 @@ export class PerenniaAgentClient {
       path: "/agent/history/sets",
       expectedStatus: 200,
       query: { "exerciseId": input.exerciseId, "category": input.category, "from": input.from, "to": input.to, "minLoadKilograms": input.minLoadKilograms, "minReps": input.minReps, "minDurationSeconds": input.minDurationSeconds, "minDistanceKilometers": input.minDistanceKilometers, "limit": input.limit, "cursor": input.cursor },
+      signal: options.signal
+    });
+  }
+
+  async listAgentMealHistory(input: ListAgentMealHistoryInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentMealHistoryResponse> {
+    return this.request<AgentMealHistoryResponse>({
+      method: "GET",
+      path: "/agent/meals/history",
+      expectedStatus: 200,
+      query: { "limit": input.limit },
       signal: options.signal
     });
   }

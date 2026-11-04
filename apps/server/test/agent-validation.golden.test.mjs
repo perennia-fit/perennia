@@ -55,6 +55,7 @@ const DOMAINS_OWNED_ELSEWHERE = new Set([
   "protocol-plan", // protocol-plan.golden.test.mjs
   "barcode-candidates", // barcode-candidates.golden.test.mjs
   "food-history", // food-history.golden.test.mjs
+  "meal-history", // meal-history.golden.test.mjs
   "training-progress", // training-progress.golden.test.mjs
   "progress-measure", // progress-measure.golden.test.mjs
   "metric-trend", // metric-trend.golden.test.mjs

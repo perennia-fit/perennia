@@ -3512,6 +3512,166 @@ void main() {
     });
   });
 
+  group('meal history (docs/designs/meal-logging.md §5)', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    final now = DateTime.utc(2026, 11, 1, 12);
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    // A Meal holding one entry per Food id, in the given order.
+    Future<void> insertMeal(
+      String id,
+      DateTime startedAt,
+      List<String> foodIds,
+    ) async {
+      await _insertHistoryMeal(database, id, startedAt);
+      for (final (position, foodId) in foodIds.indexed) {
+        await _insertHistoryEntry(
+          database,
+          id: '$id-$position',
+          mealId: id,
+          position: position,
+          foodId: foodId,
+          updatedAt: startedAt,
+        );
+      }
+    }
+
+    test('orders by count, then the latest start, then the canonical string',
+        () async {
+      await insertMeal('often-1', DateTime.utc(2026, 10, 1, 8), ['a', 'b']);
+      await insertMeal('often-2', DateTime.utc(2026, 10, 2, 8), ['b', 'a']);
+      await insertMeal('recent', DateTime.utc(2026, 10, 31, 8), ['c', 'd']);
+      await insertMeal('tie-y', DateTime.utc(2026, 10, 30, 8), ['y', 'e']);
+      await insertMeal('tie-f', DateTime.utc(2026, 10, 30, 8), ['f', 'e']);
+
+      final history = await repositories.nutrition.listMealHistory(now: now);
+
+      expect(
+        history.map(
+          (record) => [for (final food in record.foods) food.foodId],
+        ),
+        [
+          ['a', 'b'],
+          ['c', 'd'],
+          ['e', 'f'],
+          ['e', 'y'],
+        ],
+      );
+      expect(history.map((record) => record.count), [2, 1, 1, 1]);
+      expect(
+        history.map((record) => record.lastMealId),
+        ['often-2', 'recent', 'tie-f', 'tie-y'],
+      );
+      expect(history.first.lastStartedAt, DateTime.utc(2026, 10, 2, 8));
+      expect(history.first.foods.first.foodSource, FoodSource.usda);
+    });
+
+    test('caps the items at limit, 20 by default', () async {
+      for (var index = 0; index < 22; index += 1) {
+        await insertMeal(
+          'meal-$index',
+          DateTime.utc(2026, 10, 1, 8).add(Duration(hours: index)),
+          ['food-$index-a', 'food-$index-b'],
+        );
+      }
+
+      final byDefault = await repositories.nutrition.listMealHistory(now: now);
+      final capped = await repositories.nutrition.listMealHistory(
+        now: now,
+        limit: 2,
+      );
+
+      expect(byDefault, hasLength(20));
+      expect(byDefault.first.lastMealId, 'meal-21');
+      expect(byDefault.last.lastMealId, 'meal-2');
+      expect(capped.map((record) => record.lastMealId), ['meal-21', 'meal-20']);
+    });
+
+    test('counts Meals that started exactly 90 days back, not one second more',
+        () async {
+      final cutoff = now.subtract(NutritionRepository.foodHistoryWindow);
+      await insertMeal('on-cutoff', cutoff, ['a', 'b']);
+      await insertMeal(
+        'before-cutoff',
+        cutoff.subtract(const Duration(seconds: 1)),
+        ['c', 'd'],
+      );
+
+      final history = await repositories.nutrition.listMealHistory(now: now);
+
+      expect(NutritionRepository.foodHistoryWindow, const Duration(days: 90));
+      expect(history.map((record) => record.lastMealId), ['on-cutoff']);
+      expect(
+        await repositories.nutrition.listMealHistory(
+          now: now.add(const Duration(seconds: 1)),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('counts a Meal logged again through the app as the same meal',
+        () async {
+      final sourceId = await repositories.nutrition.createMeal(
+        PendingMeal(
+          id: repositories.nutrition.newMealId(),
+          startedAt: DateTime.utc(2026, 10, 30, 8),
+          mealTypeName: 'Breakfast',
+        ),
+      );
+      final chicken = (await repositories.platformFoods.getUsdaFoodById(
+        'usda-fdc-171077',
+      ))!;
+      await repositories.nutrition.logFoodEntrySnapshot(
+        target: ExistingMealTarget(sourceId),
+        entry: FoodEntrySnapshotDraft(
+          mealId: sourceId,
+          foodId: chicken.id,
+          name: chicken.name,
+          foodSource: chicken.foodSource,
+          nutrientsPer100: chicken.nutrientsPer100,
+          isLiquid: chicken.isLiquid,
+          servingLabel: chicken.servingLabel,
+          servingSize: chicken.servingSize,
+          packageSize: chicken.packageSize,
+          portion: _grams(100),
+        ),
+      );
+      await repositories.nutrition.logFoodEntrySnapshot(
+        target: ExistingMealTarget(sourceId),
+        entry: _offSnapshotDraft(sourceId),
+      );
+      final again = PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime.utc(2026, 10, 31, 8),
+        mealTypeName: 'Breakfast',
+      );
+      await repositories.nutrition.logMealAgain(sourceId, NewMealTarget(again));
+
+      final history = await repositories.nutrition.listMealHistory(now: now);
+
+      expect(history, hasLength(1));
+      expect(history.single.count, 2);
+      expect(history.single.lastMealId, again.id);
+      expect(
+        history.single.foods.map((food) => (food.foodSource, food.foodId)),
+        [
+          (FoodSource.openFoodFacts, '3017620422003'),
+          (FoodSource.usda, 'usda-fdc-171077'),
+        ],
+      );
+      expect(history.single.foods.first.name, 'Original branded bar');
+    });
+  });
+
   group('nutrition goals repository', () {
     late AppDatabase database;
     late TrainingRepositories repositories;

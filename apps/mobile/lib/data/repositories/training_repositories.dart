@@ -2773,6 +2773,13 @@ class NutritionRepository {
 
   final TrainingRepositories _repositories;
 
+  /// How far back Food History counts entries and Meal History considers
+  /// Meals: a Meal that started exactly this long before `now` still counts
+  /// (docs/designs/unified-food-search.md § Food History,
+  /// docs/designs/meal-logging.md §5). The server's twin is
+  /// `FOOD_HISTORY_WINDOW_MS` in apps/server/src/food-history.ts.
+  static const Duration foodHistoryWindow = Duration(days: 90);
+
   static const _defaultMealTypes = <_DefaultMealTypeSeed>[
     _DefaultMealTypeSeed(
       id: 'meal-type-breakfast',
@@ -4274,7 +4281,7 @@ class NutritionRepository {
   /// would log without complaint. Its entries themselves are kept. A User
   /// Food entry whose Foods row has not arrived yet still counts.
   Future<List<FoodHistoryRecord>> listFoodHistory({DateTime? now}) async {
-    final cutoff = (now ?? DateTime.now()).subtract(const Duration(days: 90));
+    final cutoff = (now ?? DateTime.now()).subtract(foodHistoryWindow);
     final rows = await _database.customSelect(
       '''
       WITH active AS (
@@ -4324,6 +4331,122 @@ class NutritionRepository {
             final json? => Portion.fromJsonString(json),
             null => null,
           },
+        ),
+    ];
+  }
+
+  /// The user's **Meal History**: the distinct meals they repeat, in Meal
+  /// History order (docs/designs/meal-logging.md §5). Computed on each call
+  /// and never stored or synced; the Meal screen's Your meals reads it once
+  /// when it opens.
+  ///
+  /// The rows considered are the active `food` entries with a Food Source, a
+  /// Food id and a liquid flag, leaving out entries of archived User Foods,
+  /// in active Meals with `time_precision = 'instant'` that started at or
+  /// after [now] minus [foodHistoryWindow] (a Meal exactly 90 days back
+  /// counts). A Meal qualifies when those rows hold two or more distinct
+  /// Foods; Quick Entries don't count toward its identity and don't stop it
+  /// qualifying. Its identity is the canonical string: the distinct
+  /// `food_source:food_id` keys in ordinal (byte) order, joined with `|`, so
+  /// Portions don't count.
+  ///
+  /// One record per identity: its Foods in canonical order, each named as
+  /// its first entry (lowest position, then id) in the most recent Meal with
+  /// that identity (latest start, then greatest Meal id), which is also
+  /// `lastMealId`; and the count of qualifying Meals. Ordered by count
+  /// descending, then the latest start descending, then the canonical string
+  /// ascending, and capped at [limit]. The golden vectors
+  /// `m38-meal-history.json` pin this against the server's
+  /// `buildMealHistory`. Times compare in whole seconds, as Drift stores
+  /// them.
+  ///
+  /// One query. `group_concat(... ORDER BY ...)` needs SQLite 3.44 or later;
+  /// the bundled library is newer, and meal_history_golden_test.dart asserts
+  /// it. `DISTINCT` can't take a separator, so the distinct keys come from
+  /// their own CTE first.
+  Future<List<MealHistoryRecord>> listMealHistory({
+    DateTime? now,
+    int limit = 20,
+  }) async {
+    if (limit <= 0) {
+      return const <MealHistoryRecord>[];
+    }
+    final cutoff = (now ?? DateTime.now()).subtract(foodHistoryWindow);
+    final rows = await _database.customSelect(
+      '''
+      WITH considered AS (
+        SELECT m.id AS meal_id, m.started_at, e.id AS entry_id, e.position,
+               e.name, e.food_source, e.food_id,
+               e.food_source || ':' || e.food_id AS food_key
+        FROM food_entries e
+        JOIN meals m ON m.id = e.meal_id
+        LEFT JOIN foods f ON e.food_source = 'user' AND f.id = e.food_id
+        WHERE e.deleted_at IS NULL AND m.deleted_at IS NULL
+          AND e.entry_kind = 'food' AND e.food_id IS NOT NULL
+          AND e.food_source IS NOT NULL AND e.is_liquid IS NOT NULL
+          AND f.deleted_at IS NULL
+          AND m.time_precision = 'instant' AND m.started_at >= ?1
+      ), meal_keys AS (
+        SELECT DISTINCT meal_id, started_at, food_key FROM considered
+      ), meal_identities AS (
+        SELECT meal_id, started_at,
+          group_concat(food_key, '|' ORDER BY food_key) AS identity
+        FROM meal_keys
+        GROUP BY meal_id, started_at
+        HAVING COUNT(*) >= 2
+      ), ranked AS (
+        SELECT meal_id, started_at, identity,
+          COUNT(*) OVER (PARTITION BY identity) AS meal_count,
+          ROW_NUMBER() OVER (PARTITION BY identity
+            ORDER BY started_at DESC, meal_id DESC) AS latest_rank
+        FROM meal_identities
+      ), latest AS (
+        SELECT meal_id, started_at, identity, meal_count
+        FROM ranked
+        WHERE latest_rank = 1
+        ORDER BY meal_count DESC, started_at DESC, identity ASC
+        LIMIT ?2
+      ), named AS (
+        SELECT c.meal_id, c.food_source, c.food_id, c.food_key, c.name,
+          ROW_NUMBER() OVER (PARTITION BY c.meal_id, c.food_key
+            ORDER BY c.position ASC, c.entry_id ASC) AS name_rank
+        FROM considered c
+        JOIN latest l ON l.meal_id = c.meal_id
+      )
+      SELECT l.meal_id, l.started_at, l.identity, l.meal_count,
+        n.food_source, n.food_id, n.name
+      FROM latest l
+      JOIN named n ON n.meal_id = l.meal_id AND n.name_rank = 1
+      ORDER BY l.meal_count DESC, l.started_at DESC, l.identity ASC,
+        n.food_key ASC
+      ''',
+      variables: [Variable<DateTime>(cutoff), Variable<int>(limit)],
+      readsFrom: {_database.foodEntries, _database.meals, _database.foods},
+    ).get();
+
+    // One row per Food. Each Meal's rows are adjacent, in item order, and a
+    // map keeps insertion order.
+    final byMeal = <String, (QueryRow, List<MealHistoryFood>)>{};
+    for (final row in rows) {
+      final (_, foods) = byMeal.putIfAbsent(
+        row.read<String>('meal_id'),
+        () => (row, <MealHistoryFood>[]),
+      );
+      foods.add(
+        MealHistoryFood(
+          foodSource: FoodSource.values.byName(row.read<String>('food_source')),
+          foodId: row.read<String>('food_id'),
+          name: row.read<String>('name'),
+        ),
+      );
+    }
+    return [
+      for (final (row, foods) in byMeal.values)
+        MealHistoryRecord(
+          foods: foods,
+          count: row.read<int>('meal_count'),
+          lastMealId: row.read<String>('meal_id'),
+          lastStartedAt: row.read<DateTime>('started_at').toUtc(),
         ),
     ];
   }

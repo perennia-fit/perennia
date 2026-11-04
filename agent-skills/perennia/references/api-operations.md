@@ -42,6 +42,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `list-food-history` | GET | `/agent/foods/history` |
 | `list-foods` | GET | `/agent/foods` |
 | `list-history-sets` | GET | `/agent/history/sets` |
+| `list-meal-history` | GET | `/agent/meals/history` |
 | `list-meal-types` | GET | `/agent/meal-types` |
 | `list-meals` | GET | `/agent/meals` |
 | `list-metric-readings` | GET | `/agent/metrics/readings` |
@@ -480,6 +481,18 @@ the last 90 days first, then most recently logged. Each item carries the
 `search-platform-foods` otherwise), the name it was last logged under, and its
 `lastPortion`, so "log my usual breakfast" is this read followed by
 `log-meal`. Archived User Foods are left out; `limit` bounds it (default 50).
+
+`list-meal-history` (`GET /agent/meals/history`) lists the meals the caller
+repeats, which the app shows as Your meals. A meal is the set of distinct
+Foods in a timed Meal of the last 90 days that holds two or more Foods;
+Portions and Quick Entries don't count, and archived Meals, date-only Meals
+and archived User Foods are left out. It returns
+`{ "items": [{ "foods": [{ "foodSource", "foodId", "name" }], "count", "lastMealId", "lastStartedAt" }] }`,
+most often first, then most recent. `lastMealId` is the most recent Meal with
+that set of Foods, the one the app's Log again copies: read it with
+`list-meals` (around `lastStartedAt`) for its Portions and Quick Entries
+before repeating it with `log-meal`. `limit` bounds it (default 20, at most
+50). It is computed on each call and never stored.
 
 `search-platform-foods` (`GET /agent/foods/platform-search`) searches the
 Platform Food reference data the app ships, with `source`/`search`/`limit`.

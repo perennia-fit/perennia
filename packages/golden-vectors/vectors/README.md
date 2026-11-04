@@ -140,6 +140,30 @@ Unlike the other M37 files, this one has a top-level `tolerance` (`1e-9`). The
 runners compare every `trend` field within it, because `pow` can differ in the
 last bit between Dart and JavaScript, and compare everything else exactly.
 
+## Meal History
+
+`m38-meal-history.json` (domain `meal-history`) pins Meal History in both
+languages: the distinct meals a user repeats, derived on each read from their
+active timed Meals in the last 90 days that hold two or more distinct Foods,
+and never stored. The app runs it in
+`apps/mobile/test/domain/meal_history_golden_test.dart` through
+`NutritionRepository.listMealHistory` against in-memory SQLite; the server
+runs it in `apps/server/test/meal-history.golden.test.mjs` against
+`buildMealHistory` in `apps/server/src/meal-history.ts`. The behaviour is
+specified in
+[`docs/designs/meal-logging.md`](../../../docs/designs/meal-logging.md) (§5).
+
+Each case gives `now`, `limit`, the Meals (with their `timePrecision`), the
+Food Entries (with their snapshot `name` and Portion) and the archived User
+Food ids in `input`, and the ordered items in `expected`: the Foods in
+canonical order, `count`, `lastMealId` and `lastStartedAt`. A Meal's identity
+is its canonical string, the distinct `foodSource:foodId` keys in ordinal
+(byte) order joined with `|`; items are ordered by count, then the latest
+start, then the canonical string. Instants are ISO-8601 UTC strings in whole
+seconds, as the app stores them. The file is governed by the adjacent
+`m38-meal-history.schema.json`; its `schemaVersion`, the schema's constant and
+both runners' constants move together.
+
 ## Meal validation
 
 `m39-meal-validation.json` (domain `meal-validation`) pins the Meal-time tier

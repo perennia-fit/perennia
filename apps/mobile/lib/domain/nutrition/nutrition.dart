@@ -1201,6 +1201,47 @@ final class FoodHistoryRecord {
   final Portion? lastPortion;
 }
 
+/// One Food of a [MealHistoryRecord]: its identity and the snapshot name it
+/// had in the most recent Meal with that identity.
+final class MealHistoryFood {
+  const MealHistoryFood({
+    required this.foodSource,
+    required this.foodId,
+    required this.name,
+  });
+
+  final FoodSource foodSource;
+  final String foodId;
+  final String name;
+}
+
+/// One meal in the user's **Meal History**: a distinct set of Foods the user
+/// repeats, derived from their active timed Meals of the last 90 days on each
+/// read and never stored or synced (docs/designs/meal-logging.md §5). Shown
+/// as Your meals.
+final class MealHistoryRecord {
+  MealHistoryRecord({
+    required Iterable<MealHistoryFood> foods,
+    required this.count,
+    required this.lastMealId,
+    required this.lastStartedAt,
+  }) : foods = List<MealHistoryFood>.unmodifiable(foods);
+
+  /// The Foods, in canonical order: by `foodSource:foodId` in ordinal
+  /// (byte) order.
+  final List<MealHistoryFood> foods;
+
+  /// The qualifying Meals with this set of Foods.
+  final int count;
+
+  /// The most recent such Meal: the source `logMealAgain` copies, Portions
+  /// and Quick Entries included.
+  final String lastMealId;
+
+  /// That Meal's start, in UTC.
+  final DateTime lastStartedAt;
+}
+
 class NutritionDayMealRecord {
   NutritionDayMealRecord({
     required this.meal,

@@ -383,6 +383,12 @@ user's active User Foods that have never been logged.
 The Portion of the user's latest Food Entry for a Food that has a Portion, latest by
 the Meal's start, then the entry's last change.
 
+## Meal History
+The distinct meals a user repeats, derived from their active timed Meals in the last
+90 days that contain two or more distinct Foods. Two Meals are the same meal when they
+contain the same set of Foods, whatever the Portions; Quick Entries don't count.
+Ordered by count, then recency. Computed, never stored. Shown as 'Your meals'.
+
 ## Compound
 An item a user takes and tracks — a supplement, vitamin, hormone, peptide, medication,
 or the like. A user-owned catalogue entry carrying a name and a default unit and route,
