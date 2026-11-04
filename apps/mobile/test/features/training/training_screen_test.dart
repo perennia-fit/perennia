@@ -2303,6 +2303,73 @@ void main() {
       await database.close();
     });
 
+    /// Logs one Set of Bench Press and returns once its confirmation shows.
+    Future<void> logOneSet(WidgetTester tester) async {
+      final workoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '60',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '10',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+      expect(find.text('Set 1 logged'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+    }
+
+    _testTrainingScreen('the Log set confirmation goes after 4 s', (
+      tester,
+    ) async {
+      await logOneSet(tester);
+
+      // The 4 s start once the entrance animation has finished.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.text('Set 1 logged'), findsNothing);
+      expect(find.text('Undo'), findsNothing);
+    });
+
+    _testTrainingScreen(
+        'the Log set confirmation goes when the Training Screen closes', (
+      tester,
+    ) async {
+      await logOneSet(tester);
+
+      unawaited(
+        tester.state<NavigatorState>(find.byType(Navigator)).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => const Scaffold(body: Text('Workout')),
+              ),
+            ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.text('Workout'), findsOneWidget);
+      expect(find.text('Set 1 logged'), findsNothing);
+      expect(find.text('Undo'), findsNothing);
+    });
+
     _testTrainingScreen('CUJ 1: logs a planned Set and Undo reverts it', (
       tester,
     ) async {

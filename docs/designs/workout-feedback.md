@@ -1,7 +1,7 @@
 # Workout Feedback
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review
+*   **Status:** Approved
 *   **Date:** 2026-11-04
 
 --------------------------------------------------------------------------------
@@ -919,7 +919,10 @@ Four pull requests, each against `main`, merged in order after
 `CHANGELOG.md` line under `[Unreleased]`. The last one sets this spec's Status
 to Current and its SITEMAP row.
 
-### Pull request 1: one message style
+### PR 1: one message style
+
+**Verification Plan items:** the Gate, and from Accessibility the AA contrast
+group for the `notice` colours.
 
 #### `DESIGN.md` (Modify)
 
@@ -970,7 +973,7 @@ to Current and its SITEMAP row.
 *   **Type / Scope**: widget helper.
 *   **Proposed Changes**: `showTrainingSnackBar` drops its `behavior` line,
     since the theme makes every SnackBar floating. The `margin` parameter stays
-    until pull request 2 removes it.
+    until PR 2 removes it.
 
 #### `apps/mobile/lib/features/nutrition/widgets/log_portion_screen.dart` (Modify)
 
@@ -978,7 +981,11 @@ to Current and its SITEMAP row.
 *   **Proposed Changes**: Remove its two `behavior: SnackBarBehavior.floating`
     lines, which the theme now sets.
 
-### Pull request 2: the status row
+### PR 2: the status row
+
+**Verification Plan items:** the Gate; from Accessibility, `textScaler: 2.0`
+for the status row and the live region on the confirmation only; the
+Performance budget with no rest and with a rest running; manual check 1.
 
 #### `apps/mobile/lib/features/training/widgets/training_confirmation.dart` (Create)
 
@@ -1147,10 +1154,14 @@ to Current and its SITEMAP row.
     *   The existing case still finds `saveSetConfirmationKey` after one frame.
     *   Add a case that seeds a running rest row with 60 s left through
         `RestTimerRepository` before pumping the screen. It taps Log set and
-        expects the key after one frame. (Pull request 3 adds the countdown
+        expects the key after one frame. (PR 3 adds the countdown
         case.)
 
-### Pull request 3: rest phases, cues and notifications
+### PR 3: rest phases, cues and notifications
+
+**Verification Plan items:** the Gate; Kill-and-reopen mid-workout; from
+Accessibility, the phase announcements; the Performance budget in countdown;
+manual checks 2 to 7; the before-release checks.
 
 Its `CHANGELOG.md` lines are an `Added` line for the get-ready cue, the in-app
 tones and Rest over, and a `Fixed` line: "Rest timer sounds off now silences
@@ -1569,7 +1580,10 @@ rest timer notifications on Android 8 and later."
     `TimerCueSounds` or `AppDelegate`. They are checked by hand
     ([Verification Plan](#verification-plan)).
 
-### Pull request 4: Finish summary
+### PR 4: Finish summary
+
+**Verification Plan items:** the Gate; Repositories against in-memory SQLite;
+from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
 
 #### `apps/mobile/lib/features/home/widgets/workout_duration.dart` (Create)
 
@@ -1733,7 +1747,7 @@ rest timer notifications on Android 8 and later."
     request changes `apps/mobile/lib/domain`, so `golden` does not run.
 *   **Repositories against in-memory SQLite**: the Finish sheet's reads and
     `updateTemplateFromWorkout`.
-*   **Kill-and-reopen mid-workout**: pull request 3's tests reopen the
+*   **Kill-and-reopen mid-workout**: PR 3's tests reopen the
     Training Screen at 0:05 and after 0:00.
 *   **Accessibility**: widget tests at `textScaler: 2.0` for the status row and
     the sheet; the AA contrast group for the `notice` colours; the live region
