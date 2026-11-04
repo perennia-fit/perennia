@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
@@ -253,6 +253,190 @@ Day,Time,Group,Food Name,Amount,Energy (kcal),Protein (g),Carbs (g),Fat (g)
       );
       final entry = day.meals.single.entries.single;
       expect(entry.reviewFlags, isNotEmpty);
+    });
+
+    group('Meal placement on re-import (meal-logging.md §7)', () {
+      const day = NutritionDayDate(year: 2026, month: 6, day: 1);
+
+      QuickFoodEntryDraft userFood(String name) {
+        return QuickFoodEntryDraft(
+          name: name,
+          nutrients: NutrientVector.full(<NutrientId, NutrientAmount>{
+            NutrientId.energy: NutrientAmount.complete(
+              value: 50,
+              entered: '50',
+              unit: NutrientUnit.kilocalorie,
+            ),
+          }),
+        );
+      }
+
+      Future<MealRecord> mealOfType(String mealType) async {
+        return (await repositories.nutrition.nutritionDay(day))
+            .meals
+            .map((dayMeal) => dayMeal.meal)
+            .singleWhere((meal) => meal.mealType == mealType);
+      }
+
+      Future<List<String>> entryNames(String mealId) async {
+        return (await repositories.nutrition.listActiveEntriesForMeal(mealId))
+            .map((entry) => entry.name)
+            .toList(growable: false);
+      }
+
+      Future<int> mealCount() async {
+        return (await database.select(database.meals).get()).length;
+      }
+
+      test(
+          're-import after the user added a food keeps the edited entries in '
+          'their Meal and creates no Meal', () async {
+        await land();
+        final breakfast = await mealOfType('Breakfast');
+        await repositories.nutrition.logQuickEntry(
+          target: ExistingMealTarget(breakfast.id),
+          entry: userFood('Coffee'),
+        );
+        final mealsBefore = await mealCount();
+
+        final second = await land();
+
+        expect(second.importedCount, 0);
+        expect(second.updatedCount, 3);
+        expect(second.mealIds, contains(breakfast.id));
+        expect(await mealCount(), mealsBefore);
+        final secondBatch = (await repositories.activityLog.listEntries())
+            .where((entry) => entry.batchId == second.batchId);
+        expect(
+          secondBatch.map((entry) => entry.entityTable).toSet(),
+          <String>{AppDatabase.foodEntriesTable},
+        );
+        expect(
+          await entryNames(breakfast.id),
+          <String>['Oats', 'Banana', 'Coffee'],
+        );
+      });
+
+      test('a new imported row never joins a Meal holding a user-added food',
+          () async {
+        await land();
+        final breakfast = await mealOfType('Breakfast');
+        await repositories.nutrition.logQuickEntry(
+          target: ExistingMealTarget(breakfast.id),
+          entry: userFood('Coffee'),
+        );
+        const more = '''
+Day,Time,Group,Food Name,Amount,Energy (kcal),Protein (g),Carbs (g),Fat (g)
+2026-06-01,08:10,Breakfast,Yoghurt,150 g,90,15,6,0
+''';
+
+        final result = await repositories.nutrition.importNutritionBatch(
+          batch: adapter.parse(more),
+          provider: adapter.provider,
+          consentCheck: () async => true,
+        );
+
+        expect(result.importedCount, 1);
+        final landedMealId = result.mealIds.single;
+        expect(landedMealId, isNot(breakfast.id));
+        expect(await entryNames(landedMealId), <String>['Yoghurt']);
+        expect(
+          await entryNames(breakfast.id),
+          <String>['Oats', 'Banana', 'Coffee'],
+        );
+      });
+
+      test('an import never reuses a Meal the user created, empty or not',
+          () async {
+        final emptyMealId = await repositories.nutrition.createMeal(
+          PendingMeal(
+            id: repositories.nutrition.newMealId(),
+            startedAt: DateTime(2026, 6, 1, 7),
+            mealTypeName: 'Breakfast',
+          ),
+        );
+        final userLunch = await repositories.nutrition.logQuickEntry(
+          target: NewMealTarget(
+            PendingMeal(
+              id: repositories.nutrition.newMealId(),
+              startedAt: DateTime(2026, 6, 1, 12),
+              mealTypeName: 'Lunch',
+            ),
+          ),
+          entry: userFood('Sandwich'),
+        );
+
+        final result = await land();
+
+        expect(result.mealIds, hasLength(2));
+        expect(result.mealIds, isNot(contains(emptyMealId)));
+        expect(result.mealIds, isNot(contains(userLunch.mealId)));
+        expect(await entryNames(emptyMealId), isEmpty);
+        expect(await entryNames(userLunch.mealId), <String>['Sandwich']);
+      });
+
+      test('an import reuses a Meal holding only imported foods', () async {
+        final first = await land();
+        final breakfast = await mealOfType('Breakfast');
+        const more = '''
+Day,Time,Group,Food Name,Amount,Energy (kcal),Protein (g),Carbs (g),Fat (g)
+2026-06-01,08:10,Breakfast,Yoghurt,150 g,90,15,6,0
+''';
+
+        final result = await repositories.nutrition.importNutritionBatch(
+          batch: adapter.parse(more),
+          provider: adapter.provider,
+          consentCheck: () async => true,
+        );
+
+        expect(first.mealIds, contains(breakfast.id));
+        expect(result.mealIds, <String>[breakfast.id]);
+        expect(
+          await entryNames(breakfast.id),
+          <String>['Oats', 'Banana', 'Yoghurt'],
+        );
+      });
+
+      test('re-import never moves an entry out of the user\'s Meal (CUJ 8)',
+          () async {
+        await land();
+        final breakfast = await mealOfType('Breakfast');
+        final oats = (await repositories.nutrition
+                .listActiveEntriesForMeal(breakfast.id))
+            .singleWhere((entry) => entry.name == 'Oats');
+        final userMeal = await repositories.nutrition.logQuickEntry(
+          target: NewMealTarget(
+            PendingMeal(
+              id: repositories.nutrition.newMealId(),
+              startedAt: DateTime(2026, 6, 1, 10),
+              mealTypeName: 'Brunch',
+            ),
+          ),
+          entry: userFood('Coffee'),
+        );
+        // Stands in for the entry having been regrouped into the user's Meal
+        // elsewhere (another device or an agent); the app has no move write.
+        await (database.update(database.foodEntries)
+              ..where((row) => row.id.equals(oats.id)))
+            .write(
+                FoodEntriesCompanion(mealId: Value<String>(userMeal.mealId)));
+        final mealsBefore = await mealCount();
+
+        final second = await land();
+
+        expect(second.updatedCount, 3);
+        expect(second.mealIds, contains(userMeal.mealId));
+        expect(await mealCount(), mealsBefore);
+        expect(
+          (await repositories.nutrition.getFoodEntryById(oats.id))!.mealId,
+          userMeal.mealId,
+        );
+        expect(
+          await entryNames(userMeal.mealId),
+          unorderedEquals(<String>['Coffee', 'Oats']),
+        );
+        expect(await entryNames(breakfast.id), <String>['Banana']);
+      });
     });
 
     test('no nutrition total is stored — totals derive on read', () async {

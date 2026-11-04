@@ -2810,6 +2810,36 @@ void main() {
         expect(await repositories.nutrition.getMealById(target.id), isNull);
         expect(await activityCount(), afterDelete);
       });
+
+      test('undoing it into a new Meal with no later additions succeeds',
+          () async {
+        final target = pendingMeal(
+          startedAt: DateTime(2026, 6, 26, 8, 15),
+          mealTypeName: 'Breakfast',
+        );
+        final result = await repositories.nutrition.logMealAgain(
+          sourceMealId,
+          NewMealTarget(target),
+        );
+
+        final undo = await repositories.activityLog.undoBatch(result.batchId);
+
+        expect(undo.hasConflicts, isFalse);
+        expect(undo.appliedEntries, hasLength(1 + result.foodEntryIds.length));
+        expect(
+          (await repositories.nutrition.getMealById(target.id))!.deletedAt,
+          isNotNull,
+        );
+        expect(
+          await repositories.nutrition.listActiveEntriesForMeal(target.id),
+          isEmpty,
+        );
+        expect(
+          (await repositories.nutrition.listActiveEntriesForMeal(sourceMealId))
+              .map((entry) => entry.id),
+          sourceEntryIds,
+        );
+      });
     });
 
     group('updateMealTime', () {
@@ -3002,6 +3032,85 @@ void main() {
             .deletedAt,
         isNotNull,
       );
+    });
+
+    group('undoing the Batch that created a Meal (§7)', () {
+      late PendingMeal meal;
+      late LogQuickEntryResult first;
+      late LogQuickEntryResult later;
+
+      setUp(() async {
+        meal = pendingMeal(
+          startedAt: DateTime(2026, 6, 26, 19),
+          mealTypeName: 'Dinner',
+        );
+        first = await repositories.nutrition.logQuickEntry(
+          target: NewMealTarget(meal),
+          entry: QuickFoodEntryDraft(
+            name: 'Rice',
+            nutrients: _energyAndMacros(energy: 200),
+          ),
+        );
+        later = await repositories.nutrition.logQuickEntry(
+          target: ExistingMealTarget(meal.id),
+          entry: QuickFoodEntryDraft(
+            name: 'Dessert',
+            nutrients: _energyAndMacros(energy: 300),
+          ),
+        );
+      });
+
+      test('is refused as dependent once another Batch added a food', () async {
+        final before = await activityCount();
+
+        final undo = await repositories.activityLog.undoBatch(first.batchId);
+
+        expect(undo.undoBatchId, isNull);
+        expect(undo.appliedEntries, isEmpty);
+        final conflict = undo.conflicts.single;
+        expect(conflict.reason, ActivityLogUndoConflictReason.dependent);
+        expect(conflict.entityTable, AppDatabase.mealsTable);
+        expect(conflict.entityId, meal.id);
+        expect(await activityCount(), before);
+        expect(
+          (await repositories.nutrition.getMealById(meal.id))!.deletedAt,
+          isNull,
+        );
+        expect(
+          (await repositories.nutrition.listActiveEntriesForMeal(meal.id))
+              .map((entry) => entry.id),
+          <String>[first.foodEntryId, later.foodEntryId],
+        );
+      });
+
+      test('succeeds once the later food has been removed', () async {
+        await repositories.nutrition.deleteFoodEntry(later.foodEntryId);
+
+        final undo = await repositories.activityLog.undoBatch(first.batchId);
+
+        expect(undo.hasConflicts, isFalse);
+        expect(undo.appliedEntries, hasLength(2));
+        expect(
+          (await repositories.nutrition.getMealById(meal.id))!.deletedAt,
+          isNotNull,
+        );
+        expect(
+          (await repositories.nutrition.getFoodEntryById(first.foodEntryId))!
+              .deletedAt,
+          isNotNull,
+        );
+      });
+
+      test('leaves undoing the later Batch alone', () async {
+        final undo = await repositories.activityLog.undoBatch(later.batchId);
+
+        expect(undo.hasConflicts, isFalse);
+        expect(
+          (await repositories.nutrition.listActiveEntriesForMeal(meal.id))
+              .map((entry) => entry.id),
+          <String>[first.foodEntryId],
+        );
+      });
     });
 
     test('removing the last entry keeps the Meal active', () async {

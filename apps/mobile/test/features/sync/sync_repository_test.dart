@@ -4912,6 +4912,75 @@ void main() {
       expect(undo.undoBatchId, isNotNull);
       expect((await storedMeal(mealId)).deletedAt, isNotNull);
     });
+
+    test(
+        'undo of the Batch that created a Meal is refused once a pulled food '
+        'joined it (meal-logging.md §7)', () async {
+      final repositories = TrainingRepositories(database);
+      final meal = PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 26, 12, 30),
+        mealTypeName: 'Lunch',
+      );
+      final first = await repositories.nutrition.logQuickEntry(
+        target: NewMealTarget(meal),
+        entry: QuickFoodEntryDraft(
+          name: 'Soup',
+          nutrients: _offNutrientsPer100(),
+        ),
+      );
+      final localEntry = (await repositories.activityLog.listEntries())
+          .singleWhere(
+            (entry) =>
+                entry.batchId == first.batchId &&
+                entry.entityTable == AppDatabase.foodEntriesTable,
+          )
+          .afterImage!;
+      const pulledEntryId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d0f1';
+      final pulledAt = DateTime.now().toUtc().add(const Duration(minutes: 1));
+      final pulledEntry = <String, Object?>{
+        ...localEntry,
+        'id': pulledEntryId,
+        'position': 1,
+        'name': 'Bread',
+        'updated_at': pulledAt.toIso8601String(),
+      };
+
+      final applied = await pullMeals(<Map<String, Object?>>[
+        <String, Object?>{
+          'entity': AppDatabase.foodEntriesTable,
+          'id': pulledEntryId,
+          'deviceId': 'device-b',
+          'payload': pulledEntry,
+          'updatedAt': pulledEntry['updated_at'],
+          'deletedAt': null,
+          'activityLogId': 'remote-log-$pulledEntryId',
+          'actor': 'app',
+          'batchId': 'remote-food-batch',
+          'beforeImage': null,
+          'afterImage': pulledEntry,
+          'occurredAt': pulledEntry['updated_at'],
+        },
+      ]);
+      expect(applied, 1);
+
+      final undo =
+          await ActivityFeedRepository(repositories).undoBatch(first.batchId);
+
+      expect(undo.undoBatchId, isNull);
+      expect(undo.appliedEntries, isEmpty);
+      expect(
+        undo.conflicts.single.reason,
+        ActivityLogUndoConflictReason.dependent,
+      );
+      expect(undo.conflicts.single.entityId, meal.id);
+      expect((await storedMeal(meal.id)).deletedAt, isNull);
+      expect(
+        (await repositories.nutrition.listActiveEntriesForMeal(meal.id))
+            .map((entry) => entry.id),
+        <String>[first.foodEntryId, pulledEntryId],
+      );
+    });
   });
 }
 

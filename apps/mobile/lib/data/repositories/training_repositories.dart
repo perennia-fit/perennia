@@ -3774,6 +3774,11 @@ class NutritionRepository {
   ///   placement rule). No hosted-service path calls this.
   /// - **Idempotent by `(source, externalId)`**: a row already imported under
   ///   the same key is updated in place (last-import-wins), never duplicated.
+  /// - **Merge-only Meal placement** (meal-logging.md §7): an updated entry
+  ///   stays in the Meal that holds it and is reported in `mealIds`; only a
+  ///   created entry looks for a Meal, through [_findOrCreateImportMeal],
+  ///   which never reuses a Meal the user created or added a food to. A batch
+  ///   that only updates entries creates no Meal.
   /// - **Tombstone-respecting**: a previously-deleted imported entry is NOT
   ///   resurrected on re-import.
   /// - **Read-only observations**: entries land with [importSource] set so the
@@ -3853,16 +3858,15 @@ class NutritionRepository {
               .toList(growable: false);
           reviewFlagCount += reviewFlags.length;
 
-          // Create the grouping Meal lazily, only once a row will actually land.
-          mealId ??= await _findOrCreateImportMeal(importMeal, context);
-          if (!landedMealIds.contains(mealId)) {
-            landedMealIds.add(mealId);
-          }
-
           if (existing != null) {
+            // An updated entry stays in the Meal that holds it: re-import
+            // never moves a Food Entry out of a Meal the user edited, and a
+            // row that only updates creates no Meal (meal-logging.md §7).
+            if (!landedMealIds.contains(existing.mealId)) {
+              landedMealIds.add(existing.mealId);
+            }
             await _updateImportedFoodEntry(
               existing: existing,
-              mealId: mealId,
               importEntry: importEntry,
               foodSource: foodSource,
               importSource: importSource,
@@ -3873,9 +3877,16 @@ class NutritionRepository {
             updatedCount += 1;
             landedEntryIds.add(existing.id);
           } else {
+            // Find or create the grouping Meal lazily, only once a new row
+            // will actually land.
+            final targetMealId =
+                mealId ??= await _findOrCreateImportMeal(importMeal, context);
+            if (!landedMealIds.contains(targetMealId)) {
+              landedMealIds.add(targetMealId);
+            }
             final created = await _createFoodEntrySnapshot(
               draft: FoodEntrySnapshotDraft(
-                mealId: mealId,
+                mealId: targetMealId,
                 foodId: null,
                 name: importEntry.name,
                 foodSource: foodSource,
@@ -3926,17 +3937,44 @@ class NutritionRepository {
         .getSingleOrNull();
   }
 
+  /// Picks the Meal a newly imported Food Entry lands in. Called only when
+  /// the import creates a Food Entry; an updated entry stays where it is.
+  ///
+  /// Candidates are the active Meals on [NutritionImportMeal.localDate] with
+  /// the stored (normalized) Meal Type, ordered by `started_at`, then `id`.
+  /// The first one that holds at least one active Food Entry, all of them
+  /// carrying an `import_source` (from any source), is reused. A Meal the user
+  /// created, or added a food to, is never reused, so an import only ever
+  /// adds rows next to other imported rows (merge-only; meal-logging.md §7).
+  /// Otherwise a new Meal is created with the import's time precision.
   Future<String> _findOrCreateImportMeal(
     NutritionImportMeal importMeal,
     WriteContext context,
   ) async {
     final mealTypeForStorage =
         _normalizeMealTypeForStorage(importMeal.mealType);
-    final existing = await (_activeMealQuery(localDate: importMeal.localDate)
-          ..where((row) => row.mealType.equals(mealTypeForStorage)))
+    final candidates = await (_database.select(_database.meals)
+          ..where(
+            (row) =>
+                row.deletedAt.isNull() &
+                row.localDate.equals(importMeal.localDate.storageValue) &
+                row.mealType.equals(mealTypeForStorage),
+          )
+          ..orderBy([
+            (row) => OrderingTerm.asc(row.startedAt),
+            (row) => OrderingTerm.asc(row.id),
+          ]))
         .get();
-    if (existing.isNotEmpty) {
-      return existing.first.id;
+    for (final candidate in candidates) {
+      final activeEntries = await (_database.select(_database.foodEntries)
+            ..where(
+              (row) => row.mealId.equals(candidate.id) & row.deletedAt.isNull(),
+            ))
+          .get();
+      if (activeEntries.isNotEmpty &&
+          activeEntries.every((row) => row.importSource != null)) {
+        return candidate.id;
+      }
     }
     return _createMeal(
       MealDraft(
@@ -3948,9 +3986,11 @@ class NutritionRepository {
     );
   }
 
+  /// Rewrites an already-imported Food Entry from its re-imported row
+  /// (last-import-wins). It never writes `mealId`: the entry stays in the
+  /// Meal that holds it, even one the user edited (meal-logging.md §7).
   Future<void> _updateImportedFoodEntry({
     required FoodEntryRow existing,
-    required String mealId,
     required NutritionImportFoodEntry importEntry,
     required FoodSource foodSource,
     required String importSource,
@@ -3971,7 +4011,6 @@ class NutritionRepository {
           ..where((row) => row.id.equals(existing.id)))
         .write(
       FoodEntriesCompanion(
-        mealId: Value<String>(mealId),
         entryKind: Value<String>(FoodEntryKind.food.name),
         name: Value<String>(
           _normalizeFoodEntryNameForStorage(importEntry.name),
@@ -14467,6 +14506,7 @@ class ActivityLogRepository {
         conflicts.addAll(
           await _templateGroupMemberUndoConflicts(entries),
         );
+        conflicts.addAll(await _mealDependentUndoConflicts(entries));
       }
 
       if (conflicts.isNotEmpty) {
@@ -14605,6 +14645,68 @@ class ActivityLogRepository {
           currentImage: await _currentImageFor(
             entityTable: entry.entityTable,
             entityId: entry.entityId,
+          ),
+        ),
+      );
+    }
+    return List<ActivityLogUndoConflict>.unmodifiable(conflicts);
+  }
+
+  /// Refuses undoing the Batch that created a Meal once that Meal holds an
+  /// active Food Entry this Batch did not create (meal-logging.md §7).
+  ///
+  /// Undo is all-or-nothing, and archiving the Meal would leave such an entry
+  /// in an archived Meal, so the whole undo reports one
+  /// [ActivityLogUndoConflictReason.dependent] conflict on the Meal's entry
+  /// instead of a partial undo (Alternative G). Entries added by other local
+  /// Batches and entries that arrived by sync count alike; archived entries
+  /// don't. Edits by other Batches to an entry this Batch created are the
+  /// stale check's business, not this one's.
+  Future<List<ActivityLogUndoConflict>> _mealDependentUndoConflicts(
+    List<ActivityLogEntry> entries,
+  ) async {
+    final createdMealEntries = entries
+        .where(
+          (entry) =>
+              entry.entityTable == AppDatabase.mealsTable &&
+              entry.beforeImage == null,
+        )
+        .toList(growable: false);
+    if (createdMealEntries.isEmpty) {
+      return const <ActivityLogUndoConflict>[];
+    }
+    final createdFoodEntryIds = <String>{
+      for (final entry in entries)
+        if (entry.entityTable == AppDatabase.foodEntriesTable &&
+            entry.beforeImage == null)
+          entry.entityId,
+    };
+
+    final conflicts = <ActivityLogUndoConflict>[];
+    for (final mealEntry in createdMealEntries) {
+      final activeFoodEntries = await (_database.select(_database.foodEntries)
+            ..where(
+              (row) =>
+                  row.mealId.equals(mealEntry.entityId) &
+                  row.deletedAt.isNull(),
+            ))
+          .get();
+      final hasDependent = activeFoodEntries.any(
+        (row) => !createdFoodEntryIds.contains(row.id),
+      );
+      if (!hasDependent) {
+        continue;
+      }
+      conflicts.add(
+        ActivityLogUndoConflict(
+          entryId: mealEntry.id,
+          entityTable: mealEntry.entityTable,
+          entityId: mealEntry.entityId,
+          reason: ActivityLogUndoConflictReason.dependent,
+          expectedImage: mealEntry.afterImage,
+          currentImage: await _currentImageFor(
+            entityTable: mealEntry.entityTable,
+            entityId: mealEntry.entityId,
           ),
         ),
       );
@@ -15966,6 +16068,12 @@ enum ActivityLogUndoConflictReason {
   stale,
   missing,
   unsupported,
+
+  /// The Batch created a Meal that now holds an active Food Entry created by
+  /// a different Batch (another local Batch or a sync pull). Undo stays
+  /// all-or-nothing, so it is refused rather than orphaning that entry
+  /// (meal-logging.md §7, Alternative G).
+  dependent,
 }
 
 class LogWorkoutResult {
