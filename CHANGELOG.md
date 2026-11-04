@@ -16,6 +16,14 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   covering the logging form and following you to Today, where "Workout
   finished" never got its turn. They now close after 4 seconds, and a Training
   Screen's confirmation closes with the screen.
+- **A Compound strength an Agent writes no longer stops sync.** An Agent
+  stored a Compound's strength, and a Dose's strength snapshot, in a shape the
+  app couldn't read, so one such row made every sync pull on a device fail. In
+  turn, Agents read every strength the app wrote as `null`. Agents now store
+  the app's label (such as `5 mg/capsule`), both sides read rows already
+  stored in either shape, and an Agent write of a strength the app can't hold
+  (a unit outside the registry, an amount that isn't positive) is refused with
+  `compound_strength`.
 
 ## [0.2.0] - 2026-11-03
 
