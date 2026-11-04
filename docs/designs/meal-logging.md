@@ -667,7 +667,7 @@ device and the date is derived, so neither can be malformed.
 | `Add foods later` | `batchWriteAgentMeal` with Meal fields and no entries |
 | Change a Meal's time or Meal Type | `batchWriteAgentMeal` with `startedAt` (and its offset or zone) or `mealType` |
 | Remove a Food Entry, edit a Portion | `batchWriteAgentMeal` with the full entry, `deletedAt` set or the new Portion |
-| Delete meal | `batchWriteAgentMeal` with `meal.deletedAt` |
+| Delete meal | `batchWriteAgentMeal` with `meal.deletedAt` and every active entry sent with `deletedAt` set, as the app's `deleteMeal` archives the Meal and its entries in one Batch |
 | Your meals | `listAgentMealHistory` |
 | The Meal Type list | `listAgentMealTypes` |
 | Undo | `undoAgentActivityBatch` (existing), with `skipped_dependent` |
@@ -722,8 +722,11 @@ writes only the Meal fields a request sends.
 - **Entries-only request** (`meal` carries only `id`): the Meal row is not rewritten, and
   its `updatedAt` doesn't move.
 - **Archived Meals.** A request whose resulting Meal is archived may not add Food Entries
-  or un-archive them: 422 `meal_archived`. A request that sends `deletedAt: null` and
-  entries un-archives the Meal and writes the entries.
+  or un-archive them: 422 `meal_archived`. It also fails with 422 `meal_archived` if any
+  Food Entry stored active in that Meal is not tombstoned (sent with `deletedAt` set) in
+  the same request. The store reads the Meal's stored active entries with `FOR UPDATE`
+  alongside the Meal row. A request that sends `deletedAt: null` and entries un-archives
+  the Meal and writes the entries.
 - **Entries** are written as sent, except that an unsent `deletedAt` keeps the stored
   value, and the import keys, which are never in an agent payload, are carried forward
   from the stored payload (§10). An existing entry id under a different `meal.id` fails
@@ -734,7 +737,7 @@ writes only the Meal fields a request sends.
 
 **Pipeline.** `AgentMealBatchWriteStore.writeMealBatch` opens the transaction and takes the
 idempotency check, as today. It then selects the stored Meal and entry payloads (by id, for
-any user) with `FOR UPDATE`, calls the pure
+any user), and the ids of the Meal's stored active Food Entries, with `FOR UPDATE`, calls the pure
 `prepareAgentMealBatchWrite(request, stored, now)`, and either writes the prepared rows or
 returns the issues and status. A prepared Meal row of `null` means "not rewritten". REST
 (`app.ts`) and MCP (`agent-mcp.ts`) both call the store this way.
@@ -1163,7 +1166,7 @@ The server stores Meals as a JSON payload, so there is no Postgres migration.
 |---|---|
 | `agent-validation.golden.test.mjs` | Add a `meal-validation` branch that runs `validateAgentMealTime` and also asserts `localDateAtOffset(startedAt, offset) === expected.localDate`. |
 | `timezone.test.mjs` | Add `localDateAtOffset` cases, and `offsetMinutesInTimezone` across a DST change. |
-| `agent-meal-batch-write.test.mjs` | Add: create with only an IANA zone; create with only an abbreviation and a `localDate` stores a null offset and that date; the same without `localDate` is 422 `meal_offset_unknown`; create without `mealType` is 422 `meal_create_incomplete`; a zero-entry create; update with only `startedAt` moving the derived `localDate` across midnight; an entries-only request leaves the Meal row and its `updatedAt` untouched; an entries-only request for an unknown id is 404; an unsent entry `deletedAt` and the import keys keep their stored values; `null` clears `endedAt`; entries into an archived Meal are 422 `meal_archived`, and accepted when the same request sends `deletedAt: null`; another user's Meal id and entry id are 409; an entry id under a different Meal is 422 `entry_meal_mismatch`; a future `startedAt` returns a top-level warning. |
+| `agent-meal-batch-write.test.mjs` | Add: create with only an IANA zone; create with only an abbreviation and a `localDate` stores a null offset and that date; the same without `localDate` is 422 `meal_offset_unknown`; create without `mealType` is 422 `meal_create_incomplete`; a zero-entry create; update with only `startedAt` moving the derived `localDate` across midnight; an entries-only request leaves the Meal row and its `updatedAt` untouched; an entries-only request for an unknown id is 404; an unsent entry `deletedAt` and the import keys keep their stored values; `null` clears `endedAt`; entries into an archived Meal are 422 `meal_archived`, and accepted when the same request sends `deletedAt: null`; archiving a Meal with an untombstoned stored active entry is 422 `meal_archived`, and accepted when the request tombstones every active entry; another user's Meal id and entry id are 409; an entry id under a different Meal is 422 `entry_meal_mismatch`; a future `startedAt` returns a top-level warning. |
 | `agent-meal-types.test.mjs` | Create. Route auth; archived types excluded; order by `sortOrder` then `id`. |
 | `agent-meal-reads.test.mjs` | Add the two new fields on `listAgentMeals`, including `null` and `instant` for an older payload. |
 | `agent-activity.test.mjs` | Add: undoing a Meal's creating Batch after another Batch added an entry returns `skipped_dependent` and applies nothing. |
