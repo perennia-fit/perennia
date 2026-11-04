@@ -5307,6 +5307,201 @@ void main() {
     });
 
     test(
+        'a strength an Agent stored as an object, before the label was used, '
+        'applies as the label on a Compound and on a Dose snapshot', () async {
+      final updatedAt = DateTime.utc(2026, 7, 1, 12).toIso8601String();
+      final agentStrength = <String, Object?>{
+        'value': 5,
+        'massUnit': 'milligram',
+        'perUnit': 'capsule',
+      };
+      await repositories.protocols.applySyncImage(
+        entityTable: AppDatabase.compoundsTable,
+        image: <String, Object?>{
+          'id': 'agent-compound',
+          'name': 'Zinc',
+          'default_unit': 'capsule',
+          'default_route': 'oral',
+          'strength': agentStrength,
+          'updated_at': updatedAt,
+          'deleted_at': null,
+        },
+        deviceId: 'agent',
+        batchId: 'batch-agent',
+      );
+      await repositories.protocols.applySyncImage(
+        entityTable: AppDatabase.dosesTable,
+        image: <String, Object?>{
+          'id': 'agent-dose',
+          'compound_id': 'agent-compound',
+          'compound_name': 'Zinc',
+          'compound_strength': <String, Object?>{
+            'value': 0.5,
+            'massUnit': 'internationalUnit',
+            'perUnit': 'drop',
+          },
+          'amount_value': 2,
+          'amount_entered': '2',
+          'unit': 'drop',
+          'route': 'oral',
+          'took_at': '2026-07-01T12:00:00.000Z',
+          'timezone': 'UTC',
+          'local_date': '2026-07-01',
+          'provenance': 'agent',
+          'protocol_id': null,
+          'protocol_name': null,
+          'updated_at': updatedAt,
+          'deleted_at': null,
+        },
+        deviceId: 'agent',
+        batchId: 'batch-agent',
+      );
+
+      final compound = await (database.select(database.compounds)
+            ..where((row) => row.id.equals('agent-compound')))
+          .getSingle();
+      expect(compound.strength, '5 mg/capsule');
+      final listed = (await repositories.protocols.listCompounds()).singleWhere(
+        (compound) => compound.id == 'agent-compound',
+      );
+      expect(listed.strength, CompoundStrength.parse('5 mg/capsule'));
+      expect((await doseRow('agent-dose')).compoundStrength, '0.5 IU/drop');
+
+      // An object the label can't hold (a unit outside the registry, a
+      // non-positive amount) is a FormatException, which a pull quarantines.
+      for (final strength in <Map<String, Object?>>[
+        <String, Object?>{'value': 5, 'massUnit': 'mg', 'perUnit': 'capsule'},
+        <String, Object?>{
+          'value': 0,
+          'massUnit': 'milligram',
+          'perUnit': 'capsule',
+        },
+        <String, Object?>{'value': '5', 'massUnit': 'milligram'},
+      ]) {
+        await expectLater(
+          () => repositories.protocols.applySyncImage(
+            entityTable: AppDatabase.compoundsTable,
+            image: <String, Object?>{
+              'id': 'bad-compound',
+              'name': 'Bad',
+              'default_unit': 'capsule',
+              'default_route': 'oral',
+              'strength': strength,
+              'updated_at': updatedAt,
+              'deleted_at': null,
+            },
+            deviceId: 'agent',
+            batchId: 'batch-agent',
+          ),
+          throwsA(isA<FormatException>()),
+        );
+      }
+    });
+
+    test(
+        'a pull page holding Agent-written strength objects applies the '
+        'readable one, quarantines the other, and the Agent write can be '
+        'undone', () async {
+      const updatedAt = '2026-07-01T12:00:00.000Z';
+      const batchId = 'agent-strength-batch';
+      Map<String, Object?> agentCompound(
+        String id,
+        Map<String, Object?> strength,
+      ) {
+        final payload = <String, Object?>{
+          'id': id,
+          'name': id,
+          'default_unit': 'capsule',
+          'default_route': 'oral',
+          'strength': strength,
+          // No `is_favorite`: the Agent write has no favourite field.
+          'updated_at': updatedAt,
+          'deleted_at': null,
+        };
+        return <String, Object?>{
+          'entity': AppDatabase.compoundsTable,
+          'id': id,
+          'deviceId': 'agent-device',
+          'payload': payload,
+          'updatedAt': updatedAt,
+          'deletedAt': null,
+          'activityLogId': 'agent:$batchId:compound:$id',
+          'actor': 'agent',
+          'batchId': batchId,
+          'beforeImage': null,
+          'afterImage': payload,
+          'occurredAt': updatedAt,
+        };
+      }
+
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            final cursor = jsonDecode(request.body)['cursor'];
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'nextCursor': 'cursor-strength',
+                'serverClock': '2026-07-01T12:00:01.000Z',
+                'changes': cursor == null
+                    ? <Object?>[
+                        agentCompound('agent-zinc', <String, Object?>{
+                          'value': 5,
+                          'massUnit': 'milligram',
+                          'perUnit': 'capsule',
+                        }),
+                        agentCompound('agent-scoop', <String, Object?>{
+                          'value': 5,
+                          'massUnit': 'scoop',
+                          'perUnit': 'capsule',
+                        }),
+                      ]
+                    : <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }),
+        ),
+      );
+
+      // Before the fix the object threw a StateError, which the pull doesn't
+      // quarantine, so the whole page failed on every pull.
+      final result = await repository.pullLoggedSetChanges(
+        session: AuthSession(
+          provider: AuthSessionProvider.email,
+          serverUrl: Uri.parse('https://sync.example/'),
+          token: 'session-token',
+          userEmail: 'user@example.com',
+          userId: 'user-1',
+          userName: 'Sync User',
+        ),
+        deviceId: 'device-a',
+      );
+
+      expect(result.appliedCount, 1);
+      final compounds = await database.select(database.compounds).get();
+      expect(
+        compounds.map((row) => (row.id, row.strength)),
+        <(String, String?)>[('agent-zinc', '5 mg/capsule')],
+      );
+      final held = await database.select(database.quarantinedSyncChanges).get();
+      expect(held.map((row) => row.entityId), <String>['agent-scoop']);
+      expect(held.single.failureKind, 'format');
+
+      // The Agent's after-image still holds the object; undo reads it as the
+      // label the row holds, so it isn't reported stale.
+      final undo = await repositories.activityLog.undoBatch(batchId);
+      expect(undo.conflicts, isEmpty);
+      expect(
+        undo.appliedEntries.map((entry) => entry.entityId),
+        <String>['agent-zinc'],
+      );
+    });
+
+    test(
         'a plan written by the server, with `rule` and `period` as JSON '
         'objects rather than JSON text, applies and reads back', () async {
       final compound = await repositories.protocols.createCompound(
