@@ -139,3 +139,30 @@ both runners' constants move together.
 Unlike the other M37 files, this one has a top-level `tolerance` (`1e-9`). The
 runners compare every `trend` field within it, because `pow` can differ in the
 last bit between Dart and JavaScript, and compare everything else exactly.
+
+## Meal validation
+
+`m39-meal-validation.json` (domain `meal-validation`) pins the Meal-time tier
+of the shared two-tier validator in both languages, and the rule that derives a
+Meal's local date: `validateMealTime` (`validateAgentMealTime` in TypeScript)
+with its three rules, `meal_ended_before_start` and `meal_type_required` (hard
+reject) and `meal_time_in_future` (soft warning, more than 5 minutes after
+`now`), and `localDateAtOffset`. The app runs it in
+`apps/mobile/test/domain/meal_validation_golden_test.dart` against
+`apps/mobile/lib/domain/nutrition/meal_validation.dart` and
+`apps/mobile/lib/domain/common/local_clock.dart`; the server runs it in
+`apps/server/test/agent-validation.golden.test.mjs` against
+`apps/server/src/agent-validation.ts` and `apps/server/src/timezone.ts`. The
+behaviour is specified in
+[`docs/designs/meal-logging.md`](../../../docs/designs/meal-logging.md) (§1
+and §8).
+
+Each case gives `startedAt`, an optional `endedAt`, `mealType`,
+`timezoneOffsetMinutes` and `now` in `input`, and in `expected` the ordered
+error and warning rule ids, `accepted`, and the `YYYY-MM-DD` `localDate` of
+`startedAt` at that offset. Instants are ISO-8601 UTC strings, and offsets stay
+inside −720 to +840 minutes, including instants whose local date is a day
+ahead of or behind their UTC date. The file carries a `limits` block that both
+runners assert against their limits constants. It is governed by the adjacent
+`m39-meal-validation.schema.json`; its `schemaVersion`, the schema's constant
+and both runners' constants move together.

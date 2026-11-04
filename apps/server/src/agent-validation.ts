@@ -1731,6 +1731,120 @@ function parseDoseRoute(route: string): DoseRoute | null {
 }
 
 // ---------------------------------------------------------------------------
+// Meal-time tier (docs/designs/meal-logging.md §8). The same shared two-tier
+// module, extended for Meals. Twins the Dart `validateMealTime`
+// (apps/mobile/lib/domain/nutrition/meal_validation.dart): the same stable rule
+// ids, the same order, fields and thresholds, agreeing on the shared golden
+// vector (packages/golden-vectors/vectors/m39-meal-validation.json). Runs
+// against the Meal as it will be stored. Results use the Dose validator's
+// issue shape.
+// ---------------------------------------------------------------------------
+
+/// The Meal-time validator's limits, kept in lockstep with the Dart
+/// `MealValidationLimits` and the golden vector's `limits` block.
+/// `futureToleranceMinutes` is exclusive: a start exactly that far after `now`
+/// does not warn.
+export const MEAL_VALIDATION_LIMITS = {
+  futureToleranceMinutes: 5
+} as const;
+
+export const AgentMealValidationIssueSchema = z
+  .object({
+    field: z.string().min(1).openapi({
+      description: "Request field path that triggered the rule."
+    }),
+    rule: z.string().min(1).openapi({
+      description: "Stable machine-readable validation rule id."
+    }),
+    message: z.string().min(1).openapi({
+      description: "Human-readable explanation of the rule."
+    }),
+    limit: z.union([z.number(), z.string()]).nullable().openapi({
+      description: "Rule limit or allowed value summary."
+    })
+  })
+  .openapi("AgentMealValidationIssue");
+
+export type AgentMealValidationIssue = z.infer<
+  typeof AgentMealValidationIssueSchema
+>;
+
+/// The Meal fields the time rules read, as the Meal will be stored. Instants
+/// are ISO-8601 strings; `mealType` is the Meal Type label.
+export type AgentMealTimeValidationInput = {
+  startedAt: string;
+  endedAt?: string | null;
+  mealType: string;
+};
+
+export type AgentMealTimeValidationResult = {
+  accepted: boolean;
+  errors: AgentMealValidationIssue[];
+  warnings: AgentMealValidationIssue[];
+};
+
+/**
+ * Validates one candidate Meal's time fields against `now`. Rules, in this
+ * order (the order the golden vector pins):
+ * - `meal_ended_before_start` (hard, `endedAt`): `endedAt` is set and not
+ *   after `startedAt`; an end equal to the start is rejected.
+ * - `meal_type_required` (hard, `mealType`): the label is empty or whitespace.
+ * - `meal_time_in_future` (soft, `startedAt`): the start is more than
+ *   `MEAL_VALIDATION_LIMITS.futureToleranceMinutes` after `now`.
+ */
+export function validateAgentMealTime(
+  input: AgentMealTimeValidationInput,
+  { now }: { now: Date }
+): AgentMealTimeValidationResult {
+  const errors: AgentMealValidationIssue[] = [];
+  const warnings: AgentMealValidationIssue[] = [];
+  const startedAtMs = new Date(input.startedAt).getTime();
+
+  if (input.endedAt !== undefined && input.endedAt !== null) {
+    const endedAtMs = new Date(input.endedAt).getTime();
+    if (!(endedAtMs > startedAtMs)) {
+      errors.push(
+        mealIssue({
+          field: "endedAt",
+          rule: "meal_ended_before_start",
+          message: "Meal end time must be after its start time.",
+          limit: null
+        })
+      );
+    }
+  }
+
+  if (input.mealType.trim().length === 0) {
+    errors.push(
+      mealIssue({
+        field: "mealType",
+        rule: "meal_type_required",
+        message: "Meal Type is required.",
+        limit: null
+      })
+    );
+  }
+
+  const toleranceMs = MEAL_VALIDATION_LIMITS.futureToleranceMinutes * 60_000;
+  if (startedAtMs - now.getTime() > toleranceMs) {
+    warnings.push(
+      mealIssue({
+        field: "startedAt",
+        rule: "meal_time_in_future",
+        message: "Meal start time is in the future.",
+        limit: MEAL_VALIDATION_LIMITS.futureToleranceMinutes
+      })
+    );
+  }
+
+  return { accepted: errors.length === 0, errors, warnings };
+}
+
+function mealIssue(input: AgentMealValidationIssue): AgentMealValidationIssue {
+  return AgentMealValidationIssueSchema.parse(input);
+}
+
+// ---------------------------------------------------------------------------
 // Protocol Plan tier (docs/designs/protocol-schedules-and-reminders.md, D7).
 // The same shared two-tier module, extended for Schedule Rules, Protocol
 // Periods and Skips (D8). Twins the Dart `validateScheduleRule`,

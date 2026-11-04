@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/analytics/exercise_analytics.dart';
 import '../../domain/body_tracker/measurement_validation.dart';
+import '../../domain/common/local_clock.dart';
 import '../../domain/effect/effect.dart';
 import '../../domain/metrics/reading_normalization.dart';
 import '../../domain/nutrition/nutrition.dart';

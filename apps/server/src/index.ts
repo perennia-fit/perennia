@@ -1004,6 +1004,7 @@ export {
   AgentDoseValidationRequestSchema,
   AgentDoseValidationResponseSchema,
   AgentFoodEntryNutrientValidationRequestSchema,
+  AgentMealValidationIssueSchema,
   AgentNutrientAmountSchema,
   AgentNutrientValidationIssueSchema,
   AgentNutrientValidationLimitsSchema,
@@ -1022,6 +1023,7 @@ export {
   DOSE_ROUTES,
   DOSE_UNITS,
   DOSE_VALIDATION_LIMITS,
+  MEAL_VALIDATION_LIMITS,
   NUTRIENT_VALIDATION_LIMITS,
   PLAN_VALIDATION_LIMITS,
   PRESCRIPTION_VALIDATION_LIMITS,
@@ -1037,6 +1039,7 @@ export {
   setValidationLimitsResponse,
   validateAgentDose,
   validateAgentFoodEntry,
+  validateAgentMealTime,
   validateAgentNutritionGoalTargets,
   validateAgentPrescription,
   validateAgentProtocolPeriod,
@@ -1050,6 +1053,9 @@ export {
   type AgentDoseValidationIssue,
   type AgentDoseValidationResult,
   type AgentFoodEntryNutrientValidationInput,
+  type AgentMealTimeValidationInput,
+  type AgentMealTimeValidationResult,
+  type AgentMealValidationIssue,
   type AgentNutrientValidationIssue,
   type AgentNutrientValidationResult,
   type AgentNutritionGoalValidationInput,
@@ -1071,6 +1077,7 @@ export {
   type DoseRoute,
   type DoseUnit
 } from "./agent-validation.js";
+export { localDateAtOffset } from "./timezone.js";
 export {
   ProtocolPlanCodecError,
   applyingScheduleVersion,
