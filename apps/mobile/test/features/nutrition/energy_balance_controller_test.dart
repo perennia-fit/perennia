@@ -300,10 +300,12 @@ Future<void> _logEnergy(
   required double energy,
 }) async {
   await repositories.nutrition.logQuickEntry(
-    meal: MealDraft(
-      mealType: 'Dinner',
-      startedAt: DateTime(2026, 6, day, 19),
-      timezone: 'UTC',
+    target: NewMealTarget(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, day, 19),
+        mealTypeName: 'Dinner',
+      ),
     ),
     entry: QuickFoodEntryDraft(
       name: 'Quick calories',
@@ -325,10 +327,12 @@ Future<void> _logEnergylessEntry(
   required int day,
 }) async {
   await repositories.nutrition.logQuickEntry(
-    meal: MealDraft(
-      mealType: 'Snack',
-      startedAt: DateTime(2026, 6, day, 15),
-      timezone: 'UTC',
+    target: NewMealTarget(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, day, 15),
+        mealTypeName: 'Snack',
+      ),
     ),
     entry: QuickFoodEntryDraft(
       name: 'Mystery snack',

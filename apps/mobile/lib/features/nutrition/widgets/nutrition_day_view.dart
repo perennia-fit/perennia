@@ -1210,8 +1210,8 @@ Future<void> _showAddFoodPicker(
           onQuickEntry: (draft) {
             return ref
                 .read(nutritionDayControllerProvider.notifier)
-                .logQuickEntryForMeal(
-                  mealId: meal.id,
+                .logQuickEntry(
+                  target: ExistingMealTarget(meal.id),
                   entry: draft,
                 )
                 .then((_) {});
@@ -1240,7 +1240,10 @@ Future<void> _showLogPortion(
           onSave: (draft) {
             return ref
                 .read(nutritionDayControllerProvider.notifier)
-                .logFoodEntrySnapshot(entry: draft);
+                .logFoodEntrySnapshot(
+                  target: ExistingMealTarget(meal.id),
+                  entry: draft,
+                );
           },
         ),
       );

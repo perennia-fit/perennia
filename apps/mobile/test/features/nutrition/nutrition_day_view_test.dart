@@ -8,7 +8,6 @@ import 'package:perennia/data/repositories/training_repositories.dart'
     show
         DuplicateMealTypeNameException,
         FoodEntrySnapshotDraft,
-        MealDraft,
         TrainingRepositories;
 import 'package:perennia/domain/nutrition/nutrition.dart';
 import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
@@ -746,13 +745,14 @@ void main() {
       required bool isLiquid,
     }) async {
       final mealId = await repositories.nutrition.createMeal(
-        MealDraft(
-          mealType: 'Breakfast',
+        PendingMeal(
+          id: repositories.nutrition.newMealId(),
           startedAt: startedAt,
-          timezone: 'UTC',
+          mealTypeName: 'Breakfast',
         ),
       );
       await repositories.nutrition.logFoodEntrySnapshot(
+        target: ExistingMealTarget(mealId),
         entry: FoodEntrySnapshotDraft(
           mealId: mealId,
           foodId: foodId,
@@ -1018,10 +1018,11 @@ class _FakeNutritionDayController extends NutritionDayController {
   }
 
   @override
-  Future<LogQuickEntryResult> logQuickEntryForMeal({
-    required String mealId,
+  Future<LogQuickEntryResult> logQuickEntry({
+    required MealTarget target,
     required QuickFoodEntryDraft entry,
   }) async {
+    final mealId = target.mealId;
     loggedMealIds.add(mealId);
     return LogQuickEntryResult(
       batchId: 'batch-$mealId',
@@ -1032,6 +1033,7 @@ class _FakeNutritionDayController extends NutritionDayController {
 
   @override
   Future<LogFoodEntryResult> logFoodEntrySnapshot({
+    required MealTarget target,
     required FoodEntrySnapshotDraft entry,
   }) async {
     loggedFoodEntries.add(entry);

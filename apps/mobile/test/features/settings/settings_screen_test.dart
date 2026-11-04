@@ -1390,10 +1390,10 @@ void main() {
       addTearDown(database.close);
       final repositories = TrainingRepositories(database);
       final mealId = await repositories.nutrition.createMeal(
-        MealDraft(
-          mealType: 'Breakfast',
+        PendingMeal(
+          id: repositories.nutrition.newMealId(),
           startedAt: DateTime(2026, 10, 27, 7),
-          timezone: 'Australia/Brisbane',
+          mealTypeName: 'Breakfast',
         ),
       );
       final openFoodFacts = _ResetRecordingOpenFoodFactsRepository(

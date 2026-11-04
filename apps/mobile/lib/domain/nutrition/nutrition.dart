@@ -870,6 +870,72 @@ class MealDraft {
   final DateTime? endedAt;
 }
 
+/// The Meal a logging write lands in (docs/designs/meal-logging.md §3): an
+/// existing Meal, or a Meal the same write creates, in the same transaction
+/// and Batch as the entry.
+sealed class MealTarget {
+  const MealTarget();
+
+  /// The id of the Meal the write lands in.
+  String get mealId;
+}
+
+/// An existing Meal. Writing into an archived Meal is rejected.
+final class ExistingMealTarget extends MealTarget {
+  const ExistingMealTarget(this.mealId);
+
+  @override
+  final String mealId;
+}
+
+/// A Meal the write creates. If a Meal with [PendingMeal.id] already exists,
+/// active or archived, the write throws [MealAlreadyExistsException] and
+/// writes nothing (a double tap).
+final class NewMealTarget extends MealTarget {
+  const NewMealTarget(this.meal);
+
+  final PendingMeal meal;
+
+  @override
+  String get mealId => meal.id;
+}
+
+/// A Meal not yet written: the Meal screen's state before its first write
+/// (docs/designs/meal-logging.md §3).
+///
+/// The repository resolves the nulls inside the write transaction: a null
+/// [startedAt] becomes the clock time of the write, and a null
+/// [mealTypeName] becomes the proposed Meal Type at that time (§4). So the
+/// stored time is the time of the write, not the time the screen opened.
+class PendingMeal {
+  const PendingMeal({
+    required this.id,
+    this.startedAt,
+    this.mealTypeName,
+  });
+
+  /// Minted when the Meal screen opens (`NutritionRepository.newMealId`), so
+  /// a repeated write of the same pending Meal is detected as a double tap.
+  final String id;
+
+  /// Null means now: the time of the write.
+  final DateTime? startedAt;
+
+  /// Null means proposed from the Meal's time (§4).
+  final String? mealTypeName;
+}
+
+/// A [NewMealTarget] whose Meal id already exists, active or archived. The
+/// write that threw it wrote nothing.
+class MealAlreadyExistsException implements Exception {
+  const MealAlreadyExistsException(this.mealId);
+
+  final String mealId;
+
+  @override
+  String toString() => 'Meal already exists: $mealId.';
+}
+
 class MealTypeRecord {
   const MealTypeRecord({
     required this.id,
@@ -1609,6 +1675,29 @@ class LogFoodEntryResult {
   final String batchId;
   final String mealId;
   final String foodEntryId;
+  final List<NutrientValidationIssue> warnings;
+}
+
+/// The result of `NutritionRepository.logMealAgain`: one Batch that copied a
+/// source Meal's active Food Entries into the target Meal
+/// (docs/designs/meal-logging.md §3).
+class LogMealAgainResult {
+  LogMealAgainResult({
+    required this.batchId,
+    required this.mealId,
+    required Iterable<String> foodEntryIds,
+    Iterable<NutrientValidationIssue> warnings =
+        const <NutrientValidationIssue>[],
+  })  : foodEntryIds = List<String>.unmodifiable(foodEntryIds),
+        warnings = List<NutrientValidationIssue>.unmodifiable(warnings);
+
+  final String batchId;
+  final String mealId;
+
+  /// The copies, in the source Meal's position order.
+  final List<String> foodEntryIds;
+
+  /// The nutrition soft warnings of every copy, in copy order.
   final List<NutrientValidationIssue> warnings;
 }
 

@@ -391,13 +391,14 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
                 now.minute,
                 now.second,
               ));
-    return ref.read(nutritionRepositoryProvider).createMeal(
-          MealDraft(
-            mealType: mealType.name,
-            startedAt: effectiveStartedAt,
-            timezone: effectiveStartedAt.toLocal().timeZoneName,
-          ),
-        );
+    final repository = ref.read(nutritionRepositoryProvider);
+    return repository.createMeal(
+      PendingMeal(
+        id: repository.newMealId(),
+        startedAt: effectiveStartedAt,
+        mealTypeName: mealType.name,
+      ),
+    );
   }
 
   Future<String> createMealType({
@@ -419,7 +420,7 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
     required MealTypeRecord mealType,
     required String name,
   }) {
-    return ref.read(nutritionRepositoryProvider).updateMealType(
+    return ref.read(nutritionRepositoryProvider).editMealType(
           mealType.id,
           MealTypeDraft(name: name, sortOrder: mealType.sortOrder),
         );
@@ -447,21 +448,11 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
   }
 
   Future<LogQuickEntryResult> logQuickEntry({
-    required MealDraft meal,
+    required MealTarget target,
     required QuickFoodEntryDraft entry,
   }) {
     return ref.read(nutritionRepositoryProvider).logQuickEntry(
-          meal: meal,
-          entry: entry,
-        );
-  }
-
-  Future<LogQuickEntryResult> logQuickEntryForMeal({
-    required String mealId,
-    required QuickFoodEntryDraft entry,
-  }) {
-    return ref.read(nutritionRepositoryProvider).logQuickEntryForMeal(
-          mealId: mealId,
+          target: target,
           entry: entry,
         );
   }
@@ -473,9 +464,11 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
   }
 
   Future<LogFoodEntryResult> logFoodEntrySnapshot({
+    required MealTarget target,
     required FoodEntrySnapshotDraft entry,
   }) {
     return ref.read(nutritionRepositoryProvider).logFoodEntrySnapshot(
+          target: target,
           entry: entry,
         );
   }

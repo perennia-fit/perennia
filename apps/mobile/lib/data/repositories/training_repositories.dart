@@ -13,6 +13,7 @@ import '../../domain/body_tracker/measurement_validation.dart';
 import '../../domain/common/local_clock.dart';
 import '../../domain/effect/effect.dart';
 import '../../domain/metrics/reading_normalization.dart';
+import '../../domain/nutrition/meal_type_proposal.dart';
 import '../../domain/nutrition/meal_validation.dart';
 import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/nutrition_day_assembly.dart';
@@ -2892,8 +2893,13 @@ class NutritionRepository {
     });
   }
 
+  /// Creates [meal] with no Food Entries (`Add foods later`) through the same
+  /// target resolution as every logging write (docs/designs/meal-logging.md
+  /// §3): a null time is the time of the write, a null Meal Type is proposed
+  /// from it (§4), and an id that already exists, active or archived, throws
+  /// [MealAlreadyExistsException] and writes nothing. Returns the Meal id.
   Future<String> createMeal(
-    MealDraft draft, {
+    PendingMeal meal, {
     String actor = 'app',
     String? batchId,
   }) {
@@ -2902,7 +2908,138 @@ class NutritionRepository {
       batchId: batchId,
     );
 
-    return _database.transaction(() => _createMeal(draft, context));
+    return _database.transaction(
+      () => _resolveMealTarget(NewMealTarget(meal), context),
+    );
+  }
+
+  /// A fresh Meal id for a [PendingMeal], minted by the repository's id
+  /// factory so a controller never touches it. The Meal screen mints one when
+  /// it opens, so a second write of the same pending Meal (a double tap) is
+  /// detected as [MealAlreadyExistsException].
+  String newMealId() => _repositories._ids.create(DateTime.now().toUtc());
+
+  /// Moves a Meal to [startedAt], following the Dose time edit (`_editDose`;
+  /// docs/designs/meal-logging.md §1): the stored UTC offset is kept, so the
+  /// new time is read where the Meal was eaten and `local_date` is derived
+  /// again from it (23:50 → 00:10 moves the Meal to the next Nutrition Day).
+  /// A Meal written before offsets were recorded (a null offset) freezes the
+  /// offset, and its zone label, at the new instant. Setting a time makes a
+  /// `date` Meal an `instant` one.
+  ///
+  /// Rejects an archived Meal, and runs the shared [validateMealTime] against
+  /// the Meal as it will be stored: a hard reject throws; the future-time
+  /// warning never blocks the write. Returns the Batch id.
+  Future<String> updateMealTime(
+    String mealId,
+    DateTime startedAt, {
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(actor: actor);
+
+    return _database.transaction(() async {
+      final before = await _requireMealRow(mealId);
+      if (before.deletedAt != null) {
+        throw StateError('Cannot edit an archived Meal: $mealId.');
+      }
+      final startedAtUtc = startedAt.toUtc();
+      final String timezone;
+      final int timezoneOffsetMinutes;
+      if (before.timezoneOffsetMinutes case final offset?) {
+        // A new time on a Meal with a frozen offset corrects when it was
+        // eaten WHERE it was eaten: the Meal keeps its offset and its zone
+        // label, and only the local date is derived again.
+        timezone = before.timezone;
+        timezoneOffsetMinutes = offset;
+      } else {
+        // A Meal written before offsets were recorded: freeze the offset and
+        // the label from the device zone at the new instant, exactly as
+        // logging it would.
+        timezone = startedAt.toLocal().timeZoneName;
+        timezoneOffsetMinutes = startedAt.toLocal().timeZoneOffset.inMinutes;
+      }
+      validateMealTime(
+        MealTimeInput(
+          startedAt: startedAtUtc,
+          endedAt: before.endedAt?.toUtc(),
+          mealType: before.mealType,
+        ),
+        now: context.timestamp,
+      ).throwIfRejected();
+      final localDate = _nutritionDayDateAtOffset(
+        startedAtUtc,
+        timezoneOffsetMinutes,
+      );
+
+      await (_database.update(_database.meals)
+            ..where((row) => row.id.equals(mealId)))
+          .write(
+        MealsCompanion(
+          startedAt: Value<DateTime>(startedAtUtc),
+          timezone: Value<String>(timezone),
+          localDate: Value<String>(localDate.storageValue),
+          timezoneOffsetMinutes: Value<int?>(timezoneOffsetMinutes),
+          timePrecision: Value<String>(MealTimePrecision.instant.name),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      final after = await _requireMealRow(mealId);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.mealsTable,
+        entityId: mealId,
+        beforeImage: _mealImage(before),
+        afterImage: _mealImage(after),
+      );
+      return context.batchId;
+    });
+  }
+
+  /// Stores [mealTypeName] as a Meal's Meal Type label
+  /// (docs/designs/meal-logging.md §3). Rejects an archived Meal, and runs the
+  /// shared [validateMealTime] against the Meal as it will be stored, so an
+  /// empty label is a hard reject. Returns the Batch id.
+  ///
+  /// This edits one Meal; [editMealType] edits a Meal Type entity.
+  Future<String> updateMealType(
+    String mealId,
+    String mealTypeName, {
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(actor: actor);
+
+    return _database.transaction(() async {
+      final before = await _requireMealRow(mealId);
+      if (before.deletedAt != null) {
+        throw StateError('Cannot edit an archived Meal: $mealId.');
+      }
+      validateMealTime(
+        MealTimeInput(
+          startedAt: before.startedAt.toUtc(),
+          endedAt: before.endedAt?.toUtc(),
+          mealType: mealTypeName,
+        ),
+        now: context.timestamp,
+      ).throwIfRejected();
+
+      await (_database.update(_database.meals)
+            ..where((row) => row.id.equals(mealId)))
+          .write(
+        MealsCompanion(
+          mealType: Value<String>(_normalizeMealTypeForStorage(mealTypeName)),
+          updatedAt: Value<DateTime>(context.timestamp),
+        ),
+      );
+      final after = await _requireMealRow(mealId);
+      await _repositories._activityLogWriter.append(
+        context,
+        entityTable: AppDatabase.mealsTable,
+        entityId: mealId,
+        beforeImage: _mealImage(before),
+        afterImage: _mealImage(after),
+      );
+      return context.batchId;
+    });
   }
 
   Future<void> ensureDefaultMealTypes({
@@ -2949,7 +3086,10 @@ class NutritionRepository {
     return _database.transaction(() => _createMealType(draft, context));
   }
 
-  Future<void> updateMealType(
+  /// Edits a Meal Type entity (its name and sort order). Named apart from
+  /// [updateMealType], which stores one Meal's Meal Type label: Dart has no
+  /// overloading (docs/designs/meal-logging.md §3).
+  Future<void> editMealType(
     String id,
     MealTypeDraft draft, {
     String actor = 'app',
@@ -3231,8 +3371,11 @@ class NutritionRepository {
     );
   }
 
+  /// Logs a Quick Entry into [target] (docs/designs/meal-logging.md §3). A
+  /// [NewMealTarget] creates its Meal in the same transaction and Batch, so
+  /// undo and a crash both treat the Meal and its first entry as one action.
   Future<LogQuickEntryResult> logQuickEntry({
-    required MealDraft meal,
+    required MealTarget target,
     required QuickFoodEntryDraft entry,
     String actor = 'app',
   }) {
@@ -3241,31 +3384,7 @@ class NutritionRepository {
     validation.throwIfRejected();
 
     return _database.transaction(() async {
-      final mealId = await _createMeal(meal, context);
-      final foodEntryId = await _createQuickEntry(
-        mealId: mealId,
-        draft: entry,
-        context: context,
-      );
-      return LogQuickEntryResult(
-        batchId: context.batchId,
-        mealId: mealId,
-        foodEntryId: foodEntryId,
-        warnings: validation.warnings,
-      );
-    });
-  }
-
-  Future<LogQuickEntryResult> logQuickEntryForMeal({
-    required String mealId,
-    required QuickFoodEntryDraft entry,
-    String actor = 'app',
-  }) {
-    final context = _repositories._writeContexts.create(actor: actor);
-    final validation = validateFoodEntryNutrition(nutrients: entry.nutrients);
-    validation.throwIfRejected();
-
-    return _database.transaction(() async {
+      final mealId = await _resolveMealTarget(target, context);
       final foodEntryId = await _createQuickEntry(
         mealId: mealId,
         draft: entry,
@@ -3417,13 +3536,20 @@ class NutritionRepository {
     });
   }
 
+  /// Logs a Food Entry snapshot into [target] (docs/designs/meal-logging.md
+  /// §3). A [NewMealTarget] creates its Meal in the same transaction and
+  /// Batch. The draft's `mealId` must be the target's Meal id; a mismatch
+  /// throws [ArgumentError] before anything is written.
   Future<LogFoodEntryResult> logFoodEntrySnapshot({
+    required MealTarget target,
     required FoodEntrySnapshotDraft entry,
     String actor = 'app',
   }) {
+    _requireEntryInTarget(entry.mealId, target);
     final context = _repositories._writeContexts.create(actor: actor);
 
     return _database.transaction(() async {
+      await _resolveMealTarget(target, context);
       final created = await _createFoodEntrySnapshot(
         draft: entry,
         context: context,
@@ -3435,6 +3561,208 @@ class NutritionRepository {
         warnings: created.warnings,
       );
     });
+  }
+
+  /// Logs a source Meal again (`Your meals`; docs/designs/meal-logging.md
+  /// §3): copies [sourceMealId]'s active Food Entries, in position order, into
+  /// [target], all in one transaction and one Batch, so a crash leaves all of
+  /// the copy or none of it and one undo removes it.
+  ///
+  /// The copy rule, per source entry:
+  /// - a Food Entry of a User Food that is still active, whose Portion unit
+  ///   is still allowed for that Food, is re-read through the `logFoodEntry`
+  ///   path, so the user's own edits to the Food apply;
+  /// - every other Food-backed entry (USDA, Open Food Facts, an imported
+  ///   observation, an archived User Food, a Portion no longer allowed)
+  ///   copies its stored snapshot through the `logFoodEntrySnapshot` path;
+  /// - a Quick Entry is copied as a Quick Entry;
+  /// - import keys (`import_source`, `import_external_id`,
+  ///   `import_provider`) are never copied, so a later re-import can't treat
+  ///   the copies as already imported;
+  /// - the copies take the target Meal's time (Food Entries carry none).
+  ///
+  /// A missing or archived source Meal throws [StateError]; an archived
+  /// [ExistingMealTarget] is rejected as for any write.
+  Future<LogMealAgainResult> logMealAgain(
+    String sourceMealId,
+    MealTarget target, {
+    String actor = 'app',
+  }) {
+    final context = _repositories._writeContexts.create(actor: actor);
+
+    return _database.transaction(() async {
+      final source = await (_database.select(_database.meals)
+            ..where((row) => row.id.equals(sourceMealId)))
+          .getSingleOrNull();
+      if (source == null) {
+        throw StateError('Meal not found: $sourceMealId.');
+      }
+      if (source.deletedAt != null) {
+        throw StateError('Cannot log an archived Meal again: $sourceMealId.');
+      }
+      // Read before the target resolves, so logging a Meal again into itself
+      // copies only what it held.
+      final sourceEntries = await _activeFoodEntryQuery(
+        mealIds: <String>{sourceMealId},
+      ).get();
+      final mealId = await _resolveMealTarget(target, context);
+
+      final foodEntryIds = <String>[];
+      final warnings = <NutrientValidationIssue>[];
+      for (final row in sourceEntries) {
+        final sourceEntry = _foodEntryFromRow(row);
+        if (sourceEntry.kind == FoodEntryKind.quickEntry) {
+          final draft = QuickFoodEntryDraft(
+            name: sourceEntry.name,
+            nutrients: sourceEntry.nutrients,
+          );
+          final validation = validateFoodEntryNutrition(
+            nutrients: draft.nutrients,
+          );
+          validation.throwIfRejected();
+          foodEntryIds.add(
+            await _createQuickEntry(
+              mealId: mealId,
+              draft: draft,
+              context: context,
+            ),
+          );
+          warnings.addAll(validation.warnings);
+          continue;
+        }
+
+        final portion = sourceEntry.portion;
+        if (portion == null) {
+          throw StateError(
+            'Food Entry is missing a Portion: ${sourceEntry.id}.',
+          );
+        }
+        final _CreatedFoodEntry created;
+        if (await _isReReadableUserFood(sourceEntry, portion)) {
+          created = await _createFoodEntry(
+            draft: FoodEntryDraft(
+              mealId: mealId,
+              foodId: sourceEntry.foodId!,
+              portion: portion,
+            ),
+            context: context,
+          );
+        } else {
+          created = await _createFoodEntrySnapshot(
+            draft: FoodEntrySnapshotDraft(
+              mealId: mealId,
+              foodId: sourceEntry.foodId,
+              name: sourceEntry.name,
+              foodSource: sourceEntry.foodSource ?? FoodSource.user,
+              // A Food-backed entry stores its per-100 snapshot.
+              nutrientsPer100: sourceEntry.nutrients,
+              isLiquid: sourceEntry.isLiquid ?? false,
+              portion: portion,
+              servingLabel: sourceEntry.servingLabel,
+              servingSize: sourceEntry.servingSize,
+              packageSize: sourceEntry.packageSize,
+              reviewFlags: sourceEntry.reviewFlags,
+            ),
+            context: context,
+          );
+        }
+        foodEntryIds.add(created.foodEntryId);
+        warnings.addAll(created.warnings);
+      }
+
+      return LogMealAgainResult(
+        batchId: context.batchId,
+        mealId: mealId,
+        foodEntryIds: foodEntryIds,
+        warnings: warnings,
+      );
+    });
+  }
+
+  /// Whether Log again re-reads [entry] from its User Food: the Food is a
+  /// User Food that is still active, and [portion]'s unit is still among the
+  /// Food's allowed Portion units (docs/designs/meal-logging.md §3).
+  Future<bool> _isReReadableUserFood(
+    FoodEntryRecord entry,
+    Portion portion,
+  ) async {
+    final foodId = entry.foodId;
+    if (foodId == null || entry.foodSource != FoodSource.user) {
+      return false;
+    }
+    final food = await (_database.select(_database.foods)
+          ..where((row) => row.id.equals(foodId)))
+        .getSingleOrNull();
+    if (food == null ||
+        food.deletedAt != null ||
+        food.foodSource != FoodSource.user.name) {
+      return false;
+    }
+    return _userFoodFromRow(food).availablePortionUnits.contains(portion.unit);
+  }
+
+  /// Throws [ArgumentError] when an entry draft names a different Meal than
+  /// the [target] it is written into.
+  void _requireEntryInTarget(String entryMealId, MealTarget target) {
+    if (entryMealId != target.mealId) {
+      throw ArgumentError.value(
+        entryMealId,
+        'entry.mealId',
+        'The entry draft names a different Meal than its target '
+            '(${target.mealId}).',
+      );
+    }
+  }
+
+  /// The one resolver for every write that takes a [MealTarget]
+  /// (docs/designs/meal-logging.md §3), run inside the write's transaction
+  /// with its [WriteContext], so a created Meal joins the write's Batch.
+  ///
+  /// - [ExistingMealTarget]: the Meal must exist and not be archived.
+  /// - [NewMealTarget]: an id that already exists, active or archived, throws
+  ///   [MealAlreadyExistsException] before anything is written (a double
+  ///   tap). A null time resolves to the time of the write, and a null Meal
+  ///   Type to the proposal at that time, read at the offset the Meal will
+  ///   freeze (§4); the proposal is stored, never recomputed.
+  ///
+  /// Returns the Meal id.
+  Future<String> _resolveMealTarget(
+    MealTarget target,
+    WriteContext context,
+  ) async {
+    switch (target) {
+      case ExistingMealTarget(:final mealId):
+        final meal = await _requireMealRow(mealId);
+        if (meal.deletedAt != null) {
+          throw StateError(
+            'Cannot add a Food Entry to an archived Meal: $mealId.',
+          );
+        }
+        return mealId;
+      case NewMealTarget(:final meal):
+        final existing = await (_database.select(_database.meals)
+              ..where((row) => row.id.equals(meal.id)))
+            .getSingleOrNull();
+        if (existing != null) {
+          throw MealAlreadyExistsException(meal.id);
+        }
+        final startedAt = meal.startedAt ?? context.timestamp;
+        final mealTypeName = meal.mealTypeName ??
+            proposeMealType(
+              clockAtOffset(
+                startedAt,
+                startedAt.toLocal().timeZoneOffset.inMinutes,
+              ),
+              (await _activeMealTypeQuery().get())
+                  .map(_mealTypeFromRow)
+                  .toList(growable: false),
+            );
+        return _createMeal(
+          MealDraft(mealType: mealTypeName, startedAt: startedAt),
+          context,
+          id: meal.id,
+        );
+    }
   }
 
   /// Lands a provider-neutral [NutritionImportBatch] at the edge as ONE
@@ -4203,7 +4531,13 @@ class NutritionRepository {
     return query;
   }
 
-  Future<String> _createMeal(MealDraft draft, WriteContext context) async {
+  /// Creates the Meal row for [draft]. [id] is the id a [PendingMeal]
+  /// minted (through [_resolveMealTarget]); a new id is minted when null.
+  Future<String> _createMeal(
+    MealDraft draft,
+    WriteContext context, {
+    String? id,
+  }) async {
     final startedAt = draft.startedAt;
     final endedAt = draft.endedAt;
 
@@ -4221,7 +4555,7 @@ class NutritionRepository {
       now: context.timestamp,
     ).throwIfRejected();
 
-    final id = _repositories._ids.create(context.timestamp);
+    final mealId = id ?? _repositories._ids.create(context.timestamp);
     // The offset frozen at the Meal's own instant, not at the moment of
     // logging, so a summer Meal back-filled in winter keeps its own day
     // (docs/designs/meal-logging.md §1).
@@ -4239,7 +4573,7 @@ class NutritionRepository {
 
     await _database.into(_database.meals).insert(
           MealsCompanion.insert(
-            id: id,
+            id: mealId,
             mealType: _normalizeMealTypeForStorage(draft.mealType),
             startedAt: startedAt.toUtc(),
             timezone: timezone,
@@ -4251,16 +4585,16 @@ class NutritionRepository {
           ),
         );
 
-    final after = await _requireMealRow(id);
+    final after = await _requireMealRow(mealId);
     await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.mealsTable,
-      entityId: id,
+      entityId: mealId,
       beforeImage: null,
       afterImage: _mealImage(after),
     );
 
-    return id;
+    return mealId;
   }
 
   Future<String> _createMealType(

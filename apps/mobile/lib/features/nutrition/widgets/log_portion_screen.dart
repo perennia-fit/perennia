@@ -273,7 +273,10 @@ class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
         }
         return ref
             .read(nutritionDayControllerProvider.notifier)
-            .logFoodEntrySnapshot(entry: draft);
+            .logFoodEntrySnapshot(
+              target: ExistingMealTarget(widget.meal.id),
+              entry: draft,
+            );
       }();
       if (mounted) {
         _showWarnings(result.warnings);

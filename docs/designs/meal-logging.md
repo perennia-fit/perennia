@@ -430,6 +430,12 @@ time. So the stored time is the time of the write, not the time the screen opene
 | `listMealHistory({DateTime? now, int limit = 20}) → Future<List<MealHistoryRecord>>` (new) | Nothing: the Meal History read from §5. | Your meals |
 | `deleteFoodEntry`, `updateFoodEntryPortion`, `deleteMeal` (existing, unchanged) | As today. | Remove an entry, edit a Portion, Delete meal |
 
+Two names differ from a plain reading of the table. NutritionRepository already had
+`updateMealType(String id, MealTypeDraft draft)`, which edits a Meal Type entity, and Dart
+has no overloading: that method is renamed `editMealType`, with no behaviour change, and
+the new Meal write keeps the name `updateMealType`. `newMealId()` mints a `PendingMeal` id
+from the repository's id factory, so a controller never touches the factory.
+
 Rules shared by the writes:
 
 - An `ExistingMealTarget` whose Meal is archived is rejected, as today.
@@ -1208,7 +1214,7 @@ simulation with an older app's images; archive restore of a pre-v65 backup.
 | `apps/mobile/drift_schemas/app_database/drift_schema_v65.json` | Create with `drift_dev schema dump`. |
 | `apps/mobile/test/generated_migrations/app_database/schema_v65.dart`, `schema.dart` | Regenerate with `tool/drift_schema_snapshots.dart`. |
 | `apps/mobile/lib/domain/nutrition/nutrition.dart` | Add the `MealTimePrecision` enum, `MealTarget`, `ExistingMealTarget`, `NewMealTarget`, `PendingMeal`, `MealAlreadyExistsException`, `LogMealAgainResult` and `MealHistoryRecord`. Change `MealDraft`: remove `localDate`, add `timezoneOffsetMinutes` and `timePrecision`. Add the offset, the precision and `clock` (the local time at its offset) to `MealRecord`. |
-| `apps/mobile/lib/data/repositories/training_repositories.dart` | **NutritionRepository:** implement the §3 table and rules; `_createMeal` computes the frozen offset, uses `localDateAtOffset`, stores the precision, and calls `validateMealTime` in place of its ad-hoc checks; `listMealHistory` (§5), extracting `foodHistoryWindow` from `listFoodHistory`; `startMeal` builds `startedAt` from the selected day (§3); the §7 re-import changes in `importNutritionBatch`, `_findOrCreateImportMeal` and `_updateImportedFoodEntry`. **Activity Log:** `_mealImage` writes the two keys; `_mealCompanionFromImage` reads them and re-derives a malformed `local_date` (§10); add the Meal entry to `_activityLaterAddedKeyDefaults`; `undoBatch` calls `_mealDependentUndoConflicts`; add `ActivityLogUndoConflictReason.dependent`. |
+| `apps/mobile/lib/data/repositories/training_repositories.dart` | **NutritionRepository:** implement the §3 table and rules; rename the Meal Type entity edit `updateMealType(String id, MealTypeDraft draft)` to `editMealType` (§3) and update `NutritionDayController.renameMealType`; add `newMealId()`; `_createMeal` computes the frozen offset, uses `localDateAtOffset`, stores the precision, and calls `validateMealTime` in place of its ad-hoc checks; `listMealHistory` (§5), extracting `foodHistoryWindow` from `listFoodHistory`; `startMeal` builds `startedAt` from the selected day (§3); the §7 re-import changes in `importNutritionBatch`, `_findOrCreateImportMeal` and `_updateImportedFoodEntry`. **Activity Log:** `_mealImage` writes the two keys; `_mealCompanionFromImage` reads them and re-derives a malformed `local_date` (§10); add the Meal entry to `_activityLaterAddedKeyDefaults`; `undoBatch` calls `_mealDependentUndoConflicts`; add `ActivityLogUndoConflictReason.dependent`. |
 | `apps/mobile/lib/data/repositories/portable_archive_repository.dart` | Decode Meals with `MealRow.fromJson({'timePrecision': 'instant', ...json})`, as exercises default `focusIds`, so backups made before v65 still restore. |
 | `apps/mobile/lib/domain/nutrition/nutrition_import.dart` | Add the named parameter `timePrecision` to `NutritionImportMeal`, defaulting to `instant`. |
 | `apps/mobile/lib/features/nutrition/import/myfitnesspal_csv_import_adapter.dart`, `cronometer_csv_import_adapter.dart`, `yazio_import_adapter.dart`, `lifesum_import_adapter.dart` | Set the precision by the rule in §1. |

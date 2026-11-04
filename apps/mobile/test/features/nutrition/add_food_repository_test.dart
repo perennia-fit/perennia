@@ -688,6 +688,7 @@ void main() {
           await _meal(repositories, DateTime.utc(2026, 6, 26, 15));
 
       final repeatResult = await repositories.nutrition.logFoodEntrySnapshot(
+        target: ExistingMealTarget(repeatMealId),
         entry: FoodEntrySnapshotDraft(
           mealId: repeatMealId,
           foodId: recentItem.id,
@@ -994,10 +995,10 @@ RecipeIngredient _ingredientFromFood(UserFoodRecord food, Portion portion) {
 
 Future<String> _meal(TrainingRepositories repositories, DateTime startedAt) {
   return repositories.nutrition.createMeal(
-    MealDraft(
-      mealType: 'Breakfast',
+    PendingMeal(
+      id: repositories.nutrition.newMealId(),
       startedAt: startedAt,
-      timezone: 'UTC',
+      mealTypeName: 'Breakfast',
     ),
   );
 }
@@ -1013,6 +1014,7 @@ Future<String> _logSnapshot(
   bool isLiquid = false,
 }) async {
   final result = await repositories.nutrition.logFoodEntrySnapshot(
+    target: ExistingMealTarget(mealId),
     entry: FoodEntrySnapshotDraft(
       mealId: mealId,
       foodId: foodId,

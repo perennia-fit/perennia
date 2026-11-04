@@ -216,14 +216,15 @@ void main() {
     final updatedAt = DateTime.utc(2026, 6, 27, 8);
     final repositories = TrainingRepositories(database);
     final mealId = await repositories.nutrition.createMeal(
-      MealDraft(
-        mealType: 'Snack',
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
         startedAt: updatedAt,
-        timezone: 'UTC',
+        mealTypeName: 'Snack',
       ),
       actor: 'tester',
     );
     final result = await repositories.nutrition.logFoodEntrySnapshot(
+      target: ExistingMealTarget(mealId),
       entry: FoodEntrySnapshotDraft(
         mealId: mealId,
         foodId: '3017620422003',
@@ -4124,10 +4125,10 @@ void main() {
       const MealTypeDraft(name: 'Second Breakfast', sortOrder: 4),
     );
     final mealId = await repositories.nutrition.createMeal(
-      MealDraft(
-        mealType: mealTypeId,
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
         startedAt: DateTime(2026, 7, 4, 8),
-        timezone: 'Australia/Brisbane',
+        mealTypeName: mealTypeId,
       ),
     );
     final foodId = await repositories.nutrition.createUserFood(
@@ -4740,15 +4741,21 @@ void main() {
 
     test('an older image updates a Meal and leaves both columns as stored',
         () async {
-      final repositories = TrainingRepositories(database);
-      final mealId = await repositories.nutrition.createMeal(
-        MealDraft(
-          mealType: 'Breakfast',
-          startedAt: DateTime.utc(2026, 6, 25, 14),
-          timezoneOffsetMinutes: 600,
-          timePrecision: MealTimePrecision.date,
-        ),
-      );
+      // An app write can't choose its offset (it is the device zone's), so
+      // the stored Meal is seeded as a row: +10:00 and `date` precision.
+      const mealId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d005';
+      await database.into(database.meals).insert(
+            MealsCompanion.insert(
+              id: mealId,
+              mealType: 'Breakfast',
+              startedAt: DateTime.utc(2026, 6, 25, 14),
+              timezone: 'AEST',
+              localDate: const Value<String>('2026-06-26'),
+              timezoneOffsetMinutes: const Value<int?>(600),
+              timePrecision: const Value<String>('date'),
+              updatedAt: DateTime.utc(2026, 6, 25, 14),
+            ),
+          );
       final newer = DateTime.now().toUtc().add(const Duration(days: 1));
 
       final applied = await pullMeals(<Map<String, Object?>>[
@@ -4824,7 +4831,11 @@ void main() {
       final repositories = TrainingRepositories(database);
       final startedAt = DateTime(2026, 6, 26, 12, 30);
       final mealId = await repositories.nutrition.createMeal(
-        MealDraft(mealType: 'Lunch', startedAt: startedAt),
+        PendingMeal(
+          id: repositories.nutrition.newMealId(),
+          startedAt: startedAt,
+          mealTypeName: 'Lunch',
+        ),
       );
       final pushRequests = <http.Request>[];
       final repository = SyncRepository(

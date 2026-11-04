@@ -2825,10 +2825,12 @@ Future<void> _seedMetricData(TrainingRepositories repositories) async {
 
 Future<void> _seedNutritionData(TrainingRepositories repositories) async {
   final quickEntry = await repositories.nutrition.logQuickEntry(
-    meal: MealDraft(
-      mealType: 'Breakfast',
-      startedAt: DateTime(2026, 6, 16, 9),
-      timezone: 'UTC',
+    target: NewMealTarget(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 16, 9),
+        mealTypeName: 'Breakfast',
+      ),
     ),
     entry: QuickFoodEntryDraft(
       name: 'Archive oats',
@@ -3146,7 +3148,8 @@ void _expectSeededNutritionArchiveRows(
   expect(mealRows, hasLength(1));
   final meal = mealRows.single;
   expect(meal['mealType'], 'Breakfast');
-  expect(meal['timezone'], 'UTC');
+  // An app Meal takes the device zone's label at its own instant.
+  expect(meal['timezone'], DateTime(2026, 6, 16, 9).timeZoneName);
   expect(meal['localDate'], '2026-06-16');
   expect(meal['endedAt'], isNull);
   expect(meal['deletedAt'], isNull);
