@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import {
   AgentApiKeyUnavailableResponseSchema,
@@ -91,7 +91,7 @@ export const AgentMealBatchWriteMealSchema = z
     }),
     deletedAt: ISO8601StringSchema.nullable().optional().openapi({
       description:
-        "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value; null un-archives."
+        "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value; null un-archives. Archiving also needs every Food Entry stored active in the Meal sent with deletedAt set in the same request, or the write fails with 422 meal_archived."
     })
   })
   .openapi("AgentMealBatchWriteMeal");
@@ -439,13 +439,20 @@ export type AgentMealBatchStoredRow = {
 };
 /**
  * What `prepareAgentMealBatchWrite` reads besides the request: the caller's
- * user id (to tell its own rows from another account's), and the stored Meal
- * and request entries, by id, for any user.
+ * user id (to tell its own rows from another account's), the stored Meal and
+ * request entries, by id, for any user, and the ids of the caller's Food
+ * Entries stored active under this Meal id.
  */
 export type AgentMealBatchStoredState = {
   userId: string;
   meal: AgentMealBatchStoredRow | null;
   entries: ReadonlyMap<string, AgentMealBatchStoredRow>;
+  /**
+   * The ids of the caller's Food Entries stored active (deleted_at null)
+   * under this Meal id, whether or not the request sends them. Empty when the
+   * Meal doesn't exist or belongs to another account.
+   */
+  activeEntryIds: ReadonlySet<string>;
 };
 export type AgentMealBatchRejectionStatus = 404 | 409 | 422;
 export type AgentMealBatchPreparation =
@@ -1036,6 +1043,34 @@ export function prepareAgentMealBatchWrite(
     );
   }
 
+  // Archiving a Meal tombstones its active Food Entries in the same request
+  // (meal-logging.md §9 'Archived Meals'). The app's deleteMeal archives the
+  // Meal and its entries in one Batch, and no agent request may leave an
+  // active Food Entry in an archived Meal. The rule judges the resulting Meal,
+  // so it also covers an edit to an already archived Meal that still holds
+  // stored active entries. An entry counts as tombstoned only when the request
+  // sends it with deletedAt set: an unsent deletedAt keeps the stored null.
+  if (resultingMealDeletedAt !== null && stored.activeEntryIds.size > 0) {
+    const tombstoned = new Set(
+      request.entries
+        .filter((_, index) => entryDeletedAt[index] !== null)
+        .map((entry) => entry.id)
+    );
+    const untombstoned = [...stored.activeEntryIds]
+      .filter((id) => !tombstoned.has(id))
+      .sort();
+    if (untombstoned.length > 0) {
+      errors.push(
+        mealLevelIssue({
+          field: "meal.deletedAt",
+          rule: "meal_archived",
+          message: `Archiving this Meal needs every active Food Entry in it sent with deletedAt set in the same request; not tombstoned: ${untombstoned.join(", ")}.`,
+          limit: null
+        })
+      );
+    }
+  }
+
   if (errors.length > 0) {
     return { accepted: false, status: 422, errors, warnings };
   }
@@ -1099,7 +1134,10 @@ export function createDrizzleAgentMealBatchWriteStore(
 
         // Read the stored rows for any user, locked for the rest of the
         // transaction, so the field rules judge the rows this batch will
-        // overwrite and a concurrent write can't slip in between.
+        // overwrite and a concurrent write can't slip in between. The same
+        // locked pass reads the caller's Food Entries stored active under this
+        // Meal, so the archive rule (meal-logging.md §9 'Archived Meals') sees
+        // every entry a concurrent write could otherwise add or revive.
         const storedMealRows = await transaction
           .select({
             userId: schema.meals.userId,
@@ -1125,6 +1163,21 @@ export function createDrizzleAgentMealBatchWriteStore(
                 .for("update");
 
         const storedMealRow = storedMealRows[0];
+        const activeEntryRows =
+          storedMealRow !== undefined && storedMealRow.userId === userId
+            ? await transaction
+                .select({ id: schema.foodEntries.id })
+                .from(schema.foodEntries)
+                .where(
+                  and(
+                    eq(schema.foodEntries.userId, userId),
+                    eq(sql`${schema.foodEntries.payload}->>'meal_id'`, request.meal.id),
+                    isNull(schema.foodEntries.deletedAt)
+                  )
+                )
+                .for("update")
+            : [];
+        const activeEntryIds = new Set(activeEntryRows.map((row) => row.id));
         const storedMeal: AgentMealBatchStoredRow | null =
           storedMealRow === undefined
             ? null
@@ -1146,7 +1199,7 @@ export function createDrizzleAgentMealBatchWriteStore(
 
         const prepared = prepareAgentMealBatchWrite(
           request,
-          { userId, meal: storedMeal, entries: storedEntries },
+          { userId, meal: storedMeal, entries: storedEntries, activeEntryIds },
           serverClock
         );
         if (!prepared.accepted) {

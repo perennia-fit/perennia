@@ -5253,7 +5253,7 @@
               "null"
             ],
             "minLength": 1,
-            "description": "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value; null un-archives."
+            "description": "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value; null un-archives. Archiving also needs every Food Entry stored active in the Meal sent with deletedAt set in the same request, or the write fails with 422 meal_archived."
           }
         },
         "required": [
