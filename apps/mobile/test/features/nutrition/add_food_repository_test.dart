@@ -998,11 +998,6 @@ Future<String> _meal(TrainingRepositories repositories, DateTime startedAt) {
       mealType: 'Breakfast',
       startedAt: startedAt,
       timezone: 'UTC',
-      localDate: NutritionDayDate(
-        year: startedAt.year,
-        month: startedAt.month,
-        day: startedAt.day,
-      ),
     ),
   );
 }

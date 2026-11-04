@@ -202,13 +202,11 @@ Future<void> _logEnergy(
   required int day,
   required double energy,
 }) async {
-  final localDate = NutritionDayDate(year: 2026, month: 6, day: day);
   await repositories.nutrition.logQuickEntry(
     meal: MealDraft(
       mealType: 'Dinner',
-      startedAt: DateTime.utc(2026, 6, day, 19),
+      startedAt: DateTime(2026, 6, day, 19),
       timezone: 'UTC',
-      localDate: localDate,
     ),
     entry: QuickFoodEntryDraft(
       name: 'Quick calories',

@@ -945,11 +945,9 @@ class _Generator {
         mealType: mealTypeId,
         startedAt: _at(day, hour: hour, minute: _random.nextInt(40)),
         timezone: _options.timezone,
-        localDate: NutritionDayDate(
-          year: day.year,
-          month: day.month,
-          day: day.day,
-        ),
+        // The generated history is dated in UTC (see `_at`), so the Meal's
+        // offset is frozen at zero and its derived Nutrition Day is `day`.
+        timezoneOffsetMinutes: 0,
       ),
       actor: _actor,
     );

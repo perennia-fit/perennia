@@ -329,9 +329,8 @@ void main() {
     final mealId = await repositories.nutrition.createMeal(
       MealDraft(
         mealType: 'Snack',
-        startedAt: DateTime.utc(2026, 6, 26, 15),
+        startedAt: DateTime(2026, 6, 26, 15),
         timezone: 'Australia/Brisbane',
-        localDate: const NutritionDayDate(year: 2026, month: 6, day: 26),
       ),
     );
     final meal = (await repositories.nutrition.getMealById(mealId))!;

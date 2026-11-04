@@ -750,11 +750,6 @@ void main() {
           mealType: 'Breakfast',
           startedAt: startedAt,
           timezone: 'UTC',
-          localDate: NutritionDayDate(
-            year: startedAt.year,
-            month: startedAt.month,
-            day: startedAt.day,
-          ),
         ),
       );
       await repositories.nutrition.logFoodEntrySnapshot(

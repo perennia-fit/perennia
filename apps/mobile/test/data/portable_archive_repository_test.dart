@@ -1143,6 +1143,35 @@ void main() {
       expect(restored.colorHex, '#5FB05C');
     });
 
+    test(
+        'restores a schema-64 archive Meal with no time precision as instant '
+        'with a null offset', () async {
+      await _seedNutritionData(repositories);
+      final currentArchive =
+          await repositories.portableArchives.exportPortableArchive();
+      final schema64Archive = _asSchema64Archive(currentArchive);
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      final restoredRepositories = TrainingRepositories(restoredDatabase);
+      await restoredRepositories.portableArchives.importPortableArchive(
+        schema64Archive,
+      );
+
+      final sourceMeals = await database.select(database.meals).get();
+      final restoredMeals =
+          await restoredDatabase.select(restoredDatabase.meals).get();
+      expect(restoredMeals, hasLength(sourceMeals.length));
+      expect(restoredMeals, isNotEmpty);
+      for (final meal in restoredMeals) {
+        expect(meal.timePrecision, 'instant');
+        expect(meal.timezoneOffsetMinutes, isNull);
+        final source = sourceMeals.singleWhere((row) => row.id == meal.id);
+        expect(meal.localDate, source.localDate);
+        expect(meal.startedAt, source.startedAt);
+      }
+    });
+
     test('imports an exact schema-52 archive with an opaque Routine seam',
         () async {
       await _seedWorkoutData(repositories);
@@ -2798,9 +2827,8 @@ Future<void> _seedNutritionData(TrainingRepositories repositories) async {
   final quickEntry = await repositories.nutrition.logQuickEntry(
     meal: MealDraft(
       mealType: 'Breakfast',
-      startedAt: DateTime.utc(2026, 6, 16, 9),
+      startedAt: DateTime(2026, 6, 16, 9),
       timezone: 'UTC',
-      localDate: const NutritionDayDate(year: 2026, month: 6, day: 16),
     ),
     entry: QuickFoodEntryDraft(
       name: 'Archive oats',
@@ -3410,6 +3438,45 @@ List<int> _asSchema62Archive(List<int> bytes) {
         final old = Map<String, Object?>.from(row);
         expect(old.containsKey('colorHex'), isTrue);
         return old..remove('colorHex');
+      }).toList(growable: false);
+      expect(rows, isNotEmpty);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
+/// An archive as a schema-64 build wrote it: Meals carry neither
+/// `timezoneOffsetMinutes` nor `timePrecision` (docs/designs/meal-logging.md
+/// §1).
+List<int> _asSchema64Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source)..['schemaVersion'] = 64;
+  final mealsFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.mealsTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName) {
+      continue;
+    }
+    if (file.name == mealsFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        expect(old.containsKey('timePrecision'), isTrue);
+        expect(old.containsKey('timezoneOffsetMinutes'), isTrue);
+        return old
+          ..remove('timePrecision')
+          ..remove('timezoneOffsetMinutes');
       }).toList(growable: false);
       expect(rows, isNotEmpty);
       archive.addFile(

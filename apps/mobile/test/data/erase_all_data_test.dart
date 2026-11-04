@@ -300,9 +300,8 @@ Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
   final quickEntry = await repositories.nutrition.logQuickEntry(
     meal: MealDraft(
       mealType: 'Breakfast',
-      startedAt: DateTime.utc(2026, 6, 16, 7),
+      startedAt: DateTime(2026, 6, 16, 7),
       timezone: 'UTC',
-      localDate: const NutritionDayDate(year: 2026, month: 6, day: 16),
     ),
     entry: QuickFoodEntryDraft(
       name: 'Oats',

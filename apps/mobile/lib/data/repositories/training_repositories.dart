@@ -13,6 +13,7 @@ import '../../domain/body_tracker/measurement_validation.dart';
 import '../../domain/common/local_clock.dart';
 import '../../domain/effect/effect.dart';
 import '../../domain/metrics/reading_normalization.dart';
+import '../../domain/nutrition/meal_validation.dart';
 import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/nutrition_day_assembly.dart';
 import '../../domain/nutrition/nutrition_import.dart';
@@ -58,6 +59,14 @@ export '../../domain/body_tracker/measurement_validation.dart'
         MeasurementValueException,
         MeasurementValueValidation;
 export '../../domain/effect/effect.dart';
+export '../../domain/nutrition/meal_validation.dart'
+    show
+        MealTimeInput,
+        MealValidationException,
+        MealValidationIssue,
+        MealValidationLimits,
+        MealValidationResult,
+        validateMealTime;
 export '../../domain/nutrition/nutrition.dart';
 export '../../domain/nutrition/nutrition_import.dart';
 export '../../domain/protocols/dose_validation.dart'
@@ -3605,7 +3614,7 @@ class NutritionRepository {
       MealDraft(
         mealType: importMeal.mealType,
         startedAt: importMeal.startedAt,
-        localDate: importMeal.localDate,
+        timePrecision: importMeal.timePrecision,
       ),
       context,
     );
@@ -4197,17 +4206,34 @@ class NutritionRepository {
   Future<String> _createMeal(MealDraft draft, WriteContext context) async {
     final startedAt = draft.startedAt;
     final endedAt = draft.endedAt;
-    if (endedAt != null && !endedAt.isAfter(startedAt)) {
-      throw ArgumentError.value(
-        endedAt,
-        'endedAt',
-        'Meal end must be after start.',
-      );
-    }
+
+    // The SHARED two-tier validator (docs/designs/meal-logging.md §8), as the
+    // Dose write runs `validateDose`: a hard reject (an end not after the
+    // start, an empty Meal Type) throws here so nothing is persisted. The
+    // `meal_time_in_future` soft warning never blocks the write: the Meal
+    // screen asks the user to confirm a future time before it saves (§6).
+    validateMealTime(
+      MealTimeInput(
+        startedAt: startedAt,
+        endedAt: endedAt,
+        mealType: draft.mealType,
+      ),
+      now: context.timestamp,
+    ).throwIfRejected();
 
     final id = _repositories._ids.create(context.timestamp);
-    final localDate =
-        draft.localDate ?? NutritionDayDate.fromDateTime(startedAt);
+    // The offset frozen at the Meal's own instant, not at the moment of
+    // logging, so a summer Meal back-filled in winter keeps its own day
+    // (docs/designs/meal-logging.md §1).
+    final timezoneOffsetMinutes = draft.timezoneOffsetMinutes ??
+        startedAt.toLocal().timeZoneOffset.inMinutes;
+    // The local date is always derived from the instant and the frozen
+    // offset; `localDateAtOffset` is the single rule that writes
+    // `meals.local_date` (docs/designs/meal-logging.md §1).
+    final localDate = _nutritionDayDateAtOffset(
+      startedAt,
+      timezoneOffsetMinutes,
+    );
     final timezone = _normalizeOptionalText(draft.timezone) ??
         startedAt.toLocal().timeZoneName;
 
@@ -4218,6 +4244,8 @@ class NutritionRepository {
             startedAt: startedAt.toUtc(),
             timezone: timezone,
             localDate: Value<String>(localDate.storageValue),
+            timezoneOffsetMinutes: Value<int?>(timezoneOffsetMinutes),
+            timePrecision: Value<String>(draft.timePrecision.name),
             endedAt: Value<DateTime?>(endedAt?.toUtc()),
             updatedAt: context.timestamp,
           ),
@@ -15801,10 +15829,23 @@ MealRecord _mealFromRow(MealRow row) {
     startedAt: row.startedAt.toUtc(),
     timezone: row.timezone,
     localDate: NutritionDayDate.parse(row.localDate),
+    timezoneOffsetMinutes: row.timezoneOffsetMinutes,
+    timePrecision: MealTimePrecision.fromStorage(row.timePrecision),
     endedAt: row.endedAt?.toUtc(),
     updatedAt: row.updatedAt.toUtc(),
     deletedAt: row.deletedAt?.toUtc(),
   );
+}
+
+/// The Nutrition Day of [instant] at the frozen [offsetMinutes] (the device
+/// zone for null), through `localDateAtOffset`, the single rule that writes
+/// `meals.local_date` (docs/designs/meal-logging.md §1).
+NutritionDayDate _nutritionDayDateAtOffset(
+  DateTime instant,
+  int? offsetMinutes,
+) {
+  final date = localDateAtOffset(instant, offsetMinutes);
+  return NutritionDayDate(year: date.year, month: date.month, day: date.day);
 }
 
 UserFoodRecord _userFoodFromRow(FoodRow row) {
@@ -16279,6 +16320,8 @@ Map<String, Object?> _mealImage(MealRow row) {
     'started_at': _iso(row.startedAt),
     'timezone': row.timezone,
     'local_date': row.localDate,
+    'timezone_offset_minutes': row.timezoneOffsetMinutes,
+    'time_precision': row.timePrecision,
     'ended_at': row.endedAt == null ? null : _iso(row.endedAt!),
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
@@ -16892,9 +16935,18 @@ const _templateLinkWorkoutSnapshotFields = <String>{
 /// (the Agent API has no favourite field). The server carries a stored value
 /// forward, but an Agent-created Compound has none, and the device decode
 /// reads the missing key as false, so false is its default here.
+///
+/// A Meal's `timezone_offset_minutes` and `time_precision` arrived with schema
+/// 65 (docs/designs/meal-logging.md §10). A Meal written before then has a
+/// null offset and `instant` precision, so an image without the keys means
+/// exactly those values.
 const _activityLaterAddedKeyDefaults = <String, Map<String, Object?>>{
   AppDatabase.focusesTable: <String, Object?>{'color_hex': null},
   AppDatabase.compoundsTable: <String, Object?>{'is_favorite': false},
+  AppDatabase.mealsTable: <String, Object?>{
+    'timezone_offset_minutes': null,
+    'time_precision': 'instant',
+  },
 };
 
 bool _activityImagesEqualForEntity(
@@ -17023,15 +17075,53 @@ WorkoutSessionsCompanion _workoutSessionCompanionFromImage(
 }
 
 MealsCompanion _mealCompanionFromImage(Map<String, Object?> image) {
+  final startedAt = _activityRequiredDateTime(image, 'started_at');
+  // Images from before schema 65 (an older device's push, an older undo) have
+  // neither key: an absent key leaves the column as stored on update and
+  // falls to the column default on insert (docs/designs/meal-logging.md §10).
+  final timezoneOffsetMinutes = _imageIntIfPresent(
+    image,
+    'timezone_offset_minutes',
+  );
   return MealsCompanion(
     mealType: Value<String>(_activityRequiredString(image, 'meal_type')),
-    startedAt: Value<DateTime>(_activityRequiredDateTime(image, 'started_at')),
+    startedAt: Value<DateTime>(startedAt),
     timezone: Value<String>(_activityRequiredString(image, 'timezone')),
-    localDate: Value<String>(_activityRequiredString(image, 'local_date')),
+    localDate: Value<String>(
+      _mealImageLocalDate(
+        image,
+        startedAt: startedAt,
+        timezoneOffsetMinutes:
+            timezoneOffsetMinutes.present ? timezoneOffsetMinutes.value : null,
+      ),
+    ),
+    timezoneOffsetMinutes: timezoneOffsetMinutes,
+    timePrecision: _imageNonNullStringIfPresent(image, 'time_precision'),
     endedAt: Value<DateTime?>(_activityNullableDateTime(image, 'ended_at')),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );
+}
+
+/// A Meal image's `local_date`, or, when it is missing or not a valid
+/// `YYYY-MM-DD` date, the date re-derived from `started_at` and the image's
+/// offset (the device zone for null) by `localDateAtOffset`, so a bad server
+/// row no longer crashes pull (docs/designs/meal-logging.md §10).
+String _mealImageLocalDate(
+  Map<String, Object?> image, {
+  required DateTime startedAt,
+  required int? timezoneOffsetMinutes,
+}) {
+  final stored = image['local_date'];
+  if (stored is String) {
+    try {
+      return NutritionDayDate.parse(stored).storageValue;
+    } on FormatException {
+      // Fall through to the derived date.
+    }
+  }
+  return _nutritionDayDateAtOffset(startedAt, timezoneOffsetMinutes)
+      .storageValue;
 }
 
 MealsCompanion _mealSyncCompanionFromImage(

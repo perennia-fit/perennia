@@ -23,6 +23,25 @@ void main() {
       expect(resolution.preservedProvider, isNull);
     });
 
+    test('marks every Meal as date precision at local midnight', () {
+      // docs/designs/meal-logging.md §1: the export has a date column only.
+      const csv = '''
+Date,Meal,Food,Calories,Fat (g),Carbohydrates (g),Protein (g)
+2026-06-01,Breakfast,Oats,389,6.9,66.3,16.9
+2026-06-02,Dinner,Rice,200,1,44,4
+''';
+
+      final meals = adapter.parse(csv).meals;
+
+      expect(meals, hasLength(2));
+      expect(
+        meals.map((meal) => meal.timePrecision),
+        everyElement(MealTimePrecision.date),
+      );
+      expect(meals.first.startedAt, DateTime(2026, 6, 1));
+      expect(meals[1].startedAt, DateTime(2026, 6, 2));
+    });
+
     test('is a NutritionImportAdapter', () {
       expect(adapter, isA<NutritionImportAdapter>());
     });

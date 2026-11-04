@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../common/local_clock.dart';
+
 class NutritionDayDate implements Comparable<NutritionDayDate> {
   const NutritionDayDate({
     required this.year,
@@ -819,19 +821,52 @@ class MealTypeDraft {
   final int sortOrder;
 }
 
+/// How much of a Meal's `startedAt` is known (docs/designs/meal-logging.md
+/// §1). Stored in `meals.time_precision` by [name].
+enum MealTimePrecision {
+  /// `startedAt` is the time the user ate.
+  instant,
+
+  /// Only the date is known: `startedAt` is local midnight of the Meal's
+  /// local date and is never shown as a clock time.
+  date;
+
+  /// The precision stored as [storage], or [instant] for anything unknown
+  /// (the column default, and what every Meal written before schema 65 reads).
+  static MealTimePrecision fromStorage(String? storage) {
+    for (final value in values) {
+      if (value.name == storage) {
+        return value;
+      }
+    }
+    return instant;
+  }
+}
+
+/// A Meal to create. It has no local date: a Meal's Nutrition Day is always
+/// derived from [startedAt] and its frozen offset (docs/designs/meal-logging.md
+/// §1), so it can never disagree with the Meal's time.
 class MealDraft {
   const MealDraft({
     required this.mealType,
     required this.startedAt,
-    this.localDate,
     this.timezone,
+    this.timezoneOffsetMinutes,
+    this.timePrecision = MealTimePrecision.instant,
     this.endedAt,
   });
 
   final String mealType;
   final DateTime startedAt;
-  final NutritionDayDate? localDate;
+
+  /// The zone label; the repository writes the device zone's abbreviation at
+  /// [startedAt] when null.
   final String? timezone;
+
+  /// The UTC offset to freeze; the repository uses the device zone's offset
+  /// at [startedAt] when null.
+  final int? timezoneOffsetMinutes;
+  final MealTimePrecision timePrecision;
   final DateTime? endedAt;
 }
 
@@ -954,6 +989,8 @@ class MealRecord {
     required this.timezone,
     required this.localDate,
     required this.updatedAt,
+    this.timezoneOffsetMinutes,
+    this.timePrecision = MealTimePrecision.instant,
     this.endedAt,
     this.deletedAt,
   });
@@ -963,9 +1000,18 @@ class MealRecord {
   final DateTime startedAt;
   final String timezone;
   final NutritionDayDate localDate;
+
+  /// The UTC offset frozen when the Meal's time was set; null on Meals written
+  /// before schema 65, which read in the device zone.
+  final int? timezoneOffsetMinutes;
+  final MealTimePrecision timePrecision;
   final DateTime? endedAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
+
+  /// The Meal's clock where it was eaten: [startedAt] at its frozen offset
+  /// (the device zone for a null offset), read the way a Dose's is.
+  DateTime get clock => clockAtOffset(startedAt, timezoneOffsetMinutes);
 }
 
 class FoodEntryRecord {

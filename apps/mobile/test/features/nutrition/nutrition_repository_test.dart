@@ -139,7 +139,6 @@ void main() {
           mealType: ' Breakfast ',
           startedAt: startedAt,
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         entry: QuickFoodEntryDraft(
           name: ' Protein shake ',
@@ -210,9 +209,8 @@ void main() {
       final result = await repositories.nutrition.logQuickEntry(
         meal: MealDraft(
           mealType: 'Lunch',
-          startedAt: DateTime.utc(2026, 6, 26, 12),
+          startedAt: DateTime(2026, 6, 26, 12),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         entry: QuickFoodEntryDraft(
           name: 'Rice bowl',
@@ -268,9 +266,8 @@ void main() {
         () => repositories.nutrition.logQuickEntry(
           meal: MealDraft(
             mealType: 'Snack',
-            startedAt: DateTime.utc(2026, 6, 26, 10),
+            startedAt: DateTime(2026, 6, 26, 10),
             timezone: 'Australia/Brisbane',
-            localDate: localDate,
           ),
           entry: QuickFoodEntryDraft(
             name: 'Impossible snack',
@@ -297,9 +294,8 @@ void main() {
       final result = await repositories.nutrition.logQuickEntry(
         meal: MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 10),
+          startedAt: DateTime(2026, 6, 26, 10),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         entry: QuickFoodEntryDraft(
           name: 'Loose label',
@@ -327,9 +323,8 @@ void main() {
       final result = await repositories.nutrition.logQuickEntry(
         meal: MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 10),
+          startedAt: DateTime(2026, 6, 26, 10),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         entry: QuickFoodEntryDraft(
           name: 'Unknown carbs',
@@ -466,7 +461,6 @@ void main() {
 
     test('archives User Food without deleting rows or logged snapshots',
         () async {
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
       final foodId = await repositories.nutrition.forkUsdaFoodToUserFood(
         'usda-fdc-171077',
         actor: 'tester',
@@ -474,9 +468,8 @@ void main() {
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Lunch',
-          startedAt: DateTime.utc(2026, 6, 26, 12),
+          startedAt: DateTime(2026, 6, 26, 12),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final result = await repositories.nutrition.logFoodEntry(
@@ -643,9 +636,8 @@ void main() {
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Breakfast',
-          startedAt: DateTime.utc(2026, 6, 26, 8),
+          startedAt: DateTime(2026, 6, 26, 8),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         actor: 'tester',
       );
@@ -741,13 +733,11 @@ void main() {
 
     test('archives Recipe without cascading to ingredients or history',
         () async {
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Dinner',
-          startedAt: DateTime.utc(2026, 6, 26, 19),
+          startedAt: DateTime(2026, 6, 26, 19),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final riceId = await repositories.nutrition.createUserFood(
@@ -863,9 +853,8 @@ void main() {
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Breakfast',
-          startedAt: DateTime.utc(2026, 6, 26, 8),
+          startedAt: DateTime(2026, 6, 26, 8),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         actor: 'tester',
       );
@@ -964,13 +953,11 @@ void main() {
 
     test('logs selected USDA Food snapshot without writing catalogue rows',
         () async {
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Lunch',
-          startedAt: DateTime.utc(2026, 6, 26, 12),
+          startedAt: DateTime(2026, 6, 26, 12),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         actor: 'tester',
       );
@@ -1038,13 +1025,11 @@ void main() {
 
     test('repeated Open Food Facts logs stay entry-only without catalogue rows',
         () async {
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 27);
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 27, 15),
+          startedAt: DateTime(2026, 6, 27, 15),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
 
@@ -1080,13 +1065,11 @@ void main() {
 
     test('selected User Food snapshot survives later catalogue edits',
         () async {
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Dinner',
-          startedAt: DateTime.utc(2026, 6, 26, 19),
+          startedAt: DateTime(2026, 6, 26, 19),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final foodId = await repositories.nutrition.createUserFood(
@@ -1149,13 +1132,11 @@ void main() {
     });
 
     test('soft-warns huge Food Entry Portion while persisting entry', () async {
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Lunch',
-          startedAt: DateTime.utc(2026, 6, 26, 12),
+          startedAt: DateTime(2026, 6, 26, 12),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final foodId = await repositories.nutrition.createUserFood(
@@ -1197,9 +1178,8 @@ void main() {
       await repositories.nutrition.logQuickEntry(
         meal: MealDraft(
           mealType: 'Breakfast',
-          startedAt: DateTime.utc(2026, 6, 26, 8),
+          startedAt: DateTime(2026, 6, 26, 8),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         entry: QuickFoodEntryDraft(
           name: 'Known calories, missing carbs',
@@ -1225,9 +1205,8 @@ void main() {
       final lunchId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Lunch',
-          startedAt: DateTime.utc(2026, 6, 26, 12),
+          startedAt: DateTime(2026, 6, 26, 12),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final foodId = await repositories.nutrition.createUserFood(
@@ -1300,9 +1279,8 @@ void main() {
       final first = await repositories.nutrition.logQuickEntry(
         meal: MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 10),
+          startedAt: DateTime(2026, 6, 26, 10),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         entry: QuickFoodEntryDraft(
           name: 'Apple',
@@ -1313,9 +1291,8 @@ void main() {
       final second = await repositories.nutrition.logQuickEntry(
         meal: MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 15),
+          startedAt: DateTime(2026, 6, 26, 15),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         entry: QuickFoodEntryDraft(
           name: 'Yogurt',
@@ -1326,9 +1303,8 @@ void main() {
       final third = await repositories.nutrition.logQuickEntry(
         meal: MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 21),
+          startedAt: DateTime(2026, 6, 26, 21),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         entry: QuickFoodEntryDraft(
           name: 'Toast',
@@ -1351,9 +1327,9 @@ void main() {
       expect(
         day.meals.map((meal) => meal.meal.startedAt),
         <DateTime>[
-          DateTime.utc(2026, 6, 26, 10),
-          DateTime.utc(2026, 6, 26, 15),
-          DateTime.utc(2026, 6, 26, 21),
+          DateTime(2026, 6, 26, 10).toUtc(),
+          DateTime(2026, 6, 26, 15).toUtc(),
+          DateTime(2026, 6, 26, 21).toUtc(),
         ],
       );
       expect(
@@ -1377,33 +1353,29 @@ void main() {
       final lateBreakfastId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Breakfast',
-          startedAt: DateTime.utc(2026, 6, 26, 20),
+          startedAt: DateTime(2026, 6, 26, 20),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final earlyLunchId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Lunch',
-          startedAt: DateTime.utc(2026, 6, 26, 6),
+          startedAt: DateTime(2026, 6, 26, 6),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final earlySnackId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 7),
+          startedAt: DateTime(2026, 6, 26, 7),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final earlyBreakfastId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Breakfast',
-          startedAt: DateTime.utc(2026, 6, 26, 8),
+          startedAt: DateTime(2026, 6, 26, 8),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
 
@@ -1437,9 +1409,8 @@ void main() {
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: snack.name,
-          startedAt: DateTime.utc(2026, 6, 26, 15),
+          startedAt: DateTime(2026, 6, 26, 15),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
 
@@ -1519,17 +1490,15 @@ void main() {
       final breakfastMealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Breakfast',
-          startedAt: DateTime.utc(2026, 6, 26, 8),
+          startedAt: DateTime(2026, 6, 26, 8),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final preWorkoutMealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Pre-workout',
-          startedAt: DateTime.utc(2026, 6, 26, 7),
+          startedAt: DateTime(2026, 6, 26, 7),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
 
@@ -1585,10 +1554,9 @@ void main() {
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Breakfast',
-          startedAt: DateTime.utc(2026, 6, 26, 8),
-          endedAt: DateTime.utc(2026, 6, 26, 8, 20),
+          startedAt: DateTime(2026, 6, 26, 8),
+          endedAt: DateTime(2026, 6, 26, 8, 20),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         actor: 'tester',
       );
@@ -1607,8 +1575,8 @@ void main() {
       final entry = day.meals.single.entries.single;
 
       expect(result.mealId, mealId);
-      expect(meal.startedAt, DateTime.utc(2026, 6, 26, 8));
-      expect(meal.endedAt, DateTime.utc(2026, 6, 26, 8, 20));
+      expect(meal.startedAt, DateTime(2026, 6, 26, 8).toUtc());
+      expect(meal.endedAt, DateTime(2026, 6, 26, 8, 20).toUtc());
       expect(entry.name, 'Coffee');
       expect(entry.mealId, mealId);
 
@@ -1630,9 +1598,8 @@ void main() {
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Dinner',
-          startedAt: DateTime.utc(2026, 6, 26, 19),
+          startedAt: DateTime(2026, 6, 26, 19),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         actor: 'tester',
       );
@@ -1714,9 +1681,8 @@ void main() {
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 15),
+          startedAt: DateTime(2026, 6, 26, 15),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         actor: 'tester',
       );
@@ -1778,14 +1744,12 @@ void main() {
     test(
         'deletes Open Food Facts Food Entry as a tombstone without cache tombstone',
         () async {
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 27);
       final startedAt = DateTime.utc(2026, 6, 27, 15);
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Snack',
           startedAt: startedAt,
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final logged = await repositories.nutrition.logFoodEntrySnapshot(
@@ -1815,13 +1779,11 @@ void main() {
     });
 
     test('Food Entry snapshot survives Food edits and archive', () async {
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Dinner',
-          startedAt: DateTime.utc(2026, 6, 26, 19),
+          startedAt: DateTime(2026, 6, 26, 19),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final foodId = await repositories.nutrition.createUserFood(
@@ -1880,13 +1842,11 @@ void main() {
     });
 
     test('rejects unavailable Portion units for Food Entries', () async {
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 16),
+          startedAt: DateTime(2026, 6, 26, 16),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
       );
       final solidFoodId = await repositories.nutrition.createUserFood(
@@ -1993,9 +1953,8 @@ void main() {
           .logQuickEntry(
             meal: MealDraft(
               mealType: 'Dinner',
-              startedAt: DateTime.utc(2026, 6, 26, 19),
+              startedAt: DateTime(2026, 6, 26, 19),
               timezone: 'Australia/Brisbane',
-              localDate: localDate,
             ),
             entry: QuickFoodEntryDraft(
               name: 'Quick omelette',
@@ -2006,6 +1965,232 @@ void main() {
       final day = await repositories.nutrition.nutritionDay(localDate);
       expect(day.meals.single.meal.id, result.mealId);
       expect(day.meals.single.entries.single.id, result.foodEntryId);
+    });
+
+    test(
+        'createMeal freezes the offset at the Meal\'s own instant, stores the '
+        'precision and derives the local date', () async {
+      // docs/designs/meal-logging.md §1. Late evening, so a date derived in
+      // the wrong zone would land on the wrong day.
+      final winter = DateTime(2026, 1, 15, 23, 30);
+      final summer = DateTime(2026, 7, 15, 23, 30);
+      final winterId = await repositories.nutrition.createMeal(
+        MealDraft(mealType: 'Dinner', startedAt: winter),
+      );
+      final summerId = await repositories.nutrition.createMeal(
+        MealDraft(mealType: 'Dinner', startedAt: summer),
+      );
+
+      final winterMeal = (await repositories.nutrition.getMealById(winterId))!;
+      expect(
+        winterMeal.timezoneOffsetMinutes,
+        winter.toLocal().timeZoneOffset.inMinutes,
+      );
+      expect(winterMeal.timePrecision, MealTimePrecision.instant);
+      expect(
+        winterMeal.localDate,
+        NutritionDayDate(year: 2026, month: 1, day: 15),
+      );
+      expect(winterMeal.timezone, winter.timeZoneName);
+      expect(winterMeal.clock.hour, 23);
+      expect(winterMeal.clock.minute, 30);
+
+      final summerMeal = (await repositories.nutrition.getMealById(summerId))!;
+      expect(
+        summerMeal.timezoneOffsetMinutes,
+        summer.toLocal().timeZoneOffset.inMinutes,
+      );
+      expect(
+        summerMeal.localDate,
+        NutritionDayDate(year: 2026, month: 7, day: 15),
+      );
+
+      final rows = await (database.select(database.meals)
+            ..where((row) => row.id.equals(winterId)))
+          .getSingle();
+      expect(rows.localDate, '2026-01-15');
+      expect(rows.timePrecision, 'instant');
+      expect(
+        rows.timezoneOffsetMinutes,
+        winter.toLocal().timeZoneOffset.inMinutes,
+      );
+
+      final activity = (await repositories.activityLog.listEntries())
+          .lastWhere((entry) => entry.entityId == winterId);
+      expect(
+        activity.afterImage?['timezone_offset_minutes'],
+        winter.toLocal().timeZoneOffset.inMinutes,
+      );
+      expect(activity.afterImage?['time_precision'], 'instant');
+    });
+
+    test('createMeal derives the local date from an explicit offset', () async {
+      // 22:00 UTC at +10:00 is 08:00 the next day, whatever the device zone.
+      final mealId = await repositories.nutrition.createMeal(
+        MealDraft(
+          mealType: 'Breakfast',
+          startedAt: DateTime.utc(2026, 6, 26, 22),
+          timezoneOffsetMinutes: 600,
+          timePrecision: MealTimePrecision.date,
+        ),
+      );
+
+      final meal = (await repositories.nutrition.getMealById(mealId))!;
+      expect(meal.timezoneOffsetMinutes, 600);
+      expect(meal.timePrecision, MealTimePrecision.date);
+      expect(meal.localDate, NutritionDayDate(year: 2026, month: 6, day: 27));
+      expect(meal.clock, DateTime.utc(2026, 6, 27, 8));
+    });
+
+    test('createMeal hard-rejects an empty Meal Type through the validator',
+        () async {
+      await expectLater(
+        repositories.nutrition.createMeal(
+          MealDraft(mealType: '   ', startedAt: DateTime(2026, 6, 26, 8)),
+        ),
+        throwsA(
+          isA<MealValidationException>().having(
+            (error) => error.errors.map((issue) => issue.rule),
+            'rules',
+            ['meal_type_required'],
+          ),
+        ),
+      );
+      await expectLater(
+        repositories.nutrition.createMeal(
+          MealDraft(
+            mealType: 'Lunch',
+            startedAt: DateTime(2026, 6, 26, 12),
+            endedAt: DateTime(2026, 6, 26, 12),
+          ),
+        ),
+        throwsA(
+          isA<MealValidationException>().having(
+            (error) => error.errors.map((issue) => issue.rule),
+            'rules',
+            ['meal_ended_before_start'],
+          ),
+        ),
+      );
+
+      expect(await database.select(database.meals).get(), isEmpty);
+      expect(await repositories.activityLog.listEntries(), isEmpty);
+    });
+
+    test('createMeal still writes a Meal that starts in the future', () async {
+      // `meal_time_in_future` is a soft warning; the Meal screen asks the
+      // user to confirm before it saves (docs/designs/meal-logging.md §6).
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      final startedAt = DateTime(
+        tomorrow.year,
+        tomorrow.month,
+        tomorrow.day,
+        tomorrow.hour,
+        tomorrow.minute,
+      );
+      final mealId = await repositories.nutrition.createMeal(
+        MealDraft(mealType: 'Dinner', startedAt: startedAt),
+      );
+
+      final meal = (await repositories.nutrition.getMealById(mealId))!;
+      expect(meal.startedAt, startedAt.toUtc());
+      expect(meal.localDate, NutritionDayDate.fromDateTime(startedAt));
+    });
+
+    group('startMeal', () {
+      late ProviderContainer container;
+      final lunch = MealTypeRecord(
+        id: 'meal-type-lunch',
+        name: 'Lunch',
+        sortOrder: 1,
+        updatedAt: DateTime.utc(2026, 1, 1),
+      );
+
+      setUp(() {
+        container = ProviderContainer(
+          overrides: [
+            trainingRepositoriesProvider.overrideWith((ref) => repositories),
+          ],
+        );
+      });
+
+      tearDown(() => container.dispose());
+
+      test('on a past day stores that day at the current clock time', () async {
+        final today = NutritionDayDate.fromDateTime(DateTime.now());
+        final pastDay = today.addDays(-3);
+        container.read(selectedNutritionDayProvider.notifier).select(pastDay);
+
+        final before = DateTime.now();
+        final mealId = await container
+            .read(nutritionDayControllerProvider.notifier)
+            .startMeal(mealType: lunch);
+        final after = DateTime.now();
+
+        final meal = (await repositories.nutrition.getMealById(mealId))!;
+        expect(meal.localDate, pastDay);
+        final started = meal.startedAt.toLocal();
+        expect(
+          NutritionDayDate.fromDateTime(started),
+          pastDay,
+        );
+        // The clock time of the start is the clock time of the tap.
+        final tapClock = Duration(
+          hours: before.hour,
+          minutes: before.minute,
+          seconds: before.second,
+        );
+        final startClock = Duration(
+          hours: started.hour,
+          minutes: started.minute,
+          seconds: started.second,
+        );
+        final afterClock = Duration(
+          hours: after.hour,
+          minutes: after.minute,
+          seconds: after.second,
+        );
+        if (afterClock >= tapClock) {
+          expect(
+            startClock.inSeconds,
+            inInclusiveRange(tapClock.inSeconds, afterClock.inSeconds),
+          );
+        }
+        expect(meal.mealType, 'Lunch');
+      });
+
+      test('on today starts now', () async {
+        final today = NutritionDayDate.fromDateTime(DateTime.now());
+        container.read(selectedNutritionDayProvider.notifier).select(today);
+
+        // Drift stores whole seconds.
+        final before = DateTime.now().toUtc().subtract(
+              const Duration(seconds: 1),
+            );
+        final mealId = await container
+            .read(nutritionDayControllerProvider.notifier)
+            .startMeal(mealType: lunch);
+        final after = DateTime.now().toUtc();
+
+        final meal = (await repositories.nutrition.getMealById(mealId))!;
+        expect(meal.localDate, NutritionDayDate.fromDateTime(meal.startedAt));
+        expect(meal.startedAt.isBefore(before), isFalse);
+        expect(meal.startedAt.isAfter(after), isFalse);
+      });
+
+      test('honours an explicit start time', () async {
+        final pastDay = NutritionDayDate(year: 2026, month: 6, day: 20);
+        container.read(selectedNutritionDayProvider.notifier).select(pastDay);
+        final startedAt = DateTime(2026, 6, 24, 7, 45);
+
+        final mealId = await container
+            .read(nutritionDayControllerProvider.notifier)
+            .startMeal(mealType: lunch, startedAt: startedAt);
+
+        final meal = (await repositories.nutrition.getMealById(mealId))!;
+        expect(meal.startedAt, startedAt.toUtc());
+        expect(meal.localDate, NutritionDayDate(year: 2026, month: 6, day: 24));
+      });
     });
 
     test('reconstructs Meal and Quick Entry after kill-and-reopen', () async {
@@ -2026,9 +2211,8 @@ void main() {
       final result = await firstRepositories.nutrition.logQuickEntry(
         meal: MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 6, 26, 15, 30),
+          startedAt: DateTime(2026, 6, 26, 15, 30),
           timezone: 'Australia/Brisbane',
-          localDate: localDate,
         ),
         entry: QuickFoodEntryDraft(
           name: 'Greek yogurt',
@@ -2207,9 +2391,8 @@ void main() {
       final mealId = await repositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Lunch',
-          startedAt: DateTime.utc(2026, 10, 15, 12),
+          startedAt: DateTime(2026, 10, 15, 12),
           timezone: 'UTC',
-          localDate: NutritionDayDate(year: 2026, month: 10, day: 15),
         ),
       );
       final archivedFoodId = await repositories.nutrition.createUserFood(
@@ -2394,9 +2577,8 @@ void main() {
       final mealId = await firstRepositories.nutrition.createMeal(
         MealDraft(
           mealType: 'Snack',
-          startedAt: DateTime.utc(2026, 10, 30, 15),
+          startedAt: DateTime(2026, 10, 30, 15),
           timezone: 'UTC',
-          localDate: NutritionDayDate(year: 2026, month: 10, day: 30),
         ),
       );
       final chicken = (await firstRepositories.platformFoods.getUsdaFoodById(

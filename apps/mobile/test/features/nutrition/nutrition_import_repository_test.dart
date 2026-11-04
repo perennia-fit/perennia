@@ -69,6 +69,42 @@ Day,Time,Group,Food Name,Amount,Energy (kcal),Protein (g),Carbs (g),Fat (g),Calc
       }
     });
 
+    test('stores the time precision the adapter set on each Meal', () async {
+      // docs/designs/meal-logging.md §1: a row without a time of day only
+      // knows its date; its Meal starts at local midnight.
+      const mixed = '''
+Day,Time,Group,Food Name,Amount,Energy (kcal),Protein (g),Carbs (g),Fat (g)
+2026-06-01,08:00,Breakfast,Oats,100 g,389,16.9,66.3,6.9
+2026-06-01,,Snacks,Banana,118 g,105,1.3,27,0.4
+''';
+      final result = await repositories.nutrition.importNutritionBatch(
+        batch: adapter.parse(mixed),
+        provider: adapter.provider,
+        consentCheck: () async => true,
+      );
+
+      expect(result.mealIds, hasLength(2));
+      final meals = <MealRecord>[
+        for (final id in result.mealIds)
+          (await repositories.nutrition.getMealById(id))!,
+      ];
+      final breakfast =
+          meals.singleWhere((meal) => meal.mealType == 'Breakfast');
+      final snacks = meals.singleWhere((meal) => meal.mealType == 'Snacks');
+      expect(breakfast.timePrecision, MealTimePrecision.instant);
+      expect(breakfast.startedAt, DateTime(2026, 6, 1, 8).toUtc());
+      expect(snacks.timePrecision, MealTimePrecision.date);
+      expect(snacks.startedAt, DateTime(2026, 6, 1).toUtc());
+      for (final meal in meals) {
+        expect(meal.localDate,
+            const NutritionDayDate(year: 2026, month: 6, day: 1));
+        expect(
+          meal.timezoneOffsetMinutes,
+          meal.startedAt.toLocal().timeZoneOffset.inMinutes,
+        );
+      }
+    });
+
     test('never auto-creates a User Food', () async {
       await land();
       final foods = await repositories.nutrition.listActiveUserFoods();
