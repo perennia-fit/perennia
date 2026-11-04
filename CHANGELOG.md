@@ -9,7 +9,29 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Added
+
+- **Agents can list Meal Types** (`listAgentMealTypes`,
+  `GET /agent/meal-types`, `agent_list_meal_types`): the user's active Meal
+  Types in the order the app shows them, to choose a `mealType` from.
+- **`listAgentMeals` returns each Meal's `timezoneOffsetMinutes` and
+  `timePrecision`.** Meals written before this change read `null` and
+  `instant`.
+
+### Changed
+
+- **`batchWriteAgentMeal` writes only the Meal fields a request sends.** An
+  absent field keeps its stored value, `null` clears `endedAt` or
+  `deletedAt`, a request with only entries leaves the Meal untouched, and
+  `entries` may be empty. `localDate` is derived when the offset is known,
+  from `timezoneOffsetMinutes` or an IANA `timezone`.
+
 ### Fixed
+
+- **An Agent write no longer un-archives a Meal, drops Food Entry import
+  keys, or moves an entry to another Meal.**
+- **An Agent undo is refused when other writes added foods to the Meal it
+  created.** The undo returns `skipped_dependent` and applies nothing.
 
 - **Confirmations with Undo now go away.** "Set 3 logged · Undo", "Replaced ·
   Undo" and "Workout finished · Share" stayed on screen until the next message,

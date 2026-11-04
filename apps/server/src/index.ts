@@ -19,6 +19,7 @@ import { createAgentMcpServer } from "./agent-mcp.js";
 import { createDrizzleAgentCatalogStore } from "./agent-catalog.js";
 import { createDrizzleAgentReadStore } from "./agent-read-surface.js";
 import { createDrizzleAgentFoodHistoryReadStore } from "./agent-food-history.js";
+import { createDrizzleAgentMealTypesReadStore } from "./agent-meal-types.js";
 import { createDrizzleAgentNutritionReadStore } from "./agent-nutrition-reads.js";
 import { createDrizzleAgentCrossDomainReadStore } from "./agent-cross-domain-reads.js";
 import { createDrizzleAgentWorkoutBatchWriteStore } from "./agent-workout-batch-write.js";
@@ -497,6 +498,17 @@ export {
   type AgentFoodHistoryReadStore,
   type AgentFoodHistoryResponse
 } from "./agent-food-history.js";
+export {
+  AGENT_MEAL_TYPES_DESCRIPTION,
+  AgentMealTypeItemSchema,
+  AgentMealTypesResponseSchema,
+  AgentMealTypesUnavailableResponseSchema,
+  agentMealTypesRoute,
+  createDrizzleAgentMealTypesReadStore,
+  type AgentMealTypeItem,
+  type AgentMealTypesReadStore,
+  type AgentMealTypesResponse
+} from "./agent-meal-types.js";
 export {
   AGENT_CROSS_DOMAIN_MAX_RANGE_DAYS,
   AGENT_CROSS_DOMAIN_MAX_WORKOUT_POINTS,
@@ -1548,6 +1560,9 @@ export async function createMigratedServerApp({
   const agentFoodHistoryReadStore = createDrizzleAgentFoodHistoryReadStore(
     database.db
   );
+  const agentMealTypesReadStore = createDrizzleAgentMealTypesReadStore(
+    database.db
+  );
   const agentCrossDomainReadStore = createDrizzleAgentCrossDomainReadStore(
     database.db
   );
@@ -1619,6 +1634,7 @@ export async function createMigratedServerApp({
     agentProtocolsStore,
     agentNutritionReadStore,
     agentFoodHistoryReadStore,
+    agentMealTypesReadStore,
     agentNutritionGoalStore,
     agentSettingsStore,
     agentPlanReadStore,
@@ -1641,6 +1657,7 @@ export async function createMigratedServerApp({
     agentReadStore,
     agentNutritionReadStore,
     agentFoodHistoryReadStore,
+    agentMealTypesReadStore,
     agentCrossDomainReadStore,
     agentWorkoutBatchWriteStore,
     agentExerciseCatalogBatchWriteStore,

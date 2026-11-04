@@ -791,7 +791,7 @@ export type AgentMealEntry = {
   "updatedAt": string;
 };
 
-export type AgentMealListField = "id" | "mealType" | "startedAt" | "endedAt" | "timezone" | "localDate" | "entries";
+export type AgentMealListField = "id" | "mealType" | "startedAt" | "endedAt" | "timezone" | "localDate" | "timezoneOffsetMinutes" | "timePrecision" | "entries";
 
 export type AgentMealListItem = {
   "id": string;
@@ -800,6 +800,8 @@ export type AgentMealListItem = {
   "endedAt"?: string | null;
   "timezone"?: string;
   "localDate"?: string;
+  "timezoneOffsetMinutes"?: number | null;
+  "timePrecision"?: "instant" | "date";
   "entries"?: Array<AgentMealEntry>;
 };
 
@@ -812,6 +814,16 @@ export type AgentMealListResponse = {
 };
 
 export type AgentMealPortionUnit = "gram" | "milliliter" | "ounce" | "fluidOunce" | "serving" | "package";
+
+export type AgentMealTypeItem = {
+  "id": string;
+  "name": string;
+  "sortOrder": number;
+};
+
+export type AgentMealTypesResponse = {
+  "mealTypes": Array<AgentMealTypeItem>;
+};
 
 export type AgentMetricBatchWriteMetric = {
   "id": string;
@@ -2522,6 +2534,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentFoodHistory",
   "listAgentFoods",
   "listAgentHistorySets",
+  "listAgentMealTypes",
   "listAgentMeals",
   "listAgentMetricReadings",
   "listAgentMetrics",
@@ -2925,6 +2938,15 @@ export class PerenniaAgentClient {
       path: "/agent/meals",
       expectedStatus: 200,
       query: { "from": input.from, "to": input.to, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      signal: options.signal
+    });
+  }
+
+  async listAgentMealTypes(options: AgentClientRequestOptions = {}): Promise<AgentMealTypesResponse> {
+    return this.request<AgentMealTypesResponse>({
+      method: "GET",
+      path: "/agent/meal-types",
+      expectedStatus: 200,
       signal: options.signal
     });
   }

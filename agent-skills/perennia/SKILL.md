@@ -114,6 +114,7 @@ node scripts/prn-agent.mjs get-routine --routine-id routine-id --query selectedD
 node scripts/prn-agent.mjs list-meals --query from=2026-06-01T00:00:00.000Z --query to=2026-06-30T00:00:00.000Z --query fields=id,mealType,startedAt,entries
 node scripts/prn-agent.mjs list-foods --query search=banana --query limit=10
 node scripts/prn-agent.mjs list-food-history --query limit=10
+node scripts/prn-agent.mjs list-meal-types
 node scripts/prn-agent.mjs search-platform-foods --query search=chicken
 node scripts/prn-agent.mjs search-platform-foods --query source=openFoodFacts --query search=0894700010137
 node scripts/prn-agent.mjs nutrition-totals --query from=2026-06-01 --query to=2026-06-30
@@ -163,6 +164,24 @@ validator's per-item `warnings[]`. A `duplicate` retry must not be resubmitted w
 a new key. A `422` error with rule `idempotency_key_conflict` means the key was
 reused for different work, so keep the original key with the original payload and
 use a new key only for the new request.
+
+Before choosing a `mealType` for `log-meal`, read the user's Meal Types with
+`list-meal-types` and send one of their names: a Meal stores the name it was
+sent. `log-meal` writes only the Meal fields a request sends. An absent field
+keeps its stored value, and `null` clears `endedAt` or un-archives with
+`deletedAt`. A request whose `meal` carries only `id` adds or edits entries and
+leaves the Meal row untouched; an empty `entries` with Meal fields creates a
+Meal with no foods ("add foods later"). Creating a Meal needs `mealType` and
+the time block. Send `startedAt` with `timezoneOffsetMinutes`, an IANA
+`timezone`, or both; the offset is taken from `timezoneOffsetMinutes`, else
+derived from an IANA `timezone`, else unknown. With a known offset the server
+derives `localDate` and ignores one you send. With an unknown offset (a label
+such as `BRT`) `localDate` is required, or the write fails with
+`meal_offset_unknown`. `timezone`, `timezoneOffsetMinutes` and `localDate` are
+never sent without `startedAt`. Sending `startedAt` sets `timePrecision` to
+`instant`; send `timePrecision: "date"` with local midnight when only the date
+is known. See `references/api-operations.md` for the error rules and
+`warnings`.
 
 When completing a planned Set (one a Template, a quick log, or an earlier write
 left incomplete) with `log-workout`, read the Workout first and send that Set back

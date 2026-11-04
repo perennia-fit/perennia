@@ -345,6 +345,12 @@ import {
   type AgentFoodHistoryReadStore
 } from "./agent-food-history.js";
 import {
+  agentMealTypesRoute,
+  AgentMealTypesResponseSchema,
+  AgentMealTypesUnavailableResponseSchema,
+  type AgentMealTypesReadStore
+} from "./agent-meal-types.js";
+import {
   agentMealListRoute,
   agentNutritionTotalsRoute,
   agentNutritionTrendsRoute,
@@ -481,6 +487,7 @@ export type CreateAppOptions = {
   agentReadStore?: AgentReadStore;
   agentNutritionReadStore?: AgentNutritionReadStore;
   agentFoodHistoryReadStore?: AgentFoodHistoryReadStore;
+  agentMealTypesReadStore?: AgentMealTypesReadStore;
   agentCrossDomainReadStore?: AgentCrossDomainReadStore;
   agentWorkoutBatchWriteStore?: AgentWorkoutBatchWriteStore;
   agentExerciseCatalogBatchWriteStore?: AgentExerciseCatalogBatchWriteStore;
@@ -643,6 +650,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const agentReadStore = options.agentReadStore;
   const agentNutritionReadStore = options.agentNutritionReadStore;
   const agentFoodHistoryReadStore = options.agentFoodHistoryReadStore;
+  const agentMealTypesReadStore = options.agentMealTypesReadStore;
   const agentCrossDomainReadStore = options.agentCrossDomainReadStore;
   const agentWorkoutBatchWriteStore = options.agentWorkoutBatchWriteStore;
   const agentExerciseCatalogBatchWriteStore =
@@ -4463,6 +4471,55 @@ export function createApp(options: CreateAppOptions = {}) {
           userId: agentAuth.agent.userId,
           limit: context.req.valid("query").limit,
           now: new Date()
+        })
+      ),
+      200
+    );
+  });
+
+  app.openapi(agentMealTypesRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentMealTypesReadStore === undefined) {
+      return context.json(
+        AgentMealTypesUnavailableResponseSchema.parse({
+          code: "agent_nutrition_read_unavailable",
+          message: "Agent nutrition read storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+
+    return context.json(
+      AgentMealTypesResponseSchema.parse(
+        await agentMealTypesReadStore.listMealTypes({
+          userId: agentAuth.agent.userId
         })
       ),
       200

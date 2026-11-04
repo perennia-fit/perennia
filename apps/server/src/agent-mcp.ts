@@ -235,6 +235,12 @@ import {
   type AgentFoodHistoryReadStore
 } from "./agent-food-history.js";
 import {
+  AGENT_MEAL_TYPES_DESCRIPTION,
+  AgentMealTypesResponseSchema,
+  AgentMealTypesUnavailableResponseSchema,
+  type AgentMealTypesReadStore
+} from "./agent-meal-types.js";
+import {
   AgentMealListQuerySchema,
   AgentMealListResponseSchema,
   AgentNutritionReadUnavailableResponseSchema,
@@ -360,6 +366,9 @@ export const AgentMcpFoodHistoryInputSchema = AgentMcpAuthFieldsSchema.extend({
     .max(AGENT_FOOD_HISTORY_MAX_LIMIT)
     .optional()
 }).openapi("AgentMcpFoodHistoryInput");
+
+export const AgentMcpMealTypesInputSchema =
+  AgentMcpAuthFieldsSchema.openapi("AgentMcpMealTypesInput");
 
 export const AgentMcpFoodListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentFoodListQuerySchema.optional()
@@ -563,6 +572,7 @@ export type AgentMcpServerOptions = {
   agentProtocolsStore?: AgentProtocolsStore;
   agentNutritionReadStore?: AgentNutritionReadStore;
   agentFoodHistoryReadStore?: AgentFoodHistoryReadStore;
+  agentMealTypesReadStore?: AgentMealTypesReadStore;
   agentNutritionGoalStore?: AgentNutritionGoalBatchWriteStore;
   agentSettingsStore?: AgentSettingsBatchWriteStore;
   agentPlanReadStore?: AgentPlanReadStore;
@@ -593,6 +603,7 @@ export function createAgentMcpServer({
   agentProtocolsStore,
   agentNutritionReadStore,
   agentFoodHistoryReadStore,
+  agentMealTypesReadStore,
   agentNutritionGoalStore,
   agentSettingsStore,
   agentPlanReadStore,
@@ -1699,6 +1710,44 @@ export function createAgentMcpServer({
             userId: auth.agent.userId,
             limit: input.limit ?? AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
             now: new Date()
+          })
+        )
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_meal_types",
+    {
+      title: "List Agent Meal Types",
+      description: AGENT_MEAL_TYPES_DESCRIPTION,
+      inputSchema: AgentMcpMealTypesInputSchema,
+      outputSchema: AgentMealTypesResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentMealTypesReadStore === undefined) {
+        return errorResult(
+          AgentMealTypesUnavailableResponseSchema.parse({
+            code: "agent_nutrition_read_unavailable",
+            message: "Agent nutrition read storage is not configured."
+          })
+        );
+      }
+
+      return successResult(
+        AgentMealTypesResponseSchema.parse(
+          await agentMealTypesReadStore.listMealTypes({
+            userId: auth.agent.userId
           })
         )
       );

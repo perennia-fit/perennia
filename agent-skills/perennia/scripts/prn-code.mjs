@@ -593,6 +593,15 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async listAgentMealTypes(options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/meal-types",
+      expectedStatus: 200,
+      signal: options.signal
+    });
+  }
+
   async listAgentMetricReadings(input = {}, options = {}) {
     return this.request({
       method: "GET",
