@@ -702,7 +702,7 @@ writes only the Meal fields a request sends.
   or both; `timezoneOffsetMinutes` and `localDate` are never sent without `startedAt`. The
   offset is resolved in this order:
   1. the sent offset;
-  2. else `offsetMinutesInTimezone(timezone, startedAt)` (`timezone.ts`);
+  2. else `offsetMinutesInTimezone(startedAt, timezone)` (`timezone.ts`);
   3. else `null`.
 
   Then:

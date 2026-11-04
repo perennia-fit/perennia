@@ -251,6 +251,8 @@ export const AGENT_MEAL_LIST_FIELDS = [
   "endedAt",
   "timezone",
   "localDate",
+  "timezoneOffsetMinutes",
+  "timePrecision",
   "entries"
 ] as const;
 
@@ -301,6 +303,14 @@ export const AgentMealListItemSchema = z
     endedAt: z.string().min(1).nullable().optional(),
     timezone: z.string().min(1).optional(),
     localDate: z.string().min(1).optional(),
+    timezoneOffsetMinutes: z.number().int().nullable().optional().openapi({
+      description:
+        "The Meal's UTC offset in minutes, frozen when its time was set; null when the offset is unknown (the Meal was logged with only a time zone abbreviation)."
+    }),
+    timePrecision: z.enum(["instant", "date"]).optional().openapi({
+      description:
+        "instant when startedAt is the time the user ate; date when only the Meal's date is known, as with date-only imports."
+    }),
     entries: z.array(AgentMealEntrySchema).optional()
   })
   .openapi("AgentMealListItem");
@@ -345,7 +355,7 @@ export const AgentMealListQuerySchema = z.object({
     .openapi({
       param: { name: "fields", in: "query" },
       description:
-        "Comma-separated list of Meal fields to return. id, mealType, and startedAt are always returned; omitting fields returns the minimal default. Include entries to get the raw Food Entry list for each Meal."
+        "Comma-separated list of Meal fields to return. id, mealType, and startedAt are always returned; omitting fields returns the minimal default (id, mealType, startedAt, timezoneOffsetMinutes, timePrecision). Include entries to get the raw Food Entry list for each Meal."
     })
 });
 
@@ -1124,7 +1134,13 @@ function resolveMealFieldSelection(
   value: string | undefined
 ): (typeof AGENT_MEAL_LIST_FIELDS)[number][] {
   if (value === undefined) {
-    return ["id", "mealType", "startedAt"];
+    return [
+      "id",
+      "mealType",
+      "startedAt",
+      "timezoneOffsetMinutes",
+      "timePrecision"
+    ];
   }
 
   return [
@@ -1267,6 +1283,11 @@ export function parseRawPortion(
   return { value: portionValue, entered, unit };
 }
 
+function mealTimezoneOffsetMinutes(value: unknown): number | null {
+  const offset = numberValue(value ?? null);
+  return offset !== null && Number.isInteger(offset) ? offset : null;
+}
+
 function projectMealRow(
   row: RawMealRow,
   fields: readonly (typeof AGENT_MEAL_LIST_FIELDS)[number][],
@@ -1280,6 +1301,12 @@ function projectMealRow(
     endedAt: stringValue(payload.ended_at),
     timezone: stringValue(payload.timezone),
     localDate: stringValue(payload.local_date),
+    // Payloads written before Meal Logging carry neither key: they read as an
+    // unknown offset and an instant, which is what those Meals were.
+    timezoneOffsetMinutes: mealTimezoneOffsetMinutes(
+      payload.timezone_offset_minutes
+    ),
+    timePrecision: payload.time_precision === "date" ? "date" : "instant",
     entries: [...entries]
   };
 

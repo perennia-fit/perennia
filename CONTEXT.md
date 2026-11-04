@@ -340,14 +340,21 @@ Food's defined serving, not as separate units. Stored as entered; the equivalent
 mass and the resulting nutrients are derived, never stored.
 
 ## Meal
-A single eating occasion with a start instant and optional end — the
-nutrition-domain analog of a Workout. Several Meals, including more than one of the
-same Meal Type, may occur in one day.
+A single eating occasion with a start instant, a frozen UTC offset, a time
+precision, and an optional end — the nutrition-domain analog of a Workout. Its
+Nutrition Day is derived from its time and offset, so changing the time can move it
+to another day. A Meal with no Food Entries is valid. Several Meals, including more
+than one of the same Meal Type, may occur in one day.
 
 ## Meal Type
 A user-configurable label classifying a Meal (Breakfast, Lunch, Dinner, Snack, or
 the user's own such as Pre-workout), with a display order. A grouping and
-presentation concept; freely changeable, with no effect on logged history.
+presentation concept; freely changeable, with no effect on logged history. The
+seeded types have a usual time window used to propose a type for a new Meal.
+
+## Time Precision
+Whether a Meal's start is the time the user ate (instant) or only its date is known
+(date), as with date-only imports. A date-precision Meal never shows a clock time.
 
 ## Nutrition Day
 The grouping of all Meals sharing the same local date — a presentation concept,

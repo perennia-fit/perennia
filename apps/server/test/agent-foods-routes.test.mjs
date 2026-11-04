@@ -264,13 +264,15 @@ test("an Open Food Facts food from platform-search logs with log-meal once its u
       async writeMealBatch(input) {
         writes.push(input);
         return {
+          status: "written",
           duplicate: false,
           serverClock: "2026-10-27T05:00:01.000Z",
-          applied: [input.meal, ...input.entries].map((row) => ({
+          applied: [input.request.meal, ...input.request.entries].map((row) => ({
             id: row.id,
-            updatedAt: row.updatedAt,
+            updatedAt: "2026-10-27T05:00:01.000Z",
             deviceId: input.deviceId
-          }))
+          })),
+          warnings: []
         };
       }
     }

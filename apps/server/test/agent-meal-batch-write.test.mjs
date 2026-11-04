@@ -7,10 +7,12 @@ import {
   createApp,
   createDatabaseClient,
   createDrizzleAgentMealBatchWriteStore,
+  prepareAgentMealBatchWrite,
   schema
 } from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
+const FAKE_NOW = new Date("2026-06-24T05:00:01.000Z");
 
 if (!databaseUrl && process.env.CI === "true") {
   throw new Error("DATABASE_URL must be set for server Postgres integration tests.");
@@ -19,27 +21,7 @@ if (!databaseUrl && process.env.CI === "true") {
 test("agent meal batch write snapshots entries, returns warnings, and calls the write store once", async () => {
   const writes = [];
   const app = createAgentMealApp({
-    agentMealBatchWriteStore: {
-      async writeMealBatch(input) {
-        writes.push(input);
-        return {
-          duplicate: false,
-          serverClock: "2026-06-24T05:00:01.000Z",
-          applied: [
-            {
-              id: input.meal.id,
-              updatedAt: input.meal.updatedAt,
-              deviceId: input.deviceId
-            },
-            ...input.entries.map((entry) => ({
-              id: entry.id,
-              updatedAt: entry.updatedAt,
-              deviceId: input.deviceId
-            }))
-          ]
-        };
-      }
-    }
+    agentMealBatchWriteStore: recordingMealStore(writes)
   });
   const request = mealRequest({
     idempotencyKey: "agent-meal-route-test",
@@ -100,16 +82,7 @@ test("agent meal batch write snapshots entries, returns warnings, and calls the 
 test("agent meal batch write keeps unknown nutrients unknown and never coerces to zero", async () => {
   const writes = [];
   const app = createAgentMealApp({
-    agentMealBatchWriteStore: {
-      async writeMealBatch(input) {
-        writes.push(input);
-        return {
-          duplicate: false,
-          serverClock: "2026-06-24T05:00:01.000Z",
-          applied: [{ id: input.meal.id, updatedAt: input.meal.updatedAt, deviceId: input.deviceId }]
-        };
-      }
-    }
+    agentMealBatchWriteStore: recordingMealStore(writes)
   });
   // A Quick Entry that only states energy: fiber must stay unknown, not 0.
   const request = mealRequest({
@@ -139,16 +112,7 @@ test("agent meal batch write keeps unknown nutrients unknown and never coerces t
 test("agent meal batch write returns per-item warnings while still persisting", async () => {
   const writes = [];
   const app = createAgentMealApp({
-    agentMealBatchWriteStore: {
-      async writeMealBatch(input) {
-        writes.push(input);
-        return {
-          duplicate: false,
-          serverClock: "2026-06-24T05:00:01.000Z",
-          applied: [{ id: input.meal.id, updatedAt: input.meal.updatedAt, deviceId: input.deviceId }]
-        };
-      }
-    }
+    agentMealBatchWriteStore: recordingMealStore(writes)
   });
   // Energy far from the Atwater estimate -> soft warn, still persists.
   const request = mealRequest({
@@ -181,23 +145,7 @@ test("agent meal batch write returns per-item warnings while still persisting", 
 test("agent meal batch write accepts a nullable deletedAt on the meal and each entry, passing it through as an LWW tombstone", async () => {
   const writes = [];
   const app = createAgentMealApp({
-    agentMealBatchWriteStore: {
-      async writeMealBatch(input) {
-        writes.push(input);
-        return {
-          duplicate: false,
-          serverClock: "2026-06-24T05:00:01.000Z",
-          applied: [
-            { id: input.meal.id, updatedAt: input.meal.updatedAt, deviceId: input.deviceId },
-            ...input.entries.map((entry) => ({
-              id: entry.id,
-              updatedAt: entry.updatedAt,
-              deviceId: input.deviceId
-            }))
-          ]
-        };
-      }
-    }
+    agentMealBatchWriteStore: recordingMealStore(writes)
   });
   const archivedAt = "2026-06-24T06:00:00.000Z";
   const request = {
@@ -268,15 +216,7 @@ test("agent meal batch write hard-rejects one invalid item before storage", asyn
 test("agent meal batch write enqueues a best-effort sync nudge after a committed write", async () => {
   const nudges = [];
   const app = createAgentMealApp({
-    agentMealBatchWriteStore: {
-      async writeMealBatch(input) {
-        return {
-          duplicate: false,
-          serverClock: "2026-06-24T05:00:01.000Z",
-          applied: [{ id: input.meal.id, updatedAt: input.meal.updatedAt, deviceId: input.deviceId }]
-        };
-      }
-    },
+    agentMealBatchWriteStore: recordingMealStore(),
     syncNudgePublisher: {
       async enqueueSyncNudge(input) {
         nudges.push(input);
@@ -443,23 +383,7 @@ test(
 test("agent meal batch write resolves the nutrient snapshot server-side from a Food reference when nutrients are omitted", async () => {
   const writes = [];
   const app = createAgentMealApp({
-    agentMealBatchWriteStore: {
-      async writeMealBatch(input) {
-        writes.push(input);
-        return {
-          duplicate: false,
-          serverClock: "2026-07-04T05:00:01.000Z",
-          applied: [
-            { id: input.meal.id, updatedAt: input.meal.updatedAt, deviceId: input.deviceId },
-            ...input.entries.map((entry) => ({
-              id: entry.id,
-              updatedAt: entry.updatedAt,
-              deviceId: input.deviceId
-            }))
-          ]
-        };
-      }
-    },
+    agentMealBatchWriteStore: recordingMealStore(writes),
     agentFoodCatalogStore: {
       async getFoodById({ foodId }) {
         assert.equal(foodId, "food-banana");
@@ -556,23 +480,7 @@ test("agent meal batch write hard-rejects a Food reference to a Food that does n
 test("agent meal batch write still accepts an explicit nutrient vector for a Food reference, unchanged from the earlier behaviour", async () => {
   const writes = [];
   const app = createAgentMealApp({
-    agentMealBatchWriteStore: {
-      async writeMealBatch(input) {
-        writes.push(input);
-        return {
-          duplicate: false,
-          serverClock: "2026-06-24T05:00:01.000Z",
-          applied: [
-            { id: input.meal.id, updatedAt: input.meal.updatedAt, deviceId: input.deviceId },
-            ...input.entries.map((entry) => ({
-              id: entry.id,
-              updatedAt: entry.updatedAt,
-              deviceId: input.deviceId
-            }))
-          ]
-        };
-      }
-    }
+    agentMealBatchWriteStore: recordingMealStore(writes)
   });
   const request = mealRequest({
     idempotencyKey: "agent-meal-explicit-still-works",
@@ -666,6 +574,1347 @@ test(
     } finally {
       await database.close();
     }
+  }
+);
+
+// ----- Partial writes: prepareAgentMealBatchWrite field rules (pure) -----
+
+const USER = "user-1";
+const MEAL_ID = "018f6a90-6d7f-7d63-bfc1-6f1025e0d800";
+
+test("prepare: a create with only an IANA zone derives the offset and localDate", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: {
+        id: MEAL_ID,
+        mealType: "Dinner",
+        startedAt: "2026-06-24T15:30:00.000Z",
+        timezone: "Australia/Brisbane"
+      },
+      entries: [quickEntry()]
+    }),
+    emptyStored(),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.deepEqual(prepared.meal.payload, {
+    id: MEAL_ID,
+    meal_type: "Dinner",
+    started_at: "2026-06-24T15:30:00.000Z",
+    timezone: "Australia/Brisbane",
+    local_date: "2026-06-25",
+    ended_at: null,
+    updated_at: FAKE_NOW_LATER.toISOString(),
+    deleted_at: null,
+    timezone_offset_minutes: 600,
+    time_precision: "instant"
+  });
+  assert.equal(prepared.meal.updatedAt, FAKE_NOW_LATER.toISOString());
+  assert.equal(prepared.entries.length, 1);
+  assert.equal(prepared.entries[0].payload.meal_id, MEAL_ID);
+  assert.equal(prepared.entries[0].deletedAt, null);
+});
+
+test("prepare: a sent offset wins over the zone, ignores a sent localDate, and labels an offset-only zone", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: {
+        id: MEAL_ID,
+        mealType: "Lunch",
+        startedAt: "2026-06-24T23:30:00.000Z",
+        timezoneOffsetMinutes: -180,
+        localDate: "2030-01-01"
+      }
+    }),
+    emptyStored(),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal.payload.timezone_offset_minutes, -180);
+  assert.equal(prepared.meal.payload.local_date, "2026-06-24");
+  assert.equal(prepared.meal.payload.timezone, "UTC-03:00");
+});
+
+test("prepare: a create with only an abbreviation and a localDate stores a null offset and that date", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: {
+        id: MEAL_ID,
+        mealType: "Dinner",
+        startedAt: "2026-06-25T01:00:00.000Z",
+        timezone: "BRT",
+        localDate: "2026-06-24"
+      }
+    }),
+    emptyStored(),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal.payload.timezone, "BRT");
+  assert.equal(prepared.meal.payload.timezone_offset_minutes, null);
+  assert.equal(prepared.meal.payload.local_date, "2026-06-24");
+});
+
+test("prepare: an abbreviation without localDate is 422 meal_offset_unknown", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: {
+        id: MEAL_ID,
+        mealType: "Dinner",
+        startedAt: "2026-06-25T01:00:00.000Z",
+        timezone: "BRT"
+      }
+    }),
+    emptyStored(),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 422);
+  assert.deepEqual(rules(prepared.errors), ["meal_offset_unknown"]);
+  assert.equal(prepared.errors[0].field, "meal.localDate");
+  assert.equal(prepared.errors[0].itemIndex, null);
+  assert.equal(prepared.errors[0].entryId, null);
+  assert.equal(prepared.errors[0].nutrient, null);
+});
+
+test("prepare: a create without mealType or without the time block is 422 meal_create_incomplete", () => {
+  const noType = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: {
+        id: MEAL_ID,
+        startedAt: "2026-06-24T05:00:00.000Z",
+        timezone: "Australia/Brisbane"
+      }
+    }),
+    emptyStored(),
+    FAKE_NOW_LATER
+  );
+  assert.equal(noType.accepted, false);
+  assert.equal(noType.status, 422);
+  assert.deepEqual(rules(noType.errors), ["meal_create_incomplete"]);
+  assert.equal(noType.errors[0].field, "meal.mealType");
+
+  const noTime = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, mealType: "Lunch" } }),
+    emptyStored(),
+    FAKE_NOW_LATER
+  );
+  assert.equal(noTime.accepted, false);
+  assert.equal(noTime.status, 422);
+  assert.deepEqual(rules(noTime.errors), ["meal_create_incomplete"]);
+  assert.equal(noTime.errors[0].field, "meal.startedAt");
+});
+
+test("prepare: a zero-entry create writes the Meal alone", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: {
+        id: MEAL_ID,
+        mealType: "Snack",
+        startedAt: "2026-06-24T05:00:00.000Z",
+        timezone: "Australia/Brisbane"
+      }
+    }),
+    emptyStored(),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal.id, MEAL_ID);
+  assert.deepEqual(prepared.entries, []);
+  assert.deepEqual(prepared.warnings, []);
+});
+
+test("prepare: an update with only the time block moves the derived localDate across midnight and keeps the other fields", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: {
+        id: MEAL_ID,
+        startedAt: "2026-06-24T23:10:00.000Z",
+        timezoneOffsetMinutes: 60
+      }
+    }),
+    storedState({
+      meal: storedRow(USER, {
+        id: MEAL_ID,
+        meal_type: "Dinner",
+        started_at: "2026-06-24T22:50:00.000Z",
+        timezone: "BST",
+        local_date: "2026-06-24",
+        ended_at: null,
+        updated_at: "2026-06-24T22:55:00.000Z",
+        deleted_at: null,
+        timezone_offset_minutes: 60,
+        time_precision: "instant",
+        later_key: "kept"
+      })
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal.payload.started_at, "2026-06-24T23:10:00.000Z");
+  assert.equal(prepared.meal.payload.local_date, "2026-06-25");
+  assert.equal(prepared.meal.payload.timezone_offset_minutes, 60);
+  assert.equal(prepared.meal.payload.timezone, "UTC+01:00");
+  assert.equal(prepared.meal.payload.meal_type, "Dinner");
+  assert.equal(prepared.meal.payload.later_key, "kept");
+  assert.equal(prepared.meal.payload.updated_at, FAKE_NOW_LATER.toISOString());
+});
+
+test("prepare: an update without the time block keeps it, and a legacy payload reads as instant with a null offset", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, mealType: "Brunch" } }),
+    storedState({
+      meal: storedRow(USER, {
+        id: MEAL_ID,
+        meal_type: "Breakfast",
+        started_at: "2026-06-24T01:00:00.000Z",
+        timezone: "AEST",
+        local_date: "2026-06-24",
+        ended_at: null,
+        updated_at: "2026-06-24T01:00:00.000Z",
+        deleted_at: null
+      })
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal.payload.meal_type, "Brunch");
+  assert.equal(prepared.meal.payload.started_at, "2026-06-24T01:00:00.000Z");
+  assert.equal(prepared.meal.payload.timezone, "AEST");
+  assert.equal(prepared.meal.payload.local_date, "2026-06-24");
+  assert.equal(prepared.meal.payload.timezone_offset_minutes, null);
+  assert.equal(prepared.meal.payload.time_precision, "instant");
+});
+
+test("prepare: timePrecision may be sent alone, and sending startedAt resets it to instant unless sent", () => {
+  const stored = storedState({ meal: storedRow(USER, legacyMealPayload()) });
+  const dateOnly = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, timePrecision: "date" } }),
+    stored,
+    FAKE_NOW_LATER
+  );
+  assert.equal(dateOnly.meal.payload.time_precision, "date");
+
+  const retimed = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: {
+        id: MEAL_ID,
+        startedAt: "2026-06-24T02:00:00.000Z",
+        timezone: "Australia/Brisbane"
+      }
+    }),
+    storedState({
+      meal: storedRow(USER, { ...legacyMealPayload(), time_precision: "date" })
+    }),
+    FAKE_NOW_LATER
+  );
+  assert.equal(retimed.meal.payload.time_precision, "instant");
+});
+
+test("prepare: null clears endedAt; an absent endedAt keeps it", () => {
+  const stored = storedState({
+    meal: storedRow(USER, {
+      ...legacyMealPayload(),
+      ended_at: "2026-06-24T01:30:00.000Z"
+    })
+  });
+  const cleared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, endedAt: null } }),
+    stored,
+    FAKE_NOW_LATER
+  );
+  assert.equal(cleared.accepted, true);
+  assert.equal(cleared.meal.payload.ended_at, null);
+
+  const kept = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, mealType: "Lunch" } }),
+    stored,
+    FAKE_NOW_LATER
+  );
+  assert.equal(kept.meal.payload.ended_at, "2026-06-24T01:30:00.000Z");
+});
+
+test("prepare: an end before the start is 422 meal_ended_before_start at Meal level", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, endedAt: "2026-06-24T00:30:00.000Z" } }),
+    storedState({ meal: storedRow(USER, legacyMealPayload()) }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 422);
+  assert.deepEqual(rules(prepared.errors), ["meal_ended_before_start"]);
+  assert.equal(prepared.errors[0].field, "meal.endedAt");
+  assert.equal(prepared.errors[0].itemIndex, null);
+});
+
+test("prepare: an entries-only request for a stored Meal leaves the Meal row unwritten", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID }, entries: [quickEntry()] }),
+    storedState({ meal: storedRow(USER, legacyMealPayload()) }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal, null);
+  assert.equal(prepared.entries.length, 1);
+  assert.equal(prepared.entries[0].payload.meal_id, MEAL_ID);
+});
+
+test("prepare: an entries-only request for an unknown Meal id is 404 meal_not_found", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID }, entries: [quickEntry()] }),
+    emptyStored(),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 404);
+  assert.deepEqual(rules(prepared.errors), ["meal_not_found"]);
+  assert.equal(prepared.errors[0].field, "meal.id");
+});
+
+test("prepare: an unsent entry deletedAt keeps the stored value; null for a new entry", () => {
+  const archivedAt = "2026-06-24T06:00:00.000Z";
+  const stored = storedState({
+    meal: storedRow(USER, legacyMealPayload()),
+    entries: [
+      [
+        "entry-stored",
+        storedRow(
+          USER,
+          { id: "entry-stored", meal_id: MEAL_ID, deleted_at: archivedAt },
+          archivedAt
+        )
+      ]
+    ]
+  });
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: { id: MEAL_ID },
+      entries: [quickEntry({ id: "entry-stored" }), quickEntry({ id: "entry-new" })]
+    }),
+    stored,
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.entries[0].deletedAt, archivedAt);
+  assert.equal(prepared.entries[0].payload.deleted_at, archivedAt);
+  assert.equal(prepared.entries[1].deletedAt, null);
+  // Import keys are never added here: the sync carry-forward keeps them.
+  assert.equal("import_source" in prepared.entries[0].payload, false);
+});
+
+test("prepare: active entries into an archived Meal are 422 meal_archived, accepted when the request sends deletedAt: null", () => {
+  const archivedAt = "2026-06-24T06:00:00.000Z";
+  const stored = storedState({
+    meal: storedRow(
+      USER,
+      { ...legacyMealPayload(), deleted_at: archivedAt },
+      archivedAt
+    )
+  });
+
+  const rejected = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID }, entries: [quickEntry()] }),
+    stored,
+    FAKE_NOW_LATER
+  );
+  assert.equal(rejected.accepted, false);
+  assert.equal(rejected.status, 422);
+  assert.deepEqual(rules(rejected.errors), ["meal_archived"]);
+  assert.equal(rejected.errors[0].field, "meal.deletedAt");
+
+  const archivedEntry = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: { id: MEAL_ID },
+      entries: [quickEntry({ deletedAt: archivedAt })]
+    }),
+    stored,
+    FAKE_NOW_LATER
+  );
+  assert.equal(archivedEntry.accepted, true);
+
+  const unarchived = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, deletedAt: null }, entries: [quickEntry()] }),
+    stored,
+    FAKE_NOW_LATER
+  );
+  assert.equal(unarchived.accepted, true);
+  assert.equal(unarchived.meal.deletedAt, null);
+  assert.equal(unarchived.meal.payload.deleted_at, null);
+  assert.equal(unarchived.entries.length, 1);
+});
+
+test("prepare: archiving a Meal with a stored active entry missing from the request is 422 meal_archived", () => {
+  const archivedAt = "2026-06-25T11:00:00.000Z";
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, deletedAt: archivedAt } }),
+    storedState({
+      meal: storedRow(USER, legacyMealPayload()),
+      activeEntryIds: ["entry-active"]
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 422);
+  assert.deepEqual(rules(prepared.errors), ["meal_archived"]);
+  assert.equal(prepared.errors[0].field, "meal.deletedAt");
+  assert.match(prepared.errors[0].message, /entry-active/);
+});
+
+test("prepare: archiving a Meal is accepted when the request tombstones every stored active entry", () => {
+  const archivedAt = "2026-06-25T11:00:00.000Z";
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: { id: MEAL_ID, deletedAt: archivedAt },
+      entries: [quickEntry({ id: "entry-active", deletedAt: archivedAt })]
+    }),
+    storedState({
+      meal: storedRow(USER, legacyMealPayload()),
+      entries: [
+        ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+      ],
+      activeEntryIds: ["entry-active"]
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal.deletedAt, archivedAt);
+  assert.equal(prepared.meal.payload.deleted_at, archivedAt);
+  assert.equal(prepared.entries.length, 1);
+  assert.equal(prepared.entries[0].id, "entry-active");
+  assert.equal(prepared.entries[0].deletedAt, archivedAt);
+  assert.equal(prepared.entries[0].payload.deleted_at, archivedAt);
+});
+
+test("prepare: archiving a Meal is 422 meal_archived when an entry tombstone ties or loses LWW against the stored entry", () => {
+  const archivedAt = "2026-06-25T11:00:00.000Z";
+  const storedClock = { updatedAt: "2026-06-24T06:00:00.000Z", deviceId: "b3f1c2d4-phone" };
+  const stored = storedState({
+    meal: storedRow(USER, legacyMealPayload()),
+    entries: [
+      ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+    ],
+    activeEntries: [["entry-active", storedClock]]
+  });
+  const archive = (updatedAt) =>
+    prepareAgentMealBatchWrite(
+      resolvedRequest({
+        meal: { id: MEAL_ID, deletedAt: archivedAt },
+        entries: [quickEntry({ id: "entry-active", updatedAt, deletedAt: archivedAt })]
+      }),
+      stored,
+      FAKE_NOW_LATER
+    );
+
+  // A tie on updatedAt goes to the higher device id: "agent:…" < "b3…".
+  for (const updatedAt of [storedClock.updatedAt, "2026-06-24T05:59:59.000Z"]) {
+    const rejected = archive(updatedAt);
+    assert.equal(rejected.accepted, false, updatedAt);
+    assert.equal(rejected.status, 422);
+    assert.deepEqual(rules(rejected.errors), ["meal_archived"]);
+    assert.match(rejected.errors[0].message, /not tombstoned: entry-active\.$/);
+  }
+
+  // A newer updatedAt, or none (the server clock), wins and is accepted.
+  assert.equal(archive("2026-06-24T06:00:00.001Z").accepted, true);
+  assert.equal(archive(undefined).accepted, true);
+});
+
+test("prepare: an entry sent without deletedAt keeps its stored null and does not count as tombstoned", () => {
+  const archivedAt = "2026-06-25T11:00:00.000Z";
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: { id: MEAL_ID, deletedAt: archivedAt },
+      entries: [quickEntry({ id: "entry-active" })]
+    }),
+    storedState({
+      meal: storedRow(USER, legacyMealPayload()),
+      entries: [
+        ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+      ],
+      activeEntryIds: ["entry-active"]
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 422);
+  assert.ok(rules(prepared.errors).every((rule) => rule === "meal_archived"));
+  assert.ok(
+    prepared.errors.some((issue) => /not tombstoned: entry-active/.test(issue.message))
+  );
+});
+
+test("prepare: archiving a Meal with no stored active entries is accepted", () => {
+  const archivedAt = "2026-06-25T11:00:00.000Z";
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, deletedAt: archivedAt } }),
+    storedState({ meal: storedRow(USER, legacyMealPayload()) }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal.deletedAt, archivedAt);
+  assert.deepEqual(prepared.entries, []);
+});
+
+test("prepare: a Meal-fields-only edit of an archived Meal that still holds stored active entries is 422 meal_archived", () => {
+  const archivedAt = "2026-06-24T06:00:00.000Z";
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, mealType: "Lunch" } }),
+    storedState({
+      meal: storedRow(
+        USER,
+        { ...legacyMealPayload(), deleted_at: archivedAt },
+        archivedAt
+      ),
+      activeEntryIds: ["entry-b", "entry-a"]
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 422);
+  assert.deepEqual(rules(prepared.errors), ["meal_archived"]);
+  assert.equal(prepared.errors[0].field, "meal.deletedAt");
+  assert.match(prepared.errors[0].message, /not tombstoned: entry-a, entry-b\.$/);
+});
+
+test("prepare: un-archiving a Meal with stored active entries is accepted", () => {
+  const archivedAt = "2026-06-24T06:00:00.000Z";
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID, deletedAt: null } }),
+    storedState({
+      meal: storedRow(
+        USER,
+        { ...legacyMealPayload(), deleted_at: archivedAt },
+        archivedAt
+      ),
+      activeEntryIds: ["entry-active"]
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal.deletedAt, null);
+});
+
+test("prepare: another account's Meal id and entry id are 409, ahead of 404 and 422 issues", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: { id: MEAL_ID },
+      entries: [quickEntry({ id: "entry-mine-elsewhere" }), quickEntry({ id: "entry-theirs" })]
+    }),
+    storedState({
+      meal: storedRow("user-2", legacyMealPayload()),
+      entries: [
+        [
+          "entry-mine-elsewhere",
+          storedRow(USER, { id: "entry-mine-elsewhere", meal_id: "other-meal" })
+        ],
+        ["entry-theirs", storedRow("user-2", { id: "entry-theirs", meal_id: MEAL_ID })]
+      ]
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 409);
+  assert.deepEqual(rules(prepared.errors), ["meal_id_conflict", "entry_id_conflict"]);
+  assert.equal(prepared.errors[0].itemIndex, null);
+  assert.equal(prepared.errors[1].itemIndex, 1);
+  assert.equal(prepared.errors[1].entryId, "entry-theirs");
+
+  const entryOnly = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: { id: MEAL_ID },
+      entries: [quickEntry({ id: "entry-theirs" })]
+    }),
+    storedState({
+      meal: null,
+      entries: [["entry-theirs", storedRow("user-2", { id: "entry-theirs", meal_id: "x" })]]
+    }),
+    FAKE_NOW_LATER
+  );
+  assert.equal(entryOnly.status, 409);
+  assert.deepEqual(rules(entryOnly.errors), ["entry_id_conflict"]);
+});
+
+test("prepare: an existing entry under a different Meal is 422 entry_meal_mismatch", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: { id: MEAL_ID },
+      entries: [quickEntry(), quickEntry({ id: "entry-elsewhere" })]
+    }),
+    storedState({
+      meal: storedRow(USER, legacyMealPayload()),
+      entries: [
+        ["entry-elsewhere", storedRow(USER, { id: "entry-elsewhere", meal_id: "other-meal" })]
+      ]
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 422);
+  assert.deepEqual(rules(prepared.errors), ["entry_meal_mismatch"]);
+  assert.equal(prepared.errors[0].itemIndex, 1);
+  assert.equal(prepared.errors[0].entryId, "entry-elsewhere");
+  assert.equal(prepared.errors[0].field, "entries[1].id");
+});
+
+test("prepare: a future startedAt is a top-level Meal warning and still writes", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({
+      meal: {
+        id: MEAL_ID,
+        mealType: "Dinner",
+        startedAt: "2026-06-24T06:00:00.000Z",
+        timezone: "Australia/Brisbane"
+      }
+    }),
+    emptyStored(),
+    FAKE_NOW
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.deepEqual(rules(prepared.warnings), ["meal_time_in_future"]);
+  assert.equal(prepared.warnings[0].field, "meal.startedAt");
+  assert.equal(prepared.warnings[0].limit, 5);
+  assert.equal(prepared.warnings[0].itemIndex, null);
+});
+
+test("prepare: an entries-only request into a future-started stored Meal returns the top-level warning", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID }, entries: [quickEntry()] }),
+    storedState({
+      meal: storedRow(USER, {
+        ...legacyMealPayload(),
+        started_at: "2026-06-24T05:20:00.000Z"
+      })
+    }),
+    FAKE_NOW
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal, null);
+  assert.equal(prepared.entries.length, 1);
+  assert.deepEqual(rules(prepared.warnings), ["meal_time_in_future"]);
+  assert.equal(prepared.warnings[0].field, "meal.startedAt");
+  assert.equal(prepared.warnings[0].itemIndex, null);
+});
+
+test("prepare: an entries-only request into a stored Meal that breaks a hard rule is 422", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID }, entries: [quickEntry()] }),
+    storedState({
+      meal: storedRow(USER, {
+        ...legacyMealPayload(),
+        meal_type: "",
+        ended_at: "2026-06-24T00:30:00.000Z"
+      })
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 422);
+  assert.deepEqual(rules(prepared.errors).sort(), [
+    "meal_ended_before_start",
+    "meal_type_required"
+  ]);
+  assert.equal(prepared.errors[0].itemIndex, null);
+});
+
+// ----- Partial writes: request shape (400) and route mapping -----
+
+test("agent meal batch write rejects malformed partial requests with 400 before authentication", async () => {
+  const app = createAgentMealApp({
+    agentMealBatchWriteStore: {
+      async writeMealBatch() {
+        throw new Error("writeMealBatch should not be called.");
+      }
+    }
+  });
+  const cases = [
+    { name: "id only, no entries", meal: { id: MEAL_ID }, entries: [] },
+    {
+      name: "startedAt without offset or timezone",
+      meal: { id: MEAL_ID, mealType: "Lunch", startedAt: "2026-06-24T05:00:00.000Z" },
+      entries: []
+    },
+    { name: "offset without startedAt", meal: { id: MEAL_ID, timezoneOffsetMinutes: 60 }, entries: [] },
+    { name: "localDate without startedAt", meal: { id: MEAL_ID, localDate: "2026-06-24" }, entries: [] },
+    { name: "timezone without startedAt", meal: { id: MEAL_ID, timezone: "Australia/Brisbane" }, entries: [] },
+    {
+      name: "offset out of range",
+      meal: {
+        id: MEAL_ID,
+        mealType: "Lunch",
+        startedAt: "2026-06-24T05:00:00.000Z",
+        timezoneOffsetMinutes: 900
+      },
+      entries: []
+    },
+    {
+      name: "malformed localDate",
+      meal: {
+        id: MEAL_ID,
+        mealType: "Lunch",
+        startedAt: "2026-06-24T05:00:00.000Z",
+        timezone: "BRT",
+        localDate: "2026-13-01"
+      },
+      entries: []
+    }
+  ];
+
+  for (const { name, meal, entries } of cases) {
+    const body = { idempotencyKey: `agent-meal-400-${name}`, meal, entries };
+    const response = await postAgentMeal(app, body);
+    assert.equal(response.status, 400, name);
+    const unauthenticated = await app.request("/agent/meals/batch-write", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    assert.equal(unauthenticated.status, 400, `${name} (no key)`);
+  }
+});
+
+test("agent meal batch write accepts timePrecision or endedAt alone", async () => {
+  const writes = [];
+  const app = createAgentMealApp({
+    agentMealBatchWriteStore: {
+      async writeMealBatch(input) {
+        writes.push(input);
+        return {
+          status: "written",
+          duplicate: false,
+          serverClock: "2026-06-24T05:00:01.000Z",
+          applied: [],
+          warnings: []
+        };
+      }
+    }
+  });
+
+  for (const meal of [
+    { id: MEAL_ID, timePrecision: "date" },
+    { id: MEAL_ID, endedAt: null },
+    { id: MEAL_ID, deletedAt: null },
+    { id: MEAL_ID, mealType: "Supper" }
+  ]) {
+    const response = await postAgentMeal(app, {
+      idempotencyKey: `agent-meal-alone-${Object.keys(meal)[1]}`,
+      meal,
+      entries: []
+    });
+    assert.equal(response.status, 200, JSON.stringify(meal));
+  }
+  assert.equal(writes.length, 4);
+  // Absent fields stay absent: nothing is defaulted before the store.
+  assert.equal("endedAt" in writes[0].request.meal, false);
+  assert.equal("deletedAt" in writes[0].request.meal, false);
+});
+
+test("agent meal batch write maps a store rejection to its HTTP status and returns Meal warnings on success", async () => {
+  const issue = (rule) => ({
+    field: "meal.id",
+    nutrient: null,
+    rule,
+    message: rule,
+    limit: null,
+    itemIndex: null,
+    entryId: null
+  });
+  for (const [httpStatus, rule] of [
+    [404, "meal_not_found"],
+    [409, "meal_id_conflict"],
+    [422, "meal_archived"]
+  ]) {
+    const nudges = [];
+    const app = createAgentMealApp({
+      agentMealBatchWriteStore: {
+        async writeMealBatch() {
+          return { status: "rejected", httpStatus, errors: [issue(rule)], warnings: [] };
+        }
+      },
+      syncNudgePublisher: {
+        async enqueueSyncNudge(input) {
+          nudges.push(input);
+          return { enqueued: true, jobId: "unexpected" };
+        }
+      }
+    });
+    const response = await postAgentMeal(app, {
+      idempotencyKey: `agent-meal-reject-${httpStatus}`,
+      meal: { id: MEAL_ID },
+      entries: [quickEntry()]
+    });
+    assert.equal(response.status, httpStatus);
+    const body = await response.json();
+    assert.equal(body.code, "agent_meal_batch_write_failed");
+    assert.deepEqual(rules(body.errors), [rule]);
+    assert.equal(body.errors[0].itemIndex, null);
+    assert.ok(body.limits);
+    assert.deepEqual(nudges, []);
+  }
+
+  const app = createAgentMealApp({ agentMealBatchWriteStore: recordingMealStore([]) });
+  const response = await postAgentMeal(app, {
+    idempotencyKey: "agent-meal-future-warning",
+    meal: {
+      id: MEAL_ID,
+      mealType: "Dinner",
+      startedAt: "2026-06-24T06:00:00.000Z",
+      timezone: "Australia/Brisbane"
+    },
+    entries: []
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(rules(body.warnings), ["meal_time_in_future"]);
+  assert.deepEqual(body.entries, []);
+});
+
+test("agent meal batch write rejects a blank mealType with 422 meal_type_required, not a 400, and stores a padded name as sent", async () => {
+  for (const mealType of ["", "   "]) {
+    const app = createAgentMealApp({ agentMealBatchWriteStore: recordingMealStore([]) });
+    const response = await postAgentMeal(app, {
+      idempotencyKey: `agent-meal-blank-type-${mealType.length}`,
+      meal: {
+        id: MEAL_ID,
+        mealType,
+        startedAt: "2026-06-24T05:00:00.000Z",
+        timezone: "Australia/Brisbane"
+      },
+      entries: []
+    });
+    assert.equal(response.status, 422, JSON.stringify(mealType));
+    const body = await response.json();
+    assert.deepEqual(rules(body.errors), ["meal_type_required"]);
+    assert.equal(body.errors[0].itemIndex, null);
+    assert.equal(body.errors[0].entryId, null);
+  }
+
+  const writes = [];
+  const app = createAgentMealApp({ agentMealBatchWriteStore: recordingMealStore(writes) });
+  const response = await postAgentMeal(app, {
+    idempotencyKey: "agent-meal-padded-type",
+    meal: {
+      id: MEAL_ID,
+      mealType: " Lunch ",
+      startedAt: "2026-06-24T05:00:00.000Z",
+      timezone: "Australia/Brisbane"
+    },
+    entries: []
+  });
+  assert.equal(response.status, 200);
+  assert.equal(writes[0].meal.payload.meal_type, " Lunch ");
+});
+
+// ----- Partial writes against Postgres -----
+
+test(
+  "agent meal batch write rejects a blank mealType on update with 422 meal_type_required and stores a padded name as sent",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await withMealDatabase(async ({ database, app }) => {
+      const mealId = randomUUID();
+      const create = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-type-create-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          mealType: "Dinner",
+          startedAt: "2026-06-24T11:40:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: []
+      });
+      assert.equal(create.status, 200);
+
+      for (const mealType of ["", "  "]) {
+        const blank = await postAgentMeal(app, {
+          idempotencyKey: `agent-meal-type-blank-${randomUUID()}`,
+          meal: { id: mealId, mealType },
+          entries: []
+        });
+        assert.equal(blank.status, 422, JSON.stringify(mealType));
+        const body = await blank.json();
+        assert.deepEqual(rules(body.errors), ["meal_type_required"]);
+        assert.equal(body.errors[0].itemIndex, null);
+      }
+      const [kept] = await database.sql`select payload from meals where id = ${mealId}`;
+      assert.equal(kept.payload.meal_type, "Dinner");
+
+      const padded = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-type-padded-${randomUUID()}`,
+        meal: { id: mealId, mealType: " Supper" },
+        entries: []
+      });
+      assert.equal(padded.status, 200);
+      const [renamed] = await database.sql`select payload from meals where id = ${mealId}`;
+      assert.equal(renamed.payload.meal_type, " Supper");
+    });
+  }
+);
+
+test(
+  "agent meal batch write rejects archiving a Meal when an entry tombstone ties the stored entry's LWW clock, leaving both rows active",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await withMealDatabase(async ({ database, app }) => {
+      const mealId = randomUUID();
+      const entryId = randomUUID();
+      const create = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-lww-create-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          mealType: "Lunch",
+          startedAt: "2026-06-24T02:00:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: [quickEntry({ id: entryId, updatedAt: "2026-06-24T05:00:00.000Z" })]
+      });
+      assert.equal(create.status, 200);
+      // The phone edits the entry and syncs: its clock and device now own it.
+      const phoneClock = "2026-06-24T06:00:00.000Z";
+      await database.sql`
+        update food_entries
+        set device_id = 'b3f1c2d4-phone',
+            updated_at = ${phoneClock},
+            payload = payload || ${JSON.stringify({ updated_at: phoneClock })}::jsonb
+        where id = ${entryId}
+      `;
+
+      const archivedAt = "2026-06-24T07:00:00.000Z";
+      for (const updatedAt of [phoneClock, "2026-06-24T05:30:00.000Z"]) {
+        const key = `agent-meal-lww-archive-${randomUUID()}`;
+        const response = await postAgentMeal(app, {
+          idempotencyKey: key,
+          meal: { id: mealId, deletedAt: archivedAt },
+          entries: [quickEntry({ id: entryId, updatedAt, deletedAt: archivedAt })]
+        });
+        assert.equal(response.status, 422, updatedAt);
+        assert.deepEqual(rules((await response.json()).errors), ["meal_archived"]);
+        const activity = await database.sql`
+          select id from activity_log where batch_id = ${key}
+        `;
+        assert.equal(activity.length, 0);
+      }
+      const [meal] = await database.sql`select deleted_at from meals where id = ${mealId}`;
+      assert.equal(meal.deleted_at, null);
+      const [entry] = await database.sql`
+        select deleted_at, device_id from food_entries where id = ${entryId}
+      `;
+      assert.equal(entry.deleted_at, null);
+      assert.equal(entry.device_id, "b3f1c2d4-phone");
+
+      // Omitting updatedAt stamps the tombstone at the server clock, which wins.
+      const archive = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-lww-archive-ok-${randomUUID()}`,
+        meal: { id: mealId, deletedAt: archivedAt },
+        entries: [quickEntry({ id: entryId, updatedAt: undefined, deletedAt: archivedAt })]
+      });
+      assert.equal(archive.status, 200);
+      const [archivedEntry] = await database.sql`
+        select deleted_at from food_entries where id = ${entryId}
+      `;
+      assert.notEqual(archivedEntry.deleted_at, null);
+    });
+  }
+);
+
+
+test(
+  "agent meal batch write creates a zero-entry Meal from an IANA zone, then an entries-only request leaves the Meal row untouched (CUJ 7)",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await withMealDatabase(async ({ database, app }) => {
+      const mealId = randomUUID();
+      const create = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-cuj7-create-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          mealType: "Dinner",
+          startedAt: "2026-06-24T11:40:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: []
+      });
+      assert.equal(create.status, 200);
+      const createBody = await create.json();
+      assert.deepEqual(createBody.entries, []);
+      assert.deepEqual(createBody.warnings, []);
+
+      // The phone moves the Meal to 12:30 and syncs: modelled by a time edit.
+      const retime = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-cuj7-retime-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          startedAt: "2026-06-24T02:30:00.000Z",
+          timezoneOffsetMinutes: 600
+        },
+        entries: []
+      });
+      assert.equal(retime.status, 200);
+
+      const [before] = await database.sql`
+        select payload, updated_at from meals where id = ${mealId}
+      `;
+      assert.equal(before.payload.local_date, "2026-06-24");
+      assert.equal(before.payload.timezone_offset_minutes, 600);
+      assert.equal(before.payload.started_at, "2026-06-24T02:30:00.000Z");
+      assert.equal(before.payload.meal_type, "Dinner");
+
+      const addKey = `agent-meal-cuj7-add-${randomUUID()}`;
+      const coffeeId = randomUUID();
+      const add = await postAgentMeal(app, {
+        idempotencyKey: addKey,
+        meal: { id: mealId },
+        entries: [quickEntry({ id: coffeeId, name: "Coffee" })]
+      });
+      assert.equal(add.status, 200);
+      const addBody = await add.json();
+      assert.equal(addBody.entries[0].id, coffeeId);
+
+      const [after] = await database.sql`
+        select payload, updated_at from meals where id = ${mealId}
+      `;
+      assert.deepEqual(after.payload, before.payload);
+      assert.equal(String(after.updated_at), String(before.updated_at));
+
+      const activity = await database.sql`
+        select entity_table from activity_log where batch_id = ${addKey}
+      `;
+      assert.deepEqual(
+        activity.map((row) => row.entity_table),
+        ["food_entries"]
+      );
+      const [entry] = await database.sql`
+        select payload from food_entries where id = ${coffeeId}
+      `;
+      assert.equal(entry.payload.meal_id, mealId);
+
+      // Idempotent replay of the entries-only request.
+      const replay = await postAgentMeal(app, {
+        idempotencyKey: addKey,
+        meal: { id: mealId },
+        entries: [quickEntry({ id: coffeeId, name: "Coffee" })]
+      });
+      assert.equal(replay.status, 200);
+      assert.equal((await replay.json()).duplicate, true);
+
+      // An entries-only request for an id that doesn't exist.
+      const missing = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-cuj7-missing-${randomUUID()}`,
+        meal: { id: randomUUID() },
+        entries: [quickEntry({ id: randomUUID() })]
+      });
+      assert.equal(missing.status, 404);
+      assert.deepEqual(rules((await missing.json()).errors), ["meal_not_found"]);
+    });
+  }
+);
+
+test(
+  "agent meal batch write keeps an unsent entry deletedAt and the stored import keys, and null clears endedAt",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await withMealDatabase(async ({ database, app }) => {
+      const mealId = randomUUID();
+      const entryId = randomUUID();
+      const archivedAt = "2026-06-24T06:00:00.000Z";
+      const create = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-keys-create-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          mealType: "Lunch",
+          startedAt: "2026-06-24T02:00:00.000Z",
+          endedAt: "2026-06-24T02:30:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: [quickEntry({ id: entryId, deletedAt: archivedAt, updatedAt: archivedAt })]
+      });
+      assert.equal(create.status, 200);
+      await database.sql`
+        update food_entries
+        set payload = payload || ${JSON.stringify({
+          import_source: "myFitnessPal",
+          import_external_id: "mfp-row-1"
+        })}::jsonb
+        where id = ${entryId}
+      `;
+
+      const update = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-keys-update-${randomUUID()}`,
+        meal: { id: mealId, endedAt: null },
+        entries: [
+          quickEntry({ id: entryId, name: "Protein shake (large)", updatedAt: "2026-06-24T07:00:00.000Z" })
+        ]
+      });
+      assert.equal(update.status, 200);
+
+      const [entry] = await database.sql`
+        select payload, deleted_at from food_entries where id = ${entryId}
+      `;
+      assert.equal(entry.payload.name, "Protein shake (large)");
+      assert.equal(entry.payload.deleted_at, archivedAt);
+      assert.notEqual(entry.deleted_at, null);
+      assert.equal(entry.payload.import_source, "myFitnessPal");
+      assert.equal(entry.payload.import_external_id, "mfp-row-1");
+
+      const [meal] = await database.sql`
+        select payload from meals where id = ${mealId}
+      `;
+      assert.equal(meal.payload.ended_at, null);
+      assert.equal(meal.payload.meal_type, "Lunch");
+      assert.equal(meal.payload.started_at, "2026-06-24T02:00:00.000Z");
+    });
+  }
+);
+
+test(
+  "agent meal batch write refuses active entries into an archived Meal until the same request un-archives it",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await withMealDatabase(async ({ database, app }) => {
+      const mealId = randomUUID();
+      const create = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-archived-create-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          mealType: "Lunch",
+          startedAt: "2026-06-24T02:00:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: []
+      });
+      assert.equal(create.status, 200);
+      const archive = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-archived-archive-${randomUUID()}`,
+        meal: { id: mealId, deletedAt: "2026-06-24T06:00:00.000Z" },
+        entries: []
+      });
+      assert.equal(archive.status, 200);
+
+      const entryId = randomUUID();
+      const rejectedKey = `agent-meal-archived-add-${randomUUID()}`;
+      const rejected = await postAgentMeal(app, {
+        idempotencyKey: rejectedKey,
+        meal: { id: mealId },
+        entries: [quickEntry({ id: entryId })]
+      });
+      assert.equal(rejected.status, 422);
+      assert.deepEqual(rules((await rejected.json()).errors), ["meal_archived"]);
+      assert.equal(
+        (await database.sql`select id from food_entries where id = ${entryId}`).length,
+        0
+      );
+      assert.equal(
+        (await database.sql`select id from activity_log where batch_id = ${rejectedKey}`).length,
+        0
+      );
+
+      const accepted = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-archived-unarchive-${randomUUID()}`,
+        meal: { id: mealId, deletedAt: null },
+        entries: [quickEntry({ id: entryId })]
+      });
+      assert.equal(accepted.status, 200);
+      const [meal] = await database.sql`
+        select deleted_at, payload from meals where id = ${mealId}
+      `;
+      assert.equal(meal.deleted_at, null);
+      assert.equal(meal.payload.deleted_at, null);
+      assert.equal(
+        (await database.sql`select id from food_entries where id = ${entryId}`).length,
+        1
+      );
+    });
+  }
+);
+
+test(
+  "agent meal batch write archives a Meal only when the request tombstones its stored active entries",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await withMealDatabase(async ({ database, app }) => {
+      const mealId = randomUUID();
+      const firstId = randomUUID();
+      const secondId = randomUUID();
+      const create = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-archive-tombstones-create-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          mealType: "Lunch",
+          startedAt: "2026-06-24T02:00:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: [
+          quickEntry({ id: firstId, position: 1 }),
+          quickEntry({ id: secondId, position: 2 })
+        ]
+      });
+      assert.equal(create.status, 200);
+
+      // Another account's Food Entry that names this Meal id never blocks
+      // the archive: the rule reads only the caller's rows.
+      const otherUserId = `agent-meal-partial-other-${randomUUID()}`;
+      await insertUser(database, otherUserId);
+      const otherEntryId = randomUUID();
+      await database.db.insert(schema.foodEntries).values({
+        id: otherEntryId,
+        userId: otherUserId,
+        deviceId: "other-device",
+        payload: { id: otherEntryId, meal_id: mealId, deleted_at: null },
+        updatedAt: new Date("2026-06-24T05:00:00.000Z"),
+        deletedAt: null
+      });
+
+      const archivedAt = "2026-06-24T06:00:00.000Z";
+      const rejectedKey = `agent-meal-archive-tombstones-partial-${randomUUID()}`;
+      const rejected = await postAgentMeal(app, {
+        idempotencyKey: rejectedKey,
+        meal: { id: mealId, deletedAt: archivedAt },
+        entries: [
+          quickEntry({ id: firstId, position: 1, deletedAt: archivedAt, updatedAt: archivedAt })
+        ]
+      });
+      assert.equal(rejected.status, 422);
+      const rejectedBody = await rejected.json();
+      assert.deepEqual(rules(rejectedBody.errors), ["meal_archived"]);
+      assert.match(rejectedBody.errors[0].message, new RegExp(secondId));
+      assert.doesNotMatch(rejectedBody.errors[0].message, new RegExp(otherEntryId));
+      const [mealAfterReject] = await database.sql`
+        select deleted_at from meals where id = ${mealId}
+      `;
+      assert.equal(mealAfterReject.deleted_at, null);
+      const activeAfterReject = await database.sql`
+        select id from food_entries
+        where id in (${firstId}, ${secondId}) and deleted_at is null
+      `;
+      assert.equal(activeAfterReject.length, 2);
+      assert.equal(
+        (await database.sql`select id from activity_log where batch_id = ${rejectedKey}`).length,
+        0
+      );
+
+      const acceptedKey = `agent-meal-archive-tombstones-all-${randomUUID()}`;
+      const accepted = await postAgentMeal(app, {
+        idempotencyKey: acceptedKey,
+        meal: { id: mealId, deletedAt: archivedAt },
+        entries: [
+          quickEntry({ id: firstId, position: 1, deletedAt: archivedAt, updatedAt: archivedAt }),
+          quickEntry({ id: secondId, position: 2, deletedAt: archivedAt, updatedAt: archivedAt })
+        ]
+      });
+      assert.equal(accepted.status, 200);
+      const [mealAfterAccept] = await database.sql`
+        select deleted_at from meals where id = ${mealId}
+      `;
+      assert.notEqual(mealAfterAccept.deleted_at, null);
+      const activeAfterAccept = await database.sql`
+        select id from food_entries
+        where id in (${firstId}, ${secondId}) and deleted_at is null
+      `;
+      assert.equal(activeAfterAccept.length, 0);
+      assert.equal(
+        (await database.sql`select id from activity_log where batch_id = ${acceptedKey}`).length,
+        3
+      );
+      const [otherEntry] = await database.sql`
+        select deleted_at from food_entries where id = ${otherEntryId}
+      `;
+      assert.equal(otherEntry.deleted_at, null);
+    });
+  }
+);
+
+test(
+  "agent meal batch write returns 409 for another account's Meal or entry id and 422 for an entry under a different Meal",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await withMealDatabase(async ({ database, app, userId }) => {
+      const mealId = randomUUID();
+      const entryId = randomUUID();
+      const create = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-conflict-create-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          mealType: "Lunch",
+          startedAt: "2026-06-24T02:00:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: [quickEntry({ id: entryId })]
+      });
+      assert.equal(create.status, 200);
+
+      // The same account, moving the entry to another Meal.
+      const moved = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-conflict-move-${randomUUID()}`,
+        meal: {
+          id: randomUUID(),
+          mealType: "Dinner",
+          startedAt: "2026-06-24T09:00:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: [quickEntry({ id: entryId, updatedAt: "2026-06-24T09:00:00.000Z" })]
+      });
+      assert.equal(moved.status, 422);
+      const movedBody = await moved.json();
+      assert.deepEqual(rules(movedBody.errors), ["entry_meal_mismatch"]);
+      assert.equal(movedBody.errors[0].entryId, entryId);
+
+      // Another account.
+      const otherUserId = `agent-meal-other-${randomUUID()}`;
+      await insertUser(database, otherUserId);
+      const otherApp = createAgentMealApp({
+        agentMealBatchWriteStore: createDrizzleAgentMealBatchWriteStore(database.db),
+        userId: otherUserId
+      });
+      const mealConflict = await postAgentMeal(otherApp, {
+        idempotencyKey: `agent-meal-conflict-meal-${randomUUID()}`,
+        meal: { id: mealId, mealType: "Hijack" },
+        entries: []
+      });
+      assert.equal(mealConflict.status, 409);
+      assert.deepEqual(rules((await mealConflict.json()).errors), ["meal_id_conflict"]);
+
+      const entryConflict = await postAgentMeal(otherApp, {
+        idempotencyKey: `agent-meal-conflict-entry-${randomUUID()}`,
+        meal: {
+          id: randomUUID(),
+          mealType: "Lunch",
+          startedAt: "2026-06-24T02:00:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: [quickEntry({ id: entryId })]
+      });
+      assert.equal(entryConflict.status, 409);
+      const entryConflictBody = await entryConflict.json();
+      assert.deepEqual(rules(entryConflictBody.errors), ["entry_id_conflict"]);
+      assert.equal(entryConflictBody.errors[0].itemIndex, 0);
+
+      const [meal] = await database.sql`
+        select user_id, payload from meals where id = ${mealId}
+      `;
+      assert.equal(meal.user_id, userId);
+      assert.equal(meal.payload.meal_type, "Lunch");
+    });
   }
 );
 
@@ -787,5 +2036,130 @@ function quickEntry(overrides = {}) {
     packageSize: null,
     updatedAt: "2026-06-24T05:00:00.000Z",
     ...overrides
+  };
+}
+
+const FAKE_NOW_LATER = new Date("2026-06-25T12:00:00.000Z");
+
+/**
+ * A fake store that applies the pure field rules against empty stored state,
+ * so route tests see the prepared rows without Postgres. Stored-state rules
+ * are covered by the prepareAgentMealBatchWrite unit tests and the DB tests.
+ */
+function recordingMealStore(writes = [], { now = FAKE_NOW } = {}) {
+  return {
+    async writeMealBatch(input) {
+      const prepared = prepareAgentMealBatchWrite(
+        input.request,
+        {
+          userId: input.userId,
+          deviceId: input.deviceId,
+          meal: null,
+          entries: new Map(),
+          activeEntries: new Map()
+        },
+        now
+      );
+      writes.push({
+        ...input,
+        meal: prepared.accepted ? prepared.meal : null,
+        entries: prepared.accepted ? prepared.entries : []
+      });
+      if (!prepared.accepted) {
+        return {
+          status: "rejected",
+          httpStatus: prepared.status,
+          errors: prepared.errors,
+          warnings: prepared.warnings
+        };
+      }
+      return {
+        status: "written",
+        duplicate: false,
+        serverClock: now.toISOString(),
+        applied: [...(prepared.meal === null ? [] : [prepared.meal]), ...prepared.entries].map(
+          (row) => ({ id: row.id, updatedAt: row.updatedAt, deviceId: input.deviceId })
+        ),
+        warnings: prepared.warnings
+      };
+    }
+  };
+}
+
+async function withMealDatabase(body) {
+  await applyMigrations(databaseUrl);
+  const database = createDatabaseClient(databaseUrl);
+  const userId = `agent-meal-partial-${randomUUID()}`;
+  const app = createAgentMealApp({
+    agentMealBatchWriteStore: createDrizzleAgentMealBatchWriteStore(database.db),
+    userId
+  });
+  try {
+    await insertUser(database, userId);
+    await body({ database, app, userId });
+  } finally {
+    await database.close();
+  }
+}
+
+async function insertUser(database, userId) {
+  await database.db.insert(schema.user).values({
+    id: userId,
+    name: "Agent Meal Partial User",
+    email: `${userId}@example.com`,
+    emailVerified: true
+  });
+}
+
+function rules(issues) {
+  return issues.map((issue) => issue.rule);
+}
+
+/** A request as resolveAgentMealBatchEntries returns it (entries resolved). */
+function resolvedRequest({ meal, entries = [] }) {
+  return { idempotencyKey: "agent-meal-prepare", meal, entries };
+}
+
+function emptyStored() {
+  return storedState({ meal: null });
+}
+
+const AGENT_DEVICE = "agent:agent-key-1";
+const STORED_ENTRY_CLOCK = {
+  updatedAt: "2026-06-24T01:00:00.000Z",
+  deviceId: "b3f1c2d4-phone"
+};
+
+/**
+ * `activeEntryIds` lists stored active entries at STORED_ENTRY_CLOCK;
+ * `activeEntries` gives `[id, {updatedAt, deviceId}]` pairs explicitly.
+ */
+function storedState({ meal, entries = [], activeEntryIds = [], activeEntries = [] }) {
+  return {
+    userId: USER,
+    deviceId: AGENT_DEVICE,
+    meal,
+    entries: new Map(entries),
+    activeEntries: new Map([
+      ...activeEntryIds.map((id) => [id, STORED_ENTRY_CLOCK]),
+      ...activeEntries
+    ])
+  };
+}
+
+function storedRow(userId, payload, deletedAt = null) {
+  return { userId, payload, deletedAt };
+}
+
+function legacyMealPayload() {
+  return {
+    id: MEAL_ID,
+    meal_type: "Breakfast",
+    started_at: "2026-06-24T01:00:00.000Z",
+    timezone: "AEST",
+    local_date: "2026-06-24",
+    ended_at: null,
+    updated_at: "2026-06-24T01:00:00.000Z",
+    deleted_at: null
   };
 }

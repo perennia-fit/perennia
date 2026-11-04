@@ -1,0 +1,257 @@
+{
+  "name": "m39-meal-validation",
+  "domain": "meal-validation",
+  "schemaVersion": 1,
+  "schema": "m39-meal-validation.schema.json",
+  "limits": {
+    "futureToleranceMinutes": 5
+  },
+  "cases": [
+    {
+      "name": "valid-meal-without-end",
+      "note": "A past Meal with a Meal Type and no end time passes every rule.",
+      "input": {
+        "startedAt": "2026-03-10T12:00:00Z",
+        "endedAt": null,
+        "mealType": "Lunch",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T13:00:00Z"
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": [],
+        "errorRules": [],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "valid-meal-with-end",
+      "note": "An end time after the start passes.",
+      "input": {
+        "startedAt": "2026-03-10T12:00:00Z",
+        "endedAt": "2026-03-10T12:30:00Z",
+        "mealType": "Lunch",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T13:00:00Z"
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": [],
+        "errorRules": [],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "ended-before-start-is-rejected",
+      "note": "meal_ended_before_start alone: the end is before the start.",
+      "input": {
+        "startedAt": "2026-03-10T12:00:00Z",
+        "endedAt": "2026-03-10T11:30:00Z",
+        "mealType": "Lunch",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T13:00:00Z"
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": [
+          "meal_ended_before_start"
+        ],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "ended-equal-to-start-is-rejected",
+      "note": "An end equal to the start is not after it, so it is rejected.",
+      "input": {
+        "startedAt": "2026-03-10T12:00:00Z",
+        "endedAt": "2026-03-10T12:00:00Z",
+        "mealType": "Lunch",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T13:00:00Z"
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": [
+          "meal_ended_before_start"
+        ],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "empty-meal-type-is-rejected",
+      "note": "meal_type_required alone: the Meal Type label is empty.",
+      "input": {
+        "startedAt": "2026-03-10T12:00:00Z",
+        "mealType": "",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T13:00:00Z"
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": [
+          "meal_type_required"
+        ],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "whitespace-meal-type-is-rejected",
+      "note": "A whitespace-only Meal Type label is empty once trimmed.",
+      "input": {
+        "startedAt": "2026-03-10T12:00:00Z",
+        "mealType": "   ",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T13:00:00Z"
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": [
+          "meal_type_required"
+        ],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "start-exactly-five-minutes-ahead-does-not-warn",
+      "note": "The future tolerance is exclusive: +5 min does not warn.",
+      "input": {
+        "startedAt": "2026-03-10T12:05:00Z",
+        "mealType": "Lunch",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T12:00:00Z"
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": [],
+        "errorRules": [],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "start-just-over-five-minutes-ahead-warns",
+      "note": "meal_time_in_future alone: +5 min 1 s warns and stays accepted.",
+      "input": {
+        "startedAt": "2026-03-10T12:05:01Z",
+        "mealType": "Lunch",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T12:00:00Z"
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": [
+          "meal_time_in_future"
+        ],
+        "errorRules": [],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "both-hard-rules-in-order",
+      "note": "Both hard rules fire, reported in rule order: end first, then Meal Type.",
+      "input": {
+        "startedAt": "2026-03-10T12:00:00Z",
+        "endedAt": "2026-03-10T11:00:00Z",
+        "mealType": "",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T13:00:00Z"
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [],
+        "errorRules": [
+          "meal_ended_before_start",
+          "meal_type_required"
+        ],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "hard-rule-and-future-warning-together",
+      "note": "A rejected Meal still reports its soft warning.",
+      "input": {
+        "startedAt": "2026-03-10T14:00:00Z",
+        "mealType": "",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-10T12:00:00Z"
+      },
+      "expected": {
+        "accepted": false,
+        "warningRules": [
+          "meal_time_in_future"
+        ],
+        "errorRules": [
+          "meal_type_required"
+        ],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "offset-plus-840-moves-forward-a-day",
+      "note": "At +14:00, 10:30Z is 00:30 on the next local date.",
+      "input": {
+        "startedAt": "2026-03-10T10:30:00Z",
+        "mealType": "Breakfast",
+        "timezoneOffsetMinutes": 840,
+        "now": "2026-03-10T12:00:00Z"
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": [],
+        "errorRules": [],
+        "localDate": "2026-03-11"
+      }
+    },
+    {
+      "name": "offset-minus-720-moves-back-a-day",
+      "note": "At -12:00, 11:30Z is 23:30 on the previous local date.",
+      "input": {
+        "startedAt": "2026-03-10T11:30:00Z",
+        "mealType": "Dinner",
+        "timezoneOffsetMinutes": -720,
+        "now": "2026-03-10T12:00:00Z"
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": [],
+        "errorRules": [],
+        "localDate": "2026-03-09"
+      }
+    },
+    {
+      "name": "offset-zero-last-second-of-day",
+      "note": "At UTC, 23:59:59Z stays on its own date.",
+      "input": {
+        "startedAt": "2026-03-10T23:59:59Z",
+        "mealType": "Snack",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-11T08:00:00Z"
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": [],
+        "errorRules": [],
+        "localDate": "2026-03-10"
+      }
+    },
+    {
+      "name": "offset-zero-midnight-starts-next-day",
+      "note": "At UTC, 00:00:00Z is the first instant of the next date.",
+      "input": {
+        "startedAt": "2026-03-11T00:00:00Z",
+        "mealType": "Snack",
+        "timezoneOffsetMinutes": 0,
+        "now": "2026-03-11T08:00:00Z"
+      },
+      "expected": {
+        "accepted": true,
+        "warningRules": [],
+        "errorRules": [],
+        "localDate": "2026-03-11"
+      }
+    }
+  ]
+}

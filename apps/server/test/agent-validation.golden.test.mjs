@@ -4,11 +4,14 @@ import test from "node:test";
 
 import {
   DOSE_VALIDATION_LIMITS,
+  MEAL_VALIDATION_LIMITS,
   PLAN_VALIDATION_LIMITS,
   PROTOCOL_PLAN_VALIDATION_LIMITS,
   SETTINGS_VALIDATION_LIMITS,
+  localDateAtOffset,
   validateAgentDose,
   validateAgentFoodEntry,
+  validateAgentMealTime,
   validateAgentNutritionGoalTargets,
   validateAgentPrescription,
   validateAgentProtocolPeriod,
@@ -33,7 +36,8 @@ const VALIDATORS_BY_DOMAIN = new Map([
   ],
   ["plan-validation", (vectorCase) => validatePlanVectorCase(vectorCase)],
   ["settings-validation", (vectorCase) => validateAgentSettings(vectorCase.input)],
-  ["protocol-plan-validation", (vectorCase) => validateProtocolPlanVectorCase(vectorCase)]
+  ["protocol-plan-validation", (vectorCase) => validateProtocolPlanVectorCase(vectorCase)],
+  ["meal-validation", (vectorCase) => validateMealVectorCase(vectorCase)]
 ]);
 
 // Every other domain under packages/golden-vectors, with who checks it. Every
@@ -101,6 +105,13 @@ test("server validation matches the shared golden vectors", async () => {
         PROTOCOL_PLAN_VALIDATION_LIMITS,
         `${filename} limits`
       );
+    }
+    if (vector.domain === "meal-validation") {
+      // The schema version this runner reads; it moves together with the
+      // vector file's `schemaVersion` and the Dart runner's constant
+      // (packages/golden-vectors/vectors/README.md).
+      assert.equal(vector.schemaVersion, 1, `${filename} schemaVersion`);
+      assert.deepEqual(vector.limits, MEAL_VALIDATION_LIMITS, `${filename} limits`);
     }
     if (vector.domain === "settings-validation") {
       assert.deepEqual(
@@ -229,4 +240,17 @@ function validateProtocolPlanVectorCase(vectorCase) {
     });
   }
   throw new Error(`Unknown protocol plan validator: ${String(vectorCase.validator)}.`);
+}
+
+// Runs the Meal-time rules, and also pins the local-date rule the same vector
+// carries: a Meal's localDate is the date of startedAt at its frozen offset
+// (docs/designs/meal-logging.md §1), in both directions across midnight.
+function validateMealVectorCase(vectorCase) {
+  const { input, expected } = vectorCase;
+  assert.equal(
+    localDateAtOffset(new Date(input.startedAt), input.timezoneOffsetMinutes),
+    expected.localDate,
+    `m39-meal-validation.json ${vectorCase.name} localDate`
+  );
+  return validateAgentMealTime(input, { now: new Date(input.now) });
 }
