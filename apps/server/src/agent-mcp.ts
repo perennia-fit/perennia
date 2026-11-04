@@ -1998,7 +1998,7 @@ export function createAgentMcpServer({
     {
       title: "Undo Agent Activity Batch",
       description:
-        "Revert a prior Activity Log batch by applying its inverse images as a NEW ordinary write batch, through the same Activity Log and sync-nudge path as REST. Rows changed since are skipped and surfaced per row; idempotent by idempotency key; nothing is hard-deleted.",
+        "Revert a prior Activity Log batch by applying its inverse images as a NEW ordinary write batch, through the same Activity Log and sync-nudge path as REST. Rows changed since are skipped and surfaced per row, and undoing a Meal's creation after another batch added a Food Entry to it is refused (skipped_dependent); idempotent by idempotency key; nothing is hard-deleted.",
       inputSchema: AgentMcpActivityUndoBatchInputSchema,
       outputSchema: AgentActivityUndoBatchResponseSchema
     },

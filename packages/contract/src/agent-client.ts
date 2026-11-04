@@ -75,7 +75,7 @@ export type AgentActivityUndoEntryResult = {
   "outcome": AgentActivityUndoOutcome;
 };
 
-export type AgentActivityUndoOutcome = "reverted" | "skipped_stale" | "skipped_missing" | "skipped_unsupported";
+export type AgentActivityUndoOutcome = "reverted" | "skipped_stale" | "skipped_missing" | "skipped_unsupported" | "skipped_dependent";
 
 export type AgentAnalyticsPoint = {
   "setId": string;

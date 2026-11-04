@@ -7265,7 +7265,8 @@
           "reverted",
           "skipped_stale",
           "skipped_missing",
-          "skipped_unsupported"
+          "skipped_unsupported",
+          "skipped_dependent"
         ]
       },
       "AgentActivityBatchNotFoundResponse": {
@@ -20949,7 +20950,7 @@
           "Agent Writes"
         ],
         "summary": "Revert an Activity Log batch as a new ordinary write.",
-        "description": "Applies the inverse images of a prior Activity Log batch as a NEW ordinary write batch (mirroring the app's undoBatch), propagating via a sync nudge. Rows whose current state no longer matches the recorded after-image are skipped and surfaced per row (silent LWW). Idempotent by idempotencyKey; nothing is hard-deleted.",
+        "description": "Applies the inverse images of a prior Activity Log batch as a NEW ordinary write batch (mirroring the app's undoBatch), propagating via a sync nudge. Rows whose current state no longer matches the recorded after-image are skipped and surfaced per row (silent LWW); undoing a Meal's creation after another batch added an active Food Entry to it is refused with skipped_dependent. Idempotent by idempotencyKey; nothing is hard-deleted.",
         "security": [
           {
             "bearerAuth": []

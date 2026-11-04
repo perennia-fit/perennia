@@ -9,6 +9,7 @@ import {
   createDatabaseClient,
   createDrizzleAgentActivityStore,
   createDrizzleAgentWorkoutBatchWriteStore,
+  createDrizzleSyncStore,
   createInMemoryAgentCatalogStore,
   schema
 } from "../src/index.ts";
@@ -777,6 +778,203 @@ test(
     }
   }
 );
+
+test(
+  "POST /agent/activity/undo-batch refuses to undo a Meal's creating batch after another batch added an active Food Entry (skipped_dependent), applying nothing",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-activity-meal-user-${randomUUID()}`;
+    const syncStore = createDrizzleSyncStore(database.db);
+    const app = createAgentActivityApp({
+      userId,
+      agentActivityStore: createDrizzleAgentActivityStore(database.db),
+      syncNudgePublisher: {
+        async enqueueSyncNudge() {
+          return { enqueued: true, jobId: "nudge" };
+        }
+      }
+    });
+    const mealId = `meal-${randomUUID()}`;
+    const firstEntryId = `food-entry-${randomUUID()}`;
+    const secondEntryId = `food-entry-${randomUUID()}`;
+    const batchA = `agent-activity-meal-a-${randomUUID()}`;
+    const batchB = `agent-activity-meal-b-${randomUUID()}`;
+
+    try {
+      await insertActivityUser(database, userId);
+      await pushMealCreate(syncStore, {
+        userId,
+        batchId: batchA,
+        mealId,
+        entryIds: [firstEntryId],
+        updatedAt: "2026-07-01T12:00:00.000Z"
+      });
+      // Batch B adds a second active entry to Batch A's Meal.
+      await pushMealCreate(syncStore, {
+        userId,
+        batchId: batchB,
+        mealId: null,
+        entryMealId: mealId,
+        entryIds: [secondEntryId],
+        updatedAt: "2026-07-01T12:30:00.000Z"
+      });
+      const before = await mealRowsSnapshot(database, [
+        mealId,
+        firstEntryId,
+        secondEntryId
+      ]);
+
+      const undoBatchId = `agent-activity-meal-undo-${randomUUID()}`;
+      const response = await postUndo(app, {
+        batchId: batchA,
+        idempotencyKey: undoBatchId
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+
+      assert.equal(body.applied, false);
+      assert.equal(body.undoBatchId, null);
+      assert.equal(body.entries.length, 1);
+      assert.deepEqual(body.entries[0], {
+        entryId: `agent:${batchA}:meals:${mealId}`,
+        entityTable: "meals",
+        entityId: mealId,
+        outcome: "skipped_dependent"
+      });
+      assert.deepEqual(
+        await mealRowsSnapshot(database, [mealId, firstEntryId, secondEntryId]),
+        before
+      );
+      const undoRows = await database.sql`
+        select id from activity_log where batch_id = ${undoBatchId}
+      `;
+      assert.equal(undoRows.length, 0);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "POST /agent/activity/undo-batch still reverts a lone Meal-creating batch with no later entries",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-activity-meal-lone-user-${randomUUID()}`;
+    const syncStore = createDrizzleSyncStore(database.db);
+    const app = createAgentActivityApp({
+      userId,
+      agentActivityStore: createDrizzleAgentActivityStore(database.db),
+      syncNudgePublisher: {
+        async enqueueSyncNudge() {
+          return { enqueued: true, jobId: "nudge" };
+        }
+      }
+    });
+    const mealId = `meal-${randomUUID()}`;
+    const entryId = `food-entry-${randomUUID()}`;
+    const batchId = `agent-activity-meal-lone-${randomUUID()}`;
+
+    try {
+      await insertActivityUser(database, userId);
+      await pushMealCreate(syncStore, {
+        userId,
+        batchId,
+        mealId,
+        entryIds: [entryId],
+        updatedAt: "2026-07-01T12:00:00.000Z"
+      });
+
+      const undoBatchId = `agent-activity-meal-lone-undo-${randomUUID()}`;
+      const response = await postUndo(app, {
+        batchId,
+        idempotencyKey: undoBatchId
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+
+      assert.equal(body.applied, true);
+      assert.equal(body.undoBatchId, undoBatchId);
+      assert.equal(body.entries.length, 2);
+      assert.ok(body.entries.every((entry) => entry.outcome === "reverted"));
+      const rows = await mealRowsSnapshot(database, [mealId, entryId]);
+      assert.ok(rows.every((row) => row.deleted_at !== null));
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+async function insertActivityUser(database, userId) {
+  await database.db.insert(schema.user).values({
+    id: userId,
+    name: "Agent Activity Meal User",
+    email: `${userId}@example.com`,
+    emailVerified: true
+  });
+}
+
+// One agent batch through the ordinary sync push: an optional Meal create and
+// Food Entry creates, each with its Activity Log envelope.
+async function pushMealCreate(
+  syncStore,
+  { userId, batchId, mealId, entryMealId = mealId, entryIds, updatedAt }
+) {
+  const envelope = (entityTable, id, payload) => ({
+    id,
+    payload,
+    updatedAt,
+    deletedAt: null,
+    activityLogId: `agent:${batchId}:${entityTable}:${id}`,
+    actor: "agent",
+    batchId,
+    beforeImage: null,
+    afterImage: payload,
+    occurredAt: updatedAt
+  });
+  if (mealId !== null) {
+    await syncStore.pushMeals({
+      userId,
+      deviceId: "agent",
+      changes: [
+        envelope("meals", mealId, {
+          id: mealId,
+          name: "Lunch",
+          started_at: updatedAt,
+          local_date: updatedAt.slice(0, 10),
+          updated_at: updatedAt,
+          deleted_at: null
+        })
+      ]
+    });
+  }
+  await syncStore.pushFoodEntries({
+    userId,
+    deviceId: "agent",
+    changes: entryIds.map((id, position) =>
+      envelope("food_entries", id, {
+        id,
+        meal_id: entryMealId,
+        position,
+        updated_at: updatedAt,
+        deleted_at: null
+      })
+    )
+  });
+}
+
+async function mealRowsSnapshot(database, ids) {
+  const rows = await database.sql`
+    select id, payload, updated_at, deleted_at from meals where id in ${database.sql(ids)}
+    union all
+    select id, payload, updated_at, deleted_at from food_entries where id in ${database.sql(ids)}
+    order by id
+  `;
+  return rows.map((row) => ({ ...row }));
+}
 
 function createAgentActivityApp({
   agentActivityStore,

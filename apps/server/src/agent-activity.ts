@@ -1,6 +1,16 @@
 import { isDeepStrictEqual } from "node:util";
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  isNull,
+  lte,
+  notInArray,
+  sql
+} from "drizzle-orm";
 
 import {
   AgentApiKeyUnavailableResponseSchema,
@@ -187,7 +197,13 @@ export const AgentActivityUndoBatchRequestSchema = z
   .openapi("AgentActivityUndoBatchRequest");
 
 const AgentActivityUndoOutcomeSchema = z
-  .enum(["reverted", "skipped_stale", "skipped_missing", "skipped_unsupported"])
+  .enum([
+    "reverted",
+    "skipped_stale",
+    "skipped_missing",
+    "skipped_unsupported",
+    "skipped_dependent"
+  ])
   .openapi("AgentActivityUndoOutcome");
 
 const AgentActivityUndoEntryResultSchema = z
@@ -282,7 +298,7 @@ export const agentActivityUndoBatchRoute = createRoute({
   tags: ["Agent Writes"],
   summary: "Revert an Activity Log batch as a new ordinary write.",
   description:
-    "Applies the inverse images of a prior Activity Log batch as a NEW ordinary write batch (mirroring the app's undoBatch), propagating via a sync nudge. Rows whose current state no longer matches the recorded after-image are skipped and surfaced per row (silent LWW). Idempotent by idempotencyKey; nothing is hard-deleted.",
+    "Applies the inverse images of a prior Activity Log batch as a NEW ordinary write batch (mirroring the app's undoBatch), propagating via a sync nudge. Rows whose current state no longer matches the recorded after-image are skipped and surfaced per row (silent LWW); undoing a Meal's creation after another batch added an active Food Entry to it is refused with skipped_dependent. Idempotent by idempotencyKey; nothing is hard-deleted.",
   security: [{ bearerAuth: [] }],
   request: {
     body: {
@@ -709,6 +725,19 @@ export function createDrizzleAgentActivityStore(
           applicable.push({ entry, registryEntry, afterImage });
         }
 
+        for (const conflict of await mealDependentUndoConflicts(
+          transaction,
+          userId,
+          orderedEntries
+        )) {
+          const alreadyConflicted = conflicts.some(
+            (existing) => existing.entryId === conflict.entryId
+          );
+          if (!alreadyConflicted) {
+            conflicts.push(conflict);
+          }
+        }
+
         if (conflicts.length > 0) {
           // Abort: apply nothing, record no undo batch, surface only the
           // conflicting entries (mirroring the app's per-row conflict list).
@@ -783,6 +812,62 @@ export function createDrizzleAgentActivityStore(
       });
     }
   };
+}
+
+// meal-logging.md §7: undoing the Batch that created a Meal would archive it
+// out from under an active Food Entry another Batch added since, so the undo
+// is refused with `skipped_dependent` on the Meal's entry and, as with
+// `skipped_stale`, nothing is applied. Entries the undone Batch created
+// itself are excluded; later edits to them are the stale check's business.
+// The app's twin is `_mealDependentUndoConflicts` in undoBatch.
+async function mealDependentUndoConflicts(
+  transaction: MutationDatabase,
+  userId: string,
+  entries: readonly ActivityLogRow[]
+): Promise<
+  {
+    entryId: string;
+    entityTable: string;
+    entityId: string;
+    outcome: AgentActivityUndoOutcome;
+  }[]
+> {
+  const batchEntryIds = entries
+    .filter((entry) => entry.entityTable === FOOD_ENTRIES_SYNC_ENTITY)
+    .map((entry) => entry.entityId);
+  const conflicts: {
+    entryId: string;
+    entityTable: string;
+    entityId: string;
+    outcome: AgentActivityUndoOutcome;
+  }[] = [];
+  for (const entry of entries) {
+    if (entry.entityTable !== MEALS_SYNC_ENTITY || entry.beforeImage !== null) {
+      continue;
+    }
+    const conditions = [
+      eq(schema.foodEntries.userId, userId),
+      isNull(schema.foodEntries.deletedAt),
+      eq(sql`${schema.foodEntries.payload}->>'meal_id'`, entry.entityId)
+    ];
+    if (batchEntryIds.length > 0) {
+      conditions.push(notInArray(schema.foodEntries.id, batchEntryIds));
+    }
+    const dependents = await transaction
+      .select({ id: schema.foodEntries.id })
+      .from(schema.foodEntries)
+      .where(and(...conditions))
+      .limit(1);
+    if (dependents.length > 0) {
+      conflicts.push({
+        entryId: entry.id,
+        entityTable: entry.entityTable,
+        entityId: entry.entityId,
+        outcome: "skipped_dependent"
+      });
+    }
+  }
+  return conflicts;
 }
 
 async function readCurrentPayload(

@@ -826,7 +826,10 @@ push path (silent LWW, tenant isolation, its own Activity Log entry). Undo is
 **batch-atomic**: if any single entry's current state no longer matches its
 recorded after-image, nothing is applied, no new Activity Log batch is
 recorded, and the response reports the conflicting entries with
-`applied: false` and `undoBatchId: null`. Idempotent by `idempotencyKey` —
+`applied: false` and `undoBatchId: null`. Undoing the batch that created a
+Meal is refused the same way, with `skipped_dependent` on the Meal's entry,
+when another batch has since added an active Food Entry to that Meal.
+Idempotent by `idempotencyKey` —
 undo-of-undo resurrects the original rows.
 
 ```json

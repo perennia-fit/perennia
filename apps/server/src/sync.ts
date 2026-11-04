@@ -1288,212 +1288,86 @@ export async function pushMealTypesInTransaction(
   });
 }
 
+// A Meal rides the shared opaque push: per-row LWW, tenant isolation, the
+// Activity Log envelope, and carry-forward of the keys a later release added
+// (meal-logging.md §10).
 export async function pushMealsInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
+  return pushOpaqueSyncRowsInTransaction(transaction, {
+    ...input,
+    entityTable: MEALS_SYNC_ENTITY,
+    async readExisting(id) {
+      const rows = await transaction
+        .select({
+          userId: schema.meals.userId,
+          updatedAt: schema.meals.updatedAt,
+          deviceId: schema.meals.deviceId,
+          payload: schema.meals.payload
+        })
+        .from(schema.meals)
+        .where(eq(schema.meals.id, id))
+        .limit(1);
+      return rows[0];
+    },
+    async writeRow(existing, row) {
+      if (existing === undefined) {
+        await transaction.insert(schema.meals).values(row);
+      } else {
+        await transaction
+          .update(schema.meals)
+          .set(row)
+          .where(eq(schema.meals.id, row.id));
+      }
     }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: MEALS_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.meals.userId,
-        updatedAt: schema.meals.updatedAt,
-        deviceId: schema.meals.deviceId
-      })
-      .from(schema.meals)
-      .where(eq(schema.meals.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.meals).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.meals)
-        .set(rowValues)
-        .where(eq(schema.meals.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  });
 }
 
+// A Food Entry rides the shared opaque push, like a Meal (meal-logging.md
+// §10). No parent check on push: `meal_id` is a soft reference, and pull
+// ships the parent Meal with the entry (PULL_PARENT_REFERENCES).
 export async function pushFoodEntriesInTransaction(
   transaction: LoggedSetMutationDatabase,
-  {
-    userId,
-    deviceId,
-    changes,
-    serverClock
-  }: {
+  input: {
     userId: string;
     deviceId: string;
     changes: SyncPushChange[];
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  const acceptedIds: string[] = [];
-  const applied: SyncAppliedChange[] = [];
-  const maybeRecordActivityLog = async (change: SyncPushChange) => {
-    if (!hasActivityLogEnvelope(change)) {
-      return;
+  return pushOpaqueSyncRowsInTransaction(transaction, {
+    ...input,
+    entityTable: FOOD_ENTRIES_SYNC_ENTITY,
+    async readExisting(id) {
+      const rows = await transaction
+        .select({
+          userId: schema.foodEntries.userId,
+          updatedAt: schema.foodEntries.updatedAt,
+          deviceId: schema.foodEntries.deviceId,
+          payload: schema.foodEntries.payload
+        })
+        .from(schema.foodEntries)
+        .where(eq(schema.foodEntries.id, id))
+        .limit(1);
+      return rows[0];
+    },
+    async writeRow(existing, row) {
+      if (existing === undefined) {
+        await transaction.insert(schema.foodEntries).values(row);
+      } else {
+        await transaction
+          .update(schema.foodEntries)
+          .set(row)
+          .where(eq(schema.foodEntries.id, row.id));
+      }
     }
-
-    await transaction
-      .insert(schema.activityLog)
-      .values({
-        id: change.activityLogId,
-        userId,
-        actor: change.actor,
-        batchId: change.batchId,
-        entityTable: FOOD_ENTRIES_SYNC_ENTITY,
-        entityId: change.id,
-        beforeImage: change.beforeImage,
-        afterImage: change.afterImage,
-        occurredAt: parseIsoDate(change.occurredAt, "occurredAt")
-      })
-      .onConflictDoNothing({ target: schema.activityLog.id });
-  };
-
-  for (const change of changes) {
-    const updatedAt = normalizeIncomingUpdatedAt(
-      parseIsoDate(change.updatedAt, "updatedAt"),
-      serverClock
-    );
-    const deletedAt =
-      change.deletedAt === null
-        ? null
-        : parseIsoDate(change.deletedAt, "deletedAt");
-    const payload = syncPayloadClock(change.payload, updatedAt, deletedAt);
-    const existingRows = await transaction
-      .select({
-        userId: schema.foodEntries.userId,
-        updatedAt: schema.foodEntries.updatedAt,
-        deviceId: schema.foodEntries.deviceId
-      })
-      .from(schema.foodEntries)
-      .where(eq(schema.foodEntries.id, change.id))
-      .limit(1);
-    const existing = existingRows[0];
-
-    if (existing !== undefined && existing.userId !== userId) {
-      continue;
-    }
-    if (
-      existing !== undefined &&
-      !lwwWins(updatedAt, deviceId, existing.updatedAt, existing.deviceId)
-    ) {
-      await maybeRecordActivityLog(change);
-      acceptedIds.push(change.id);
-      continue;
-    }
-
-    const rowValues = {
-      id: change.id,
-      userId,
-      deviceId,
-      payload,
-      updatedAt,
-      deletedAt,
-      receivedAt: serverClock
-    };
-    if (existing === undefined) {
-      await transaction.insert(schema.foodEntries).values(rowValues);
-    } else {
-      await transaction
-        .update(schema.foodEntries)
-        .set(rowValues)
-        .where(eq(schema.foodEntries.id, change.id));
-    }
-
-    await maybeRecordActivityLog({ ...change, payload });
-    acceptedIds.push(change.id);
-    applied.push({
-      id: change.id,
-      updatedAt: updatedAt.toISOString(),
-      deviceId
-    });
-  }
-
-  return {
-    accepted: acceptedIds,
-    serverClock: serverClock.toISOString(),
-    applied
-  };
+  });
 }
 
 export async function pushCompoundsInTransaction(
@@ -2209,7 +2083,12 @@ const SYNC_CARRY_FORWARD_PAYLOAD_KEYS: Partial<
   [FOCUSES_SYNC_ENTITY]: ["color_hex"],
   // A Compound's favourite. The Agent Compound write has no favourite field
   // and omits the key, so an Agent edit keeps the user's star.
-  [COMPOUNDS_SYNC_ENTITY]: ["is_favorite"]
+  [COMPOUNDS_SYNC_ENTITY]: ["is_favorite"],
+  // A Meal's frozen offset and Time Precision, added by meal-logging.md §1.
+  [MEALS_SYNC_ENTITY]: ["timezone_offset_minutes", "time_precision"],
+  // A Food Entry's import identity. Agent payloads never carry these keys, so
+  // an Agent edit keeps the imported entry's source.
+  [FOOD_ENTRIES_SYNC_ENTITY]: ["import_source", "import_external_id"]
 };
 
 function carryForwardOmittedPayloadKeys<
