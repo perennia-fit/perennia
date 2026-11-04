@@ -713,8 +713,9 @@ async function pushAccountKeyedSyncRowsInTransaction(
           userId: table.userId,
           updatedAt: table.updatedAt,
           deviceId: table.deviceId,
-          // Read for carry-forward (Focus `color_hex`); the other tables
-          // pushed here have no carried keys and ignore it.
+          // Read for carry-forward (Focus `color_hex`, Compound
+          // `is_favorite`); the other tables pushed here have no carried
+          // keys and ignore it.
           payload: table.payload
         })
         .from(table)
@@ -2205,7 +2206,10 @@ const SYNC_CARRY_FORWARD_PAYLOAD_KEYS: Partial<
   // JSON-encoded string array, like `equipment_ids`.
   [EXERCISES_SYNC_ENTITY]: ["focus_ids"],
   // A Focus's color; null means its default (progress-overview.md, D6).
-  [FOCUSES_SYNC_ENTITY]: ["color_hex"]
+  [FOCUSES_SYNC_ENTITY]: ["color_hex"],
+  // A Compound's favourite. The Agent Compound write has no favourite field
+  // and omits the key, so an Agent edit keeps the user's star.
+  [COMPOUNDS_SYNC_ENTITY]: ["is_favorite"]
 };
 
 function carryForwardOmittedPayloadKeys<

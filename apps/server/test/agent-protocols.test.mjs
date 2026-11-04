@@ -1343,6 +1343,70 @@ test(
 );
 
 test(
+  "an Agent Compound edit keeps the stored is_favorite in the row and its Activity Log after-image",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-compound-favorite-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const compoundId = createUuidV7();
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    const idempotencyKey = `compound-favorite-edit-${randomUUID()}`;
+
+    try {
+      await insertUser(database, userId);
+      await insertOpaqueFixture(database, schema.compounds, {
+        id: compoundId,
+        userId,
+        updatedAt,
+        payload: {
+          id: compoundId,
+          name: "Creatine",
+          default_unit: "gram",
+          default_route: "oral",
+          strength: null,
+          is_favorite: true,
+          updated_at: updatedAt.toISOString(),
+          deleted_at: null
+        }
+      });
+
+      const response = await post(app, "/agent/protocols/compounds/batch-write", {
+        idempotencyKey,
+        compounds: [
+          {
+            id: compoundId,
+            name: "Creatine monohydrate",
+            defaultUnit: "gram",
+            defaultRoute: "oral"
+          }
+        ]
+      });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).compounds[0].outcome, "applied");
+
+      const [stored] = await database.sql`
+        select payload from compounds where id = ${compoundId}
+      `;
+      assert.equal(stored.payload.name, "Creatine monohydrate");
+      assert.equal(stored.payload.is_favorite, true);
+      const [logged] = await database.sql`
+        select after_image from activity_log
+        where user_id = ${userId} and batch_id = ${idempotencyKey}
+          and entity_id = ${compoundId}
+      `;
+      assert.equal(logged.after_image.is_favorite, true);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
   "legacy Protocols references must resolve in-tenant while Metric ids stay opaque",
   { skip },
   async () => {
