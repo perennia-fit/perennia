@@ -5495,7 +5495,7 @@ export function normalizeIncomingUpdatedAt(
   return updatedAt;
 }
 
-function lwwWins(
+export function lwwWins(
   incomingUpdatedAt: Date,
   incomingDeviceId: string,
   existingUpdatedAt: Date,

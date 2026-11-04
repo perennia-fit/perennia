@@ -858,6 +858,96 @@ test(
 );
 
 test(
+  "POST /agent/activity/undo-batch locks the Meal before its dependent check, so an entry committed by a concurrent write is seen (skipped_dependent)",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-activity-meal-race-user-${randomUUID()}`;
+    const syncStore = createDrizzleSyncStore(database.db);
+    const app = createAgentActivityApp({
+      userId,
+      agentActivityStore: createDrizzleAgentActivityStore(database.db),
+      syncNudgePublisher: {
+        async enqueueSyncNudge() {
+          return { enqueued: true, jobId: "nudge" };
+        }
+      }
+    });
+    const mealId = `meal-${randomUUID()}`;
+    const firstEntryId = `food-entry-${randomUUID()}`;
+    const racingEntryId = `food-entry-${randomUUID()}`;
+    const batchA = `agent-activity-meal-race-a-${randomUUID()}`;
+
+    try {
+      await insertActivityUser(database, userId);
+      await pushMealCreate(syncStore, {
+        userId,
+        batchId: batchA,
+        mealId,
+        entryIds: [firstEntryId],
+        updatedAt: "2026-07-01T12:00:00.000Z"
+      });
+
+      // A concurrent Meal batch write: it holds the Meal row FOR UPDATE, as
+      // the agent store does, and adds an active entry while the undo runs.
+      let undoResponse;
+      await database.sql.begin(async (tx) => {
+        await tx`select id from meals where id = ${mealId} for update`;
+        await tx`
+          insert into food_entries (id, user_id, device_id, payload, updated_at, deleted_at)
+          values (
+            ${racingEntryId},
+            ${userId},
+            'b3f1c2d4-phone',
+            ${JSON.stringify({
+              id: racingEntryId,
+              meal_id: mealId,
+              position: 1,
+              updated_at: "2026-07-01T12:30:00.000Z",
+              deleted_at: null
+            })}::jsonb,
+            ${"2026-07-01T12:30:00.000Z"},
+            null
+          )
+        `;
+        undoResponse = postUndo(app, {
+          batchId: batchA,
+          idempotencyKey: `agent-activity-meal-race-undo-${randomUUID()}`
+        });
+        // Commit only once the undo is blocked on the Meal row lock.
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const [waiting] = await database.sql`
+            select count(*)::int as count
+            from pg_stat_activity
+            where datname = current_database()
+              and wait_event_type = 'Lock'
+              and query ilike '%"meals"%'
+          `;
+          if (waiting.count > 0) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      });
+
+      const response = await undoResponse;
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.applied, false);
+      assert.deepEqual(
+        body.entries.map((entry) => entry.outcome),
+        ["skipped_dependent"]
+      );
+      const [meal] = await database.sql`select deleted_at from meals where id = ${mealId}`;
+      assert.equal(meal.deleted_at, null);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
   "POST /agent/activity/undo-batch still reverts a lone Meal-creating batch with no later entries",
   { skip: databaseUrl ? false : "DATABASE_URL is not set." },
   async () => {

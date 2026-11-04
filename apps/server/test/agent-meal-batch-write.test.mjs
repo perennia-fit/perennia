@@ -998,6 +998,40 @@ test("prepare: archiving a Meal is accepted when the request tombstones every st
   assert.equal(prepared.entries[0].payload.deleted_at, archivedAt);
 });
 
+test("prepare: archiving a Meal is 422 meal_archived when an entry tombstone ties or loses LWW against the stored entry", () => {
+  const archivedAt = "2026-06-25T11:00:00.000Z";
+  const storedClock = { updatedAt: "2026-06-24T06:00:00.000Z", deviceId: "b3f1c2d4-phone" };
+  const stored = storedState({
+    meal: storedRow(USER, legacyMealPayload()),
+    entries: [
+      ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+    ],
+    activeEntries: [["entry-active", storedClock]]
+  });
+  const archive = (updatedAt) =>
+    prepareAgentMealBatchWrite(
+      resolvedRequest({
+        meal: { id: MEAL_ID, deletedAt: archivedAt },
+        entries: [quickEntry({ id: "entry-active", updatedAt, deletedAt: archivedAt })]
+      }),
+      stored,
+      FAKE_NOW_LATER
+    );
+
+  // A tie on updatedAt goes to the higher device id: "agent:…" < "b3…".
+  for (const updatedAt of [storedClock.updatedAt, "2026-06-24T05:59:59.000Z"]) {
+    const rejected = archive(updatedAt);
+    assert.equal(rejected.accepted, false, updatedAt);
+    assert.equal(rejected.status, 422);
+    assert.deepEqual(rules(rejected.errors), ["meal_archived"]);
+    assert.match(rejected.errors[0].message, /not tombstoned: entry-active\.$/);
+  }
+
+  // A newer updatedAt, or none (the server clock), wins and is accepted.
+  assert.equal(archive("2026-06-24T06:00:00.001Z").accepted, true);
+  assert.equal(archive(undefined).accepted, true);
+});
+
 test("prepare: an entry sent without deletedAt keeps its stored null and does not count as tombstoned", () => {
   const archivedAt = "2026-06-25T11:00:00.000Z";
   const prepared = prepareAgentMealBatchWrite(
@@ -1356,7 +1390,154 @@ test("agent meal batch write maps a store rejection to its HTTP status and retur
   assert.deepEqual(body.entries, []);
 });
 
+test("agent meal batch write rejects a blank mealType with 422 meal_type_required, not a 400, and stores a padded name as sent", async () => {
+  for (const mealType of ["", "   "]) {
+    const app = createAgentMealApp({ agentMealBatchWriteStore: recordingMealStore([]) });
+    const response = await postAgentMeal(app, {
+      idempotencyKey: `agent-meal-blank-type-${mealType.length}`,
+      meal: {
+        id: MEAL_ID,
+        mealType,
+        startedAt: "2026-06-24T05:00:00.000Z",
+        timezone: "Australia/Brisbane"
+      },
+      entries: []
+    });
+    assert.equal(response.status, 422, JSON.stringify(mealType));
+    const body = await response.json();
+    assert.deepEqual(rules(body.errors), ["meal_type_required"]);
+    assert.equal(body.errors[0].itemIndex, null);
+    assert.equal(body.errors[0].entryId, null);
+  }
+
+  const writes = [];
+  const app = createAgentMealApp({ agentMealBatchWriteStore: recordingMealStore(writes) });
+  const response = await postAgentMeal(app, {
+    idempotencyKey: "agent-meal-padded-type",
+    meal: {
+      id: MEAL_ID,
+      mealType: " Lunch ",
+      startedAt: "2026-06-24T05:00:00.000Z",
+      timezone: "Australia/Brisbane"
+    },
+    entries: []
+  });
+  assert.equal(response.status, 200);
+  assert.equal(writes[0].meal.payload.meal_type, " Lunch ");
+});
+
 // ----- Partial writes against Postgres -----
+
+test(
+  "agent meal batch write rejects a blank mealType on update with 422 meal_type_required and stores a padded name as sent",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await withMealDatabase(async ({ database, app }) => {
+      const mealId = randomUUID();
+      const create = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-type-create-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          mealType: "Dinner",
+          startedAt: "2026-06-24T11:40:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: []
+      });
+      assert.equal(create.status, 200);
+
+      for (const mealType of ["", "  "]) {
+        const blank = await postAgentMeal(app, {
+          idempotencyKey: `agent-meal-type-blank-${randomUUID()}`,
+          meal: { id: mealId, mealType },
+          entries: []
+        });
+        assert.equal(blank.status, 422, JSON.stringify(mealType));
+        const body = await blank.json();
+        assert.deepEqual(rules(body.errors), ["meal_type_required"]);
+        assert.equal(body.errors[0].itemIndex, null);
+      }
+      const [kept] = await database.sql`select payload from meals where id = ${mealId}`;
+      assert.equal(kept.payload.meal_type, "Dinner");
+
+      const padded = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-type-padded-${randomUUID()}`,
+        meal: { id: mealId, mealType: " Supper" },
+        entries: []
+      });
+      assert.equal(padded.status, 200);
+      const [renamed] = await database.sql`select payload from meals where id = ${mealId}`;
+      assert.equal(renamed.payload.meal_type, " Supper");
+    });
+  }
+);
+
+test(
+  "agent meal batch write rejects archiving a Meal when an entry tombstone ties the stored entry's LWW clock, leaving both rows active",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await withMealDatabase(async ({ database, app }) => {
+      const mealId = randomUUID();
+      const entryId = randomUUID();
+      const create = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-lww-create-${randomUUID()}`,
+        meal: {
+          id: mealId,
+          mealType: "Lunch",
+          startedAt: "2026-06-24T02:00:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: [quickEntry({ id: entryId, updatedAt: "2026-06-24T05:00:00.000Z" })]
+      });
+      assert.equal(create.status, 200);
+      // The phone edits the entry and syncs: its clock and device now own it.
+      const phoneClock = "2026-06-24T06:00:00.000Z";
+      await database.sql`
+        update food_entries
+        set device_id = 'b3f1c2d4-phone',
+            updated_at = ${phoneClock},
+            payload = payload || ${JSON.stringify({ updated_at: phoneClock })}::jsonb
+        where id = ${entryId}
+      `;
+
+      const archivedAt = "2026-06-24T07:00:00.000Z";
+      for (const updatedAt of [phoneClock, "2026-06-24T05:30:00.000Z"]) {
+        const key = `agent-meal-lww-archive-${randomUUID()}`;
+        const response = await postAgentMeal(app, {
+          idempotencyKey: key,
+          meal: { id: mealId, deletedAt: archivedAt },
+          entries: [quickEntry({ id: entryId, updatedAt, deletedAt: archivedAt })]
+        });
+        assert.equal(response.status, 422, updatedAt);
+        assert.deepEqual(rules((await response.json()).errors), ["meal_archived"]);
+        const activity = await database.sql`
+          select id from activity_log where batch_id = ${key}
+        `;
+        assert.equal(activity.length, 0);
+      }
+      const [meal] = await database.sql`select deleted_at from meals where id = ${mealId}`;
+      assert.equal(meal.deleted_at, null);
+      const [entry] = await database.sql`
+        select deleted_at, device_id from food_entries where id = ${entryId}
+      `;
+      assert.equal(entry.deleted_at, null);
+      assert.equal(entry.device_id, "b3f1c2d4-phone");
+
+      // Omitting updatedAt stamps the tombstone at the server clock, which wins.
+      const archive = await postAgentMeal(app, {
+        idempotencyKey: `agent-meal-lww-archive-ok-${randomUUID()}`,
+        meal: { id: mealId, deletedAt: archivedAt },
+        entries: [quickEntry({ id: entryId, updatedAt: undefined, deletedAt: archivedAt })]
+      });
+      assert.equal(archive.status, 200);
+      const [archivedEntry] = await database.sql`
+        select deleted_at from food_entries where id = ${entryId}
+      `;
+      assert.notEqual(archivedEntry.deleted_at, null);
+    });
+  }
+);
+
 
 test(
   "agent meal batch write creates a zero-entry Meal from an IANA zone, then an entries-only request leaves the Meal row untouched (CUJ 7)",
@@ -1870,7 +2051,13 @@ function recordingMealStore(writes = [], { now = FAKE_NOW } = {}) {
     async writeMealBatch(input) {
       const prepared = prepareAgentMealBatchWrite(
         input.request,
-        { userId: input.userId, meal: null, entries: new Map(), activeEntryIds: new Set() },
+        {
+          userId: input.userId,
+          deviceId: input.deviceId,
+          meal: null,
+          entries: new Map(),
+          activeEntries: new Map()
+        },
         now
       );
       writes.push({
@@ -1937,12 +2124,26 @@ function emptyStored() {
   return storedState({ meal: null });
 }
 
-function storedState({ meal, entries = [], activeEntryIds = [] }) {
+const AGENT_DEVICE = "agent:agent-key-1";
+const STORED_ENTRY_CLOCK = {
+  updatedAt: "2026-06-24T01:00:00.000Z",
+  deviceId: "b3f1c2d4-phone"
+};
+
+/**
+ * `activeEntryIds` lists stored active entries at STORED_ENTRY_CLOCK;
+ * `activeEntries` gives `[id, {updatedAt, deviceId}]` pairs explicitly.
+ */
+function storedState({ meal, entries = [], activeEntryIds = [], activeEntries = [] }) {
   return {
     userId: USER,
+    deviceId: AGENT_DEVICE,
     meal,
     entries: new Map(entries),
-    activeEntryIds: new Set(activeEntryIds)
+    activeEntries: new Map([
+      ...activeEntryIds.map((id) => [id, STORED_ENTRY_CLOCK]),
+      ...activeEntries
+    ])
   };
 }
 

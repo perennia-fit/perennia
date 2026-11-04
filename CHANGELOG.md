@@ -28,7 +28,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **Archiving a Meal through `batchWriteAgentMeal` must tombstone its Food
   Entries.** A request that sets `meal.deletedAt` sends every active Food Entry
   of that Meal with `deletedAt` set, as the app's delete does, or fails with
-  `422` `meal_archived`.
+  `422` `meal_archived`; so does a tombstone whose `updatedAt` would lose to
+  the stored entry.
 
 ### Fixed
 

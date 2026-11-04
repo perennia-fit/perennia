@@ -171,7 +171,9 @@ sent. `log-meal` writes only the Meal fields a request sends. An absent field
 keeps its stored value, and `null` clears `endedAt` or un-archives with
 `deletedAt`. To delete a Meal, send `meal.deletedAt` with every active Food
 Entry of that Meal as its full entry with `deletedAt` set, as the app's delete
-does; otherwise the write fails with `meal_archived`. A request whose `meal`
+does; otherwise the write fails with `meal_archived`. Omit each tombstone's
+`updatedAt` (or send one newer than the stored entry's): a tombstone that would
+lose to the stored entry is also `meal_archived`. A request whose `meal`
 carries only `id` adds or edits entries and leaves the Meal row untouched; an
 empty `entries` with Meal fields creates a Meal with no foods ("add foods
 later"). Creating a Meal needs `mealType` and the time block. Send `startedAt`

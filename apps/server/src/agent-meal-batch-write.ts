@@ -25,6 +25,8 @@ import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 import {
   FOOD_ENTRIES_SYNC_ENTITY,
   MEALS_SYNC_ENTITY,
+  lwwWins,
+  normalizeIncomingUpdatedAt,
   pushFoodEntriesInTransaction,
   pushMealsInTransaction,
   type SyncPushChange
@@ -37,7 +39,11 @@ const ISO8601StringSchema = z.string().min(1).openapi({
   description: "ISO-8601 timestamp."
 });
 
-const MealTypeSchema = z.string().trim().min(1).openapi({
+// Deliberately neither trimmed nor length-checked here: mealType is stored as
+// the name sent (meal-logging.md §9), and an empty or blank label is the
+// shared `meal_type_required` hard reject (§8), a 422 the request schema must
+// not pre-empt with a 400.
+const MealTypeSchema = z.string().openapi({
   description:
     "Meal Type (eating-occasion label, e.g. Breakfast/Lunch/Dinner/Snack)."
 });
@@ -91,7 +97,7 @@ export const AgentMealBatchWriteMealSchema = z
     }),
     deletedAt: ISO8601StringSchema.nullable().optional().openapi({
       description:
-        "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value; null un-archives. Archiving also needs every Food Entry stored active in the Meal sent with deletedAt set in the same request, or the write fails with 422 meal_archived."
+        "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value; null un-archives. Archiving also needs every Food Entry stored active in the Meal sent with deletedAt set in the same request, with updatedAt omitted or newer than the stored entry's, or the write fails with 422 meal_archived."
     })
   })
   .openapi("AgentMealBatchWriteMeal");
@@ -437,22 +443,29 @@ export type AgentMealBatchStoredRow = {
   payload: Record<string, unknown>;
   deletedAt: string | null;
 };
+/** A stored active Food Entry's LWW clock: what a tombstone must beat. */
+export type AgentMealBatchStoredClock = {
+  updatedAt: string;
+  deviceId: string;
+};
 /**
  * What `prepareAgentMealBatchWrite` reads besides the request: the caller's
- * user id (to tell its own rows from another account's), the stored Meal and
- * request entries, by id, for any user, and the ids of the caller's Food
- * Entries stored active under this Meal id.
+ * user id (to tell its own rows from another account's), the device id this
+ * write is stamped with (to judge LWW), the stored Meal and request entries,
+ * by id, for any user, and the caller's Food Entries stored active under this
+ * Meal id with their LWW clocks.
  */
 export type AgentMealBatchStoredState = {
   userId: string;
+  deviceId: string;
   meal: AgentMealBatchStoredRow | null;
   entries: ReadonlyMap<string, AgentMealBatchStoredRow>;
   /**
-   * The ids of the caller's Food Entries stored active (deleted_at null)
-   * under this Meal id, whether or not the request sends them. Empty when the
+   * The caller's Food Entries stored active (deleted_at null) under this Meal
+   * id, whether or not the request sends them, keyed by id. Empty when the
    * Meal doesn't exist or belongs to another account.
    */
-  activeEntryIds: ReadonlySet<string>;
+  activeEntries: ReadonlyMap<string, AgentMealBatchStoredClock>;
 };
 export type AgentMealBatchRejectionStatus = 404 | 409 | 422;
 export type AgentMealBatchPreparation =
@@ -1049,14 +1062,36 @@ export function prepareAgentMealBatchWrite(
   // active Food Entry in an archived Meal. The rule judges the resulting Meal,
   // so it also covers an edit to an already archived Meal that still holds
   // stored active entries. An entry counts as tombstoned only when the request
-  // sends it with deletedAt set: an unsent deletedAt keeps the stored null.
-  if (resultingMealDeletedAt !== null && stored.activeEntryIds.size > 0) {
+  // sends it with deletedAt set (an unsent deletedAt keeps the stored null)
+  // and that tombstone wins LWW against the stored row. The Meal is written at
+  // the server clock and always wins, but each entry is written at the
+  // updatedAt the agent sent, normalized exactly as the sync push normalizes
+  // it: a tombstone that ties or loses would be dropped there, silently
+  // leaving an active entry in the archived Meal, so it is rejected here.
+  if (resultingMealDeletedAt !== null && stored.activeEntries.size > 0) {
     const tombstoned = new Set(
       request.entries
-        .filter((_, index) => entryDeletedAt[index] !== null)
+        .filter((entry, index) => {
+          if (entryDeletedAt[index] === null) {
+            return false;
+          }
+          const storedClock = stored.activeEntries.get(entry.id);
+          return (
+            storedClock === undefined ||
+            lwwWins(
+              normalizeIncomingUpdatedAt(
+                new Date(entry.updatedAt ?? nowIso),
+                now
+              ),
+              stored.deviceId,
+              new Date(storedClock.updatedAt),
+              storedClock.deviceId
+            )
+          );
+        })
         .map((entry) => entry.id)
     );
-    const untombstoned = [...stored.activeEntryIds]
+    const untombstoned = [...stored.activeEntries.keys()]
       .filter((id) => !tombstoned.has(id))
       .sort();
     if (untombstoned.length > 0) {
@@ -1064,7 +1099,7 @@ export function prepareAgentMealBatchWrite(
         mealLevelIssue({
           field: "meal.deletedAt",
           rule: "meal_archived",
-          message: `Archiving this Meal needs every active Food Entry in it sent with deletedAt set in the same request; not tombstoned: ${untombstoned.join(", ")}.`,
+          message: `Archiving this Meal needs every active Food Entry in it sent with deletedAt set, and an updatedAt newer than the stored entry's (or omitted), in the same request; not tombstoned: ${untombstoned.join(", ")}.`,
           limit: null
         })
       );
@@ -1166,7 +1201,11 @@ export function createDrizzleAgentMealBatchWriteStore(
         const activeEntryRows =
           storedMealRow !== undefined && storedMealRow.userId === userId
             ? await transaction
-                .select({ id: schema.foodEntries.id })
+                .select({
+                  id: schema.foodEntries.id,
+                  updatedAt: schema.foodEntries.updatedAt,
+                  deviceId: schema.foodEntries.deviceId
+                })
                 .from(schema.foodEntries)
                 .where(
                   and(
@@ -1177,7 +1216,12 @@ export function createDrizzleAgentMealBatchWriteStore(
                 )
                 .for("update")
             : [];
-        const activeEntryIds = new Set(activeEntryRows.map((row) => row.id));
+        const activeEntries = new Map<string, AgentMealBatchStoredClock>(
+          activeEntryRows.map((row) => [
+            row.id,
+            { updatedAt: row.updatedAt.toISOString(), deviceId: row.deviceId }
+          ])
+        );
         const storedMeal: AgentMealBatchStoredRow | null =
           storedMealRow === undefined
             ? null
@@ -1199,7 +1243,13 @@ export function createDrizzleAgentMealBatchWriteStore(
 
         const prepared = prepareAgentMealBatchWrite(
           request,
-          { userId, meal: storedMeal, entries: storedEntries, activeEntryIds },
+          {
+            userId,
+            deviceId,
+            meal: storedMeal,
+            entries: storedEntries,
+            activeEntries
+          },
           serverClock
         );
         if (!prepared.accepted) {

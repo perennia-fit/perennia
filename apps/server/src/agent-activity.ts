@@ -6,6 +6,7 @@ import {
   desc,
   eq,
   gte,
+  inArray,
   isNull,
   lte,
   notInArray,
@@ -669,6 +670,15 @@ export function createDrizzleAgentActivityStore(
         // create, mirroring the app's undoBatch (entries applied in reverse).
         const orderedEntries = [...undoableEntries].reverse();
 
+        // Lock every Meal this batch touches before anything is read, ordered
+        // by id. The agent Meal batch write takes the Meal row FOR UPDATE
+        // before its entries, so taking the Meal first here serializes the
+        // two: a concurrent write can't add an active Food Entry between the
+        // dependent check below and the apply pass (which would leave an
+        // archived Meal holding it, meal-logging.md §7), and the reverse-order
+        // apply (entries before the Meal) can't deadlock against it.
+        await lockBatchMeals(transaction, userId, undoableEntries);
+
         // Pass 1: pre-check. Collect conflicts; if any, abort without mutating.
         const conflicts: {
           entryId: string;
@@ -812,6 +822,31 @@ export function createDrizzleAgentActivityStore(
       });
     }
   };
+}
+
+async function lockBatchMeals(
+  transaction: MutationDatabase,
+  userId: string,
+  entries: readonly ActivityLogRow[]
+): Promise<void> {
+  const mealIds = [
+    ...new Set(
+      entries
+        .filter((entry) => entry.entityTable === MEALS_SYNC_ENTITY)
+        .map((entry) => entry.entityId)
+    )
+  ];
+  if (mealIds.length === 0) {
+    return;
+  }
+  await transaction
+    .select({ id: schema.meals.id })
+    .from(schema.meals)
+    .where(
+      and(eq(schema.meals.userId, userId), inArray(schema.meals.id, mealIds))
+    )
+    .orderBy(asc(schema.meals.id))
+    .for("update");
 }
 
 // meal-logging.md §7: undoing the Batch that created a Meal would archive it

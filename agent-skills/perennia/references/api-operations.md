@@ -439,7 +439,9 @@ request sends, with its entries, as one idempotent Activity Log batch.
   id is sent under a different `meal.id`; `422` `meal_archived` when entries
   are added to an archived Meal (send `deletedAt: null` in the same request
   to un-archive it first), and when a request archives a Meal, or edits an
-  archived one, without tombstoning every Food Entry stored active in it. The
+  archived one, without tombstoning every Food Entry stored active in it
+  (each sent with `deletedAt` set and an `updatedAt` that is newer than the
+  stored entry's, or omitted so the server clock stamps it). The
   Meal as it will be stored is validated: `422` `meal_ended_before_start` and
   `meal_type_required` reject the request, with `itemIndex` and `entryId`
   `null` on Meal-level issues.
