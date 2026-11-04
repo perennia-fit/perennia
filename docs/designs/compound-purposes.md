@@ -371,7 +371,8 @@ A Purpose is a row in a new table, modelled on `focuses` but without a color.
     *   `updatedAt`;
     *   `deletedAt`, the archive tombstone.
 
-    Schema version 64 becomes 65. The migration step `from < 65`:
+    The schema version goes up by one, to the next free one (65 at the time
+    of writing, from 64). The migration step `from < 65`:
     *   creates the table and adds `compounds.purpose_ids` (D2), each only if
         missing, following the `from < 59` Focus step;
     *   clears `sync_states.pull_cursor`, so the next Sync Run pulls every
@@ -731,7 +732,8 @@ member order.
         rejected; it must drop the archived id or omit `purposeIds`.
     *   **App writes:** an archived id already on the Compound is kept, as
         D2 says.
-*   **Golden vectors `m38-compound-purposes`,** with a JSON Schema,
+*   **Golden vectors `m38-compound-purposes`** (the next free id: m38 at the
+    time of writing, after m37), with a JSON Schema,
     registered in `ci.yml` and `ci-local.mjs` together. They pin:
     *   the starter set (the D3 table), which both sides need: Dart to seed,
         TypeScript to merge into Agent reads;
@@ -923,7 +925,8 @@ Let the Purpose filter alone narrow by Purpose.
     *   **PR 1** changes no schema, sync shape or contract.
     *   **PR 2 is additive:**
         *   app schema 65 adds one table and one column with a default;
-        *   server migration `0035` adds one table;
+        *   the next free server migration (`0035` at the time of writing)
+            adds one table;
         *   the sync protocol version stays 2.
     *   **Older clients** skip the `purposes` entity, and the server carries
         `purpose_ids` forward for them.
@@ -973,7 +976,34 @@ usable on its own:
 PR 1 sets this spec's Status to **Approved; PR 1 of 2 built** in its header and
 the SITEMAP. PR 2 sets it to **Current**.
 
-### PR 1: building a Protocol
+**Numbers this spec claims.** App schema version 65, golden-vector id `m38` and
+server migration `0035` are the next free ones at the time of writing (`main`
+ends at schema 64, vector m37 and migration 0034). Another spec may take one
+first. If it does, PR 2 takes the next free number and corrects every line of
+this spec that names it, in the same pull request.
+
+Each PR section below starts with its file table and the Verification Plan items
+it must pass. The numbered file entries after the table give the detail, and
+point back to the Technical Plan sections (D1–D9).
+
+### PR 1: Building a Protocol
+
+| # | Files | Change |
+|---|---|---|
+| 1 | `apps/mobile/lib/domain/protocols/protocols.dart` | Modify |
+| 2 | `apps/mobile/lib/data/repositories/training_repositories.dart` | Modify |
+| 3 | `apps/mobile/lib/features/protocols/controllers/protocols_day_controller.dart` | Modify |
+| 4 | `apps/mobile/lib/features/protocols/widgets/compound_picker_sheet.dart` | Create |
+| 5 | `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart` | Modify |
+| 6 | `apps/mobile/lib/features/protocols/widgets/protocol_screen.dart` | Modify |
+| 7 | `apps/mobile/lib/l10n/app_en.arb` and the generated l10n files | Modify; Regenerate |
+| 8 | `DESIGN.md` | Modify |
+| 9 | `CHANGELOG.md` | Modify |
+| 10 | Tests for PR 1 | Modify, Create |
+
+**Verification Plan items:** V1 (the `mobile` job), V5 (file 10's tests) and V6
+(CUJs 1, 3, 5 and 7, without the Purpose filter). V2, V3 and V4 don't apply:
+this PR changes no golden vectors, contract or sync shape.
 
 #### 1. `apps/mobile/lib/domain/protocols/protocols.dart` (Modify)
 
@@ -1148,6 +1178,43 @@ the SITEMAP. PR 2 sets it to **Current**.
     at 320 dp and 1.3× text.
 
 ### PR 2: Purposes end to end
+
+| # | Files | Change |
+|---|---|---|
+| 11 | `apps/mobile/lib/domain/protocols/compound_purposes.dart` | Create |
+| 12 | `apps/mobile/lib/domain/protocols/protocols.dart` | Modify |
+| 13 | `apps/mobile/lib/data/local/app_database.dart` and the Drift schema snapshots | Modify; Regenerate |
+| 14 | `apps/mobile/lib/data/repositories/purpose_repository.dart` | Create |
+| 15 | `apps/mobile/lib/data/repositories/training_repositories.dart` | Modify |
+| 16 | `apps/mobile/lib/data/seeds/otc_compound_seed.dart` | Modify |
+| 17 | `apps/mobile/lib/features/sync/repositories/sync_repository.dart` | Modify |
+| 18 | `apps/mobile/lib/features/activity/repositories/activity_feed_repository.dart` | Modify |
+| 19 | `apps/mobile/lib/data/repositories/portable_archive_repository.dart` | Modify |
+| 20 | `apps/mobile/lib/features/protocols/controllers/protocols_day_controller.dart` | Modify |
+| 21 | `packages/golden-vectors/vectors/m38-compound-purposes.json` and `m38-compound-purposes.schema.json` | Create |
+| 22 | `apps/mobile/test/domain/compound_purposes_golden_test.dart` and `apps/server/test/compound-purposes.golden.test.mjs` | Create |
+| 23 | `.github/workflows/ci.yml`, `tools/ci-local.mjs` and `apps/server/package.json` | Modify |
+| 24 | `apps/server/src/compound-purposes.ts` | Create |
+| 25 | `apps/server/src/db/schema.ts` and `apps/server/drizzle/0035_purposes.sql` | Modify, Create |
+| 26 | `apps/server/src/sync.ts` | Modify |
+| 27 | `apps/server/src/app.ts`, `agent-activity.ts`, `index.ts` and `observability.ts` | Modify |
+| 28 | `apps/server/src/agent-protocols.ts` | Modify |
+| 29 | `apps/server/src/agent-mcp.ts` | Modify |
+| 30 | Generated contract files | Regenerate |
+| 31 | `packages/contract/src/agent-skill-reference.ts` and `agent-skills/perennia/scripts/prn-agent.mjs` | Modify |
+| 32 | `apps/mobile/lib/features/protocols/widgets/purpose_filter_row.dart` | Create |
+| 33 | `apps/mobile/lib/features/protocols/widgets/compound_picker_sheet.dart` | Modify |
+| 34 | `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart` | Modify |
+| 35 | `apps/mobile/lib/features/protocols/widgets/purpose_manager_screen.dart` | Create |
+| 36 | `apps/mobile/lib/l10n/app_en.arb` and the generated l10n files | Modify; Regenerate |
+| 37 | `DESIGN.md` | Modify |
+| 38 | `CONTEXT.md` | Modify |
+| 39 | `docs/designs/protocol-schedules-and-reminders.md` | Modify |
+| 40 | `CHANGELOG.md` | Modify |
+| 41 | Tests for PR 2 | Modify, Create |
+
+**Verification Plan items:** V1 (the `mobile`, `golden`, `contract`, `js` and
+`sync` jobs), V2, V3, V4, V5 (file 41's tests) and V6 (CUJs 1, 5 and 8).
 
 #### 11. `apps/mobile/lib/domain/protocols/compound_purposes.dart` (Create)
 
@@ -1562,20 +1629,27 @@ the SITEMAP. PR 2 sets it to **Current**.
 
 ## Verification Plan
 
-*   **Gate**: `pnpm ci:local --changed` passes for each PR.
+Each item has an id. The PR sections of the Detailed Implementation Plan name
+the items each one must pass.
+
+*   **V1. Gate:** `pnpm ci:local --changed` passes for each PR.
     *   **PR 1 runs:** `mobile`.
     *   **PR 2 runs:** `mobile`, `golden`, `contract`, `js` and `sync`. The
         `js` and `sync` jobs need Docker.
 
     Don't run the emulator during the `mobile` job, because its timing
     budgets fail under load.
-*   **Golden vectors**: `m38-compound-purposes` passes in Dart and in
-    TypeScript. Changing one starter Purpose on one side fails the golden job.
-*   **Contract**: `check:drift` is clean after regeneration. The diff shows
-    exactly D9's additions.
-*   **Sync simulation**: CUJ 6 is covered by `protocols-sync.test.mjs` (file
-    41).
-*   **Manual check on the emulator** (`perennia_pixel`, never a personal
+*   **V2. Golden vectors (PR 2):** `m38-compound-purposes` passes in Dart and
+    in TypeScript. Changing one starter Purpose on one side fails the golden
+    job.
+*   **V3. Contract (PR 2):** `check:drift` is clean after regeneration. The
+    diff shows exactly D9's additions.
+*   **V4. Sync simulation (PR 2):** CUJ 6 is covered by
+    `protocols-sync.test.mjs` (file 41).
+*   **V5. Tests:** the tests each PR adds pass inside its gate run: file 10 for
+    PR 1, file 41 for PR 2. They include the repository tests against
+    in-memory SQLite, the kill-and-reopen test and the accessibility checks.
+*   **V6. Manual check on the emulator** (`perennia_pixel`, never a personal
     device): run CUJs 1, 3, 5 and 7 for PR 1, and CUJs 1, 5 and 8 for PR 2, on
     a debug build, and capture screenshots for each PR.
 
