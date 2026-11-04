@@ -252,6 +252,14 @@ fine. The Detailed Implementation Plan lists every file to create or modify and
 why, and leaves the implementer **no design decisions** — that's the bar
 implementation-readiness review checks.
 
+The Detailed Implementation Plan is split into pull requests, one heading each,
+in merge order: `### PR 1: <title>`, `### PR 2: <title>`, and so on. Each
+section holds its own file table and says which Verification Plan items it
+covers, so the pull requests can be delivered one at a time from the headings
+alone. A schema version or golden-vector id a spec claims is "the next free one
+(65 at the time of writing)": if another change takes it first, the implementer
+takes the next one and corrects the spec line in the same pull request.
+
 ### Where specs live
 
 - `docs/designs/<feature>.md` — one spec per feature or subsystem change, with an
@@ -328,6 +336,27 @@ Run the gate locally and make it green first: `pnpm ci:local --changed` (or the
 full gate for a wide change). A `pre-push` hook (`tools/git-hooks/pre-push`,
 enabled with `git config core.hooksPath tools/git-hooks`) runs this automatically
 and blocks red pushes; bypass it deliberately with `git push --no-verify`.
+
+### Delivery
+
+These are the facts an automated delivery of a spec reads; a person delivering
+by hand follows the same ones.
+
+- **Gate:** `node tools/ci-local.mjs --changed` from the worktree root. It diffs
+  against the local `main` ref, so fetch `main` first, and needs Docker for the
+  DB jobs.
+- **Required check:** `CI passed`. It is the only status check `main` requires.
+- **One pull request per plan heading,** in order, each cut from `main` after
+  the one before it merged (never stacked), each squash-merged. The title ends
+  with `(<Spec title>, part N)`, and the PR carries the label `spec:<slug>`,
+  where the slug is the spec's file name. The last one sets the spec's Status
+  and its SITEMAP row to **Current**.
+- **Spec gaps** are listed in the PR body as one of three kinds: a *detail* the
+  spec is silent on (the most conservative choice that fits its intent), a
+  *correction* where the spec is wrong about the code (fix the spec line in the
+  same PR), or a *substantive* change to a user journey, an invariant, a
+  validation rule, an analytics computation, or the agent surface. A
+  substantive gap stops the delivery until the spec is changed.
 
 ### Gotcha — Windows codegen churn
 

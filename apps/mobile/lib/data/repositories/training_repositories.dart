@@ -16886,8 +16886,14 @@ const _templateLinkWorkoutSnapshotFields = <String>{
 /// compares images with these defaults filled in. The device decode leaves the
 /// column alone for a missing key, and the server's
 /// `SYNC_CARRY_FORWARD_PAYLOAD_KEYS` carries the stored value forward.
+///
+/// A Compound's `is_favorite` is also absent from every Agent Compound write
+/// (the Agent API has no favourite field). The server carries a stored value
+/// forward, but an Agent-created Compound has none, and the device decode
+/// reads the missing key as false, so false is its default here.
 const _activityLaterAddedKeyDefaults = <String, Map<String, Object?>>{
   AppDatabase.focusesTable: <String, Object?>{'color_hex': null},
+  AppDatabase.compoundsTable: <String, Object?>{'is_favorite': false},
 };
 
 bool _activityImagesEqualForEntity(
