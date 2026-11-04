@@ -340,8 +340,9 @@ repositories, and only repositories touch Drift or the network (ARCHITECTURE.md)
 
 ### 1. The Meal time model
 
-**New columns on `meals`** (Drift schema 64 → 65, using the guarded `addColumn` pattern
-of the earlier steps; `main` is at 64 as of release 0.2.0):
+**New columns on `meals`** (Drift schema 64 → the next free version, 65 at the time of
+writing, using the guarded `addColumn` pattern of the earlier steps; `main` is at 64 as
+of release 0.2.0):
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -368,7 +369,8 @@ an abbreviation, as Doses do. The offset, not the label, is what every reader us
 - `localDateAtOffset` is the single rule that writes `meals.local_date` in the app.
 - On the server, `apps/server/src/timezone.ts` gains the twin,
   `localDateAtOffset(instant: Date, offsetMinutes: number): string` (`YYYY-MM-DD`). The
-  golden vector `m39` (§8) pins both languages.
+  golden vector `m39` (§8; the next free id after Meal History's, m39 at the time of
+  writing) pins both languages.
 
 **Editing a Meal's time follows the Dose model** (`_editDose`):
 
@@ -452,9 +454,9 @@ Rules shared by the writes:
   can't treat the copies as already imported.
 - The copies take the target Meal's time.
 
-**`startMeal` until stage 3.** Stage 2 keeps `startMeal` working: it builds `startedAt` as
+**`startMeal` until PR 3.** PR 2 keeps `startMeal` working: it builds `startedAt` as
 the selected day at the current clock time (or now on today), so a Meal started on a past
-day lands on that day. Stage 3 removes it.
+day lands on that day. PR 3 removes it.
 
 ### 4. Meal Type proposals
 
@@ -517,8 +519,9 @@ filters, window and time rules.
   `apps/server/src/meal-history.ts`. A Meal payload without `time_precision` reads as
   `instant`.
 - **It is computed on read and never stored or synced.** A new golden vector,
-  `m38-meal-history.json`, pins both languages. Dart runs it through the repository against
-  in-memory SQLite, as m37 does for Food History.
+  `m38-meal-history.json` (the next free vector id, m38 at the time of writing), pins
+  both languages. Dart runs it through the repository against in-memory SQLite, as m37
+  does for Food History.
 
 ### 6. The Meal screen
 
@@ -647,7 +650,8 @@ device and the date is derived, so neither can be malformed.
   `dose_validation.dart`.
 - **TypeScript:** `validateAgentMealTime(input, {now})`, exported from
   `apps/server/src/index.ts`.
-- **Golden vector `m39-meal-validation.json`,** domain `meal-validation`, with `schema` and
+- **Golden vector `m39-meal-validation.json`** (the next free id after Meal History's,
+  m39 at the time of writing), domain `meal-validation`, with `schema` and
   `schemaVersion`. Each case is `{name, input: {startedAt, endedAt?, mealType,
   timezoneOffsetMinutes, now}, expected: {accepted, warningRules, errorRules, localDate}}`.
   Runners assert the rules and that `localDateAtOffset(startedAt, offset)` equals
@@ -783,7 +787,7 @@ Last-writer-wins stays per row (`lwwWins`).
 | Sets (and Food Entries) are self-describing | Preserved. Log again copies snapshots, or re-reads an active User Food into a new snapshot. A Meal Type is stored as the name the user saw. |
 | Derived analytics are computed, never stored | Preserved. Meal History is derived on read. The stored proposed Meal Type is a visible, editable label fixed at creation, not a cache. Nothing recomputes it. |
 | User-facing delete = archive; no cascading deletes | Preserved. Delete meal archives the Meal and its Food Entries in one Batch that one undo restores, which is the existing `deleteMeal`. Removing the last entry never deletes the Meal. |
-| Restore/import is merge-only | Strengthened. Re-import no longer moves Food Entries, and imports no longer reuse user-made Meals. Archive restore decodes pre-v65 Meals through a shim that defaults `timePrecision` (stage 2). |
+| Restore/import is merge-only | Strengthened. Re-import no longer moves Food Entries, and imports no longer reuse user-made Meals. Archive restore decodes pre-v65 Meals through a shim that defaults `timePrecision` (PR 2). |
 | Local writes never block on the network | Preserved. Every action is one local transaction, with no platform call. |
 | Sync is silent last-writer-wins with recoverable losers | Preserved. Per-row LWW is unchanged. Agent writes stop rewriting unsent fields, which removes a source of silent reverts but not LWW itself. |
 | Validation is one shared two-tier module | Extended with three Meal rules and a golden vector in both languages. |
@@ -1005,8 +1009,8 @@ Split this work into a Meal time model spec and a Meal logging flow spec.
     be built without it.
   - The feature's rules would be spread across two documents.
 - **Reason for Rejection**: The project keeps one spec per feature. The implementation can
-  still land in staged pull requests against this one spec, and the standalone fixes land
-  in stage 1.
+  still land in several pull requests against this one spec, and the standalone fixes land
+  in PR 1.
 
 ### Alternative M: Store the device's IANA zone name
 
@@ -1055,7 +1059,7 @@ least one active Food Entry, and every active entry carries an `import_source` o
   without its first Food Entry when the action was a food, and no half-copied Log again.
 - The schema migration adds two columns. It never changes `started_at`, `local_date`,
   `timezone` or any Food Entry.
-- Archive restore accepts backups made before v65 (§11, stage 2).
+- Archive restore accepts backups made before v65 (§11, PR 2).
 
 ### Compatibility and rollout
 
@@ -1091,13 +1095,16 @@ least one active Food Entry, and every active entry carries an `import_source` o
 
 The work lands in three pull requests against this one spec, each targeting `main` and
 each green on its own. The spec pull request (this document plus its SITEMAP entry) merges
-first. The stages merge in order: stage 2 uses stage 1's `local_clock.dart` and Meal
-validation, and stage 3 uses stage 2's repository.
+first. The pull requests merge in order: PR 2 uses PR 1's `local_clock.dart` and Meal
+validation, and PR 3 uses PR 2's repository.
 
-### Stage 1: shared rules, golden vectors and the server
+### PR 1: shared rules, golden vectors and the server
 
-The stage puts both languages' cores in one pull request, so a golden vector never has
+This pull request puts both languages' cores in one place, so a golden vector never has
 only one runner.
+
+**Verification Plan items:** the full gate (`golden`, `contract`, `js`, `sync`,
+`mobile`), and the server half of the sync simulation with an older app's payloads.
 
 **Golden vectors** (`packages/golden-vectors/vectors/`):
 
@@ -1106,7 +1113,7 @@ only one runner.
 | `m39-meal-validation.json`, `m39-meal-validation.schema.json` | Create. Domain `meal-validation`, in the case shape of §8. Cases for each of the three rules, a future time at exactly 5 minutes and just over, and offsets at −720, 0 and +840 with times that cross midnight forwards and backwards. |
 | `README.md` | Register the domain, modelled on the m37-training-progress entry. |
 
-Meal History (m38) lands whole in stage 2, because its Dart runner reads the
+Meal History (m38) lands whole in PR 2, because its Dart runner reads the
 `time_precision` column, and the Dart ownership guard fails any vector without a Dart
 runner.
 
@@ -1120,7 +1127,7 @@ runner.
 | `lib/domain/nutrition/meal_validation.dart` | Create. `MealTimeInput`, `MealValidationResult` and `validateMealTime` with the three rules in §8, shaped like `dose_validation.dart`. |
 | `test/domain/meal_validation_golden_test.dart` | Create. Run m39: the rules, and `localDateAtOffset` against `expected.localDate`. |
 | `test/domain/local_clock_test.dart` | Create. `localDateAtOffset` with a null offset, and the frozen-offset rule across a DST change in the device zone (`startedAt.toLocal().timeZoneOffset` at a summer instant read in winter). |
-| `test/domain/golden_vector_ownership_test.dart` | Add `meal-validation` to `_dartRunnerByDomain`. (`meal-history` is added in stage 2 with its runner.) |
+| `test/domain/golden_vector_ownership_test.dart` | Add `meal-validation` to `_dartRunnerByDomain`. (`meal-history` is added in PR 2 with its runner.) |
 
 **Server** (`apps/server/src/`):
 
@@ -1179,16 +1186,21 @@ job's path filters.
   moves an entry to another Meal."
 - Fixed: "An agent undo is refused when other writes added foods to the Meal it created."
 
-### Stage 2: the app's data layer
+### PR 2: the app's data layer
 
-After this stage the data is right and the old screens still work: `startMeal` keeps
-working, with the past-day fix, until stage 3 removes it. Meal History lands here in both
+After this pull request the data is right and the old screens still work: `startMeal` keeps
+working, with the past-day fix, until PR 3 removes it. Meal History lands here in both
 languages, with its agent read.
+
+**Verification Plan items:** `pnpm ci:local --changed` (`golden`, `contract`, `js`,
+`mobile`); repositories against in-memory SQLite for every write in §3; kill-and-reopen
+during a first food and during Log again at the repository; the app half of the sync
+simulation with an older app's images; archive restore of a pre-v65 backup.
 
 | File | Change |
 |---|---|
 | `apps/mobile/lib/domain/nutrition/meal_type_proposal.dart` | Create. `proposeMealType` from §4; the repository uses it to resolve a null `mealTypeName`. |
-| `apps/mobile/lib/data/local/app_database.dart` | Add the two columns to `meals`; set `schemaVersion` to 65; add a guarded migration step that adds them and changes no values. |
+| `apps/mobile/lib/data/local/app_database.dart` | Add the two columns to `meals`; set `schemaVersion` to the next free version (65 at the time of writing); add a guarded migration step that adds them and changes no values. |
 | `apps/mobile/lib/data/local/app_database.g.dart` | Regenerate. |
 | `apps/mobile/drift_schemas/app_database/drift_schema_v65.json` | Create with `drift_dev schema dump`. |
 | `apps/mobile/test/generated_migrations/app_database/schema_v65.dart`, `schema.dart` | Regenerate with `tool/drift_schema_snapshots.dart`. |
@@ -1247,10 +1259,13 @@ languages, with its agent read.
 
 `CONTEXT.md` gets the Meal History term from §12.
 
-### Stage 3: the Meal screen
+### PR 3: the Meal screen
 
-After this stage the user logs Meals through the Meal screen, the Start Meal chips are
-gone, and the Nutrition Day reads in time order.
+After this pull request the user logs Meals through the Meal screen, the Start Meal
+chips are gone, and the Nutrition Day reads in time order.
+
+**Verification Plan items:** `pnpm ci:local --changed` (`mobile`); kill-and-reopen
+during a first food and during Log again from the Meal screen; manual checks 1 to 6.
 
 | File | Change |
 |---|---|
@@ -1276,7 +1291,7 @@ gone, and the Nutrition Day reads in time order.
 | `test/features/nutrition/add_food_picker_test.dart`, `add_food_picker_state_test.dart`, `log_portion_screen_test.dart`, `quick_entry_dialog_test.dart` | Both target kinds; the repeat-food path is still the row, then Save; the Portion edit mode. |
 | `test/app_shell_test.dart` | Update the Log sheet cases: the Meal item opens the Meal screen for the selected day and is hidden on a future day; the `Log meal` button on Today's Nutrition view; use `logMealKey` and `logMealButtonKey`. |
 
-**Docs in this stage:**
+**Docs in this pull request:**
 
 - `docs/designs/unified-food-search.md`, `open-food-facts.md` and `food-aisles.md`: add a
   header note that the picker now takes a Meal target and is embedded in the Meal screen
@@ -1293,10 +1308,10 @@ gone, and the Nutrition Day reads in time order.
 
 ## Verification Plan
 
-**The gate.** Stage 1 runs the full `pnpm ci:local`, because it touches every layer.
-Stages 2 and 3 run `pnpm ci:local --changed`.
+**The gate.** PR 1 runs the full `pnpm ci:local`, because it touches every layer.
+PRs 2 and 3 run `pnpm ci:local --changed`.
 
-| Job | Stage | Covers |
+| Job | PR | Covers |
 |---|---|---|
 | `golden` | 1, 2 | m38 and m39 in Dart and TypeScript; the ownership guards. |
 | `contract` | 1, 2 | The regenerated OpenAPI document and clients match the routes; the skill registry lists the new operations. |
@@ -1311,7 +1326,7 @@ Stages 2 and 3 run `pnpm ci:local --changed`.
 - Sync simulation in both directions with an older app's images and payloads.
 - Archive restore of a pre-v65 backup.
 
-**Manual check on the reference Pixel 6a, after stage 3, on a release build installed
+**Manual check on the reference Pixel 6a, after PR 3, on a release build installed
 over the existing install:**
 
 1. Log a repeat meal from Your meals today. Pass: the card shows the time of the tap, and
