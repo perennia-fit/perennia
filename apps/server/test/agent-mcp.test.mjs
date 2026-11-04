@@ -90,13 +90,15 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
       agentMealBatchWriteStore: {
         async writeMealBatch(input) {
           return {
+            status: "written",
             duplicate: false,
             serverClock: "2026-06-24T05:00:01.000Z",
-            applied: [input.meal, ...input.entries].map((row) => ({
+            applied: [input.request.meal, ...input.request.entries].map((row) => ({
               id: row.id,
-              updatedAt: row.updatedAt,
+              updatedAt: "2026-06-24T05:00:01.000Z",
               deviceId: input.deviceId
-            }))
+            })),
+            warnings: []
           };
         }
       },
@@ -549,6 +551,108 @@ test("agent MCP search-platform-foods returns the same Open Food Facts body as R
     assert.match(String(logged.payload.cause?.message), /ENOENT/);
   } finally {
     setOpenFoodFactsBundleLoaderForTesting(null);
+    await close();
+  }
+});
+
+test("agent MCP meal batch write accepts Meal fields with no entries, and returns a store rejection as the error body", async () => {
+  const writes = [];
+  let rejectNext = false;
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: createAgentKeyStore("user-1"),
+      logger: { info() {}, error() {} },
+      agentMealBatchWriteStore: {
+        async writeMealBatch(input) {
+          writes.push(input);
+          if (rejectNext) {
+            return {
+              status: "rejected",
+              httpStatus: 422,
+              errors: [
+                {
+                  field: "meal.deletedAt",
+                  nutrient: null,
+                  rule: "meal_archived",
+                  message: "This Meal is archived.",
+                  limit: null,
+                  itemIndex: null,
+                  entryId: null
+                }
+              ],
+              warnings: []
+            };
+          }
+          return {
+            status: "written",
+            duplicate: false,
+            serverClock: "2026-06-24T05:00:01.000Z",
+            applied: [
+              {
+                id: input.request.meal.id,
+                updatedAt: "2026-06-24T05:00:01.000Z",
+                deviceId: input.deviceId
+              }
+            ],
+            warnings: []
+          };
+        }
+      }
+    })
+  );
+
+  try {
+    // Add foods later: Meal fields only, no entries.
+    const response = await callTool(client, "agent_batch_write_meal", {
+      apiKey: "prn_agent_secret",
+      request: {
+        idempotencyKey: "agent-mcp-meal-fields-only",
+        meal: {
+          id: "018f6a90-6d7f-7d63-bfc1-6f1025e0d700",
+          mealType: "Dinner",
+          startedAt: "2026-06-24T09:30:00.000Z",
+          timezone: "Australia/Brisbane"
+        },
+        entries: []
+      }
+    });
+    assertToolSucceeded(response);
+    assert.equal(response.structuredContent.mealId, "018f6a90-6d7f-7d63-bfc1-6f1025e0d700");
+    assert.deepEqual(response.structuredContent.entries, []);
+    assert.deepEqual(response.structuredContent.warnings, []);
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].request.entries, []);
+    assert.equal(writes[0].request.meal.mealType, "Dinner");
+    assert.equal(writes[0].request.meal.localDate, undefined);
+
+    rejectNext = true;
+    const rejected = await callTool(client, "agent_batch_write_meal", {
+      apiKey: "prn_agent_secret",
+      request: {
+        idempotencyKey: "agent-mcp-meal-archived",
+        meal: { id: "018f6a90-6d7f-7d63-bfc1-6f1025e0d700" },
+        entries: [
+          {
+            id: "018f6a90-6d7f-7d63-bfc1-6f1025e0d701",
+            position: 0,
+            name: "Coffee",
+            nutrients: {
+              energy: { status: "complete", value: 2, entered: "2", unit: "kilocalorie" }
+            },
+            isLiquid: true,
+            foodId: null,
+            foodSource: null,
+            portion: null
+          }
+        ]
+      }
+    });
+    assert.equal(rejected.isError, true);
+    assert.equal(rejected.structuredContent.code, "agent_meal_batch_write_failed");
+    assert.equal(rejected.structuredContent.errors[0].rule, "meal_archived");
+    assert.equal(rejected.structuredContent.errors[0].itemIndex, null);
+    assert.ok(rejected.structuredContent.limits);
+  } finally {
     await close();
   }
 });

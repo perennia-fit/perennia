@@ -76,7 +76,8 @@ import {
   AgentMealBatchWriteRequestSchema,
   AgentMealBatchWriteResponseSchema,
   AgentMealBatchWriteUnavailableResponseSchema,
-  prepareAgentMealBatchWrite,
+  agentMealBatchWriteRejectionMessage,
+  resolveAgentMealBatchEntries,
   type AgentMealBatchWriteStore
 } from "./agent-meal-batch-write.js";
 import {
@@ -1589,7 +1590,7 @@ export function createAgentMcpServer({
     {
       title: "Batch Write Agent Meal",
       description:
-        "Apply an agent Meal / Food Entry / Quick Entry batch through the same validation, Activity Log, and sync-nudge path as REST. Idempotent by idempotency key; no logic fork.",
+        "Apply an agent Meal / Food Entry / Quick Entry batch through the same validation, Activity Log, and sync-nudge path as REST. Writes only the Meal fields sent: an absent field keeps its stored value and null clears endedAt or deletedAt. Creating a Meal needs mealType and startedAt with timezoneOffsetMinutes and/or timezone; localDate is derived when the offset is known. A request whose meal carries only id writes its entries and leaves the Meal untouched; entries may be empty when Meal fields are sent. Idempotent by idempotency key; no logic fork.",
       inputSchema: AgentMcpMealBatchWriteInputSchema,
       outputSchema: AgentMealBatchWriteResponseSchema
     },
@@ -3175,18 +3176,18 @@ async function writeMealBatchToolResult({
   request: z.infer<typeof AgentMealBatchWriteRequestSchema>;
   syncNudgePublisher?: SyncNudgePublisher;
 }): Promise<CallToolResult> {
-  const prepared = await prepareAgentMealBatchWrite({
+  const resolved = await resolveAgentMealBatchEntries({
     request,
     userId: agent.userId,
     foodCatalogStore: agentFoodCatalogStore
   });
-  if (!prepared.accepted) {
+  if (!resolved.accepted) {
     return errorResult(
       AgentMealBatchWriteErrorResponseSchema.parse({
         code: "agent_meal_batch_write_failed",
         message: "Batch contains one or more hard validation failures.",
-        errors: prepared.errors,
-        warnings: prepared.warnings,
+        errors: resolved.errors,
+        warnings: resolved.warnings,
         limits: nutrientValidationLimitsResponse()
       })
     );
@@ -3197,9 +3198,19 @@ async function writeMealBatchToolResult({
     userId: agent.userId,
     batchId: request.idempotencyKey,
     deviceId: sourceDeviceId,
-    meal: prepared.meal,
-    entries: prepared.entries
+    request: resolved.request
   });
+  if (writeResult.status === "rejected") {
+    return errorResult(
+      AgentMealBatchWriteErrorResponseSchema.parse({
+        code: "agent_meal_batch_write_failed",
+        message: agentMealBatchWriteRejectionMessage(writeResult.httpStatus),
+        errors: writeResult.errors,
+        warnings: writeResult.warnings,
+        limits: nutrientValidationLimitsResponse()
+      })
+    );
+  }
 
   if (syncNudgePublisher !== undefined && writeResult.applied.length > 0) {
     try {
@@ -3229,7 +3240,8 @@ async function writeMealBatchToolResult({
       batchId: request.idempotencyKey,
       mealId: request.meal.id,
       serverClock: writeResult.serverClock,
-      entries: prepared.responseEntries
+      entries: resolved.responseEntries,
+      warnings: writeResult.warnings
     })
   );
 }

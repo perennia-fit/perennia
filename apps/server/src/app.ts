@@ -72,7 +72,8 @@ import {
   AgentMealBatchWriteErrorResponseSchema,
   AgentMealBatchWriteResponseSchema,
   AgentMealBatchWriteUnavailableResponseSchema,
-  prepareAgentMealBatchWrite,
+  agentMealBatchWriteRejectionMessage,
+  resolveAgentMealBatchEntries,
   type AgentMealBatchWriteStore
 } from "./agent-meal-batch-write.js";
 import {
@@ -2582,19 +2583,19 @@ export function createApp(options: CreateAppOptions = {}) {
     const agent = agentAuth.agent;
 
     const requestBody = context.req.valid("json");
-    const prepared = await prepareAgentMealBatchWrite({
+    const resolved = await resolveAgentMealBatchEntries({
       request: requestBody,
       userId: agent.userId,
       foodCatalogStore: agentFoodCatalogStore
     });
-    if (!prepared.accepted) {
+    if (!resolved.accepted) {
       return context.json(
         AgentMealBatchWriteErrorResponseSchema.parse({
           code: "agent_meal_batch_write_failed",
           message:
             "Batch contains one or more hard validation failures.",
-          errors: prepared.errors,
-          warnings: prepared.warnings,
+          errors: resolved.errors,
+          warnings: resolved.warnings,
           limits: nutrientValidationLimitsResponse()
         }),
         422
@@ -2606,9 +2607,20 @@ export function createApp(options: CreateAppOptions = {}) {
       batchId: requestBody.idempotencyKey,
       correlationId: requestCorrelationId(context),
       deviceId: `agent:${agent.keyId}`,
-      meal: prepared.meal,
-      entries: prepared.entries
+      request: resolved.request
     });
+    if (writeResult.status === "rejected") {
+      return context.json(
+        AgentMealBatchWriteErrorResponseSchema.parse({
+          code: "agent_meal_batch_write_failed",
+          message: agentMealBatchWriteRejectionMessage(writeResult.httpStatus),
+          errors: writeResult.errors,
+          warnings: writeResult.warnings,
+          limits: nutrientValidationLimitsResponse()
+        }),
+        writeResult.httpStatus
+      );
+    }
     if (syncNudgePublisher !== undefined && writeResult.applied.length > 0) {
       try {
         await syncNudgePublisher.enqueueSyncNudge({
@@ -2637,7 +2649,8 @@ export function createApp(options: CreateAppOptions = {}) {
         batchId: requestBody.idempotencyKey,
         mealId: requestBody.meal.id,
         serverClock: writeResult.serverClock,
-        entries: prepared.responseEntries
+        entries: resolved.responseEntries,
+        warnings: writeResult.warnings
       }),
       200
     );

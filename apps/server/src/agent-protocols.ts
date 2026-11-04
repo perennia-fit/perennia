@@ -186,8 +186,8 @@ const DoseTimezoneOffsetReadSchema = z.number().int().nullable().openapi({
  * The UTC offsets a frozen Dose offset, the Effect read and
  * `effectBoundsFromLocalDates` accept (D2): UTC-12:00 to UTC+14:00.
  */
-const AGENT_PROTOCOLS_MIN_OFFSET_MINUTES = -720;
-const AGENT_PROTOCOLS_MAX_OFFSET_MINUTES = 840;
+export const AGENT_PROTOCOLS_MIN_OFFSET_MINUTES = -720;
+export const AGENT_PROTOCOLS_MAX_OFFSET_MINUTES = 840;
 
 export const LocalDateSchema = z
   .string()

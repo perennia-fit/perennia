@@ -737,13 +737,20 @@ export type AgentMealBatchWriteEntryResult = {
   "warnings": Array<AgentNutrientValidationIssue>;
 };
 
+export type AgentMealBatchWriteIssue = AgentNutrientValidationIssue & {
+  "itemIndex": number | null;
+  "entryId": string | null;
+};
+
 export type AgentMealBatchWriteMeal = {
   "id": string;
-  "mealType": string;
-  "startedAt": string;
+  "mealType"?: string;
+  "startedAt"?: string;
   "endedAt"?: string | null;
-  "timezone": string;
-  "localDate": string;
+  "timezone"?: string;
+  "timezoneOffsetMinutes"?: number;
+  "localDate"?: string;
+  "timePrecision"?: "instant" | "date";
   "deletedAt"?: string | null;
 };
 
@@ -761,6 +768,7 @@ export type AgentMealBatchWriteResponse = {
   "mealId": string;
   "serverClock": string;
   "entries": Array<AgentMealBatchWriteEntryResult>;
+  "warnings": Array<AgentMealBatchWriteIssue>;
 };
 
 export type AgentMealEntry = {
