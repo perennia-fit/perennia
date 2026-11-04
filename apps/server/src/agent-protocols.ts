@@ -22,6 +22,7 @@ import {
   validateAgentProtocolSkip,
   validateAgentScheduleRule,
   type AgentDoseValidationIssue,
+  type DoseUnit,
   type AgentDoseValidationResult
 } from "./agent-validation.js";
 import type { ServerDatabase } from "./db/client.js";
@@ -2060,7 +2061,18 @@ export function prepareAgentDoseBatchWrite({
     for (const error of validation.errors) {
       errors.push(doseIssue(itemIndex, dose.id, error));
     }
-    if (validation.errors.length > 0) {
+    const compoundStrength = strengthPayload(dose.compoundStrength);
+    if (compoundStrength === undefined) {
+      errors.push(
+        doseIssue(itemIndex, dose.id, {
+          field: "compoundStrength",
+          rule: "compound_strength",
+          message: STRENGTH_REFUSAL_MESSAGE,
+          limit: null
+        })
+      );
+    }
+    if (validation.errors.length > 0 || compoundStrength === undefined) {
       continue;
     }
 
@@ -2097,7 +2109,7 @@ export function prepareAgentDoseBatchWrite({
         id: dose.id,
         compound_id: dose.compoundId,
         compound_name: dose.compoundName,
-        compound_strength: strengthPayload(dose.compoundStrength),
+        compound_strength: compoundStrength,
         amount_value: amountValue,
         amount_entered:
           typeof dose.amount === "string" ? dose.amount : String(dose.amount),
@@ -2163,6 +2175,18 @@ export function prepareAgentCompoundBatchWrite({
     }
     seen.add(compound.id);
 
+    const strength = strengthPayload(compound.strength);
+    if (strength === undefined) {
+      errors.push(
+        entityIssue(itemIndex, compound.id, {
+          field: `compounds[${itemIndex}].strength`,
+          rule: "compound_strength",
+          message: STRENGTH_REFUSAL_MESSAGE
+        })
+      );
+      continue;
+    }
+
     const updatedAt = compound.updatedAt ?? nowIso;
     const deletedAt = compound.deletedAt ?? null;
     compounds.push({
@@ -2176,7 +2200,7 @@ export function prepareAgentCompoundBatchWrite({
         name: compound.name,
         default_unit: compound.defaultUnit,
         default_route: compound.defaultRoute,
-        strength: strengthPayload(compound.strength),
+        strength,
         updated_at: updatedAt,
         deleted_at: deletedAt
       }
@@ -5683,31 +5707,99 @@ function serializeTargetOutcome(row: OpaqueRow) {
   };
 }
 
-function readStrength(value: unknown) {
-  if (value === null || value === undefined || typeof value !== "object") {
+/// The short label of each Dose unit, as the app's `doseUnitLabel` writes it
+/// into a strength label. Twins that Dart switch member for member.
+const DOSE_UNIT_LABELS: Record<DoseUnit, string> = {
+  milligram: "mg",
+  microgram: "mcg",
+  gram: "g",
+  internationalUnit: "IU",
+  milliliter: "mL",
+  tablet: "tablet",
+  capsule: "capsule",
+  drop: "drop",
+  spray: "spray",
+  puff: "puff",
+  patch: "patch",
+  unit: "unit"
+};
+
+/// The Dart `CompoundStrength.parse` pattern: `<amount> <unit>/<unit>`.
+const STRENGTH_LABEL_PATTERN = /^(\S+)\s+([A-Za-z]+)\s*\/\s*([A-Za-z]+)$/;
+
+const STRENGTH_REFUSAL_MESSAGE =
+  "A strength needs a positive value and two units from the Dose unit registry.";
+
+type AgentStrength = { value: number; massUnit: DoseUnit; perUnit: DoseUnit };
+
+/**
+ * A stored strength (a Compound's `strength`, a Dose's `compound_strength`) as
+ * the Agent reads it. The stored shape is the app's: a label such as
+ * `"5 mg/capsule"`, which the app's `CompoundStrength.parse` reads. Before the
+ * Agent write stored that label it stored this object itself, and an Agent
+ * undo can restore such a payload, so an object with registry unit names is
+ * read too. Anything else reads as null: the read never fails on one row.
+ */
+function readStrength(value: unknown): AgentStrength | null {
+  if (typeof value === "string") {
+    const match = STRENGTH_LABEL_PATTERN.exec(value.trim());
+    if (match === null) {
+      return null;
+    }
+    return validStrength(
+      Number(match[1]),
+      doseUnitForLabel(match[2]!),
+      doseUnitForLabel(match[3]!)
+    );
+  }
+  if (value === null || typeof value !== "object") {
     return null;
   }
   const record = value as Record<string, unknown>;
+  return validStrength(record.value, record.massUnit, record.perUnit);
+}
+
+/**
+ * The label the payload stores for an Agent-sent strength, null for none, or
+ * undefined when the label can't hold it (a unit outside the registry or an
+ * amount that isn't positive), which the batch write refuses with
+ * `compound_strength`. The amount is written with `String`, so `5` stays `5`.
+ */
+function strengthPayload(
+  strength: { value: number; massUnit: string; perUnit: string } | null | undefined
+): string | null | undefined {
+  if (strength === null || strength === undefined) {
+    return null;
+  }
+  const valid = validStrength(strength.value, strength.massUnit, strength.perUnit);
+  return valid === null
+    ? undefined
+    : `${String(valid.value)} ${DOSE_UNIT_LABELS[valid.massUnit]}/${DOSE_UNIT_LABELS[valid.perUnit]}`;
+}
+
+function validStrength(
+  value: unknown,
+  massUnit: unknown,
+  perUnit: unknown
+): AgentStrength | null {
   if (
-    typeof record.value !== "number" ||
-    typeof record.massUnit !== "string" ||
-    typeof record.perUnit !== "string"
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    !isDoseUnit(massUnit) ||
+    !isDoseUnit(perUnit)
   ) {
     return null;
   }
-  return {
-    value: record.value,
-    massUnit: record.massUnit,
-    perUnit: record.perUnit
-  };
+  return { value, massUnit, perUnit };
 }
 
-function strengthPayload(
-  strength: { value: number; massUnit: string; perUnit: string } | null | undefined
-) {
-  return strength === null || strength === undefined
-    ? null
-    : { value: strength.value, massUnit: strength.massUnit, perUnit: strength.perUnit };
+function isDoseUnit(unit: unknown): unit is DoseUnit {
+  return typeof unit === "string" && (DOSE_UNITS as readonly string[]).includes(unit);
+}
+
+function doseUnitForLabel(label: string): DoseUnit | null {
+  return DOSE_UNITS.find((unit) => DOSE_UNIT_LABELS[unit] === label) ?? null;
 }
 
 // ---------------------------------------------------------------------------

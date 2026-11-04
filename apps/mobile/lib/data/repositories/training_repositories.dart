@@ -16886,8 +16886,14 @@ const _templateLinkWorkoutSnapshotFields = <String>{
 /// compares images with these defaults filled in. The device decode leaves the
 /// column alone for a missing key, and the server's
 /// `SYNC_CARRY_FORWARD_PAYLOAD_KEYS` carries the stored value forward.
+///
+/// A Compound's `is_favorite` is also absent from every Agent Compound write
+/// (the Agent API has no favourite field). The server carries a stored value
+/// forward, but an Agent-created Compound has none, and the device decode
+/// reads the missing key as false, so false is its default here.
 const _activityLaterAddedKeyDefaults = <String, Map<String, Object?>>{
   AppDatabase.focusesTable: <String, Object?>{'color_hex': null},
+  AppDatabase.compoundsTable: <String, Object?>{'is_favorite': false},
 };
 
 bool _activityImagesEqualForEntity(
@@ -16904,6 +16910,17 @@ bool _activityImagesEqualForEntity(
     return _activityImagesEqual(
       _protocolTargetOutcomeImageNormalized(left),
       _protocolTargetOutcomeImageNormalized(right),
+    );
+  }
+  final strengthKey = switch (entityTable) {
+    AppDatabase.compoundsTable => 'strength',
+    AppDatabase.dosesTable => 'compound_strength',
+    _ => null,
+  };
+  if (strengthKey != null) {
+    return _activityImagesEqual(
+      _compoundStrengthImageNormalized(left, strengthKey),
+      _compoundStrengthImageNormalized(right, strengthKey),
     );
   }
   if (entityTable != AppDatabase.templateLinksTable) {
@@ -17171,7 +17188,7 @@ CompoundsCompanion _compoundCompanionFromImage(Map<String, Object?> image) {
     defaultRoute: Value<String>(
       _activityRequiredString(image, 'default_route'),
     ),
-    strength: Value<String?>(_activityNullableString(image, 'strength')),
+    strength: Value<String?>(_compoundStrengthImageField(image, 'strength')),
     // Nullable-with-default: older Activity Log images predating carry
     // no `is_favorite` key, and replaying/undoing them must not throw.
     isFavorite:
@@ -17181,13 +17198,82 @@ CompoundsCompanion _compoundCompanionFromImage(Map<String, Object?> image) {
   );
 }
 
+/// A strength image field (a Compound's `strength`, a Dose's
+/// `compound_strength`) as the column stores it: the canonical label, such as
+/// `5 mg/capsule`, which [CompoundStrength.parse] reads.
+///
+/// The Agent write once stored `{value, massUnit, perUnit}` with registry unit
+/// names instead, and an Agent undo on the server can restore such a payload,
+/// so that object is read as the label it stands for. An object the label
+/// can't hold (a unit outside the registry, an amount that isn't positive)
+/// throws a [FormatException], which a sync pull quarantines instead of
+/// failing the whole page.
+String? _compoundStrengthImageField(Map<String, Object?> image, String key) {
+  final value = image[key];
+  if (value is! Map) {
+    return _activityNullableString(image, key);
+  }
+  final amount = value['value'];
+  final massUnit = value['massUnit'];
+  final perUnit = value['perUnit'];
+  if (amount is! num || massUnit is! String || perUnit is! String) {
+    throw FormatException(
+      'Strength image field $key must be a label or a value with two units.',
+      value,
+    );
+  }
+  try {
+    return CompoundStrength(
+      amount: amount.toDouble(),
+      amountEntered: _compoundStrengthAmountText(amount),
+      massUnit: doseUnitFromName(massUnit),
+      perUnit: doseUnitFromName(perUnit),
+    ).storageValue;
+  } on ArgumentError catch (error) {
+    throw FormatException(error.message.toString(), value);
+  }
+}
+
+/// [amount] as the server writes it into a label (JavaScript's `String`), so
+/// an integral double reads `5`, not `5.0`.
+String _compoundStrengthAmountText(num amount) {
+  if (amount is double &&
+      amount.isFinite &&
+      amount == amount.truncateToDouble() &&
+      amount.abs() < 1e15) {
+    return amount.toInt().toString();
+  }
+  return amount.toString();
+}
+
+/// [image] with an Agent-written strength object read as the label the
+/// decoder stores, so undo compares it with the row the decoder wrote. An
+/// object the decoder can't read is left as it is.
+Map<String, Object?> _compoundStrengthImageNormalized(
+  Map<String, Object?> image,
+  String key,
+) {
+  if (image[key] is! Map) {
+    return image;
+  }
+  try {
+    return <String, Object?>{
+      ...image,
+      key: _compoundStrengthImageField(image, key),
+    };
+  } on FormatException {
+    return image;
+  }
+}
+
 DosesCompanion _doseCompanionFromImage(Map<String, Object?> image) {
   return DosesCompanion(
     compoundId: Value<String?>(_activityNullableString(image, 'compound_id')),
     compoundName:
         Value<String>(_activityRequiredString(image, 'compound_name')),
-    compoundStrength:
-        Value<String?>(_activityNullableString(image, 'compound_strength')),
+    compoundStrength: Value<String?>(
+      _compoundStrengthImageField(image, 'compound_strength'),
+    ),
     amountValue: Value<double>(_activityRequiredDouble(image, 'amount_value')),
     amountEntered: Value<String>(
       _activityRequiredString(image, 'amount_entered'),

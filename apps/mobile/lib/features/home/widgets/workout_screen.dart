@@ -702,6 +702,8 @@ class _WorkoutContent extends ConsumerWidget {
     messenger.showSnackBar(
       SnackBar(
         content: Text(l10n.workoutFinished),
+        // A SnackBar with an action otherwise stays until dismissed.
+        persist: false,
         action: SnackBarAction(
           key: WorkoutScreen.finishedSnackBarShareActionKey(workoutId),
           label: l10n.workoutShareAction,

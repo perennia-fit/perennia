@@ -598,7 +598,7 @@ new key for genuinely new work.
       "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d010",
       "compoundId": "018f6a90-6d7f-7d63-bfc1-6f1025e0d011",
       "compoundName": "Creatine Monohydrate",
-      "compoundStrength": { "value": 5, "massUnit": "gram", "perUnit": "scoop" },
+      "compoundStrength": { "value": 5, "massUnit": "gram", "perUnit": "unit" },
       "amount": "5",
       "unit": "gram",
       "route": "oral",
@@ -625,6 +625,13 @@ or archives Compounds. A Compound is a neutral tracking template — never
 categorized by substance type or legality. Archiving is a tombstone and
 never cascades to logged Doses (they keep their self-describing snapshot).
 
+A `strength` is the amount of `massUnit` in one `perUnit`, as in 5 mg per
+capsule. Both units are Dose unit names from the curated registry (`milligram`,
+`capsule`, and so on), and `value` must be positive. Anything else refuses the
+batch with `compound_strength`, as does a Dose's `compoundStrength`. The server
+stores the strength as the app's label (`"5 mg/capsule"`) and reads it back as
+this object; a stored strength it can't read comes back as `null`.
+
 ```json
 {
   "idempotencyKey": "stable-compound-batch-key",
@@ -634,7 +641,7 @@ never cascades to logged Doses (they keep their self-describing snapshot).
       "name": "Creatine Monohydrate",
       "defaultUnit": "gram",
       "defaultRoute": "oral",
-      "strength": { "value": 5, "massUnit": "gram", "perUnit": "scoop" },
+      "strength": { "value": 5, "massUnit": "gram", "perUnit": "unit" },
       "updatedAt": "2026-06-24T05:00:00.000Z",
       "deletedAt": null
     }

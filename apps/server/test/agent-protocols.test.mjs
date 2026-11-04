@@ -447,6 +447,103 @@ test("prepareAgentCompoundBatchWrite rejects a duplicate id in one batch", () =>
   assert.ok(prepared.errors.some((e) => e.rule === "duplicate_compound_id"));
 });
 
+test("an Agent-written strength is stored as the app's label, on the Compound and on the Dose snapshot", () => {
+  const strength = { value: 5, massUnit: "milligram", perUnit: "capsule" };
+  const compounds = prepareAgentCompoundBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      compounds: [
+        { id: "c1", name: "Zinc", defaultUnit: "capsule", defaultRoute: "oral", strength },
+        {
+          id: "c2",
+          name: "Vitamin D3",
+          defaultUnit: "capsule",
+          defaultRoute: "oral",
+          strength: { value: 0.5, massUnit: "internationalUnit", perUnit: "drop" }
+        },
+        { id: "c3", name: "Creatine", defaultUnit: "gram", defaultRoute: "oral", strength: null }
+      ]
+    }
+  });
+  assert.equal(compounds.accepted, true);
+  assert.deepEqual(
+    compounds.compounds.map((row) => row.payload.strength),
+    ["5 mg/capsule", "0.5 IU/drop", null]
+  );
+
+  const doses = prepareAgentDoseBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      doses: [
+        {
+          ...doseFixture("d1", "Zinc", "2026-06-30T08:00:00.000Z"),
+          compoundId: null,
+          protocolId: null,
+          deletedAt: null,
+          compoundStrength: strength
+        }
+      ]
+    },
+    now: new Date("2026-06-30T09:00:00.000Z")
+  });
+  assert.equal(doses.accepted, true);
+  assert.equal(doses.doses[0].payload.compound_strength, "5 mg/capsule");
+});
+
+test("a strength the app couldn't parse is refused with compound_strength", () => {
+  const compounds = prepareAgentCompoundBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      compounds: [
+        {
+          id: "c1",
+          name: "A",
+          defaultUnit: "capsule",
+          defaultRoute: "oral",
+          strength: { value: 5, massUnit: "mg", perUnit: "capsule" }
+        },
+        {
+          id: "c2",
+          name: "B",
+          defaultUnit: "capsule",
+          defaultRoute: "oral",
+          strength: { value: 0, massUnit: "milligram", perUnit: "capsule" }
+        }
+      ]
+    }
+  });
+  assert.equal(compounds.accepted, false);
+  assert.deepEqual(
+    compounds.errors.map((e) => [e.field, e.rule]),
+    [
+      ["compounds[0].strength", "compound_strength"],
+      ["compounds[1].strength", "compound_strength"]
+    ]
+  );
+
+  const doses = prepareAgentDoseBatchWrite({
+    request: {
+      idempotencyKey: "k",
+      doses: [
+        {
+          ...doseFixture("d1", "A", "2026-06-30T08:00:00.000Z"),
+          compoundId: null,
+          protocolId: null,
+          deletedAt: null,
+          compoundStrength: { value: -1, massUnit: "milligram", perUnit: "capsule" }
+        }
+      ]
+    },
+    now: new Date("2026-06-30T09:00:00.000Z")
+  });
+  assert.equal(doses.accepted, false);
+  assert.ok(
+    doses.errors.some(
+      (e) => e.field === "doses[0].compoundStrength" && e.rule === "compound_strength"
+    )
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Deterministic effect-window computation fixture (the window derivation and
 // count/mean are pinned across languages by effect-window.golden.test.mjs;
@@ -1343,6 +1440,70 @@ test(
 );
 
 test(
+  "an Agent Compound edit keeps the stored is_favorite in the row and its Activity Log after-image",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-compound-favorite-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const compoundId = createUuidV7();
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    const idempotencyKey = `compound-favorite-edit-${randomUUID()}`;
+
+    try {
+      await insertUser(database, userId);
+      await insertOpaqueFixture(database, schema.compounds, {
+        id: compoundId,
+        userId,
+        updatedAt,
+        payload: {
+          id: compoundId,
+          name: "Creatine",
+          default_unit: "gram",
+          default_route: "oral",
+          strength: null,
+          is_favorite: true,
+          updated_at: updatedAt.toISOString(),
+          deleted_at: null
+        }
+      });
+
+      const response = await post(app, "/agent/protocols/compounds/batch-write", {
+        idempotencyKey,
+        compounds: [
+          {
+            id: compoundId,
+            name: "Creatine monohydrate",
+            defaultUnit: "gram",
+            defaultRoute: "oral"
+          }
+        ]
+      });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).compounds[0].outcome, "applied");
+
+      const [stored] = await database.sql`
+        select payload from compounds where id = ${compoundId}
+      `;
+      assert.equal(stored.payload.name, "Creatine monohydrate");
+      assert.equal(stored.payload.is_favorite, true);
+      const [logged] = await database.sql`
+        select after_image from activity_log
+        where user_id = ${userId} and batch_id = ${idempotencyKey}
+          and entity_id = ${compoundId}
+      `;
+      assert.equal(logged.after_image.is_favorite, true);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
   "legacy Protocols references must resolve in-tenant while Metric ids stay opaque",
   { skip },
   async () => {
@@ -1914,6 +2075,104 @@ test(
       assert.equal("schedules" in protocol, false);
       assert.equal(protocol.targetOutcomes.length, 1);
       assert.equal(protocol.targetOutcomes[0].metricId, "metric-weight");
+    } finally {
+      await database.close();
+    }
+  }
+);
+
+test(
+  "a strength stored by either writer reads as the Agent's object: the app's label, an Agent object stored before the label, and an unreadable value as null",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-protocols-strength-${randomUUID()}`;
+    const app = createProtocolsApp({
+      store: createDrizzleAgentProtocolsStore(database.db),
+      userId
+    });
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    const run = randomUUID();
+    const compound = (id, strength) => ({
+      id,
+      userId,
+      updatedAt,
+      payload: {
+        id,
+        name: id,
+        default_unit: "capsule",
+        default_route: "oral",
+        strength,
+        updated_at: updatedAt.toISOString(),
+        deleted_at: null
+      }
+    });
+    const dose = (id, compoundStrength) => ({
+      id,
+      userId,
+      updatedAt,
+      payload: {
+        id,
+        compound_id: null,
+        compound_name: id,
+        compound_strength: compoundStrength,
+        amount_value: 1,
+        amount_entered: "1",
+        unit: "capsule",
+        route: "oral",
+        took_at: updatedAt.toISOString(),
+        timezone: "UTC",
+        local_date: "2026-06-01",
+        provenance: "manual",
+        updated_at: updatedAt.toISOString(),
+        deleted_at: null
+      }
+    });
+    const legacyObject = { value: 5, massUnit: "milligram", perUnit: "capsule" };
+    const expected = {
+      [`${run}-a-app`]: { value: 1000, massUnit: "internationalUnit", perUnit: "capsule" },
+      [`${run}-b-legacy`]: legacyObject,
+      [`${run}-c-unreadable`]: null,
+      [`${run}-d-none`]: null
+    };
+
+    try {
+      await insertUser(database, userId);
+      await insertOpaqueFixture(database, schema.compounds, [
+        compound(`${run}-a-app`, "1000 IU/capsule"),
+        compound(`${run}-b-legacy`, legacyObject),
+        compound(`${run}-c-unreadable`, "five milligrams"),
+        compound(`${run}-d-none`, null)
+      ]);
+      await insertOpaqueFixture(database, schema.doses, [
+        dose(`${run}-a-app`, "1000 IU/capsule"),
+        dose(`${run}-b-legacy`, legacyObject),
+        dose(`${run}-c-unreadable`, { value: 5, massUnit: "scoop", perUnit: "capsule" }),
+        dose(`${run}-d-none`, null)
+      ]);
+
+      const compounds = await app.request("/agent/protocols/compounds", {
+        headers: authHeaders()
+      });
+      assert.equal(compounds.status, 200);
+      assert.deepEqual(
+        Object.fromEntries(
+          (await compounds.json()).compounds.map((row) => [row.id, row.strength])
+        ),
+        expected
+      );
+
+      const doses = await app.request("/agent/protocols/doses", {
+        headers: authHeaders()
+      });
+      assert.equal(doses.status, 200);
+      assert.deepEqual(
+        Object.fromEntries(
+          (await doses.json()).doses.map((row) => [row.id, row.compoundStrength])
+        ),
+        expected
+      );
     } finally {
       await database.close();
     }
