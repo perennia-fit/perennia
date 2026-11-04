@@ -24,6 +24,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   stored in either shape, and an Agent write of a strength the app can't hold
   (a unit outside the registry, an amount that isn't positive) is refused with
   `compound_strength`.
+- **An Agent edit no longer un-stars a Compound.** An Agent that renamed or
+  changed a Compound you had starred cleared the star on your devices at the
+  next sync. The server now keeps the star when an Agent write leaves it out,
+  and a Compound an Agent created can be undone on the device instead of being
+  reported as changed since.
 
 ## [0.2.0] - 2026-11-03
 

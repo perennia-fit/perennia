@@ -1858,6 +1858,89 @@ void main() {
         ),
       );
     });
+
+    test(
+        'a pulled Agent Compound create, whose payload has no is_favorite, '
+        'can be undone on the device', () async {
+      // The Agent write has no favourite field, so the server stores no
+      // `is_favorite` for a Compound it creates; the device reads it as false.
+      const compoundId = '018f6a90-6d7f-7d63-bfc1-6f1025e0c0a1';
+      const batchId = 'agent-compound-batch';
+      const wroteAt = '2026-06-03T07:00:00.000Z';
+      final payload = <String, Object?>{
+        'id': compoundId,
+        'name': 'Creatine',
+        'default_unit': 'gram',
+        'default_route': 'oral',
+        'strength': null,
+        'updated_at': wroteAt,
+        'deleted_at': null,
+      };
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            final cursor = jsonDecode(request.body)['cursor'];
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'nextCursor': 'cursor-agent-compound',
+                'serverClock': '2026-06-03T08:00:00.000Z',
+                'changes': cursor == null
+                    ? <Object?>[
+                        <String, Object?>{
+                          'entity': AppDatabase.compoundsTable,
+                          'id': compoundId,
+                          'deviceId': 'agent-device',
+                          'payload': payload,
+                          'updatedAt': wroteAt,
+                          'deletedAt': null,
+                          'activityLogId': 'agent:$batchId:compound:$compoundId',
+                          'actor': 'agent',
+                          'batchId': batchId,
+                          'beforeImage': null,
+                          'afterImage': payload,
+                          'occurredAt': wroteAt,
+                        },
+                      ]
+                    : <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }),
+        ),
+      );
+      await repository.pullLoggedSetChanges(
+        session: AuthSession(
+          provider: AuthSessionProvider.email,
+          serverUrl: Uri.parse('https://sync.example/'),
+          token: 'session-token',
+          userEmail: 'user@example.com',
+          userId: 'user-1',
+          userName: 'Sync User',
+        ),
+        deviceId: 'device-a',
+      );
+      final pulled = (await repositories.protocols.listCompounds())
+          .singleWhere((compound) => compound.id == compoundId);
+      expect(pulled.isFavorite, isFalse);
+
+      final undo = await repositories.activityLog.undoBatch(batchId);
+
+      // The device's image carries `is_favorite: false`; the Agent's
+      // after-image has no such key, and undo must still find it current.
+      expect(undo.conflicts, isEmpty);
+      expect(
+        undo.appliedEntries.map((entry) => entry.entityId),
+        <String>[compoundId],
+      );
+      final row = await (database.select(database.compounds)
+            ..where((compound) => compound.id.equals(compoundId)))
+          .getSingle();
+      expect(row.deletedAt, isNotNull);
+    });
   });
 
   group('protocols recent Compounds (derived-never-stored)', () {
@@ -5331,9 +5414,7 @@ void main() {
           'default_unit': 'capsule',
           'default_route': 'oral',
           'strength': strength,
-          // The Agent write stores no `is_favorite`, which undo compares too;
-          // this test is about the strength.
-          'is_favorite': false,
+          // No `is_favorite`: the Agent write has no favourite field.
           'updated_at': updatedAt,
           'deleted_at': null,
         };
