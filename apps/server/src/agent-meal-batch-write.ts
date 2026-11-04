@@ -800,9 +800,11 @@ export async function resolveAgentMealBatchEntries({
  *   then 404 (an entries-only request for an unknown Meal), then 422, and
  *   carry only that status's issues.
  *
- * Validation of the Meal's time runs only when the Meal is rewritten: an
- * entries-only request writes no Meal, so the Meal's stored time is not
- * judged again.
+ * - The three §8 Meal rules run on every request, against the Meal as it
+ *   will be stored (§8, §9): the rewritten Meal, or, for an entries-only
+ *   request, the stored Meal. So entries into a future-started Meal return
+ *   `meal_time_in_future`, and a stored Meal that breaks a hard rule takes
+ *   no entries until the request also fixes it.
  */
 export function prepareAgentMealBatchWrite(
   request: AgentMealBatchResolvedRequest,
@@ -894,6 +896,15 @@ export function prepareAgentMealBatchWrite(
   let preparedMeal: AgentMealBatchPreparedRow | null = null;
   let resultingMealDeletedAt: string | null =
     storedMeal === null ? null : storedDeletedAt(storedMeal);
+  // The Meal as it will be stored, for the §8 rules. Without a rewrite it is
+  // the stored Meal (non-null here: an unknown id without Meal fields is 404).
+  const storedPayload: Record<string, unknown> =
+    storedMeal === null ? {} : storedMeal.payload;
+  let resultingTime = {
+    startedAt: storedString(storedPayload.started_at) ?? "",
+    endedAt: storedString(storedPayload.ended_at),
+    mealType: storedString(storedPayload.meal_type) ?? ""
+  };
 
   if (rewritesMeal) {
     const base: Record<string, unknown> =
@@ -979,17 +990,7 @@ export function prepareAgentMealBatchWrite(
           ? null
           : storedDeletedAt(storedMeal);
     resultingMealDeletedAt = deletedAt;
-
-    const validation = validateAgentMealTime(
-      { startedAt: startedAt ?? "", endedAt, mealType },
-      { now }
-    );
-    for (const issue of validation.errors) {
-      errors.push(mealValidationIssue(issue));
-    }
-    for (const issue of validation.warnings) {
-      warnings.push(mealValidationIssue(issue));
-    }
+    resultingTime = { startedAt: startedAt ?? "", endedAt, mealType };
 
     preparedMeal = {
       id: meal.id,
@@ -1009,6 +1010,14 @@ export function prepareAgentMealBatchWrite(
         time_precision: timePrecision
       }
     };
+  }
+
+  const validation = validateAgentMealTime(resultingTime, { now });
+  for (const issue of validation.errors) {
+    errors.push(mealValidationIssue(issue));
+  }
+  for (const issue of validation.warnings) {
+    warnings.push(mealValidationIssue(issue));
   }
 
   // An archived Meal takes no active Food Entry (meal-logging.md §7).

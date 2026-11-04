@@ -1039,6 +1039,48 @@ test("prepare: a future startedAt is a top-level Meal warning and still writes",
   assert.equal(prepared.warnings[0].itemIndex, null);
 });
 
+test("prepare: an entries-only request into a future-started stored Meal returns the top-level warning", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID }, entries: [quickEntry()] }),
+    storedState({
+      meal: storedRow(USER, {
+        ...legacyMealPayload(),
+        started_at: "2026-06-24T05:20:00.000Z"
+      })
+    }),
+    FAKE_NOW
+  );
+
+  assert.equal(prepared.accepted, true);
+  assert.equal(prepared.meal, null);
+  assert.equal(prepared.entries.length, 1);
+  assert.deepEqual(rules(prepared.warnings), ["meal_time_in_future"]);
+  assert.equal(prepared.warnings[0].field, "meal.startedAt");
+  assert.equal(prepared.warnings[0].itemIndex, null);
+});
+
+test("prepare: an entries-only request into a stored Meal that breaks a hard rule is 422", () => {
+  const prepared = prepareAgentMealBatchWrite(
+    resolvedRequest({ meal: { id: MEAL_ID }, entries: [quickEntry()] }),
+    storedState({
+      meal: storedRow(USER, {
+        ...legacyMealPayload(),
+        meal_type: "",
+        ended_at: "2026-06-24T00:30:00.000Z"
+      })
+    }),
+    FAKE_NOW_LATER
+  );
+
+  assert.equal(prepared.accepted, false);
+  assert.equal(prepared.status, 422);
+  assert.deepEqual(rules(prepared.errors).sort(), [
+    "meal_ended_before_start",
+    "meal_type_required"
+  ]);
+  assert.equal(prepared.errors[0].itemIndex, null);
+});
+
 // ----- Partial writes: request shape (400) and route mapping -----
 
 test("agent meal batch write rejects malformed partial requests with 400 before authentication", async () => {
