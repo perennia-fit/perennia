@@ -59,6 +59,14 @@ final mealScreenClockProvider = Provider<DateTime Function()>((ref) {
   return DateTime.now;
 });
 
+/// Whether [day] is after the day [now] falls on. A Meal can't start in the
+/// future (§8), so a future day offers no `Log meal` on the Nutrition Day
+/// view and no Meal in Today's Log sheet. Callers pass "now" from
+/// [mealScreenClockProvider].
+bool isFutureNutritionDay(NutritionDayDate day, DateTime now) {
+  return day.compareTo(NutritionDayDate.fromDateTime(now)) > 0;
+}
+
 /// The Meal screen controller, one per [MealScreenArgs] (§6).
 final mealScreenControllerProvider = NotifierProvider.autoDispose
     .family<MealScreenController, MealScreenState, MealScreenArgs>(
@@ -136,22 +144,11 @@ NutritionDayMealRecord? eligibleRecentMeal(
   return best;
 }
 
-/// Whether the screen's Meal is written yet (§6).
-enum MealScreenPhase {
-  /// Not written: the screen holds a pending Meal, and the first write
-  /// creates it.
-  newMeal,
-
-  /// Written: every write lands in [MealScreenState.savedMealId].
-  saved,
-}
-
 /// The Meal screen's state (§6). Immutable; the controller replaces it.
 @immutable
 final class MealScreenState {
   const MealScreenState({
     required this.day,
-    required this.phase,
     required this.pendingMealId,
     required this.pendingStart,
     required this.pendingMealType,
@@ -164,8 +161,6 @@ final class MealScreenState {
   /// The day a new Meal screen opened for; null for a screen opened on a
   /// saved Meal, which reads its day from the Meal itself.
   final NutritionDayDate? day;
-
-  final MealScreenPhase phase;
 
   /// The id the first write creates the Meal with, minted by
   /// `NutritionRepository.newMealId` when the screen opens, so a repeated
@@ -185,7 +180,8 @@ final class MealScreenState {
   /// proposal), false on another day until the user chooses one (CUJ 5).
   final bool timeChosen;
 
-  /// The Meal every write lands in once [phase] is [MealScreenPhase.saved].
+  /// The Meal every write lands in once it is written; null while the screen
+  /// holds a pending Meal, which the first write creates (§6).
   final String? savedMealId;
 
   /// The Batch that created the Meal on a new screen. Undoing it returns the
@@ -196,7 +192,8 @@ final class MealScreenState {
   /// double tap, §3).
   final bool writing;
 
-  bool get isSaved => phase == MealScreenPhase.saved;
+  /// Whether the screen's Meal is written yet (§6).
+  bool get isSaved => savedMealId != null;
 
   /// Whether a pick (a food, Your meals, `Add foods later`) may write: false
   /// on a new Meal on another day until a time is chosen (§6, CUJ 5).
@@ -206,8 +203,8 @@ final class MealScreenState {
   /// saved one after. Null fields of the pending Meal stay null, so the
   /// repository resolves now and the proposal at the write.
   MealTarget get target {
-    if (isSaved) {
-      return ExistingMealTarget(savedMealId!);
+    if (savedMealId case final mealId?) {
+      return ExistingMealTarget(mealId);
     }
     return NewMealTarget(
       PendingMeal(
@@ -226,7 +223,6 @@ final class MealScreenState {
   }) {
     return MealScreenState(
       day: day,
-      phase: phase,
       pendingMealId: pendingMealId,
       pendingStart: pendingStart == null ? this.pendingStart : pendingStart(),
       pendingMealType:
@@ -244,7 +240,6 @@ final class MealScreenState {
   MealScreenState saved(String mealId, {String? batchId}) {
     return MealScreenState(
       day: day,
-      phase: MealScreenPhase.saved,
       pendingMealId: pendingMealId,
       pendingStart: pendingStart,
       pendingMealType: pendingMealType,
@@ -260,7 +255,6 @@ final class MealScreenState {
   MealScreenState pending(String mealId) {
     return MealScreenState(
       day: day,
-      phase: MealScreenPhase.newMeal,
       pendingMealId: mealId,
       pendingStart: pendingStart,
       pendingMealType: pendingMealType,
@@ -299,7 +293,6 @@ class MealScreenController extends Notifier<MealScreenState> {
     if (mealId != null) {
       return MealScreenState(
         day: null,
-        phase: MealScreenPhase.saved,
         pendingMealId: null,
         pendingStart: null,
         pendingMealType: null,
@@ -312,7 +305,6 @@ class MealScreenController extends Notifier<MealScreenState> {
     final day = args.day!;
     return MealScreenState(
       day: day,
-      phase: MealScreenPhase.newMeal,
       pendingMealId: _repository.newMealId(),
       pendingStart: null,
       pendingMealType: null,
@@ -339,20 +331,14 @@ class MealScreenController extends Notifier<MealScreenState> {
     return proposeMealType(state.pendingStart ?? _clock(), mealTypes);
   }
 
-  /// Sets the pending Meal's local clock time (the time sheet on a new Meal).
+  /// Sets the pending Meal's local clock time (the time sheet on a new Meal:
+  /// a picked time, or a time-shift button's now minus its amount, §6).
   void setPendingTime(DateTime localClock) {
     _requireNew('setPendingTime');
     state = state.copyWith(
       pendingStart: () => localClock,
       timeChosen: true,
     );
-  }
-
-  /// A time-shift button on a new Meal (§6): the time becomes now minus
-  /// [amount], replacing any earlier choice, so shifts don't stack. On a
-  /// saved Meal the sheet calls [changeTime] with the same instant.
-  void shiftTime(Duration amount) {
-    setPendingTime(_clock().subtract(amount));
   }
 
   /// Hand-picks the pending Meal's Meal Type; the proposal no longer applies.
@@ -534,10 +520,9 @@ class MealScreenController extends Notifier<MealScreenState> {
   }
 
   String _requireSavedMealId(String action) {
-    final mealId = state.savedMealId;
-    if (!state.isSaved || mealId == null) {
-      throw StateError('$action applies to a saved Meal.');
+    if (state.savedMealId case final mealId?) {
+      return mealId;
     }
-    return mealId;
+    throw StateError('$action applies to a saved Meal.');
   }
 }

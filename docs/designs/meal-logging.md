@@ -581,10 +581,12 @@ place of `<time>`. Choosing a time makes it `instant`.
   qualify. Its row reads `Add to <time> · <type>`; tapping it replaces the screen with that
   Meal's screen.
 - **The add-food picker is embedded,** not opened as a sheet. `AddFoodPicker` and
-  `add_food_controller.dart` replace the required `MealRecord meal` with a `MealTarget`.
-  Selecting a Food opens `LogPortionScreen`, which takes the `MealTarget`, calls
-  `logFoodEntrySnapshot`, and pops with the saved Meal id. The Quick Entry write moves to
-  the same split in the picker and its controller.
+  `add_food_controller.dart` drop the required `MealRecord meal`, and the picker never
+  writes on its own: the Meal screen passes it `onFoodSelected` and a required
+  `onQuickEntry`, and makes each write against its `MealTarget`. Selecting a Food opens
+  `LogPortionScreen`, which takes the `MealTarget`, calls `logFoodEntrySnapshot`, and pops
+  with the saved Meal id. Quick add hands its draft to `onQuickEntry`, which calls
+  `logQuickEntry` with the same target.
 - **Entries.** Each Food Entry row has a 48 dp remove button that calls `deleteFoodEntry`,
   with an Undo bar. Tapping a Food-backed entry without import keys opens
   `LogPortionScreen` prefilled, and its Save calls `updateFoodEntryPortion`. Imported
@@ -1283,9 +1285,9 @@ during a first food and during Log again from the Meal screen; manual checks 1 t
 | `apps/mobile/lib/features/nutrition/widgets/meal_screen.dart` | Create. The full-screen route with the states and behaviour of §6. |
 | `apps/mobile/lib/data/repositories/training_repositories.dart` | Add watchMeal (added while implementing PR 3) |
 | `apps/mobile/lib/features/nutrition/widgets/meal_time_sheet.dart` | Create. The date and time pickers, the time-shift buttons, the Meal Type list and the future-time confirmation (§6). |
-| `apps/mobile/lib/features/nutrition/widgets/add_food_picker.dart`, `controllers/add_food_controller.dart` | Replace the required `MealRecord` with a `MealTarget`; render embedded in the Meal screen; route Quick Entry through `logQuickEntry(target: ...)`. Search, source chips, Your foods and the two-tap repeat are unchanged. |
+| `apps/mobile/lib/features/nutrition/widgets/add_food_picker.dart`, `controllers/add_food_controller.dart` | Remove the required `MealRecord`; render embedded in the Meal screen; hand Quick add's draft to a required `onQuickEntry`, which the Meal screen routes through `logQuickEntry(target: ...)`. Search, source chips, Your foods and the two-tap repeat are unchanged. |
 | `apps/mobile/lib/features/nutrition/widgets/log_portion_screen.dart` | Take a `MealTarget`; Save calls `logFoodEntrySnapshot` and pops with the saved Meal id. Add the prefilled edit mode whose Save calls `updateFoodEntryPortion`. |
-| `apps/mobile/lib/features/nutrition/widgets/quick_entry_dialog.dart` | Return the entered values only; the write happens in the picker. |
+| `apps/mobile/lib/features/nutrition/widgets/quick_entry_dialog.dart` | Return the entered values only; the Meal screen makes the write. |
 | `apps/mobile/lib/features/nutrition/widgets/nutrition_day_view.dart` | Replace the Start Meal chips with `Log meal`, hidden on future days; rename `startMealButtonKey` to `logMealButtonKey`; cards lead with `<time> · <type>` (or `time not recorded`), then Food Entries and totals; `add foods` on zero-entry Meals; a card tap opens the Meal screen; remove the per-card `Add food` button and `_showAddFoodPicker`. |
 | `apps/mobile/lib/features/nutrition/controllers/nutrition_day_controller.dart` | Remove `startMeal` and `logQuickEntryForMeal`. |
 | `apps/mobile/lib/domain/nutrition/nutrition_day_assembly.dart` | Apply the §6 order. |
