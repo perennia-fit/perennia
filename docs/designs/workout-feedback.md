@@ -254,7 +254,7 @@ No open questions. Settled while drafting:
 *   **When**: the user taps Finish Workout.
 *   **Then**:
     *   The Workout is finished, and a sheet opens over it.
-    *   The sheet shows "Lower B", "32 min · 7 of 7 sets · 2 exercises", and
+    *   The sheet shows "Lower B", "32m · 7 of 7 sets · 2 exercises", and
         under New bests "Deadlift · 140 kg" with the trophy marker.
     *   A row reads `Update "Lower B"`, with "Remove Hip Thrust" and "Deadlift:
         sets changed" under it.
