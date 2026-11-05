@@ -1862,8 +1862,11 @@ Android when the app is in the background."
         `END_TONE_HOLD_MILLIS = 1500`. Otherwise it runs `stopAfterEnd` directly.
         `stopAfterEnd` calls `stopSelf(lastStartId)`, where `lastStartId` is
         saved on every `onStartCommand`.
-    *   **New schedule or cancel.** `onStartCommand` removes `stopAfterEnd` for
-        either action. `ACTION_CANCEL` then stops the service as it does today.
+    *   **New schedule or cancel.** `onStartCommand` removes `stopAfterEnd` on a
+        schedule and on a cancel of the current timer, which then stops the
+        service as it does today; a cancel for another timer id leaves the hold
+        running, because that branch does not stop the service, and removing the
+        hold there would leave a `START_STICKY` service with no tick and no stop.
     *   **Wake lock.** A `PowerManager.PARTIAL_WAKE_LOCK` tagged
         `perennia:rest_timer`, with `setReferenceCounted(false)`. Each schedule
         calls `acquire(max(0, remainingMillis) + 5000)`. `onDestroy` releases it
