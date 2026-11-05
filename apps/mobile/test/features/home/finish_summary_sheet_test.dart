@@ -12,6 +12,7 @@ import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/home/widgets/finish_summary_sheet.dart';
 import 'package:perennia/features/home/widgets/workout_duration.dart';
+import 'package:perennia/features/home/widgets/workout_screen.dart';
 import 'package:perennia/features/progress/repositories/progress_feature_repository.dart';
 import 'package:perennia/features/progress/widgets/new_best_row.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
@@ -22,6 +23,7 @@ import 'package:perennia/theme/theme.dart';
 
 const _emDash = '—';
 const _openKey = Key('test.open-sheet');
+const _pushWorkoutKey = Key('test.push-workout');
 
 final _loadReps = ExerciseType(
   const <DimensionId>[DimensionId.load, DimensionId.reps],
@@ -531,6 +533,90 @@ void main() {
     expect(find.byKey(_openKey), findsOneWidget);
   });
 
+  _testSheet('CUJ 5 through the real flow: Finish, the summary, Done', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    await _openWorkoutScreen(tester, repositories, fixture.workoutId);
+
+    await tester
+        .tap(find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId)));
+    await _waitFor(tester, () => _isShown(find.byType(NewBestRow)));
+    await _settle(tester);
+
+    final workout = (await tester.runAsync(
+      () => repositories.workoutSessions.getById(fixture.workoutId),
+    ))!;
+    expect(workout.endedAt, isNotNull);
+
+    final sheet = find.byKey(FinishSummarySheet.sheetKey);
+    expect(sheet, findsOneWidget);
+    expect(find.byType(WorkoutScreen), findsOneWidget);
+    expect(_textsUnder(tester, FinishSummarySheet.updateTemplateKey), [
+      'Update "Lower B"',
+      'Remove Hip Thrust',
+      'Deadlift: sets changed',
+    ]);
+    // The facts line, read after the finish write: its duration is the real
+    // one, not the in-progress text the Workout had before it.
+    final facts = find.descendant(
+      of: sheet,
+      matching: find.textContaining('7 of 7 sets · 2 exercises'),
+    );
+    expect(facts, findsOneWidget);
+    expect(
+      tester.widget<Text>(facts).data,
+      isNot(contains(AppLocalizationsEn().workoutDurationInProgress)),
+    );
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await _expectBackAtOpener(tester);
+  });
+
+  _testSheet('a swipe-down on the handle also returns to the opener', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    await _openWorkoutScreen(tester, repositories, fixture.workoutId);
+
+    await tester
+        .tap(find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId)));
+    await _waitFor(
+        tester, () => _isShown(find.byKey(FinishSummarySheet.doneKey)));
+    await _settle(tester);
+
+    // The sheet's top edge is its drag handle: a drag on the scrolling body
+    // moves the scroll view rather than the sheet.
+    final sheetRect = tester.getRect(find.byType(BottomSheet));
+    await tester.dragFrom(
+      sheetRect.topCenter + const Offset(0, 12),
+      Offset(0, sheetRect.height),
+    );
+    await _expectBackAtOpener(tester);
+  });
+
+  _testSheet('Back also returns to the opener', (tester) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    await _openWorkoutScreen(tester, repositories, fixture.workoutId);
+
+    await tester
+        .tap(find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId)));
+    await _waitFor(
+        tester, () => _isShown(find.byKey(FinishSummarySheet.doneKey)));
+    await _settle(tester);
+
+    await tester.binding.handlePopRoute();
+    await _expectBackAtOpener(tester);
+  });
+
   _testSheet('at 2x text a long list scrolls inside the sheet', (tester) async {
     final fixture = (await tester.runAsync(() async {
       final workoutId = await repositories.workoutSessions.create(
@@ -614,7 +700,11 @@ void _testSheet(String description, WidgetTesterCallback callback) {
 /// CUJ 5: Lower B plans Deadlift, Leg Press and Hip Thrust at 3 sets. Its
 /// Workout logged 4 Deadlift sets at 140 kg, against 130 kg in an earlier
 /// Workout, and the 3 Leg Press sets as prescribed, and removed Hip Thrust.
-Future<_LowerB> _createLowerB(TrainingRepositories repositories) async {
+/// With [finish] false the Workout stays open, for a test that finishes it.
+Future<_LowerB> _createLowerB(
+  TrainingRepositories repositories, {
+  bool finish = true,
+}) async {
   Future<String> exercise(String name) {
     return repositories.exercises.create(
       ExerciseDraft(
@@ -702,10 +792,12 @@ Future<_LowerB> _createLowerB(TrainingRepositories repositories) async {
 
   final divergenceSummary =
       await repositories.templateDivergence.summaryForWorkout(workoutId);
-  await repositories.workoutSessions.updateEndedAt(
-    workoutId,
-    endedAt: startedAt.add(const Duration(minutes: 32)).toUtc(),
-  );
+  if (finish) {
+    await repositories.workoutSessions.updateEndedAt(
+      workoutId,
+      endedAt: startedAt.add(const Duration(minutes: 32)).toUtc(),
+    );
+  }
 
   return _LowerB(
     workoutId: workoutId,
@@ -800,6 +892,67 @@ Future<void> _openSheet(
   await tester.tap(find.byKey(_openKey));
   await tester.pump();
   await _settle(tester);
+}
+
+/// Pushes the real [WorkoutScreen] from a small opener screen, so a test can
+/// see it pop back there. It uses the real New Bests read, which runs
+/// `compute`, so [_waitFor] and [_settle] let it finish.
+Future<void> _openWorkoutScreen(
+  WidgetTester tester,
+  TrainingRepositories repositories,
+  String workoutId,
+) async {
+  tester.view.physicalSize = const Size(400, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        appDatabaseProvider.overrideWith((ref) => repositories.database),
+        trainingRepositoriesProvider.overrideWith((ref) => repositories),
+        settingsRepositoryProvider.overrideWith(
+          (ref) => InMemorySettingsRepository(),
+        ),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                key: _pushWorkoutKey,
+                onPressed: () => unawaited(
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => WorkoutScreen(workoutId: workoutId),
+                    ),
+                  ),
+                ),
+                child: const Text('Open Workout'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.byKey(_pushWorkoutKey));
+  await tester.pump();
+  await _waitFor(
+    tester,
+    () => _isShown(find.byKey(WorkoutScreen.finishButtonKey(workoutId))),
+  );
+  await _settle(tester);
+}
+
+/// The sheet has closed and the Workout screen has popped, each transition
+/// run to its end.
+Future<void> _expectBackAtOpener(WidgetTester tester) async {
+  await _waitFor(tester, () => !_isShown(find.byType(WorkoutScreen)));
+  expect(find.byKey(FinishSummarySheet.sheetKey), findsNothing);
+  expect(find.byKey(_pushWorkoutKey), findsOneWidget);
 }
 
 bool _isShown(Finder finder) => finder.evaluate().isNotEmpty;

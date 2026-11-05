@@ -300,13 +300,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutResume => 'Resume Workout';
 
   @override
-  String get workoutFinished => 'Workout finished';
-
-  @override
   String get workoutResumed => 'Workout resumed';
-
-  @override
-  String get workoutShareAction => 'Share';
 
   @override
   String finishSummaryFacts(String duration, String sets, int exercises) {

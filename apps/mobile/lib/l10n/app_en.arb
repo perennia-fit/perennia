@@ -157,9 +157,7 @@
   },
   "workoutFinish": "Finish Workout",
   "workoutResume": "Resume Workout",
-  "workoutFinished": "Workout finished",
   "workoutResumed": "Workout resumed",
-  "workoutShareAction": "Share",
   "finishSummaryFacts": "{duration} · {sets} · {exercises, plural, =1{1 exercise} other{{exercises} exercises}}",
   "@finishSummaryFacts": {
     "description": "The Finish summary's facts line. sets is workoutPerformedSetsOfTotal.",

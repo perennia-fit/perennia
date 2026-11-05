@@ -592,23 +592,11 @@ abstract class AppLocalizations {
   /// **'Resume Workout'**
   String get workoutResume;
 
-  /// No description provided for @workoutFinished.
-  ///
-  /// In en, this message translates to:
-  /// **'Workout finished'**
-  String get workoutFinished;
-
   /// No description provided for @workoutResumed.
   ///
   /// In en, this message translates to:
   /// **'Workout resumed'**
   String get workoutResumed;
-
-  /// No description provided for @workoutShareAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Share'**
-  String get workoutShareAction;
 
   /// The Finish summary's facts line. sets is workoutPerformedSetsOfTotal.
   ///

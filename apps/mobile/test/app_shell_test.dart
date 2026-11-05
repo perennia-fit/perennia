@@ -30,6 +30,7 @@ import 'package:perennia/features/exercise/widgets/exercise_page.dart';
 import 'package:perennia/features/focus/repositories/focus_feature_repository.dart';
 import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
+import 'package:perennia/features/home/widgets/finish_summary_sheet.dart';
 import 'package:perennia/features/home/widgets/home_screen.dart';
 import 'package:perennia/features/home/widgets/start_workout_sheet.dart';
 import 'package:perennia/features/home/widgets/workout_screen.dart';
@@ -2100,42 +2101,12 @@ void main() {
   });
 
   testWidgets(
-      'finishing a workout pops to Home and shows a Share action in the '
-      'snackbar', (tester) async {
+      'finishing a workout opens the summary over the Workout, and Done '
+      'returns to Home', (tester) async {
     final repository = _FinishableWorkoutHomeRepository();
-    final copiedSummaries = <String>[];
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          final arguments = call.arguments as Map<Object?, Object?>;
-          copiedSummaries.add(arguments['text']! as String);
-        }
-        return null;
-      },
-    );
-    addTearDown(() {
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      );
-    });
+    final copiedSummaries = _captureClipboard(tester);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          upNextFeatureRepositoryProvider.overrideWith(
-            (ref) => const StubUpNextFeatureRepository(),
-          ),
-          _homeNutritionDayOverride(),
-          homeRepositoryProvider.overrideWith((ref) => repository),
-          templateDivergenceFeatureRepositoryProvider.overrideWith(
-            (ref) => const _NoDivergenceRepository(),
-          ),
-        ],
-        child: const PerenniaApp(),
-      ),
-    );
+    await tester.pumpWidget(_finishableWorkoutApp(repository));
     await tester.pump();
     await tester.pumpAndSettle();
 
@@ -2152,22 +2123,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.finishedWorkoutIds, <String>['workout-1']);
-    // Finish pops the WorkoutScreen back to Home.
-    expect(find.byType(WorkoutScreen), findsNothing);
-    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+    // The sheet opens over the Workout: nothing pops until it closes.
+    expect(find.byType(WorkoutScreen), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Workout finished'), findsNothing);
 
-    expect(find.text('Workout finished'), findsOneWidget);
-    final shareActionFinder = find.descendant(
-      of: find.byType(SnackBar),
-      matching: find.widgetWithText(SnackBarAction, 'Share'),
-    );
-    expect(shareActionFinder, findsOneWidget);
-
-    await tester.tap(shareActionFinder);
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(FinishSummarySheet.copySummaryKey));
+    await tester.pump();
+    await tester.pump();
 
     expect(copiedSummaries, <String>['Workout summary']);
-    expect(find.text('Workout summary copied'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(FinishSummarySheet.copySummaryKey),
+        matching: find.text('Copied'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsNothing);
+    expect(find.byType(WorkoutScreen), findsNothing);
+    expect(find.byType(HomeScreen), findsOneWidget);
   });
 
   testWidgets('finishing a zero-set workout pops to Home without error', (
@@ -2175,21 +2156,7 @@ void main() {
   ) async {
     final repository = _FinishableWorkoutHomeRepository();
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          upNextFeatureRepositoryProvider.overrideWith(
-            (ref) => const StubUpNextFeatureRepository(),
-          ),
-          _homeNutritionDayOverride(),
-          homeRepositoryProvider.overrideWith((ref) => repository),
-          templateDivergenceFeatureRepositoryProvider.overrideWith(
-            (ref) => const _NoDivergenceRepository(),
-          ),
-        ],
-        child: const PerenniaApp(),
-      ),
-    );
+    await tester.pumpWidget(_finishableWorkoutApp(repository));
     await tester.pump();
     await tester.pumpAndSettle();
 
@@ -2204,8 +2171,48 @@ void main() {
 
     expect(repository.finishedWorkoutIds, <String>['workout-1']);
     expect(tester.takeException(), isNull);
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
     expect(find.byType(WorkoutScreen), findsNothing);
     expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('the Workout menu\'s Share copies the text, and says so for 2 s',
+      (tester) async {
+    final repository = _FinishableWorkoutHomeRepository();
+    final copiedSummaries = _captureClipboard(tester);
+
+    await tester.pumpWidget(_finishableWorkoutApp(repository));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(WorkoutScreen.optionsButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Share workout'));
+    await tester.pumpAndSettle();
+
+    expect(copiedSummaries, <String>['Workout summary']);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text('Workout summary copied'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pump(const Duration(milliseconds: 1900));
+    expect(find.byType(SnackBar), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('workout notes screen deletes existing notes', (
@@ -3379,8 +3386,51 @@ class _WorkoutActionsHomeRepository extends _HomeRepositoryTestDefaults {
   }
 }
 
-/// An open, zero-set workout used to exercise the Finish flow:
-/// popping to Home, the Share snackbar action, and the zero-set finish path.
+/// The app over [repository], with a Workout that has no divergence and no
+/// New Bests, for the Finish flow.
+Widget _finishableWorkoutApp(_FinishableWorkoutHomeRepository repository) {
+  return ProviderScope(
+    overrides: [
+      upNextFeatureRepositoryProvider.overrideWith(
+        (ref) => const StubUpNextFeatureRepository(),
+      ),
+      _homeNutritionDayOverride(),
+      homeRepositoryProvider.overrideWith((ref) => repository),
+      templateDivergenceFeatureRepositoryProvider.overrideWith(
+        (ref) => const _NoDivergenceRepository(),
+      ),
+      progressFeatureRepositoryProvider.overrideWith(
+        (ref) => const StubProgressFeatureRepository(),
+      ),
+    ],
+    child: const PerenniaApp(),
+  );
+}
+
+/// The texts put on the clipboard during the test.
+List<String> _captureClipboard(WidgetTester tester) {
+  final copied = <String>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      if (call.method == 'Clipboard.setData') {
+        final arguments = call.arguments as Map<Object?, Object?>;
+        copied.add(arguments['text']! as String);
+      }
+      return null;
+    },
+  );
+  addTearDown(() {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    );
+  });
+  return copied;
+}
+
+/// An open, zero-set workout used to exercise the Finish flow: the summary
+/// sheet, Copy summary, the return to Home, and the zero-set finish path.
 class _FinishableWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   final finishedWorkoutIds = <String>[];
 
