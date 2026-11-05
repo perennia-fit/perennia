@@ -2724,6 +2724,60 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    _testTrainingScreen(
+        "A SnackBar shown by another screen floats with its bottom at or above the strip's top",
+        (tester) async {
+      final workoutId = await openBenchPress(tester);
+
+      final messenger = ScaffoldMessenger.of(
+        tester.element(find.byType(TrainingScreen)),
+      );
+      messenger.showSnackBar(const SnackBar(content: Text('Replaced')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // The bar's Material: the SnackBar's own box includes its inset.
+      double snackBarBottom() => tester
+          .getRect(
+            find
+                .descendant(
+                  of: find.byType(SnackBar),
+                  matching: find.byType(Material),
+                )
+                .first,
+          )
+          .bottom;
+      double stripTop() =>
+          tester.getRect(find.byKey(TrainingScreen.restStripKey)).top;
+
+      expect(snackBarBottom(), lessThanOrEqualTo(stripTop()));
+      final logModeBottom = snackBarBottom();
+
+      // Update mode's buttons make the pinned area taller, so the inset has
+      // to follow the height (not just match it once).
+      await fillAndTapLogSet(tester);
+      await _settle(tester);
+      messenger.hideCurrentSnackBar();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final sets = (await tester.runAsync(
+        () => repositories.sets.listActiveForWorkout(workoutId),
+      ))!;
+      await tester.tap(find.byKey(TrainingScreen.setTileKey(sets.single.id)));
+      await tester.pump();
+      expect(find.byKey(TrainingScreen.updateSetButtonKey), findsOneWidget);
+
+      messenger.showSnackBar(const SnackBar(content: Text('Replaced')));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(snackBarBottom(), lessThanOrEqualTo(stripTop()));
+      expect(snackBarBottom(), lessThan(logModeBottom));
+      expect(tester.takeException(), isNull);
+    });
+
     _testTrainingScreen('the message is a live region, the countdown is not', (
       tester,
     ) async {

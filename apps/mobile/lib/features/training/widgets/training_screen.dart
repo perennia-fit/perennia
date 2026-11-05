@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
@@ -236,6 +237,10 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// replaces it. Dropped, not run, when the screen closes.
   VoidCallback? _afterUndoEnds;
 
+  /// The pinned block's height, which lifts a SnackBar shown by another screen
+  /// above it. Written by [_SizeReporter].
+  final _pinnedHeight = ValueNotifier<double>(0);
+
   @override
   void initState() {
     super.initState();
@@ -291,6 +296,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     }
     _commentController.dispose();
     _rpeController.dispose();
+    _pinnedHeight.dispose();
     super.dispose();
   }
 
@@ -691,7 +697,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   Widget build(BuildContext context) {
     final state = _state;
     final ready = state != null && _workoutSets != null;
-    return Scaffold(
+    final scaffold = Scaffold(
       appBar: AppBar(
         title: Text(state?.exercise.name ?? context.l10n.trainingFallbackTitle),
         actions: [
@@ -768,6 +774,30 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
                   : const SizedBox.expand(),
         ),
       ),
+    );
+    // Above the Scaffold, because the Scaffold builds the messenger's SnackBar
+    // and that reads the theme there: a SnackBar another screen showed (the
+    // Workout screen's "Replaced" that follows the user here) floats above
+    // the pinned block. `child` keeps a height change from rebuilding this.
+    return ValueListenableBuilder<double>(
+      valueListenable: _pinnedHeight,
+      child: scaffold,
+      builder: (context, height, child) {
+        final theme = Theme.of(context);
+        return Theme(
+          data: theme.copyWith(
+            snackBarTheme: theme.snackBarTheme.copyWith(
+              insetPadding: EdgeInsets.fromLTRB(
+                AppDimens.base,
+                AppDimens.base,
+                AppDimens.base,
+                AppDimens.base + height,
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
   }
 
@@ -959,26 +989,38 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
             ),
           ),
         ),
-        const SizedBox(height: AppDimens.dense),
-        // Always at this place in the Column, whatever the buttons below
-        // are, so the strip (the rest timer's one owner) stays mounted
-        // across exercise switches and Update mode.
-        RestStrip(
-          workoutId: state.workoutExercise.workoutId,
-          workoutExerciseId: workoutExerciseId,
-          rest: _rest,
-          enableTicker: widget.enableRestTimerTicker,
-          revision: _restTimerRevision,
-          onAlertVolumeChanged: (volume) => _alertVolume = volume,
-          onConfirmation: _showConfirmation,
-          undoShowing: _undoShowing,
-          whenUndoEnds: _whenUndoEnds,
-          confirmation: confirmation == null
-              ? null
-              : (confirmation: confirmation, sequence: _confirmationSequence),
+        _SizeReporter(
+          height: _pinnedHeight,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: AppDimens.dense),
+              // Always at this place in the Column, whatever the buttons below
+              // are, so the strip (the rest timer's one owner) stays mounted
+              // across exercise switches and Update mode.
+              RestStrip(
+                workoutId: state.workoutExercise.workoutId,
+                workoutExerciseId: workoutExerciseId,
+                rest: _rest,
+                enableTicker: widget.enableRestTimerTicker,
+                revision: _restTimerRevision,
+                onAlertVolumeChanged: (volume) => _alertVolume = volume,
+                onConfirmation: _showConfirmation,
+                undoShowing: _undoShowing,
+                whenUndoEnds: _whenUndoEnds,
+                confirmation: confirmation == null
+                    ? null
+                    : (
+                        confirmation: confirmation,
+                        sequence: _confirmationSequence,
+                      ),
+              ),
+              const SizedBox(height: AppDimens.dense),
+              actions,
+            ],
+          ),
         ),
-        const SizedBox(height: AppDimens.dense),
-        actions,
       ],
     );
   }
@@ -2440,6 +2482,45 @@ class _ContextLine extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Writes its child's height to [height] after every layout, including the
+/// first. The write is post-frame because a write during layout would throw.
+class _SizeReporter extends SingleChildRenderObjectWidget {
+  const _SizeReporter({required this.height, required super.child});
+
+  final ValueNotifier<double> height;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderSizeReporter(height);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderSizeReporter renderObject,
+  ) {
+    renderObject.height = height;
+  }
+}
+
+class _RenderSizeReporter extends RenderProxyBox {
+  _RenderSizeReporter(this.height);
+
+  ValueNotifier<double> height;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      // A callback pending when the screen is disposed would otherwise write
+      // to a disposed notifier, which throws.
+      if (attached && height.value != size.height) {
+        height.value = size.height;
+      }
+    });
   }
 }
 
