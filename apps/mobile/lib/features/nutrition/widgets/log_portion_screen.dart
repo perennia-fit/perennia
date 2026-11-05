@@ -377,7 +377,6 @@ class _LogPortionScreenState extends State<LogPortionScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior: SnackBarBehavior.floating,
         ),
       );
   }
@@ -394,7 +393,6 @@ class _LogPortionScreenState extends State<LogPortionScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior: SnackBarBehavior.floating,
         ),
       );
   }

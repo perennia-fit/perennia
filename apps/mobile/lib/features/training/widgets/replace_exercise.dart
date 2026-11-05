@@ -236,7 +236,6 @@ void showTrainingSnackBar(
               ),
         duration: Duration(seconds: onUndo == null ? 2 : 4),
         persist: false,
-        behavior: margin == null ? null : SnackBarBehavior.floating,
         margin: margin,
         action: onUndo == null || undoLabel == null
             ? null

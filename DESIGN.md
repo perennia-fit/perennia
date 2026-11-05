@@ -112,6 +112,14 @@ components:
     pointRadius: 3px
     ringWidth: 1.5px
     lineWidth: 2px
+  notice:
+    backgroundColor: "{colors.chrome-dark}"
+    borderColor: "{colors.divider-dark}"
+    textColor: "{colors.text-primary-dark}"
+    actionColor: "{colors.primary}"
+    typography: "{typography.body}"
+    rounded: "{rounded.md}"
+    inset: "{spacing.base}"
 ---
 
 # Design System: Perennia
@@ -293,6 +301,9 @@ rectangles with `md` corners, never FABs.
 - **New best row:** a Trophy Gold trophy glyph beside "{exercise} · {value}" and the
   date in the secondary text color, at least 48px tall; gold always comes with the
   glyph and the words.
+- **Notice:** messages are a dark bar in both themes and float above the screen's
+  bottom bar or buttons; the Training Screen shows its own messages in the rest
+  strip's row.
 
 ## Do's and Don'ts
 
