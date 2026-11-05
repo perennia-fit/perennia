@@ -353,7 +353,7 @@ spec that grows the library (see [Risks](#risks-and-mitigations)).
 *   **Validation is one shared module.** The Purpose name rules and the id
     normalization are written once in Dart and once in TypeScript, and are
     pinned together, with the starter set, by the golden vectors
-    `m38-compound-purposes` (D8).
+    `m40-compound-purposes` (D8).
 *   **Local writes never block on the network.** Creating a Compound from the
     picker, tagging and editing are local writes, like every Protocols write.
 *   **The others** (Workouts as sessions, self-describing Sets, no behavioral
@@ -371,8 +371,8 @@ A Purpose is a row in a new table, modelled on `focuses` but without a color.
     *   `updatedAt`;
     *   `deletedAt`, the archive tombstone.
 
-    The schema version goes up by one, to the next free one (65 at the time
-    of writing, from 64). The migration step `from < 65`:
+    The schema version goes up by one, to the next free one (66 at the time
+    of writing, from 65). The migration step `from < 66`:
     *   creates the table and adds `compounds.purpose_ids` (D2), each only if
         missing, following the `from < 59` Focus step;
     *   clears `sync_states.pull_cursor`, so the next Sync Run pulls every
@@ -393,7 +393,7 @@ A Purpose is a row in a new table, modelled on `focuses` but without a color.
 *   **Older clients.** A client built before this change skips the unknown
     `purposes` entity but still advances its pull cursor past those changes.
     When that device later upgrades, it would never pull the Purposes it
-    skipped. The `from < 65` step clears the stored pull cursor, so the first
+    skipped. The `from < 66` step clears the stored pull cursor, so the first
     Sync Run after the upgrade is a full pull. The sync protocol version stays
     2.
 *   **The Protocols domain's privacy is unchanged.** Purposes are Protocols
@@ -481,7 +481,7 @@ Exercise's Focuses are `focus_ids`. There is no join table:
         and last-writer-wins keeps the seed's name.
     *   **The fix:** the insert stamps the fixed seed timestamp, as the Focus
         seed does. A real edit on any device is always newer than it.
-*   **Backfill on upgrade.** A device upgrading from schema 64 already holds
+*   **Backfill on upgrade.** A device upgrading from schema 65 already holds
     the six rows, untagged. `backfillSeedPurposes` tags each seed row that is
     **untouched**, which means all of:
     *   its `name` equals the seed name;
@@ -732,8 +732,8 @@ member order.
         rejected; it must drop the archived id or omit `purposeIds`.
     *   **App writes:** an archived id already on the Compound is kept, as
         D2 says.
-*   **Golden vectors `m38-compound-purposes`** (the next free id: m38 at the
-    time of writing, after m37), with a JSON Schema,
+*   **Golden vectors `m40-compound-purposes`** (the next free id: m40 at the
+    time of writing, after m39), with a JSON Schema,
     registered in `ci.yml` and `ci-local.mjs` together. They pin:
     *   the starter set (the D3 table), which both sides need: Dart to seed,
         TypeScript to merge into Agent reads;
@@ -924,7 +924,7 @@ Let the Purpose filter alone narrow by Purpose.
 *   **Rollout and rollback.**
     *   **PR 1** changes no schema, sync shape or contract.
     *   **PR 2 is additive:**
-        *   app schema 65 adds one table and one column with a default;
+        *   app schema 66 adds one table and one column with a default;
         *   the next free server migration (`0035` at the time of writing)
             adds one table;
         *   the sync protocol version stays 2.
@@ -949,7 +949,7 @@ Let the Purpose filter alone narrow by Purpose.
     device's list wins. *Mitigation:* the Activity Log keeps the loser
     (Alternative B records why per-tag rows aren't worth it).
 *   **A skipped entity before the upgrade.** An older build advances its pull
-    cursor past `purposes` changes. *Mitigation:* the `from < 65` step clears
+    cursor past `purposes` changes. *Mitigation:* the `from < 66` step clears
     the pull cursor (D1).
 *   **Privacy.** Purpose names are sensitive by association. *Mitigation:* the
     same lock, export and log rules as Compounds (NFRs).
@@ -976,9 +976,9 @@ usable on its own:
 PR 1 sets this spec's Status to **Approved; PR 1 of 2 built** in its header and
 the SITEMAP. PR 2 sets it to **Current**.
 
-**Numbers this spec claims.** App schema version 65, golden-vector id `m38` and
+**Numbers this spec claims.** App schema version 66, golden-vector id `m40` and
 server migration `0035` are the next free ones at the time of writing (`main`
-ends at schema 64, vector m37 and migration 0034). Another spec may take one
+ends at schema 65, vector m39 and migration 0034). Another spec may take one
 first. If it does, PR 2 takes the next free number and corrects every line of
 this spec that names it, in the same pull request.
 
@@ -1191,7 +1191,7 @@ this PR changes no golden vectors, contract or sync shape.
 | 18 | `apps/mobile/lib/features/activity/repositories/activity_feed_repository.dart` | Modify |
 | 19 | `apps/mobile/lib/data/repositories/portable_archive_repository.dart` | Modify |
 | 20 | `apps/mobile/lib/features/protocols/controllers/protocols_day_controller.dart` | Modify |
-| 21 | `packages/golden-vectors/vectors/m38-compound-purposes.json` and `m38-compound-purposes.schema.json` | Create |
+| 21 | `packages/golden-vectors/vectors/m40-compound-purposes.json` and `m40-compound-purposes.schema.json` | Create |
 | 22 | `apps/mobile/test/domain/compound_purposes_golden_test.dart` and `apps/server/test/compound-purposes.golden.test.mjs` | Create |
 | 23 | `.github/workflows/ci.yml`, `tools/ci-local.mjs` and `apps/server/package.json` | Modify |
 | 24 | `apps/server/src/compound-purposes.ts` | Create |
@@ -1252,13 +1252,13 @@ this PR changes no golden vectors, contract or sync shape.
         'purposes'` added to `tableNames`.
     *   **Compounds:** `Compounds.purposeIds`,
         `text().withDefault(const Constant('[]'))()`.
-    *   **Schema version:** `schemaVersion` 65, with step `from < 65`, which
+    *   **Schema version:** `schemaVersion` 66, with step `from < 66`, which
         creates `purposes` if it is missing, adds `compounds.purpose_ids` if
         missing (default `'[]'`), and runs `UPDATE sync_states SET
         pull_cursor = NULL` (D1).
     *   **Comments:** update the Compounds table comment that says the app
         never categorizes, to the narrowed rule.
-    *   **Snapshots:** dump the version 65 schema and regenerate the schema
+    *   **Snapshots:** dump the version 66 schema and regenerate the schema
         test helpers with the commands in `docs/releasing.md`; never edit them
         by hand.
 
@@ -1347,7 +1347,7 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Proposed Changes**:
     *   **Export and import:** add a `purposes` entity before `compounds`, with
         merge import by id and last-writer-wins.
-    *   **Older archives:** an archive with `archiveSchemaVersion < 65` has no
+    *   **Older archives:** an archive with `archiveSchemaVersion < 66` has no
         `purposes` file and skips it, as `< 59` does for Focuses.
 
 #### 20. `apps/mobile/lib/features/protocols/controllers/protocols_day_controller.dart` (Modify)
@@ -1360,7 +1360,7 @@ this PR changes no golden vectors, contract or sync shape.
         `reorderPurposes` and `archivePurpose`. `createCompound` and
         `editCompound` take the draft with `purposeIds`.
 
-#### 21. `packages/golden-vectors/vectors/m38-compound-purposes.json` and `m38-compound-purposes.schema.json` (Create)
+#### 21. `packages/golden-vectors/vectors/m40-compound-purposes.json` and `m40-compound-purposes.schema.json` (Create)
 
 *   **Type / Scope**: golden vectors.
 *   **Proposed Changes**: the cases listed in D8, under three operations:
@@ -1371,7 +1371,7 @@ this PR changes no golden vectors, contract or sync shape.
 #### 22. `apps/mobile/test/domain/compound_purposes_golden_test.dart` and `apps/server/test/compound-purposes.golden.test.mjs` (Create)
 
 *   **Type / Scope**: golden runners.
-*   **Proposed Changes**: run every m38 case against the Dart and TypeScript
+*   **Proposed Changes**: run every m40 case against the Dart and TypeScript
     cores, as `metric_trend_golden_test.dart` and `metric-trend.golden.test.mjs`
     do.
 
@@ -1580,13 +1580,13 @@ this PR changes no golden vectors, contract or sync shape.
     *   **Purpose writes:** duplicate and empty names are rejected; undoing an
         archive into a duplicate name is reported as not applied.
 *   **`apps/mobile/test/data/schema_snapshot_migration_test.dart`:** the
-    64→65 upgrade adds the table and the column with `'[]'`, keeps every
+    65→66 upgrade adds the table and the column with `'[]'`, keeps every
     Compound, and clears the pull cursor.
 *   **`apps/mobile/test/data/erase_all_data_test.dart`:** user Purposes are
     erased; the starter Purposes and seed Compounds keep their names and tags.
 *   **`apps/mobile/test/data/portable_archive_repository_test.dart`:**
     *   the round trip keeps Purposes and `purpose_ids`;
-    *   a version-64 archive imports.
+    *   a version-65 archive imports.
 *   **`apps/mobile/test/features/protocols/protocols_lock_sync_isolation_test.dart`:**
     Purposes follow the Protocols isolation the file already checks.
 *   **`apps/mobile/test/features/sync/sync_repository_test.dart`:** the
@@ -1639,7 +1639,7 @@ the items each one must pass.
 
     Don't run the emulator during the `mobile` job, because its timing
     budgets fail under load.
-*   **V2. Golden vectors (PR 2):** `m38-compound-purposes` passes in Dart and
+*   **V2. Golden vectors (PR 2):** `m40-compound-purposes` passes in Dart and
     in TypeScript. Changing one starter Purpose on one side fails the golden
     job.
 *   **V3. Contract (PR 2):** `check:drift` is clean after regeneration. The
