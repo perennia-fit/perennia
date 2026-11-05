@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
@@ -746,6 +748,85 @@ void main() {
       await tester.tap(find.text('Undo'));
       await tester.pumpAndSettle();
       expect(await ricePortion(), 100);
+
+      await _unmount(tester);
+    });
+
+    testWidgets('a Meal archived elsewhere closes the screen', (tester) async {
+      final (:mealId, food: _, imported: _, quick: _) = await seedLunch();
+
+      await open(tester, MealScreen.existing(mealId: mealId));
+      expect(find.byType(MealScreen), findsOneWidget);
+
+      final archived = repositories.nutrition.deleteMeal(mealId);
+      await tester.pumpAndSettle();
+      await archived;
+
+      expect(find.byType(MealScreen), findsNothing);
+      expect(find.byKey(_openKey), findsOneWidget);
+
+      await _unmount(tester);
+    });
+
+    testWidgets(
+        'a Meal archived elsewhere closes the screen and a Log Portion above '
+        'it, and nothing under it', (tester) async {
+      final (:mealId, :food, imported: _, quick: _) = await seedLunch();
+
+      await open(tester, MealScreen.existing(mealId: mealId));
+      await tester.tap(find.byKey(MealScreen.entryRowKey(food.id)));
+      await tester.pumpAndSettle();
+      expect(find.byType(LogPortionScreen), findsOneWidget);
+
+      final archived = repositories.nutrition.deleteMeal(mealId);
+      await tester.pumpAndSettle();
+      await archived;
+
+      expect(find.byType(LogPortionScreen), findsNothing);
+      expect(find.byType(MealScreen), findsNothing);
+      expect(find.byKey(_openKey), findsOneWidget);
+
+      await _unmount(tester);
+    });
+
+    testWidgets('Delete meal closes one screen, not the one under it',
+        (tester) async {
+      final (:mealId, food: _, imported: _, quick: _) = await seedLunch();
+
+      await open(tester, MealScreen.existing(mealId: mealId));
+      await tester.tap(find.byKey(MealScreen.overflowMenuKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MealScreen.deleteMealKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MealScreen), findsNothing);
+      expect(find.byKey(_openKey), findsOneWidget);
+
+      await _unmount(tester);
+    });
+
+    testWidgets(
+        'a new Meal screen opened while the last one is still closing starts '
+        'a new Meal', (tester) async {
+      await open(tester, const MealScreen.newMeal(day: today));
+      await tester.tap(find.byKey(MealScreen.addFoodsLaterKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(MealScreen.addFoodsLaterKey), findsNothing);
+
+      // The first screen is still mounted, as it is during its pop transition.
+      unawaited(
+        Navigator.of(tester.element(find.byType(MealScreen))).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => const MealScreen.newMeal(day: today),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MealScreen.addFoodsLaterKey), findsOneWidget);
+      expect(headerText(tester), 'now · Lunch');
 
       await _unmount(tester);
     });
