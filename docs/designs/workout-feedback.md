@@ -340,6 +340,11 @@ not by a widget that replaces it.
     *   Log set first shows "Set *n* logged" and then the version with Undo
         (Plan-Guided Logging's steps 4 and 7). That second message keeps the
         same sequence number, so it updates in place with no transition.
+    *   For 300 ms after a message with Undo ends (a double tap's length), what
+        replaced it ignores taps. Undo draws where Stop does, so without this
+        the second tap of a double tap on Undo, or one tap a moment too late,
+        would cancel the rest with no way back. A tap inside the crossfade
+        reaches the outgoing Undo, which runs once.
 *   **Accessibility.** Only the confirmation text is a live region
     (`Semantics(liveRegion: true)`), so a screen reader reads each message once
     and never the countdown digits. At large text sizes the row grows to two
@@ -1027,6 +1032,10 @@ Performance budget with no rest and with a rest running; manual check 1.
         `sequence` key. `textKey` sits on the `Text` inside each child, so two
         children that both carry `saveSetConfirmationKey` (two Log sets in a
         row) never hold it as siblings.
+    *   **Taps after Undo.** When a message with Undo ends (the `sequence` it
+        held is no longer shown), `didUpdateWidget` wraps the current child in
+        `IgnorePointer` for `kDoubleTapTimeout`, on a `Timer` rather than the
+        crossfade's status, since Reduce Motion gives the crossfade no length.
     *   **Background alerts message.** `notifyIfBackgroundAlertsDenied(status,
         {required String message, required ShowTrainingConfirmation show,
         required bool Function() undoShowing, required

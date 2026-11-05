@@ -515,9 +515,10 @@ void main() {
       expect(timer?.duration, const Duration(seconds: 120));
       expect(timer?.sourceSetId, isNotNull);
 
-      // Stop is hidden while Log set's message shows.
+      // Stop is hidden while Log set's message shows, and ignores taps for a
+      // moment after it ends.
       await tester.pump(_confirmationDuration);
-      await tester.pump(_crossfade);
+      await tester.pump(_undoEndedGrace);
       await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
       expect(_restStripSeconds(tester), inInclusiveRange(117, 120));
       expect(find.byKey(TrainingScreen.restStripStartKey), findsNothing);
@@ -2803,8 +2804,8 @@ void main() {
         'a second tap on Undo inside the crossfade reverts once', (
       tester,
     ) async {
-      // A plan's zero rest leaves the strip idle, so nothing of the incoming
-      // content sits over the outgoing Undo and the second tap reaches it.
+      // A plan's zero rest logs with no rest running, so the only effect of
+      // the second tap on this outgoing Undo is its own.
       final plan = (await tester.runAsync(
         () => _createPlannedExercise(
           repositories,
@@ -2836,6 +2837,150 @@ void main() {
       final sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
       expect(sets.map((set) => set.isCompleted), <bool>[false, false, false]);
       expect(find.textContaining("Couldn't undo"), findsNothing);
+    });
+
+    /// Deletes a performed Set during a running rest, so "Set deleted" and its
+    /// Undo show over the rest, and returns the fixture with the place where
+    /// that Undo is drawn: the strip's trailing edge, where Stop comes back.
+    Future<({_PlanFixture plan, Offset undoAt})> deleteSetDuringRest(
+      WidgetTester tester, {
+      bool disableAnimations = false,
+    }) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            2,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+          rest: const Duration(seconds: 90),
+          performedCount: 1,
+        ),
+      ))!;
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+        disableAnimations: disableAnimations,
+      );
+      await _settle(tester);
+      await tester.tap(find.byKey(TrainingScreen.restStripStartKey));
+      await _settle(tester);
+      expect(find.byKey(TrainingScreen.restStripStopKey), findsOneWidget);
+      final stopAt = tester.getCenter(
+        find.byKey(TrainingScreen.restStripStopKey),
+      );
+
+      await tester.tap(find.byKey(TrainingScreen.setTileKey(plan.setIds[0])));
+      await tester.pump();
+      await tester.tap(find.byKey(TrainingScreen.deleteSelectedSetButtonKey));
+      await _settle(tester);
+      await tester.pump(_crossfade);
+      expect(_undoInRestStrip, findsOneWidget);
+      // The rest of these tests rely on the two controls overlapping.
+      expect(tester.getRect(_undoInRestStrip).contains(stopAt), isTrue);
+      return (plan: plan, undoAt: stopAt);
+    }
+
+    Future<void> expectRestStillRunning(
+      WidgetTester tester,
+      _PlanFixture plan,
+    ) async {
+      await _settle(tester);
+      await tester.pump(_undoEndedGrace);
+      expect(find.byKey(TrainingScreen.restStripStopKey), findsOneWidget);
+      final timer = await tester.runAsync(
+        () => repositories.restTimers.getCurrentForWorkout(plan.workoutId),
+      );
+      expect(timer?.status, RestTimerStatus.running);
+    }
+
+    _testTrainingScreen(
+        'a second tap on Undo inside the crossfade leaves the rest running', (
+      tester,
+    ) async {
+      final (:plan, :undoAt) = await deleteSetDuringRest(tester);
+
+      await tester.tapAt(undoAt);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(undoAt);
+
+      await expectRestStillRunning(tester, plan);
+      expect(
+        find.byKey(TrainingScreen.setTileKey(plan.setIds[0])),
+        findsOneWidget,
+      );
+      expect(find.textContaining("Couldn't undo"), findsNothing);
+    });
+
+    _testTrainingScreen(
+        'with animations disabled, a second tap where Undo was leaves the '
+        'rest running', (tester) async {
+      final (:plan, :undoAt) = await deleteSetDuringRest(
+        tester,
+        disableAnimations: true,
+      );
+
+      await tester.tapAt(undoAt);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(_undoInRestStrip, findsNothing);
+      await tester.tapAt(undoAt);
+
+      await expectRestStillRunning(tester, plan);
+    });
+
+    _testTrainingScreen(
+        'a late tap on the outgoing Undo reverts, with the rest left running', (
+      tester,
+    ) async {
+      final (:plan, :undoAt) = await deleteSetDuringRest(tester);
+
+      await tester.pump(_confirmationDuration);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(undoAt);
+
+      await expectRestStillRunning(tester, plan);
+      expect(
+        find.byKey(TrainingScreen.setTileKey(plan.setIds[0])),
+        findsOneWidget,
+      );
+    });
+
+    _testTrainingScreen(
+        'a late tap just past the crossfade leaves the Set deleted and the '
+        'rest running', (tester) async {
+      final (:plan, :undoAt) = await deleteSetDuringRest(tester);
+
+      await tester.pump(_confirmationDuration);
+      await tester.pump(_crossfade);
+      expect(_undoInRestStrip, findsNothing);
+      await tester.tapAt(undoAt);
+
+      await expectRestStillRunning(tester, plan);
+      expect(
+        find.byKey(TrainingScreen.setTileKey(plan.setIds[0])),
+        findsNothing,
+      );
+    });
+
+    _testTrainingScreen('Stop works once the grace after Undo has passed', (
+      tester,
+    ) async {
+      final (:plan, :undoAt) = await deleteSetDuringRest(tester);
+
+      await tester.tapAt(undoAt);
+      await _settle(tester);
+      await tester.pump(_undoEndedGrace);
+      await tester.tap(find.byKey(TrainingScreen.restStripStopKey));
+      await _settle(tester);
+
+      final timer = await tester.runAsync(
+        () => repositories.restTimers.getCurrentForWorkout(plan.workoutId),
+      );
+      expect(timer, isNull);
+      expect(find.byKey(TrainingScreen.restStripStopKey), findsNothing);
     });
 
     _testTrainingScreen('CUJ 1: logs a planned Set and Undo reverts it', (
@@ -5050,6 +5195,10 @@ const _confirmationDuration = Duration(seconds: 4);
 
 /// Past the strip's 150 ms crossfade, whose outgoing child stays mounted.
 const _crossfade = Duration(milliseconds: 200);
+
+/// Past the strip's grace after a message with Undo ends, while what came in
+/// ignores taps.
+const _undoEndedGrace = Duration(milliseconds: 350);
 
 /// The strip's remaining time, "Rest m:ss".
 final _restCountdown = RegExp(r'^Rest \d+:\d\d$');

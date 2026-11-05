@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -106,6 +107,9 @@ String formatRestDuration(Duration duration) {
 /// that message in place of the running or idle content, with a crossfade.
 /// Only the drawing changes: the ticker and the cues keep running under the
 /// message, and the rest shows again when it ends.
+///
+/// For a moment after a message with Undo ends, what replaced it ignores taps:
+/// see [_RestStripState._ignoreTapsAfterUndoEnded].
 class RestStrip extends ConsumerStatefulWidget {
   const RestStrip({
     super.key,
@@ -188,6 +192,11 @@ class _RestStripState extends ConsumerState<RestStrip> {
   final _alertsInFlight = <String>{};
   final _prepareAlertsInFlight = <String>{};
 
+  /// Whether the switcher's current child ignores taps; a tap inside the
+  /// crossfade then reaches the outgoing child under it.
+  bool _ignoringTaps = false;
+  Timer? _ignoringTapsTimer;
+
   @override
   void initState() {
     super.initState();
@@ -212,10 +221,35 @@ class _RestStripState extends ConsumerState<RestStrip> {
       _renderedTimerId = null;
       _now = DateTime.now().toUtc();
     }
+    final previous = oldWidget.confirmation;
+    if (previous != null &&
+        previous.confirmation.onUndo != null &&
+        previous.sequence != widget.confirmation?.sequence) {
+      _ignoreTapsAfterUndoEnded();
+    }
+  }
+
+  /// Undo draws at the row's trailing edge, the same place as Stop, and a
+  /// finger is often on its way there when the message ends: Undo's own
+  /// second tap of a double tap, or a tap a moment too late. Reaching Stop
+  /// would cancel the rest and its background schedule with no way back, so
+  /// what replaced the message takes no taps for one double tap's length.
+  ///
+  /// This is a timer, not the crossfade's status, because the crossfade has
+  /// no length under Reduce Motion, and a double tap outlasts 150 ms.
+  void _ignoreTapsAfterUndoEnded() {
+    _ignoringTaps = true;
+    _ignoringTapsTimer?.cancel();
+    _ignoringTapsTimer = Timer(kDoubleTapTimeout, () {
+      if (mounted) {
+        setState(() => _ignoringTaps = false);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _ignoringTapsTimer?.cancel();
     _ticker?.cancel();
     super.dispose();
   }
@@ -292,19 +326,21 @@ class _RestStripState extends ConsumerState<RestStrip> {
               if (currentChild != null) currentChild,
             ],
           ),
-          child: shown != null
-              ? KeyedSubtree(
-                  key: ValueKey<int>(shown.sequence),
-                  child: _ConfirmationContent(shown.confirmation),
-                )
-              // One key for both phases: running and idle swap with no
-              // transition.
-              : KeyedSubtree(
-                  key: const ValueKey('phase'),
-                  child: running
+          child: KeyedSubtree(
+            // One key for both phases: running and idle swap with no
+            // transition.
+            key: shown != null
+                ? ValueKey<int>(shown.sequence)
+                : const ValueKey('phase'),
+            child: IgnorePointer(
+              ignoring: _ignoringTaps,
+              child: shown != null
+                  ? _ConfirmationContent(shown.confirmation)
+                  : running
                       ? _buildRunning(context, timer, remaining)
                       : _buildIdle(context),
-                ),
+            ),
+          ),
         ),
       ),
     );
