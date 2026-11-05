@@ -52,7 +52,7 @@ license id/title reported by wger.
 
 ### CC-BY-SA 3
 
-Distinct source author count: 36.
+Distinct source author count: 34.
 
 - andikeller
 - aszc
@@ -62,7 +62,6 @@ Distinct source author count: 36.
 - djblitzd
 - drthurlow
 - flori
-- foguinho.peruca
 - GiglioRosso
 - GrosseHund
 - http://www.bodybuilding.com/
@@ -75,7 +74,6 @@ Distinct source author count: 36.
 - MaddieBeasley
 - Mahoney
 - Manu, wikipedia
-- Marius
 - mbozi1
 - minifigmaster125
 - Nallitnas
@@ -93,7 +91,7 @@ Distinct source author count: 36.
 
 ### CC-BY-SA 4
 
-Distinct source author count: 169.
+Distinct source author count: 162.
 
 - 2dPREtEZP221u68Akf0JImv5L48
 - 3leh
@@ -139,7 +137,6 @@ Distinct source author count: 169.
 - cynomops
 - daiben
 - damnlost
-- daniel.escada
 - Davidgj32
 - Deflation
 - deusinvictus
@@ -147,7 +144,6 @@ Distinct source author count: 169.
 - donaddon
 - dookie1481
 - Dulive
-- enros7500
 - Epiphany8424
 - er0355
 - erikocobra
@@ -155,7 +151,6 @@ Distinct source author count: 169.
 - eufvksruh
 - Expenses7000
 - ExRx
-- fabrice
 - FEFFO
 - Fittness69
 - flanny
@@ -206,7 +201,6 @@ Distinct source author count: 169.
 - MisterPinnacle
 - Moffi
 - mountain.potato
-- MrAlfaRobot
 - MrSteele
 - MU5H
 - Nash
@@ -236,7 +230,6 @@ Distinct source author count: 169.
 - sevae
 - Shiladree
 - shushu
-- Skadi
 - sophialj
 - spacetowaste
 - sTiKyt
@@ -252,11 +245,9 @@ Distinct source author count: 169.
 - tregga
 - Trix
 - utkb
-- Vazco
 - vdrb
 - Vilhelmo
 - vince63
-- vkylamba
 - wakanda90
 - wget@pytt.io
 - Whythebigpaws

@@ -83,13 +83,13 @@ abstract final class LibraryExercise {
   static const benchPress = '01910000-0000-7000-8000-000000000102';
   static const barbellSquat = '01910000-0000-7000-8000-000000000101';
   static const deadlift = '01910000-0000-7000-8000-000000000103';
-  static const overheadPress = '01910000-0000-7000-8000-000000200687';
+  static const overheadPress = '01910000-0000-7000-8000-000000201893';
   static const pullUp = '01910000-0000-7000-8000-000000000104';
   static const legPress = '01910000-0000-7000-8000-000000200371';
   static const romanianDeadlift = '01910000-0000-7000-8000-000000201750';
   static const dumbbellCurl = '01910000-0000-7000-8000-000000201931';
   static const tricepsPushdown = '01910000-0000-7000-8000-000000201185';
-  static const plank = '01910000-0000-7000-8000-000000000105';
+  static const plank = '01910000-0000-7000-8000-803702150094';
   static const running = '01910000-0000-7000-8000-000000000109';
   static const legCurl = '01910000-0000-7000-8000-000000200364';
   static const inclineDumbbellPress = '01910000-0000-7000-8000-000000201277';
