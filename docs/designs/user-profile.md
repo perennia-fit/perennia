@@ -1025,7 +1025,7 @@ the AGENTS.md onboarding rule change.
 
 There are two pull requests, in merge order. Each lists every file it touches, numbered from 1
 within that PR. A schema version or golden-vector id below is "the next free one" at the time
-of writing: Drift schema 65, drizzle migration `0035`, golden vector `m38`. If another change
+of writing: Drift schema 66, drizzle migration `0035`, golden vector `m40`. If another change
 takes one first, the implementer takes the next one and corrects this spec in the same pull
 request.
 
@@ -1036,9 +1036,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 
 | # | File | Action | Why |
 |---|---|---|---|
-| 1 | `packages/golden-vectors/vectors/m38-user-profile-validation.json` | Create | Shared validation vectors |
-| 2 | `packages/golden-vectors/vectors/m38-user-profile-validation.schema.json` | Create | Schema for file 1 |
-| 3 | `packages/golden-vectors/vectors/README.md` | Modify | List m38 |
+| 1 | `packages/golden-vectors/vectors/m40-user-profile-validation.json` | Create | Shared validation vectors |
+| 2 | `packages/golden-vectors/vectors/m40-user-profile-validation.schema.json` | Create | Schema for file 1 |
+| 3 | `packages/golden-vectors/vectors/README.md` | Modify | List m40 |
 | 4 | `apps/mobile/lib/domain/profile/user_profile.dart` | Create | Dart domain types and `ageAt` |
 | 5 | `apps/mobile/lib/domain/profile/user_profile_validation.dart` | Create | Dart validation module |
 | 6 | `apps/mobile/test/domain/user_profile_validation_test.dart` | Create | Dart golden-vector runner |
@@ -1099,7 +1099,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 
 #### Shared validation and golden vectors (files 1 to 9)
 
-*   **File 1.** Top level: `{ "name": "m38-user-profile-validation", "domain":
+*   **File 1.** Top level: `{ "name": "m40-user-profile-validation", "domain":
     "user-profile-validation", "limits": {...}, "cases": [...] }`, following
     `m35-settings-validation.json`.
     *   `limits` holds every number in the Validation table, `trainingGoalIds`, `sexes`,
@@ -1120,7 +1120,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         *   an unknown level, an empty `focus_id`, two levels for one Focus;
         *   an unknown sex.
 *   **File 2.** JSON Schema for file 1, following the existing `*.schema.json` files.
-*   **File 3.** Add the m38 row.
+*   **File 3.** Add the m40 row.
 *   **File 4.**
     *   `enum UserProfileSection { aboutYou, trainingGoals, experience, trainingSetup,
         healthLimitations, generalNotes }`, with wire names as in the Data model.
@@ -1158,7 +1158,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 *   **File 10.**
     *   Add the `UserProfileSections` table (`id`, `section`, `valuesJson`, plus the standard
         sync columns) and add it to `tableNames`.
-    *   `schemaVersion` becomes 65. The migration from 64 creates the table behind the existing
+    *   `schemaVersion` becomes 66. The migration from 65 creates the table behind the existing
         `_tableExists` guard, and writes no rows.
     *   The table docstring says why the User Profile is not on `UserSettings`, and gives the
         newest-per-section read rule.
@@ -1479,7 +1479,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 
 *   **V1. Gate.** `pnpm ci:local mobile golden contract js sync release_version` passes for each
     PR. The `js` and `sync` jobs need Docker running.
-*   **V2. Golden vectors.** PR 1 files 6 and 9 run the same m38 cases in Dart and TypeScript.
+*   **V2. Golden vectors.** PR 1 files 6 and 9 run the same m40 cases in Dart and TypeScript.
 *   **V3. Repositories against in-memory SQLite.** PR 1 files 14, 49, 51 and 52.
 *   **V4. Server integration.** PR 1 files 43, 44, 46, 47 and 48 (`js` job).
 *   **V5. Sync simulation.** PR 1 file 45 (`sync` job) and file 50 (device).
