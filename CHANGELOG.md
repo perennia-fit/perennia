@@ -26,6 +26,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Changed
 
+- **Messages have one style.** Every message in the app is now a dark bar with
+  rounded corners, in both themes, floating above the screen's bottom bar and
+  buttons. Its text and action pass WCAG AA; the Undo label was close to
+  invisible in the light theme.
 - **Cleaner Platform Exercise Library names.** On new installs, 80 names are
   corrected, including every `(male)` or `(female)` label and typos like
   `Shrimp Squad`. Twenty-three exercises merge into an equivalent, and 10
