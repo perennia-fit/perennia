@@ -1,8 +1,7 @@
 part of 'training_repositories.dart';
 
-/// One human-readable divergence result for the Finish prompt and the
-/// overflow's "Update template" verb (ROUTINES.md §3.4): "+ Dips,
-/// − Incline Press".
+/// One divergence result for the Finish summary's Update row and the Workout
+/// menu's "Update template" dialog (ROUTINES.md §3.4).
 final class TemplateDivergenceSummary {
   const TemplateDivergenceSummary({
     required this.workoutId,
@@ -164,7 +163,8 @@ TemplateContentSnapshot _templateContentSnapshotFromRecord(
     groups: record.groups.map((group) {
       return TemplateDivergenceGroupSnapshot(
         memberExerciseIds: group.members.map(
-          (member) => exerciseIdByTemplateExerciseId[member.templateExerciseId]!,
+          (member) =>
+              exerciseIdByTemplateExerciseId[member.templateExerciseId]!,
         ),
       );
     }),

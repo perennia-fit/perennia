@@ -907,7 +907,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         children: [
           FilledButton.icon(
             key: TrainingScreen.logSetButtonKey,
-            style: _saveButtonStyle(context),
+            style: saveButtonStyle(context),
             onPressed: () => unawaited(_logSet(state)),
             icon: const Icon(Icons.check),
             label: Text(
@@ -1369,7 +1369,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
           _undoLogSet(
             repositories,
             scheduler,
-            _showConfirmation,
             l10n,
             batchId: batchId,
             timerId: timerId,
@@ -1478,13 +1477,17 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   Future<void> _undoLogSet(
     TrainingRepositories repositories,
     TimerBackgroundScheduler scheduler,
-    ShowTrainingConfirmation show,
     AppLocalizations l10n, {
     required String batchId,
     required String? timerId,
     required String workoutId,
   }) async {
-    final undone = await _undoBatch(repositories, show, l10n, batchId);
+    final undone = await undoTrainingBatch(
+      repositories,
+      _showConfirmation,
+      l10n,
+      batchId,
+    );
     if (!undone || timerId == null) {
       return;
     }
@@ -1497,16 +1500,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     await repositories.restTimers.cancel(timerId);
     await scheduler.cancel(timerId);
     _notifyRestTimerChanged();
-  }
-
-  /// See [undoTrainingBatch].
-  Future<bool> _undoBatch(
-    TrainingRepositories repositories,
-    ShowTrainingConfirmation show,
-    AppLocalizations l10n,
-    String batchId,
-  ) {
-    return undoTrainingBatch(repositories, show, l10n, batchId);
   }
 
   Future<void> _updateSelected(
@@ -1565,7 +1558,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         message: l10n.trainingSetDeleted,
         undoLabel: l10n.trainingUndo,
         onUndo: () => unawaited(
-          _undoBatch(repositories, _showConfirmation, l10n, batchId),
+          undoTrainingBatch(repositories, _showConfirmation, l10n, batchId),
         ),
       ),
     );
@@ -1603,7 +1596,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         message: l10n.trainingPlannedSetRemoved,
         undoLabel: l10n.trainingUndo,
         onUndo: () => unawaited(
-          _undoBatch(repositories, _showConfirmation, l10n, batchId)
+          undoTrainingBatch(repositories, _showConfirmation, l10n, batchId)
               .then((undone) {
             if (undone && mounted) {
               setState(() {
@@ -1718,7 +1711,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         message: l10n.trainingRoundAdded,
         undoLabel: l10n.trainingUndo,
         onUndo: () => unawaited(
-          _undoBatch(repositories, _showConfirmation, l10n, batchId),
+          undoTrainingBatch(repositories, _showConfirmation, l10n, batchId),
         ),
       ),
     );
@@ -1834,14 +1827,6 @@ String _errorReason(Object error) {
     ArgumentError(:final message) when message != null => '$message',
     _ => '$error',
   };
-}
-
-ButtonStyle _saveButtonStyle(BuildContext context) {
-  return FilledButton.styleFrom(
-    backgroundColor: context.colors.save,
-    foregroundColor: Theme.of(context).colorScheme.onSecondary,
-    minimumSize: const Size.fromHeight(AppDimens.rowHeight),
-  );
 }
 
 class _NavigationPanelDrawer extends ConsumerStatefulWidget {
@@ -2897,7 +2882,7 @@ class _UpdateModeButtons extends StatelessWidget {
             Expanded(
               child: FilledButton(
                 key: TrainingScreen.updateSetButtonKey,
-                style: _saveButtonStyle(context),
+                style: saveButtonStyle(context),
                 onPressed: onUpdate,
                 child: Text(l10n.trainingUpdateSet),
               ),

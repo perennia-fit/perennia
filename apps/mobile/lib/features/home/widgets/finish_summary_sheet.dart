@@ -9,7 +9,6 @@ import '../../../theme/theme.dart';
 import '../../../widgets/grouped_rows.dart';
 import '../../progress/controllers/progress_controller.dart';
 import '../../progress/widgets/new_best_row.dart';
-import '../../settings/repositories/settings_repository.dart';
 import '../../template_divergence/repositories/template_divergence_feature_repository.dart';
 import '../../template_divergence/widgets/template_divergence_diff_text.dart';
 import '../controllers/home_controller.dart';
@@ -75,11 +74,12 @@ class FinishSummarySheet extends ConsumerStatefulWidget {
   ConsumerState<FinishSummarySheet> createState() => _FinishSummarySheetState();
 }
 
+enum _UpdateOutcome { updated, failed }
+
 class _FinishSummarySheetState extends ConsumerState<FinishSummarySheet> {
   // A guard, not display state: the row keeps its label while the write runs.
   bool _updating = false;
-  bool _updated = false;
-  bool _updateFailed = false;
+  _UpdateOutcome? _updateOutcome;
   bool _copied = false;
   Timer? _copiedTimer;
 
@@ -94,25 +94,22 @@ class _FinishSummarySheetState extends ConsumerState<FinishSummarySheet> {
       return;
     }
     _updating = true;
-    var updated = false;
+    _UpdateOutcome outcome;
     try {
       final result = await ref
           .read(templateDivergenceFeatureRepositoryProvider)
           .updateTemplateFromWorkout(widget.workoutId);
       // Null means the template is gone.
-      updated = result != null;
+      outcome = result == null ? _UpdateOutcome.failed : _UpdateOutcome.updated;
     } catch (_) {
       // Reported by the row's failure text, which the user can tap to retry.
-      updated = false;
+      outcome = _UpdateOutcome.failed;
     }
     _updating = false;
     if (!mounted) {
       return;
     }
-    setState(() {
-      _updated = updated;
-      _updateFailed = !updated;
-    });
+    setState(() => _updateOutcome = outcome);
   }
 
   Future<void> _copySummary() async {
@@ -181,20 +178,24 @@ class _FinishSummarySheetState extends ConsumerState<FinishSummarySheet> {
                   if (divergence != null && divergence.hasDivergence)
                     _ActionRow(
                       inkKey: FinishSummarySheet.updateTemplateKey,
-                      label: _updated
-                          ? l10n.finishSummaryUpdated(divergence.templateName)
-                          : _updateFailed
-                              ? l10n.finishSummaryUpdateFailed(
-                                  divergence.templateName,
-                                )
-                              : l10n.finishSummaryUpdate(
-                                  divergence.templateName,
-                                ),
+                      label: switch (_updateOutcome) {
+                        _UpdateOutcome.updated => l10n.finishSummaryUpdated(
+                            divergence.templateName,
+                          ),
+                        _UpdateOutcome.failed => l10n.finishSummaryUpdateFailed(
+                            divergence.templateName,
+                          ),
+                        null => l10n.finishSummaryUpdate(
+                            divergence.templateName,
+                          ),
+                      },
                       lines: templateDivergenceLines(
                         divergence.divergence,
                         l10n,
                       ),
-                      onTap: _updated ? null : _updateTemplate,
+                      onTap: _updateOutcome == _UpdateOutcome.updated
+                          ? null
+                          : _updateTemplate,
                     ),
                   _ActionRow(
                     inkKey: FinishSummarySheet.copySummaryKey,
@@ -209,7 +210,7 @@ class _FinishSummarySheetState extends ConsumerState<FinishSummarySheet> {
             ],
             FilledButton(
               key: FinishSummarySheet.doneKey,
-              style: _doneButtonStyle(context),
+              style: saveButtonStyle(context),
               onPressed: () => Navigator.of(context).pop(),
               child: Text(l10n.finishSummaryDone),
             ),
@@ -218,15 +219,6 @@ class _FinishSummarySheetState extends ConsumerState<FinishSummarySheet> {
       ),
     );
   }
-}
-
-/// The Training Screen's save button style, from the same tokens.
-ButtonStyle _doneButtonStyle(BuildContext context) {
-  return FilledButton.styleFrom(
-    backgroundColor: context.colors.save,
-    foregroundColor: Theme.of(context).colorScheme.onSecondary,
-    minimumSize: const Size.fromHeight(AppDimens.rowHeight),
-  );
 }
 
 /// The section always shows its header and at least one 48 dp row, because
@@ -242,10 +234,7 @@ class _NewBestsSection extends ConsumerWidget {
     final l10n = context.l10n;
     final day = workoutLocalDate(summary);
     final bests = ref.watch(progressNewBestsBetweenProvider((day, day))).value;
-    // A failed settings load reads as the defaults, as Progress's does.
-    final settingsValue = ref.watch(settingsControllerProvider);
-    final settings = settingsValue.value ??
-        (settingsValue.hasError ? AppSettings.defaults : null);
+    final settings = ref.watch(progressSettingsProvider);
 
     final namesByExerciseId = <String, String>{
       for (final exercise in summary.workoutExercises)
@@ -301,6 +290,9 @@ class _NewBestsNote extends StatelessWidget {
 
 /// A tappable row of the sheet: a label, with [lines] one per line under it.
 /// Null [onTap] disables it.
+///
+/// Not a ListTile, because ListTile drops the button role once `onTap` is null,
+/// and the disabled Update row stays a button that reports disabled.
 class _ActionRow extends StatelessWidget {
   const _ActionRow({
     required this.inkKey,

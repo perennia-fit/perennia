@@ -276,7 +276,7 @@ class _RestStripState extends ConsumerState<RestStrip> {
   /// so the digits change in step with the cues, and re-arms itself from there.
   void _armTicker() {
     _ticker?.cancel();
-    _ticker = Timer(_untilNextWholeSecond(), _onTick);
+    _ticker = Timer(_untilNextWholeSecond(), _syncToNow);
   }
 
   Duration _untilNextWholeSecond() {
@@ -293,7 +293,7 @@ class _RestStripState extends ConsumerState<RestStrip> {
 
   /// Syncs directly, not from build, because no frames are drawn in the
   /// background and a covered or backgrounded strip must keep reporting.
-  void _onTick() {
+  void _syncToNow() {
     if (!mounted) {
       return;
     }
@@ -445,7 +445,7 @@ class _RestStripState extends ConsumerState<RestStrip> {
         timer == null ? null : (timer.id, timer.deadlineAt, timer.status);
     if (row != _syncedRow) {
       _syncedRow = row;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _onRowChanged());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncToNow());
     }
 
     final phase = restPhaseAt(timer, widget.newestPerformed, _now).runtimeType;
@@ -463,15 +463,6 @@ class _RestStripState extends ConsumerState<RestStrip> {
         unawaited(SemanticsService.sendAnnouncement(view, text, direction));
       });
     }
-  }
-
-  void _onRowChanged() {
-    if (!mounted) {
-      return;
-    }
-    setState(() => _now = clock.now().toUtc());
-    _syncCues();
-    _armTicker();
   }
 
   Widget _buildStrip(BuildContext context, RestTimerRecord? timer) {
@@ -636,12 +627,7 @@ class _RestStripState extends ConsumerState<RestStrip> {
       label: l10n.trainingRestStripLengthenLabel,
       onPressed: () => unawaited(_adjust(timer, RestStrip.adjustStep)),
     );
-    final stop = IconButton(
-      key: RestStrip.stopKey,
-      tooltip: l10n.trainingStopRestTooltip,
-      onPressed: () => unawaited(_stop(timer.id)),
-      icon: const Icon(Icons.stop),
-    );
+    final stop = _stopButton(timer);
     if (MediaQuery.textScalerOf(context).scale(1) >= _stackAtTextScale) {
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -701,13 +687,17 @@ class _RestStripState extends ConsumerState<RestStrip> {
             ),
           ),
         ),
-        IconButton(
-          key: RestStrip.stopKey,
-          tooltip: l10n.trainingStopRestTooltip,
-          onPressed: () => unawaited(_stop(timer.id)),
-          icon: const Icon(Icons.stop),
-        ),
+        _stopButton(timer),
       ],
+    );
+  }
+
+  Widget _stopButton(RestTimerRecord timer) {
+    return IconButton(
+      key: RestStrip.stopKey,
+      tooltip: context.l10n.trainingStopRestTooltip,
+      onPressed: () => unawaited(_stop(timer.id)),
+      icon: const Icon(Icons.stop),
     );
   }
 

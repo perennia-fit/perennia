@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart'
-    show ExerciseRecord, FocusRecord, TemplateDivergenceSummary;
+    show ExerciseRecord, FocusRecord;
 import '../../../domain/training/plan_logging.dart'
     show
         GroupRound,
@@ -646,9 +646,7 @@ class _WorkoutContent extends ConsumerWidget {
   ) async {
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate: (workout.localDate ??
-              TrainingDayDate.fromDateTime(workout.startedAt.toLocal()))
-          .toLocalDateTime(),
+      initialDate: workoutLocalDate(workout).toLocalDateTime(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
@@ -725,7 +723,8 @@ class _WorkoutContent extends ConsumerWidget {
 
   /// The overflow's "Update template" verb (ROUTINES.md §2, §3.4): available
   /// forever on any linked Workout, regardless of whether it has diverged —
-  /// never automatic, always an explicit ask.
+  /// never automatic, always an explicit ask. Dismissing resolves `false` and
+  /// writes nothing.
   Future<void> _updateWorkoutTemplate(
     BuildContext context,
     WidgetRef ref,
@@ -748,25 +747,6 @@ class _WorkoutContent extends ConsumerWidget {
       );
       return;
     }
-    await _offerTemplateUpdate(
-      navigator: navigator,
-      messenger: messenger,
-      l10n: l10n,
-      divergenceRepository: divergenceRepository,
-      summary: summary,
-    );
-  }
-
-  /// Shows the overflow verb's update prompt, and — only on explicit
-  /// confirmation — performs the atomic capture-replace write. Dismissing
-  /// resolves `false` and writes nothing.
-  Future<void> _offerTemplateUpdate({
-    required NavigatorState navigator,
-    required ScaffoldMessengerState messenger,
-    required AppLocalizations l10n,
-    required TemplateDivergenceFeatureRepository divergenceRepository,
-    required TemplateDivergenceSummary summary,
-  }) async {
     if (!navigator.mounted) {
       return;
     }
@@ -777,7 +757,7 @@ class _WorkoutContent extends ConsumerWidget {
     if (!shouldUpdate) {
       return;
     }
-    await divergenceRepository.updateTemplateFromWorkout(summary.workoutId);
+    await divergenceRepository.updateTemplateFromWorkout(workoutId);
     if (!navigator.mounted) {
       return;
     }

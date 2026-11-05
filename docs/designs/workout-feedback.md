@@ -773,8 +773,10 @@ the Workout screen when the sheet closes, however it closes, which returns to
 the screen that opened the Workout.
 
 *   **Layout.** The sheet is `isScrollControlled: true` with a maximum height
-    of 90% of the screen. Its body is a `SingleChildScrollView` inside a
-    `SafeArea`, so at 2× text it scrolls instead of overflowing.
+    of 90% of the screen and `showDragHandle: true`. Its body is a
+    `SingleChildScrollView` inside a `SafeArea`, so at 2× text it scrolls
+    instead of overflowing. The drag handle keeps a swipe-down working then,
+    when a drag on the body moves the scroll view.
 
 *   **Closing.** Done, a swipe-down and Back close the sheet. A tap on the
     scrim does not. The Finish button sits above the rising sheet, so the second
@@ -799,7 +801,8 @@ the screen that opened the Workout.
         `NewBestRow`, so it reads the same ("Deadlift · 140 kg") with
         the Trophy Gold marker, and a tap still opens Exercise Overview.
     *   Exercise names come from the summary's `workoutExercises`
-        (`exerciseId` to name), and units from `settingsControllerProvider`.
+        (`exerciseId` to name), and units from `progressSettingsProvider`, the
+        read that Progress uses, which reads `settingsControllerProvider`.
         The sheet hides the row's date, since every row is from this
         Workout.
     *   That read covers each exercise's whole history, so it can take a
@@ -1200,8 +1203,9 @@ Performance budget with no rest and with a rest running; manual check 1.
     *   **Log set.** Its first confirmation passes `textKey:
         TrainingScreen.saveSetConfirmationKey`. The Undo version passes the
         same key and `replacesCurrent: true`.
-    *   **Undo helpers.** `_undoBatch` and `_undoLogSet` take
-        `ShowTrainingConfirmation` instead of a messenger.
+    *   **Undo helpers.** `_undoLogSet` and the screen's Undo callbacks call
+        `undoTrainingBatch` with `_showConfirmation`; `_undoBatch` no longer
+        exists.
     *   **`_startRestAfterLog`** passes `_showConfirmation`,
         `() => _logInFlight || _confirmation?.onUndo != null` and a function
         that sets `_afterUndoEnds` to `notifyIfBackgroundAlertsDenied`.
@@ -1959,9 +1963,11 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         context, {required String workoutId, required
         TemplateDivergenceSummary? divergenceSummary})`.
     *   **Presentation.** `showModalBottomSheet` with `isScrollControlled:
-        true`, `isDismissible: false` and `BoxConstraints(maxHeight: 0.9 ×
-        screen height)`; the body is a `SingleChildScrollView` inside a
-        `SafeArea`.
+        true`, `isDismissible: false`, `showDragHandle: true` and
+        `BoxConstraints(maxHeight: 0.9 × screen height)`; the body is a
+        `SingleChildScrollView` inside a `SafeArea`. The drag handle keeps a
+        swipe-down working when the body scrolls at 2× text, where a drag on
+        the body moves the scroll view.
     *   **`FinishSummarySheet`** is a `ConsumerStatefulWidget`. It watches
         `workoutSummaryProvider(workoutId)` and
         `progressNewBestsBetweenProvider((day, day))`, with `day =
@@ -1969,7 +1975,8 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         Workout, and shows the parts in [part 5](#5-finish-summary).
         *   Each row is a `NewBestRow` with `today: null`, the exercise name
             from the summary's `workoutExercises`, and `unitSystem` from
-            `settingsControllerProvider`.
+            `progressSettingsProvider`, the read that Progress uses, which
+            reads `settingsControllerProvider`.
     *   **Update** calls
         `templateDivergenceFeatureRepositoryProvider.updateTemplateFromWorkout`.
         A `null` result or an exception shows the failure text.
@@ -1984,7 +1991,7 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
     *   **Finish.** `_finishWorkout` finishes, awaits
         `showFinishSummarySheet`, then pops the Workout screen.
     *   **Removed:** the "Workout finished · Share" SnackBar, the Finish call
-        to `_offerTemplateUpdate`, and `finishedSnackBarShareActionKey`.
+        to the update dialog, and `finishedSnackBarShareActionKey`.
     *   **Share.** The menu's Share calls `copyWorkoutSummary`, then shows
         `homeWorkoutSummaryCopied` as a SnackBar. `_shareWorkoutSummary` is
         deleted.
