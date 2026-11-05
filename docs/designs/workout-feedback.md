@@ -254,8 +254,8 @@ No open questions. Settled while drafting:
 *   **When**: the user taps Finish Workout.
 *   **Then**:
     *   The Workout is finished, and a sheet opens over it.
-    *   The sheet shows "Lower B", "32 min · 7 of 7 sets · 2 exercises", and
-        under New bests "Deadlift · heaviest 140 kg" with the trophy marker.
+    *   The sheet shows "Lower B", "32m · 7 of 7 sets · 2 exercises", and
+        under New bests "Deadlift · 140 kg" with the trophy marker.
     *   A row reads `Update "Lower B"`, with "Remove Hip Thrust" and "Deadlift:
         sets changed" under it.
     *   Rows "Copy summary" and Done follow.
@@ -791,7 +791,7 @@ the screen that opened the Workout.
     `_workoutLocalDate` works it out today; that function becomes shared. It
     is the read the Progress Overview uses, so nothing new is computed.
     *   Each row is the New bests card's row, extracted into a shared widget,
-        `NewBestRow`, so it reads the same ("Deadlift · heaviest 140 kg") with
+        `NewBestRow`, so it reads the same ("Deadlift · 140 kg") with
         the Trophy Gold marker, and a tap still opens Exercise Overview.
     *   Exercise names come from the summary's `workoutExercises`
         (`exerciseId` to name), and units from `settingsControllerProvider`.
