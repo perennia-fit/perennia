@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -1020,6 +1021,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
                   workoutExerciseId: workoutExerciseId,
                   setsOf: _setsOfWorkoutExercise,
                 ),
+                newestPerformed: _newestPerformed,
                 confirmation: confirmation == null
                     ? null
                     : (
@@ -1072,6 +1074,23 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
             ? l10n.trainingContextRound(group.name, round, of)
             : l10n.trainingContextRoundNext(group.name, round, of, nextName);
     }
+  }
+
+  /// The Workout's Performed Set with the latest `performedAt`, which can end
+  /// the strip's Rest over.
+  ({String id, DateTime performedAt})? get _newestPerformed {
+    ({String id, DateTime performedAt})? newest;
+    for (final sets in _setsByExerciseId.values) {
+      for (final set in sets) {
+        final performedAt = set.performedAt;
+        if (set.isCompleted &&
+            performedAt != null &&
+            (newest == null || performedAt.isAfter(newest.performedAt))) {
+          newest = (id: set.id, performedAt: performedAt);
+        }
+      }
+    }
+    return newest;
   }
 
   /// What a rest's notifications say. They are read away from the screen, so
@@ -1369,8 +1388,8 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// Starts the rest after a logged Set, unless the rest that runs is zero
   /// (Off, or a plan's zero) or the Workout has ended. The timer is written
   /// under its own batch, never the Log set's: the strip writes the timer
-  /// row again later (prepare cue, end alert, Stop), which would make the
-  /// Log set's batch impossible to undo.
+  /// row again later (the end, Stop), which would make the Log set's batch
+  /// impossible to undo.
   Future<String?> _startRestAfterLog(
     TrainingRepositories repositories,
     TimerBackgroundScheduler scheduler,
@@ -1392,6 +1411,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       loggedSet,
       defaultDuration: rest,
       alertVolume: _alertVolume,
+      now: clock.now(),
     );
     if (timerId == null) {
       return null;

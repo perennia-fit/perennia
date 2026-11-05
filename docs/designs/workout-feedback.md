@@ -470,8 +470,9 @@ from `deadlineAt`:
 
 *   **Arming.** A cue is armed if its time is at most 1 s in the past, and
     skipped if it is further back. So −15 s that brings the deadline to now
-    (`adjust` sets a deadline at or before now to exactly now) still arms the
-    end cue. Stop, a new timer and `dispose` cancel the armed cues.
+    (`adjust` sets a deadline at or before now to now, rounded up to a whole
+    second because the column stores whole seconds) still arms the end cue.
+    Stop, a new timer and `dispose` cancel the armed cues.
 *   **Playing.** When an armed cue fires, it plays if it fires at most 1 s late
     (`cueLateLimit`) and `canPlay()` holds. Otherwise it is skipped, and the
     system notification covers that moment, as below.
@@ -1298,7 +1299,10 @@ rest timer notifications on Android 8 and later."
 *   **Proposed Changes**: Remove `RestTimerRepository.markPrepareAlertFired`,
     which has no caller after this pull request. `adjust` keeps clearing
     `prepareAlertFiredAt`. The column stays, so the Drift schema does not
-    change.
+    change. A deadline `adjust` clamps to now is rounded up to a whole second:
+    `deadlineAt` stores whole seconds, and rounded down it could land more
+    than `cueArmLimit` behind the clock by the time the row reaches the strip,
+    which would lose the end cue.
 
 #### `apps/mobile/lib/features/training/widgets/rest_strip.dart` (Modify)
 
