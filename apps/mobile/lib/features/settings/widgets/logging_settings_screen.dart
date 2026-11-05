@@ -51,7 +51,7 @@ class LoggingSettingsScreen extends ConsumerWidget {
               key: restTimerSoundsSwitchKey,
               title: const Text('Timer sounds & vibration'),
               subtitle: const Text(
-                "Beep before rest ends, alert when it's done",
+                'Off silences rest timer tones and vibration',
               ),
               value: settings.restTimerSoundsEnabled,
               onChanged: controller.setRestTimerSoundsEnabled,

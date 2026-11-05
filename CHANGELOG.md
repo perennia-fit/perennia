@@ -23,6 +23,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   latest Meal that had them.
 - **Log a meal from one screen:** repeat a whole meal from Your meals, add
   foods, or save just the time and add foods later.
+- **The rest timer warns you before it ends.** The strip and a tone mark Get
+  ready 10 seconds before the end of a longer rest, 3-2-1 plays in the app, and
+  after 0:00 the strip shows Rest over with the time since.
 
 ### Changed
 
@@ -34,6 +37,12 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   Undo and every other Training Screen message now show in the rest strip's
   row, and the rest countdown comes back when the message ends. "Background
   timer alerts are off" shows once per app run and never replaces an Undo.
+- **Finish ends on one summary.** Finish Workout opens a sheet with the
+  Workout's duration, sets, exercises and New Bests, an Update row that lists
+  template changes in plain words ("Remove Hip Thrust", "Deadlift: sets
+  changed"), Copy summary and Done, replacing the "Workout finished" message
+  and the update dialog. The Workout menu's Update template dialog uses the
+  same words.
 - **Cleaner Platform Exercise Library names.** On new installs, 80 names are
   corrected, including every `(male)` or `(female)` label and typos like
   `Shrimp Squad`. Twenty-three exercises merge into an equivalent, and 10
@@ -93,6 +102,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **A Meal started on a past day is saved on that day, not today.**
 - **Re-importing a file no longer moves a food out of a meal you edited.**
 - **Backups keep restoring after the update.**
+- Rest timer sounds off now silences rest timer notifications on Android 8 and later.
+- The end of a rest now sounds on Android when the app is in the background.
 
 ## [0.2.0] - 2026-11-03
 

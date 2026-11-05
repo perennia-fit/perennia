@@ -592,23 +592,65 @@ abstract class AppLocalizations {
   /// **'Resume Workout'**
   String get workoutResume;
 
-  /// No description provided for @workoutFinished.
-  ///
-  /// In en, this message translates to:
-  /// **'Workout finished'**
-  String get workoutFinished;
-
   /// No description provided for @workoutResumed.
   ///
   /// In en, this message translates to:
   /// **'Workout resumed'**
   String get workoutResumed;
 
-  /// No description provided for @workoutShareAction.
+  /// The Finish summary's facts line. sets is workoutPerformedSetsOfTotal.
   ///
   /// In en, this message translates to:
-  /// **'Share'**
-  String get workoutShareAction;
+  /// **'{duration} · {sets} · {exercises, plural, =1{1 exercise} other{{exercises} exercises}}'**
+  String finishSummaryFacts(String duration, String sets, int exercises);
+
+  /// No description provided for @finishSummaryNewBests.
+  ///
+  /// In en, this message translates to:
+  /// **'New bests'**
+  String get finishSummaryNewBests;
+
+  /// No description provided for @finishSummaryNoNewBests.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get finishSummaryNoNewBests;
+
+  /// No description provided for @finishSummaryUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Update \"{template}\"'**
+  String finishSummaryUpdate(String template);
+
+  /// No description provided for @finishSummaryUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{template}\" updated'**
+  String finishSummaryUpdated(String template);
+
+  /// No description provided for @finishSummaryUpdateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t update \"{template}\"'**
+  String finishSummaryUpdateFailed(String template);
+
+  /// No description provided for @finishSummaryCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy summary'**
+  String get finishSummaryCopy;
+
+  /// No description provided for @finishSummaryCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get finishSummaryCopied;
+
+  /// No description provided for @finishSummaryDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get finishSummaryDone;
 
   /// No description provided for @workoutEditStartTime.
   ///
@@ -1926,6 +1968,55 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Alert volume'**
   String get trainingRestVolumeTitle;
+
+  /// The rest strip in the last 10 seconds of a rest longer than 15 seconds, with the remaining time as m:ss.
+  ///
+  /// In en, this message translates to:
+  /// **'Get ready · {time}'**
+  String trainingRestGetReady(String time);
+
+  /// No description provided for @trainingRestOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest over'**
+  String get trainingRestOver;
+
+  /// How long ago the rest ended, as m:ss, beside Rest over on the rest strip.
+  ///
+  /// In en, this message translates to:
+  /// **'+{time}'**
+  String trainingRestOverElapsed(String time);
+
+  /// No description provided for @trainingRestNotificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest timer'**
+  String get trainingRestNotificationTitle;
+
+  /// No description provided for @trainingRestNotificationCountdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest'**
+  String get trainingRestNotificationCountdown;
+
+  /// The notification 10 seconds before a rest ends, naming the Set that comes next.
+  ///
+  /// In en, this message translates to:
+  /// **'Get ready · {exercise} · Set {number}'**
+  String trainingRestNotificationGetReady(String exercise, int number);
+
+  /// The notification 3 seconds before a rest ends, naming the Set that comes next, with the time as m:ss.
+  ///
+  /// In en, this message translates to:
+  /// **'{exercise} · Set {number} in {time}'**
+  String trainingRestNotificationPrepare(
+      String exercise, int number, String time);
+
+  /// No description provided for @trainingRestNotificationOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest over'**
+  String get trainingRestNotificationOver;
 
   /// No description provided for @trainingPersonalRecordTooltip.
   ///
@@ -3584,6 +3675,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No changes to update'**
   String get templateUpdateNoChangesNote;
+
+  /// No description provided for @templateChangeAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add {exercise}'**
+  String templateChangeAdd(String exercise);
+
+  /// No description provided for @templateChangeRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {exercise}'**
+  String templateChangeRemove(String exercise);
+
+  /// No description provided for @templateChangeSets.
+  ///
+  /// In en, this message translates to:
+  /// **'{exercise}: sets changed'**
+  String templateChangeSets(String exercise);
 
   /// No description provided for @templateStartNoExercises.
   ///

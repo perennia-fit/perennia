@@ -23,7 +23,11 @@ class TrainingConfirmation {
   final bool replacesCurrent;
 
   /// How long it shows: time to reach **Undo**, or a short notice without it.
-  Duration get duration => Duration(seconds: onUndo == null ? 2 : 4);
+  Duration get duration => durationFor(hasUndo: onUndo != null);
+
+  /// The rule behind [duration], for a message shown without one of these.
+  static Duration durationFor({required bool hasUndo}) =>
+      Duration(seconds: hasUndo ? 4 : 2);
 }
 
 /// Shows a [TrainingConfirmation], on the Training Screen's status row or,

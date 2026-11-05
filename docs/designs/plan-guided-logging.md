@@ -112,8 +112,9 @@ and are not part of this spec. This spec assumes it has merged, with this API:
 *   **A schema change.** Nothing here adds a column or a table; the remembered
     rest is derived from Sets.
 *   **Changing the Template while logging.** Edits stay in the Workout. The
-    Finish-time prompt and the Workout menu's **Update template** remain the
-    only ways a Workout writes back to its Template.
+    [Finish summary's Update row](workout-feedback.md#5-finish-summary) and the
+    Workout menu's **Update template** remain the only ways a Workout writes
+    back to its Template.
 *   **Template Group rounds at Materialize.** Materialize ignores a Template
     Group's `rounds`; this spec does not change that (Open Question 1). Rounds
     in a Workout are derived from Set counts.
@@ -173,8 +174,9 @@ otherwise.
 *   **Then** Set 1 is performed at 26 kg × 10, Sets 2 and 3 now show
     26 kg × 10, and the confirmation reads "Set 1 logged · 2 later sets
     updated" with **Undo**.
-*   **And** at Finish the existing prompt offers to update the Template, which
-    would write 26 kg into the Prescription.
+*   **And** at Finish the
+    [Finish summary's Update row](workout-feedback.md#5-finish-summary) offers to
+    update the Template, which would write 26 kg into the Prescription.
 
 ### CUJ 3: A missed rep does not lower the plan
 
@@ -211,7 +213,8 @@ otherwise.
 *   **Given** a Template whose Prescriptions have no rest,
 *   **When** the user logs every Set without touching **Rest after**,
 *   **Then** each rest runs at the remembered rest (or 120 s), no Set stores a
-    planned rest, and Finish raises no Template-update prompt for rest.
+    planned rest, and the Finish summary shows no
+    [Update row](workout-feedback.md#5-finish-summary) for rest.
 
 ### CUJ 7: Walk a superset
 
@@ -895,10 +898,11 @@ call them. With `old` the Workout Exercise:
 5.  If `old` has no Performed Set, soft-delete `old` (one write; its Sets are
     already handled in step 4 and it has no group membership left).
 
-The Template is not changed; the Finish prompt reports the difference as for
-any edit. Replacing back is not offered: the old exercise is still in the
-Workout when it keeps a Performed Set, so picking it reports "Already in this
-workout".
+The Template is not changed; the
+[Finish summary's Update row](workout-feedback.md#5-finish-summary) reports the
+difference and offers the update, as for any edit. Replacing back is not
+offered: the old exercise is still in the Workout when it keeps a Performed
+Set, so picking it reports "Already in this workout".
 
 **Entry points** (pull request 4): the Training Screen's app-bar menu, and a
 new ⋮ button (48 dp) on each Workout screen card with **Replace exercise**,

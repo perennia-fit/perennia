@@ -327,6 +327,9 @@ class _GrantedPermissions implements TimerBackgroundScheduler {
 
   @override
   Future<void> cancel(String timerId) async {}
+
+  @override
+  Future<void> setInAppTimerCues(bool active) async {}
 }
 
 class _LockStore implements ProtocolsLockStore {

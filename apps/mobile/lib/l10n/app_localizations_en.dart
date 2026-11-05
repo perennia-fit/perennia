@@ -300,13 +300,48 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutResume => 'Resume Workout';
 
   @override
-  String get workoutFinished => 'Workout finished';
-
-  @override
   String get workoutResumed => 'Workout resumed';
 
   @override
-  String get workoutShareAction => 'Share';
+  String finishSummaryFacts(String duration, String sets, int exercises) {
+    String _temp0 = intl.Intl.pluralLogic(
+      exercises,
+      locale: localeName,
+      other: '$exercises exercises',
+      one: '1 exercise',
+    );
+    return '$duration · $sets · $_temp0';
+  }
+
+  @override
+  String get finishSummaryNewBests => 'New bests';
+
+  @override
+  String get finishSummaryNoNewBests => 'None';
+
+  @override
+  String finishSummaryUpdate(String template) {
+    return 'Update \"$template\"';
+  }
+
+  @override
+  String finishSummaryUpdated(String template) {
+    return '\"$template\" updated';
+  }
+
+  @override
+  String finishSummaryUpdateFailed(String template) {
+    return 'Couldn\'t update \"$template\"';
+  }
+
+  @override
+  String get finishSummaryCopy => 'Copy summary';
+
+  @override
+  String get finishSummaryCopied => 'Copied';
+
+  @override
+  String get finishSummaryDone => 'Done';
 
   @override
   String get workoutEditStartTime => 'Edit start time';
@@ -1096,6 +1131,39 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trainingRestVolumeTitle => 'Alert volume';
+
+  @override
+  String trainingRestGetReady(String time) {
+    return 'Get ready · $time';
+  }
+
+  @override
+  String get trainingRestOver => 'Rest over';
+
+  @override
+  String trainingRestOverElapsed(String time) {
+    return '+$time';
+  }
+
+  @override
+  String get trainingRestNotificationTitle => 'Rest timer';
+
+  @override
+  String get trainingRestNotificationCountdown => 'Rest';
+
+  @override
+  String trainingRestNotificationGetReady(String exercise, int number) {
+    return 'Get ready · $exercise · Set $number';
+  }
+
+  @override
+  String trainingRestNotificationPrepare(
+      String exercise, int number, String time) {
+    return '$exercise · Set $number in $time';
+  }
+
+  @override
+  String get trainingRestNotificationOver => 'Rest over';
 
   @override
   String get trainingPersonalRecordTooltip => 'Personal record';
@@ -2148,6 +2216,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get templateUpdateNoChangesNote => 'No changes to update';
+
+  @override
+  String templateChangeAdd(String exercise) {
+    return 'Add $exercise';
+  }
+
+  @override
+  String templateChangeRemove(String exercise) {
+    return 'Remove $exercise';
+  }
+
+  @override
+  String templateChangeSets(String exercise) {
+    return '$exercise: sets changed';
+  }
 
   @override
   String get templateStartNoExercises => 'No exercises';

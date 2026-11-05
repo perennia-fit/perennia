@@ -14,6 +14,7 @@ class MainActivity : FlutterActivity() {
     private var pendingNotificationPermissionResult: MethodChannel.Result? = null
     private var methodChannel: MethodChannel? = null
     private val backupExport = BackupExportChannel(this)
+    private var cueSounds: TimerCueSounds? = null
 
     // a cold-start tap arrives before Flutter has registered its
     // callback. Buffer the payload until `timerNotificationsReady` drains it.
@@ -22,6 +23,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // A value left from an engine that died must never silence later rests.
+        TimerForegroundService.inAppCuesActive = false
         val channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             TIMER_BACKGROUND_CHANNEL,
@@ -35,6 +38,23 @@ class MainActivity : FlutterActivity() {
                     result.success(notificationPermissionStatus())
                 "scheduleTimer" -> scheduleTimer(call, result)
                 "cancelTimer" -> cancelTimer(call, result)
+                "prepareCues" -> {
+                    cueSounds().prepare()
+                    result.success(null)
+                }
+                "playCue" -> {
+                    val cue = call.argument<String>("cue")
+                    val volume = call.argument<Number>("volume")?.toFloat() ?: 1f
+                    if (cue != null) {
+                        cueSounds().play(cue, volume)
+                    }
+                    result.success(null)
+                }
+                "setInAppTimerCues" -> {
+                    TimerForegroundService.inAppCuesActive =
+                        call.argument<Boolean>("active") ?: false
+                    result.success(null)
+                }
                 "timerNotificationsReady" -> {
                     flutterReady = true
                     drainBufferedTap()
@@ -50,6 +70,25 @@ class MainActivity : FlutterActivity() {
         // A launch (cold start) from a timer notification carries its extras on
         // the Activity's intent.
         handleTimerNotificationIntent(intent)
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        cueSounds?.release()
+        cueSounds = null
+        super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    // Between onStart and onStop the lifter can see the app, including while
+    // the notification shade or split screen makes it inactive. This matches
+    // Dart's "anything but paused or hidden", so one side plays each cue.
+    override fun onStart() {
+        super.onStart()
+        isStarted = true
+    }
+
+    override fun onStop() {
+        isStarted = false
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -85,6 +124,10 @@ class MainActivity : FlutterActivity() {
             return
         }
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
+    private fun cueSounds(): TimerCueSounds {
+        return cueSounds ?: TimerCueSounds(this).also { cueSounds = it }
     }
 
     private fun handleTimerNotificationIntent(intent: Intent?) {
@@ -169,10 +212,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun scheduleTimer(call: MethodCall, result: MethodChannel.Result) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
+        // No tone from an invisible service, and "Background timer alerts are off" stays true.
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
             result.success(STATUS_DENIED)
             return
         }
@@ -214,6 +255,11 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        /** Read by [TimerForegroundService], which runs without the Activity. */
+        @Volatile
+        var isStarted = false
+            private set
+
         private const val TIMER_BACKGROUND_CHANNEL =
             "perennia/timer_background"
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4207

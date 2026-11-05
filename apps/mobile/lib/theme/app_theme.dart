@@ -5,6 +5,16 @@ import 'app_dimens.dart';
 import 'app_text_styles.dart';
 import 'design_tokens.g.dart';
 
+/// The filled button that saves or finishes: Log set, Update, the Finish
+/// summary's Done.
+ButtonStyle saveButtonStyle(BuildContext context) {
+  return FilledButton.styleFrom(
+    backgroundColor: context.colors.save,
+    foregroundColor: Theme.of(context).colorScheme.onSecondary,
+    minimumSize: const Size.fromHeight(AppDimens.rowHeight),
+  );
+}
+
 class AppTheme {
   AppTheme._();
 

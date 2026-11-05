@@ -10311,7 +10311,7 @@ class RestTimerRepository {
   static const defaultAlertVolume = 1.0;
 
   /// How long before the deadline the 3-2-1 prepare cue plays; [adjust]
-  /// clears a fired cue when more than this remains.
+  /// clears `prepareAlertFiredAt` when more than this remains.
   static const prepareCueLead = Duration(seconds: 3);
 
   final TrainingRepositories _repositories;
@@ -10456,47 +10456,6 @@ class RestTimerRepository {
     });
   }
 
-  /// Marks the 3-2-1 prepare cue as fired for this rest timer.
-  ///
-  /// Unlike [markAlertFired] this never transitions status: the timer is still
-  /// running toward its deadline. Fire-once: a no-op if already set.
-  Future<void> markPrepareAlertFired(
-    String id, {
-    String actor = 'app',
-    String? batchId,
-    DateTime? now,
-  }) {
-    final context = _repositories._writeContexts.create(
-      actor: actor,
-      batchId: batchId,
-    );
-    final firedAt = (now ?? DateTime.now()).toUtc();
-
-    return _database.transaction(() async {
-      final before = await _requireRow(id);
-      if (before.prepareAlertFiredAt != null) {
-        return;
-      }
-
-      await (_database.update(_database.restTimers)
-            ..where((row) => row.id.equals(id)))
-          .write(
-        RestTimersCompanion(
-          prepareAlertFiredAt: Value<DateTime?>(firedAt),
-          updatedAt: Value<DateTime>(context.timestamp),
-        ),
-      );
-      final after = await _requireRow(id);
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.restTimersTable,
-        entityId: id,
-        beforeImage: _restTimerImage(before),
-        afterImage: _restTimerImage(after),
-      );
-    });
-  }
-
   Future<void> updateAlertVolume(
     String id, {
     required double alertVolume,
@@ -10538,11 +10497,13 @@ class RestTimerRepository {
   /// and `durationSeconds` by [delta].
   ///
   /// `durationSeconds` stays at least 1. A new deadline at or before [now]
-  /// becomes [now], so the strip fires the end alert on its next tick, as
-  /// for a timer that ran out. When more than 3 s remain afterwards the
-  /// prepare cue is cleared, so it plays again before the new deadline. A
-  /// timer that is no longer running (it expired or was stopped while the
-  /// tap was in flight) is left as it is.
+  /// becomes [now], rounded up to a whole second, so the strip plays and marks
+  /// the end at once, as for a timer that ran out. The column stores whole
+  /// seconds: rounded down, the deadline could land more than `cueArmLimit`
+  /// behind the clock by the time the row reaches the strip, and that end
+  /// would have no cue at all. When more than 3 s remain afterwards
+  /// `prepareAlertFiredAt` is cleared. A timer that is no longer running (it
+  /// expired or was stopped while the tap was in flight) is left as it is.
   Future<void> adjust(
     String id,
     Duration delta, {
@@ -10564,7 +10525,9 @@ class RestTimerRepository {
       }
 
       final shifted = before.deadlineAt.toUtc().add(delta);
-      final deadlineAt = shifted.isAfter(adjustedAt) ? shifted : adjustedAt;
+      final deadlineAt = shifted.isAfter(adjustedAt)
+          ? shifted
+          : _ceilToWholeSecond(adjustedAt);
       final durationSeconds =
           math.max(1, before.durationSeconds + delta.inSeconds);
       final clearsPrepareCue =
@@ -10591,6 +10554,14 @@ class RestTimerRepository {
         afterImage: _restTimerImage(after),
       );
     });
+  }
+
+  static DateTime _ceilToWholeSecond(DateTime time) {
+    final past = time.microsecondsSinceEpoch % Duration.microsecondsPerSecond;
+    return past == 0
+        ? time
+        : time
+            .add(Duration(microseconds: Duration.microsecondsPerSecond - past));
   }
 
   Future<RestTimerRecord?> getById(String id) async {

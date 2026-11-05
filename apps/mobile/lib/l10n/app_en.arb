@@ -157,9 +157,33 @@
   },
   "workoutFinish": "Finish Workout",
   "workoutResume": "Resume Workout",
-  "workoutFinished": "Workout finished",
   "workoutResumed": "Workout resumed",
-  "workoutShareAction": "Share",
+  "finishSummaryFacts": "{duration} · {sets} · {exercises, plural, =1{1 exercise} other{{exercises} exercises}}",
+  "@finishSummaryFacts": {
+    "description": "The Finish summary's facts line. sets is workoutPerformedSetsOfTotal.",
+    "placeholders": {
+      "duration": {"type": "String"},
+      "sets": {"type": "String"},
+      "exercises": {"type": "int"}
+    }
+  },
+  "finishSummaryNewBests": "New bests",
+  "finishSummaryNoNewBests": "None",
+  "finishSummaryUpdate": "Update \"{template}\"",
+  "@finishSummaryUpdate": {
+    "placeholders": {"template": {"type": "String"}}
+  },
+  "finishSummaryUpdated": "\"{template}\" updated",
+  "@finishSummaryUpdated": {
+    "placeholders": {"template": {"type": "String"}}
+  },
+  "finishSummaryUpdateFailed": "Couldn't update \"{template}\"",
+  "@finishSummaryUpdateFailed": {
+    "placeholders": {"template": {"type": "String"}}
+  },
+  "finishSummaryCopy": "Copy summary",
+  "finishSummaryCopied": "Copied",
+  "finishSummaryDone": "Done",
   "workoutEditStartTime": "Edit start time",
   "workoutEditFinishTime": "Edit finish time",
   "workoutStartTimeUpdated": "Start time updated",
@@ -684,6 +708,55 @@
   "trainingStopRestTooltip": "Stop rest",
   "trainingStartRest": "Start rest",
   "trainingRestVolumeTitle": "Alert volume",
+  "trainingRestGetReady": "Get ready · {time}",
+  "@trainingRestGetReady": {
+    "description": "The rest strip in the last 10 seconds of a rest longer than 15 seconds, with the remaining time as m:ss.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRestOver": "Rest over",
+  "trainingRestOverElapsed": "+{time}",
+  "@trainingRestOverElapsed": {
+    "description": "How long ago the rest ended, as m:ss, beside Rest over on the rest strip.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRestNotificationTitle": "Rest timer",
+  "trainingRestNotificationCountdown": "Rest",
+  "trainingRestNotificationGetReady": "Get ready · {exercise} · Set {number}",
+  "@trainingRestNotificationGetReady": {
+    "description": "The notification 10 seconds before a rest ends, naming the Set that comes next.",
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      },
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingRestNotificationPrepare": "{exercise} · Set {number} in {time}",
+  "@trainingRestNotificationPrepare": {
+    "description": "The notification 3 seconds before a rest ends, naming the Set that comes next, with the time as m:ss.",
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      },
+      "number": {
+        "type": "int"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRestNotificationOver": "Rest over",
   "trainingPersonalRecordTooltip": "Personal record",
   "trainingReorderSetLabel": "Reorder set",
   "trainingDecreaseDimensionTooltip": "Decrease {dimension}",
@@ -1223,6 +1296,18 @@
   "templateUpdateNotLinkedMessage": "This workout didn't start from a saved workout.",
   "templateUpdateGroupsChangedNote": "Exercise groups changed",
   "templateUpdateNoChangesNote": "No changes to update",
+  "templateChangeAdd": "Add {exercise}",
+  "@templateChangeAdd": {
+    "placeholders": {"exercise": {"type": "String"}}
+  },
+  "templateChangeRemove": "Remove {exercise}",
+  "@templateChangeRemove": {
+    "placeholders": {"exercise": {"type": "String"}}
+  },
+  "templateChangeSets": "{exercise}: sets changed",
+  "@templateChangeSets": {
+    "placeholders": {"exercise": {"type": "String"}}
+  },
   "templateStartNoExercises": "No exercises",
   "templateStartEmptyTitle": "\"{name}\" has no exercises",
   "@templateStartEmptyTitle": {
