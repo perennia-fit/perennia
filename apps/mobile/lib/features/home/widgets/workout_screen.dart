@@ -378,9 +378,25 @@ class _WorkoutContent extends ConsumerWidget {
                   exerciseGroups: workout.exerciseGroups,
                   isWorkoutOpen: workout.isOpen,
                   // The Workout screen stays: its cards follow the stream.
-                  onReplace: (exercise) => unawaited(
-                    replaceExercise(context, ref, exercise.id),
-                  ),
+                  onReplace: (exercise) {
+                    // Read now: Replace awaits the picker and the write.
+                    final messenger = ScaffoldMessenger.of(context);
+                    final route = ModalRoute.of(context);
+                    unawaited(
+                      replaceExercise(
+                        context,
+                        ref,
+                        exercise.id,
+                        show: (c) => showTrainingSnackBar(
+                          messenger,
+                          c.message,
+                          route: route,
+                          undoLabel: c.undoLabel,
+                          onUndo: c.onUndo,
+                        ),
+                      ),
+                    );
+                  },
                   onRemove: (exercise) {
                     return _removeExerciseFromWorkout(
                       context,

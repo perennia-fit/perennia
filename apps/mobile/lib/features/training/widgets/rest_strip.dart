@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../services/timer_background_scheduler.dart';
+import 'training_confirmation.dart';
 
 final restTimerAlertProvider = Provider<RestTimerAlert>(
   (ref) => const SystemRestTimerAlert(),
@@ -46,22 +48,39 @@ class SystemRestTimerAlert implements RestTimerAlert {
   }
 }
 
-/// Shows "Background timer alerts are off" when scheduling the background
-/// notification was refused; the in-app timer runs either way.
+/// Shows [message] ("Background timer alerts are off") through [show] when
+/// scheduling the background notification was refused; the in-app timer runs
+/// either way.
+///
+/// It shows once per app run and never over a confirmation with Undo: while
+/// [undoShowing] is true, the show step goes to [whenUndoEnds]. Without these
+/// two rules, a lifter who denied notifications would lose Undo on every Log
+/// set. The flag is set when the message shows, not when it is requested, so
+/// a screen closed during the wait does not use up the one showing.
 void notifyIfBackgroundAlertsDenied(
-  BuildContext context,
-  TimerBackgroundPermissionStatus status,
-) {
-  if (status != TimerBackgroundPermissionStatus.denied || !context.mounted) {
+  TimerBackgroundPermissionStatus status, {
+  required String message,
+  required ShowTrainingConfirmation show,
+  required bool Function() undoShowing,
+  required ValueChanged<VoidCallback> whenUndoEnds,
+}) {
+  if (status != TimerBackgroundPermissionStatus.denied ||
+      RestStrip._backgroundAlertsNoticeShown) {
     return;
   }
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        context.l10n.trainingBackgroundAlertsDenied,
-      ),
-    ),
-  );
+  void showNotice() {
+    if (RestStrip._backgroundAlertsNoticeShown) {
+      return;
+    }
+    RestStrip._backgroundAlertsNoticeShown = true;
+    show(TrainingConfirmation(message: message));
+  }
+
+  if (undoShowing()) {
+    whenUndoEnds(showNotice);
+  } else {
+    showNotice();
+  }
 }
 
 /// A rest as "m:ss" (minutes not capped at 59), for Rest after and the strip.
@@ -83,6 +102,14 @@ String formatRestDuration(Duration duration) {
 /// ticker, the 3-2-1 prepare cue, the end alert and the background
 /// schedule) is never torn down mid-rest, and no other screen fires a rest
 /// alert.
+///
+/// It is also the screen's status row: while [confirmation] is set, it draws
+/// that message in place of the running or idle content, with a crossfade.
+/// Only the drawing changes: the ticker and the cues keep running under the
+/// message, and the rest shows again when it ends.
+///
+/// For a moment after a message with Undo ends, what replaced it ignores taps:
+/// see [_RestStripState._ignoreTapsAfterUndoEnded].
 class RestStrip extends ConsumerStatefulWidget {
   const RestStrip({
     super.key,
@@ -92,6 +119,10 @@ class RestStrip extends ConsumerStatefulWidget {
     required this.enableTicker,
     required this.revision,
     required this.onAlertVolumeChanged,
+    required this.onConfirmation,
+    required this.undoShowing,
+    required this.whenUndoEnds,
+    this.confirmation,
   });
 
   static const stripKey = Key('training.restStrip');
@@ -104,6 +135,15 @@ class RestStrip extends ConsumerStatefulWidget {
 
   static Key adjustKey(int seconds) {
     return Key('training.restStrip.adjust.$seconds');
+  }
+
+  /// Whether "Background timer alerts are off" has shown in this app run.
+  static bool _backgroundAlertsNoticeShown = false;
+
+  /// The flag above lives for the whole test isolate.
+  @visibleForTesting
+  static void resetBackgroundAlertsNoticeForTesting() {
+    _backgroundAlertsNoticeShown = false;
   }
 
   final String workoutId;
@@ -123,6 +163,20 @@ class RestStrip extends ConsumerStatefulWidget {
   /// which Log set's timer starts with.
   final ValueChanged<double> onAlertVolumeChanged;
 
+  /// Shows a message on this strip's row, through the screen that owns it.
+  final ShowTrainingConfirmation onConfirmation;
+
+  /// Whether a message must not be replaced yet; see
+  /// [notifyIfBackgroundAlertsDenied].
+  final bool Function() undoShowing;
+
+  /// Holds a message until the confirmation with Undo ends.
+  final ValueChanged<VoidCallback> whenUndoEnds;
+
+  /// The message to show, if any. Its `sequence` keys the crossfade: a new
+  /// number swaps with a transition, the same number updates in place.
+  final ({TrainingConfirmation confirmation, int sequence})? confirmation;
+
   @override
   ConsumerState<RestStrip> createState() => _RestStripState();
 }
@@ -137,6 +191,11 @@ class _RestStripState extends ConsumerState<RestStrip> {
   double _alertVolume = RestTimerRepository.defaultAlertVolume;
   final _alertsInFlight = <String>{};
   final _prepareAlertsInFlight = <String>{};
+
+  /// Whether the switcher's current child ignores taps; a tap inside the
+  /// crossfade then reaches the outgoing child under it.
+  bool _ignoringTaps = false;
+  Timer? _ignoringTapsTimer;
 
   @override
   void initState() {
@@ -162,10 +221,35 @@ class _RestStripState extends ConsumerState<RestStrip> {
       _renderedTimerId = null;
       _now = DateTime.now().toUtc();
     }
+    final previous = oldWidget.confirmation;
+    if (previous != null &&
+        previous.confirmation.onUndo != null &&
+        previous.sequence != widget.confirmation?.sequence) {
+      _ignoreTapsAfterUndoEnded();
+    }
+  }
+
+  /// Undo draws at the row's trailing edge, the same place as Stop, and a
+  /// finger is often on its way there when the message ends: Undo's own
+  /// second tap of a double tap, or a tap a moment too late. Reaching Stop
+  /// would cancel the rest and its background schedule with no way back, so
+  /// what replaced the message takes no taps for one double tap's length.
+  ///
+  /// This is a timer, not the crossfade's status, because the crossfade has
+  /// no length under Reduce Motion, and a double tap outlasts 150 ms.
+  void _ignoreTapsAfterUndoEnded() {
+    _ignoringTaps = true;
+    _ignoringTapsTimer?.cancel();
+    _ignoringTapsTimer = Timer(kDoubleTapTimeout, () {
+      if (mounted) {
+        setState(() => _ignoringTaps = false);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _ignoringTapsTimer?.cancel();
     _ticker?.cancel();
     super.dispose();
   }
@@ -219,6 +303,7 @@ class _RestStripState extends ConsumerState<RestStrip> {
     final running = timer != null &&
         timer.status == RestTimerStatus.running &&
         remaining > Duration.zero;
+    final shown = widget.confirmation;
 
     return DecoratedBox(
       key: RestStrip.stripKey,
@@ -228,9 +313,35 @@ class _RestStripState extends ConsumerState<RestStrip> {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppDimens.dense),
-        child: running
-            ? _buildRunning(context, timer, remaining)
-            : _buildIdle(context),
+        child: AnimatedSwitcher(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 150),
+          // The default centres its children; the strip's content starts at
+          // the leading edge.
+          layoutBuilder: (currentChild, previousChildren) => Stack(
+            alignment: AlignmentDirectional.centerStart,
+            children: [
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          ),
+          child: KeyedSubtree(
+            // One key for both phases: running and idle swap with no
+            // transition.
+            key: shown != null
+                ? ValueKey<int>(shown.sequence)
+                : const ValueKey('phase'),
+            child: IgnorePointer(
+              ignoring: _ignoringTaps,
+              child: shown != null
+                  ? _ConfirmationContent(shown.confirmation)
+                  : running
+                      ? _buildRunning(context, timer, remaining)
+                      : _buildIdle(context),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -359,7 +470,13 @@ class _RestStripState extends ConsumerState<RestStrip> {
     if (timer != null) {
       final status = await _scheduleBackground(timer);
       if (mounted) {
-        notifyIfBackgroundAlertsDenied(context, status);
+        notifyIfBackgroundAlertsDenied(
+          status,
+          message: context.l10n.trainingBackgroundAlertsDenied,
+          show: widget.onConfirmation,
+          undoShowing: widget.undoShowing,
+          whenUndoEnds: widget.whenUndoEnds,
+        );
       }
     }
     _refreshTimer();
@@ -485,6 +602,55 @@ class _RestStripState extends ConsumerState<RestStrip> {
 
 /// −15 s or +15 s: a text button, since no icon reads as fifteen seconds;
 /// the screen reader hears [label] ("Rest 15 seconds less").
+/// A [TrainingConfirmation] in the strip's row. Only the message is a live
+/// region, so a screen reader reads each one once and never the countdown.
+class _ConfirmationContent extends StatelessWidget {
+  const _ConfirmationContent(this.confirmation);
+
+  final TrainingConfirmation confirmation;
+
+  @override
+  Widget build(BuildContext context) {
+    final onUndo = confirmation.onUndo;
+    final undoLabel = confirmation.undoLabel;
+    // The minimum height is the Undo button's: without it, the strip's height
+    // jumps between Log set's first message and its Undo version, moving the
+    // form.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                confirmation.message,
+                key: confirmation.textKey,
+                style: context.textStyles.label.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          if (onUndo != null && undoLabel != null)
+            TextButton(
+              style: TextButton.styleFrom(
+                minimumSize: const Size(
+                  AppDimens.touchTarget,
+                  AppDimens.touchTarget,
+                ),
+              ),
+              onPressed: onUndo,
+              child: Text(undoLabel),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AdjustButton extends StatelessWidget {
   const _AdjustButton({
     required this.seconds,

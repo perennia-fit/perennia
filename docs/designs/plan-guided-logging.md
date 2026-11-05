@@ -784,6 +784,8 @@ carry-forward, a sync or an Agent write).
 4.  Show the confirmation within one frame: "Set *n* logged", without an
     action yet. *n* is the logged Set's 1-based place among the exercise's
     Sets (for a new Set, its count after the write).
+    On the Training Screen the confirmation shows in the rest strip's row (see
+    [Workout Feedback](workout-feedback.md#2-the-status-row)).
 5.  Await `logSet`. Steps 5 to 8 run inside a `try`/`finally` that clears
     `logInFlight` after step 8, not when `logSet` returns: the Sets stream
     re-emits as soon as the write commits, so a second tap while the rest
@@ -903,10 +905,13 @@ new ⋮ button (48 dp) on each Workout screen card with **Replace exercise**,
 in place of the card's chevron (with the drag handle beside it, a chevron
 too would leave a 360 dp card's name narrower than its progress count).
 Both call `Future<String?> replaceExercise(BuildContext, WidgetRef, String
-workoutExerciseId)` in `replace_exercise.dart`: it opens the existing
-`ExerciseCatalogPicker` in a modal sheet with `initialFocusId` set to the
-Workout's Focus, calls `replace`, shows "Replaced" with **Undo** or "Already in
-this workout", and returns the new id (null when cancelled or refused). The
+workoutExerciseId, {required ShowTrainingConfirmation show})` in
+`replace_exercise.dart`: it opens the existing `ExerciseCatalogPicker` in a
+modal sheet with `initialFocusId` set to the Workout's Focus, calls `replace`,
+shows "Replaced" with **Undo** or "Already in this workout", and returns the new
+id (null when cancelled or refused). On the Training Screen the confirmation
+shows in the rest strip's row (see
+[Workout Feedback](workout-feedback.md#2-the-status-row)). The
 Training Screen switches to the new id; the Workout screen stays. A Training
 Screen open on the new id when Undo succeeds switches back to the old one,
 wherever the Replace started: the Workout screen's "Replaced" confirmation
