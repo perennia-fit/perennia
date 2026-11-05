@@ -26,6 +26,12 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Changed
 
+- **The Platform Exercise Library drops 162 near-duplicates** (1,745 to 1,583
+  exercises), such as "Benchpress Dumbbells" alongside "Dumbbell Bench Press".
+  On a device that already has a removed exercise it is archived, so sets
+  logged under it keep their history. The Endurance, Weights and
+  Calisthenics staples now offer Running, Skipping - Standard, Overhead
+  Barbell Press and Full Plank.
 - **`batchWriteAgentMeal` writes only the Meal fields a request sends.** An
   absent field keeps its stored value, `null` clears `endedAt` or
   `deletedAt`, a request with only entries leaves the Meal untouched, and

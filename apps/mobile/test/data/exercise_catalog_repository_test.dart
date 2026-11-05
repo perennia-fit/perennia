@@ -52,7 +52,7 @@ void main() {
       expect(seed.metadata.licenseSummary, contains('Workout.cool'));
       expect(seed.metadata.licenseSummary, contains('MIT'));
       expect(seed.metadata.licenseSummary, contains('provenance'));
-      expect(seed.exercises, hasLength(greaterThan(1700)));
+      expect(seed.exercises, hasLength(greaterThan(1500)));
       final categoriesById = <String, SeedExerciseCategory>{
         for (final category in seed.categories) category.id: category,
       };
