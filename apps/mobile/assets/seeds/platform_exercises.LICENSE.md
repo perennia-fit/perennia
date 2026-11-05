@@ -52,7 +52,7 @@ license id/title reported by wger.
 
 ### CC-BY-SA 3
 
-Distinct source author count: 37.
+Distinct source author count: 36.
 
 - andikeller
 - aszc
@@ -68,7 +68,6 @@ Distinct source author count: 37.
 - http://www.bodybuilding.com/
 - http://www.carinatum.com/
 - http://www.exrx.net/WeightExercises/Brachialis/DBC
-- J120290,cerin
 - klabautermann
 - kwrindy
 - lakerbeezel
@@ -94,17 +93,15 @@ Distinct source author count: 37.
 
 ### CC-BY-SA 4
 
-Distinct source author count: 179.
+Distinct source author count: 169.
 
 - 2dPREtEZP221u68Akf0JImv5L48
 - 3leh
 - 54str
 - 6LXBO
 - aahuja
-- abeworld
 - aboksz
 - abuono
-- admin
 - AlucardEvil40
 - amaesc
 - Anastasious
@@ -113,7 +110,6 @@ Distinct source author count: 179.
 - Antsy6277
 - apeschel
 - arson
-- ataraxie67
 - baldurmen
 - barry
 - bbayuwega
@@ -146,7 +142,6 @@ Distinct source author count: 179.
 - daniel.escada
 - Davidgj32
 - Deflation
-- delta@romeo
 - deusinvictus
 - DiscoCop
 - donaddon
@@ -206,7 +201,6 @@ Distinct source author count: 179.
 - McMarcel13
 - meldun
 - Metin
-- mhe
 - mike6426
 - Mikko Ruohola
 - MisterPinnacle
@@ -218,7 +212,6 @@ Distinct source author count: 179.
 - Nash
 - nate303303
 - nishant0712
-- notdefine
 - novadani
 - oboema
 - painDpice
@@ -226,7 +219,6 @@ Distinct source author count: 179.
 - PaukOne
 - Paul@Chemistry
 - pera_perkan
-- Pete
 - philip
 - phpi
 - polloperro
@@ -240,7 +232,6 @@ Distinct source author count: 179.
 - Rottekongen
 - schweezer
 - schwolfar
-- sebk
 - Settebello
 - sevae
 - Shiladree
@@ -252,8 +243,6 @@ Distinct source author count: 179.
 - student1234
 - taylorbarbell
 - tdprice12
-- technofer
-- tekknokrat@gmx.de
 - tenebrizz
 - teus_ergaster
 - Tierrasverdes
