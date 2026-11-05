@@ -776,6 +776,11 @@ the screen that opened the Workout.
     of 90% of the screen. Its body is a `SingleChildScrollView` inside a
     `SafeArea`, so at 2× text it scrolls instead of overflowing.
 
+*   **Closing.** Done, a swipe-down and Back close the sheet. A tap on the
+    scrim does not. The Finish button sits above the rising sheet, so the second
+    tap of a double tap on Finish lands on the scrim, and closing there would
+    pop the Workout screen before the user saw the New Bests or the Update row.
+
 *   **Data.** The sheet watches `workoutSummaryProvider(workoutId)`, the
     provider the Workout screen reads its `HomeWorkoutSummary` from, so it sees
     the finished `endedAt`. It shows:
@@ -1954,8 +1959,9 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         context, {required String workoutId, required
         TemplateDivergenceSummary? divergenceSummary})`.
     *   **Presentation.** `showModalBottomSheet` with `isScrollControlled:
-        true` and `BoxConstraints(maxHeight: 0.9 × screen height)`; the body
-        is a `SingleChildScrollView` inside a `SafeArea`.
+        true`, `isDismissible: false` and `BoxConstraints(maxHeight: 0.9 ×
+        screen height)`; the body is a `SingleChildScrollView` inside a
+        `SafeArea`.
     *   **`FinishSummarySheet`** is a `ConsumerStatefulWidget`. It watches
         `workoutSummaryProvider(workoutId)` and
         `progressNewBestsBetweenProvider((day, day))`, with `day =
@@ -2046,6 +2052,8 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         failure text and stays enabled;
     *   Copy summary puts the text on the clipboard;
     *   Done and a swipe-down both pop the Workout screen;
+    *   a tap on the scrim leaves the sheet open, both the second tap of a
+        double tap on Finish while the sheet rises and a tap once it settles;
     *   an unlinked or undiverged Workout has no Update row;
     *   at `textScaler: 2.0` no text is clipped and the sheet scrolls.
     *   The New Bests read runs `compute`, so these tests wrap it in

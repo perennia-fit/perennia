@@ -25,6 +25,11 @@ const _copiedFeedbackDuration = Duration(seconds: 2);
 ///
 /// The drag handle keeps a swipe-down working when the body scrolls at 2x
 /// text, where a drag on the body moves the scroll view rather than the sheet.
+///
+/// A tap on the scrim does not close it. The Finish button sits above the
+/// rising sheet, so the second tap of a double tap on Finish lands on the
+/// scrim, and closing there would pop the Workout screen before the user saw
+/// the New Bests or the Update row. Done, a swipe-down and Back all close it.
 Future<void> showFinishSummarySheet(
   BuildContext context, {
   required String workoutId,
@@ -33,6 +38,7 @@ Future<void> showFinishSummarySheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    isDismissible: false,
     showDragHandle: true,
     constraints: BoxConstraints(
       maxHeight: MediaQuery.sizeOf(context).height * 0.9,

@@ -617,6 +617,53 @@ void main() {
     await _expectBackAtOpener(tester);
   });
 
+  _testSheet('the second tap of a double tap on Finish leaves the sheet open', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    await _openWorkoutScreen(tester, repositories, fixture.workoutId);
+
+    final finish = find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId));
+    final finishCenter = tester.getCenter(finish);
+    await tester.tap(finish);
+    await _waitFor(tester, () => _isShown(find.byType(BottomSheet)));
+
+    // The sheet is still rising below the button, so this lands on the scrim.
+    expect(tester.getRect(find.byType(BottomSheet)).top,
+        greaterThan(finishCenter.dy));
+    await tester.tapAt(finishCenter);
+    await _settle(tester);
+
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+    expect(find.byType(WorkoutScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await _expectBackAtOpener(tester);
+  });
+
+  _testSheet('a tap above the settled sheet leaves it open', (tester) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    await _openWorkoutScreen(tester, repositories, fixture.workoutId);
+
+    await tester
+        .tap(find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId)));
+    await _waitFor(
+        tester, () => _isShown(find.byKey(FinishSummarySheet.doneKey)));
+    await _settle(tester);
+
+    final sheetTop = tester.getRect(find.byType(BottomSheet)).top;
+    expect(sheetTop, greaterThan(20));
+    await tester.tapAt(Offset(200, sheetTop / 2));
+    await _settle(tester);
+
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+    expect(find.byType(WorkoutScreen), findsOneWidget);
+  });
+
   _testSheet('at 2x text a long list scrolls inside the sheet', (tester) async {
     final fixture = (await tester.runAsync(() async {
       final workoutId = await repositories.workoutSessions.create(
