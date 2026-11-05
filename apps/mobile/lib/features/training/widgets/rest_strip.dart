@@ -329,6 +329,10 @@ class _RestStripState extends ConsumerState<RestStrip> {
   /// the app, an end that passed in the background, and a reopen after 0:00.
   /// It plays nothing; only the end cue does.
   ///
+  /// The cancel reaches native before the row's write can turn the in-app claim
+  /// off, because a notification that has already fired can no longer be
+  /// removed: on iOS the cancel is what keeps it silent from then on.
+  ///
   /// It runs only while the app is visible AND this strip's route is current,
   /// not whenever the app is visible. The aligned Dart tick lands at the
   /// deadline, normally before the native service's unaligned tick. A covered
@@ -795,7 +799,8 @@ class _RestStripState extends ConsumerState<RestStrip> {
   /// again at the new deadline; when the adjust left no time, it is not
   /// rescheduled, because the strip plays and marks the end right away. A
   /// deadline rounded up to the next second still schedules: native posts
-  /// nothing while the strip plays the cues. A refused permission was already
+  /// nothing while the strip plays the cues, and iOS presents nothing for a
+  /// rest cancelled while that schedule is on its way. A refused permission was already
   /// reported when the rest started, so it is not reported again on every tap.
   Future<void> _adjust(RestTimerRecord timer, Duration delta) async {
     final repository = ref.read(trainingRepositoriesProvider).restTimers;

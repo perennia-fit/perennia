@@ -533,6 +533,13 @@ rest with one boolean, `setInAppTimerCues {active: bool}`:
     rests.
 *   **Native posts a cue's notification** unless the app is visible and the
     value is true.
+*   **On iOS, a cancelled rest stays silent.** Removing a request cannot stop
+    one the system has already fired, or one still on its way to being added,
+    and the value goes false as soon as the strip writes the end. So
+    `AppDelegate` remembers the rests it was told to cancel until they are
+    scheduled again, `willPresent` presents nothing for those, and a schedule
+    that a cancel overtook is removed once its requests are added. The strip
+    sends the cancel before the row's write can turn the value false.
 
 **Playing a cue.** `TimerCuePlayer` has two methods, `prepare()` and
 `play(TimerCue cue, {required double volume})`, where `TimerCue` is
@@ -638,9 +645,9 @@ name (`android.resource://<pkg>/raw/<name>`), which no later file can shift:
     *   A getReady or prepare request whose fire time is less than 0.5 s away
         is not added.
     *   `willPresent` returns, for a timer notification: on iOS 14 and later,
-        `[]` when in-app cues are active, else `[.banner, .sound]`; on iOS 13
-        (the deployment target), `[]` or `[.alert, .sound]`. Protocol
-        reminders are unchanged.
+        `[]` when in-app cues are active or its rest was cancelled, else
+        `[.banner, .sound]`; on iOS 13 (the deployment target), `[]` or
+        `[.alert, .sound]`. Protocol reminders are unchanged.
 
 **Rest timer sounds off.** On Android 8 and later a notification's sound and
 vibration come from its channel, and the per-notification `setSound(null)` and
@@ -1503,20 +1510,27 @@ rest timer notifications on Android 8 and later."
     *   **In-app cues flag.** `private var inAppCuesActive = false`, set to
         false in `didInitializeImplicitFlutterEngine` before the timer channel
         is registered.
+    *   **Cancelled rests.** `private var cancelledTimerIds = Set<String>()`,
+        read and written on the main thread.
     *   **New channel methods:** `prepareCues` and `playCue` go through
         `TimerCueSounds`; `setInAppTimerCues {active}` sets the flag.
     *   **`scheduleTimer`:**
+        *   removes `timerId` from `cancelledTimerIds` first, before it waits
+            for the notification settings, and once its requests are added
+            removes them again if `timerId` is back in the set;
         *   adds the `getReadyIdentifier(timerId)` request
             (`"getReady:\(timerId)"`) at the deadline minus 10 s, with
             `GetReady.caf` and `getReadyText`, when `getReadyText` is present;
         *   the prepare request uses `prepareText`;
         *   a getReady or prepare request whose fire time is less than 0.5 s
             away is not added (today's `max(1.0, …)` is removed for both).
-    *   **`cancelTimer`** removes the get-ready identifier with the others.
-    *   **`willPresent`,** for a timer notification: iOS 14 and later, `[]`
-        when `inAppCuesActive`, else `[.banner, .sound]`; iOS 13, `[]` or
-        `[.alert, .sound]`. The `#available` branch stays. Protocol reminders
-        are unchanged.
+    *   **`cancelTimer`** inserts `timerId` into `cancelledTimerIds` and removes
+        the get-ready identifier with the others.
+    *   **`willPresent`,** for a timer notification, on the main thread: iOS 14
+        and later, `[]` when `inAppCuesActive` or the notification's
+        `userInfo` `timerId` is in `cancelledTimerIds`, else
+        `[.banner, .sound]`; iOS 13, `[]` or `[.alert, .sound]`. The
+        `#available` branch stays. Protocol reminders are unchanged.
 
 #### `apps/mobile/ios/Runner/TimerCueSounds.swift` (Create)
 
@@ -1833,9 +1847,11 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         open: the get-ready tone at 0:10 with the strip reading
         "Get ready · 0:10", beeps as the strip shows 0:03, 0:02 and 0:01, the
         end tone at 0:00 with "Rest over · +0:00", the music ducking and
-        coming back after each tone, and no heads-up or banner. The shade holds
-        no rest notification after the end tone, nor after Stop during another
-        rest.
+        coming back after each tone, and no heads-up or banner. The end plays
+        once, with no banner or second tone after it. The shade holds no rest
+        notification after the end tone, nor after Stop during another rest.
+        Repeat with −15 s taps that take the rest to zero: the end plays once,
+        and no banner or tone follows about 1 s later.
     3.  **CUJ 4.** The same rest with the app in the background: notifications
         "Get ready · *Exercise* · Set *k*", "*Exercise* · Set *k* in 0:03" and
         "Rest over", each with its tone. Reopening after 0:00 shows

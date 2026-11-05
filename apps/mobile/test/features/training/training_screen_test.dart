@@ -1605,6 +1605,12 @@ void main() {
         await _settleRepositoryWork(tester);
 
         expect(scheduler.inAppTimerCues, <bool>[true, false]);
+        // iOS keeps an end notification that already fired silent by its
+        // cancel, once the claim is off: the cancel must get there first.
+        expect(
+          scheduler.cueCalls,
+          <String>['inAppCues:true', 'cancel:${rest.id}', 'inAppCues:false'],
+        );
       });
 
       _testTrainingScreen(
@@ -5496,6 +5502,9 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
   final cancels = <String>[];
   final inAppTimerCues = <bool>[];
 
+  /// Cancels and in-app cue values together, in the order native receives them.
+  final cueCalls = <String>[];
+
   @override
   Future<TimerBackgroundPermissionStatus> requestPermissionIfNeeded() async {
     return status;
@@ -5517,11 +5526,13 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
   @override
   Future<void> cancel(String timerId) async {
     cancels.add(timerId);
+    cueCalls.add('cancel:$timerId');
   }
 
   @override
   Future<void> setInAppTimerCues(bool active) async {
     inAppTimerCues.add(active);
+    cueCalls.add('inAppCues:$active');
   }
 }
 

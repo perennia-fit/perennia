@@ -16,6 +16,14 @@ import UserNotifications
   // decides whether a timer notification presents.
   private var inAppCuesActive = false
 
+  // The rests whose schedule Dart has cancelled and not scheduled again. Removing
+  // a request does not stop one the system has already fired, or one still on its
+  // way to `center.add`, and by then `inAppCuesActive` can be false: without this,
+  // an end the strip already played would also present a banner and its sound.
+  // Read and written only on the main thread. One short id per rest, for the life
+  // of the process.
+  private var cancelledTimerIds = Set<String>()
+
   // a cold-start tap arrives before Flutter registers its callback.
   // Buffer the payload until `timerNotificationsReady` drains it.
   private var flutterReady = false
@@ -150,6 +158,8 @@ import UserNotifications
       return
     }
 
+    cancelledTimerIds.remove(timerId)
+
     let soundEnabled = (arguments["soundEnabled"] as? Bool) ?? true
     let getReadyText = arguments["getReadyText"] as? String
     let userInfo: [String: Any] = [
@@ -239,6 +249,13 @@ import UserNotifications
         }
       }
       group.notify(queue: .main) {
+        // Cancelled while these were on their way: the cancel's removal found
+        // nothing, so they would still fire, even in the background.
+        if self.cancelledTimerIds.contains(timerId) {
+          center.removePendingNotificationRequests(withIdentifiers: [
+            timerId, self.prepareIdentifier(timerId), self.getReadyIdentifier(timerId),
+          ])
+        }
         if let scheduleError {
           self.complete(
             result,
@@ -269,6 +286,8 @@ import UserNotifications
       )
       return
     }
+
+    cancelledTimerIds.insert(timerId)
 
     let center = UNUserNotificationCenter.current()
     let ids = [timerId, prepareIdentifier(timerId), getReadyIdentifier(timerId)]
@@ -307,22 +326,31 @@ import UserNotifications
   ) {
     // A Supplement reminder shows as a banner and stays in the list.
     // A rest timer's cue has exactly one player: nothing here while a strip on
-    // the current route plays it in the app, else this notification's banner
-    // and sound (on another screen of the app, the only cue left).
+    // the current route plays it in the app or after its rest was cancelled, else
+    // this notification's banner and sound (on another screen of the app, the only
+    // cue left).
     // `.banner` and `.list` need iOS 14; iOS 13 shows both as an alert.
-    let isReminder = protocolReminderDate(notification.request.content.userInfo) != nil
-    if isReminder {
+    let userInfo = notification.request.content.userInfo
+    if protocolReminderDate(userInfo) != nil {
       if #available(iOS 14.0, *) {
         completionHandler([.banner, .list])
       } else {
         completionHandler([.alert])
       }
-    } else if inAppCuesActive {
-      completionHandler([])
-    } else if #available(iOS 14.0, *) {
-      completionHandler([.banner, .sound])
-    } else {
-      completionHandler([.alert, .sound])
+      return
+    }
+    let timerId = userInfo["timerId"] as? String
+    // On the main thread because the channel writes both values there: the system
+    // does not promise which thread calls this, and a Set is not safe to share.
+    DispatchQueue.main.async {
+      let cancelled = timerId.map { self.cancelledTimerIds.contains($0) } ?? false
+      if self.inAppCuesActive || cancelled {
+        completionHandler([])
+      } else if #available(iOS 14.0, *) {
+        completionHandler([.banner, .sound])
+      } else {
+        completionHandler([.alert, .sound])
+      }
     }
   }
 
