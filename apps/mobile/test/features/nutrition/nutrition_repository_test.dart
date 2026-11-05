@@ -3137,6 +3137,120 @@ void main() {
         isEmpty,
       );
     });
+
+    group('watchMeal (the Meal screen follows one Meal, §6)', () {
+      Future<void> waitFor(bool Function() condition) async {
+        final deadline = DateTime.now().add(const Duration(seconds: 2));
+        while (!condition()) {
+          if (DateTime.now().isAfter(deadline)) {
+            fail('Timed out waiting for the watched Meal.');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+      }
+
+      List<NutritionDayMealRecord?> watch(String mealId) {
+        final emissions = <NutritionDayMealRecord?>[];
+        final subscription =
+            repositories.nutrition.watchMeal(mealId).listen(emissions.add);
+        addTearDown(() => subscription.cancel());
+        return emissions;
+      }
+
+      test('emits the Meal again once a Food Entry is added', () async {
+        final meal = pendingMeal(
+          startedAt: DateTime(2026, 6, 26, 12, 30),
+          mealTypeName: 'Lunch',
+        );
+        await repositories.nutrition.createMeal(meal);
+        final emissions = watch(meal.id);
+        await waitFor(() => emissions.isNotEmpty);
+        expect(emissions.last!.meal.id, meal.id);
+        expect(emissions.last!.entries, isEmpty);
+
+        final first = await repositories.nutrition.logQuickEntry(
+          target: ExistingMealTarget(meal.id),
+          entry: QuickFoodEntryDraft(
+            name: 'Rice',
+            nutrients: _energyAndMacros(energy: 200),
+          ),
+        );
+        final second = await repositories.nutrition.logQuickEntry(
+          target: ExistingMealTarget(meal.id),
+          entry: QuickFoodEntryDraft(
+            name: 'Chicken',
+            nutrients: _energyAndMacros(energy: 300),
+          ),
+        );
+
+        await waitFor(() => emissions.last?.entries.length == 2);
+        expect(
+          emissions.last!.entries.map((entry) => entry.id),
+          <String>[first.foodEntryId, second.foodEntryId],
+        );
+      });
+
+      test('still emits the Meal after its time moves across midnight',
+          () async {
+        await _insertMealRow(
+          database,
+          id: 'meal-watched',
+          // 23:50 at +01:00.
+          startedAt: DateTime.utc(2026, 6, 26, 22, 50),
+          localDate: '2026-06-26',
+          timezone: 'CET',
+          offsetMinutes: 60,
+        );
+        final emissions = watch('meal-watched');
+        await waitFor(() => emissions.isNotEmpty);
+        expect(
+          emissions.last!.meal.localDate,
+          NutritionDayDate(year: 2026, month: 6, day: 26),
+        );
+
+        // 00:10 the next day at +01:00.
+        await repositories.nutrition.updateMealTime(
+          'meal-watched',
+          DateTime.utc(2026, 6, 26, 23, 10),
+        );
+
+        await waitFor(
+          () =>
+              emissions.last?.meal.localDate ==
+              NutritionDayDate(year: 2026, month: 6, day: 27),
+        );
+        expect(emissions.last!.meal.id, 'meal-watched');
+        expect(emissions.last!.meal.clock, DateTime.utc(2026, 6, 27, 0, 10));
+      });
+
+      test('emits null once the Meal is deleted', () async {
+        final meal = pendingMeal(
+          startedAt: DateTime(2026, 6, 26, 19),
+          mealTypeName: 'Dinner',
+        );
+        await repositories.nutrition.logQuickEntry(
+          target: NewMealTarget(meal),
+          entry: QuickFoodEntryDraft(
+            name: 'Soup',
+            nutrients: _energyAndMacros(energy: 150),
+          ),
+        );
+        final emissions = watch(meal.id);
+        await waitFor(() => emissions.isNotEmpty);
+        expect(emissions.last, isNotNull);
+
+        await repositories.nutrition.deleteMeal(meal.id);
+
+        await waitFor(() => emissions.last == null);
+      });
+
+      test('emits null for an unknown id', () async {
+        final emissions = watch('meal-unknown');
+
+        await waitFor(() => emissions.isNotEmpty);
+        expect(emissions, <NutritionDayMealRecord?>[null]);
+      });
+    });
   });
 
   group('food history', () {

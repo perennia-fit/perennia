@@ -428,6 +428,7 @@ time. So the stored time is the time of the write, not the time the screen opene
 | `updateMealTime(String mealId, DateTime startedAt) → Future<String>` (new) | The Dose-model time edit from §1, and `time_precision = 'instant'`. Returns the Batch id. | Header on a saved Meal |
 | `updateMealType(String mealId, String mealTypeName) → Future<String>` (new) | Stores the Meal Type name. Returns the Batch id. | Header on a saved Meal |
 | `listMealHistory({DateTime? now, int limit = 20}) → Future<List<MealHistoryRecord>>` (new) | Nothing: the Meal History read from §5. | Your meals |
+| `watchMeal(String mealId) → Stream<NutritionDayMealRecord?>` (new) | Nothing: one Meal and its active Food Entries, reactive, null once archived | The Meal screen, which follows a Meal across days |
 | `deleteFoodEntry`, `updateFoodEntryPortion`, `deleteMeal` (existing, unchanged) | As today. | Remove an entry, edit a Portion, Delete meal |
 
 Two names differ from a plain reading of the table. NutritionRepository already had
@@ -543,8 +544,8 @@ filters, window and time rules.
 
 **It is a full-screen route**, `MealScreen` in
 `lib/features/nutrition/widgets/meal_screen.dart`, driven by `MealScreenController`, an
-`AutoDisposeNotifier` family keyed by `MealScreenArgs.newMeal(NutritionDayDate day)` or
-`MealScreenArgs.existing(String mealId)`. `MealScreen` has matching `MealScreen.newMeal`
+auto-dispose Riverpod 3 `Notifier` family keyed by
+`MealScreenArgs.newMeal(NutritionDayDate day)` or `MealScreenArgs.existing(String mealId)`. `MealScreen` has matching `MealScreen.newMeal`
 and `MealScreen.existing` constructors.
 
 | State | Header | Body | Actions |
@@ -1280,6 +1281,7 @@ during a first food and during Log again from the Meal screen; manual checks 1 t
 |---|---|
 | `apps/mobile/lib/features/nutrition/controllers/meal_screen_controller.dart` | Create. `MealScreenArgs` and the `MealScreenController` family (§6): the pending Meal, the saved Meal stream once written, the Meal History future, the recent-Meal shortcut, and the in-flight guard; it exposes the §6 states and calls the repository. |
 | `apps/mobile/lib/features/nutrition/widgets/meal_screen.dart` | Create. The full-screen route with the states and behaviour of §6. |
+| `apps/mobile/lib/data/repositories/training_repositories.dart` | Add watchMeal (added while implementing PR 3) |
 | `apps/mobile/lib/features/nutrition/widgets/meal_time_sheet.dart` | Create. The date and time pickers, the time-shift buttons, the Meal Type list and the future-time confirmation (§6). |
 | `apps/mobile/lib/features/nutrition/widgets/add_food_picker.dart`, `controllers/add_food_controller.dart` | Replace the required `MealRecord` with a `MealTarget`; render embedded in the Meal screen; route Quick Entry through `logQuickEntry(target: ...)`. Search, source chips, Your foods and the two-tap repeat are unchanged. |
 | `apps/mobile/lib/features/nutrition/widgets/log_portion_screen.dart` | Take a `MealTarget`; Save calls `logFoodEntrySnapshot` and pops with the saved Meal id. Add the prefilled edit mode whose Save calls `updateFoodEntryPortion`. |

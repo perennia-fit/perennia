@@ -4491,6 +4491,26 @@ class NutritionRepository {
     );
   }
 
+  /// One active Meal with its active Food Entries in position order, re-read
+  /// whenever either changes; null while the Meal is missing or archived.
+  ///
+  /// The Meal screen follows one Meal, not one day
+  /// (docs/designs/meal-logging.md §3, §6): a time edit across midnight moves
+  /// the Meal to another Nutrition Day (§1), and [watchNutritionDay] would
+  /// lose it there. Delete meal archives it, so the screen sees null and
+  /// closes.
+  Stream<NutritionDayMealRecord?> watchMeal(String mealId) {
+    return _watchNutritionRows(
+      _activeMealQuery(id: mealId).watch(),
+      (mealRows, entryRows, _) => mealRows.isEmpty
+          ? null
+          : NutritionDayMealRecord(
+              meal: _mealFromRow(mealRows.first),
+              entries: entryRows.map(_foodEntryFromRow),
+            ),
+    );
+  }
+
   Stream<T> _watchNutritionRows<T>(
     Stream<List<MealRow>> mealRows,
     T Function(
@@ -4586,12 +4606,16 @@ class NutritionRepository {
   }
 
   SimpleSelectStatement<$MealsTable, MealRow> _activeMealQuery({
+    String? id,
     NutritionDayDate? localDate,
     NutritionDayRange? range,
   }) {
     final query = _database.select(_database.meals)
       ..where((row) {
         var predicate = row.deletedAt.isNull();
+        if (id != null) {
+          predicate = predicate & row.id.equals(id);
+        }
         if (localDate != null) {
           predicate = predicate & row.localDate.equals(localDate.storageValue);
         }
