@@ -34,6 +34,7 @@ import '../../../theme/theme.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
 import 'start_workout_sheet.dart';
+import 'workout_duration.dart';
 import 'workout_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -1124,25 +1125,6 @@ String _formatTrainingDay(BuildContext context, TrainingDayDate localDate) {
   );
 }
 
-String _formatWorkoutDuration(AppLocalizations l10n, Duration? duration) {
-  if (duration == null || duration.isNegative) {
-    return l10n.workoutDurationInProgress;
-  }
-
-  final hours = duration.inHours;
-  final minutes = duration.inMinutes.remainder(60);
-  final seconds = duration.inSeconds.remainder(60);
-  if (hours > 0) {
-    return minutes == 0
-        ? l10n.workoutDurationHours(hours)
-        : l10n.workoutDurationHoursMinutes(hours, minutes);
-  }
-  if (minutes > 0) {
-    return l10n.workoutDurationMinutes(minutes);
-  }
-  return l10n.workoutDurationSeconds(seconds);
-}
-
 String _formatWorkoutTileSubtitle(
   BuildContext context,
   HomeWorkoutSummary workout,
@@ -1166,6 +1148,6 @@ String _formatWorkoutTileSubtitle(
           1 => context.l10n.workoutOneSet,
           final count => context.l10n.workoutSetCount(count),
         };
-  final duration = _formatWorkoutDuration(context.l10n, workout.duration);
+  final duration = formatWorkoutDuration(context.l10n, workout.duration);
   return '$status - $duration - $exerciseCount - $setCount';
 }

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart'
@@ -32,6 +31,9 @@ import '../../training/widgets/replace_exercise.dart';
 import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
+import 'copy_workout_summary.dart';
+import 'finish_summary_sheet.dart';
+import 'workout_duration.dart';
 
 class WorkoutScreen extends ConsumerWidget {
   const WorkoutScreen({
@@ -123,10 +125,6 @@ class WorkoutScreen extends ConsumerWidget {
 
   static Key deleteConfirmButtonKey(String workoutId) {
     return Key('workout.$workoutId.delete.confirm');
-  }
-
-  static Key finishedSnackBarShareActionKey(String workoutId) {
-    return Key('workout.$workoutId.finished.share');
   }
 
   static Key updateTemplateMenuButtonKey(String workoutId) {
@@ -467,7 +465,7 @@ class _WorkoutContent extends ConsumerWidget {
       return;
     }
 
-    final localDate = _workoutLocalDate(workout);
+    final localDate = workoutLocalDate(workout);
     final startedAt = localDate.atLocalTimeOf(_timeOfDayAsDateTime(picked));
     final endedAt = workout.endedAt?.toLocal();
     if (endedAt != null && !startedAt.isBefore(endedAt)) {
@@ -683,20 +681,21 @@ class _WorkoutContent extends ConsumerWidget {
     );
   }
 
+  /// The Workout is already finished when the sheet opens, so the sheet is
+  /// a summary, not a decision: there is nothing to go back to, and closing
+  /// it in any way (Done, a swipe-down, Back) returns to the screen that
+  /// opened this one.
+  ///
+  /// The pop uses the [NavigatorState] captured up front, not a
+  /// `context.mounted` guard: this widget can be rebuilt away while the sheet
+  /// is open (the Workout became unavailable, say), and the Workout screen
+  /// must still pop.
   Future<void> _finishWorkout(
     BuildContext context,
     HomeController controller,
     WidgetRef ref,
   ) async {
-    // Capture everything context-derived before the await: Finish pops this
-    // screen back to Home, so the SnackBar (and, if diverged, the update
-    // prompt) must be shown on state tied to the surviving Navigator, not to
-    // this (about to be popped) context. `l10n` itself is safe to hold past
-    // the pop — it's a plain resolved instance, not a live context view.
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final l10n = context.l10n;
-    final workoutId = workout.id;
     // Read (not watch): only touched when Finish is actually tapped, so
     // widget tests that never tap Finish never instantiate the real
     // Drift-backed repository behind this provider.
@@ -708,48 +707,20 @@ class _WorkoutContent extends ConsumerWidget {
     // finishing (setting endedAt) doesn't change them, so this can safely
     // happen before the write.
     final divergenceSummary =
-        await divergenceRepository.summaryForWorkout(workoutId);
+        await divergenceRepository.summaryForWorkout(workout.id);
 
-    await controller.finishWorkout(workoutId);
+    await controller.finishWorkout(workout.id);
     if (!context.mounted) {
       return;
     }
-    navigator.pop();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(l10n.workoutFinished),
-        // A SnackBar with an action otherwise stays until dismissed.
-        persist: false,
-        action: SnackBarAction(
-          key: WorkoutScreen.finishedSnackBarShareActionKey(workoutId),
-          label: l10n.workoutShareAction,
-          onPressed: () {
-            unawaited(
-              _shareWorkoutSummary(
-                messenger,
-                controller,
-                workoutId,
-                l10n.homeWorkoutSummaryCopied,
-              ),
-            );
-          },
-        ),
-      ),
+    await showFinishSummarySheet(
+      context,
+      workoutId: workout.id,
+      divergenceSummary: divergenceSummary,
     );
-
-    // The update prompt joins Finish's pop-to-Home + Share moment only when
-    // linked and diverged (ROUTINES.md §3.4) — never mid-workout, and never
-    // when there's nothing to ask about.
-    if (divergenceSummary == null || !divergenceSummary.hasDivergence) {
-      return;
+    if (navigator.mounted) {
+      navigator.pop();
     }
-    await _offerTemplateUpdate(
-      navigator: navigator,
-      messenger: messenger,
-      l10n: l10n,
-      divergenceRepository: divergenceRepository,
-      summary: divergenceSummary,
-    );
   }
 
   /// The overflow's "Update template" verb (ROUTINES.md §2, §3.4): available
@@ -786,9 +757,9 @@ class _WorkoutContent extends ConsumerWidget {
     );
   }
 
-  /// Shared by the Finish prompt and the overflow verb: shows the update
-  /// prompt, and — only on explicit confirmation — performs the atomic
-  /// capture-replace write. Dismissing resolves `false` and writes nothing.
+  /// Shows the overflow verb's update prompt, and — only on explicit
+  /// confirmation — performs the atomic capture-replace write. Dismissing
+  /// resolves `false` and writes nothing.
   Future<void> _offerTemplateUpdate({
     required NavigatorState navigator,
     required ScaffoldMessengerState messenger,
@@ -821,24 +792,12 @@ class _WorkoutContent extends ConsumerWidget {
   ) async {
     final messenger = ScaffoldMessenger.of(context);
     final copiedMessage = context.l10n.homeWorkoutSummaryCopied;
-    await _shareWorkoutSummary(
-        messenger, controller, workout.id, copiedMessage);
-  }
-
-  /// Shared by the overflow "Share Workout" action and the Finish snackbar's
-  /// Share action. Takes a [ScaffoldMessengerState] rather than a
-  /// [BuildContext] so it works even after the WorkoutScreen that started it
-  /// has been popped (the Finish flow pops back to Home before this runs).
-  Future<void> _shareWorkoutSummary(
-    ScaffoldMessengerState messenger,
-    HomeController controller,
-    String workoutId,
-    String copiedMessage,
-  ) async {
-    final summary = await controller.shareWorkout(workoutId);
-    await Clipboard.setData(ClipboardData(text: summary));
+    await copyWorkoutSummary(controller, workout.id);
     messenger.showSnackBar(
-      SnackBar(content: Text(copiedMessage)),
+      SnackBar(
+        content: Text(copiedMessage),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
@@ -897,11 +856,6 @@ class _WorkoutContent extends ConsumerWidget {
     }
     return true;
   }
-}
-
-TrainingDayDate _workoutLocalDate(HomeWorkoutSummary workout) {
-  return workout.localDate ??
-      TrainingDayDate.fromDateTime(workout.startedAt.toLocal());
 }
 
 DateTime _timeOfDayAsDateTime(TimeOfDay time) {
@@ -1002,7 +956,7 @@ class _WorkoutHeader extends StatelessWidget {
                   ],
                 ),
                 Text(
-                  _formatWorkoutDuration(context.l10n, workout.duration),
+                  formatWorkoutDuration(context.l10n, workout.duration),
                   style: context.textStyles.body.copyWith(
                     color: context.colors.textSecondary,
                   ),
@@ -1742,23 +1696,4 @@ ButtonStyle _outlinedActionStyle(BuildContext context) {
   return OutlinedButton.styleFrom(
     foregroundColor: context.colors.textPrimary,
   );
-}
-
-String _formatWorkoutDuration(AppLocalizations l10n, Duration? duration) {
-  if (duration == null || duration.isNegative) {
-    return l10n.workoutDurationInProgress;
-  }
-
-  final hours = duration.inHours;
-  final minutes = duration.inMinutes.remainder(60);
-  final seconds = duration.inSeconds.remainder(60);
-  if (hours > 0) {
-    return minutes == 0
-        ? l10n.workoutDurationHours(hours)
-        : l10n.workoutDurationHoursMinutes(hours, minutes);
-  }
-  if (minutes > 0) {
-    return l10n.workoutDurationMinutes(minutes);
-  }
-  return l10n.workoutDurationSeconds(seconds);
 }

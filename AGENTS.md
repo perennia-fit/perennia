@@ -125,7 +125,7 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
   (Template Link recorded); Template editor (exercises, per-entry notes,
   Prescriptions, groups + rounds) and Routine editor (membership + Cadence slot
   layout) as separate surfaces; capture
-  ("save workout as template") and the Finish-time "update the template?" prompt.
+  ("save workout as template") and the Finish summary's Update row.
 - **Workout Tools (interval/rest timer, 1RM/set/plate calculators) and Settings** —
   secondary surfaces reached contextually or through **Account & app**, not extra
   root destinations.

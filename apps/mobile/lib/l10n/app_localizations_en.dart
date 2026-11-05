@@ -300,13 +300,48 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workoutResume => 'Resume Workout';
 
   @override
-  String get workoutFinished => 'Workout finished';
-
-  @override
   String get workoutResumed => 'Workout resumed';
 
   @override
-  String get workoutShareAction => 'Share';
+  String finishSummaryFacts(String duration, String sets, int exercises) {
+    String _temp0 = intl.Intl.pluralLogic(
+      exercises,
+      locale: localeName,
+      other: '$exercises exercises',
+      one: '1 exercise',
+    );
+    return '$duration · $sets · $_temp0';
+  }
+
+  @override
+  String get finishSummaryNewBests => 'New bests';
+
+  @override
+  String get finishSummaryNoNewBests => 'None';
+
+  @override
+  String finishSummaryUpdate(String template) {
+    return 'Update \"$template\"';
+  }
+
+  @override
+  String finishSummaryUpdated(String template) {
+    return '\"$template\" updated';
+  }
+
+  @override
+  String finishSummaryUpdateFailed(String template) {
+    return 'Couldn\'t update \"$template\"';
+  }
+
+  @override
+  String get finishSummaryCopy => 'Copy summary';
+
+  @override
+  String get finishSummaryCopied => 'Copied';
+
+  @override
+  String get finishSummaryDone => 'Done';
 
   @override
   String get workoutEditStartTime => 'Edit start time';
@@ -2181,6 +2216,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get templateUpdateNoChangesNote => 'No changes to update';
+
+  @override
+  String templateChangeAdd(String exercise) {
+    return 'Add $exercise';
+  }
+
+  @override
+  String templateChangeRemove(String exercise) {
+    return 'Remove $exercise';
+  }
+
+  @override
+  String templateChangeSets(String exercise) {
+    return '$exercise: sets changed';
+  }
 
   @override
   String get templateStartNoExercises => 'No exercises';
