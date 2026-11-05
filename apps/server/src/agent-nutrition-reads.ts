@@ -1283,9 +1283,19 @@ export function parseRawPortion(
   return { value: portionValue, entered, unit };
 }
 
-function mealTimezoneOffsetMinutes(value: unknown): number | null {
+/**
+ * A stored Meal payload's `timezone_offset_minutes` and `time_precision`.
+ * Payloads written before Meal Logging carry neither key: they read as an
+ * unknown (null) offset and an instant, which is what those Meals were. The
+ * agent Meal batch write reads stored Meals through these too.
+ */
+export function mealPayloadOffset(value: unknown): number | null {
   const offset = numberValue(value ?? null);
   return offset !== null && Number.isInteger(offset) ? offset : null;
+}
+
+export function mealPayloadTimePrecision(value: unknown): "instant" | "date" {
+  return value === "date" ? "date" : "instant";
 }
 
 function projectMealRow(
@@ -1303,10 +1313,8 @@ function projectMealRow(
     localDate: stringValue(payload.local_date),
     // Payloads written before Meal Logging carry neither key: they read as an
     // unknown offset and an instant, which is what those Meals were.
-    timezoneOffsetMinutes: mealTimezoneOffsetMinutes(
-      payload.timezone_offset_minutes
-    ),
-    timePrecision: payload.time_precision === "date" ? "date" : "instant",
+    timezoneOffsetMinutes: mealPayloadOffset(payload.timezone_offset_minutes),
+    timePrecision: mealPayloadTimePrecision(payload.time_precision),
     entries: [...entries]
   };
 

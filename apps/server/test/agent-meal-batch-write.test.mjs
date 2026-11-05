@@ -916,11 +916,7 @@ test("prepare: an unsent entry deletedAt keeps the stored value; null for a new 
 test("prepare: active entries into an archived Meal are 422 meal_archived, accepted when the request sends deletedAt: null", () => {
   const archivedAt = "2026-06-24T06:00:00.000Z";
   const stored = storedState({
-    meal: storedRow(
-      USER,
-      { ...legacyMealPayload(), deleted_at: archivedAt },
-      archivedAt
-    )
+    meal: archivedMealRow(archivedAt)
   });
 
   const rejected = prepareAgentMealBatchWrite(
@@ -982,7 +978,7 @@ test("prepare: archiving a Meal is accepted when the request tombstones every st
     storedState({
       meal: storedRow(USER, legacyMealPayload()),
       entries: [
-        ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+        ["entry-active", storedEntryRow("entry-active")]
       ],
       activeEntryIds: ["entry-active"]
     }),
@@ -1004,7 +1000,7 @@ test("prepare: archiving a Meal is 422 meal_archived when an entry tombstone tie
   const stored = storedState({
     meal: storedRow(USER, legacyMealPayload()),
     entries: [
-      ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+      ["entry-active", storedEntryRow("entry-active")]
     ],
     activeEntries: [["entry-active", storedClock]]
   });
@@ -1042,7 +1038,7 @@ test("prepare: an entry sent without deletedAt keeps its stored null and does no
     storedState({
       meal: storedRow(USER, legacyMealPayload()),
       entries: [
-        ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+        ["entry-active", storedEntryRow("entry-active")]
       ],
       activeEntryIds: ["entry-active"]
     }),
@@ -1075,11 +1071,7 @@ test("prepare: a Meal-fields-only edit of an archived Meal that still holds stor
   const prepared = prepareAgentMealBatchWrite(
     resolvedRequest({ meal: { id: MEAL_ID, mealType: "Lunch" } }),
     storedState({
-      meal: storedRow(
-        USER,
-        { ...legacyMealPayload(), deleted_at: archivedAt },
-        archivedAt
-      ),
+      meal: archivedMealRow(archivedAt),
       activeEntryIds: ["entry-b", "entry-a"]
     }),
     FAKE_NOW_LATER
@@ -1097,11 +1089,7 @@ test("prepare: un-archiving a Meal with stored active entries is accepted", () =
   const prepared = prepareAgentMealBatchWrite(
     resolvedRequest({ meal: { id: MEAL_ID, deletedAt: null } }),
     storedState({
-      meal: storedRow(
-        USER,
-        { ...legacyMealPayload(), deleted_at: archivedAt },
-        archivedAt
-      ),
+      meal: archivedMealRow(archivedAt),
       activeEntryIds: ["entry-active"]
     }),
     FAKE_NOW_LATER
@@ -2162,4 +2150,14 @@ function legacyMealPayload() {
     updated_at: "2026-06-24T01:00:00.000Z",
     deleted_at: null
   };
+}
+
+/** The caller's legacy Meal, archived at `archivedAt` in payload and column. */
+function archivedMealRow(archivedAt) {
+  return storedRow(USER, { ...legacyMealPayload(), deleted_at: archivedAt }, archivedAt);
+}
+
+/** The caller's active stored Food Entry `id` under MEAL_ID. */
+function storedEntryRow(id) {
+  return storedRow(USER, { id, meal_id: MEAL_ID });
 }
