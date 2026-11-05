@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/common/local_clock.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/protocol_controller.dart';

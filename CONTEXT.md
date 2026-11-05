@@ -340,14 +340,21 @@ Food's defined serving, not as separate units. Stored as entered; the equivalent
 mass and the resulting nutrients are derived, never stored.
 
 ## Meal
-A single eating occasion with a start instant and optional end — the
-nutrition-domain analog of a Workout. Several Meals, including more than one of the
-same Meal Type, may occur in one day.
+A single eating occasion with a start instant, a frozen UTC offset, a time
+precision, and an optional end — the nutrition-domain analog of a Workout. Its
+Nutrition Day is derived from its time and offset, so changing the time can move it
+to another day. A Meal with no Food Entries is valid. Several Meals, including more
+than one of the same Meal Type, may occur in one day.
 
 ## Meal Type
 A user-configurable label classifying a Meal (Breakfast, Lunch, Dinner, Snack, or
 the user's own such as Pre-workout), with a display order. A grouping and
-presentation concept; freely changeable, with no effect on logged history.
+presentation concept; freely changeable, with no effect on logged history. The
+seeded types have a usual time window used to propose a type for a new Meal.
+
+## Time Precision
+Whether a Meal's start is the time the user ate (instant) or only its date is known
+(date), as with date-only imports. A date-precision Meal never shows a clock time.
 
 ## Nutrition Day
 The grouping of all Meals sharing the same local date — a presentation concept,
@@ -375,6 +382,12 @@ user's active User Foods that have never been logged.
 ## Last Portion
 The Portion of the user's latest Food Entry for a Food that has a Portion, latest by
 the Meal's start, then the entry's last change.
+
+## Meal History
+The distinct meals a user repeats, derived from their active timed Meals in the last
+90 days that contain two or more distinct Foods. Two Meals are the same meal when they
+contain the same set of Foods, whatever the Portions; Quick Entries don't count.
+Ordered by count, then recency. Computed, never stored. Shown as 'Your meals'.
 
 ## Compound
 An item a user takes and tracks — a supplement, vitamin, hormone, peptide, medication,

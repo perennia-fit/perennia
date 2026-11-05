@@ -72,11 +72,11 @@ import {
   type AgentExerciseCatalogBatchWriteStore
 } from "./agent-exercise-catalog-batch-write.js";
 import {
-  AgentMealBatchWriteErrorResponseSchema,
+  agentMealBatchWriteErrorBody,
   AgentMealBatchWriteRequestSchema,
   AgentMealBatchWriteResponseSchema,
   AgentMealBatchWriteUnavailableResponseSchema,
-  prepareAgentMealBatchWrite,
+  resolveAgentMealBatchEntries,
   type AgentMealBatchWriteStore
 } from "./agent-meal-batch-write.js";
 import {
@@ -225,7 +225,6 @@ import {
   prepareAgentProtocolSkipBatchWrite,
   type AgentProtocolsStore
 } from "./agent-protocols.js";
-import { nutrientValidationLimitsResponse } from "./agent-validation.js";
 import {
   AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
   AGENT_FOOD_HISTORY_DESCRIPTION,
@@ -233,6 +232,19 @@ import {
   AgentFoodHistoryResponseSchema,
   type AgentFoodHistoryReadStore
 } from "./agent-food-history.js";
+import {
+  AGENT_MEAL_HISTORY_DEFAULT_LIMIT,
+  AGENT_MEAL_HISTORY_DESCRIPTION,
+  AGENT_MEAL_HISTORY_MAX_LIMIT,
+  AgentMealHistoryResponseSchema,
+  type AgentMealHistoryReadStore
+} from "./agent-meal-history.js";
+import {
+  AGENT_MEAL_TYPES_DESCRIPTION,
+  AgentMealTypesResponseSchema,
+  AgentMealTypesUnavailableResponseSchema,
+  type AgentMealTypesReadStore
+} from "./agent-meal-types.js";
 import {
   AgentMealListQuerySchema,
   AgentMealListResponseSchema,
@@ -359,6 +371,18 @@ export const AgentMcpFoodHistoryInputSchema = AgentMcpAuthFieldsSchema.extend({
     .max(AGENT_FOOD_HISTORY_MAX_LIMIT)
     .optional()
 }).openapi("AgentMcpFoodHistoryInput");
+
+export const AgentMcpMealHistoryInputSchema = AgentMcpAuthFieldsSchema.extend({
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(AGENT_MEAL_HISTORY_MAX_LIMIT)
+    .optional()
+}).openapi("AgentMcpMealHistoryInput");
+
+export const AgentMcpMealTypesInputSchema =
+  AgentMcpAuthFieldsSchema.openapi("AgentMcpMealTypesInput");
 
 export const AgentMcpFoodListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentFoodListQuerySchema.optional()
@@ -562,6 +586,8 @@ export type AgentMcpServerOptions = {
   agentProtocolsStore?: AgentProtocolsStore;
   agentNutritionReadStore?: AgentNutritionReadStore;
   agentFoodHistoryReadStore?: AgentFoodHistoryReadStore;
+  agentMealHistoryReadStore?: AgentMealHistoryReadStore;
+  agentMealTypesReadStore?: AgentMealTypesReadStore;
   agentNutritionGoalStore?: AgentNutritionGoalBatchWriteStore;
   agentSettingsStore?: AgentSettingsBatchWriteStore;
   agentPlanReadStore?: AgentPlanReadStore;
@@ -592,6 +618,8 @@ export function createAgentMcpServer({
   agentProtocolsStore,
   agentNutritionReadStore,
   agentFoodHistoryReadStore,
+  agentMealHistoryReadStore,
+  agentMealTypesReadStore,
   agentNutritionGoalStore,
   agentSettingsStore,
   agentPlanReadStore,
@@ -1589,7 +1617,7 @@ export function createAgentMcpServer({
     {
       title: "Batch Write Agent Meal",
       description:
-        "Apply an agent Meal / Food Entry / Quick Entry batch through the same validation, Activity Log, and sync-nudge path as REST. Idempotent by idempotency key; no logic fork.",
+        "Apply an agent Meal / Food Entry / Quick Entry batch through the same validation, Activity Log, and sync-nudge path as REST. Writes only the Meal fields sent: an absent field keeps its stored value and null clears endedAt or deletedAt. Creating a Meal needs mealType and startedAt with timezoneOffsetMinutes and/or timezone; localDate is derived when the offset is known. A request whose meal carries only id writes its entries and leaves the Meal untouched; entries may be empty when Meal fields are sent. Idempotent by idempotency key; no logic fork.",
       inputSchema: AgentMcpMealBatchWriteInputSchema,
       outputSchema: AgentMealBatchWriteResponseSchema
     },
@@ -1698,6 +1726,84 @@ export function createAgentMcpServer({
             userId: auth.agent.userId,
             limit: input.limit ?? AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
             now: new Date()
+          })
+        )
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_meal_history",
+    {
+      title: "List Agent Meal History",
+      description: AGENT_MEAL_HISTORY_DESCRIPTION,
+      inputSchema: AgentMcpMealHistoryInputSchema,
+      outputSchema: AgentMealHistoryResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentMealHistoryReadStore === undefined) {
+        return errorResult(
+          AgentNutritionReadUnavailableResponseSchema.parse({
+            code: "agent_nutrition_read_unavailable",
+            message: "Agent nutrition read storage is not configured."
+          })
+        );
+      }
+
+      return successResult(
+        AgentMealHistoryResponseSchema.parse(
+          await agentMealHistoryReadStore.listMealHistory({
+            userId: auth.agent.userId,
+            limit: input.limit ?? AGENT_MEAL_HISTORY_DEFAULT_LIMIT,
+            now: new Date()
+          })
+        )
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_meal_types",
+    {
+      title: "List Agent Meal Types",
+      description: AGENT_MEAL_TYPES_DESCRIPTION,
+      inputSchema: AgentMcpMealTypesInputSchema,
+      outputSchema: AgentMealTypesResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentMealTypesReadStore === undefined) {
+        return errorResult(
+          AgentMealTypesUnavailableResponseSchema.parse({
+            code: "agent_nutrition_read_unavailable",
+            message: "Agent nutrition read storage is not configured."
+          })
+        );
+      }
+
+      return successResult(
+        AgentMealTypesResponseSchema.parse(
+          await agentMealTypesReadStore.listMealTypes({
+            userId: auth.agent.userId
           })
         )
       );
@@ -1998,7 +2104,7 @@ export function createAgentMcpServer({
     {
       title: "Undo Agent Activity Batch",
       description:
-        "Revert a prior Activity Log batch by applying its inverse images as a NEW ordinary write batch, through the same Activity Log and sync-nudge path as REST. Rows changed since are skipped and surfaced per row; idempotent by idempotency key; nothing is hard-deleted.",
+        "Revert a prior Activity Log batch by applying its inverse images as a NEW ordinary write batch, through the same Activity Log and sync-nudge path as REST. Rows changed since are skipped and surfaced per row, and undoing a Meal's creation after another batch added a Food Entry to it is refused (skipped_dependent); idempotent by idempotency key; nothing is hard-deleted.",
       inputSchema: AgentMcpActivityUndoBatchInputSchema,
       outputSchema: AgentActivityUndoBatchResponseSchema
     },
@@ -3175,20 +3281,14 @@ async function writeMealBatchToolResult({
   request: z.infer<typeof AgentMealBatchWriteRequestSchema>;
   syncNudgePublisher?: SyncNudgePublisher;
 }): Promise<CallToolResult> {
-  const prepared = await prepareAgentMealBatchWrite({
+  const resolved = await resolveAgentMealBatchEntries({
     request,
     userId: agent.userId,
     foodCatalogStore: agentFoodCatalogStore
   });
-  if (!prepared.accepted) {
+  if (!resolved.accepted) {
     return errorResult(
-      AgentMealBatchWriteErrorResponseSchema.parse({
-        code: "agent_meal_batch_write_failed",
-        message: "Batch contains one or more hard validation failures.",
-        errors: prepared.errors,
-        warnings: prepared.warnings,
-        limits: nutrientValidationLimitsResponse()
-      })
+      agentMealBatchWriteErrorBody(422, resolved.errors, resolved.warnings)
     );
   }
 
@@ -3197,9 +3297,17 @@ async function writeMealBatchToolResult({
     userId: agent.userId,
     batchId: request.idempotencyKey,
     deviceId: sourceDeviceId,
-    meal: prepared.meal,
-    entries: prepared.entries
+    request: resolved.request
   });
+  if (writeResult.status === "rejected") {
+    return errorResult(
+      agentMealBatchWriteErrorBody(
+        writeResult.httpStatus,
+        writeResult.errors,
+        writeResult.warnings
+      )
+    );
+  }
 
   if (syncNudgePublisher !== undefined && writeResult.applied.length > 0) {
     try {
@@ -3229,7 +3337,8 @@ async function writeMealBatchToolResult({
       batchId: request.idempotencyKey,
       mealId: request.meal.id,
       serverClock: writeResult.serverClock,
-      entries: prepared.responseEntries
+      entries: resolved.responseEntries,
+      warnings: writeResult.warnings
     })
   );
 }

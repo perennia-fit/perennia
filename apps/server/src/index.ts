@@ -19,6 +19,8 @@ import { createAgentMcpServer } from "./agent-mcp.js";
 import { createDrizzleAgentCatalogStore } from "./agent-catalog.js";
 import { createDrizzleAgentReadStore } from "./agent-read-surface.js";
 import { createDrizzleAgentFoodHistoryReadStore } from "./agent-food-history.js";
+import { createDrizzleAgentMealHistoryReadStore } from "./agent-meal-history.js";
+import { createDrizzleAgentMealTypesReadStore } from "./agent-meal-types.js";
 import { createDrizzleAgentNutritionReadStore } from "./agent-nutrition-reads.js";
 import { createDrizzleAgentCrossDomainReadStore } from "./agent-cross-domain-reads.js";
 import { createDrizzleAgentWorkoutBatchWriteStore } from "./agent-workout-batch-write.js";
@@ -498,6 +500,31 @@ export {
   type AgentFoodHistoryResponse
 } from "./agent-food-history.js";
 export {
+  AGENT_MEAL_HISTORY_DEFAULT_LIMIT,
+  AGENT_MEAL_HISTORY_DESCRIPTION,
+  AGENT_MEAL_HISTORY_MAX_LIMIT,
+  AgentMealHistoryFoodSchema,
+  AgentMealHistoryItemSchema,
+  AgentMealHistoryQuerySchema,
+  AgentMealHistoryResponseSchema,
+  agentMealHistoryRoute,
+  createDrizzleAgentMealHistoryReadStore,
+  type AgentMealHistoryQuery,
+  type AgentMealHistoryReadStore,
+  type AgentMealHistoryResponse
+} from "./agent-meal-history.js";
+export {
+  AGENT_MEAL_TYPES_DESCRIPTION,
+  AgentMealTypeItemSchema,
+  AgentMealTypesResponseSchema,
+  AgentMealTypesUnavailableResponseSchema,
+  agentMealTypesRoute,
+  createDrizzleAgentMealTypesReadStore,
+  type AgentMealTypeItem,
+  type AgentMealTypesReadStore,
+  type AgentMealTypesResponse
+} from "./agent-meal-types.js";
+export {
   AGENT_CROSS_DOMAIN_MAX_RANGE_DAYS,
   AGENT_CROSS_DOMAIN_MAX_WORKOUT_POINTS,
   CALORIES_BURNED_METRIC_NAME,
@@ -596,8 +623,17 @@ export {
   AgentMealBatchWriteUnavailableResponseSchema,
   agentMealBatchWriteRoute,
   createDrizzleAgentMealBatchWriteStore,
+  agentMealBatchWriteRejectionMessage,
   prepareAgentMealBatchWrite,
+  resolveAgentMealBatchEntries,
+  type AgentMealBatchEntryResolution,
   type AgentMealBatchPreparation,
+  type AgentMealBatchRejectionStatus,
+  type AgentMealBatchResolvedEntry,
+  type AgentMealBatchResolvedRequest,
+  type AgentMealBatchStoredRow,
+  type AgentMealBatchStoredState,
+  type AgentMealBatchWriteResult,
   type AgentMealBatchPreparedRow,
   type AgentMealBatchWriteEntry,
   type AgentMealBatchWriteEntryResult,
@@ -1004,6 +1040,7 @@ export {
   AgentDoseValidationRequestSchema,
   AgentDoseValidationResponseSchema,
   AgentFoodEntryNutrientValidationRequestSchema,
+  AgentMealValidationIssueSchema,
   AgentNutrientAmountSchema,
   AgentNutrientValidationIssueSchema,
   AgentNutrientValidationLimitsSchema,
@@ -1022,6 +1059,7 @@ export {
   DOSE_ROUTES,
   DOSE_UNITS,
   DOSE_VALIDATION_LIMITS,
+  MEAL_VALIDATION_LIMITS,
   NUTRIENT_VALIDATION_LIMITS,
   PLAN_VALIDATION_LIMITS,
   PRESCRIPTION_VALIDATION_LIMITS,
@@ -1037,6 +1075,7 @@ export {
   setValidationLimitsResponse,
   validateAgentDose,
   validateAgentFoodEntry,
+  validateAgentMealTime,
   validateAgentNutritionGoalTargets,
   validateAgentPrescription,
   validateAgentProtocolPeriod,
@@ -1050,6 +1089,9 @@ export {
   type AgentDoseValidationIssue,
   type AgentDoseValidationResult,
   type AgentFoodEntryNutrientValidationInput,
+  type AgentMealTimeValidationInput,
+  type AgentMealTimeValidationResult,
+  type AgentMealValidationIssue,
   type AgentNutrientValidationIssue,
   type AgentNutrientValidationResult,
   type AgentNutritionGoalValidationInput,
@@ -1071,6 +1113,7 @@ export {
   type DoseRoute,
   type DoseUnit
 } from "./agent-validation.js";
+export { localDateAtOffset } from "./timezone.js";
 export {
   ProtocolPlanCodecError,
   applyingScheduleVersion,
@@ -1532,6 +1575,12 @@ export async function createMigratedServerApp({
   const agentFoodHistoryReadStore = createDrizzleAgentFoodHistoryReadStore(
     database.db
   );
+  const agentMealHistoryReadStore = createDrizzleAgentMealHistoryReadStore(
+    database.db
+  );
+  const agentMealTypesReadStore = createDrizzleAgentMealTypesReadStore(
+    database.db
+  );
   const agentCrossDomainReadStore = createDrizzleAgentCrossDomainReadStore(
     database.db
   );
@@ -1603,6 +1652,8 @@ export async function createMigratedServerApp({
     agentProtocolsStore,
     agentNutritionReadStore,
     agentFoodHistoryReadStore,
+    agentMealHistoryReadStore,
+    agentMealTypesReadStore,
     agentNutritionGoalStore,
     agentSettingsStore,
     agentPlanReadStore,
@@ -1625,6 +1676,8 @@ export async function createMigratedServerApp({
     agentReadStore,
     agentNutritionReadStore,
     agentFoodHistoryReadStore,
+    agentMealHistoryReadStore,
+    agentMealTypesReadStore,
     agentCrossDomainReadStore,
     agentWorkoutBatchWriteStore,
     agentExerciseCatalogBatchWriteStore,

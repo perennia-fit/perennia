@@ -36,9 +36,9 @@ const dataLicensePath = path.join(
 );
 const reviewDecisionsPath = path.join(
   repoRoot,
-  "analysis",
-  "exercises",
-  "review_decisions.json",
+  "tools",
+  "data",
+  "platform-exercise-review-decisions.json",
 );
 const workoutCoolSourceUrl = "https://github.com/Snouzy/workout-cool";
 const workoutCoolApiUrl =

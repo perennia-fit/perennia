@@ -216,15 +216,15 @@ void main() {
     final updatedAt = DateTime.utc(2026, 6, 27, 8);
     final repositories = TrainingRepositories(database);
     final mealId = await repositories.nutrition.createMeal(
-      MealDraft(
-        mealType: 'Snack',
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
         startedAt: updatedAt,
-        timezone: 'UTC',
-        localDate: const NutritionDayDate(year: 2026, month: 6, day: 27),
+        mealTypeName: 'Snack',
       ),
       actor: 'tester',
     );
     final result = await repositories.nutrition.logFoodEntrySnapshot(
+      target: ExistingMealTarget(mealId),
       entry: FoodEntrySnapshotDraft(
         mealId: mealId,
         foodId: '3017620422003',
@@ -4125,11 +4125,10 @@ void main() {
       const MealTypeDraft(name: 'Second Breakfast', sortOrder: 4),
     );
     final mealId = await repositories.nutrition.createMeal(
-      MealDraft(
-        mealType: mealTypeId,
-        startedAt: DateTime.utc(2026, 7, 4, 8),
-        timezone: 'Australia/Brisbane',
-        localDate: const NutritionDayDate(year: 2026, month: 7, day: 4),
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 7, 4, 8),
+        mealTypeName: mealTypeId,
       ),
     );
     final foodId = await repositories.nutrition.createUserFood(
@@ -4649,6 +4648,339 @@ void main() {
         await pullNames(<Map<String, Object?>>[deviceA, deviceB]), 'Device B');
     expect(
         await pullNames(<Map<String, Object?>>[deviceB, deviceA]), 'Device B');
+  });
+  group('Meal time keys (docs/designs/meal-logging.md §10)', () {
+    // A Meal image as an app or server from before schema 65 writes it: no
+    // `timezone_offset_minutes`, no `time_precision`.
+    Map<String, Object?> olderMealImage(
+      String id, {
+      required DateTime updatedAt,
+      String mealType = 'Lunch',
+      String startedAt = '2026-06-26T02:00:00.000Z',
+      Object? localDate = '2026-06-26',
+    }) {
+      return <String, Object?>{
+        'id': id,
+        'meal_type': mealType,
+        'started_at': startedAt,
+        'timezone': 'AEST',
+        if (localDate != null) 'local_date': localDate,
+        'ended_at': null,
+        'updated_at': updatedAt.toIso8601String(),
+        'deleted_at': null,
+      };
+    }
+
+    Map<String, Object?> mealChange(
+      Map<String, Object?> payload, {
+      String batchId = 'remote-meal-batch',
+    }) {
+      return <String, Object?>{
+        'entity': AppDatabase.mealsTable,
+        'id': payload['id'],
+        'deviceId': 'device-old',
+        'payload': payload,
+        'updatedAt': payload['updated_at'],
+        'deletedAt': null,
+        'activityLogId': 'remote-log-${payload['id']}',
+        'actor': 'agent',
+        'batchId': batchId,
+        'beforeImage': null,
+        'afterImage': payload,
+        'occurredAt': payload['updated_at'],
+      };
+    }
+
+    Future<int> pullMeals(List<Map<String, Object?>> changes) async {
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'nextCursor': 'cursor-meals',
+                'serverClock': '2026-06-26T08:00:00.000Z',
+                'changes': changes,
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+      return result.appliedCount;
+    }
+
+    Future<MealRow> storedMeal(String id) {
+      return (database.select(database.meals)
+            ..where((row) => row.id.equals(id)))
+          .getSingle();
+    }
+
+    test('an older image inserts a Meal with the column defaults', () async {
+      const mealId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d001';
+      final applied = await pullMeals(<Map<String, Object?>>[
+        mealChange(
+          olderMealImage(mealId, updatedAt: DateTime.utc(2026, 6, 26, 3)),
+        ),
+      ]);
+
+      final meal = await storedMeal(mealId);
+      expect(applied, 1);
+      expect(meal.mealType, 'Lunch');
+      expect(meal.localDate, '2026-06-26');
+      expect(meal.timezoneOffsetMinutes, isNull);
+      expect(meal.timePrecision, 'instant');
+    });
+
+    test('an older image updates a Meal and leaves both columns as stored',
+        () async {
+      // An app write can't choose its offset (it is the device zone's), so
+      // the stored Meal is seeded as a row: +10:00 and `date` precision.
+      const mealId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d005';
+      await database.into(database.meals).insert(
+            MealsCompanion.insert(
+              id: mealId,
+              mealType: 'Breakfast',
+              startedAt: DateTime.utc(2026, 6, 25, 14),
+              timezone: 'AEST',
+              localDate: const Value<String>('2026-06-26'),
+              timezoneOffsetMinutes: const Value<int?>(600),
+              timePrecision: const Value<String>('date'),
+              updatedAt: DateTime.utc(2026, 6, 25, 14),
+            ),
+          );
+      final newer = DateTime.now().toUtc().add(const Duration(days: 1));
+
+      final applied = await pullMeals(<Map<String, Object?>>[
+        mealChange(
+          olderMealImage(
+            mealId,
+            updatedAt: newer,
+            mealType: 'Brunch',
+            startedAt: '2026-06-25T14:00:00.000Z',
+            localDate: '2026-06-26',
+          ),
+        ),
+      ]);
+
+      final meal = await storedMeal(mealId);
+      expect(applied, 1);
+      expect(meal.mealType, 'Brunch');
+      expect(meal.timezoneOffsetMinutes, 600);
+      expect(meal.timePrecision, 'date');
+    });
+
+    test('a pulled image with both keys stores them', () async {
+      const mealId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d002';
+      await pullMeals(<Map<String, Object?>>[
+        mealChange(<String, Object?>{
+          ...olderMealImage(mealId, updatedAt: DateTime.utc(2026, 6, 26, 3)),
+          'timezone_offset_minutes': -300,
+          'time_precision': 'date',
+        }),
+      ]);
+
+      final meal = await storedMeal(mealId);
+      expect(meal.timezoneOffsetMinutes, -300);
+      expect(meal.timePrecision, 'date');
+    });
+
+    test('a malformed or missing local date is re-derived, not thrown',
+        () async {
+      const malformedId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d003';
+      const missingId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d004';
+      final applied = await pullMeals(<Map<String, Object?>>[
+        mealChange(<String, Object?>{
+          ...olderMealImage(
+            malformedId,
+            updatedAt: DateTime.utc(2026, 6, 26, 3),
+            startedAt: '2026-06-26T22:00:00.000Z',
+            localDate: '2026-02-30',
+          ),
+          'timezone_offset_minutes': 600,
+        }),
+        mealChange(
+          olderMealImage(
+            missingId,
+            updatedAt: DateTime.utc(2026, 6, 26, 3),
+            startedAt: '2026-06-26T02:00:00.000Z',
+            localDate: null,
+          ),
+        ),
+      ]);
+
+      expect(applied, 2);
+      // 22:00 UTC at +10:00 is the next day.
+      expect((await storedMeal(malformedId)).localDate, '2026-06-27');
+      // A null offset reads in the device zone.
+      expect(
+        (await storedMeal(missingId)).localDate,
+        NutritionDayDate.fromDateTime(DateTime.utc(2026, 6, 26, 2))
+            .storageValue,
+      );
+    });
+
+    test('push images carry the offset and the time precision', () async {
+      final repositories = TrainingRepositories(database);
+      final startedAt = DateTime(2026, 6, 26, 12, 30);
+      final mealId = await repositories.nutrition.createMeal(
+        PendingMeal(
+          id: repositories.nutrition.newMealId(),
+          startedAt: startedAt,
+          mealTypeName: 'Lunch',
+        ),
+      );
+      final pushRequests = <http.Request>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            pushRequests.add(request);
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            final changes = (body['changes']! as List<Object?>)
+                .cast<Map<String, Object?>>();
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'accepted': changes
+                    .map((change) => change['id']! as String)
+                    .toList(growable: false),
+                'serverClock': '2026-06-26T08:00:01.000Z',
+                'applied': changes
+                    .map(
+                      (change) => <String, Object?>{
+                        'id': change['id'],
+                        'updatedAt': change['updatedAt'],
+                        'deviceId': 'device-a',
+                      },
+                    )
+                    .toList(growable: false),
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }),
+        ),
+      );
+
+      await repository.pushPendingLoggedSets(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      final pushedMeal = pushRequests
+          .map((request) => jsonDecode(request.body) as Map<String, Object?>)
+          .where((body) => body['entity'] == AppDatabase.mealsTable)
+          .expand((body) => body['changes']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .singleWhere((change) => change['id'] == mealId);
+      final offset = startedAt.timeZoneOffset.inMinutes;
+      for (final image in <Object?>[
+        pushedMeal['payload'],
+        pushedMeal['afterImage'],
+      ]) {
+        final map = image! as Map<String, Object?>;
+        expect(map['timezone_offset_minutes'], offset);
+        expect(map['time_precision'], 'instant');
+      }
+    });
+
+    test('undo of a Batch whose Meal images predate the keys is not stale',
+        () async {
+      const mealId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d005';
+      const batchId = 'older-meal-batch';
+      await pullMeals(<Map<String, Object?>>[
+        mealChange(
+          olderMealImage(mealId, updatedAt: DateTime.utc(2026, 6, 26, 3)),
+          batchId: batchId,
+        ),
+      ]);
+      final feedRepository =
+          ActivityFeedRepository(TrainingRepositories(database));
+
+      final undo = await feedRepository.undoBatch(batchId);
+
+      expect(undo.conflicts, isEmpty);
+      expect(undo.undoBatchId, isNotNull);
+      expect((await storedMeal(mealId)).deletedAt, isNotNull);
+    });
+
+    test(
+        'undo of the Batch that created a Meal is refused once a pulled food '
+        'joined it (meal-logging.md §7)', () async {
+      final repositories = TrainingRepositories(database);
+      final meal = PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 26, 12, 30),
+        mealTypeName: 'Lunch',
+      );
+      final first = await repositories.nutrition.logQuickEntry(
+        target: NewMealTarget(meal),
+        entry: QuickFoodEntryDraft(
+          name: 'Soup',
+          nutrients: _offNutrientsPer100(),
+        ),
+      );
+      final localEntry = (await repositories.activityLog.listEntries())
+          .singleWhere(
+            (entry) =>
+                entry.batchId == first.batchId &&
+                entry.entityTable == AppDatabase.foodEntriesTable,
+          )
+          .afterImage!;
+      const pulledEntryId = '018f6a90-6d7f-7d63-bfc1-6f1025e0d0f1';
+      final pulledAt = DateTime.now().toUtc().add(const Duration(minutes: 1));
+      final pulledEntry = <String, Object?>{
+        ...localEntry,
+        'id': pulledEntryId,
+        'position': 1,
+        'name': 'Bread',
+        'updated_at': pulledAt.toIso8601String(),
+      };
+
+      final applied = await pullMeals(<Map<String, Object?>>[
+        <String, Object?>{
+          'entity': AppDatabase.foodEntriesTable,
+          'id': pulledEntryId,
+          'deviceId': 'device-b',
+          'payload': pulledEntry,
+          'updatedAt': pulledEntry['updated_at'],
+          'deletedAt': null,
+          'activityLogId': 'remote-log-$pulledEntryId',
+          'actor': 'app',
+          'batchId': 'remote-food-batch',
+          'beforeImage': null,
+          'afterImage': pulledEntry,
+          'occurredAt': pulledEntry['updated_at'],
+        },
+      ]);
+      expect(applied, 1);
+
+      final undo =
+          await ActivityFeedRepository(repositories).undoBatch(first.batchId);
+
+      expect(undo.undoBatchId, isNull);
+      expect(undo.appliedEntries, isEmpty);
+      expect(
+        undo.conflicts.single.reason,
+        ActivityLogUndoConflictReason.dependent,
+      );
+      expect(undo.conflicts.single.entityId, meal.id);
+      expect((await storedMeal(meal.id)).deletedAt, isNull);
+      expect(
+        (await repositories.nutrition.listActiveEntriesForMeal(meal.id))
+            .map((entry) => entry.id),
+        <String>[first.foodEntryId, pulledEntryId],
+      );
+    });
   });
 }
 

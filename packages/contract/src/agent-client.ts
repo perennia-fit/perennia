@@ -75,7 +75,7 @@ export type AgentActivityUndoEntryResult = {
   "outcome": AgentActivityUndoOutcome;
 };
 
-export type AgentActivityUndoOutcome = "reverted" | "skipped_stale" | "skipped_missing" | "skipped_unsupported";
+export type AgentActivityUndoOutcome = "reverted" | "skipped_stale" | "skipped_missing" | "skipped_unsupported" | "skipped_dependent";
 
 export type AgentAnalyticsPoint = {
   "setId": string;
@@ -737,13 +737,20 @@ export type AgentMealBatchWriteEntryResult = {
   "warnings": Array<AgentNutrientValidationIssue>;
 };
 
+export type AgentMealBatchWriteIssue = AgentNutrientValidationIssue & {
+  "itemIndex": number | null;
+  "entryId": string | null;
+};
+
 export type AgentMealBatchWriteMeal = {
   "id": string;
-  "mealType": string;
-  "startedAt": string;
+  "mealType"?: string;
+  "startedAt"?: string;
   "endedAt"?: string | null;
-  "timezone": string;
-  "localDate": string;
+  "timezone"?: string;
+  "timezoneOffsetMinutes"?: number;
+  "localDate"?: string;
+  "timePrecision"?: "instant" | "date";
   "deletedAt"?: string | null;
 };
 
@@ -761,6 +768,7 @@ export type AgentMealBatchWriteResponse = {
   "mealId": string;
   "serverClock": string;
   "entries": Array<AgentMealBatchWriteEntryResult>;
+  "warnings": Array<AgentMealBatchWriteIssue>;
 };
 
 export type AgentMealEntry = {
@@ -783,7 +791,24 @@ export type AgentMealEntry = {
   "updatedAt": string;
 };
 
-export type AgentMealListField = "id" | "mealType" | "startedAt" | "endedAt" | "timezone" | "localDate" | "entries";
+export type AgentMealHistoryFood = {
+  "foodSource": string;
+  "foodId": string;
+  "name": string;
+};
+
+export type AgentMealHistoryItem = {
+  "foods": Array<AgentMealHistoryFood>;
+  "count": number;
+  "lastMealId": string;
+  "lastStartedAt": string;
+};
+
+export type AgentMealHistoryResponse = {
+  "items": Array<AgentMealHistoryItem>;
+};
+
+export type AgentMealListField = "id" | "mealType" | "startedAt" | "endedAt" | "timezone" | "localDate" | "timezoneOffsetMinutes" | "timePrecision" | "entries";
 
 export type AgentMealListItem = {
   "id": string;
@@ -792,6 +817,8 @@ export type AgentMealListItem = {
   "endedAt"?: string | null;
   "timezone"?: string;
   "localDate"?: string;
+  "timezoneOffsetMinutes"?: number | null;
+  "timePrecision"?: "instant" | "date";
   "entries"?: Array<AgentMealEntry>;
 };
 
@@ -804,6 +831,16 @@ export type AgentMealListResponse = {
 };
 
 export type AgentMealPortionUnit = "gram" | "milliliter" | "ounce" | "fluidOunce" | "serving" | "package";
+
+export type AgentMealTypeItem = {
+  "id": string;
+  "name": string;
+  "sortOrder": number;
+};
+
+export type AgentMealTypesResponse = {
+  "mealTypes": Array<AgentMealTypeItem>;
+};
 
 export type AgentMetricBatchWriteMetric = {
   "id": string;
@@ -2363,6 +2400,10 @@ export type ListAgentHistorySetsInput = {
   "cursor"?: string;
 };
 
+export type ListAgentMealHistoryInput = {
+  "limit"?: number;
+};
+
 export type ListAgentMealsInput = {
   "from"?: string;
   "to"?: string;
@@ -2514,6 +2555,8 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentFoodHistory",
   "listAgentFoods",
   "listAgentHistorySets",
+  "listAgentMealHistory",
+  "listAgentMealTypes",
   "listAgentMeals",
   "listAgentMetricReadings",
   "listAgentMetrics",
@@ -2911,12 +2954,31 @@ export class PerenniaAgentClient {
     });
   }
 
+  async listAgentMealHistory(input: ListAgentMealHistoryInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentMealHistoryResponse> {
+    return this.request<AgentMealHistoryResponse>({
+      method: "GET",
+      path: "/agent/meals/history",
+      expectedStatus: 200,
+      query: { "limit": input.limit },
+      signal: options.signal
+    });
+  }
+
   async listAgentMeals(input: ListAgentMealsInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentMealListResponse> {
     return this.request<AgentMealListResponse>({
       method: "GET",
       path: "/agent/meals",
       expectedStatus: 200,
       query: { "from": input.from, "to": input.to, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      signal: options.signal
+    });
+  }
+
+  async listAgentMealTypes(options: AgentClientRequestOptions = {}): Promise<AgentMealTypesResponse> {
+    return this.request<AgentMealTypesResponse>({
+      method: "GET",
+      path: "/agent/meal-types",
+      expectedStatus: 200,
       signal: options.signal
     });
   }

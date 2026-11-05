@@ -34,3 +34,13 @@ abstract interface class NutritionImportFilePicker {
   /// Returns the decoded text of a file the user picked, or null if cancelled.
   Future<String?> pickTextFile();
 }
+
+/// Whether an exported [dateText] parses as an ISO date-time carrying a time
+/// of day (`2024-03-05T08:30`, `2024-03-05 08:30`), not a bare date. An
+/// importer gives a Meal `instant` time precision only when it does; a bare
+/// date only knows its day (docs/designs/meal-logging.md §1, time precision).
+bool importTextHasTimeOfDay(String dateText) {
+  final text = dateText.trim();
+  return DateTime.tryParse(text) != null &&
+      RegExp(r'^\S+?[Tt ]\d').hasMatch(text);
+}

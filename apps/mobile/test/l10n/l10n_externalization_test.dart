@@ -26,6 +26,8 @@ void main() {
       'lib/features/progress/widgets/progress_format.dart',
       'lib/features/template_picker/widgets/template_picker_sheet.dart',
       'lib/features/workout_templates/widgets/prescription_summary.dart',
+      'lib/features/nutrition/widgets/meal_screen.dart',
+      'lib/features/nutrition/widgets/meal_time_sheet.dart',
     ];
     final forbiddenPatterns = <String, RegExp>{
       'Text literal': RegExp(r'\bText\(\s*[' '"]'),

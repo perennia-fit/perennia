@@ -36,6 +36,7 @@ import 'package:perennia/features/home/widgets/workout_screen.dart';
 import 'package:perennia/features/metrics/controllers/metrics_controller.dart';
 import 'package:perennia/features/metrics/widgets/metrics_screen.dart';
 import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
+import 'package:perennia/features/nutrition/widgets/meal_screen.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
 import 'package:perennia/features/progress/repositories/progress_feature_repository.dart';
 import 'package:perennia/features/progress/widgets/body_card.dart';
@@ -366,7 +367,7 @@ void main() {
 
     expect(find.text('Log for this day'), findsOneWidget);
     expect(find.text('Workout'), findsOneWidget);
-    expect(find.text('Food'), findsOneWidget);
+    expect(find.text('Meal'), findsOneWidget);
     expect(find.text('Dose'), findsOneWidget);
   });
 
@@ -887,21 +888,54 @@ void main() {
     expect(find.byType(CompoundListScreen), findsOneWidget);
   });
 
-  testWidgets('Today Log opens the selected Nutrition Day for Food', (
-    tester,
-  ) async {
+  testWidgets(
+      'Today Log offers Meal, which opens the Meal screen for the '
+      'selected day', (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
     final selectedDate =
-        TrainingDayDate.fromDateTime(DateTime.now()).addDays(1);
+        TrainingDayDate.fromDateTime(DateTime.now()).addDays(-1);
 
     await tester.pumpWidget(
       PerenniaRoot(
         upNextFeatureRepository: const StubUpNextFeatureRepository(),
         extraOverrides: [
           _homeNutritionDayOverride(),
-          nutritionDayControllerProvider.overrideWith(
-            _StubNutritionDayController.new,
-          ),
+          trainingRepositoriesProvider.overrideWith((ref) => repositories),
         ],
+        exerciseCatalogRepository: const StubExerciseCatalogRepository(),
+        homeRepository: const _DateEchoHomeRepository(),
+        settingsRepository: InMemorySettingsRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(HomeScreen.previousDayButtonKey));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(HomeScreen.logButtonKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Meal'), findsOneWidget);
+    expect(find.text('Food'), findsNothing);
+    await tester.tap(find.byKey(HomeScreen.logMealKey));
+    await tester.pumpAndSettle();
+
+    final screen = tester.widget<MealScreen>(find.byType(MealScreen));
+    expect(screen.mealId, isNull);
+    expect(screen.day, nutritionDayDateFromTrainingDay(selectedDate));
+    expect(find.byType(NutritionDayView), findsNothing);
+
+    // Unmount inside the test so the database streams' closing timers run
+    // before the binding checks for pending timers.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(Duration.zero);
+  });
+
+  testWidgets('Today Log hides Meal on a future day', (tester) async {
+    await tester.pumpWidget(
+      PerenniaRoot(
+        upNextFeatureRepository: const StubUpNextFeatureRepository(),
+        extraOverrides: [_homeNutritionDayOverride()],
         exerciseCatalogRepository: const StubExerciseCatalogRepository(),
         homeRepository: const _DateEchoHomeRepository(),
       ),
@@ -912,17 +946,10 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.logButtonKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(HomeScreen.logFoodKey));
-    await tester.pumpAndSettle();
 
-    expect(find.byType(NutritionDayView), findsOneWidget);
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(NutritionDayView)),
-    );
-    expect(
-      container.read(selectedNutritionDayProvider),
-      nutritionDayDateFromTrainingDay(selectedDate),
-    );
+    expect(find.byKey(HomeScreen.logWorkoutKey), findsOneWidget);
+    expect(find.byKey(HomeScreen.logDoseKey), findsOneWidget);
+    expect(find.byKey(HomeScreen.logMealKey), findsNothing);
   });
 
   testWidgets('Today Log opens a new Workout', (tester) async {
@@ -1233,7 +1260,8 @@ void main() {
     expect(find.byKey(HomeScreen.trainingDomainBodyKey), findsNothing);
     expect(find.byKey(HomeScreen.nutritionDomainBodyKey), findsOneWidget);
     expect(find.byKey(NutritionDayView.daySummaryKey), findsOneWidget);
-    expect(find.text('Nutrition ${today.storageValue}'), findsOneWidget);
+    expect(
+        find.textContaining('Nutrition ${today.storageValue}'), findsOneWidget);
 
     await tester.tap(find.byKey(HomeScreen.trainingDomainButtonKey));
     await tester.pumpAndSettle();
@@ -1277,14 +1305,16 @@ void main() {
 
     await tester.tap(find.byKey(HomeScreen.nutritionDomainButtonKey));
     await tester.pumpAndSettle();
-    expect(find.text('Nutrition ${today.storageValue}'), findsOneWidget);
+    expect(
+        find.textContaining('Nutrition ${today.storageValue}'), findsOneWidget);
 
     await tester.tap(find.byKey(HomeScreen.nextDayButtonKey));
     await tester.pumpAndSettle();
 
     expect(find.byKey(HomeScreen.nutritionDomainBodyKey), findsOneWidget);
     expect(find.byKey(NutritionDayView.daySummaryKey), findsOneWidget);
-    expect(find.text('Nutrition ${nextDay.storageValue}'), findsOneWidget);
+    expect(find.textContaining('Nutrition ${nextDay.storageValue}'),
+        findsOneWidget);
 
     await tester.fling(
       find.byKey(HomeScreen.dayHeaderKey),
@@ -1294,7 +1324,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(HomeScreen.nutritionDomainBodyKey), findsOneWidget);
-    expect(find.text('Nutrition ${today.storageValue}'), findsOneWidget);
+    expect(
+        find.textContaining('Nutrition ${today.storageValue}'), findsOneWidget);
 
     await tester.tap(find.byKey(HomeScreen.trainingDomainButtonKey));
     await tester.pumpAndSettle();
@@ -1412,14 +1443,9 @@ void main() {
     }
   });
 
-  testWidgets('home nutrition start meal uses the shared selected date', (
+  testWidgets("Today's Nutrition view shows Log meal, hidden on a future day", (
     tester,
   ) async {
-    final controller = _HomeStartMealNutritionController();
-    final selectedDate = TrainingDayDate.fromDateTime(DateTime.now()).addDays(
-      1,
-    );
-
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -1429,13 +1455,7 @@ void main() {
           homeRepositoryProvider.overrideWith(
             (ref) => const _DateEchoHomeRepository(),
           ),
-          homeNutritionDayProvider.overrideWith((ref) {
-            final selectedDate = ref.watch(selectedTrainingDayProvider);
-            return Stream<NutritionDayRecord>.value(
-              _nutritionDayFor(selectedDate),
-            );
-          }),
-          nutritionDayControllerProvider.overrideWith(() => controller),
+          _homeNutritionDayOverride(),
           mealTypeListProvider.overrideWith(
             (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
           ),
@@ -1448,31 +1468,26 @@ void main() {
       find.byKey(HomeScreen.trainingDomainBodyKey),
     );
 
-    await tester.tap(find.byKey(HomeScreen.nextDayButtonKey));
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(HomeScreen.nutritionDomainButtonKey));
     await tester.pumpAndSettle();
 
-    final startMealButton = find.byKey(
-      NutritionDayView.startMealButtonKey('meal-type-breakfast'),
-    );
+    final logMealButton = find.byKey(NutritionDayView.logMealButtonKey);
     await tester.scrollUntilVisible(
-      startMealButton,
+      logMealButton,
       240,
       scrollable: find.byType(Scrollable).first,
     );
-    await Scrollable.ensureVisible(
-      tester.element(startMealButton),
-      alignment: 0.5,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(startMealButton);
-    await tester.pump();
+    expect(logMealButton, findsOneWidget);
+    expect(find.text('Log meal'), findsOneWidget);
 
-    expect(
-      controller.startedMealDates,
-      <NutritionDayDate>[nutritionDayDateFromTrainingDay(selectedDate)],
+    await tester.tap(find.byKey(HomeScreen.nextDayButtonKey));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(NutritionDayView.manageMealTypesButtonKey),
+      240,
+      scrollable: find.byType(Scrollable).first,
     );
+    expect(logMealButton, findsNothing);
   });
 
   testWidgets('starting a workout opens the empty workout page', (
@@ -2510,21 +2525,6 @@ class _StubProtocolDayController extends ProtocolDayController {
   Future<void> ensureOtcLibrarySeeded() async {}
 }
 
-class _StubNutritionDayController extends NutritionDayController {
-  @override
-  Stream<NutritionDayState> build() {
-    final selectedDate = ref.watch(selectedNutritionDayProvider);
-    return Stream<NutritionDayState>.value(
-      NutritionDayState(
-        day: NutritionDayRecord(
-          localDate: selectedDate,
-          meals: <NutritionDayMealRecord>[],
-        ),
-      ),
-    );
-  }
-}
-
 class _StubRoutinePlanListController extends RoutinePlanListController {
   @override
   Stream<RoutinePlanListSnapshot> build() {
@@ -2902,11 +2902,6 @@ class _ErrorHomeRepository extends _HomeRepositoryTestDefaults {
   }) async {
     throw StateError('Training Day unavailable');
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {
-    throw StateError('Training Day unavailable');
-  }
 }
 
 class _LoadingHomeRepository extends _HomeRepositoryTestDefaults {
@@ -2955,9 +2950,6 @@ class _LoadingHomeRepository extends _HomeRepositoryTestDefaults {
     required String workoutId,
     String? comment,
   }) async {}
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class _ScrollableHomeRepository extends _HomeRepositoryTestDefaults {
@@ -3021,9 +3013,6 @@ class _ScrollableHomeRepository extends _HomeRepositoryTestDefaults {
     required String workoutId,
     String? comment,
   }) async {}
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class _DateEchoHomeRepository extends _HomeRepositoryTestDefaults {
@@ -3093,9 +3082,6 @@ class _DateEchoHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class _StartWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
@@ -3179,9 +3165,6 @@ class _StartWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 
   Future<void> dispose() => _controller.close();
 
@@ -3295,9 +3278,6 @@ class _AddExerciseHomeRepository extends _HomeRepositoryTestDefaults {
     return 'Workout summary';
   }
 
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
-
   Future<void> dispose() => _controller.close();
 
   void _emit(HomeSummary summary) {
@@ -3397,9 +3377,6 @@ class _WorkoutActionsHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 /// An open, zero-set workout used to exercise the Finish flow:
@@ -3476,9 +3453,6 @@ class _FinishableWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 /// Always reports "not linked" — keeps the Finish flow in these tests from
@@ -3680,9 +3654,6 @@ class _WorkoutExerciseManagementHomeRepository
     return 'Workout summary';
   }
 
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
-
   Future<void> dispose() => _controller.close();
 
   void _emit() {
@@ -3813,36 +3784,6 @@ class _MultiSessionHomeRepository extends _HomeRepositoryTestDefaults {
   @override
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
-  }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
-}
-
-class _HomeStartMealNutritionController extends NutritionDayController {
-  final startedMealDates = <NutritionDayDate>[];
-
-  @override
-  Stream<NutritionDayState> build() {
-    const localDate = NutritionDayDate(year: 1970, month: 1, day: 1);
-    return Stream<NutritionDayState>.value(
-      NutritionDayState(
-        day: NutritionDayRecord(
-          localDate: localDate,
-          meals: <NutritionDayMealRecord>[],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Future<String> startMeal({
-    required MealTypeRecord mealType,
-    DateTime? startedAt,
-    NutritionDayDate? localDate,
-  }) async {
-    startedMealDates.add(localDate!);
-    return 'created-meal-id';
   }
 }
 

@@ -346,6 +346,11 @@ class _BatchBuilder {
     required String externalId,
   }) {
     final startedAt = _parseDate(dateText);
+    // A date with no time of day only knows its day; its `startedAt` is
+    // local midnight (docs/designs/meal-logging.md §1).
+    final timePrecision = importTextHasTimeOfDay(dateText)
+        ? MealTimePrecision.instant
+        : MealTimePrecision.date;
     final localDate = NutritionDayDate.fromDateTime(startedAt);
     final mealType = _canonicalMealType(mealText);
     final mealKey = '${localDate.storageValue}|$mealType';
@@ -385,6 +390,7 @@ class _BatchBuilder {
         mealType: mealType,
         startedAt: startedAt,
         localDate: localDate,
+        timePrecision: timePrecision,
       );
     });
     accumulator.entries.add(entry);
@@ -458,11 +464,13 @@ class _MealAccumulator {
     required this.mealType,
     required this.startedAt,
     required this.localDate,
+    required this.timePrecision,
   });
 
   final String mealType;
   final DateTime startedAt;
   final NutritionDayDate localDate;
+  final MealTimePrecision timePrecision;
   final List<NutritionImportFoodEntry> entries = <NutritionImportFoodEntry>[];
 
   NutritionImportMeal toMeal() {
@@ -470,6 +478,7 @@ class _MealAccumulator {
       mealType: mealType,
       startedAt: startedAt,
       localDate: localDate,
+      timePrecision: timePrecision,
       entries: List<NutritionImportFoodEntry>.unmodifiable(entries),
     );
   }

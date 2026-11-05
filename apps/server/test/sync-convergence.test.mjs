@@ -1046,6 +1046,146 @@ test(
   }
 );
 
+for (const scenario of [
+  {
+    entity: "meals",
+    table: "meals",
+    base: { name: "Lunch", meal_type_id: "meal-type-lunch" },
+    keys: { timezone_offset_minutes: 600, time_precision: "date" },
+    replacement: { timezone_offset_minutes: null, time_precision: "instant" }
+  },
+  {
+    entity: "food_entries",
+    table: "foodEntries",
+    base: { meal_id: "meal-1", position: 0 },
+    keys: { import_source: "fitnotes", import_external_id: "fn-42" },
+    replacement: { import_source: "cronometer", import_external_id: null }
+  }
+]) {
+  test(
+    `a ${scenario.entity} push without its later-added keys keeps the stored values; a push that sends them replaces them; per-row LWW is unchanged`,
+    { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+    async () => {
+      const server = await createConvergenceServer();
+      const table = schema[scenario.table];
+      const id = randomUUID();
+      const push = (deviceId, updatedAt, fields, beforeFields) => {
+        const payload = planImage(id, updatedAt, {
+          ...scenario.base,
+          ...fields
+        });
+        const activityLogId = randomUUID();
+        const change = {
+          id,
+          payload,
+          updatedAt,
+          deletedAt: null,
+          activityLogId,
+          actor: "app",
+          batchId: `meal-logging-carry-${activityLogId}`,
+          beforeImage:
+            beforeFields === undefined
+              ? null
+              : planImage(id, "2026-07-01T08:00:00.000Z", {
+                  ...scenario.base,
+                  ...beforeFields
+                }),
+          afterImage: payload,
+          occurredAt: updatedAt
+        };
+        return syncRequest(server, "/sync/push", {
+          protocolVersion,
+          deviceId,
+          entity: scenario.entity,
+          changes: [change]
+        }).then((response) => ({ response, activityLogId }));
+      };
+      const storedPayload = async () => {
+        const [row] = await server.database.db
+          .select({ payload: table.payload })
+          .from(table)
+          .where(inArray(table.id, [id]));
+        return row.payload;
+      };
+      const loggedImages = async (activityLogId) => {
+        const [row] = await server.database.db
+          .select({
+            beforeImage: schema.activityLog.beforeImage,
+            afterImage: schema.activityLog.afterImage
+          })
+          .from(schema.activityLog)
+          .where(inArray(schema.activityLog.id, [activityLogId]));
+        return row;
+      };
+      const pick = (payload, keys) =>
+        Object.fromEntries(Object.keys(keys).map((key) => [key, payload[key]]));
+
+      try {
+        // A newer device creates the row with the later-added keys.
+        await push("device-new", "2026-07-01T08:00:00.000Z", scenario.keys);
+        assert.deepEqual(
+          pick(await storedPayload(), scenario.keys),
+          scenario.keys
+        );
+
+        // An older app edits it without knowing the keys: they are carried
+        // forward into the stored payload and both Activity Log images.
+        const older = await push(
+          "device-old",
+          "2026-07-01T09:00:00.000Z",
+          { revision: "older-app-edit" },
+          {}
+        );
+        assert.deepEqual(older.response.accepted, [id]);
+        const afterOlder = await storedPayload();
+        assert.equal(afterOlder.revision, "older-app-edit");
+        assert.deepEqual(pick(afterOlder, scenario.keys), scenario.keys);
+        const olderLog = await loggedImages(older.activityLogId);
+        assert.deepEqual(pick(olderLog.afterImage, scenario.keys), scenario.keys);
+        assert.deepEqual(pick(olderLog.beforeImage, scenario.keys), scenario.keys);
+        assert.deepEqual(olderLog.afterImage, afterOlder);
+
+        // A push that sends the keys, null included, replaces them.
+        const replacing = await push(
+          "device-new",
+          "2026-07-01T10:00:00.000Z",
+          { revision: "replaced", ...scenario.replacement },
+          scenario.keys
+        );
+        assert.deepEqual(replacing.response.accepted, [id]);
+        const afterReplace = await storedPayload();
+        assert.deepEqual(
+          pick(afterReplace, scenario.replacement),
+          scenario.replacement
+        );
+        assert.deepEqual(
+          pick(
+            (await loggedImages(replacing.activityLogId)).afterImage,
+            scenario.replacement
+          ),
+          scenario.replacement
+        );
+
+        // Per-row last-writer-wins: an older clock loses, is still accepted,
+        // and its write is logged for recovery; the stored row is untouched.
+        const stale = await push(
+          "device-old",
+          "2026-07-01T09:30:00.000Z",
+          { revision: "stale-edit" },
+          {}
+        );
+        assert.deepEqual(stale.response.accepted, [id]);
+        assert.deepEqual(stale.response.applied, []);
+        assert.deepEqual(await storedPayload(), afterReplace);
+        const staleLog = await loggedImages(stale.activityLogId);
+        assert.equal(staleLog.afterImage.revision, "stale-edit");
+      } finally {
+        await server.close();
+      }
+    }
+  );
+}
+
 async function createConvergenceServer() {
   if (databaseUrl) {
     const serverApp = await createMigratedServerApp({

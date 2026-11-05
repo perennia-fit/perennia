@@ -33,7 +33,6 @@
   "homeLogSheetTitle": "Log for this day",
   "homeLogWorkout": "Workout",
   "homeStartWorkoutFailed": "Could not start workout. Try again.",
-  "homeLogFood": "Food",
   "homeLogDose": "Dose",
   "homeDomainToggleLabel": "Home domain",
   "homeTrainingDomain": "Training",
@@ -582,6 +581,10 @@
     }
   },
   "activityUndoGenericConflict": "Activity could not be undone",
+  "activityUndoDependentConflict": "Can't undo: foods were added to this meal afterwards.",
+  "@activityUndoDependentConflict": {
+    "description": "Shown when undoing the change that created a Meal is refused because foods were added to that Meal later."
+  },
   "activityRelativeLessThanOneMinuteAgo": "less than 1 min ago",
   "activityRelativeMinutesAgo": "{count} min ago",
   "@activityRelativeMinutesAgo": {
@@ -2198,6 +2201,184 @@
         "type": "int"
       },
       "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeLogMeal": "Meal",
+  "@homeLogMeal": {
+    "description": "The Log sheet item that opens the Meal screen for the selected day."
+  },
+  "nutritionLogMeal": "Log meal",
+  "@nutritionLogMeal": {
+    "description": "The Nutrition Day button that opens the Meal screen for that day."
+  },
+  "nutritionMealCardSemantics": "{time}, {type}. Open meal",
+  "@nutritionMealCardSemantics": {
+    "description": "Screen reader label of a Meal card on the Nutrition Day; tapping the card opens the Meal screen. The type may carry the 'add foods' hint.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "mealScreenTitle": "Meal",
+  "@mealScreenTitle": {
+    "description": "The Meal screen's app bar title."
+  },
+  "mealHeaderNow": "now",
+  "@mealHeaderNow": {
+    "description": "The Meal screen header's time while a new Meal on today has no chosen time: it is logged at the time of the first write."
+  },
+  "mealHeaderChooseTime": "Choose time",
+  "@mealHeaderChooseTime": {
+    "description": "The Meal screen header on a new Meal on a past day before a time is chosen."
+  },
+  "mealHeaderAddFoods": "add foods",
+  "@mealHeaderAddFoods": {
+    "description": "Appended to a saved Meal's header and card when the Meal has no Food Entries."
+  },
+  "mealTimeNotRecorded": "time not recorded",
+  "@mealTimeNotRecorded": {
+    "description": "Shown in place of a Meal's clock time when only its date is known (an imported date-only Meal)."
+  },
+  "mealHeaderLabel": "{time} · {type}",
+  "@mealHeaderLabel": {
+    "description": "The Meal screen header: the Meal's time (or 'now') and its Meal Type.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "mealHeaderSemantics": "{time}, {type}. Change time or meal type",
+  "@mealHeaderSemantics": {
+    "description": "Screen reader label of the Meal screen header button.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "mealTimeShift15": "−15 min",
+  "@mealTimeShift15": {
+    "description": "Time-shift button: sets the Meal's time to 15 minutes before now."
+  },
+  "mealTimeShift30": "−30 min",
+  "@mealTimeShift30": {
+    "description": "Time-shift button: sets the Meal's time to 30 minutes before now."
+  },
+  "mealTimeShift60": "−1 h",
+  "@mealTimeShift60": {
+    "description": "Time-shift button: sets the Meal's time to 1 hour before now."
+  },
+  "mealTimeShift15Semantics": "15 minutes ago",
+  "@mealTimeShift15Semantics": {
+    "description": "Screen reader label of the −15 min time-shift button."
+  },
+  "mealTimeShift30Semantics": "30 minutes ago",
+  "@mealTimeShift30Semantics": {
+    "description": "Screen reader label of the −30 min time-shift button."
+  },
+  "mealTimeShift60Semantics": "1 hour ago",
+  "@mealTimeShift60Semantics": {
+    "description": "Screen reader label of the −1 h time-shift button."
+  },
+  "mealTimeSheetDate": "Date",
+  "@mealTimeSheetDate": {
+    "description": "The Meal time sheet's date row label."
+  },
+  "mealTimeSheetTime": "Time",
+  "@mealTimeSheetTime": {
+    "description": "The Meal time sheet's time row label."
+  },
+  "mealTimeSheetType": "Meal type",
+  "@mealTimeSheetType": {
+    "description": "The Meal time sheet's Meal Type list heading."
+  },
+  "mealAddFoodsLater": "Add foods later",
+  "@mealAddFoodsLater": {
+    "description": "Saves a new Meal with its time and Meal Type and no Food Entries."
+  },
+  "mealYourMeals": "Your meals",
+  "@mealYourMeals": {
+    "description": "Heading of the Meal screen's list of meals the user repeats."
+  },
+  "mealAddToRecent": "Add to {time} · {type}",
+  "@mealAddToRecent": {
+    "description": "Recent-Meal shortcut on a new Meal screen: opens the Meal logged in the last 30 minutes.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "mealLogged": "Meal logged",
+  "@mealLogged": {
+    "description": "Undo bar message after a Your meals row logs the Meal again."
+  },
+  "mealUndo": "Undo",
+  "@mealUndo": {
+    "description": "The Undo bar action on the Meal screen."
+  },
+  "mealFoodRemoved": "Food removed",
+  "@mealFoodRemoved": {
+    "description": "Undo bar message after a Food Entry is removed from a Meal."
+  },
+  "mealPortionUpdated": "Portion updated",
+  "@mealPortionUpdated": {
+    "description": "Undo bar message after a Food Entry's Portion is changed."
+  },
+  "mealDelete": "Delete meal",
+  "@mealDelete": {
+    "description": "Overflow menu item that archives the Meal and its Food Entries."
+  },
+  "mealDeleteConfirmTitle": "Delete this meal?",
+  "@mealDeleteConfirmTitle": {
+    "description": "Title of the Delete meal confirmation."
+  },
+  "mealDeleteConfirmBody": "The meal and its foods are removed from the day.",
+  "@mealDeleteConfirmBody": {
+    "description": "Body of the Delete meal confirmation."
+  },
+  "mealDeleteConfirmAction": "Delete",
+  "@mealDeleteConfirmAction": {
+    "description": "Confirms Delete meal."
+  },
+  "mealFutureTimeTitle": "Time is in the future",
+  "@mealFutureTimeTitle": {
+    "description": "Title of the confirmation shown when a chosen Meal time is more than 5 minutes ahead of now."
+  },
+  "mealFutureTimeBody": "Save {time} anyway?",
+  "@mealFutureTimeBody": {
+    "description": "Body of the future-time confirmation, naming the chosen time.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "mealFutureTimeConfirm": "Save",
+  "@mealFutureTimeConfirm": {
+    "description": "Confirms a Meal time in the future."
+  },
+  "mealRemoveEntry": "Remove {food}",
+  "@mealRemoveEntry": {
+    "description": "Tooltip and screen reader label of a Food Entry's remove button on the Meal screen.",
+    "placeholders": {
+      "food": {
         "type": "String"
       }
     }

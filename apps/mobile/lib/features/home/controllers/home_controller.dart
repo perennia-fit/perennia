@@ -250,10 +250,6 @@ class HomeController extends StreamNotifier<HomeState> {
   Future<String> shareWorkout(String workoutId) {
     return ref.read(homeRepositoryProvider).shareWorkout(workoutId);
   }
-
-  Future<void> logDefaultWeightRepsSet() {
-    return ref.read(homeRepositoryProvider).logDefaultWeightRepsSet();
-  }
 }
 
 class HomeState {

@@ -1,7 +1,7 @@
 # Meal Logging
 
 - **Author:** Leonardo Pinheiro
-- **Status:** Approved
+- **Status:** Current
 - **Date:** 2026-11-02
 
 Related documents:
@@ -428,7 +428,14 @@ time. So the stored time is the time of the write, not the time the screen opene
 | `updateMealTime(String mealId, DateTime startedAt) → Future<String>` (new) | The Dose-model time edit from §1, and `time_precision = 'instant'`. Returns the Batch id. | Header on a saved Meal |
 | `updateMealType(String mealId, String mealTypeName) → Future<String>` (new) | Stores the Meal Type name. Returns the Batch id. | Header on a saved Meal |
 | `listMealHistory({DateTime? now, int limit = 20}) → Future<List<MealHistoryRecord>>` (new) | Nothing: the Meal History read from §5. | Your meals |
+| `watchMeal(String mealId) → Stream<NutritionDayMealRecord?>` (new; added while implementing PR 3) | Nothing: one Meal and its active Food Entries, reactive, null once archived | The Meal screen, which follows a Meal across days |
 | `deleteFoodEntry`, `updateFoodEntryPortion`, `deleteMeal` (existing, unchanged) | As today. | Remove an entry, edit a Portion, Delete meal |
+
+Two names differ from a plain reading of the table. NutritionRepository already had
+`updateMealType(String id, MealTypeDraft draft)`, which edits a Meal Type entity, and Dart
+has no overloading: that method is renamed `editMealType`, with no behaviour change, and
+the new Meal write keeps the name `updateMealType`. `newMealId()` mints a `PendingMeal` id
+from the repository's id factory, so a controller never touches the factory.
 
 Rules shared by the writes:
 
@@ -537,8 +544,8 @@ filters, window and time rules.
 
 **It is a full-screen route**, `MealScreen` in
 `lib/features/nutrition/widgets/meal_screen.dart`, driven by `MealScreenController`, an
-`AutoDisposeNotifier` family keyed by `MealScreenArgs.newMeal(NutritionDayDate day)` or
-`MealScreenArgs.existing(String mealId)`. `MealScreen` has matching `MealScreen.newMeal`
+auto-dispose Riverpod 3 `Notifier` family keyed by
+`MealScreenArgs.newMeal(NutritionDayDate day)` or `MealScreenArgs.existing(String mealId)`. `MealScreen` has matching `MealScreen.newMeal`
 and `MealScreen.existing` constructors.
 
 | State | Header | Body | Actions |
@@ -574,10 +581,18 @@ place of `<time>`. Choosing a time makes it `instant`.
   qualify. Its row reads `Add to <time> · <type>`; tapping it replaces the screen with that
   Meal's screen.
 - **The add-food picker is embedded,** not opened as a sheet. `AddFoodPicker` and
-  `add_food_controller.dart` replace the required `MealRecord meal` with a `MealTarget`.
-  Selecting a Food opens `LogPortionScreen`, which takes the `MealTarget`, calls
-  `logFoodEntrySnapshot`, and pops with the saved Meal id. The Quick Entry write moves to
-  the same split in the picker and its controller.
+  `add_food_controller.dart` drop the required `MealRecord meal` and take no `MealTarget`.
+  The picker takes a required `onQuickEntry` hook and an optional `onFoodSelected` hook
+  (without it, results don't open), and it never writes on its own. The Meal screen passes
+  both, and `MealScreenController` owns the `MealTarget` (added while implementing PR 3).
+  Selecting a Food opens `LogPortionScreen`, which takes that target and a required `onSave`
+  hook. Save builds the snapshot draft and hands it to `onSave`, which calls
+  `logFoodEntrySnapshot` through the controller, and the screen pops with the saved Meal id.
+  Its edit mode takes a required `onUpdatePortion` hook, and that edit-mode Save reaches
+  `updateFoodEntryPortion` the same way. The screen never writes on its own, and when a hook
+  returns null because the controller ignored the write, it stays open (added while
+  implementing PR 3). Quick add hands its draft to `onQuickEntry`, which calls
+  `logQuickEntry` through the controller with the same target.
 - **Entries.** Each Food Entry row has a 48 dp remove button that calls `deleteFoodEntry`,
   with an Undo bar. Tapping a Food-backed entry without import keys opens
   `LogPortionScreen` prefilled, and its Save calls `updateFoodEntryPortion`. Imported
@@ -667,7 +682,7 @@ device and the date is derived, so neither can be malformed.
 | `Add foods later` | `batchWriteAgentMeal` with Meal fields and no entries |
 | Change a Meal's time or Meal Type | `batchWriteAgentMeal` with `startedAt` (and its offset or zone) or `mealType` |
 | Remove a Food Entry, edit a Portion | `batchWriteAgentMeal` with the full entry, `deletedAt` set or the new Portion |
-| Delete meal | `batchWriteAgentMeal` with `meal.deletedAt` |
+| Delete meal | `batchWriteAgentMeal` with `meal.deletedAt` and every active entry sent with `deletedAt` set, as the app's `deleteMeal` archives the Meal and its entries in one Batch |
 | Your meals | `listAgentMealHistory` |
 | The Meal Type list | `listAgentMealTypes` |
 | Undo | `undoAgentActivityBatch` (existing), with `skipped_dependent` |
@@ -702,7 +717,7 @@ writes only the Meal fields a request sends.
   or both; `timezoneOffsetMinutes` and `localDate` are never sent without `startedAt`. The
   offset is resolved in this order:
   1. the sent offset;
-  2. else `offsetMinutesInTimezone(timezone, startedAt)` (`timezone.ts`);
+  2. else `offsetMinutesInTimezone(startedAt, timezone)` (`timezone.ts`);
   3. else `null`.
 
   Then:
@@ -722,8 +737,17 @@ writes only the Meal fields a request sends.
 - **Entries-only request** (`meal` carries only `id`): the Meal row is not rewritten, and
   its `updatedAt` doesn't move.
 - **Archived Meals.** A request whose resulting Meal is archived may not add Food Entries
-  or un-archive them: 422 `meal_archived`. A request that sends `deletedAt: null` and
-  entries un-archives the Meal and writes the entries.
+  or un-archive them: 422 `meal_archived`. It also fails with 422 `meal_archived` if any
+  Food Entry stored active in that Meal is not tombstoned (sent with `deletedAt` set) in
+  the same request. A tombstone counts only when its `updatedAt` wins LWW against the
+  stored entry (`lwwWins`, so an equal `updatedAt` goes to the higher device id). An omitted
+  `updatedAt` means the server clock, and the value is normalized exactly as the sync push
+  normalizes it (`normalizeIncomingUpdatedAt`). A tombstone that ties or loses is 422
+  `meal_archived`, because the write would drop it and leave an active entry in an archived
+  Meal (added while implementing PR 1). The store reads the Meal's stored active entries
+  with `FOR UPDATE` only when the resulting Meal is archived, after locking the Meal row.
+  A request that sends `deletedAt: null` and entries un-archives
+  the Meal and writes the entries.
 - **Entries** are written as sent, except that an unsent `deletedAt` keeps the stored
   value, and the import keys, which are never in an agent payload, are carried forward
   from the stored payload (§10). An existing entry id under a different `meal.id` fails
@@ -734,7 +758,8 @@ writes only the Meal fields a request sends.
 
 **Pipeline.** `AgentMealBatchWriteStore.writeMealBatch` opens the transaction and takes the
 idempotency check, as today. It then selects the stored Meal and entry payloads (by id, for
-any user) with `FOR UPDATE`, calls the pure
+any user) with `FOR UPDATE`, and, only when the resulting Meal is archived, the ids and LWW
+clocks of the Meal's stored active Food Entries, also with `FOR UPDATE`. It calls the pure
 `prepareAgentMealBatchWrite(request, stored, now)`, and either writes the prepared rows or
 returns the issues and status. A prepared Meal row of `null` means "not rewritten". REST
 (`app.ts`) and MCP (`agent-mcp.ts`) both call the store this way.
@@ -1163,7 +1188,7 @@ The server stores Meals as a JSON payload, so there is no Postgres migration.
 |---|---|
 | `agent-validation.golden.test.mjs` | Add a `meal-validation` branch that runs `validateAgentMealTime` and also asserts `localDateAtOffset(startedAt, offset) === expected.localDate`. |
 | `timezone.test.mjs` | Add `localDateAtOffset` cases, and `offsetMinutesInTimezone` across a DST change. |
-| `agent-meal-batch-write.test.mjs` | Add: create with only an IANA zone; create with only an abbreviation and a `localDate` stores a null offset and that date; the same without `localDate` is 422 `meal_offset_unknown`; create without `mealType` is 422 `meal_create_incomplete`; a zero-entry create; update with only `startedAt` moving the derived `localDate` across midnight; an entries-only request leaves the Meal row and its `updatedAt` untouched; an entries-only request for an unknown id is 404; an unsent entry `deletedAt` and the import keys keep their stored values; `null` clears `endedAt`; entries into an archived Meal are 422 `meal_archived`, and accepted when the same request sends `deletedAt: null`; another user's Meal id and entry id are 409; an entry id under a different Meal is 422 `entry_meal_mismatch`; a future `startedAt` returns a top-level warning. |
+| `agent-meal-batch-write.test.mjs` | Add: create with only an IANA zone; create with only an abbreviation and a `localDate` stores a null offset and that date; the same without `localDate` is 422 `meal_offset_unknown`; create without `mealType` is 422 `meal_create_incomplete`; a zero-entry create; update with only `startedAt` moving the derived `localDate` across midnight; an entries-only request leaves the Meal row and its `updatedAt` untouched; an entries-only request for an unknown id is 404; an unsent entry `deletedAt` and the import keys keep their stored values; `null` clears `endedAt`; entries into an archived Meal are 422 `meal_archived`, and accepted when the same request sends `deletedAt: null`; archiving a Meal with an untombstoned stored active entry is 422 `meal_archived`, and accepted when the request tombstones every active entry with a winning `updatedAt`; a tombstone that ties or loses is 422 `meal_archived` (added while implementing PR 1); another user's Meal id and entry id are 409; an entry id under a different Meal is 422 `entry_meal_mismatch`; a future `startedAt` returns a top-level warning. |
 | `agent-meal-types.test.mjs` | Create. Route auth; archived types excluded; order by `sortOrder` then `id`. |
 | `agent-meal-reads.test.mjs` | Add the two new fields on `listAgentMeals`, including `null` and `instant` for an older payload. |
 | `agent-activity.test.mjs` | Add: undoing a Meal's creating Batch after another Batch added an entry returns `skipped_dependent` and applies nothing. |
@@ -1205,11 +1230,11 @@ simulation with an older app's images; archive restore of a pre-v65 backup.
 | `apps/mobile/drift_schemas/app_database/drift_schema_v65.json` | Create with `drift_dev schema dump`. |
 | `apps/mobile/test/generated_migrations/app_database/schema_v65.dart`, `schema.dart` | Regenerate with `tool/drift_schema_snapshots.dart`. |
 | `apps/mobile/lib/domain/nutrition/nutrition.dart` | Add the `MealTimePrecision` enum, `MealTarget`, `ExistingMealTarget`, `NewMealTarget`, `PendingMeal`, `MealAlreadyExistsException`, `LogMealAgainResult` and `MealHistoryRecord`. Change `MealDraft`: remove `localDate`, add `timezoneOffsetMinutes` and `timePrecision`. Add the offset, the precision and `clock` (the local time at its offset) to `MealRecord`. |
-| `apps/mobile/lib/data/repositories/training_repositories.dart` | **NutritionRepository:** implement the §3 table and rules; `_createMeal` computes the frozen offset, uses `localDateAtOffset`, stores the precision, and calls `validateMealTime` in place of its ad-hoc checks; `listMealHistory` (§5), extracting `foodHistoryWindow` from `listFoodHistory`; `startMeal` builds `startedAt` from the selected day (§3); the §7 re-import changes in `importNutritionBatch`, `_findOrCreateImportMeal` and `_updateImportedFoodEntry`. **Activity Log:** `_mealImage` writes the two keys; `_mealCompanionFromImage` reads them and re-derives a malformed `local_date` (§10); add the Meal entry to `_activityLaterAddedKeyDefaults`; `undoBatch` calls `_mealDependentUndoConflicts`; add `ActivityLogUndoConflictReason.dependent`. |
+| `apps/mobile/lib/data/repositories/training_repositories.dart` | **NutritionRepository:** implement the §3 table and rules; rename the Meal Type entity edit `updateMealType(String id, MealTypeDraft draft)` to `editMealType` (§3) and update `NutritionDayController.renameMealType`; add `newMealId()`; `_createMeal` computes the frozen offset, uses `localDateAtOffset`, stores the precision, and calls `validateMealTime` in place of its ad-hoc checks; `listMealHistory` (§5), extracting `foodHistoryWindow` from `listFoodHistory`; `startMeal` builds `startedAt` from the selected day (§3); the §7 re-import changes in `importNutritionBatch`, `_findOrCreateImportMeal` and `_updateImportedFoodEntry`. **Activity Log:** `_mealImage` writes the two keys; `_mealCompanionFromImage` reads them and re-derives a malformed `local_date` (§10); add the Meal entry to `_activityLaterAddedKeyDefaults`; `undoBatch` calls `_mealDependentUndoConflicts`; add `ActivityLogUndoConflictReason.dependent`. |
 | `apps/mobile/lib/data/repositories/portable_archive_repository.dart` | Decode Meals with `MealRow.fromJson({'timePrecision': 'instant', ...json})`, as exercises default `focusIds`, so backups made before v65 still restore. |
 | `apps/mobile/lib/domain/nutrition/nutrition_import.dart` | Add the named parameter `timePrecision` to `NutritionImportMeal`, defaulting to `instant`. |
 | `apps/mobile/lib/features/nutrition/import/myfitnesspal_csv_import_adapter.dart`, `cronometer_csv_import_adapter.dart`, `yazio_import_adapter.dart`, `lifesum_import_adapter.dart` | Set the precision by the rule in §1. |
-| `apps/mobile/lib/features/nutrition/controllers/add_food_controller.dart`, `nutrition_day_controller.dart`, and the importers' `MealDraft` call sites | Stop passing `localDate:` to `MealDraft`; replace `logQuickEntryForMeal` calls with `logQuickEntry(target: ExistingMealTarget(...))`; pass `ExistingMealTarget` to `logFoodEntrySnapshot`. |
+| `apps/mobile/lib/features/nutrition/controllers/add_food_controller.dart`, `nutrition_day_controller.dart`, and the importers' `MealDraft` call sites | Stop passing `localDate:` to `MealDraft`; replace `logQuickEntryForMeal` calls with `logQuickEntry(target: ExistingMealTarget(...))`. |
 | `apps/mobile/lib/features/activity/undo_conflict_message.dart` | Create. Move `_undoConflictMessage` here from `activity_feed_screen.dart` as a public function, and add the `dependent` branch (§7). |
 | `apps/mobile/lib/features/activity/widgets/activity_feed_screen.dart` | Call the shared function. |
 | `apps/mobile/lib/l10n/app_en.arb` and generated localisations | Add the `dependent` message. |
@@ -1271,15 +1296,16 @@ during a first food and during Log again from the Meal screen; manual checks 1 t
 |---|---|
 | `apps/mobile/lib/features/nutrition/controllers/meal_screen_controller.dart` | Create. `MealScreenArgs` and the `MealScreenController` family (§6): the pending Meal, the saved Meal stream once written, the Meal History future, the recent-Meal shortcut, and the in-flight guard; it exposes the §6 states and calls the repository. |
 | `apps/mobile/lib/features/nutrition/widgets/meal_screen.dart` | Create. The full-screen route with the states and behaviour of §6. |
+| `apps/mobile/lib/data/repositories/training_repositories.dart` | Add `watchMeal` (§3) and an `id` filter on `_activeMealQuery`, so the Meal screen follows one Meal across days (added while implementing PR 3). |
 | `apps/mobile/lib/features/nutrition/widgets/meal_time_sheet.dart` | Create. The date and time pickers, the time-shift buttons, the Meal Type list and the future-time confirmation (§6). |
-| `apps/mobile/lib/features/nutrition/widgets/add_food_picker.dart`, `controllers/add_food_controller.dart` | Replace the required `MealRecord` with a `MealTarget`; render embedded in the Meal screen; route Quick Entry through `logQuickEntry(target: ...)`. Search, source chips, Your foods and the two-tap repeat are unchanged. |
-| `apps/mobile/lib/features/nutrition/widgets/log_portion_screen.dart` | Take a `MealTarget`; Save calls `logFoodEntrySnapshot` and pops with the saved Meal id. Add the prefilled edit mode whose Save calls `updateFoodEntryPortion`. |
-| `apps/mobile/lib/features/nutrition/widgets/quick_entry_dialog.dart` | Return the entered values only; the write happens in the picker. |
+| `apps/mobile/lib/features/nutrition/widgets/add_food_picker.dart`, `controllers/add_food_controller.dart` | Remove the required `MealRecord`, and take no `MealTarget`: the Meal screen controller owns the target. Render embedded in the Meal screen. Take a required `onQuickEntry` and an optional `onFoodSelected` (added while implementing PR 3); Quick add hands its draft to `onQuickEntry`, which the Meal screen routes through `logQuickEntry(target: ...)`. Search, source chips, Your foods and the two-tap repeat are unchanged. |
+| `apps/mobile/lib/features/nutrition/widgets/log_portion_screen.dart` | Take a `MealTarget` and a required `onSave`; Save hands its snapshot draft to `onSave`, which the Meal screen routes to `logFoodEntrySnapshot`, and pops with the saved Meal id. Add the prefilled edit mode, with a required `onUpdatePortion` that the Meal screen routes to `updateFoodEntryPortion`. The screen never writes on its own (added while implementing PR 3). |
+| `apps/mobile/lib/features/nutrition/widgets/quick_entry_dialog.dart` | Return the entered values only; the Meal screen makes the write. |
 | `apps/mobile/lib/features/nutrition/widgets/nutrition_day_view.dart` | Replace the Start Meal chips with `Log meal`, hidden on future days; rename `startMealButtonKey` to `logMealButtonKey`; cards lead with `<time> · <type>` (or `time not recorded`), then Food Entries and totals; `add foods` on zero-entry Meals; a card tap opens the Meal screen; remove the per-card `Add food` button and `_showAddFoodPicker`. |
-| `apps/mobile/lib/features/nutrition/controllers/nutrition_day_controller.dart` | Remove `startMeal` and `logQuickEntryForMeal`. |
+| `apps/mobile/lib/features/nutrition/controllers/nutrition_day_controller.dart` | Remove `startMeal`, `logQuickEntryForMeal`, `logFoodEntrySnapshot`, `logQuickEntry` and `logFoodEntry`. Log Portion and Quick add write only through the Meal screen controller (added while implementing PR 3). |
 | `apps/mobile/lib/domain/nutrition/nutrition_day_assembly.dart` | Apply the §6 order. |
 | `apps/mobile/lib/features/home/widgets/home_screen.dart` | The Log sheet's Food item becomes Meal (`homeLogMeal`), opens the Meal screen for the selected day, and is hidden on a future day; rename `logFoodKey` to `logMealKey`; Today's Nutrition view replaces `onStartMeal` with the `Log meal` button. |
-| `apps/mobile/lib/l10n/app_en.arb` and generated localisations | Add `homeLogMeal`, `nutritionLogMeal`, the header forms (`now`, `Choose time`, `add foods`, `time not recorded`), the header's semantic label, the time-shift buttons, `Add foods later`, `Your meals`, `Add to {time} · {type}`, `Meal logged` and `Undo`, Delete meal and its confirmation, and the future-time confirmation. Remove `homeLogFood`. Remove the literal Start Meal strings from the widgets. |
+| `apps/mobile/lib/l10n/app_en.arb` and generated localisations | Add `homeLogMeal`, `nutritionLogMeal`, the header forms (`now`, `Choose time`, `add foods`, `time not recorded`), the header's semantic label, the time-shift buttons, `Add foods later`, `Your meals`, `Add to {time} · {type}`, `Meal logged` and `Undo`, the Undo-bar messages `Food removed` (`mealFoodRemoved`) and `Portion updated` (`mealPortionUpdated`) (added while implementing PR 3), the Meal card's semantic label `{time}, {type}. Open meal` (`nutritionMealCardSemantics`) (added while implementing PR 3), the Meal screen's title `Meal` (`mealScreenTitle`), the time sheet's labels `Date`, `Time` and `Meal type` (`mealTimeSheetDate`, `mealTimeSheetTime`, `mealTimeSheetType`), the remove button's label `Remove {food}` (`mealRemoveEntry`), the time-shift buttons' semantic labels (`mealTimeShift15Semantics`, `mealTimeShift30Semantics`, `mealTimeShift60Semantics`) (added while implementing PR 3), Delete meal and its confirmation, and the future-time confirmation. Remove `homeLogFood`. Remove the literal Start Meal strings from the widgets. |
 
 **Tests:**
 

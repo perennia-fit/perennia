@@ -2779,6 +2779,20 @@ class $MealsTable extends Meals with TableInfo<$MealsTable, MealRow> {
   late final GeneratedColumn<DateTime> endedAt = GeneratedColumn<DateTime>(
       'ended_at', aliasedName, true,
       type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _timezoneOffsetMinutesMeta =
+      const VerificationMeta('timezoneOffsetMinutes');
+  @override
+  late final GeneratedColumn<int> timezoneOffsetMinutes = GeneratedColumn<int>(
+      'timezone_offset_minutes', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _timePrecisionMeta =
+      const VerificationMeta('timePrecision');
+  @override
+  late final GeneratedColumn<String> timePrecision = GeneratedColumn<String>(
+      'time_precision', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('instant'));
   static const VerificationMeta _syncDeviceIdMeta =
       const VerificationMeta('syncDeviceId');
   @override
@@ -2815,6 +2829,8 @@ class $MealsTable extends Meals with TableInfo<$MealsTable, MealRow> {
         timezone,
         localDate,
         endedAt,
+        timezoneOffsetMinutes,
+        timePrecision,
         syncDeviceId,
         syncPreviouslySynced,
         updatedAt,
@@ -2861,6 +2877,18 @@ class $MealsTable extends Meals with TableInfo<$MealsTable, MealRow> {
       context.handle(_endedAtMeta,
           endedAt.isAcceptableOrUnknown(data['ended_at']!, _endedAtMeta));
     }
+    if (data.containsKey('timezone_offset_minutes')) {
+      context.handle(
+          _timezoneOffsetMinutesMeta,
+          timezoneOffsetMinutes.isAcceptableOrUnknown(
+              data['timezone_offset_minutes']!, _timezoneOffsetMinutesMeta));
+    }
+    if (data.containsKey('time_precision')) {
+      context.handle(
+          _timePrecisionMeta,
+          timePrecision.isAcceptableOrUnknown(
+              data['time_precision']!, _timePrecisionMeta));
+    }
     if (data.containsKey('sync_device_id')) {
       context.handle(
           _syncDeviceIdMeta,
@@ -2904,6 +2932,10 @@ class $MealsTable extends Meals with TableInfo<$MealsTable, MealRow> {
           .read(DriftSqlType.string, data['${effectivePrefix}local_date'])!,
       endedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}ended_at']),
+      timezoneOffsetMinutes: attachedDatabase.typeMapping.read(
+          DriftSqlType.int, data['${effectivePrefix}timezone_offset_minutes']),
+      timePrecision: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}time_precision'])!,
       syncDeviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
       syncPreviouslySynced: attachedDatabase.typeMapping.read(
@@ -2928,6 +2960,17 @@ class MealRow extends DataClass implements Insertable<MealRow> {
   final String timezone;
   final String localDate;
   final DateTime? endedAt;
+
+  /// The UTC offset frozen when the Meal's time was set: the device zone's
+  /// offset at the Meal's own instant (docs/designs/meal-logging.md §1).
+  /// Null only on Meals written before schema 65 and on agent writes whose
+  /// zone the server can't resolve; readers then use the device zone.
+  final int? timezoneOffsetMinutes;
+
+  /// `instant` when `started_at` is the time the user ate; `date` when only
+  /// the date is known and `started_at` is local midnight of `local_date`
+  /// (docs/designs/meal-logging.md §1). Stored by `MealTimePrecision.name`.
+  final String timePrecision;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
   final DateTime updatedAt;
@@ -2939,6 +2982,8 @@ class MealRow extends DataClass implements Insertable<MealRow> {
       required this.timezone,
       required this.localDate,
       this.endedAt,
+      this.timezoneOffsetMinutes,
+      required this.timePrecision,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
       required this.updatedAt,
@@ -2954,6 +2999,10 @@ class MealRow extends DataClass implements Insertable<MealRow> {
     if (!nullToAbsent || endedAt != null) {
       map['ended_at'] = Variable<DateTime>(endedAt);
     }
+    if (!nullToAbsent || timezoneOffsetMinutes != null) {
+      map['timezone_offset_minutes'] = Variable<int>(timezoneOffsetMinutes);
+    }
+    map['time_precision'] = Variable<String>(timePrecision);
     if (!nullToAbsent || syncDeviceId != null) {
       map['sync_device_id'] = Variable<String>(syncDeviceId);
     }
@@ -2975,6 +3024,10 @@ class MealRow extends DataClass implements Insertable<MealRow> {
       endedAt: endedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(endedAt),
+      timezoneOffsetMinutes: timezoneOffsetMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(timezoneOffsetMinutes),
+      timePrecision: Value(timePrecision),
       syncDeviceId: syncDeviceId == null && nullToAbsent
           ? const Value.absent()
           : Value(syncDeviceId),
@@ -2996,6 +3049,9 @@ class MealRow extends DataClass implements Insertable<MealRow> {
       timezone: serializer.fromJson<String>(json['timezone']),
       localDate: serializer.fromJson<String>(json['localDate']),
       endedAt: serializer.fromJson<DateTime?>(json['endedAt']),
+      timezoneOffsetMinutes:
+          serializer.fromJson<int?>(json['timezoneOffsetMinutes']),
+      timePrecision: serializer.fromJson<String>(json['timePrecision']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
           serializer.fromJson<bool>(json['syncPreviouslySynced']),
@@ -3013,6 +3069,8 @@ class MealRow extends DataClass implements Insertable<MealRow> {
       'timezone': serializer.toJson<String>(timezone),
       'localDate': serializer.toJson<String>(localDate),
       'endedAt': serializer.toJson<DateTime?>(endedAt),
+      'timezoneOffsetMinutes': serializer.toJson<int?>(timezoneOffsetMinutes),
+      'timePrecision': serializer.toJson<String>(timePrecision),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -3027,6 +3085,8 @@ class MealRow extends DataClass implements Insertable<MealRow> {
           String? timezone,
           String? localDate,
           Value<DateTime?> endedAt = const Value.absent(),
+          Value<int?> timezoneOffsetMinutes = const Value.absent(),
+          String? timePrecision,
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
           DateTime? updatedAt,
@@ -3038,6 +3098,10 @@ class MealRow extends DataClass implements Insertable<MealRow> {
         timezone: timezone ?? this.timezone,
         localDate: localDate ?? this.localDate,
         endedAt: endedAt.present ? endedAt.value : this.endedAt,
+        timezoneOffsetMinutes: timezoneOffsetMinutes.present
+            ? timezoneOffsetMinutes.value
+            : this.timezoneOffsetMinutes,
+        timePrecision: timePrecision ?? this.timePrecision,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
         syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -3052,6 +3116,12 @@ class MealRow extends DataClass implements Insertable<MealRow> {
       timezone: data.timezone.present ? data.timezone.value : this.timezone,
       localDate: data.localDate.present ? data.localDate.value : this.localDate,
       endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
+      timezoneOffsetMinutes: data.timezoneOffsetMinutes.present
+          ? data.timezoneOffsetMinutes.value
+          : this.timezoneOffsetMinutes,
+      timePrecision: data.timePrecision.present
+          ? data.timePrecision.value
+          : this.timePrecision,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
           : this.syncDeviceId,
@@ -3072,6 +3142,8 @@ class MealRow extends DataClass implements Insertable<MealRow> {
           ..write('timezone: $timezone, ')
           ..write('localDate: $localDate, ')
           ..write('endedAt: $endedAt, ')
+          ..write('timezoneOffsetMinutes: $timezoneOffsetMinutes, ')
+          ..write('timePrecision: $timePrecision, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -3081,8 +3153,19 @@ class MealRow extends DataClass implements Insertable<MealRow> {
   }
 
   @override
-  int get hashCode => Object.hash(id, mealType, startedAt, timezone, localDate,
-      endedAt, syncDeviceId, syncPreviouslySynced, updatedAt, deletedAt);
+  int get hashCode => Object.hash(
+      id,
+      mealType,
+      startedAt,
+      timezone,
+      localDate,
+      endedAt,
+      timezoneOffsetMinutes,
+      timePrecision,
+      syncDeviceId,
+      syncPreviouslySynced,
+      updatedAt,
+      deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3093,6 +3176,8 @@ class MealRow extends DataClass implements Insertable<MealRow> {
           other.timezone == this.timezone &&
           other.localDate == this.localDate &&
           other.endedAt == this.endedAt &&
+          other.timezoneOffsetMinutes == this.timezoneOffsetMinutes &&
+          other.timePrecision == this.timePrecision &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
           other.updatedAt == this.updatedAt &&
@@ -3106,6 +3191,8 @@ class MealsCompanion extends UpdateCompanion<MealRow> {
   final Value<String> timezone;
   final Value<String> localDate;
   final Value<DateTime?> endedAt;
+  final Value<int?> timezoneOffsetMinutes;
+  final Value<String> timePrecision;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
   final Value<DateTime> updatedAt;
@@ -3118,6 +3205,8 @@ class MealsCompanion extends UpdateCompanion<MealRow> {
     this.timezone = const Value.absent(),
     this.localDate = const Value.absent(),
     this.endedAt = const Value.absent(),
+    this.timezoneOffsetMinutes = const Value.absent(),
+    this.timePrecision = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -3131,6 +3220,8 @@ class MealsCompanion extends UpdateCompanion<MealRow> {
     required String timezone,
     this.localDate = const Value.absent(),
     this.endedAt = const Value.absent(),
+    this.timezoneOffsetMinutes = const Value.absent(),
+    this.timePrecision = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     required DateTime updatedAt,
@@ -3148,6 +3239,8 @@ class MealsCompanion extends UpdateCompanion<MealRow> {
     Expression<String>? timezone,
     Expression<String>? localDate,
     Expression<DateTime>? endedAt,
+    Expression<int>? timezoneOffsetMinutes,
+    Expression<String>? timePrecision,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
     Expression<DateTime>? updatedAt,
@@ -3161,6 +3254,9 @@ class MealsCompanion extends UpdateCompanion<MealRow> {
       if (timezone != null) 'timezone': timezone,
       if (localDate != null) 'local_date': localDate,
       if (endedAt != null) 'ended_at': endedAt,
+      if (timezoneOffsetMinutes != null)
+        'timezone_offset_minutes': timezoneOffsetMinutes,
+      if (timePrecision != null) 'time_precision': timePrecision,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
         'sync_previously_synced': syncPreviouslySynced,
@@ -3177,6 +3273,8 @@ class MealsCompanion extends UpdateCompanion<MealRow> {
       Value<String>? timezone,
       Value<String>? localDate,
       Value<DateTime?>? endedAt,
+      Value<int?>? timezoneOffsetMinutes,
+      Value<String>? timePrecision,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
       Value<DateTime>? updatedAt,
@@ -3189,6 +3287,9 @@ class MealsCompanion extends UpdateCompanion<MealRow> {
       timezone: timezone ?? this.timezone,
       localDate: localDate ?? this.localDate,
       endedAt: endedAt ?? this.endedAt,
+      timezoneOffsetMinutes:
+          timezoneOffsetMinutes ?? this.timezoneOffsetMinutes,
+      timePrecision: timePrecision ?? this.timePrecision,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -3218,6 +3319,13 @@ class MealsCompanion extends UpdateCompanion<MealRow> {
     if (endedAt.present) {
       map['ended_at'] = Variable<DateTime>(endedAt.value);
     }
+    if (timezoneOffsetMinutes.present) {
+      map['timezone_offset_minutes'] =
+          Variable<int>(timezoneOffsetMinutes.value);
+    }
+    if (timePrecision.present) {
+      map['time_precision'] = Variable<String>(timePrecision.value);
+    }
     if (syncDeviceId.present) {
       map['sync_device_id'] = Variable<String>(syncDeviceId.value);
     }
@@ -3246,6 +3354,8 @@ class MealsCompanion extends UpdateCompanion<MealRow> {
           ..write('timezone: $timezone, ')
           ..write('localDate: $localDate, ')
           ..write('endedAt: $endedAt, ')
+          ..write('timezoneOffsetMinutes: $timezoneOffsetMinutes, ')
+          ..write('timePrecision: $timePrecision, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -26441,6 +26551,8 @@ typedef $$MealsTableCreateCompanionBuilder = MealsCompanion Function({
   required String timezone,
   Value<String> localDate,
   Value<DateTime?> endedAt,
+  Value<int?> timezoneOffsetMinutes,
+  Value<String> timePrecision,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   required DateTime updatedAt,
@@ -26454,6 +26566,8 @@ typedef $$MealsTableUpdateCompanionBuilder = MealsCompanion Function({
   Value<String> timezone,
   Value<String> localDate,
   Value<DateTime?> endedAt,
+  Value<int?> timezoneOffsetMinutes,
+  Value<String> timePrecision,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   Value<DateTime> updatedAt,
@@ -26505,6 +26619,13 @@ class $$MealsTableFilterComposer extends Composer<_$AppDatabase, $MealsTable> {
 
   ColumnFilters<DateTime> get endedAt => $composableBuilder(
       column: $table.endedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get timezoneOffsetMinutes => $composableBuilder(
+      column: $table.timezoneOffsetMinutes,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get timePrecision => $composableBuilder(
+      column: $table.timePrecision, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
@@ -26568,6 +26689,14 @@ class $$MealsTableOrderingComposer
   ColumnOrderings<DateTime> get endedAt => $composableBuilder(
       column: $table.endedAt, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get timezoneOffsetMinutes => $composableBuilder(
+      column: $table.timezoneOffsetMinutes,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get timePrecision => $composableBuilder(
+      column: $table.timePrecision,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId,
       builder: (column) => ColumnOrderings(column));
@@ -26609,6 +26738,12 @@ class $$MealsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get endedAt =>
       $composableBuilder(column: $table.endedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get timezoneOffsetMinutes => $composableBuilder(
+      column: $table.timezoneOffsetMinutes, builder: (column) => column);
+
+  GeneratedColumn<String> get timePrecision => $composableBuilder(
+      column: $table.timePrecision, builder: (column) => column);
 
   GeneratedColumn<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => column);
@@ -26673,6 +26808,8 @@ class $$MealsTableTableManager extends RootTableManager<
             Value<String> timezone = const Value.absent(),
             Value<String> localDate = const Value.absent(),
             Value<DateTime?> endedAt = const Value.absent(),
+            Value<int?> timezoneOffsetMinutes = const Value.absent(),
+            Value<String> timePrecision = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -26686,6 +26823,8 @@ class $$MealsTableTableManager extends RootTableManager<
             timezone: timezone,
             localDate: localDate,
             endedAt: endedAt,
+            timezoneOffsetMinutes: timezoneOffsetMinutes,
+            timePrecision: timePrecision,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -26699,6 +26838,8 @@ class $$MealsTableTableManager extends RootTableManager<
             required String timezone,
             Value<String> localDate = const Value.absent(),
             Value<DateTime?> endedAt = const Value.absent(),
+            Value<int?> timezoneOffsetMinutes = const Value.absent(),
+            Value<String> timePrecision = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             required DateTime updatedAt,
@@ -26712,6 +26853,8 @@ class $$MealsTableTableManager extends RootTableManager<
             timezone: timezone,
             localDate: localDate,
             endedAt: endedAt,
+            timezoneOffsetMinutes: timezoneOffsetMinutes,
+            timePrecision: timePrecision,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,

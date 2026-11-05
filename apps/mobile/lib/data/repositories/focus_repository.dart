@@ -404,6 +404,27 @@ Value<String?> _imageStringIfPresent(Map<String, Object?> image, String key) {
       : const Value<String?>.absent();
 }
 
+// The integer twin of [_imageStringIfPresent], for a nullable integer column
+// added after the entity's first release (a Meal's
+// `timezone_offset_minutes`).
+Value<int?> _imageIntIfPresent(Map<String, Object?> image, String key) {
+  return image.containsKey(key)
+      ? Value<int?>(_activityNullableInt(image, key))
+      : const Value<int?>.absent();
+}
+
+// [_imageStringIfPresent] for a NOT NULL text column with a default, added
+// after the entity's first release (a Meal's `time_precision`). A missing key,
+// or an explicit null the column can't hold, leaves the column as stored on
+// update and falls to the column default on insert.
+Value<String> _imageNonNullStringIfPresent(
+  Map<String, Object?> image,
+  String key,
+) {
+  final value = _activityNullableString(image, key);
+  return value == null ? const Value<String>.absent() : Value<String>(value);
+}
+
 Value<String> _imageFocusIds(Map<String, Object?> image) {
   return image.containsKey('focus_ids')
       ? Value<String>(_activityNullableString(image, 'focus_ids') ?? '[]')
