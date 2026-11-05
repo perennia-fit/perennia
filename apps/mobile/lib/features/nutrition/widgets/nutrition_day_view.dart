@@ -1198,7 +1198,7 @@ Future<void> _showAddFoodPicker(
       return FractionallySizedBox(
         heightFactor: 0.88,
         child: AddFoodPicker(
-          meal: meal,
+          target: ExistingMealTarget(meal.id),
           onFoodSelected: (food) {
             Navigator.of(sheetContext).pop();
             if (onFoodSelected != null) {
@@ -1235,7 +1235,7 @@ Future<void> _showLogPortion(
       return FractionallySizedBox(
         heightFactor: 0.82,
         child: LogPortionScreen(
-          meal: meal,
+          target: ExistingMealTarget(meal.id),
           food: food,
           onSave: (draft) {
             return ref

@@ -591,7 +591,7 @@ void main() {
             body: ValueListenableBuilder<bool>(
               valueListenable: shown,
               builder: (context, isShown, _) => isShown
-                  ? AddFoodPicker(meal: _meal())
+                  ? const AddFoodPicker(target: _target)
                   : const SizedBox.shrink(),
             ),
           ),
@@ -630,7 +630,7 @@ void main() {
         repository.calls.last, const _SearchCall(AddFoodPickerFilter.all, ''));
   });
 
-  testWidgets('Quick add creates a Quick Entry directly into the current Meal',
+  testWidgets('Quick add with an existing Meal target adds to that Meal',
       (tester) async {
     final database = AppDatabase.inMemory();
     addTearDown(database.close);
@@ -642,11 +642,10 @@ void main() {
         mealTypeName: 'Snack',
       ),
     );
-    final meal = (await repositories.nutrition.getMealById(mealId))!;
 
     await _pumpPicker(
       tester,
-      meal: meal,
+      target: ExistingMealTarget(mealId),
       repositories: repositories,
       repository: const _EmptyAddFoodRepository(),
     );
@@ -675,6 +674,93 @@ void main() {
     expect(entries.single.portion, isNull);
     expect(entries.single.foodSource, isNull);
     expect(entries.single.nutrients[NutrientId.energy].value, 140);
+    expect(await database.select(database.meals).get(), hasLength(1));
+  });
+
+  testWidgets(
+      'Quick add with a new Meal target creates the Meal and its Quick Entry '
+      'in one Batch', (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+    final mealId = repositories.nutrition.newMealId();
+
+    await _pumpPicker(
+      tester,
+      target: NewMealTarget(
+        PendingMeal(
+          id: mealId,
+          startedAt: DateTime(2026, 6, 26, 15),
+          mealTypeName: 'Snack',
+        ),
+      ),
+      repositories: repositories,
+      repository: const _EmptyAddFoodRepository(),
+    );
+
+    await _quickAdd(tester, name: 'Cafe latte', calories: '140');
+
+    final meal = await repositories.nutrition.getMealById(mealId);
+    expect(meal?.mealType, 'Snack');
+    final entries =
+        await repositories.nutrition.listActiveEntriesForMeal(mealId);
+    expect(entries, hasLength(1));
+    expect(entries.single.kind, FoodEntryKind.quickEntry);
+    expect(entries.single.name, 'Cafe latte');
+    final activity = await repositories.activityLog.listEntries();
+    expect(activity, hasLength(2));
+    expect(activity.map((entry) => entry.batchId).toSet(), hasLength(1));
+    expect(
+      activity.map((entry) => entry.entityTable).toSet(),
+      <String>{AppDatabase.mealsTable, AppDatabase.foodEntriesTable},
+    );
+  });
+
+  testWidgets('Quick add with an onQuickEntry hook writes nothing itself',
+      (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+    final drafts = <QuickFoodEntryDraft>[];
+
+    await _pumpPicker(
+      tester,
+      target: NewMealTarget(
+        PendingMeal(id: repositories.nutrition.newMealId()),
+      ),
+      repositories: repositories,
+      repository: const _EmptyAddFoodRepository(),
+      onQuickEntry: (draft) async => drafts.add(draft),
+    );
+
+    await _quickAdd(tester, name: 'Cafe latte', calories: '140');
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.name, 'Cafe latte');
+    expect(drafts.single.nutrients[NutrientId.energy].value, 140);
+    expect(await database.select(database.meals).get(), isEmpty);
+    expect(await database.select(database.foodEntries).get(), isEmpty);
+    expect(await repositories.activityLog.listEntries(), isEmpty);
+  });
+
+  testWidgets('the embedded picker has no title of its own', (tester) async {
+    await _pumpPicker(tester, repository: _StubAddFoodRepository());
+    await _pumpUntilFound(tester, find.text('Chicken breast'));
+
+    expect(find.text('Add Food'), findsNothing);
+    expect(find.byKey(AddFoodPicker.scanBarcodeButtonKey), findsOneWidget);
+    expect(find.byKey(AddFoodPicker.quickAddButtonKey), findsOneWidget);
+    // Scan and Quick add sit right-aligned above the search field.
+    expect(
+      tester.getTopRight(find.byKey(AddFoodPicker.quickAddButtonKey)).dx,
+      greaterThan(
+        tester.getTopRight(find.byKey(AddFoodPicker.scanBarcodeButtonKey)).dx,
+      ),
+    );
+    expect(
+      tester.getTopRight(find.byKey(AddFoodPicker.quickAddButtonKey)).dx,
+      tester.getTopRight(find.byKey(AddFoodPicker.searchFieldKey)).dx,
+    );
   });
 
   testWidgets(
@@ -728,11 +814,10 @@ void main() {
         mealTypeName: 'Snack',
       ),
     );
-    final meal = (await repositories.nutrition.getMealById(mealId))!;
 
     await _pumpBarcodeHarness(
       tester,
-      meal: meal,
+      target: ExistingMealTarget(mealId),
       repositories: repositories,
       openFoodFacts: openFoodFacts,
       barcodeScanner: const _FakeBarcodeScanner('3017620422003'),
@@ -1237,11 +1322,12 @@ void main() {
 Future<void> _pumpPicker(
   WidgetTester tester, {
   ThemeData? theme,
-  MealRecord? meal,
+  MealTarget target = _target,
   TrainingRepositories? repositories,
   required AddFoodRepository repository,
   BarcodeScanner? barcodeScanner,
   ValueChanged<FoodPickerItem>? onFoodSelected,
+  Future<void> Function(QuickFoodEntryDraft draft)? onQuickEntry,
   BundleStatus bundleStatus = BundleStatus.ready,
   double textScale = 1,
 }) async {
@@ -1274,8 +1360,9 @@ Future<void> _pumpPicker(
         home: Scaffold(
           body: SafeArea(
             child: AddFoodPicker(
-              meal: meal ?? _meal(),
+              target: target,
               onFoodSelected: onFoodSelected,
+              onQuickEntry: onQuickEntry,
             ),
           ),
         ),
@@ -1286,7 +1373,7 @@ Future<void> _pumpPicker(
 
 Future<void> _pumpBarcodeHarness(
   WidgetTester tester, {
-  required MealRecord meal,
+  required MealTarget target,
   required TrainingRepositories repositories,
   required OpenFoodFactsRepository openFoodFacts,
   required BarcodeScanner barcodeScanner,
@@ -1312,7 +1399,7 @@ Future<void> _pumpBarcodeHarness(
         home: Scaffold(
           body: SafeArea(
             child: _BarcodeAddFoodHarness(
-              meal: meal,
+              target: target,
               repositories: repositories,
             ),
           ),
@@ -1379,6 +1466,20 @@ Future<void> _pumpUntilFound(
   fail('Could not find $finder.');
 }
 
+/// Opens Quick add, enters a food and saves the dialog.
+Future<void> _quickAdd(
+  WidgetTester tester, {
+  required String name,
+  required String calories,
+}) async {
+  await tester.tap(find.byKey(AddFoodPicker.quickAddButtonKey));
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byKey(QuickEntryDialog.nameFieldKey), name);
+  await tester.enterText(find.byKey(QuickEntryDialog.energyFieldKey), calories);
+  await tester.tap(find.byKey(QuickEntryDialog.saveButtonKey));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpSearchDebounce(WidgetTester tester) async {
   await tester.pump(AddFoodPicker.searchDebounceDuration);
   await tester.pumpAndSettle();
@@ -1386,11 +1487,11 @@ Future<void> _pumpSearchDebounce(WidgetTester tester) async {
 
 class _BarcodeAddFoodHarness extends StatefulWidget {
   const _BarcodeAddFoodHarness({
-    required this.meal,
+    required this.target,
     required this.repositories,
   });
 
-  final MealRecord meal;
+  final MealTarget target;
   final TrainingRepositories repositories;
 
   @override
@@ -1405,7 +1506,7 @@ class _BarcodeAddFoodHarnessState extends State<_BarcodeAddFoodHarness> {
     final food = _food;
     if (food == null) {
       return AddFoodPicker(
-        meal: widget.meal,
+        target: widget.target,
         onFoodSelected: (food) {
           setState(() {
             _food = food;
@@ -1414,7 +1515,7 @@ class _BarcodeAddFoodHarnessState extends State<_BarcodeAddFoodHarness> {
       );
     }
     return LogPortionScreen(
-      meal: widget.meal,
+      target: widget.target,
       food: food,
       onSave: (draft) {
         return widget.repositories.nutrition.logFoodEntrySnapshot(
@@ -1762,16 +1863,7 @@ FoodPickerItem _oatMilk() {
   );
 }
 
-MealRecord _meal() {
-  return MealRecord(
-    id: 'meal-snack',
-    mealType: 'Snack',
-    startedAt: DateTime.utc(2026, 6, 26, 15),
-    timezone: 'Australia/Brisbane',
-    localDate: const NutritionDayDate(year: 2026, month: 6, day: 26),
-    updatedAt: DateTime.utc(2026, 6, 26, 15),
-  );
-}
+const _target = ExistingMealTarget('meal-snack');
 
 NutrientVector _nutrients({
   required double energy,
