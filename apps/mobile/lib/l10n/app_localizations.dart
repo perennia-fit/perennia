@@ -610,6 +610,60 @@ abstract class AppLocalizations {
   /// **'Share'**
   String get workoutShareAction;
 
+  /// The Finish summary's facts line. sets is workoutPerformedSetsOfTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'{duration} · {sets} · {exercises, plural, =1{1 exercise} other{{exercises} exercises}}'**
+  String finishSummaryFacts(String duration, String sets, int exercises);
+
+  /// No description provided for @finishSummaryNewBests.
+  ///
+  /// In en, this message translates to:
+  /// **'New bests'**
+  String get finishSummaryNewBests;
+
+  /// No description provided for @finishSummaryNoNewBests.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get finishSummaryNoNewBests;
+
+  /// No description provided for @finishSummaryUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Update \"{template}\"'**
+  String finishSummaryUpdate(String template);
+
+  /// No description provided for @finishSummaryUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{template}\" updated'**
+  String finishSummaryUpdated(String template);
+
+  /// No description provided for @finishSummaryUpdateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t update \"{template}\"'**
+  String finishSummaryUpdateFailed(String template);
+
+  /// No description provided for @finishSummaryCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy summary'**
+  String get finishSummaryCopy;
+
+  /// No description provided for @finishSummaryCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get finishSummaryCopied;
+
+  /// No description provided for @finishSummaryDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get finishSummaryDone;
+
   /// No description provided for @workoutEditStartTime.
   ///
   /// In en, this message translates to:
@@ -3633,6 +3687,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No changes to update'**
   String get templateUpdateNoChangesNote;
+
+  /// No description provided for @templateChangeAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add {exercise}'**
+  String templateChangeAdd(String exercise);
+
+  /// No description provided for @templateChangeRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {exercise}'**
+  String templateChangeRemove(String exercise);
+
+  /// No description provided for @templateChangeSets.
+  ///
+  /// In en, this message translates to:
+  /// **'{exercise}: sets changed'**
+  String templateChangeSets(String exercise);
 
   /// No description provided for @templateStartNoExercises.
   ///

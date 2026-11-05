@@ -160,6 +160,32 @@
   "workoutFinished": "Workout finished",
   "workoutResumed": "Workout resumed",
   "workoutShareAction": "Share",
+  "finishSummaryFacts": "{duration} · {sets} · {exercises, plural, =1{1 exercise} other{{exercises} exercises}}",
+  "@finishSummaryFacts": {
+    "description": "The Finish summary's facts line. sets is workoutPerformedSetsOfTotal.",
+    "placeholders": {
+      "duration": {"type": "String"},
+      "sets": {"type": "String"},
+      "exercises": {"type": "int"}
+    }
+  },
+  "finishSummaryNewBests": "New bests",
+  "finishSummaryNoNewBests": "None",
+  "finishSummaryUpdate": "Update \"{template}\"",
+  "@finishSummaryUpdate": {
+    "placeholders": {"template": {"type": "String"}}
+  },
+  "finishSummaryUpdated": "\"{template}\" updated",
+  "@finishSummaryUpdated": {
+    "placeholders": {"template": {"type": "String"}}
+  },
+  "finishSummaryUpdateFailed": "Couldn't update \"{template}\"",
+  "@finishSummaryUpdateFailed": {
+    "placeholders": {"template": {"type": "String"}}
+  },
+  "finishSummaryCopy": "Copy summary",
+  "finishSummaryCopied": "Copied",
+  "finishSummaryDone": "Done",
   "workoutEditStartTime": "Edit start time",
   "workoutEditFinishTime": "Edit finish time",
   "workoutStartTimeUpdated": "Start time updated",
@@ -1272,6 +1298,18 @@
   "templateUpdateNotLinkedMessage": "This workout didn't start from a saved workout.",
   "templateUpdateGroupsChangedNote": "Exercise groups changed",
   "templateUpdateNoChangesNote": "No changes to update",
+  "templateChangeAdd": "Add {exercise}",
+  "@templateChangeAdd": {
+    "placeholders": {"exercise": {"type": "String"}}
+  },
+  "templateChangeRemove": "Remove {exercise}",
+  "@templateChangeRemove": {
+    "placeholders": {"exercise": {"type": "String"}}
+  },
+  "templateChangeSets": "{exercise}: sets changed",
+  "@templateChangeSets": {
+    "placeholders": {"exercise": {"type": "String"}}
+  },
   "templateStartNoExercises": "No exercises",
   "templateStartEmptyTitle": "\"{name}\" has no exercises",
   "@templateStartEmptyTitle": {

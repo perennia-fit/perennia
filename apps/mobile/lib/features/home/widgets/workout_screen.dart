@@ -32,6 +32,7 @@ import '../../training/widgets/replace_exercise.dart';
 import '../../workout_capture/widgets/workout_capture_sheet.dart';
 import '../controllers/home_controller.dart';
 import '../repositories/home_repository.dart';
+import 'workout_duration.dart';
 
 class WorkoutScreen extends ConsumerWidget {
   const WorkoutScreen({
@@ -467,7 +468,7 @@ class _WorkoutContent extends ConsumerWidget {
       return;
     }
 
-    final localDate = _workoutLocalDate(workout);
+    final localDate = workoutLocalDate(workout);
     final startedAt = localDate.atLocalTimeOf(_timeOfDayAsDateTime(picked));
     final endedAt = workout.endedAt?.toLocal();
     if (endedAt != null && !startedAt.isBefore(endedAt)) {
@@ -899,11 +900,6 @@ class _WorkoutContent extends ConsumerWidget {
   }
 }
 
-TrainingDayDate _workoutLocalDate(HomeWorkoutSummary workout) {
-  return workout.localDate ??
-      TrainingDayDate.fromDateTime(workout.startedAt.toLocal());
-}
-
 DateTime _timeOfDayAsDateTime(TimeOfDay time) {
   return DateTime(1970, 1, 1, time.hour, time.minute);
 }
@@ -1002,7 +998,7 @@ class _WorkoutHeader extends StatelessWidget {
                   ],
                 ),
                 Text(
-                  _formatWorkoutDuration(context.l10n, workout.duration),
+                  formatWorkoutDuration(context.l10n, workout.duration),
                   style: context.textStyles.body.copyWith(
                     color: context.colors.textSecondary,
                   ),
@@ -1742,23 +1738,4 @@ ButtonStyle _outlinedActionStyle(BuildContext context) {
   return OutlinedButton.styleFrom(
     foregroundColor: context.colors.textPrimary,
   );
-}
-
-String _formatWorkoutDuration(AppLocalizations l10n, Duration? duration) {
-  if (duration == null || duration.isNegative) {
-    return l10n.workoutDurationInProgress;
-  }
-
-  final hours = duration.inHours;
-  final minutes = duration.inMinutes.remainder(60);
-  final seconds = duration.inSeconds.remainder(60);
-  if (hours > 0) {
-    return minutes == 0
-        ? l10n.workoutDurationHours(hours)
-        : l10n.workoutDurationHoursMinutes(hours, minutes);
-  }
-  if (minutes > 0) {
-    return l10n.workoutDurationMinutes(minutes);
-  }
-  return l10n.workoutDurationSeconds(seconds);
 }

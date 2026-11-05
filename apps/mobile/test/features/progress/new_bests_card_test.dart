@@ -6,6 +6,7 @@ import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/progress/controllers/progress_controller.dart';
 import 'package:perennia/features/progress/repositories/progress_feature_repository.dart';
+import 'package:perennia/features/progress/widgets/new_best_row.dart';
 import 'package:perennia/features/progress/widgets/new_bests_card.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/l10n/l10n.dart';
@@ -258,5 +259,32 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('12 Dec 2025'), findsOneWidget);
+  });
+
+  testWidgets('NewBestRow with no today shows the New Best but no date', (
+    tester,
+  ) async {
+    final best = _best(
+      'e-squat',
+      const TrainingDayDate(year: 2026, month: 10, day: 30),
+      ProgressMeasureKind.maxLoad,
+      142.5,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: NewBestRow(
+            row: ProgressNewBestRow(best: best, exerciseName: 'Squat'),
+            unitSystem: UnitSystem.metric,
+          ),
+        ),
+      ),
+    );
+
+    expect(_rowTexts(tester, best), ['Squat · 142.5 kg']);
+    expect(find.byIcon(Icons.emoji_events_outlined), findsOneWidget);
   });
 }
