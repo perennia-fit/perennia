@@ -52,7 +52,7 @@ license id/title reported by wger.
 
 ### CC-BY-SA 3
 
-Distinct source author count: 37.
+Distinct source author count: 34.
 
 - andikeller
 - aszc
@@ -62,13 +62,11 @@ Distinct source author count: 37.
 - djblitzd
 - drthurlow
 - flori
-- foguinho.peruca
 - GiglioRosso
 - GrosseHund
 - http://www.bodybuilding.com/
 - http://www.carinatum.com/
 - http://www.exrx.net/WeightExercises/Brachialis/DBC
-- J120290,cerin
 - klabautermann
 - kwrindy
 - lakerbeezel
@@ -76,7 +74,6 @@ Distinct source author count: 37.
 - MaddieBeasley
 - Mahoney
 - Manu, wikipedia
-- Marius
 - mbozi1
 - minifigmaster125
 - Nallitnas
@@ -94,17 +91,15 @@ Distinct source author count: 37.
 
 ### CC-BY-SA 4
 
-Distinct source author count: 179.
+Distinct source author count: 162.
 
 - 2dPREtEZP221u68Akf0JImv5L48
 - 3leh
 - 54str
 - 6LXBO
 - aahuja
-- abeworld
 - aboksz
 - abuono
-- admin
 - AlucardEvil40
 - amaesc
 - Anastasious
@@ -113,7 +108,6 @@ Distinct source author count: 179.
 - Antsy6277
 - apeschel
 - arson
-- ataraxie67
 - baldurmen
 - barry
 - bbayuwega
@@ -143,16 +137,13 @@ Distinct source author count: 179.
 - cynomops
 - daiben
 - damnlost
-- daniel.escada
 - Davidgj32
 - Deflation
-- delta@romeo
 - deusinvictus
 - DiscoCop
 - donaddon
 - dookie1481
 - Dulive
-- enros7500
 - Epiphany8424
 - er0355
 - erikocobra
@@ -160,7 +151,6 @@ Distinct source author count: 179.
 - eufvksruh
 - Expenses7000
 - ExRx
-- fabrice
 - FEFFO
 - Fittness69
 - flanny
@@ -206,19 +196,16 @@ Distinct source author count: 179.
 - McMarcel13
 - meldun
 - Metin
-- mhe
 - mike6426
 - Mikko Ruohola
 - MisterPinnacle
 - Moffi
 - mountain.potato
-- MrAlfaRobot
 - MrSteele
 - MU5H
 - Nash
 - nate303303
 - nishant0712
-- notdefine
 - novadani
 - oboema
 - painDpice
@@ -226,7 +213,6 @@ Distinct source author count: 179.
 - PaukOne
 - Paul@Chemistry
 - pera_perkan
-- Pete
 - philip
 - phpi
 - polloperro
@@ -240,20 +226,16 @@ Distinct source author count: 179.
 - Rottekongen
 - schweezer
 - schwolfar
-- sebk
 - Settebello
 - sevae
 - Shiladree
 - shushu
-- Skadi
 - sophialj
 - spacetowaste
 - sTiKyt
 - student1234
 - taylorbarbell
 - tdprice12
-- technofer
-- tekknokrat@gmx.de
 - tenebrizz
 - teus_ergaster
 - Tierrasverdes
@@ -263,11 +245,9 @@ Distinct source author count: 179.
 - tregga
 - Trix
 - utkb
-- Vazco
 - vdrb
 - Vilhelmo
 - vince63
-- vkylamba
 - wakanda90
 - wget@pytt.io
 - Whythebigpaws
