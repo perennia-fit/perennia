@@ -10,9 +10,9 @@
       "source": "Exercise Catalog Review",
       "source_exported_at": "2026-07-19T23:48:40.614Z",
       "decision_count": 147,
-      "excluded_exercises": 43,
-      "merged_exercises": 229,
-      "renamed_exercises": 2
+      "excluded_exercises": 44,
+      "merged_exercises": 232,
+      "renamed_exercises": 4
     },
     "source_details": [
       {
@@ -308,6 +308,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-000000200960"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200341",
+      "to_exercise_id": "01910000-0000-7000-8000-000000201747"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000200377",
       "to_exercise_id": "01910000-0000-7000-8000-000000201313"
     },
@@ -354,6 +358,10 @@
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200572",
       "to_exercise_id": "01910000-0000-7000-8000-801714571933"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200575",
+      "to_exercise_id": "01910000-0000-7000-8000-801086420786"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200659",
@@ -842,6 +850,10 @@
     {
       "from_exercise_id": "01910000-0000-7000-8000-801219464208",
       "to_exercise_id": "01910000-0000-7000-8000-804205962802"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-801286296178",
+      "to_exercise_id": "01910000-0000-7000-8000-000000200313"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-801371659462",
@@ -6112,40 +6124,6 @@
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbw9w34b04509kv1bd1d92uk",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-801286296178",
-      "name": "Pompes inclines",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000007",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbw9qa9c023z9kv1mnxvtege",
         "source_url": "https://github.com/Snouzy/workout-cool",
         "api_url": "https://workout.cool/api/exercises/all",
         "imported_fields": [
@@ -28449,47 +28427,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200341",
-      "name": "Squats on Multipress",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000009",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2024-01-17T10:29:28.762Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 341,
-        "exercise_uuid": "316aca47-6f5b-40b7-b04f-f69e68387354",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 1054,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-800228797395",
       "name": "Stability Ball Reverse Hyperextension (off a bench)",
       "dimension_ids": [
@@ -34292,49 +34229,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201442",
-      "name": "Kreis Press Dumbbell",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000010",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.739Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1442,
-        "exercise_uuid": "b4e78b5a-6141-4fc9-a6f7-cba13ce6559b",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "M9",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2406,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "M9",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000200346",
       "name": "Landmine press",
       "dimension_ids": [
@@ -34887,7 +34781,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000200418",
-      "name": "Military Press mit SZ-Bar",
+      "name": "Military Press with SZ-Bar",
       "dimension_ids": [
         "load",
         "reps"
@@ -34900,7 +34794,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.850Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 418,
@@ -34925,6 +34819,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Military Press with SZ-Bar",
+          "original_name": "Military Press mit SZ-Bar",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -37036,47 +36936,6 @@
           "short_name": "CC-BY-SA 4",
           "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
           "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200575",
-      "name": "Shrugs on Multipress",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000010",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2024-01-17T10:35:25.716Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 575,
-        "exercise_uuid": "6199b3c7-3ccb-47fa-89bb-ef7fef12c0e3",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 1060,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -40214,6 +40073,55 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-000000201483",
+      "name": "Biceps Curls Trifecta",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000011",
+      "equipment_ids": [
+        "dumbbell"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1483,
+        "exercise_uuid": "da6ab4d8-edd2-428d-b194-fb15948d3fd5",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "Moffi",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2446,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "Moffi",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Biceps Curls Trifecta",
+          "original_name": "Bizeps Curls Trifecta",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-000000200091",
       "name": "Biceps Curls With Barbell",
       "dimension_ids": [
@@ -40336,49 +40244,6 @@
           "short_name": "CC-BY-SA 3",
           "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
           "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201483",
-      "name": "Bizeps Curls Trifecta",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.121Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1483,
-        "exercise_uuid": "da6ab4d8-edd2-428d-b194-fb15948d3fd5",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "Moffi",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2446,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "Moffi",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null

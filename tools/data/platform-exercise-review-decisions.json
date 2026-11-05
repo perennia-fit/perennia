@@ -5,7 +5,7 @@
   "reviewedAt": "2026-07-19T23:48:40.614Z",
   "sourceDecisionCount": 147,
   "sourceMergeDecisionCount": 72,
-  "expectedExerciseCount": 1583,
+  "expectedExerciseCount": 1579,
   "excludedExerciseIds": [
     "01910000-0000-7000-8000-000000200284",
     "01910000-0000-7000-8000-000000200599",
@@ -49,7 +49,8 @@
     "01910000-0000-7000-8000-800797222221",
     "01910000-0000-7000-8000-801262640228",
     "01910000-0000-7000-8000-801609276686",
-    "01910000-0000-7000-8000-801968396105"
+    "01910000-0000-7000-8000-801968396105",
+    "01910000-0000-7000-8000-000000201442"
   ],
   "nearDuplicateReview": {
     "source": "Clef near-duplicate review",
@@ -57,6 +58,14 @@
     "candidatePairCount": 4113,
     "proposedPairCount": 283,
     "mergeDecisionCount": 162
+  },
+  "languageReview": {
+    "source": "Clef language review",
+    "reviewedAt": "2026-11-05T00:00:00.000Z",
+    "exercisesRead": 1583,
+    "mergeDecisionCount": 3,
+    "exclusionCount": 1,
+    "renameCount": 2
   },
   "merges": [
     {
@@ -974,6 +983,18 @@
     {
       "keepExerciseId": "01910000-0000-7000-8000-000000200595",
       "removeExerciseId": "01910000-0000-7000-8000-804202597318"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201747",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200341"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-801086420786",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200575"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200313",
+      "removeExerciseId": "01910000-0000-7000-8000-801286296178"
     }
   ],
   "replacements": [
@@ -984,6 +1005,14 @@
     {
       "englishName": "Leg Press on Hack Machine",
       "exerciseId": "01910000-0000-7000-8000-000000200375"
+    },
+    {
+      "englishName": "Military Press with SZ-Bar",
+      "exerciseId": "01910000-0000-7000-8000-000000200418"
+    },
+    {
+      "englishName": "Biceps Curls Trifecta",
+      "exerciseId": "01910000-0000-7000-8000-000000201483"
     }
   ],
   "acceptedEnglishExerciseIds": [
