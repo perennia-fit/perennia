@@ -27,7 +27,9 @@ the rest of the app:
     the end, a 3-2-1 countdown that matches the seconds on screen, an end tone,
     and a "Rest over" state. While the Training Screen is open, the cues play
     in the app (sound, vibration and a visible change) and no notification
-    appears. Anywhere else, the system notification carries them.
+    appears. Anywhere else, a system notification shows them; on Android the
+    timer service plays the tones and vibrations itself, and on iOS the
+    notification does.
 3.  **At Finish.** Finish Workout opens a summary sheet instead of a dialog
     followed by a message: duration, sets, exercises and New Bests, an
     `Update "Lower B"` row that lists the changes one per line ("Add Dips",
@@ -99,7 +101,8 @@ because of a Flutter default. That pull request fixes it and is a prerequisite
     tone. Each comes with a vibration and a visible change on the strip.
 *   **One cue per moment.** While the Training Screen is open and the app is
     in the foreground, no system notification fires for these cues. Otherwise
-    the notification carries them, naming the exercise and set.
+    a notification names the exercise and set, and the tone and vibration come
+    with it: from the timer service on Android, from the notification on iOS.
 *   **The end of a rest is visible.** After 0:00 the strip shows "Rest over"
     and how long ago, until the next Set is logged, Stop, or 5 minutes pass.
 *   **Finish has one ending.** A summary sheet shows what the Workout was, lets
@@ -121,8 +124,9 @@ because of a Flutter default. That pull request fixes it and is a prerequisite
     vibration, in the app and in notifications. The strip's visual changes
     show either way. Today, on Android 8 and later, off does not silence
     notifications, because the channel's sound wins over the per-notification
-    mute. This spec fixes that with silent channels
-    ([part 4](#4-cues-and-notifications)); the meaning does not change.
+    mute. This spec fixes that: Android's rest timer channels have no sound at
+    all, and the service plays no tone when the setting is off
+    ([part 4](#4-cues-and-notifications)). The meaning does not change.
 *   **No change to template divergence.** What counts as a change to the
     template, the shared `TemplateDivergenceResult` type, and what "Update"
     writes stay as they are. Only how the changes are presented changes.
@@ -168,6 +172,12 @@ No open questions. Settled while drafting:
     from the phone's speaker, or not at all. The cost: the cue follows the
     media volume and ignores the iPhone's silent switch. The Rest timer sounds
     setting is the way to silence it.
+*   **Background cues on Android: the timer service plays them, on the same
+    media stream.** Android muted the 0:03 and 0:00 notification sounds when we
+    tested ([part 4](#4-cues-and-notifications)). The cost is the same as in
+    the app: on Android the background cues follow the media volume and ignore
+    the phone's silent and vibrate modes. The Rest timer sounds setting is the
+    way to silence them.
 *   **"Rest over" returns to idle 5 minutes after the deadline,** so a strip
     left alone does not read "+58:12".
 *   **Swiping the Finish sheet away does what Done does.** The Workout is
@@ -227,8 +237,9 @@ No open questions. Settled while drafting:
     *   **At 0:10:** a notification "Get ready · Deadlift · Set 4" with the
         get-ready tone.
     *   **At 0:03:** "Deadlift · Set 4 in 0:03" with the 3-2-1 tone.
-    *   **At 0:00:** "Rest over".
-    *   This happens on Android and iOS.
+    *   **At 0:00:** "Rest over" with the end tone.
+    *   This happens on Android and iOS. On Android the music ducks under each
+        tone and the phone vibrates at each cue, including with the screen off.
     *   Opening the app after 0:00 shows "Rest over · +0:07" on the strip and
         plays nothing again.
 
@@ -261,7 +272,7 @@ No open questions. Settled while drafting:
 
 ## Technical Plan (Architecture)
 
-The design has five parts, in four pull requests merged in order (listed in
+The design has five parts, in five pull requests merged in order (listed in
 the [Detailed Implementation Plan](#detailed-implementation-plan)):
 
 | Part | Pull request |
@@ -269,8 +280,8 @@ the [Detailed Implementation Plan](#detailed-implementation-plan)):
 | [1. One message style](#1-one-message-style) | 1 |
 | [2. The status row](#2-the-status-row) | 2 |
 | [3. Rest phases](#3-rest-phases) | 3 |
-| [4. Cues and notifications](#4-cues-and-notifications) | 3 |
-| [5. Finish summary](#5-finish-summary) | 4 |
+| [4. Cues and notifications](#4-cues-and-notifications) | 3 and 4 |
+| [5. Finish summary](#5-finish-summary) | 5 |
 
 ### 1. One message style
 
@@ -510,10 +521,11 @@ lifter can see it:
 
 *   **The app plays it** when the app is visible and a strip on the current
     route is showing that rest.
-*   **The system notification plays it** otherwise: in the background, on a
-    locked screen, on another screen of the app (where no strip is current),
-    or on the Training Screen of another Workout (whose strip has no running
-    rest). In each, the notification is the only cue left.
+*   **Native plays it** otherwise: in the background, on a locked screen, on
+    another screen of the app (where no strip is current), or on the Training
+    Screen of another Workout (whose strip has no running rest). On Android,
+    `TimerForegroundService` plays the tone and vibration and posts a silent
+    notification. On iOS, the notification carries the sound.
 
 Dart tells native whether a strip on the current route is showing a running
 rest with one boolean, `setInAppTimerCues {active: bool}`:
@@ -531,8 +543,8 @@ rest with one boolean, `setInAppTimerCues {active: bool}`:
     (`configureFlutterEngine` on Android, `didInitializeImplicitFlutterEngine`
     on iOS). A value left from an engine that died never silences later
     rests.
-*   **Native posts a cue's notification** unless the app is visible and the
-    value is true.
+*   **Native plays a cue and posts its notification** unless the app is
+    visible and the value is true.
 *   **On iOS, a cancelled rest stays silent.** Removing a request cannot stop
     one the system has already fired, or one still on its way to being added,
     and the value goes false as soon as the strip writes the end. So
@@ -603,47 +615,104 @@ resource and fails the build):
 
 *   **`prepare_beep` (3-2-1):** three 90 ms, 1200 Hz blips starting at 0 ms,
     1000 ms and 2000 ms (today they are 200 ms apart). Played at 0:03, it
-    sounds at 3, 2 and 1, in the app and from the background notification
-    alike.
+    sounds at 3, 2 and 1, in the app and in the background alike.
 *   **New `get_ready`:** two 120 ms, 660 Hz notes at gain 0.35, 120 ms apart.
     It is lower and quieter than both other cues. The files are
     `get_ready.ogg` on Android and `GetReady.caf` on iOS.
 *   **`timer_complete`** is unchanged.
 
-**Android notification channels.** A channel's sound can't change after the
-channel is created. Today's channels address their sound by resource id
-(`android.resource://<pkg>/<id>`), and aapt2 assigns `R.raw` ids in name
-order, so adding `get_ready` shifts the ids of `prepare_beep` and
-`timer_complete`. An updated install would play the wrong tones on the old
-channels. So the sounded channels get new ids, and their sound is addressed by
-name (`android.resource://<pkg>/raw/<name>`), which no later file can shift:
+**Why Android's service plays the background cues.** On an API 36 emulator, only
+a rest's first alerting notification made a sound. Later ones posted and showed,
+but with no sound or vibration:
 
-| Channel | Sound | Silent twin |
-| :--- | :--- | :--- |
-| `workout_timer_get_ready_v1` | `get_ready` | `workout_timer_get_ready_v1_silent` |
-| `workout_timer_prepare_v3` | `prepare_beep` | `workout_timer_prepare_v3_silent` |
-| `workout_timer_completions_v3` | `timer_complete` | `workout_timer_completions_v3_silent` |
+| Build and rest | 0:10 get ready | 0:03 | Rest over |
+| :--- | :--- | :--- | :--- |
+| 0.2.0, 0:30 | none | sounds | muted |
+| PR 3, 0:30 | sounds | muted | muted |
+| PR 3, 0:15 | none | sounds | muted |
 
-*   All six are high importance. Each silent twin has `setSound(null, null)`
-    and `enableVibration(false)`.
-*   The service deletes `workout_timer_prepare` and
-    `workout_timer_completions_v2` when it creates the channels, as it already
-    deletes `workout_timer_completions`.
+*   The system logged `MUTE_REASON_FLAG_SILENT` for the muted ones, and their
+    records carried the `SILENT` flag. Android's source says the system sets
+    that flag and apps cannot set it. We did not find what makes the system set
+    it. It is not the notification cooldown: turning that setting off changed
+    nothing.
+*   A later alert was muted 3 s and 7 s after the first. One about 50 s later
+    sounded.
+*   So a rest's most important cue, the end, would be silent while the phone is
+    locked. A test build with the service playing the cues, the screen off and
+    the app in the background played all three tones within 20 ms of their
+    marks, each with its vibration, and logged no crash.
+
+**Android's background cues.** `TimerForegroundService` has its own
+`TimerCueSounds`, built and prepared when a schedule first starts it, and
+released in `onDestroy`. It plays the same cues as the app, from the table
+above, at `alertVolume`, which the schedule now carries:
+
+*   **Thresholds.** 10 s `getReady` (only when the schedule has a
+    `getReadyText`), 3 s `countdown`, 2 s and 1 s `tick`, and 0 `end`. Each is
+    passed once per schedule. A threshold already at or behind the remaining
+    time when a schedule starts is marked passed, so the first tick never plays
+    a stale cue. A ±15 s cancels the schedule and posts a new one.
+*   **Who plays.** On reaching a threshold the service does nothing audible,
+    and posts nothing, if `MainActivity.isStarted` is true and in-app cues are
+    active. Otherwise it plays the cue if `soundEnabled` is true, and posts the
+    cue's notification either way (`tick` has none).
+*   **On time.** Ticks land on the deadline's whole seconds: the next tick is
+    `remaining % 1000` ms away, or 1000 ms when that is 0. `deadlineAt` is
+    stored in whole seconds.
+*   **A late tick.** The service plays a cue however late it is, because a late
+    tone is better than none for a lifter who is not looking. If one tick
+    crosses several thresholds, it plays only the one nearest the deadline. The
+    others are marked passed, and their notifications still post.
+*   **The phone asleep.** A `Handler` stops when the CPU suspends, so ticks
+    alone could run late with the screen off. For each schedule the service
+    holds a `PARTIAL_WAKE_LOCK` (`perennia:rest_timer`, not reference counted)
+    with a timeout of the remaining time plus 5 s, and releases it in
+    `onDestroy`. The manifest gains `android.permission.WAKE_LOCK`, a normal
+    permission with no prompt.
+*   **The end tone finishes.** After the end cue the service posts the end
+    notification and detaches the foreground notification, then stops 1500 ms
+    later, so `onDestroy` does not cut the tone. A new schedule during those
+    1500 ms cancels the stop and keeps the service; `ACTION_CANCEL` cancels it
+    and stops at once. When the app played the end, the service stops
+    immediately.
+*   **Stop during a tone.** `ACTION_CANCEL` stops the service, and `onDestroy`
+    releases the players, so the tone stops with the rest.
+*   **Notifications off.** `scheduleTimer` returns `denied` and starts no
+    service when `areNotificationsEnabled()` is false, on every API level. So no
+    tone comes from an invisible service, and "Background timer alerts are off"
+    stays true.
+*   **A volume change during a rest** applies in the app at once and to the
+    service from the next schedule (a new rest, or ±15 s). The schedule is not
+    sent again for it, for the reason under Notification text.
+
+**Android notification channels.** A notification now only shows a cue, so the
+three alert channels have no sound and no vibration on any setting:
+
+| Channel | Shows |
+| :--- | :--- |
+| `workout_timer_get_ready_v1_silent` | Get ready |
+| `workout_timer_prepare_v3_silent` | The 3-2-1 |
+| `workout_timer_completions_v3_silent` | Rest over |
+
+*   All three are high importance, so they still show a heads-up, with
+    `setSound(null, null)` and `enableVibration(false)`. They keep the ids PR 3
+    gave them, because those channels already exist silent. Below API 26 there
+    are no channels, so each notification sets `setSound(null)`, `setDefaults(0)`
+    and `setVibrate(null)`.
+*   The service deletes every older alert channel when it creates the channels:
+    `workout_timer_completions`, `workout_timer_completions_v2` and
+    `workout_timer_prepare` from 0.2.0 and earlier, and PR 3's sounded
+    `workout_timer_get_ready_v1`, `workout_timer_prepare_v3` and
+    `workout_timer_completions_v3`.
 *   The ongoing countdown channel (low importance, no sound) is unchanged; a
     foreground service needs it.
+*   With no channel sound, `R.raw` ids no longer reach a channel, so a new tone
+    file cannot give an updated install the wrong tone.
 
 **Posting the background notifications.**
 
 *   **Android.**
-    *   `TimerForegroundService` keeps ticking every second, as today. It works
-        out the thresholds from `deadlineAtMillis`. When it crosses 10 s (only
-        when the schedule has a `getReadyText`), 3 s or 0, it posts that cue's
-        notification unless `MainActivity.isStarted` is true and in-app cues
-        are active.
-    *   Each threshold is passed once per schedule. A threshold already at or
-        behind the remaining time when a schedule starts is marked passed, so
-        the first tick never posts a stale cue. A ±15 s cancels the schedule
-        and posts a new one.
     *   The get-ready notification has its own id,
         `getReadyNotificationId(timerId)`, times out after 10 s, and is
         cancelled with the others on Stop.
@@ -661,9 +730,10 @@ name (`android.resource://<pkg>/raw/<name>`), which no later file can shift:
 **Rest timer sounds off.** On Android 8 and later a notification's sound and
 vibration come from its channel, and the per-notification `setSound(null)` and
 `setVibrate(null)` the service calls today are ignored, so a sounds-off rest
-still rings. With this change the service posts to a channel's silent twin
-when sounds are off. In the app, `canPlay` is false, so `play` is not called.
-The strip's visual changes show either way.
+still rings. With this change the channels are silent and the service plays
+nothing when `soundEnabled` is false. In the app, `canPlay` is false, so `play`
+is not called. The strip's visual changes show either way. On iOS the
+notification posts without sound, as today.
 
 **Notification text.** The schedule carries finished, localized strings from
 Dart, since native code cannot read the ARB file. They are a record,
@@ -783,12 +853,15 @@ the screen that opened the Workout.
 | :--- | :--- |
 | A cue is lost or played twice at the instant the app goes to the background or comes back, because Dart and native read the lifecycle separately | Both sides use the same meaning of visible ([part 4](#4-cues-and-notifications)), and a Dart cue more than 1 s late is skipped. The window is the length of one lifecycle transition. Accepted; the next cue in the rest still plays. |
 | A cue is lost just after a route change: `setInAppTimerCues` is sent from the next tick, so native can hold the old value for up to 1 s | Accepted. The window is at most 1 s, and the next cue in the rest still plays. |
-| The first cue is silent because the tones are still loading | `prepareCues` runs when a strip first mounts, well before any cue is due (the shortest getReady is 5 s after a rest starts). |
+| The first cue is silent because the tones are still loading | `prepareCues` runs when a strip first mounts, well before any cue is due (the shortest getReady is 5 s after a rest starts). The service prepares its own when a schedule starts it, so a −15 s that leaves under a second or so can lose that one tone; its vibration still plays. |
 | The vibration is not felt: iOS with System Haptics off, or an Android phone with a weak motor | The tone and the strip change still carry the cue. Android uses the vibrator directly, not view haptics, so the touch-feedback setting does not suppress it. |
-| Android 15 and later lower the volume of quick successive notification alerts from one app (notification cooldown), so the 0:03 and 0:00 background alerts may be quieter after the 0:10 one | Manual check on an Android 15 or later emulator ([Verification Plan](#verification-plan)). If it is too quiet, the get-ready channel can drop to default importance in a follow-up. |
+| Android mutes later alerting notifications from one app, so a background rest ends in silence | The service plays Android's background cues itself and its notifications carry no sound ([part 4](#4-cues-and-notifications)). iOS keeps notification sounds; this muting has not been tested there, so the before-release check covers it. |
+| A background tone sounds in a place the lifter expected silence, because the media stream ignores the phone's silent and vibrate modes | Only during a rest the lifter started, and at the media volume. The Rest timer sounds setting turns it off. Accepted, matching the in-app cues. |
+| The phone sleeps during a rest and the cues run late | The service holds a partial wake lock for the rest's length plus 5 s. An emulator does not suspend, so the before-release check covers it on a phone. |
+| A long rest holds the wake lock for a long time | The lock lasts only for the running rest and has a timeout. Stop, a new rest or the end releases it. |
 | Audio focus is denied (for example during a call) | The cue still plays at its volume, and the vibration and strip change are unaffected. |
 | Notification permission is off | In-app cues work. The existing "Background timer alerts are off" message shows once per app run in the strip's row, never over a confirmation with Undo ([part 2](#2-the-status-row)). |
-| An updated install plays the wrong tone on a channel created by an older version | The sounded channels get new ids with sounds addressed by name, and the old channels are deleted ([part 4](#4-cues-and-notifications)). A manual step installs over 0.2.0 and checks each tone. |
+| An updated install keeps a channel with an old sound | The alert channels have no sound and every older channel is deleted ([part 4](#4-cues-and-notifications)). A manual step installs over 0.2.0 and checks each tone. |
 | The New Bests read is slow on a long history | The section keeps a fixed-height row with "—" until the read returns ([part 5](#5-finish-summary)). |
 | Finish is tapped by accident | The sheet's Done and the swipe-down both leave the Workout finished. Resume on the Workout screen reopens it, as today. |
 
@@ -908,6 +981,22 @@ the screen that opened the Workout.
 
 --------------------------------------------------------------------------------
 
+### Alternative L: Keep the notification sounds on Android, and work around the muting
+
+*   **Pros**: The system plays the sound, so the service has no audio code. The
+    lifter can change a channel's sound in system settings, and the phone's
+    silent mode applies.
+*   **Cons**: The system sets the flag that mutes them, for a reason we could
+    not find, and apps cannot clear it. Dropping the get-ready sound would only
+    move the mute to the end, as in 0.2.0. Other workarounds, such as cancelling
+    the earlier notification or setting an explicit group, depend on system
+    behaviour that is not documented and could change in any release. We did not
+    try them. A notification-stream tone also reaches a lifter in earbuds only
+    from the phone's speaker, or not at all.
+*   **Reason for Rejection**: The end of a rest must sound. Playing the tones
+    from the service does not depend on how the system treats notifications, and
+    reuses the code the app already uses.
+
 ## Non-Functional Requirements
 
 *   **Performance.** Log set's confirmation stays within one frame
@@ -915,9 +1004,10 @@ the screen that opened the Workout.
     showing. The strip already rebuilds once a second, and the phase function
     is constant time. Tones are prepared once per app run, when a strip first
     mounts.
-*   **Battery.** No new background work on Android: the foreground service
-    already ticks every second during a rest. iOS adds one pending
-    notification per rest.
+*   **Battery.** The foreground service already ticks every second during a
+    rest. It now also holds a partial wake lock for that rest, so the CPU stays
+    awake for the rest's length with the screen off, and plays three short tones.
+    iOS adds one pending notification per rest.
 *   **Privacy.** Nothing is recorded or sent. Cues are local.
 *   **Accessibility.**
     *   Every cue pairs sound with a visible change and a vibration, and
@@ -945,7 +1035,7 @@ the screen that opened the Workout.
 
 ## Detailed Implementation Plan
 
-Four pull requests, each against `main`, merged in order after
+Five pull requests, each against `main`, merged in order after
 [#101](https://github.com/perennia-fit/perennia/pull/101). Each adds its
 `CHANGELOG.md` line under `[Unreleased]`. The last one sets this spec's Status
 to Current and its SITEMAP row.
@@ -1215,6 +1305,9 @@ Performance budget with no rest and with a rest running; manual check 1.
         case.)
 
 ### PR 3: rest phases, cues and notifications
+
+Merged. This section records what it built. PR 4 replaces its Android
+notification sounds.
 
 **Verification Plan items:** the Gate; Kill-and-reopen mid-workout; from
 Accessibility, the phase announcements; the Performance budget in countdown;
@@ -1695,7 +1788,114 @@ rest timer notifications on Android 8 and later."
     `TimerCueSounds` or `AppDelegate`. They are checked by hand
     ([Verification Plan](#verification-plan)).
 
-### PR 4: Finish summary
+### PR 4: Android background cues
+
+**Verification Plan items:** the Gate; manual checks 3, 4, 6 and 7; the
+before-release checks.
+
+Its `CHANGELOG.md` line is a `Fixed` line: "The end of a rest now sounds on
+Android when the app is in the background."
+
+#### `apps/mobile/lib/features/training/services/timer_background_scheduler.dart` (Modify)
+
+*   **Type / Scope**: service.
+*   **Proposed Changes**:
+    *   **`TimerBackgroundSchedule`** gains `alertVolume` (`double`, default
+        1.0), in the platform map.
+    *   **`TimerBackgroundSchedule.rest`** sets it from `timer.alertVolume`.
+    *   **The `soundEnabled` doc comment** says that when it is false the
+        service plays no tones. The notifications post either way.
+
+#### `apps/mobile/test/features/training/timer_background_scheduler_test.dart` (Modify)
+
+*   **Type / Scope**: unit test.
+*   **Proposed Changes**: The platform map carries `alertVolume`, and
+    `TimerBackgroundSchedule.rest` takes it from the timer.
+
+#### `apps/mobile/android/app/src/main/AndroidManifest.xml` (Modify)
+
+*   **Type / Scope**: Android manifest.
+*   **Proposed Changes**: Add `<uses-permission
+    android:name="android.permission.WAKE_LOCK" />`.
+
+#### `apps/mobile/android/app/src/main/kotlin/fit/perennia/app/MainActivity.kt` (Modify)
+
+*   **Type / Scope**: Android channel.
+*   **Proposed Changes**: `scheduleTimer` returns `STATUS_DENIED` and starts no
+    service when `NotificationManagerCompat.from(this).areNotificationsEnabled()`
+    is false, on every API level, in place of its API 33 permission check.
+
+#### `apps/mobile/android/app/src/main/kotlin/fit/perennia/app/TimerCueSounds.kt` (Modify)
+
+*   **Type / Scope**: Android audio and vibration.
+*   **Proposed Changes**: The class comment says that `MainActivity` and
+    `TimerForegroundService` each hold an instance, the first for cues in the
+    app and the second for every other moment. It drops the sentence about the
+    channels' by-name sound URIs; the `R.raw` references still keep the files in
+    a shrunk release build.
+
+#### `apps/mobile/android/app/src/main/kotlin/fit/perennia/app/TimerForegroundService.kt` (Modify)
+
+*   **Type / Scope**: Android service.
+*   **Proposed Changes**:
+    *   **Extra.** `EXTRA_ALERT_VOLUME` (a float, default 1), parsed in
+        `intentFrom` and `onStartCommand` next to the existing extras.
+    *   **Cue player.** `private var cues: TimerCueSounds?`, built and prepared
+        in `onStartCommand` when it is null, and released and cleared in
+        `onDestroy`.
+    *   **Thresholds.** `tickTwoPassed` and `tickOnePassed` join
+        `getReadyPassed`, `preparePassed` and `endPassed`:
+        *   at schedule start, each starts true when the remaining time is
+            already at or below its threshold (10 s, 3 s, 2 s, 1 s, 0), or, for
+            get-ready, when there is no `getReadyText`;
+        *   on each tick, every threshold not yet passed that the remaining
+            time has reached is marked passed;
+        *   unless `appPlaysCues()`, the tick posts the get-ready and prepare
+            notifications it just passed, and, when `soundEnabled`, calls
+            `cues.play(cue, alertVolume)` once, for the passed threshold nearest
+            the deadline.
+    *   **Tick timing.** `handler.postDelayed(tick, delay)`, where `delay` is
+        `remainingMillis % 1000`, or 1000 when that is 0.
+    *   **The end.** When `finishAtDeadline` posts the end notification, it
+        first calls `cues.play("end", alertVolume)` if `soundEnabled`, then runs
+        `handler.postDelayed(stopAfterEnd, END_TONE_HOLD_MILLIS)`, with
+        `END_TONE_HOLD_MILLIS = 1500`. Otherwise it runs `stopAfterEnd` directly.
+        `stopAfterEnd` calls `stopSelf(lastStartId)`, where `lastStartId` is
+        saved on every `onStartCommand`.
+    *   **New schedule or cancel.** `onStartCommand` removes `stopAfterEnd` for
+        either action. `ACTION_CANCEL` then stops the service as it does today.
+    *   **Wake lock.** A `PowerManager.PARTIAL_WAKE_LOCK` tagged
+        `perennia:rest_timer`, with `setReferenceCounted(false)`. Each schedule
+        calls `acquire(max(0, remainingMillis) + 5000)`. `onDestroy` releases it
+        if it is held.
+    *   **Channels.** One `createAlertChannel` per silent channel in [part
+        4](#4-cues-and-notifications), with `setSound(null, null)` and
+        `enableVibration(false)`. `GET_READY_CHANNEL_ID`, `PREPARE_CHANNEL_ID`
+        and `COMPLETION_CHANNEL_ID`, and `rawSoundUri`, are removed, and those
+        three ids join the channels `createChannels` deletes. The comment there
+        about channel sounds goes too. Every alert notification uses its silent
+        channel, whatever `soundEnabled` is.
+    *   **Below API 26.** Every alert notification sets `setSound(null)`,
+        `setDefaults(0)` and `setVibrate(null)`, whatever `soundEnabled` is.
+
+#### `apps/mobile/android/app/src/main/res/values/strings.xml` (Modify)
+
+*   **Type / Scope**: Android strings.
+*   **Proposed Changes**:
+    *   Remove the three `timer_*_silent_channel_name` strings. Each channel
+        takes the plain name ("Rest get-ready alert", "Timer prepare cues",
+        "Timer alerts"), which replaces the " (silent)" name on an updated
+        install.
+    *   `timer_get_ready_channel_description` becomes "Shows 10 seconds before a
+        rest ends".
+
+#### Tests
+
+*   **Native:** no unit test harness exists for `TimerForegroundService` or
+    `TimerCueSounds`. They are checked by hand
+    ([Verification Plan](#verification-plan)).
+
+### PR 5: Finish summary
 
 **Verification Plan items:** the Gate; Repositories against in-memory SQLite;
 from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
@@ -1876,7 +2076,7 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         nothing covers the Comment field, and after 4 s the row reads
         "Rest *m*:*ss*". Log another and tap Undo: the Set returns to planned
         and the row reads "Start rest".
-    2.  **CUJ 3.** A 0:20 rest with music playing in another app, the app
+    2.  **CUJ 3.** A 0:30 rest with music playing in another app, the app
         open: the get-ready tone at 0:10 with the strip reading
         "Get ready · 0:10", beeps as the strip shows 0:03, 0:02 and 0:01, the
         end tone at 0:00 with "Rest over · +0:00", the music ducking and
@@ -1889,21 +2089,23 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         with Allow after the rest is over: no banner or tone follows.
     3.  **CUJ 4.** The same rest with the app in the background: notifications
         "Get ready · *Exercise* · Set *k*", "*Exercise* · Set *k* in 0:03" and
-        "Rest over", each with its tone. Reopening after 0:00 shows
-        "Rest over · +*m*:*ss*" and plays nothing. Log a set during a running
-        rest, then background the app: only the new rest's notifications post,
-        and the app does not crash.
-    4.  **On Today during a rest:** the same three notifications, with sound.
+        "Rest over", each with its tone and vibration. On Android the music
+        ducks and comes back after each tone, and the same holds with the screen
+        off. Reopening after 0:00 shows "Rest over · +*m*:*ss*" and plays
+        nothing. Log a set during a running rest, then background the app: only
+        the new rest's notifications post, and the app does not crash.
+    4.  **On Today during a rest:** the same three notifications, tones and
+        vibrations.
         The same on the Training Screen of another Workout, whose strip has no
         running rest.
     5.  **Pull down the notification shade** during a rest on the Training
         Screen: the in-app cues still play, and no notification posts.
-    6.  **Rest timer sounds off:** no tones and no vibration in the app; the
-        background notifications post silently on Android 8 and later; the
-        strip still changes.
+    6.  **Rest timer sounds off:** no tones and no vibration in the app or in
+        the background; the background notifications still post; the strip still
+        changes.
     7.  **Update install (Android).** Install 0.2.0, run one rest, then install
-        this build over it: each background notification plays its own tone
-        (get-ready, 3-2-1, end), and Settings › Notifications lists no
+        this build over it: each background cue plays its own tone (get-ready,
+        3-2-1, end), and Settings › Notifications lists no
         `workout_timer_prepare` or `workout_timer_completions_v2` channel.
     8.  **CUJ 5.** Finish Lower B after changing it: the sheet shows the facts,
         New bests, `Update "Lower B"` with "Remove Hip Thrust" and
@@ -1915,11 +2117,14 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         after 2 s.
 *   **Before release, on an Android 15 or later phone and an iPhone:** music
     in earbuds ducks under each tone and comes back; with the phone face-up on
-    a bench, each vibration is felt; with the app in the background, the 0:03
-    and 0:00 notifications are still audible after the 0:10 one (Android 15's
-    notification cooldown); during a phone call, each tone still plays.
+    a bench, each vibration is felt; with the app in the background, the 0:10,
+    0:03 and 0:00 tones all sound; during a phone call, each tone still plays.
+    On the Android phone, a 5-minute rest with the screen off and the phone
+    unplugged plays each cue on time. On the iPhone, the 0:03 and 0:00
+    notifications still sound after the 0:10 one.
 *   **Not covered by automated tests**: whether audio ducks on a real device,
-    how strong the vibration feels, Android 15's notification cooldown, the
-    channel migration on an update install, the foreground notification's
+    how strong the vibration feels, the service's tones and wake lock, whether
+    iOS mutes later notifications, the channel migration on an update install,
+    the foreground notification's
     removal on cancel, and a tone during refused audio focus. The steps above
     cover them by hand.
