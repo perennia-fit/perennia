@@ -18,6 +18,8 @@
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		A282CAF0000000000000FB01 /* PrepareBeep.caf in Resources */ = {isa = PBXBuildFile; fileRef = A282CAF0000000000000FA01 /* PrepareBeep.caf */; };
 		A282CAF0000000000000FB02 /* TimerComplete.caf in Resources */ = {isa = PBXBuildFile; fileRef = A282CAF0000000000000FA02 /* TimerComplete.caf */; };
+		A282CAF0000000000000FB03 /* GetReady.caf in Resources */ = {isa = PBXBuildFile; fileRef = A282CAF0000000000000FA03 /* GetReady.caf */; };
+		A282CAF0000000000000FB04 /* TimerCueSounds.swift in Sources */ = {isa = PBXBuildFile; fileRef = A282CAF0000000000000FA04 /* TimerCueSounds.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +65,8 @@
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A282CAF0000000000000FA01 /* PrepareBeep.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PrepareBeep.caf; sourceTree = "<group>"; };
 		A282CAF0000000000000FA02 /* TimerComplete.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = TimerComplete.caf; sourceTree = "<group>"; };
+		A282CAF0000000000000FA03 /* GetReady.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = GetReady.caf; sourceTree = "<group>"; };
+		A282CAF0000000000000FA04 /* TimerCueSounds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerCueSounds.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -127,6 +131,7 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
+				A282CAF0000000000000FA04 /* TimerCueSounds.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				A282CAF0000000000000FC01 /* Sounds */,
 			);
@@ -138,6 +143,7 @@
 			children = (
 				A282CAF0000000000000FA01 /* PrepareBeep.caf */,
 				A282CAF0000000000000FA02 /* TimerComplete.caf */,
+				A282CAF0000000000000FA03 /* GetReady.caf */,
 			);
 			path = Sounds;
 			sourceTree = "<group>";
@@ -246,6 +252,7 @@
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 				A282CAF0000000000000FB01 /* PrepareBeep.caf in Resources */,
 				A282CAF0000000000000FB02 /* TimerComplete.caf in Resources */,
+				A282CAF0000000000000FB03 /* GetReady.caf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -317,6 +324,7 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				A282CAF0000000000000FB04 /* TimerCueSounds.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

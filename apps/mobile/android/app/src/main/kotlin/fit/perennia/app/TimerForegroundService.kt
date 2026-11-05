@@ -23,32 +23,41 @@ class TimerForegroundService : Service() {
     private var title = ""
     private var body = ""
     private var countdownLabel = ""
+    private var getReadyText: String? = null
+    private var prepareText = ""
     private var workoutId: String? = null
     private var workoutExerciseId: String? = null
     private var soundEnabled = true
-    private var prepareNotified = false
+    private var getReadyPassed = false
+    private var preparePassed = false
+    private var endPassed = false
 
     private val tick = object : Runnable {
         override fun run() {
             val remainingMillis = deadlineAtMillis - System.currentTimeMillis()
             if (remainingMillis <= 0L) {
-                notificationManager.notify(
-                    notificationId(timerId),
-                    buildNotification(0L, complete = true),
-                )
-                detachForegroundNotification()
-                stopSelf()
+                finishAtDeadline()
                 return
             }
 
-            // fire the 3-2-1 prepare cue once, when the countdown first
-            // crosses into the last 3 seconds.
-            if (!prepareNotified && remainingMillis <= PREPARE_WINDOW_MILLIS) {
-                prepareNotified = true
-                notificationManager.notify(
-                    prepareNotificationId(timerId),
-                    buildPrepareNotification(),
-                )
+            if (!getReadyPassed && remainingMillis <= GET_READY_WINDOW_MILLIS) {
+                getReadyPassed = true
+                if (!appPlaysCues()) {
+                    notificationManager.notify(
+                        getReadyNotificationId(timerId),
+                        buildGetReadyNotification(),
+                    )
+                }
+            }
+
+            if (!preparePassed && remainingMillis <= PREPARE_WINDOW_MILLIS) {
+                preparePassed = true
+                if (!appPlaysCues()) {
+                    notificationManager.notify(
+                        prepareNotificationId(timerId),
+                        buildPrepareNotification(),
+                    )
+                }
             }
 
             notificationManager.notify(
@@ -57,6 +66,32 @@ class TimerForegroundService : Service() {
             )
             handler.postDelayed(this, ONE_SECOND_MILLIS)
         }
+    }
+
+    /**
+     * The service stops at the deadline either way. When no end notification
+     * replaces the ongoing countdown, the countdown has to be removed: detached,
+     * it would stay in the shade as a stuck "Rest 0:01".
+     */
+    private fun finishAtDeadline() {
+        val postEnd = !endPassed && !appPlaysCues()
+        endPassed = true
+        if (postEnd) {
+            notificationManager.notify(
+                notificationId(timerId),
+                buildNotification(0L, complete = true),
+            )
+            detachForegroundNotification()
+        } else {
+            removeForegroundNotification()
+        }
+        stopSelf()
+    }
+
+    // Each threshold has exactly one cue: the app's while it is visible and a
+    // strip on the current route is showing the rest, this service's otherwise.
+    private fun appPlaysCues(): Boolean {
+        return MainActivity.isStarted && inAppCuesActive
     }
 
     override fun onCreate() {
@@ -74,6 +109,7 @@ class TimerForegroundService : Service() {
             val id = intent.getStringExtra(EXTRA_TIMER_ID).orEmpty()
             notificationManager.cancel(notificationId(id))
             notificationManager.cancel(prepareNotificationId(id))
+            notificationManager.cancel(getReadyNotificationId(id))
             if (id == timerId || timerId.isEmpty()) {
                 handler.removeCallbacks(tick)
                 detachForegroundNotification()
@@ -87,16 +123,25 @@ class TimerForegroundService : Service() {
         title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         body = intent.getStringExtra(EXTRA_BODY).orEmpty()
         countdownLabel = intent.getStringExtra(EXTRA_COUNTDOWN_LABEL).orEmpty()
+        getReadyText = intent.getStringExtra(EXTRA_GET_READY_TEXT)
+        prepareText = intent.getStringExtra(EXTRA_PREPARE_TEXT).orEmpty()
         workoutId = intent.getStringExtra(EXTRA_WORKOUT_ID)
         workoutExerciseId = intent.getStringExtra(EXTRA_WORKOUT_EXERCISE_ID)
         soundEnabled = intent.getBooleanExtra(EXTRA_SOUND_ENABLED, true)
-        prepareNotified = false
 
         handler.removeCallbacks(tick)
-        val remainingMillis = max(0L, deadlineAtMillis - System.currentTimeMillis())
+        val remainingMillis = deadlineAtMillis - System.currentTimeMillis()
+        // A threshold at or behind the remaining time when a schedule starts is
+        // already passed, so the first tick never posts a stale cue.
+        getReadyPassed =
+            getReadyText == null || remainingMillis <= GET_READY_WINDOW_MILLIS
+        preparePassed = remainingMillis <= PREPARE_WINDOW_MILLIS
+        endPassed = remainingMillis <= 0L
+        // Always the countdown form, even at 0: the end form would sound the end
+        // cue of a schedule that starts at or past its deadline.
         startForeground(
             notificationId(timerId),
-            buildNotification(remainingMillis, complete = remainingMillis == 0L),
+            buildNotification(max(0L, remainingMillis), complete = false),
         )
         handler.post(tick)
         return START_STICKY
@@ -122,36 +167,78 @@ class TimerForegroundService : Service() {
         }
         notificationManager.createNotificationChannel(channel)
 
-        // a channel's sound is IMMUTABLE after first creation, so the
-        // custom-sound completion channel gets a fresh `_v2` id and the old
-        // silent-defaults one is removed (approved pre-1.0 cleanup).
-        val completionAudioAttributes = AudioAttributes.Builder()
+        // A channel's sound can't change after the channel is created, so a new
+        // sound needs a new channel id. The sound is addressed by name
+        // (rawSoundUri), since aapt2 assigns R.raw ids in name order and a new
+        // file would shift an id-addressed one to the wrong tone.
+        createAlertChannels(
+            GET_READY_CHANNEL_ID,
+            GET_READY_SILENT_CHANNEL_ID,
+            R.string.timer_get_ready_channel_name,
+            R.string.timer_get_ready_silent_channel_name,
+            R.string.timer_get_ready_channel_description,
+            "get_ready",
+        )
+        createAlertChannels(
+            PREPARE_CHANNEL_ID,
+            PREPARE_SILENT_CHANNEL_ID,
+            R.string.timer_prepare_channel_name,
+            R.string.timer_prepare_silent_channel_name,
+            R.string.timer_prepare_channel_description,
+            "prepare_beep",
+        )
+        createAlertChannels(
+            COMPLETION_CHANNEL_ID,
+            COMPLETION_SILENT_CHANNEL_ID,
+            R.string.timer_completion_channel_name,
+            R.string.timer_completion_silent_channel_name,
+            R.string.timer_completion_channel_description,
+            "timer_complete",
+        )
+
+        notificationManager.deleteNotificationChannel(LEGACY_COMPLETION_CHANNEL_ID)
+        notificationManager.deleteNotificationChannel(LEGACY_COMPLETION_V2_CHANNEL_ID)
+        notificationManager.deleteNotificationChannel(LEGACY_PREPARE_CHANNEL_ID)
+    }
+
+    /**
+     * A sounded channel and its silent twin. On Android 8 and later a
+     * notification's sound and vibration come from its channel, so Rest timer
+     * sounds off has to post to the twin.
+     */
+    private fun createAlertChannels(
+        soundedId: String,
+        silentId: String,
+        nameRes: Int,
+        silentNameRes: Int,
+        descriptionRes: Int,
+        soundName: String,
+    ) {
+        val audioAttributes = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
             .build()
-        val completionChannel = NotificationChannel(
-            COMPLETION_CHANNEL_ID,
-            getString(R.string.timer_completion_channel_name),
+        val sounded = NotificationChannel(
+            soundedId,
+            getString(nameRes),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = getString(R.string.timer_completion_channel_description)
-            setSound(rawSoundUri(R.raw.timer_complete), completionAudioAttributes)
+            description = getString(descriptionRes)
+            setSound(rawSoundUri(soundName), audioAttributes)
             enableVibration(true)
         }
-        notificationManager.createNotificationChannel(completionChannel)
+        notificationManager.createNotificationChannel(sounded)
 
-        val prepareChannel = NotificationChannel(
-            PREPARE_CHANNEL_ID,
-            getString(R.string.timer_prepare_channel_name),
+        val silent = NotificationChannel(
+            silentId,
+            getString(silentNameRes),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = getString(R.string.timer_prepare_channel_description)
-            setSound(rawSoundUri(R.raw.prepare_beep), completionAudioAttributes)
-            enableVibration(true)
+            description = getString(descriptionRes)
+            setSound(null, null)
+            enableVibration(false)
         }
-        notificationManager.createNotificationChannel(prepareChannel)
-
-        notificationManager.deleteNotificationChannel(LEGACY_COMPLETION_CHANNEL_ID)
+        notificationManager.createNotificationChannel(silent)
     }
 
     private fun buildNotification(
@@ -166,7 +253,11 @@ class TimerForegroundService : Service() {
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(
                 this,
-                if (complete) COMPLETION_CHANNEL_ID else COUNTDOWN_CHANNEL_ID,
+                when {
+                    !complete -> COUNTDOWN_CHANNEL_ID
+                    soundEnabled -> COMPLETION_CHANNEL_ID
+                    else -> COMPLETION_SILENT_CHANNEL_ID
+                },
             )
         } else {
             @Suppress("DEPRECATION")
@@ -191,9 +282,8 @@ class TimerForegroundService : Service() {
             )
             .apply {
                 if (complete && !soundEnabled) {
-                    // Toggle off: keep the visual alert, but no sound/vibration
-                    // (the channel's sound still applies on first post, so mute
-                    // it explicitly on the notification too).
+                    // Below API 26 there are no channels, so the sound and
+                    // vibration are muted on the notification itself.
                     setSound(null)
                     setDefaults(0)
                     setVibrate(null)
@@ -202,9 +292,38 @@ class TimerForegroundService : Service() {
             .build()
     }
 
+    private fun buildGetReadyNotification(): Notification {
+        return buildCueNotification(
+            channelId = if (soundEnabled) {
+                GET_READY_CHANNEL_ID
+            } else {
+                GET_READY_SILENT_CHANNEL_ID
+            },
+            text = getReadyText.orEmpty(),
+            timeoutMillis = GET_READY_WINDOW_MILLIS,
+        )
+    }
+
     private fun buildPrepareNotification(): Notification {
+        return buildCueNotification(
+            channelId = if (soundEnabled) {
+                PREPARE_CHANNEL_ID
+            } else {
+                PREPARE_SILENT_CHANNEL_ID
+            },
+            text = prepareText,
+            timeoutMillis = PREPARE_WINDOW_MILLIS + ONE_SECOND_MILLIS,
+        )
+    }
+
+    private fun buildCueNotification(
+        channelId: String,
+        text: String,
+        timeoutMillis: Long,
+    ): Notification {
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, PREPARE_CHANNEL_ID)
+            Notification.Builder(this, channelId)
+                .setTimeoutAfter(timeoutMillis)
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
@@ -213,12 +332,11 @@ class TimerForegroundService : Service() {
         return builder
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
-            .setContentText("$countdownLabel ${formatRemaining(PREPARE_WINDOW_MILLIS)}")
+            .setContentText(text)
             .setContentIntent(contentIntent())
             .setOngoing(false)
             .setAutoCancel(true)
             .setShowWhen(false)
-            .setTimeoutAfter(PREPARE_WINDOW_MILLIS + ONE_SECOND_MILLIS)
             .setPriority(Notification.PRIORITY_HIGH)
             .apply {
                 if (!soundEnabled) {
@@ -255,8 +373,11 @@ class TimerForegroundService : Service() {
         )
     }
 
-    private fun rawSoundUri(resId: Int): Uri {
-        return Uri.parse("android.resource://$packageName/$resId")
+    // By name, so no later file can shift it. The shrinker can't see this URI;
+    // TimerCueSounds' direct R.raw references are what keep the files in a
+    // release APK.
+    private fun rawSoundUri(name: String): Uri {
+        return Uri.parse("android.resource://$packageName/raw/$name")
     }
 
     private fun detachForegroundNotification() {
@@ -268,6 +389,15 @@ class TimerForegroundService : Service() {
         }
     }
 
+    private fun removeForegroundNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+    }
+
     private fun formatRemaining(remainingMillis: Long): String {
         val totalSeconds = max(0L, (remainingMillis + 999L) / ONE_SECOND_MILLIS)
         val minutes = totalSeconds / 60L
@@ -276,11 +406,29 @@ class TimerForegroundService : Service() {
     }
 
     companion object {
+        /**
+         * Whether a rest strip on the current route is playing the cues in the
+         * app. Set by [MainActivity], and read on every tick.
+         */
+        @Volatile
+        var inAppCuesActive = false
+
         private const val COUNTDOWN_CHANNEL_ID = "workout_timer_countdowns"
-        private const val COMPLETION_CHANNEL_ID = "workout_timer_completions_v2"
+        private const val GET_READY_CHANNEL_ID = "workout_timer_get_ready_v1"
+        private const val GET_READY_SILENT_CHANNEL_ID =
+            "workout_timer_get_ready_v1_silent"
+        private const val PREPARE_CHANNEL_ID = "workout_timer_prepare_v3"
+        private const val PREPARE_SILENT_CHANNEL_ID =
+            "workout_timer_prepare_v3_silent"
+        private const val COMPLETION_CHANNEL_ID = "workout_timer_completions_v3"
+        private const val COMPLETION_SILENT_CHANNEL_ID =
+            "workout_timer_completions_v3_silent"
         private const val LEGACY_COMPLETION_CHANNEL_ID = "workout_timer_completions"
-        private const val PREPARE_CHANNEL_ID = "workout_timer_prepare"
+        private const val LEGACY_COMPLETION_V2_CHANNEL_ID =
+            "workout_timer_completions_v2"
+        private const val LEGACY_PREPARE_CHANNEL_ID = "workout_timer_prepare"
         private const val ONE_SECOND_MILLIS = 1000L
+        private const val GET_READY_WINDOW_MILLIS = 10000L
         private const val PREPARE_WINDOW_MILLIS = 3000L
         private const val ACTION_CANCEL =
             "fit.perennia.app.CANCEL_TIMER"
@@ -291,6 +439,8 @@ class TimerForegroundService : Service() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_BODY = "body"
         private const val EXTRA_COUNTDOWN_LABEL = "countdownLabel"
+        private const val EXTRA_GET_READY_TEXT = "getReadyText"
+        private const val EXTRA_PREPARE_TEXT = "prepareText"
         const val EXTRA_WORKOUT_ID = "workoutId"
         const val EXTRA_WORKOUT_EXERCISE_ID = "workoutExerciseId"
         private const val EXTRA_SOUND_ENABLED = "soundEnabled"
@@ -304,6 +454,7 @@ class TimerForegroundService : Service() {
             val body = arguments[EXTRA_BODY] as? String ?: return null
             val countdownLabel =
                 arguments[EXTRA_COUNTDOWN_LABEL] as? String ?: return null
+            val prepareText = arguments[EXTRA_PREPARE_TEXT] as? String ?: return null
             val soundEnabled = arguments[EXTRA_SOUND_ENABLED] as? Boolean ?: true
 
             return Intent(context, TimerForegroundService::class.java).apply {
@@ -312,6 +463,8 @@ class TimerForegroundService : Service() {
                 putExtra(EXTRA_TITLE, title)
                 putExtra(EXTRA_BODY, body)
                 putExtra(EXTRA_COUNTDOWN_LABEL, countdownLabel)
+                putExtra(EXTRA_GET_READY_TEXT, arguments[EXTRA_GET_READY_TEXT] as? String)
+                putExtra(EXTRA_PREPARE_TEXT, prepareText)
                 putExtra(EXTRA_WORKOUT_ID, arguments[EXTRA_WORKOUT_ID] as? String)
                 putExtra(
                     EXTRA_WORKOUT_EXERCISE_ID,
@@ -338,6 +491,10 @@ class TimerForegroundService : Service() {
             // Distinct id so the one-shot prepare cue never replaces the live
             // countdown notification.
             return notificationId("prepare:$timerId")
+        }
+
+        private fun getReadyNotificationId(timerId: String): Int {
+            return notificationId("getReady:$timerId")
         }
     }
 }

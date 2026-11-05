@@ -6,5 +6,10 @@
     <string name="timer_completion_channel_description">Alerts when a workout timer finishes.</string>
     <string name="timer_prepare_channel_name">Timer prepare cues</string>
     <string name="timer_prepare_channel_description">A short heads-up in the last few seconds before a workout timer finishes.</string>
+    <string name="timer_get_ready_channel_name">Rest get-ready alert</string>
+    <string name="timer_get_ready_channel_description">Plays 10 seconds before a rest ends</string>
+    <string name="timer_get_ready_silent_channel_name">Rest get-ready alert (silent)</string>
+    <string name="timer_prepare_silent_channel_name">Timer prepare cues (silent)</string>
+    <string name="timer_completion_silent_channel_name">Timer alerts (silent)</string>
     <string name="timer_notification_permission_rationale">Perennia can notify you when a workout timer finishes. If notifications are denied, in-app countdowns still work while the app is open.</string>
 </resources>
