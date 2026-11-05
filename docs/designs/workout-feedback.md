@@ -968,6 +968,14 @@ group for the `notice` colours.
     elevation 0. Add `text-primary-dark` on `chrome-dark` and `primary` on
     `chrome-dark` to the WCAG AA group (4.5:1).
 
+#### `apps/mobile/test/features/settings/settings_screen_test.dart` (Modify)
+
+*   **Type / Scope**: widget test.
+*   **Proposed Changes**: In `purge actions are explicit and separate from
+    disconnect`, dismiss the "Garmin GPS purged" SnackBar after asserting it.
+    The floating bar sits higher than the old fixed one and would otherwise
+    cover the Purge All button the test taps next.
+
 #### `apps/mobile/lib/features/training/widgets/replace_exercise.dart` (Modify)
 
 *   **Type / Scope**: widget helper.
