@@ -582,6 +582,10 @@
     }
   },
   "activityUndoGenericConflict": "Activity could not be undone",
+  "activityUndoDependentConflict": "Can't undo: foods were added to this meal afterwards.",
+  "@activityUndoDependentConflict": {
+    "description": "Shown when undoing the change that created a Meal is refused because foods were added to that Meal later."
+  },
   "activityRelativeLessThanOneMinuteAgo": "less than 1 min ago",
   "activityRelativeMinutesAgo": "{count} min ago",
   "@activityRelativeMinutesAgo": {

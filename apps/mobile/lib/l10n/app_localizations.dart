@@ -1729,6 +1729,12 @@ abstract class AppLocalizations {
   /// **'Activity could not be undone'**
   String get activityUndoGenericConflict;
 
+  /// Shown when undoing the change that created a Meal is refused because foods were added to that Meal later.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t undo: foods were added to this meal afterwards.'**
+  String get activityUndoDependentConflict;
+
   /// No description provided for @activityRelativeLessThanOneMinuteAgo.
   ///
   /// In en, this message translates to:

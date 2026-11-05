@@ -17,6 +17,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **`listAgentMeals` returns each Meal's `timezoneOffsetMinutes` and
   `timePrecision`.** Meals written before this change read `null` and
   `instant`.
+- **Agents can read the user's repeated meals** (`listAgentMealHistory`,
+  `GET /agent/meals/history`, `agent_list_meal_history`): the sets of Foods
+  they log together, most often in the last 90 days first, each with the
+  latest Meal that had them.
 
 ### Changed
 
@@ -55,6 +59,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   next sync. The server now keeps the star when an Agent write leaves it out,
   and a Compound an Agent created can be undone on the device instead of being
   reported as changed since.
+- **A Meal started on a past day is saved on that day, not today.**
+- **Re-importing a file no longer moves a food out of a meal you edited.**
+- **Backups keep restoring after the update.**
 
 ## [0.2.0] - 2026-11-03
 

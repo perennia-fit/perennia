@@ -206,10 +206,8 @@ class AddFoodPicker extends ConsumerWidget {
       await onQuickEntry!(draft);
       return;
     }
-    await ref
-        .read(addFoodPickerControllerProvider.notifier)
-        .logQuickEntryForMeal(
-          mealId: meal.id,
+    await ref.read(addFoodPickerControllerProvider.notifier).logQuickEntry(
+          target: ExistingMealTarget(meal.id),
           entry: draft,
         );
   }

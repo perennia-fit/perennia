@@ -235,6 +235,13 @@ import {
   type AgentFoodHistoryReadStore
 } from "./agent-food-history.js";
 import {
+  AGENT_MEAL_HISTORY_DEFAULT_LIMIT,
+  AGENT_MEAL_HISTORY_DESCRIPTION,
+  AGENT_MEAL_HISTORY_MAX_LIMIT,
+  AgentMealHistoryResponseSchema,
+  type AgentMealHistoryReadStore
+} from "./agent-meal-history.js";
+import {
   AGENT_MEAL_TYPES_DESCRIPTION,
   AgentMealTypesResponseSchema,
   AgentMealTypesUnavailableResponseSchema,
@@ -366,6 +373,15 @@ export const AgentMcpFoodHistoryInputSchema = AgentMcpAuthFieldsSchema.extend({
     .max(AGENT_FOOD_HISTORY_MAX_LIMIT)
     .optional()
 }).openapi("AgentMcpFoodHistoryInput");
+
+export const AgentMcpMealHistoryInputSchema = AgentMcpAuthFieldsSchema.extend({
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(AGENT_MEAL_HISTORY_MAX_LIMIT)
+    .optional()
+}).openapi("AgentMcpMealHistoryInput");
 
 export const AgentMcpMealTypesInputSchema =
   AgentMcpAuthFieldsSchema.openapi("AgentMcpMealTypesInput");
@@ -572,6 +588,7 @@ export type AgentMcpServerOptions = {
   agentProtocolsStore?: AgentProtocolsStore;
   agentNutritionReadStore?: AgentNutritionReadStore;
   agentFoodHistoryReadStore?: AgentFoodHistoryReadStore;
+  agentMealHistoryReadStore?: AgentMealHistoryReadStore;
   agentMealTypesReadStore?: AgentMealTypesReadStore;
   agentNutritionGoalStore?: AgentNutritionGoalBatchWriteStore;
   agentSettingsStore?: AgentSettingsBatchWriteStore;
@@ -603,6 +620,7 @@ export function createAgentMcpServer({
   agentProtocolsStore,
   agentNutritionReadStore,
   agentFoodHistoryReadStore,
+  agentMealHistoryReadStore,
   agentMealTypesReadStore,
   agentNutritionGoalStore,
   agentSettingsStore,
@@ -1709,6 +1727,46 @@ export function createAgentMcpServer({
           await agentFoodHistoryReadStore.listFoodHistory({
             userId: auth.agent.userId,
             limit: input.limit ?? AGENT_FOOD_HISTORY_DEFAULT_LIMIT,
+            now: new Date()
+          })
+        )
+      );
+    }
+  );
+
+  server.registerTool(
+    "agent_list_meal_history",
+    {
+      title: "List Agent Meal History",
+      description: AGENT_MEAL_HISTORY_DESCRIPTION,
+      inputSchema: AgentMcpMealHistoryInputSchema,
+      outputSchema: AgentMealHistoryResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentMealHistoryReadStore === undefined) {
+        return errorResult(
+          AgentNutritionReadUnavailableResponseSchema.parse({
+            code: "agent_nutrition_read_unavailable",
+            message: "Agent nutrition read storage is not configured."
+          })
+        );
+      }
+
+      return successResult(
+        AgentMealHistoryResponseSchema.parse(
+          await agentMealHistoryReadStore.listMealHistory({
+            userId: auth.agent.userId,
+            limit: input.limit ?? AGENT_MEAL_HISTORY_DEFAULT_LIMIT,
             now: new Date()
           })
         )

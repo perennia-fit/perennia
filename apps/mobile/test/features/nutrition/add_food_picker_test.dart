@@ -636,11 +636,10 @@ void main() {
     addTearDown(database.close);
     final repositories = TrainingRepositories(database);
     final mealId = await repositories.nutrition.createMeal(
-      MealDraft(
-        mealType: 'Snack',
-        startedAt: DateTime.utc(2026, 6, 26, 15),
-        timezone: 'Australia/Brisbane',
-        localDate: const NutritionDayDate(year: 2026, month: 6, day: 26),
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 26, 15),
+        mealTypeName: 'Snack',
       ),
     );
     final meal = (await repositories.nutrition.getMealById(mealId))!;
@@ -723,11 +722,10 @@ void main() {
       ),
     );
     final mealId = await repositories.nutrition.createMeal(
-      MealDraft(
-        mealType: 'Snack',
-        startedAt: DateTime.utc(2026, 6, 26, 15),
-        timezone: 'Australia/Brisbane',
-        localDate: const NutritionDayDate(year: 2026, month: 6, day: 26),
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 26, 15),
+        mealTypeName: 'Snack',
       ),
     );
     final meal = (await repositories.nutrition.getMealById(mealId))!;
@@ -1420,6 +1418,7 @@ class _BarcodeAddFoodHarnessState extends State<_BarcodeAddFoodHarness> {
       food: food,
       onSave: (draft) {
         return widget.repositories.nutrition.logFoodEntrySnapshot(
+          target: ExistingMealTarget(draft.mealId),
           entry: draft,
         );
       },

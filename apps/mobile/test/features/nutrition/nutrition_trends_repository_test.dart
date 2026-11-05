@@ -242,13 +242,13 @@ Future<void> _logDay(
   required double energy,
   double? carbohydrate,
 }) async {
-  final localDate = NutritionDayDate(year: 2026, month: 6, day: day);
   await repositories.nutrition.logQuickEntry(
-    meal: MealDraft(
-      mealType: 'Breakfast',
-      startedAt: DateTime.utc(2026, 6, day, 8),
-      timezone: 'UTC',
-      localDate: localDate,
+    target: NewMealTarget(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, day, 8),
+        mealTypeName: 'Breakfast',
+      ),
     ),
     entry: QuickFoodEntryDraft(
       name: 'Logged food',
@@ -286,13 +286,13 @@ Future<void> _logEnergyOnly(
   required int day,
   required double energy,
 }) async {
-  final localDate = NutritionDayDate(year: 2026, month: 6, day: day);
   await repositories.nutrition.logQuickEntry(
-    meal: MealDraft(
-      mealType: 'Snack',
-      startedAt: DateTime.utc(2026, 6, day, 15),
-      timezone: 'UTC',
-      localDate: localDate,
+    target: NewMealTarget(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, day, 15),
+        mealTypeName: 'Snack',
+      ),
     ),
     entry: QuickFoodEntryDraft(
       name: 'Quick calories',

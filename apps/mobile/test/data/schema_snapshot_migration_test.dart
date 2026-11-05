@@ -81,7 +81,7 @@ void main() {
     final connection = await verifier.startAt(63);
     final database = AppDatabase(connection);
     addTearDown(database.close);
-    await verifier.migrateAndValidate(database, 64);
+    await verifier.migrateAndValidate(database, currentVersion);
 
     final objects = await database.customSelect(
       'SELECT type, name, tbl_name FROM sqlite_master '
@@ -100,6 +100,96 @@ void main() {
         .get();
     expect(indexColumns.map((row) => row.read<String>('name')), ['local_date']);
     expect(await database.select(database.protocolSkips).get(), isEmpty);
+  });
+
+  test(
+      'v64 to v65 adds the Meal offset and time precision and changes no '
+      'value', () async {
+    final schema = await verifier.schemaAt(64);
+    addTearDown(schema.close);
+    const updatedAt = 1_767_254_400;
+    for (final (sql, parameters) in <(String, List<Object?>)>[
+      (
+        'INSERT INTO meals '
+            '(id, meal_type, started_at, timezone, local_date, ended_at, '
+            'sync_device_id, sync_previously_synced, updated_at, deleted_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          'meal-1',
+          'Breakfast',
+          1_767_247_200,
+          'AEST',
+          '2026-01-01',
+          1_767_249_000,
+          'device-1',
+          1,
+          updatedAt,
+          null,
+        ],
+      ),
+      (
+        'INSERT INTO meals '
+            '(id, meal_type, started_at, timezone, local_date, updated_at, '
+            'deleted_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [
+          'meal-2',
+          'Imported',
+          1_767_225_600,
+          'UTC',
+          '2026-01-01',
+          updatedAt,
+          updatedAt,
+        ],
+      ),
+      (
+        'INSERT INTO food_entries '
+            '(id, meal_id, position, name, nutrient_values_json, updated_at) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+        ['food-entry-1', 'meal-1', 0, 'Oats', '{"energy_kcal":389}', updatedAt],
+      ),
+    ]) {
+      schema.rawDatabase.execute(sql, parameters);
+    }
+    List<Map<String, Object?>> rows(sqlite.Database database, String table) =>
+        database
+            .select('SELECT * FROM $table ORDER BY id')
+            .map((row) => Map<String, Object?>.of(row))
+            .toList();
+    final mealsBefore = rows(schema.rawDatabase, 'meals');
+    final foodEntriesBefore = rows(schema.rawDatabase, 'food_entries');
+
+    final database = AppDatabase(schema.newConnection());
+    addTearDown(database.close);
+    await verifier.migrateAndValidate(database, currentVersion);
+
+    final meals = await database.select(database.meals).get();
+    expect(meals.map((meal) => meal.timePrecision), ['instant', 'instant']);
+    expect(meals.map((meal) => meal.timezoneOffsetMinutes), [null, null]);
+
+    // docs/designs/meal-logging.md §1: no backfill. Every pre-existing
+    // column of every Meal and Food Entry reads exactly as before.
+    final mealsAfter =
+        (await database.customSelect('SELECT * FROM meals ORDER BY id').get())
+            .map((row) => row.data)
+            .toList();
+    expect(mealsAfter, hasLength(mealsBefore.length));
+    for (var index = 0; index < mealsBefore.length; index++) {
+      expect(
+        mealsAfter[index],
+        <String, Object?>{
+          ...mealsBefore[index],
+          'timezone_offset_minutes': null,
+          'time_precision': 'instant',
+        },
+      );
+    }
+    final foodEntriesAfter = (await database
+            .customSelect('SELECT * FROM food_entries ORDER BY id')
+            .get())
+        .map((row) => row.data)
+        .toList();
+    expect(foodEntriesAfter, foodEntriesBefore);
   });
 
   test('rows written at the first release survive to the current version',

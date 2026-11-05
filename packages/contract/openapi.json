@@ -12405,6 +12405,76 @@
           "lastPortion"
         ]
       },
+      "AgentMealHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentMealHistoryItem"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AgentMealHistoryItem": {
+        "type": "object",
+        "properties": {
+          "foods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentMealHistoryFood"
+            },
+            "description": "The distinct Foods of the meal, ordered by `foodSource:foodId` in byte order."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Meals in the last 90 days with this set of Foods."
+          },
+          "lastMealId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The most recent Meal with this set of Foods, Portions and Quick Entries included."
+          },
+          "lastStartedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ISO-8601 start of the most recent Meal with this set of Foods."
+          }
+        },
+        "required": [
+          "foods",
+          "count",
+          "lastMealId",
+          "lastStartedAt"
+        ]
+      },
+      "AgentMealHistoryFood": {
+        "type": "object",
+        "properties": {
+          "foodSource": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Food Source name, such as openFoodFacts, as AgentMealEntry.foodSource carries it."
+          },
+          "foodId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "description": "The Food's name on its Food Entry in the most recent Meal with this set of Foods."
+          }
+        },
+        "required": [
+          "foodSource",
+          "foodId",
+          "name"
+        ]
+      },
       "AgentMealTypesResponse": {
         "type": "object",
         "properties": {
@@ -24132,6 +24202,119 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentFoodHistoryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or read storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentNutritionReadUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/meals/history": {
+      "get": {
+        "operationId": "listAgentMealHistory",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "List the user's Meal History: the meals they repeat, most often in the last 90 days first.",
+        "description": "Returns the meals the caller repeats (Meal History, shown in the app as Your meals), derived on each call from live Meals and Food Entries and never stored. A meal is the set of distinct Foods in a timed Meal of the last 90 days holding two or more Foods; Portions and Quick Entries don't count, and archived Meals, date-only Meals and archived User Foods are left out. Ordered by how many Meals had that set, then the most recent one, then the Foods. Each item lists its Foods with the names they had in that most recent Meal, which is lastMealId: the Meal the app's Log again copies, Portions and Quick Entries included. Bounded by limit.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "description": "Maximum meals to return, bounded to 50."
+            },
+            "required": false,
+            "description": "Maximum meals to return, bounded to 50.",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's Meal History, bounded by limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentMealHistoryResponse"
                 }
               }
             }

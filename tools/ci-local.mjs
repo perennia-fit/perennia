@@ -193,6 +193,8 @@ const JOBS = {
       'apps/server/test/barcode-candidates.golden.test.mjs',
       'apps/server/src/food-history.ts',
       'apps/server/test/food-history.golden.test.mjs',
+      'apps/server/src/meal-history.ts',
+      'apps/server/test/meal-history.golden.test.mjs',
       'apps/server/src/timezone.ts',
       'apps/server/test/timezone.test.mjs',
       'apps/server/test/training-progress.golden.test.mjs',

@@ -19,6 +19,7 @@ import { createAgentMcpServer } from "./agent-mcp.js";
 import { createDrizzleAgentCatalogStore } from "./agent-catalog.js";
 import { createDrizzleAgentReadStore } from "./agent-read-surface.js";
 import { createDrizzleAgentFoodHistoryReadStore } from "./agent-food-history.js";
+import { createDrizzleAgentMealHistoryReadStore } from "./agent-meal-history.js";
 import { createDrizzleAgentMealTypesReadStore } from "./agent-meal-types.js";
 import { createDrizzleAgentNutritionReadStore } from "./agent-nutrition-reads.js";
 import { createDrizzleAgentCrossDomainReadStore } from "./agent-cross-domain-reads.js";
@@ -498,6 +499,20 @@ export {
   type AgentFoodHistoryReadStore,
   type AgentFoodHistoryResponse
 } from "./agent-food-history.js";
+export {
+  AGENT_MEAL_HISTORY_DEFAULT_LIMIT,
+  AGENT_MEAL_HISTORY_DESCRIPTION,
+  AGENT_MEAL_HISTORY_MAX_LIMIT,
+  AgentMealHistoryFoodSchema,
+  AgentMealHistoryItemSchema,
+  AgentMealHistoryQuerySchema,
+  AgentMealHistoryResponseSchema,
+  agentMealHistoryRoute,
+  createDrizzleAgentMealHistoryReadStore,
+  type AgentMealHistoryQuery,
+  type AgentMealHistoryReadStore,
+  type AgentMealHistoryResponse
+} from "./agent-meal-history.js";
 export {
   AGENT_MEAL_TYPES_DESCRIPTION,
   AgentMealTypeItemSchema,
@@ -1560,6 +1575,9 @@ export async function createMigratedServerApp({
   const agentFoodHistoryReadStore = createDrizzleAgentFoodHistoryReadStore(
     database.db
   );
+  const agentMealHistoryReadStore = createDrizzleAgentMealHistoryReadStore(
+    database.db
+  );
   const agentMealTypesReadStore = createDrizzleAgentMealTypesReadStore(
     database.db
   );
@@ -1634,6 +1652,7 @@ export async function createMigratedServerApp({
     agentProtocolsStore,
     agentNutritionReadStore,
     agentFoodHistoryReadStore,
+    agentMealHistoryReadStore,
     agentMealTypesReadStore,
     agentNutritionGoalStore,
     agentSettingsStore,
@@ -1657,6 +1676,7 @@ export async function createMigratedServerApp({
     agentReadStore,
     agentNutritionReadStore,
     agentFoodHistoryReadStore,
+    agentMealHistoryReadStore,
     agentMealTypesReadStore,
     agentCrossDomainReadStore,
     agentWorkoutBatchWriteStore,

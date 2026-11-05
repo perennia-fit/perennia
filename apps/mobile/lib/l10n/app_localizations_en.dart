@@ -955,6 +955,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get activityUndoGenericConflict => 'Activity could not be undone';
 
   @override
+  String get activityUndoDependentConflict =>
+      'Can\'t undo: foods were added to this meal afterwards.';
+
+  @override
   String get activityRelativeLessThanOneMinuteAgo => 'less than 1 min ago';
 
   @override

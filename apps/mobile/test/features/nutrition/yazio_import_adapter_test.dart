@@ -21,6 +21,30 @@ void main() {
       expect(resolution.preservedProvider, isNull);
     });
 
+    test('sets instant precision for a date-time, date for a bare date', () {
+      // docs/designs/meal-logging.md §1.
+      const export = '''
+{
+  "consumed_items": [
+    {"id": "yz-t", "date": "2026-06-01T08:00:00", "daytime": "breakfast",
+     "name": "Oats", "amount": 100,
+     "nutrients": {"energy.energy": 1627.6}},
+    {"id": "yz-d", "date": "2026-06-02", "daytime": "dinner",
+     "name": "Rice", "amount": 100,
+     "nutrients": {"energy.energy": 1627.6}}
+  ]
+}
+''';
+
+      final meals = adapter.parse(export).meals;
+
+      expect(meals, hasLength(2));
+      expect(meals.first.timePrecision, MealTimePrecision.instant);
+      expect(meals.first.startedAt, DateTime(2026, 6, 1, 8));
+      expect(meals[1].timePrecision, MealTimePrecision.date);
+      expect(meals[1].startedAt, DateTime(2026, 6, 2));
+    });
+
     test('is a NutritionImportAdapter', () {
       expect(adapter, isA<NutritionImportAdapter>());
     });

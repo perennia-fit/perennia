@@ -365,21 +365,40 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
     ref.read(selectedNutritionDayProvider.notifier).addDays(1);
   }
 
+  /// Starts an empty Meal on the selected day ([localDate] when given).
+  ///
+  /// A Meal's Nutrition Day is derived from its time
+  /// (docs/designs/meal-logging.md §1), so the time carries the day: an
+  /// explicit [startedAt] is honoured; on today the Meal starts now; on any
+  /// other day it starts at the current clock time on that day, so the
+  /// derived date is the selected day (§3, "startMeal until PR 3").
   Future<String> startMeal({
     required MealTypeRecord mealType,
     DateTime? startedAt,
     NutritionDayDate? localDate,
   }) {
-    final selectedDate = localDate ?? ref.read(selectedNutritionDayProvider);
-    final effectiveStartedAt = startedAt ?? DateTime.now();
-    return ref.read(nutritionRepositoryProvider).createMeal(
-          MealDraft(
-            mealType: mealType.name,
-            startedAt: effectiveStartedAt,
-            localDate: selectedDate,
-            timezone: effectiveStartedAt.toLocal().timeZoneName,
-          ),
-        );
+    final NutritionDayDate selectedDate =
+        localDate ?? ref.read(selectedNutritionDayProvider);
+    final now = DateTime.now();
+    final effectiveStartedAt = startedAt ??
+        (selectedDate == NutritionDayDate.fromDateTime(now)
+            ? now
+            : DateTime(
+                selectedDate.year,
+                selectedDate.month,
+                selectedDate.day,
+                now.hour,
+                now.minute,
+                now.second,
+              ));
+    final repository = ref.read(nutritionRepositoryProvider);
+    return repository.createMeal(
+      PendingMeal(
+        id: repository.newMealId(),
+        startedAt: effectiveStartedAt,
+        mealTypeName: mealType.name,
+      ),
+    );
   }
 
   Future<String> createMealType({
@@ -401,7 +420,7 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
     required MealTypeRecord mealType,
     required String name,
   }) {
-    return ref.read(nutritionRepositoryProvider).updateMealType(
+    return ref.read(nutritionRepositoryProvider).editMealType(
           mealType.id,
           MealTypeDraft(name: name, sortOrder: mealType.sortOrder),
         );
@@ -429,21 +448,11 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
   }
 
   Future<LogQuickEntryResult> logQuickEntry({
-    required MealDraft meal,
+    required MealTarget target,
     required QuickFoodEntryDraft entry,
   }) {
     return ref.read(nutritionRepositoryProvider).logQuickEntry(
-          meal: meal,
-          entry: entry,
-        );
-  }
-
-  Future<LogQuickEntryResult> logQuickEntryForMeal({
-    required String mealId,
-    required QuickFoodEntryDraft entry,
-  }) {
-    return ref.read(nutritionRepositoryProvider).logQuickEntryForMeal(
-          mealId: mealId,
+          target: target,
           entry: entry,
         );
   }
@@ -455,9 +464,11 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
   }
 
   Future<LogFoodEntryResult> logFoodEntrySnapshot({
+    required MealTarget target,
     required FoodEntrySnapshotDraft entry,
   }) {
     return ref.read(nutritionRepositoryProvider).logFoodEntrySnapshot(
+          target: target,
           entry: entry,
         );
   }

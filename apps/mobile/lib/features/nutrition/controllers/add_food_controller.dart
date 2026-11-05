@@ -340,12 +340,12 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     }
   }
 
-  Future<LogQuickEntryResult> logQuickEntryForMeal({
-    required String mealId,
+  Future<LogQuickEntryResult> logQuickEntry({
+    required MealTarget target,
     required QuickFoodEntryDraft entry,
   }) {
-    return ref.read(nutritionRepositoryProvider).logQuickEntryForMeal(
-          mealId: mealId,
+    return ref.read(nutritionRepositoryProvider).logQuickEntry(
+          target: target,
           entry: entry,
         );
   }
