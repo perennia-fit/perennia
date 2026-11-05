@@ -80,8 +80,6 @@ abstract interface class HomeRepository {
   });
 
   Future<String> shareWorkout(String workoutId);
-
-  Future<void> logDefaultWeightRepsSet();
 }
 
 class StubHomeRepository implements HomeRepository {
@@ -193,9 +191,6 @@ class StubHomeRepository implements HomeRepository {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class RepositoryHomeRepository implements HomeRepository {
@@ -209,13 +204,13 @@ class RepositoryHomeRepository implements HomeRepository {
 
   @override
   Stream<HomeSummary> watchTrainingDay(TrainingDayDate localDate) async* {
-    await _repositories.ensureStarterExercises();
+    await _repositories.catalog.ensurePlatformLibrarySeeded(actor: 'app');
     yield* _watchSummary(localDate);
   }
 
   @override
   Stream<HomeWorkoutSummary?> watchWorkout(String workoutId) async* {
-    await _repositories.ensureStarterExercises();
+    await _repositories.catalog.ensurePlatformLibrarySeeded(actor: 'app');
     yield* _watchWorkout(workoutId);
   }
 
@@ -374,11 +369,6 @@ class RepositoryHomeRepository implements HomeRepository {
   @override
   Future<String> shareWorkout(String workoutId) {
     return _repositories.workoutSessions.shareSummary(workoutId);
-  }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() {
-    return _repositories.logDefaultWeightRepsSet();
   }
 
   Stream<HomeSummary> _watchSummary(TrainingDayDate localDate) {
