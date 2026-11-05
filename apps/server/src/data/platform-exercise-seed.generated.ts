@@ -1977,19 +1977,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-801286296178",
-    "name": "Pompes inclines",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000200683",
     "name": "Power Clean",
     "dimensionIds": [
@@ -10200,19 +10187,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200341",
-    "name": "Squats on Multipress",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-800228797395",
     "name": "Stability Ball Reverse Hyperextension (off a bench)",
     "dimensionIds": [
@@ -12391,21 +12365,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201442",
-    "name": "Kreis Press Dumbbell",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": [
-      "dumbbell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000200346",
     "name": "Landmine press",
     "dimensionIds": [
@@ -12608,7 +12567,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000200418",
-    "name": "Military Press mit SZ-Bar",
+    "name": "Military Press with SZ-Bar",
     "dimensionIds": [
       "load",
       "reps"
@@ -13409,19 +13368,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   {
     "id": "01910000-0000-7000-8000-000000201755",
     "name": "Shoulder Y-pull cable",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200575",
-    "name": "Shrugs on Multipress",
     "dimensionIds": [
       "load",
       "reps"
@@ -14631,6 +14577,21 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000201483",
+    "name": "Biceps Curls Trifecta",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000011",
+    "equipmentIds": [
+      "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-000000200091",
     "name": "Biceps Curls With Barbell",
     "dimensionIds": [
@@ -14670,21 +14631,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "ezBar"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201483",
-    "name": "Bizeps Curls Trifecta",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [
-      "dumbbell"
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
@@ -23021,6 +22967,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-000000200960"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200341",
+    "toExerciseId": "01910000-0000-7000-8000-000000201747"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000200377",
     "toExerciseId": "01910000-0000-7000-8000-000000201313"
   },
@@ -23067,6 +23017,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200572",
     "toExerciseId": "01910000-0000-7000-8000-801714571933"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200575",
+    "toExerciseId": "01910000-0000-7000-8000-801086420786"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200659",
@@ -23555,6 +23509,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   {
     "fromExerciseId": "01910000-0000-7000-8000-801219464208",
     "toExerciseId": "01910000-0000-7000-8000-804205962802"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-801286296178",
+    "toExerciseId": "01910000-0000-7000-8000-000000200313"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-801371659462",

@@ -26,6 +26,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Changed
 
+- **The Platform Exercise Library loses its remaining non-English names.**
+  Three exercises merge into their English equivalents, one is removed, and
+  two are renamed on new installs (`Military Press with SZ-Bar`, `Biceps Curls
+  Trifecta`).
 - **The Platform Exercise Library drops 162 near-duplicates** (1,745 to 1,583
   exercises), such as "Benchpress Dumbbells" alongside "Dumbbell Bench Press".
   On a device that already has a removed exercise it is archived, so sets
