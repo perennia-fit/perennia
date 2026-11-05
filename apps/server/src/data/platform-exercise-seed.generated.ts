@@ -170,7 +170,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800352562855",
-    "name": "Assisted Push-Ups with Band (Male)",
+    "name": "Assisted Push-Ups with Band",
     "dimensionIds": [
       "reps"
     ],
@@ -754,7 +754,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802505862372",
-    "name": "Deep Push-up on Parallel Bars (male)",
+    "name": "Deep Push-up on Parallel Bars",
     "dimensionIds": [
       "reps"
     ],
@@ -961,21 +961,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "id": "01910000-0000-7000-8000-000000200801",
     "name": "Dumbbell Push-Up",
     "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": [
-      "dumbbell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201500",
-    "name": "Dumbbell UCV",
-    "dimensionIds": [
-      "load",
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000007",
@@ -1267,6 +1252,20 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000201693",
+    "name": "Incline Dumbbell Static Hold",
+    "dimensionIds": [
+      "duration"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000007",
+    "equipmentIds": [
+      "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-802066956828",
     "name": "Incline Knee Push-Ups on Box",
     "dimensionIds": [
@@ -1337,20 +1336,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201693",
-    "name": "Incline Static Hold",
-    "dimensionIds": [
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": [
-      "dumbbell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000201198",
     "name": "Inverted Rows",
     "dimensionIds": [
@@ -1381,7 +1366,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802901460265",
-    "name": "Kneeling Knuckle Push-Up (male)",
+    "name": "Kneeling Knuckle Push-Up",
     "dimensionIds": [
       "reps"
     ],
@@ -1395,7 +1380,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800959548294",
-    "name": "Kneeling Modified Hindu Push-up (male)",
+    "name": "Kneeling Modified Hindu Push-up",
     "dimensionIds": [
       "reps"
     ],
@@ -1423,7 +1408,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800344317125",
-    "name": "Kneeling Scapular Push-Up (male)",
+    "name": "Kneeling Scapular Push-Up",
     "dimensionIds": [
       "reps"
     ],
@@ -1494,24 +1479,8 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-803358282232",
-    "name": "Laying Svend Press",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": [
-      "bench",
-      "plate"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-800926575231",
-    "name": "Lever Push-up (male)",
+    "name": "Lever Push-up",
     "dimensionIds": [
       "reps"
     ],
@@ -1580,6 +1549,22 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-803358282232",
+    "name": "Lying Svend Press",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000007",
+    "equipmentIds": [
+      "bench",
+      "plate"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-000000200926",
     "name": "Machine chest fly",
     "dimensionIds": [
@@ -1641,7 +1626,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-803471892704",
-    "name": "Medicine Ball Half Kneeling Chest Push (male)",
+    "name": "Medicine Ball Half Kneeling Chest Push",
     "dimensionIds": [
       "load",
       "reps"
@@ -1656,7 +1641,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-801811063111",
-    "name": "Medicine Ball Plyo Push Up (male)",
+    "name": "Medicine Ball Plyo Push Up",
     "dimensionIds": [
       "reps"
     ],
@@ -1952,7 +1937,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800021038563",
-    "name": "Planche Dip on Parallel Bars (male)",
+    "name": "Planche Dip on Parallel Bars",
     "dimensionIds": [
       "reps"
     ],
@@ -2108,7 +2093,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800079023772",
-    "name": "Ring Archer Push-up (male)",
+    "name": "Ring Archer Push-up",
     "dimensionIds": [
       "reps"
     ],
@@ -2120,7 +2105,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-801478997646",
-    "name": "Ring Russian Push-Up (male)",
+    "name": "Ring Russian Push-Up",
     "dimensionIds": [
       "reps"
     ],
@@ -2404,20 +2389,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200688",
-    "name": "Upper External Oblique",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000007",
-    "equipmentIds": [
-      "pullUpBar"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000201902",
     "name": "Weighted push-ups",
     "dimensionIds": [
@@ -2504,6 +2475,21 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000201501",
+    "name": "Alternating Dumbbell Gorilla Rows",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000008",
+    "equipmentIds": [
+      "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-000000201486",
     "name": "Alternating High Cable Row",
     "dimensionIds": [
@@ -2532,21 +2518,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201501",
-    "name": "Alternative Dumbbell Gorilla rows",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [
-      "dumbbell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-800413374575",
     "name": "Archer Pull-Ups",
     "dimensionIds": [
@@ -2562,7 +2533,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802891502593",
-    "name": "Around the World Superman Hold Hips",
+    "name": "Around the World Superman Hold",
     "dimensionIds": [
       "duration"
     ],
@@ -2799,7 +2770,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-803974948080",
-    "name": "Barbell Bent Over Wide Row Plus Back",
+    "name": "Barbell Bent Over Wide Grip Row",
     "dimensionIds": [
       "load",
       "reps"
@@ -3056,6 +3027,21 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000201434",
+    "name": "Bent Over Dumbbell Lat Pull",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000008",
+    "equipmentIds": [
+      "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-000000201082",
     "name": "Bent over row to external rotation",
     "dimensionIds": [
@@ -3064,21 +3050,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200084",
-    "name": "Bent Over Rowing Reverse",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [
-      "barbell"
-    ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
     ]
@@ -3094,19 +3065,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell"
     ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201363",
-    "name": "Blackroll",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
     ]
@@ -3141,7 +3099,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802501247680",
-    "name": "Bodyweight Standing Scapula Row (male)",
+    "name": "Bodyweight Standing Scapula Row",
     "dimensionIds": [
       "duration"
     ],
@@ -3210,6 +3168,19 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000201905",
+    "name": "Cable Pullback",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000008",
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-802423903523",
     "name": "Cable Reverse Grip Straight Back Seated High Row",
     "dimensionIds": [
@@ -3226,7 +3197,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-803498948355",
-    "name": "Cable Seated Horizontal Shrug (male)",
+    "name": "Cable Seated Horizontal Shrug",
     "dimensionIds": [
       "load",
       "reps"
@@ -3504,7 +3475,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800232187676",
-    "name": "Dumbbell Decline Shrug Back FIX",
+    "name": "Dumbbell Decline Shrug",
     "dimensionIds": [
       "load",
       "reps"
@@ -3819,38 +3790,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200259",
-    "name": "Front Pull narrow",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [
-      "barbell",
-      "ezBar"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200258",
-    "name": "Front pull wide",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [
-      "barbell",
-      "ezBar"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000200516",
     "name": "Front Wood Chop",
     "dimensionIds": [
@@ -3925,20 +3864,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "name": "Hip Crossovers",
     "dimensionIds": [
       "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200292",
-    "name": "Hip Raise, Lying",
-    "dimensionIds": [
-      "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [
@@ -4049,7 +3974,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800079399828",
-    "name": "Jumping Pull-up with Back Fix",
+    "name": "Jumping Pull-Up",
     "dimensionIds": [
       "reps"
     ],
@@ -4137,7 +4062,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-804284626848",
-    "name": "Kneeling Elastic Front Pull",
+    "name": "Kneeling Band Pulldown",
     "dimensionIds": [
       "reps"
     ],
@@ -4277,21 +4202,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201434",
-    "name": "Lat Pull Dumbbell",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [
-      "dumbbell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000201659",
     "name": "Lat Pulldown - Cross Body Single Arm",
     "dimensionIds": [
@@ -4362,7 +4272,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800383610832",
-    "name": "Lever Pronated Grip Seated Scapular Retraction Shr",
+    "name": "Lever Pronated Grip Seated Scapular Retraction Shrug",
     "dimensionIds": [
       "load",
       "reps"
@@ -4432,29 +4342,14 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200395",
-    "name": "Long-Pulley, Narrow",
+    "id": "01910000-0000-7000-8000-000000200510",
+    "name": "Lying Bench Row",
     "dimensionIds": [
       "load",
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000008",
     "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200923",
-    "name": "Lying Dumbbell Row Ss Seated Shrug",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [
-      "dumbbell"
-    ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
     ]
@@ -4474,20 +4369,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-800690476020",
-    "name": "Lying Prone T Back",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-800899238818",
     "name": "Lying Prone W to Y Transition",
     "dimensionIds": [
@@ -4503,7 +4384,19 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802474270945",
-    "name": "Lying Reverse Push-up (male)",
+    "name": "Lying Reverse Push-up",
+    "dimensionIds": [
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000008",
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000200477",
+    "name": "Machine Pull-Ups",
     "dimensionIds": [
       "reps"
     ],
@@ -4555,6 +4448,22 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000404"
+    ]
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000200259",
+    "name": "Narrow-Grip Pulldown",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000008",
+    "equipmentIds": [
+      "barbell",
+      "ezBar"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -4657,7 +4566,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000200448",
-    "name": "Pendelay Rows",
+    "name": "Pendlay Rows",
     "dimensionIds": [
       "load",
       "reps"
@@ -4729,8 +4638,22 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-800690476020",
+    "name": "Prone T Raise",
+    "dimensionIds": [
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000008",
+    "equipmentIds": [
+      "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-802053454361",
-    "name": "Prone Y Raise (male)",
+    "name": "Prone Y Raise",
     "dimensionIds": [
       "reps"
     ],
@@ -4738,18 +4661,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "bench"
     ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200477",
-    "name": "Pull Ups on Machine",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [],
     "focusIds": [
       "01910000-0000-7000-8000-000000000404"
     ]
@@ -4812,19 +4723,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201905",
-    "name": "Pullback",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000201273",
     "name": "Pullover",
     "dimensionIds": [
@@ -4854,7 +4752,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000200957",
-    "name": "Quadriped Arm and Leg Raise",
+    "name": "Quadruped Arm and Leg Raise",
     "dimensionIds": [
       "reps"
     ],
@@ -5093,38 +4991,8 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200508",
-    "name": "Row",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [
-      "barbell",
-      "dumbbell",
-      "pullUpBar"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000200512",
     "name": "Rowing seated, narrow grip",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200510",
-    "name": "Rowing, Lying on Bench",
     "dimensionIds": [
       "load",
       "reps"
@@ -5296,7 +5164,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000201098",
-    "name": "Seated rear delt rise",
+    "name": "Seated Rear Delt Raise",
     "dimensionIds": [
       "load",
       "reps"
@@ -5311,7 +5179,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802275649255",
-    "name": "Seated Rhomboid Stretch (male)",
+    "name": "Seated Rhomboid Stretch",
     "dimensionIds": [
       "duration"
     ],
@@ -5651,7 +5519,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800169041634",
-    "name": "Smith Bent Knee Good Morning Hips",
+    "name": "Smith Bent Knee Good Morning",
     "dimensionIds": [
       "load",
       "reps"
@@ -5980,19 +5848,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201381",
-    "name": "Upper Back",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000008",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-801990369080",
     "name": "V Bar Pulldowns",
     "dimensionIds": [
@@ -6102,20 +5957,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201096",
-    "name": "Abduction while standing",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -6452,7 +6293,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-801046921272",
-    "name": "Barbell Front Squats To A Bench Clean Grip",
+    "name": "Barbell Front Squat to Bench (Clean Grip)",
     "dimensionIds": [
       "load",
       "reps"
@@ -6903,19 +6744,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000405"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201769",
-    "name": "cabel",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -8472,20 +8300,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-802378772503",
-    "name": "Laying Hamstring Stretch",
-    "dimensionIds": [
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000405"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000200364",
     "name": "Leg Curl",
     "dimensionIds": [
@@ -8500,7 +8314,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000200365",
-    "name": "Leg Curls (laying)",
+    "name": "Leg Curls (lying)",
     "dimensionIds": [
       "load",
       "reps"
@@ -8674,6 +8488,20 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-802975821079",
+    "name": "Lunge Warm-Up",
+    "dimensionIds": [
+      "duration"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000009",
+    "equipmentIds": [
+      "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-000000201868",
     "name": "Lunge with Twist Stretch",
     "dimensionIds": [
@@ -8738,6 +8566,20 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
+    "id": "01910000-0000-7000-8000-802378772503",
+    "name": "Lying Hamstring Stretch",
+    "dimensionIds": [
+      "duration"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000009",
+    "equipmentIds": [
+      "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000405"
     ]
   },
   {
@@ -8962,7 +8804,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000201521",
-    "name": "Pendular hack",
+    "name": "Pendulum Squat",
     "dimensionIds": [
       "load",
       "reps"
@@ -9444,7 +9286,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000201739",
-    "name": "Shrimp Squad",
+    "name": "Shrimp Squat",
     "dimensionIds": [
       "reps"
     ],
@@ -10273,6 +10115,20 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000201096",
+    "name": "Standing Hip Abduction",
+    "dimensionIds": [
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000009",
+    "equipmentIds": [
+      "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-000000201875",
     "name": "Standing IT Band Stretch",
     "dimensionIds": [
@@ -10443,7 +10299,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800320928290",
-    "name": "Stiff Leg Dead from a Deficit",
+    "name": "Stiff Leg Deadlift from a Deficit",
     "dimensionIds": [
       "load",
       "reps"
@@ -10841,76 +10697,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "categoryId": "01910000-0000-7000-8000-000000000009",
     "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-803662178945",
-    "name": "Warming up in Lunge (five)",
-    "dimensionIds": [
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-802216678151",
-    "name": "Warming up in Lunge (four)",
-    "dimensionIds": [
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-802975821079",
-    "name": "Warming up in Lunge (one)",
-    "dimensionIds": [
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-803901984078",
-    "name": "Warming up in Lunge (six)",
-    "dimensionIds": [
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-802452508766",
-    "name": "Warming up in Lunge (three)",
-    "dimensionIds": [
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000009",
-    "equipmentIds": [
-      "bodyweight"
-    ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000404"
     ]
@@ -11647,7 +11433,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802168733643",
-    "name": "Criss Cross Upper Chest Raise (male)",
+    "name": "Criss Cross Upper Chest Raise",
     "dimensionIds": [
       "load",
       "reps"
@@ -11688,21 +11474,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201754",
-    "name": "Degree lateral raises",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": [
-      "dumbbell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -11928,6 +11699,21 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell",
       "bench"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000201714",
+    "name": "Dumbbell Shoulder Pendulum",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000010",
+    "equipmentIds": [
+      "dumbbell"
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
@@ -12496,27 +12282,13 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800077940285",
-    "name": "Lying Scalene Muscles Activation (female)",
+    "name": "Lying Scalene Muscles Activation",
     "dimensionIds": [
       "load",
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
     "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201654",
-    "name": "Machine lateral wise",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": [
-      "gymMat"
-    ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
     ]
@@ -12710,7 +12482,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802293255772",
-    "name": "Pike Push-up from Deficit (Male)",
+    "name": "Pike Push-up from Deficit",
     "dimensionIds": [
       "reps"
     ],
@@ -12896,7 +12668,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-801623885286",
-    "name": "Ring Handstand (male)",
+    "name": "Ring Handstand",
     "dimensionIds": [
       "reps"
     ],
@@ -12922,7 +12694,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800225672048",
-    "name": "Roll Neck Rotation Lying on Floor (female)",
+    "name": "Roll Neck Rotation Lying on Floor",
     "dimensionIds": [
       "duration"
     ],
@@ -12960,21 +12732,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "focusIds": [
       "01910000-0000-7000-8000-000000000401",
       "01910000-0000-7000-8000-000000000403"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201338",
-    "name": "Schoulder Raise (Dumbbell)",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": [
-      "dumbbell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -13211,21 +12968,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201714",
-    "name": "Shoulder Dumbbell Pendular Exercise",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": [
-      "dumbbell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000201715",
     "name": "Shoulder External Rotation with Dumbbell",
     "dimensionIds": [
@@ -13282,14 +13024,16 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200569",
-    "name": "Shoulder Press, on Multi Press",
+    "id": "01910000-0000-7000-8000-000000201338",
+    "name": "Shoulder Raise (Dumbbell)",
     "dimensionIds": [
       "load",
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": [],
+    "equipmentIds": [
+      "dumbbell"
+    ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
     ]
@@ -13392,8 +13136,21 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000200578",
+    "name": "Side-lying External Rotation",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000010",
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-000000201582",
-    "name": "Side-laying interior rotation",
+    "name": "Side-Lying Internal Rotation",
     "dimensionIds": [
       "load",
       "reps"
@@ -13404,19 +13161,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
       "bench",
       "dumbbell"
     ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200578",
-    "name": "Side-lying External Rotation",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": [],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
     ]
@@ -13529,7 +13273,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802106796897",
-    "name": "Sitting Neck Stretch (female)",
+    "name": "Sitting Neck Stretch",
     "dimensionIds": [
       "duration"
     ],
@@ -13889,19 +13633,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell"
     ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200691",
-    "name": "Upright Row, on Multi Press",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000010",
-    "equipmentIds": [],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
     ]
@@ -14466,20 +14197,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201320",
-    "name": "Bench Dips On Floor",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-800522692286",
     "name": "Bent Over Tricep Kickbacks",
     "dimensionIds": [
@@ -14490,19 +14207,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [
       "dumbbell"
     ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201768",
-    "name": "bicep",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
     ]
@@ -15172,7 +14876,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802037391407",
-    "name": "Dumbbell Bent Over Curl (male)",
+    "name": "Dumbbell Bent Over Curl",
     "dimensionIds": [
       "load",
       "reps"
@@ -15597,8 +15301,8 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-801929510161",
-    "name": "Dumbbell Standing Hands Torsion (male) Forearms",
+    "id": "01910000-0000-7000-8000-803361920311",
+    "name": "Dumbbell Standing One Arm Concentration Curl",
     "dimensionIds": [
       "load",
       "reps"
@@ -15612,14 +15316,30 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-803361920311",
-    "name": "Dumbbell Standing One Arm Concentration Curl",
+    "id": "01910000-0000-7000-8000-801929510161",
+    "name": "Dumbbell Standing Wrist Rotation",
     "dimensionIds": [
       "load",
       "reps"
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
+      "dumbbell"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000201824",
+    "name": "Dumbbell Tate Press",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000011",
+    "equipmentIds": [
+      "bench",
       "dumbbell"
     ],
     "focusIds": [
@@ -15711,35 +15431,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
-      "dumbbell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200208",
-    "name": "Dumbbells on Scott Machine",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201824",
-    "name": "Dumbell Tate Press",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [
-      "bench",
       "dumbbell"
     ],
     "focusIds": [
@@ -16004,7 +15695,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000200820",
-    "name": "Fingerboard 20 mm edge",
+    "name": "Fingerboard Hang (20 mm Edge)",
     "dimensionIds": [
       "load",
       "reps"
@@ -16013,6 +15704,20 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000200804",
+    "name": "Fingerboard Sloper Hang",
+    "dimensionIds": [
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000011",
+    "equipmentIds": [
+      "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16117,7 +15822,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000200275",
-    "name": "Hammercurls on Cable",
+    "name": "Hammer Curls on Cable",
     "dimensionIds": [
       "load",
       "reps"
@@ -16155,8 +15860,21 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000201216",
+    "name": "Hangboard Recruitment Pulls",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000011",
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-000000201298",
-    "name": "High-Cable Cross Tricep Extention - NB",
+    "name": "High-Cable Cross Tricep Extension - NB",
     "dimensionIds": [
       "load",
       "reps"
@@ -16294,7 +16012,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000200911",
-    "name": "Incline Skull Crush",
+    "name": "Incline Skull Crusher",
     "dimensionIds": [
       "load",
       "reps"
@@ -16320,20 +16038,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-800548345714",
-    "name": "Inversed dips",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -16385,7 +16089,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800459949152",
-    "name": "Kneeling Finger Press (male)",
+    "name": "Kneeling Finger Press",
     "dimensionIds": [
       "reps"
     ],
@@ -16399,7 +16103,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800666964053",
-    "name": "Kneeling Fist Roll (male)",
+    "name": "Kneeling Fist Roll",
     "dimensionIds": [
       "reps"
     ],
@@ -16628,6 +16332,19 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000200661",
+    "name": "Machine Triceps Extension",
+    "dimensionIds": [
+      "load",
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000011",
+    "equipmentIds": [],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-800220022708",
     "name": "Narrow Grip Barbell Tricep Press To Chin",
     "dimensionIds": [
@@ -16683,20 +16400,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000011",
     "equipmentIds": [
       "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201738",
-    "name": "Neutral-grip pull-ups or TRX rows",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [
-      "pullUpBar"
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000404"
@@ -16958,32 +16661,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201216",
-    "name": "Recruitment Pulls",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201114",
-    "name": "Rest (for timed workouts)",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000200493",
     "name": "Reverse Bar Curl",
     "dimensionIds": [
@@ -17012,6 +16689,20 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
+    "id": "01910000-0000-7000-8000-800548345714",
+    "name": "Reverse Dips",
+    "dimensionIds": [
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000011",
+    "equipmentIds": [
+      "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17136,7 +16827,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800433626263",
-    "name": "Roll Forearms Standing Against Wall (female)",
+    "name": "Roll Forearms Standing Against Wall",
     "dimensionIds": [
       "duration"
     ],
@@ -17379,7 +17070,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802088617407",
-    "name": "Side Lying Single Arm Triceps Push-up (male)",
+    "name": "Side Lying Single Arm Triceps Push-up",
     "dimensionIds": [
       "reps"
     ],
@@ -17513,20 +17204,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200804",
-    "name": "Sloper hanging",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -17751,19 +17428,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200623",
-    "name": "Standing Rope Forearm",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-802058858035",
     "name": "Standing Tricep Stretch",
     "dimensionIds": [
@@ -17877,19 +17541,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   {
     "id": "01910000-0000-7000-8000-000000200660",
     "name": "Triceps Extensions on Cable With Bar",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000011",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200661",
-    "name": "Triceps on Machine",
     "dimensionIds": [
       "load",
       "reps"
@@ -18324,7 +17975,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802208171065",
-    "name": "3:4 Sit Up",
+    "name": "3/4 Sit-Up",
     "dimensionIds": [
       "reps"
     ],
@@ -18359,20 +18010,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [
       "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200056",
-    "name": "Abdominal Stabilization",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": [
-      "gymMat"
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000404"
@@ -18748,20 +18385,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201912",
-    "name": "Core Rotation",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000405"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-802273653763",
     "name": "Cross Body Crunches",
     "dimensionIds": [
@@ -18881,6 +18504,20 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-804174879861",
+    "name": "Decline Cable Crunch",
+    "dimensionIds": [
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000012",
+    "equipmentIds": [
+      "cable"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-802839878137",
     "name": "Decline Oblique Crunches",
     "dimensionIds": [
@@ -18892,20 +18529,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-804174879861",
-    "name": "Declined Crunch lower cable",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": [
-      "cable"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401"
     ]
   },
   {
@@ -19177,22 +18800,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200009",
-    "name": "Handed Kettlebell Swing",
-    "dimensionIds": [
-      "load",
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": [
-      "kettlebell"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000401",
-      "01910000-0000-7000-8000-000000000403"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-800703004640",
     "name": "Hanging Knee Raises",
     "dimensionIds": [
@@ -19264,22 +18871,8 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201101",
-    "name": "Horizontal traction isometry",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": [
-      "pullUpBar"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000201248",
-    "name": "Ice Scream maker",
+    "name": "Ice Cream Maker",
     "dimensionIds": [
       "reps"
     ],
@@ -19446,20 +19039,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200979",
-    "name": "Leg raises pull up bar",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": [
-      "pullUpBar"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000200378",
     "name": "Leg Raises, Standing",
     "dimensionIds": [
@@ -19467,20 +19046,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "categoryId": "01910000-0000-7000-8000-000000000012",
     "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201909",
-    "name": "Leg Wheel",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": [
-      "bodyweight"
-    ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000404"
     ]
@@ -19514,8 +19079,8 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201313",
-    "name": "Lying Leg Raise",
+    "id": "01910000-0000-7000-8000-000000201909",
+    "name": "Lying Leg Circles",
     "dimensionIds": [
       "reps"
     ],
@@ -19528,8 +19093,8 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000200976",
-    "name": "Medicine ball booklet crunch",
+    "id": "01910000-0000-7000-8000-000000201313",
+    "name": "Lying Leg Raise",
     "dimensionIds": [
       "reps"
     ],
@@ -19598,6 +19163,20 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
+    ]
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000200976",
+    "name": "Medicine Ball V-Up",
+    "dimensionIds": [
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000012",
+    "equipmentIds": [
+      "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -19932,7 +19511,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000200505",
-    "name": "Roman Chair",
+    "name": "Roman Chair Crunches",
     "dimensionIds": [
       "load",
       "reps"
@@ -20189,7 +19768,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-801987832933",
-    "name": "Spider Plank (female)",
+    "name": "Spider Plank",
     "dimensionIds": [
       "duration"
     ],
@@ -20230,7 +19809,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-802352950783",
-    "name": "Stability Ball Rounded Rollout (female)",
+    "name": "Stability Ball Rounded Rollout",
     "dimensionIds": [
       "load",
       "reps"
@@ -20533,7 +20112,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-000000201259",
-    "name": "TRX Obliques",
+    "name": "TRX Oblique Crunches",
     "dimensionIds": [
       "load",
       "reps"
@@ -20645,6 +20224,20 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
+    "id": "01910000-0000-7000-8000-000000201090",
+    "name": "V Push-Up",
+    "dimensionIds": [
+      "reps"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000012",
+    "equipmentIds": [
+      "bodyweight"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000404"
+    ]
+  },
+  {
     "id": "01910000-0000-7000-8000-804242893361",
     "name": "V Sit Rotation",
     "dimensionIds": [
@@ -20703,20 +20296,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000401"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201090",
-    "name": "Vpushup",
-    "dimensionIds": [
-      "reps"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000012",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000404"
     ]
   },
   {
@@ -21308,21 +20887,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     ]
   },
   {
-    "id": "01910000-0000-7000-8000-000000201092",
-    "name": "Bag training",
-    "dimensionIds": [
-      "distance",
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000403"
-    ]
-  },
-  {
     "id": "01910000-0000-7000-8000-000000201525",
     "name": "Ball Slams",
     "dimensionIds": [
@@ -21357,24 +20921,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "bench"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000403"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201630",
-    "name": "Blaze",
-    "dimensionIds": [
-      "distance",
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": [
-      "bench",
-      "dumbbell",
-      "kettlebell",
-      "bodyweight"
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000403"
@@ -21427,19 +20973,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   {
     "id": "01910000-0000-7000-8000-000000201449",
     "name": "ClimbMill",
-    "dimensionIds": [
-      "distance",
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": [],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000402"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000201204",
-    "name": "Cycling cardio session",
     "dimensionIds": [
       "distance",
       "duration"
@@ -21508,7 +21041,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-803492493764",
-    "name": "Jack Burpee (male)",
+    "name": "Jack Burpee",
     "dimensionIds": [
       "reps"
     ],
@@ -21543,6 +21076,21 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "categoryId": "01910000-0000-7000-8000-000000000002",
     "equipmentIds": [
       "band"
+    ],
+    "focusIds": [
+      "01910000-0000-7000-8000-000000000403"
+    ]
+  },
+  {
+    "id": "01910000-0000-7000-8000-000000201092",
+    "name": "Punching Bag Training",
+    "dimensionIds": [
+      "distance",
+      "duration"
+    ],
+    "categoryId": "01910000-0000-7000-8000-000000000002",
+    "equipmentIds": [
+      "bodyweight"
     ],
     "focusIds": [
       "01910000-0000-7000-8000-000000000403"
@@ -21672,21 +21220,6 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
     "equipmentIds": [],
     "focusIds": [
       "01910000-0000-7000-8000-000000000402"
-    ]
-  },
-  {
-    "id": "01910000-0000-7000-8000-000000200927",
-    "name": "Suspended crossess",
-    "dimensionIds": [
-      "distance",
-      "duration"
-    ],
-    "categoryId": "01910000-0000-7000-8000-000000000002",
-    "equipmentIds": [
-      "bodyweight"
-    ],
-    "focusIds": [
-      "01910000-0000-7000-8000-000000000403"
     ]
   },
   {
@@ -22388,7 +21921,7 @@ export const PLATFORM_EXERCISE_SEED_EXERCISES: readonly PlatformSeedExercise[] =
   },
   {
     "id": "01910000-0000-7000-8000-800732510073",
-    "name": "Jack Plank on Medicine Ball (female)",
+    "name": "Jack Plank on Medicine Ball",
     "dimensionIds": [
       "duration"
     ],
@@ -22899,6 +22432,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-000000201104"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200009",
+    "toExerciseId": "01910000-0000-7000-8000-000000200960"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000200075",
     "toExerciseId": "01910000-0000-7000-8000-000000201676"
   },
@@ -22913,6 +22450,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200083",
     "toExerciseId": "01910000-0000-7000-8000-804147853905"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200084",
+    "toExerciseId": "01910000-0000-7000-8000-804224938321"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200146",
@@ -22939,6 +22480,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-800131475101"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200208",
+    "toExerciseId": "01910000-0000-7000-8000-800740985515"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000200222",
     "toExerciseId": "01910000-0000-7000-8000-800293367129"
   },
@@ -22951,12 +22496,20 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-000000200827"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200258",
+    "toExerciseId": "01910000-0000-7000-8000-000000200723"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000200268",
     "toExerciseId": "01910000-0000-7000-8000-000000201392"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200282",
     "toExerciseId": "01910000-0000-7000-8000-804038341039"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200292",
+    "toExerciseId": "01910000-0000-7000-8000-000000201906"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200308",
@@ -22983,12 +22536,20 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-800609712479"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200395",
+    "toExerciseId": "01910000-0000-7000-8000-000000200512"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000200454",
     "toExerciseId": "01910000-0000-7000-8000-804087219200"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200475",
     "toExerciseId": "01910000-0000-7000-8000-000000000104"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200508",
+    "toExerciseId": "01910000-0000-7000-8000-000000201725"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200513",
@@ -23011,6 +22572,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-000000201337"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200569",
+    "toExerciseId": "01910000-0000-7000-8000-801508607518"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000200571",
     "toExerciseId": "01910000-0000-7000-8000-802528988475"
   },
@@ -23023,6 +22588,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-801086420786"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200623",
+    "toExerciseId": "01910000-0000-7000-8000-804264741451"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000200659",
     "toExerciseId": "01910000-0000-7000-8000-000000201185"
   },
@@ -23033,6 +22602,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200687",
     "toExerciseId": "01910000-0000-7000-8000-000000201893"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200691",
+    "toExerciseId": "01910000-0000-7000-8000-801016010938"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200695",
@@ -23063,8 +22636,16 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-803993888807"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200927",
+    "toExerciseId": "01910000-0000-7000-8000-801645821419"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000200958",
     "toExerciseId": "01910000-0000-7000-8000-803989590051"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-000000200979",
+    "toExerciseId": "01910000-0000-7000-8000-000000200283"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000200981",
@@ -23091,6 +22672,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-800491196623"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000201101",
+    "toExerciseId": "01910000-0000-7000-8000-000000201537"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000201111",
     "toExerciseId": "01910000-0000-7000-8000-000000200313"
   },
@@ -23105,6 +22690,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000201192",
     "toExerciseId": "01910000-0000-7000-8000-000000201012"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-000000201204",
+    "toExerciseId": "01910000-0000-7000-8000-000000200624"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000201208",
@@ -23151,6 +22740,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-000000200983"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000201320",
+    "toExerciseId": "01910000-0000-7000-8000-000000201000"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000201348",
     "toExerciseId": "01910000-0000-7000-8000-000000201143"
   },
@@ -23185,6 +22778,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000201499",
     "toExerciseId": "01910000-0000-7000-8000-000000200245"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-000000201500",
+    "toExerciseId": "01910000-0000-7000-8000-000000201496"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000201526",
@@ -23239,6 +22836,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-801042677228"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000201654",
+    "toExerciseId": "01910000-0000-7000-8000-000000201744"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000201655",
     "toExerciseId": "01910000-0000-7000-8000-000000201883"
   },
@@ -23275,6 +22876,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-000000201730"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-000000201754",
+    "toExerciseId": "01910000-0000-7000-8000-000000201602"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-000000201770",
     "toExerciseId": "01910000-0000-7000-8000-000000201725"
   },
@@ -23309,6 +22914,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000201880",
     "toExerciseId": "01910000-0000-7000-8000-000000201542"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-000000201912",
+    "toExerciseId": "01910000-0000-7000-8000-000000201193"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-000000201918",
@@ -23568,7 +23177,7 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-801785016208",
-    "toExerciseId": "01910000-0000-7000-8000-000000200009"
+    "toExerciseId": "01910000-0000-7000-8000-000000200960"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-801855437253",
@@ -23615,6 +23224,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-803427080053"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-802216678151",
+    "toExerciseId": "01910000-0000-7000-8000-802975821079"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-802287135851",
     "toExerciseId": "01910000-0000-7000-8000-000000201856"
   },
@@ -23625,6 +23238,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   {
     "fromExerciseId": "01910000-0000-7000-8000-802363148879",
     "toExerciseId": "01910000-0000-7000-8000-804155893368"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-802452508766",
+    "toExerciseId": "01910000-0000-7000-8000-802975821079"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-802460741167",
@@ -23767,6 +23384,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
     "toExerciseId": "01910000-0000-7000-8000-801587587030"
   },
   {
+    "fromExerciseId": "01910000-0000-7000-8000-803662178945",
+    "toExerciseId": "01910000-0000-7000-8000-802975821079"
+  },
+  {
     "fromExerciseId": "01910000-0000-7000-8000-803721719311",
     "toExerciseId": "01910000-0000-7000-8000-000000201713"
   },
@@ -23789,6 +23410,10 @@ export const PLATFORM_EXERCISE_SEED_REDIRECTS: readonly PlatformSeedExerciseRedi
   {
     "fromExerciseId": "01910000-0000-7000-8000-803879678608",
     "toExerciseId": "01910000-0000-7000-8000-000000200577"
+  },
+  {
+    "fromExerciseId": "01910000-0000-7000-8000-803901984078",
+    "toExerciseId": "01910000-0000-7000-8000-802975821079"
   },
   {
     "fromExerciseId": "01910000-0000-7000-8000-804059890397",
