@@ -107,12 +107,17 @@ class TimerForegroundService : Service() {
         }
         if (intent.action == ACTION_CANCEL) {
             val id = intent.getStringExtra(EXTRA_TIMER_ID).orEmpty()
+            // Clears what is posted outside the foreground slot: the end
+            // notification and the two one-shot cues. The system ignores an
+            // app's cancel of a live foreground notification, so the running
+            // countdown is removed by stopForeground below. Detached instead,
+            // it would stay in the shade as a stuck "Rest 0:01".
             notificationManager.cancel(notificationId(id))
             notificationManager.cancel(prepareNotificationId(id))
             notificationManager.cancel(getReadyNotificationId(id))
             if (id == timerId || timerId.isEmpty()) {
                 handler.removeCallbacks(tick)
-                detachForegroundNotification()
+                removeForegroundNotification()
                 stopSelf()
             }
             return START_NOT_STICKY
@@ -407,8 +412,9 @@ class TimerForegroundService : Service() {
 
     companion object {
         /**
-         * Whether a rest strip on the current route is playing the cues in the
-         * app. Set by [MainActivity], and read on every tick.
+         * Whether a rest strip on the current route is showing a running rest,
+         * and so plays its cues in the app. Set by [MainActivity], and read on
+         * every tick.
          */
         @Volatile
         var inAppCuesActive = false

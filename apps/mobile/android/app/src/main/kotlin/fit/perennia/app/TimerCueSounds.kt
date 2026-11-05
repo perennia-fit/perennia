@@ -97,17 +97,16 @@ class TimerCueSounds(context: Context) {
 
     private fun playTone(cue: String, volume: Float) {
         val tone = tones[cue]?.takeIf { it.prepared } ?: return
-        // Denied while, say, a phone call holds focus: that audio goes first.
-        if (!requestFocus()) {
-            return
-        }
+        // Focus only ducks other audio. Refused (say, during a phone call), the
+        // cue still plays at its volume, as it does on iOS.
+        requestFocus()
         tone.player.setVolume(volume, volume)
         tone.player.seekTo(0)
         tone.player.start()
     }
 
-    private fun requestFocus(): Boolean {
-        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    private fun requestFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             audioManager.requestAudioFocus(focusRequest!!)
         } else {
             @Suppress("DEPRECATION")
@@ -117,7 +116,6 @@ class TimerCueSounds(context: Context) {
                 AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK,
             )
         }
-        return granted == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
     private fun abandonFocusIfIdle() {

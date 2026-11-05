@@ -305,6 +305,10 @@ class _RestStripState extends ConsumerState<RestStrip> {
   /// In this order: `update` comes first so that a −15 s to zero arms its end
   /// cue before the mark's write can emit an expired row, which would cancel
   /// that cue.
+  ///
+  /// The strip reports current only while it holds a running row. A current
+  /// strip with no rest of its own has no cues armed, and native must still cue
+  /// a rest running in another Workout, so it cannot claim those cues.
   void _syncCues() {
     final scheduler = _cueScheduler;
     final owner = _cueOwner;
@@ -313,7 +317,10 @@ class _RestStripState extends ConsumerState<RestStrip> {
     }
     final timer = _timer;
     scheduler.update(timer);
-    owner.report(this, current: _routeIsCurrent);
+    owner.report(
+      this,
+      current: _routeIsCurrent && timer?.status == RestTimerStatus.running,
+    );
     _markEndIfDue(timer);
   }
 

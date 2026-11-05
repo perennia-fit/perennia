@@ -511,16 +511,20 @@ lifter can see it:
 *   **The app plays it** when the app is visible and a strip on the current
     route is showing that rest.
 *   **The system notification plays it** otherwise: in the background, on a
-    locked screen, or on another screen of the app (where no strip is
-    current, and the notification is the only cue left).
+    locked screen, on another screen of the app (where no strip is current),
+    or on the Training Screen of another Workout (whose strip has no running
+    rest). In each, the notification is the only cue left.
 
-Dart tells native whether a strip is current with one boolean,
-`setInAppTimerCues {active: bool}`:
+Dart tells native whether a strip on the current route is showing a running
+rest with one boolean, `setInAppTimerCues {active: bool}`:
 
 *   **`RestCueOwner`,** a Riverpod provider, keeps one entry per mounted
-    strip. On every tick, each strip updates its entry to whether its route is
-    current. The router can push a second Training Screen over the first, and
-    only the top one is current, so only one strip plays.
+    strip. On every tick and every row change, each strip updates its entry
+    to whether its route is current and its row has status `running`. The
+    router can push a second Training Screen over the first, and only the top
+    one is current, so only one strip plays. A strip with no running row has
+    no cues armed, so it must not claim the cues of a rest running in another
+    Workout.
 *   `RestCueOwner` sends `active = any entry is true` each time that value
     changes, and `false` when the last strip disposes.
 *   **Native resets the value to false when the Flutter engine starts**
@@ -556,8 +560,9 @@ The tone and vibration for each cue:
         in `MainActivity.cleanUpFlutterEngine`.
     *   Before a tone plays, the player requests transient audio focus with
         `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`, so other audio ducks (its volume
-        drops while the tone plays). It abandons focus in the player's
-        `OnCompletionListener`. `tick` has no tone and requests no focus.
+        drops while the tone plays). The tone plays whatever the request
+        returns. It abandons focus in the player's `OnCompletionListener`.
+        `tick` has no tone and requests no focus.
     *   On API 26 and later, focus uses an `AudioFocusRequest`. Below 26 it
         uses `requestAudioFocus(listener, STREAM_MUSIC,
         AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)`.
@@ -1266,7 +1271,8 @@ rest timer notifications on Android 8 and later."
     *   `restCueOwnerProvider`, a `Provider<RestCueOwner>` kept alive for the
         app's life, reading `timerBackgroundSchedulerProvider`.
     *   `RestCueOwner.report(Object strip, {required bool current})` stores
-        the entry; `remove(Object strip)` drops it.
+        the entry, where `current` means the strip's route is current and its
+        row is `running`; `remove(Object strip)` drops it.
     *   After each change it computes `active = any entry is true`. When that
         differs from the last value sent, it calls
         `TimerBackgroundScheduler.setInAppTimerCues(active)`. The first value
@@ -1333,7 +1339,8 @@ rest timer notifications on Android 8 and later."
             `RestCueOwner.remove(this)`.
     *   **On each timer row and each tick:**
         *   `scheduler.update(timer)`;
-        *   `RestCueOwner.report(this, current: <route is current>)`;
+        *   `RestCueOwner.report(this, current: <route is current and the row
+            is running>)`;
         *   while visible and the strip's route is current, a row with status
             `running` at or past its deadline: write `markAlertFired` and
             cancel the background schedule, once per row id ([part
@@ -1429,8 +1436,9 @@ rest timer notifications on Android 8 and later."
         *   for a cue with a tone: request
             `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` (an `AudioFocusRequest` on
             API 26 and later, `requestAudioFocus(listener, STREAM_MUSIC,
-            AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)` below), set the volume, seek
-            to 0 and start, and abandon focus in `OnCompletionListener`;
+            AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)` below), then, whatever the
+            request returns, set the volume, seek to 0 and start, and abandon
+            focus in `OnCompletionListener`;
         *   `tick` requests no focus and plays no tone;
         *   every cue runs its vibration from the table in [part
             4](#4-cues-and-notifications).
@@ -1467,6 +1475,10 @@ rest timer notifications on Android 8 and later."
         10 s timeout, posted under `getReadyNotificationId(timerId) =
         notificationId("getReady:$timerId")`. `ACTION_CANCEL` cancels it with
         the others.
+    *   **Cancel.** `ACTION_CANCEL` for the running timer stops the foreground
+        with `STOP_FOREGROUND_REMOVE`. The system ignores an app's cancel of a
+        live foreground notification, so detaching it would leave a stuck
+        countdown in the shade. This is the usual in-app end.
     *   **Text.** The prepare notification uses `prepareText`.
 
 #### `apps/mobile/android/app/src/main/res/values/strings.xml` (Modify)
@@ -1604,6 +1616,9 @@ rest timer notifications on Android 8 and later."
             and `setInAppTimerCues(false)` is sent; an end reached while covered
             writes no `markAlertFired` and cancels no schedule until the route
             is popped;
+        *   a current strip with no running row, while a rest runs in another
+            Workout, only ever sends `setInAppTimerCues(false)`, and a strip
+            whose row ends on its own route sends `false` after the end;
         *   kill-and-reopen at 0:05 plays countdown, ticks and end, but no
             getReady;
         *   reopen after 0:00 shows "Rest over" with the right elapsed time,
@@ -1818,12 +1833,16 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         open: the get-ready tone at 0:10 with the strip reading
         "Get ready · 0:10", beeps as the strip shows 0:03, 0:02 and 0:01, the
         end tone at 0:00 with "Rest over · +0:00", the music ducking and
-        coming back after each tone, and no heads-up or banner.
+        coming back after each tone, and no heads-up or banner. The shade holds
+        no rest notification after the end tone, nor after Stop during another
+        rest.
     3.  **CUJ 4.** The same rest with the app in the background: notifications
         "Get ready · *Exercise* · Set *k*", "*Exercise* · Set *k* in 0:03" and
         "Rest over", each with its tone. Reopening after 0:00 shows
         "Rest over · +*m*:*ss*" and plays nothing.
     4.  **On Today during a rest:** the same three notifications, with sound.
+        The same on the Training Screen of another Workout, whose strip has no
+        running rest.
     5.  **Pull down the notification shade** during a rest on the Training
         Screen: the in-app cues still play, and no notification posts.
     6.  **Rest timer sounds off:** no tones and no vibration in the app; the
@@ -1845,8 +1864,9 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
     in earbuds ducks under each tone and comes back; with the phone face-up on
     a bench, each vibration is felt; with the app in the background, the 0:03
     and 0:00 notifications are still audible after the 0:10 one (Android 15's
-    notification cooldown).
+    notification cooldown); during a phone call, each tone still plays.
 *   **Not covered by automated tests**: whether audio ducks on a real device,
-    how strong the vibration feels, Android 15's notification cooldown, and
-    the channel migration on an update install. The steps above cover them by
-    hand.
+    how strong the vibration feels, Android 15's notification cooldown, the
+    channel migration on an update install, the foreground notification's
+    removal on cancel, and a tone during refused audio focus. The steps above
+    cover them by hand.

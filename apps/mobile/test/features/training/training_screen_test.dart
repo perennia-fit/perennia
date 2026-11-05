@@ -1525,12 +1525,86 @@ void main() {
         await _settleRepositoryWork(tester);
 
         expect(scheduler.cancels, <String>[rest.id]);
-        expect(scheduler.inAppTimerCues, <bool>[true, false, true]);
+        // True on the pop while the row still runs, false once its end is
+        // written.
+        expect(scheduler.inAppTimerCues, <bool>[true, false, true, false]);
         expect(player.played, isEmpty);
         final popped = await tester.runAsync(
           () => repositories.restTimers.getById(rest.id),
         );
         expect(popped?.status, RestTimerStatus.expired);
+      });
+
+      _testTrainingScreen(
+          'a current strip with no rest leaves the cues of another Workout\'s '
+          'rest to native', (tester) async {
+        // The rest runs in another Workout, so this strip has no row.
+        final otherExerciseId = (await tester.runAsync(
+          () => _createWorkoutExercise(
+            repositories,
+            name: 'Squat',
+            type: ExerciseType(
+              const <DimensionId>[DimensionId.load, DimensionId.reps],
+            ),
+          ),
+        ))!;
+        final otherWorkoutId = (await tester.runAsync(
+          () => repositories.workoutExercises.getById(otherExerciseId),
+        ))!
+            .workoutId;
+        await tester.runAsync(
+          () => repositories.restTimers.start(
+            RestTimerDraft(
+              workoutId: otherWorkoutId,
+              duration: const Duration(seconds: 20),
+              alertVolume: 1,
+            ),
+            now: clock.now().toUtc(),
+          ),
+        );
+        workoutExerciseId = (await tester.runAsync(
+          () => _createWorkoutExercise(
+            repositories,
+            name: 'Bench Press',
+            type: ExerciseType(
+              const <DimensionId>[DimensionId.load, DimensionId.reps],
+            ),
+          ),
+        ))!;
+
+        await _pumpTrainingScreen(
+          tester,
+          repositories,
+          workoutExerciseId,
+          timerCuePlayer: player,
+          timerBackgroundScheduler: scheduler,
+          enableRestTimerTicker: true,
+        );
+        await _settleRepositoryWork(tester);
+        await _waitForFinder(tester, find.byKey(TrainingScreen.restStripKey));
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(scheduler.inAppTimerCues, isNotEmpty);
+        expect(scheduler.inAppTimerCues, everyElement(isFalse));
+      });
+
+      _testTrainingScreen(
+          'in-app cues go off when the running row ends, on the same route',
+          (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 4),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        expect(scheduler.inAppTimerCues, <bool>[true]);
+
+        await _pumpToRemaining(tester, rest.deadline, -_s(1));
+        await _waitForCancels(tester, scheduler, 1);
+        await tester.pump(const Duration(seconds: 1));
+        await _settleRepositoryWork(tester);
+
+        expect(scheduler.inAppTimerCues, <bool>[true, false]);
       });
 
       _testTrainingScreen(

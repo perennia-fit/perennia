@@ -10,11 +10,14 @@ final restCueOwnerProvider = Provider<RestCueOwner>(
   (ref) => RestCueOwner(ref.read(timerBackgroundSchedulerProvider)),
 );
 
-/// Tells native whether a rest strip is on the current route, which is what
-/// keeps a cue's notification from posting while the app plays that cue.
+/// Tells native whether a rest strip on the current route is showing a running
+/// rest, which is what keeps a cue's notification from posting while the app
+/// plays that cue.
 ///
 /// It keeps one entry per mounted strip because the router can push a second
-/// Training Screen over the first, and only the top one is current.
+/// Training Screen over the first, and only the top one is current. An entry is
+/// false for a strip with no running rest: a rest running in another Workout
+/// has no strip to play its cues, so its notifications must still post.
 class RestCueOwner {
   RestCueOwner(this._scheduler);
 
