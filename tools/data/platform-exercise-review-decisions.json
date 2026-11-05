@@ -5,7 +5,7 @@
   "reviewedAt": "2026-07-19T23:48:40.614Z",
   "sourceDecisionCount": 147,
   "sourceMergeDecisionCount": 72,
-  "expectedExerciseCount": 1579,
+  "expectedExerciseCount": 1546,
   "excludedExerciseIds": [
     "01910000-0000-7000-8000-000000200284",
     "01910000-0000-7000-8000-000000200599",
@@ -50,7 +50,17 @@
     "01910000-0000-7000-8000-801262640228",
     "01910000-0000-7000-8000-801609276686",
     "01910000-0000-7000-8000-801968396105",
-    "01910000-0000-7000-8000-000000201442"
+    "01910000-0000-7000-8000-000000201442",
+    "01910000-0000-7000-8000-000000200056",
+    "01910000-0000-7000-8000-000000200688",
+    "01910000-0000-7000-8000-000000200923",
+    "01910000-0000-7000-8000-000000201114",
+    "01910000-0000-7000-8000-000000201363",
+    "01910000-0000-7000-8000-000000201381",
+    "01910000-0000-7000-8000-000000201630",
+    "01910000-0000-7000-8000-000000201738",
+    "01910000-0000-7000-8000-000000201768",
+    "01910000-0000-7000-8000-000000201769"
   ],
   "nearDuplicateReview": {
     "source": "Clef near-duplicate review",
@@ -66,6 +76,16 @@
     "mergeDecisionCount": 3,
     "exclusionCount": 1,
     "renameCount": 2
+  },
+  "nameQualityReview": {
+    "source": "Clef and blind-reader name review",
+    "reviewedAt": "2026-11-05T00:00:00.000Z",
+    "exercisesRead": 1577,
+    "proposalCount": 90,
+    "mergeDecisionCount": 23,
+    "exclusionCount": 10,
+    "renameCount": 49,
+    "genderLabelRenameCount": 31
   },
   "merges": [
     {
@@ -773,7 +793,7 @@
       "removeExerciseId": "01910000-0000-7000-8000-801755639246"
     },
     {
-      "keepExerciseId": "01910000-0000-7000-8000-000000200009",
+      "keepExerciseId": "01910000-0000-7000-8000-000000200960",
       "removeExerciseId": "01910000-0000-7000-8000-801785016208"
     },
     {
@@ -995,6 +1015,98 @@
     {
       "keepExerciseId": "01910000-0000-7000-8000-000000200313",
       "removeExerciseId": "01910000-0000-7000-8000-801286296178"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200960",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200009"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-804224938321",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200084"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-800740985515",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200208"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200723",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200258"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201906",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200292"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200512",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200395"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201725",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200508"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-801508607518",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200569"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-804264741451",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200623"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-801016010938",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200691"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-801645821419",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200927"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200283",
+      "removeExerciseId": "01910000-0000-7000-8000-000000200979"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201537",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201101"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000200624",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201204"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201000",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201320"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201496",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201500"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201744",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201654"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201602",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201754"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-000000201193",
+      "removeExerciseId": "01910000-0000-7000-8000-000000201912"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-802975821079",
+      "removeExerciseId": "01910000-0000-7000-8000-802216678151"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-802975821079",
+      "removeExerciseId": "01910000-0000-7000-8000-802452508766"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-802975821079",
+      "removeExerciseId": "01910000-0000-7000-8000-803662178945"
+    },
+    {
+      "keepExerciseId": "01910000-0000-7000-8000-802975821079",
+      "removeExerciseId": "01910000-0000-7000-8000-803901984078"
     }
   ],
   "replacements": [
@@ -1013,6 +1125,326 @@
     {
       "englishName": "Biceps Curls Trifecta",
       "exerciseId": "01910000-0000-7000-8000-000000201483"
+    },
+    {
+      "englishName": "3/4 Sit-Up",
+      "exerciseId": "01910000-0000-7000-8000-802208171065"
+    },
+    {
+      "englishName": "Standing Hip Abduction",
+      "exerciseId": "01910000-0000-7000-8000-000000201096"
+    },
+    {
+      "englishName": "Alternating Dumbbell Gorilla Rows",
+      "exerciseId": "01910000-0000-7000-8000-000000201501"
+    },
+    {
+      "englishName": "Around the World Superman Hold",
+      "exerciseId": "01910000-0000-7000-8000-802891502593"
+    },
+    {
+      "englishName": "Assisted Push-Ups with Band",
+      "exerciseId": "01910000-0000-7000-8000-800352562855"
+    },
+    {
+      "englishName": "Punching Bag Training",
+      "exerciseId": "01910000-0000-7000-8000-000000201092"
+    },
+    {
+      "englishName": "Barbell Bent Over Wide Grip Row",
+      "exerciseId": "01910000-0000-7000-8000-803974948080"
+    },
+    {
+      "englishName": "Barbell Front Squat to Bench (Clean Grip)",
+      "exerciseId": "01910000-0000-7000-8000-801046921272"
+    },
+    {
+      "englishName": "Bodyweight Standing Scapula Row",
+      "exerciseId": "01910000-0000-7000-8000-802501247680"
+    },
+    {
+      "englishName": "Cable Seated Horizontal Shrug",
+      "exerciseId": "01910000-0000-7000-8000-803498948355"
+    },
+    {
+      "englishName": "Criss Cross Upper Chest Raise",
+      "exerciseId": "01910000-0000-7000-8000-802168733643"
+    },
+    {
+      "englishName": "Decline Cable Crunch",
+      "exerciseId": "01910000-0000-7000-8000-804174879861"
+    },
+    {
+      "englishName": "Deep Push-up on Parallel Bars",
+      "exerciseId": "01910000-0000-7000-8000-802505862372"
+    },
+    {
+      "englishName": "Dumbbell Bent Over Curl",
+      "exerciseId": "01910000-0000-7000-8000-802037391407"
+    },
+    {
+      "englishName": "Dumbbell Decline Shrug",
+      "exerciseId": "01910000-0000-7000-8000-800232187676"
+    },
+    {
+      "englishName": "Dumbbell Standing Wrist Rotation",
+      "exerciseId": "01910000-0000-7000-8000-801929510161"
+    },
+    {
+      "englishName": "Dumbbell Tate Press",
+      "exerciseId": "01910000-0000-7000-8000-000000201824"
+    },
+    {
+      "englishName": "Fingerboard Hang (20 mm Edge)",
+      "exerciseId": "01910000-0000-7000-8000-000000200820"
+    },
+    {
+      "englishName": "Narrow-Grip Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-000000200259"
+    },
+    {
+      "englishName": "Hammer Curls on Cable",
+      "exerciseId": "01910000-0000-7000-8000-000000200275"
+    },
+    {
+      "englishName": "High-Cable Cross Tricep Extension - NB",
+      "exerciseId": "01910000-0000-7000-8000-000000201298"
+    },
+    {
+      "englishName": "Ice Cream Maker",
+      "exerciseId": "01910000-0000-7000-8000-000000201248"
+    },
+    {
+      "englishName": "Incline Skull Crusher",
+      "exerciseId": "01910000-0000-7000-8000-000000200911"
+    },
+    {
+      "englishName": "Incline Dumbbell Static Hold",
+      "exerciseId": "01910000-0000-7000-8000-000000201693"
+    },
+    {
+      "englishName": "Reverse Dips",
+      "exerciseId": "01910000-0000-7000-8000-800548345714"
+    },
+    {
+      "englishName": "Jack Burpee",
+      "exerciseId": "01910000-0000-7000-8000-803492493764"
+    },
+    {
+      "englishName": "Jack Plank on Medicine Ball",
+      "exerciseId": "01910000-0000-7000-8000-800732510073"
+    },
+    {
+      "englishName": "Jumping Pull-Up",
+      "exerciseId": "01910000-0000-7000-8000-800079399828"
+    },
+    {
+      "englishName": "Kneeling Band Pulldown",
+      "exerciseId": "01910000-0000-7000-8000-804284626848"
+    },
+    {
+      "englishName": "Kneeling Finger Press",
+      "exerciseId": "01910000-0000-7000-8000-800459949152"
+    },
+    {
+      "englishName": "Kneeling Fist Roll",
+      "exerciseId": "01910000-0000-7000-8000-800666964053"
+    },
+    {
+      "englishName": "Kneeling Knuckle Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-802901460265"
+    },
+    {
+      "englishName": "Kneeling Modified Hindu Push-up",
+      "exerciseId": "01910000-0000-7000-8000-800959548294"
+    },
+    {
+      "englishName": "Kneeling Scapular Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-800344317125"
+    },
+    {
+      "englishName": "Bent Over Dumbbell Lat Pull",
+      "exerciseId": "01910000-0000-7000-8000-000000201434"
+    },
+    {
+      "englishName": "Lying Hamstring Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802378772503"
+    },
+    {
+      "englishName": "Lying Svend Press",
+      "exerciseId": "01910000-0000-7000-8000-803358282232"
+    },
+    {
+      "englishName": "Leg Curls (lying)",
+      "exerciseId": "01910000-0000-7000-8000-000000200365"
+    },
+    {
+      "englishName": "Lying Leg Circles",
+      "exerciseId": "01910000-0000-7000-8000-000000201909"
+    },
+    {
+      "englishName": "Lever Pronated Grip Seated Scapular Retraction Shrug",
+      "exerciseId": "01910000-0000-7000-8000-800383610832"
+    },
+    {
+      "englishName": "Lever Push-up",
+      "exerciseId": "01910000-0000-7000-8000-800926575231"
+    },
+    {
+      "englishName": "Prone T Raise",
+      "exerciseId": "01910000-0000-7000-8000-800690476020"
+    },
+    {
+      "englishName": "Lying Reverse Push-up",
+      "exerciseId": "01910000-0000-7000-8000-802474270945"
+    },
+    {
+      "englishName": "Lying Scalene Muscles Activation",
+      "exerciseId": "01910000-0000-7000-8000-800077940285"
+    },
+    {
+      "englishName": "Medicine Ball Half Kneeling Chest Push",
+      "exerciseId": "01910000-0000-7000-8000-803471892704"
+    },
+    {
+      "englishName": "Medicine Ball Plyo Push Up",
+      "exerciseId": "01910000-0000-7000-8000-801811063111"
+    },
+    {
+      "englishName": "Medicine Ball V-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000200976"
+    },
+    {
+      "englishName": "Pendlay Rows",
+      "exerciseId": "01910000-0000-7000-8000-000000200448"
+    },
+    {
+      "englishName": "Pendulum Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201521"
+    },
+    {
+      "englishName": "Pike Push-up from Deficit",
+      "exerciseId": "01910000-0000-7000-8000-802293255772"
+    },
+    {
+      "englishName": "Planche Dip on Parallel Bars",
+      "exerciseId": "01910000-0000-7000-8000-800021038563"
+    },
+    {
+      "englishName": "Prone Y Raise",
+      "exerciseId": "01910000-0000-7000-8000-802053454361"
+    },
+    {
+      "englishName": "Machine Pull-Ups",
+      "exerciseId": "01910000-0000-7000-8000-000000200477"
+    },
+    {
+      "englishName": "Cable Pullback",
+      "exerciseId": "01910000-0000-7000-8000-000000201905"
+    },
+    {
+      "englishName": "Quadruped Arm and Leg Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000200957"
+    },
+    {
+      "englishName": "Hangboard Recruitment Pulls",
+      "exerciseId": "01910000-0000-7000-8000-000000201216"
+    },
+    {
+      "englishName": "Ring Archer Push-up",
+      "exerciseId": "01910000-0000-7000-8000-800079023772"
+    },
+    {
+      "englishName": "Ring Handstand",
+      "exerciseId": "01910000-0000-7000-8000-801623885286"
+    },
+    {
+      "englishName": "Ring Russian Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-801478997646"
+    },
+    {
+      "englishName": "Roll Forearms Standing Against Wall",
+      "exerciseId": "01910000-0000-7000-8000-800433626263"
+    },
+    {
+      "englishName": "Roll Neck Rotation Lying on Floor",
+      "exerciseId": "01910000-0000-7000-8000-800225672048"
+    },
+    {
+      "englishName": "Roman Chair Crunches",
+      "exerciseId": "01910000-0000-7000-8000-000000200505"
+    },
+    {
+      "englishName": "Lying Bench Row",
+      "exerciseId": "01910000-0000-7000-8000-000000200510"
+    },
+    {
+      "englishName": "Shoulder Raise (Dumbbell)",
+      "exerciseId": "01910000-0000-7000-8000-000000201338"
+    },
+    {
+      "englishName": "Seated Rhomboid Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802275649255"
+    },
+    {
+      "englishName": "Seated Rear Delt Raise",
+      "exerciseId": "01910000-0000-7000-8000-000000201098"
+    },
+    {
+      "englishName": "Dumbbell Shoulder Pendulum",
+      "exerciseId": "01910000-0000-7000-8000-000000201714"
+    },
+    {
+      "englishName": "Shrimp Squat",
+      "exerciseId": "01910000-0000-7000-8000-000000201739"
+    },
+    {
+      "englishName": "Side Lying Single Arm Triceps Push-up",
+      "exerciseId": "01910000-0000-7000-8000-802088617407"
+    },
+    {
+      "englishName": "Side-Lying Internal Rotation",
+      "exerciseId": "01910000-0000-7000-8000-000000201582"
+    },
+    {
+      "englishName": "Sitting Neck Stretch",
+      "exerciseId": "01910000-0000-7000-8000-802106796897"
+    },
+    {
+      "englishName": "Fingerboard Sloper Hang",
+      "exerciseId": "01910000-0000-7000-8000-000000200804"
+    },
+    {
+      "englishName": "Smith Bent Knee Good Morning",
+      "exerciseId": "01910000-0000-7000-8000-800169041634"
+    },
+    {
+      "englishName": "Spider Plank",
+      "exerciseId": "01910000-0000-7000-8000-801987832933"
+    },
+    {
+      "englishName": "Stability Ball Rounded Rollout",
+      "exerciseId": "01910000-0000-7000-8000-802352950783"
+    },
+    {
+      "englishName": "Stiff Leg Deadlift from a Deficit",
+      "exerciseId": "01910000-0000-7000-8000-800320928290"
+    },
+    {
+      "englishName": "TRX Oblique Crunches",
+      "exerciseId": "01910000-0000-7000-8000-000000201259"
+    },
+    {
+      "englishName": "Machine Triceps Extension",
+      "exerciseId": "01910000-0000-7000-8000-000000200661"
+    },
+    {
+      "englishName": "V Push-Up",
+      "exerciseId": "01910000-0000-7000-8000-000000201090"
+    },
+    {
+      "englishName": "Lunge Warm-Up",
+      "exerciseId": "01910000-0000-7000-8000-802975821079"
     }
   ],
   "acceptedEnglishExerciseIds": [

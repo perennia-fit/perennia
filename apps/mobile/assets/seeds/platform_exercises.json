@@ -10,9 +10,9 @@
       "source": "Exercise Catalog Review",
       "source_exported_at": "2026-07-19T23:48:40.614Z",
       "decision_count": 147,
-      "excluded_exercises": 44,
-      "merged_exercises": 232,
-      "renamed_exercises": 4
+      "excluded_exercises": 54,
+      "merged_exercises": 255,
+      "renamed_exercises": 84
     },
     "source_details": [
       {
@@ -240,6 +240,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-000000201104"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200009",
+      "to_exercise_id": "01910000-0000-7000-8000-000000200960"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000200075",
       "to_exercise_id": "01910000-0000-7000-8000-000000201676"
     },
@@ -254,6 +258,10 @@
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200083",
       "to_exercise_id": "01910000-0000-7000-8000-804147853905"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200084",
+      "to_exercise_id": "01910000-0000-7000-8000-804224938321"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200146",
@@ -280,6 +288,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-800131475101"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200208",
+      "to_exercise_id": "01910000-0000-7000-8000-800740985515"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000200222",
       "to_exercise_id": "01910000-0000-7000-8000-800293367129"
     },
@@ -292,12 +304,20 @@
       "to_exercise_id": "01910000-0000-7000-8000-000000200827"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200258",
+      "to_exercise_id": "01910000-0000-7000-8000-000000200723"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000200268",
       "to_exercise_id": "01910000-0000-7000-8000-000000201392"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200282",
       "to_exercise_id": "01910000-0000-7000-8000-804038341039"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200292",
+      "to_exercise_id": "01910000-0000-7000-8000-000000201906"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200308",
@@ -324,12 +344,20 @@
       "to_exercise_id": "01910000-0000-7000-8000-800609712479"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200395",
+      "to_exercise_id": "01910000-0000-7000-8000-000000200512"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000200454",
       "to_exercise_id": "01910000-0000-7000-8000-804087219200"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200475",
       "to_exercise_id": "01910000-0000-7000-8000-000000000104"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200508",
+      "to_exercise_id": "01910000-0000-7000-8000-000000201725"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200513",
@@ -352,6 +380,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-000000201337"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200569",
+      "to_exercise_id": "01910000-0000-7000-8000-801508607518"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000200571",
       "to_exercise_id": "01910000-0000-7000-8000-802528988475"
     },
@@ -364,6 +396,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-801086420786"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200623",
+      "to_exercise_id": "01910000-0000-7000-8000-804264741451"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000200659",
       "to_exercise_id": "01910000-0000-7000-8000-000000201185"
     },
@@ -374,6 +410,10 @@
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200687",
       "to_exercise_id": "01910000-0000-7000-8000-000000201893"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200691",
+      "to_exercise_id": "01910000-0000-7000-8000-801016010938"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200695",
@@ -404,8 +444,16 @@
       "to_exercise_id": "01910000-0000-7000-8000-803993888807"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200927",
+      "to_exercise_id": "01910000-0000-7000-8000-801645821419"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000200958",
       "to_exercise_id": "01910000-0000-7000-8000-803989590051"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-000000200979",
+      "to_exercise_id": "01910000-0000-7000-8000-000000200283"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000200981",
@@ -432,6 +480,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-800491196623"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000201101",
+      "to_exercise_id": "01910000-0000-7000-8000-000000201537"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000201111",
       "to_exercise_id": "01910000-0000-7000-8000-000000200313"
     },
@@ -446,6 +498,10 @@
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000201192",
       "to_exercise_id": "01910000-0000-7000-8000-000000201012"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-000000201204",
+      "to_exercise_id": "01910000-0000-7000-8000-000000200624"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000201208",
@@ -492,6 +548,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-000000200983"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000201320",
+      "to_exercise_id": "01910000-0000-7000-8000-000000201000"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000201348",
       "to_exercise_id": "01910000-0000-7000-8000-000000201143"
     },
@@ -526,6 +586,10 @@
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000201499",
       "to_exercise_id": "01910000-0000-7000-8000-000000200245"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-000000201500",
+      "to_exercise_id": "01910000-0000-7000-8000-000000201496"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000201526",
@@ -580,6 +644,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-801042677228"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000201654",
+      "to_exercise_id": "01910000-0000-7000-8000-000000201744"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000201655",
       "to_exercise_id": "01910000-0000-7000-8000-000000201883"
     },
@@ -616,6 +684,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-000000201730"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-000000201754",
+      "to_exercise_id": "01910000-0000-7000-8000-000000201602"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-000000201770",
       "to_exercise_id": "01910000-0000-7000-8000-000000201725"
     },
@@ -650,6 +722,10 @@
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000201880",
       "to_exercise_id": "01910000-0000-7000-8000-000000201542"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-000000201912",
+      "to_exercise_id": "01910000-0000-7000-8000-000000201193"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-000000201918",
@@ -909,7 +985,7 @@
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-801785016208",
-      "to_exercise_id": "01910000-0000-7000-8000-000000200009"
+      "to_exercise_id": "01910000-0000-7000-8000-000000200960"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-801855437253",
@@ -956,6 +1032,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-803427080053"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-802216678151",
+      "to_exercise_id": "01910000-0000-7000-8000-802975821079"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-802287135851",
       "to_exercise_id": "01910000-0000-7000-8000-000000201856"
     },
@@ -966,6 +1046,10 @@
     {
       "from_exercise_id": "01910000-0000-7000-8000-802363148879",
       "to_exercise_id": "01910000-0000-7000-8000-804155893368"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-802452508766",
+      "to_exercise_id": "01910000-0000-7000-8000-802975821079"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-802460741167",
@@ -1108,6 +1192,10 @@
       "to_exercise_id": "01910000-0000-7000-8000-801587587030"
     },
     {
+      "from_exercise_id": "01910000-0000-7000-8000-803662178945",
+      "to_exercise_id": "01910000-0000-7000-8000-802975821079"
+    },
+    {
       "from_exercise_id": "01910000-0000-7000-8000-803721719311",
       "to_exercise_id": "01910000-0000-7000-8000-000000201713"
     },
@@ -1130,6 +1218,10 @@
     {
       "from_exercise_id": "01910000-0000-7000-8000-803879678608",
       "to_exercise_id": "01910000-0000-7000-8000-000000200577"
+    },
+    {
+      "from_exercise_id": "01910000-0000-7000-8000-803901984078",
+      "to_exercise_id": "01910000-0000-7000-8000-802975821079"
     },
     {
       "from_exercise_id": "01910000-0000-7000-8000-804059890397",
@@ -1276,7 +1368,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800352562855",
-      "name": "Assisted Push-Ups with Band (Male)",
+      "name": "Assisted Push-Ups with Band",
       "dimension_ids": [
         "reps"
       ],
@@ -1288,7 +1380,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa2bix068w9kv1bu7cinzk",
@@ -1306,7 +1398,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Assisted Push-Ups with Band",
+          "original_name": "Assisted Push-Ups with Band (Male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -2860,7 +2958,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802505862372",
-      "name": "Deep Push-up on Parallel Bars (male)",
+      "name": "Deep Push-up on Parallel Bars",
       "dimension_ids": [
         "reps"
       ],
@@ -2870,7 +2968,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa4qt3073q9kv1pte3l30n",
@@ -2888,7 +2986,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Deep Push-up on Parallel Bars",
+          "original_name": "Deep Push-up on Parallel Bars (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -3435,49 +3539,6 @@
           "short_name": "CC-BY-SA 4",
           "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
           "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201500",
-      "name": "Dumbbell UCV",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000007",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.367Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1500,
-        "exercise_uuid": "5efffab3-53dd-4c2a-9558-31e3b5cebbcc",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "JohnPreston",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2462,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "JohnPreston",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -4241,6 +4302,54 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-000000201693",
+      "name": "Incline Dumbbell Static Hold",
+      "dimension_ids": [
+        "duration"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000007",
+      "equipment_ids": [
+        "dumbbell"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1693,
+        "exercise_uuid": "88afb956-8d4a-45b3-8c7c-c23719316bfe",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "daiben",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2812,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "daiben",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Incline Dumbbell Static Hold",
+          "original_name": "Incline Static Hold",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-802066956828",
       "name": "Incline Knee Push-Ups on Box",
       "dimension_ids": [
@@ -4455,48 +4564,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201693",
-      "name": "Incline Static Hold",
-      "dimension_ids": [
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000007",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.666Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1693,
-        "exercise_uuid": "88afb956-8d4a-45b3-8c7c-c23719316bfe",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "daiben",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2812,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "daiben",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000201198",
       "name": "Inverted Rows",
       "dimension_ids": [
@@ -4601,7 +4668,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802901460265",
-      "name": "Kneeling Knuckle Push-Up (male)",
+      "name": "Kneeling Knuckle Push-Up",
       "dimension_ids": [
         "reps"
       ],
@@ -4613,7 +4680,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa6a6i07n09kv1rrb13j13",
@@ -4631,12 +4698,18 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Kneeling Knuckle Push-Up",
+          "original_name": "Kneeling Knuckle Push-Up (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
       "id": "01910000-0000-7000-8000-800959548294",
-      "name": "Kneeling Modified Hindu Push-up (male)",
+      "name": "Kneeling Modified Hindu Push-up",
       "dimension_ids": [
         "reps"
       ],
@@ -4648,7 +4721,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa6jjz07q79kv1z5tl2hei",
@@ -4666,7 +4739,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Kneeling Modified Hindu Push-up",
+          "original_name": "Kneeling Modified Hindu Push-up (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -4706,7 +4785,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800344317125",
-      "name": "Kneeling Scapular Push-Up (male)",
+      "name": "Kneeling Scapular Push-Up",
       "dimension_ids": [
         "reps"
       ],
@@ -4718,7 +4797,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa6q4c07sf9kv1lretijez",
@@ -4736,7 +4815,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Kneeling Scapular Push-Up",
+          "original_name": "Kneeling Scapular Push-Up (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -4889,45 +4974,8 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-803358282232",
-      "name": "Laying Svend Press",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000007",
-      "equipment_ids": [
-        "bench",
-        "plate"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbw9n0kj00yk9kv1i29wsyta",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-800926575231",
-      "name": "Lever Push-up (male)",
+      "name": "Lever Push-up",
       "dimension_ids": [
         "reps"
       ],
@@ -4939,7 +4987,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa4oqs07329kv1n9yydvup",
@@ -4957,7 +5005,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Lever Push-up",
+          "original_name": "Lever Push-up (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -5111,6 +5165,49 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        }
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-803358282232",
+      "name": "Lying Svend Press",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000007",
+      "equipment_ids": [
+        "bench",
+        "plate"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "Workout.cool",
+        "source_id": "cmbw9n0kj00yk9kv1i29wsyta",
+        "source_url": "https://github.com/Snouzy/workout-cool",
+        "api_url": "https://workout.cool/api/exercises/all",
+        "imported_fields": [
+          "English name",
+          "type attributes",
+          "muscle attributes",
+          "equipment attributes"
+        ],
+        "excluded_fields": [
+          "description",
+          "video",
+          "thumbnail"
+        ],
+        "source_code_license": "MIT",
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Lying Svend Press",
+          "original_name": "Laying Svend Press",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -5274,7 +5371,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-803471892704",
-      "name": "Medicine Ball Half Kneeling Chest Push (male)",
+      "name": "Medicine Ball Half Kneeling Chest Push",
       "dimension_ids": [
         "load",
         "reps"
@@ -5287,7 +5384,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwaboug09km9kv1dp09vovt",
@@ -5305,12 +5402,18 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Medicine Ball Half Kneeling Chest Push",
+          "original_name": "Medicine Ball Half Kneeling Chest Push (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
       "id": "01910000-0000-7000-8000-801811063111",
-      "name": "Medicine Ball Plyo Push Up (male)",
+      "name": "Medicine Ball Plyo Push Up",
       "dimension_ids": [
         "reps"
       ],
@@ -5322,7 +5425,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa4kli071m9kv16r9clw4y",
@@ -5340,7 +5443,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Medicine Ball Plyo Push Up",
+          "original_name": "Medicine Ball Plyo Push Up (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -6075,7 +6184,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800021038563",
-      "name": "Planche Dip on Parallel Bars (male)",
+      "name": "Planche Dip on Parallel Bars",
       "dimension_ids": [
         "reps"
       ],
@@ -6085,7 +6194,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa685507ma9kv1bezx2ep0",
@@ -6103,7 +6212,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Planche Dip on Parallel Bars",
+          "original_name": "Planche Dip on Parallel Bars (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -6490,7 +6605,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800079023772",
-      "name": "Ring Archer Push-up (male)",
+      "name": "Ring Archer Push-up",
       "dimension_ids": [
         "reps"
       ],
@@ -6500,7 +6615,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa4nor072p9kv1sqr5dkyp",
@@ -6518,12 +6633,18 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Ring Archer Push-up",
+          "original_name": "Ring Archer Push-up (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
       "id": "01910000-0000-7000-8000-801478997646",
-      "name": "Ring Russian Push-Up (male)",
+      "name": "Ring Russian Push-Up",
       "dimension_ids": [
         "reps"
       ],
@@ -6533,7 +6654,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa4vtt075h9kv1af80watr",
@@ -6551,7 +6672,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Ring Russian Push-Up",
+          "original_name": "Ring Russian Push-Up (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -7269,48 +7396,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200688",
-      "name": "Upper External Oblique",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000007",
-      "equipment_ids": [
-        "pullUpBar"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.759Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 688,
-        "exercise_uuid": "6fc4815a-8852-4e89-a10b-bd36a9029dbb",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "http://www.carinatum.com/",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 258,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "http://www.carinatum.com/",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000201902",
       "name": "Weighted push-ups",
       "dimension_ids": [
@@ -7537,6 +7622,55 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-000000201501",
+      "name": "Alternating Dumbbell Gorilla Rows",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000008",
+      "equipment_ids": [
+        "dumbbell"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1501,
+        "exercise_uuid": "81015468-545f-4170-9b46-701afe77848e",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "JohnPreston",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2463,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "JohnPreston",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Alternating Dumbbell Gorilla Rows",
+          "original_name": "Alternative Dumbbell Gorilla rows",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-000000201486",
       "name": "Alternating High Cable Row",
       "dimension_ids": [
@@ -7614,49 +7748,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201501",
-      "name": "Alternative Dumbbell Gorilla rows",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.027Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1501,
-        "exercise_uuid": "81015468-545f-4170-9b46-701afe77848e",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "JohnPreston",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2463,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "JohnPreston",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-800413374575",
       "name": "Archer Pull-Ups",
       "dimension_ids": [
@@ -7693,7 +7784,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802891502593",
-      "name": "Around the World Superman Hold Hips",
+      "name": "Around the World Superman Hold",
       "dimension_ids": [
         "duration"
       ],
@@ -7703,7 +7794,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa6uec07tx9kv1ju5ltwuo",
@@ -7721,7 +7812,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Around the World Superman Hold",
+          "original_name": "Around the World Superman Hold Hips",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -8361,7 +8458,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-803974948080",
-      "name": "Barbell Bent Over Wide Row Plus Back",
+      "name": "Barbell Bent Over Wide Grip Row",
       "dimension_ids": [
         "load",
         "reps"
@@ -8375,7 +8472,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwacyuh0a0b9kv1yymhajix",
@@ -8393,7 +8490,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Barbell Bent Over Wide Grip Row",
+          "original_name": "Barbell Bent Over Wide Row Plus Back",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -8996,6 +9099,55 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-000000201434",
+      "name": "Bent Over Dumbbell Lat Pull",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000008",
+      "equipment_ids": [
+        "dumbbell"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1434,
+        "exercise_uuid": "90dea8b9-4cf8-430e-8633-e08df1dd900b",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "M9",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2398,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "M9",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Bent Over Dumbbell Lat Pull",
+          "original_name": "Lat Pull Dumbbell",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-000000201082",
       "name": "Bent over row to external rotation",
       "dimension_ids": [
@@ -9037,49 +9189,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200084",
-      "name": "Bent Over Rowing Reverse",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [
-        "barbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.104Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 84,
-        "exercise_uuid": "2f0ddf9a-f520-4c55-8883-f0d4a789f481",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 110,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-802105539433",
       "name": "Bent Over Rows Neutral Grip with Dumbbells",
       "dimension_ids": [
@@ -9113,47 +9222,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201363",
-      "name": "Blackroll",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.126Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1363,
-        "exercise_uuid": "1fe103e2-1def-41de-8eab-e2e11296446d",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "Anastasious",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2330,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "Anastasious",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -9228,7 +9296,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802501247680",
-      "name": "Bodyweight Standing Scapula Row (male)",
+      "name": "Bodyweight Standing Scapula Row",
       "dimension_ids": [
         "duration"
       ],
@@ -9240,7 +9308,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa6c5b07nq9kv1fzbw68jx",
@@ -9258,7 +9326,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Bodyweight Standing Scapula Row",
+          "original_name": "Bodyweight Standing Scapula Row (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -9416,6 +9490,53 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-000000201905",
+      "name": "Cable Pullback",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000008",
+      "equipment_ids": [],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1905,
+        "exercise_uuid": "289bd40b-e3dd-4217-8670-e475771a0ea7",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "cybro",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 3052,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "cybro",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Cable Pullback",
+          "original_name": "Pullback",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-802423903523",
       "name": "Cable Reverse Grip Straight Back Seated High Row",
       "dimension_ids": [
@@ -9453,7 +9574,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-803498948355",
-      "name": "Cable Seated Horizontal Shrug (male)",
+      "name": "Cable Seated Horizontal Shrug",
       "dimension_ids": [
         "load",
         "reps"
@@ -9466,7 +9587,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa9tcq08wa9kv1hsvldywe",
@@ -9484,7 +9605,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Cable Seated Horizontal Shrug",
+          "original_name": "Cable Seated Horizontal Shrug (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -10181,7 +10308,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800232187676",
-      "name": "Dumbbell Decline Shrug Back FIX",
+      "name": "Dumbbell Decline Shrug",
       "dimension_ids": [
         "load",
         "reps"
@@ -10195,7 +10322,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwaa5m3090r9kv16mxi2tkn",
@@ -10213,7 +10340,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Dumbbell Decline Shrug",
+          "original_name": "Dumbbell Decline Shrug Back FIX",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -11014,94 +11147,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200259",
-      "name": "Front Pull narrow",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [
-        "barbell",
-        "ezBar"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2024-01-17T10:28:41.225Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 259,
-        "exercise_uuid": "5b4b94ca-f429-4394-9477-c00be8f2bb04",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 1058,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200258",
-      "name": "Front pull wide",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [
-        "barbell",
-        "ezBar"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2024-01-17T10:28:41.627Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 258,
-        "exercise_uuid": "6260e3aa-e46b-4b4b-8ada-58bfd0922d3a",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 1059,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000200516",
       "name": "Front Wood Chop",
       "dimension_ids": [
@@ -11337,48 +11382,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200292",
-      "name": "Hip Raise, Lying",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.632Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 292,
-        "exercise_uuid": "541941e0-0fa5-4474-a382-9baf04948f8d",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "James Mackay",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 376,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "James Mackay",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -11671,7 +11674,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800079399828",
-      "name": "Jumping Pull-up with Back Fix",
+      "name": "Jumping Pull-Up",
       "dimension_ids": [
         "reps"
       ],
@@ -11683,7 +11686,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa3b5f06ln9kv1uxmibavq",
@@ -11701,7 +11704,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Jumping Pull-Up",
+          "original_name": "Jumping Pull-up with Back Fix",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -11892,7 +11901,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-804284626848",
-      "name": "Kneeling Elastic Front Pull",
+      "name": "Kneeling Band Pulldown",
       "dimension_ids": [
         "reps"
       ],
@@ -11904,7 +11913,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa1vb106379kv1ugqald44",
@@ -11922,7 +11931,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Kneeling Band Pulldown",
+          "original_name": "Kneeling Elastic Front Pull",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -12277,49 +12292,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201434",
-      "name": "Lat Pull Dumbbell",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.757Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1434,
-        "exercise_uuid": "90dea8b9-4cf8-430e-8633-e08df1dd900b",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "M9",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2398,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "M9",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000201659",
       "name": "Lat Pulldown - Cross Body Single Arm",
       "dimension_ids": [
@@ -12516,7 +12488,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800383610832",
-      "name": "Lever Pronated Grip Seated Scapular Retraction Shr",
+      "name": "Lever Pronated Grip Seated Scapular Retraction Shrug",
       "dimension_ids": [
         "load",
         "reps"
@@ -12529,7 +12501,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa9lsc08tg9kv12dphialz",
@@ -12547,7 +12519,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Lever Pronated Grip Seated Scapular Retraction Shrug",
+          "original_name": "Lever Pronated Grip Seated Scapular Retraction Shr",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -12705,8 +12683,8 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200395",
-      "name": "Long-Pulley, Narrow",
+      "id": "01910000-0000-7000-8000-000000200510",
+      "name": "Lying Bench Row",
       "dimension_ids": [
         "load",
         "reps"
@@ -12717,11 +12695,11 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.811Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
-        "exercise_pk": 395,
-        "exercise_uuid": "77c98954-b50d-46f0-9912-3981f856d5a6",
+        "exercise_pk": 510,
+        "exercise_uuid": "88dbcc74-0304-4fcf-8a47-92d14a484b0a",
         "exercise_license": {
           "id": 1,
           "full_name": "Creative Commons Attribution Share Alike 3",
@@ -12732,7 +12710,7 @@
           "object_url": null,
           "derivative_source_url": null
         },
-        "translation_pk": 144,
+        "translation_pk": 142,
         "translation_license": {
           "id": 1,
           "full_name": "Creative Commons Attribution Share Alike 3",
@@ -12742,49 +12720,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200923",
-      "name": "Lying Dumbbell Row Ss Seated Shrug",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.749Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 923,
-        "exercise_uuid": "dab7400b-e86e-4224-bcea-4a915dc928e0",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "novadani",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
         },
-        "translation_pk": 1202,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "novadani",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Lying Bench Row",
+          "original_name": "Rowing, Lying on Bench",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -12806,41 +12747,6 @@
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbw9lkvq00g39kv1r0ejsuge",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-800690476020",
-      "name": "Lying Prone T Back",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwa9oid08uh9kv1eikz91cb",
         "source_url": "https://github.com/Snouzy/workout-cool",
         "api_url": "https://workout.cool/api/exercises/all",
         "imported_fields": [
@@ -12895,7 +12801,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802474270945",
-      "name": "Lying Reverse Push-up (male)",
+      "name": "Lying Reverse Push-up",
       "dimension_ids": [
         "reps"
       ],
@@ -12905,7 +12811,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa9f7o08r39kv1swc2kkrk",
@@ -12923,7 +12829,59 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Lying Reverse Push-up",
+          "original_name": "Lying Reverse Push-up (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-000000200477",
+      "name": "Machine Pull-Ups",
+      "dimension_ids": [
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000008",
+      "equipment_ids": [],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000404"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 477,
+        "exercise_uuid": "7f834f07-fa7b-46b6-8ffa-45930b0602db",
+        "exercise_license": {
+          "id": 1,
+          "full_name": "Creative Commons Attribution Share Alike 3",
+          "short_name": "CC-BY-SA 3",
+          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
+          "author": "wger.de",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 140,
+        "translation_license": {
+          "id": 1,
+          "full_name": "Creative Commons Attribution Share Alike 3",
+          "short_name": "CC-BY-SA 3",
+          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
+          "author": "wger.de",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Machine Pull-Ups",
+          "original_name": "Pull Ups on Machine",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -13051,6 +13009,56 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        }
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-000000200259",
+      "name": "Narrow-Grip Pulldown",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000008",
+      "equipment_ids": [
+        "barbell",
+        "ezBar"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 259,
+        "exercise_uuid": "5b4b94ca-f429-4394-9477-c00be8f2bb04",
+        "exercise_license": {
+          "id": 1,
+          "full_name": "Creative Commons Attribution Share Alike 3",
+          "short_name": "CC-BY-SA 3",
+          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
+          "author": "wger.de",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 1058,
+        "translation_license": {
+          "id": 1,
+          "full_name": "Creative Commons Attribution Share Alike 3",
+          "short_name": "CC-BY-SA 3",
+          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
+          "author": "wger.de",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Narrow-Grip Pulldown",
+          "original_name": "Front Pull narrow",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -13336,7 +13344,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000200448",
-      "name": "Pendelay Rows",
+      "name": "Pendlay Rows",
       "dimension_ids": [
         "load",
         "reps"
@@ -13349,7 +13357,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.917Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 448,
@@ -13374,6 +13382,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Pendlay Rows",
+          "original_name": "Pendelay Rows",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -13527,8 +13541,49 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-800690476020",
+      "name": "Prone T Raise",
+      "dimension_ids": [
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000008",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000404"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "Workout.cool",
+        "source_id": "cmbwa9oid08uh9kv1eikz91cb",
+        "source_url": "https://github.com/Snouzy/workout-cool",
+        "api_url": "https://workout.cool/api/exercises/all",
+        "imported_fields": [
+          "English name",
+          "type attributes",
+          "muscle attributes",
+          "equipment attributes"
+        ],
+        "excluded_fields": [
+          "description",
+          "video",
+          "thumbnail"
+        ],
+        "source_code_license": "MIT",
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Prone T Raise",
+          "original_name": "Lying Prone T Back",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-802053454361",
-      "name": "Prone Y Raise (male)",
+      "name": "Prone Y Raise",
       "dimension_ids": [
         "reps"
       ],
@@ -13540,7 +13595,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa9i4208s49kv1zkqshemf",
@@ -13558,46 +13613,12 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200477",
-      "name": "Pull Ups on Machine",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2024-01-17T10:32:16.337Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 477,
-        "exercise_uuid": "7f834f07-fa7b-46b6-8ffa-45930b0602db",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 140,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Prone Y Raise",
+          "original_name": "Prone Y Raise (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -13756,47 +13777,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201905",
-      "name": "Pullback",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.095Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1905,
-        "exercise_uuid": "289bd40b-e3dd-4217-8670-e475771a0ea7",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "cybro",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 3052,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "cybro",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000201273",
       "name": "Pullover",
       "dimension_ids": [
@@ -13882,7 +13862,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000200957",
-      "name": "Quadriped Arm and Leg Raise",
+      "name": "Quadruped Arm and Leg Raise",
       "dimension_ids": [
         "reps"
       ],
@@ -13894,7 +13874,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:27.118Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 957,
@@ -13919,6 +13899,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Quadruped Arm and Leg Raise",
+          "original_name": "Quadriped Arm and Leg Raise",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -14548,51 +14534,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200508",
-      "name": "Row",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [
-        "barbell",
-        "dumbbell",
-        "pullUpBar"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.194Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 508,
-        "exercise_uuid": "4b7cb037-0789-4014-ab6f-a451716b7538",
-        "exercise_license": {
-          "id": 3,
-          "full_name": "Creative Commons Public Domain 1.0",
-          "short_name": "CC0",
-          "url": "http://creativecommons.org/publicdomain/zero/1.0/",
-          "author": "BFad07",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 801,
-        "translation_license": {
-          "id": 3,
-          "full_name": "Creative Commons Public Domain 1.0",
-          "short_name": "CC0",
-          "url": "http://creativecommons.org/publicdomain/zero/1.0/",
-          "author": "BFad07",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000200512",
       "name": "Rowing seated, narrow grip",
       "dimension_ids": [
@@ -14621,47 +14562,6 @@
           "derivative_source_url": null
         },
         "translation_pk": 108,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200510",
-      "name": "Rowing, Lying on Bench",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2024-01-17T10:34:35.675Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 510,
-        "exercise_uuid": "88dbcc74-0304-4fcf-8a47-92d14a484b0a",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 142,
         "translation_license": {
           "id": 1,
           "full_name": "Creative Commons Attribution Share Alike 3",
@@ -15105,7 +15005,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000201098",
-      "name": "Seated rear delt rise",
+      "name": "Seated Rear Delt Raise",
       "dimension_ids": [
         "load",
         "reps"
@@ -15118,7 +15018,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:27.292Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 1098,
@@ -15143,12 +15043,18 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Seated Rear Delt Raise",
+          "original_name": "Seated rear delt rise",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
     {
       "id": "01910000-0000-7000-8000-802275649255",
-      "name": "Seated Rhomboid Stretch (male)",
+      "name": "Seated Rhomboid Stretch",
       "dimension_ids": [
         "duration"
       ],
@@ -15160,7 +15066,7 @@
         "01910000-0000-7000-8000-000000000405"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa9e8t08qq9kv1ua36avqu",
@@ -15178,7 +15084,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Seated Rhomboid Stretch",
+          "original_name": "Seated Rhomboid Stretch (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -16055,7 +15967,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800169041634",
-      "name": "Smith Bent Knee Good Morning Hips",
+      "name": "Smith Bent Knee Good Morning",
       "dimension_ids": [
         "load",
         "reps"
@@ -16068,7 +15980,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwac3yi09pw9kv1yjr2kws8",
@@ -16086,7 +15998,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Smith Bent Knee Good Morning",
+          "original_name": "Smith Bent Knee Good Morning Hips",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -16969,47 +16887,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201381",
-      "name": "Upper Back",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000008",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.756Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1381,
-        "exercise_uuid": "df18b577-0610-4804-a993-161024da67db",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "phpi",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2348,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "phpi",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-801990369080",
       "name": "V Bar Pulldowns",
       "dimension_ids": [
@@ -17322,48 +17199,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201096",
-      "name": "Abduction while standing",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000009",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:25.997Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1096,
-        "exercise_uuid": "d015a276-02ad-4c28-9d36-aedfbb431f53",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "tregga",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2055,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "tregga",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -18218,7 +18053,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-801046921272",
-      "name": "Barbell Front Squats To A Bench Clean Grip",
+      "name": "Barbell Front Squat to Bench (Clean Grip)",
       "dimension_ids": [
         "load",
         "reps"
@@ -18233,7 +18068,7 @@
         "01910000-0000-7000-8000-000000000403"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbw9nzgl01b19kv1x03biwfa",
@@ -18251,7 +18086,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Barbell Front Squat to Bench (Clean Grip)",
+          "original_name": "Barbell Front Squats To A Bench Clean Grip",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -19367,47 +19208,6 @@
           "short_name": "CC-BY-SA 4",
           "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
           "author": "Croak6728",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201769",
-      "name": "cabel",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000009",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.944Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1769,
-        "exercise_uuid": "d1a37666-9b59-4834-a4ec-80706b34cd49",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2903,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -23671,41 +23471,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-802378772503",
-      "name": "Laying Hamstring Stretch",
-      "dimension_ids": [
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000009",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000405"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwa0mqh05nr9kv15102i0qr",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000200364",
       "name": "Leg Curl",
       "dimension_ids": [
@@ -23748,7 +23513,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000200365",
-      "name": "Leg Curls (laying)",
+      "name": "Leg Curls (lying)",
       "dimension_ids": [
         "load",
         "reps"
@@ -23759,7 +23524,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.775Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 365,
@@ -23784,6 +23549,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Leg Curls (lying)",
+          "original_name": "Leg Curls (laying)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -24303,6 +24074,47 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-802975821079",
+      "name": "Lunge Warm-Up",
+      "dimension_ids": [
+        "duration"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000009",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000405"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "Workout.cool",
+        "source_id": "cmbwad33s0a1r9kv1ni661md6",
+        "source_url": "https://github.com/Snouzy/workout-cool",
+        "api_url": "https://workout.cool/api/exercises/all",
+        "imported_fields": [
+          "English name",
+          "type attributes",
+          "muscle attributes",
+          "equipment attributes"
+        ],
+        "excluded_fields": [
+          "description",
+          "video",
+          "thumbnail"
+        ],
+        "source_code_license": "MIT",
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Lunge Warm-Up",
+          "original_name": "Warming up in Lunge (one)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-000000201868",
       "name": "Lunge with Twist Stretch",
       "dimension_ids": [
@@ -24493,6 +24305,47 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-802378772503",
+      "name": "Lying Hamstring Stretch",
+      "dimension_ids": [
+        "duration"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000009",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000405"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "Workout.cool",
+        "source_id": "cmbwa0mqh05nr9kv15102i0qr",
+        "source_url": "https://github.com/Snouzy/workout-cool",
+        "api_url": "https://workout.cool/api/exercises/all",
+        "imported_fields": [
+          "English name",
+          "type attributes",
+          "muscle attributes",
+          "equipment attributes"
+        ],
+        "excluded_fields": [
+          "description",
+          "video",
+          "thumbnail"
+        ],
+        "source_code_license": "MIT",
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Lying Hamstring Stretch",
+          "original_name": "Laying Hamstring Stretch",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -25088,7 +24941,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000201521",
-      "name": "Pendular hack",
+      "name": "Pendulum Squat",
       "dimension_ids": [
         "load",
         "reps"
@@ -25099,7 +24952,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.920Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 1521,
@@ -25124,6 +24977,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Pendulum Squat",
+          "original_name": "Pendular hack",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -26424,7 +26283,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000201739",
-      "name": "Shrimp Squad",
+      "name": "Shrimp Squat",
       "dimension_ids": [
         "reps"
       ],
@@ -26436,7 +26295,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:27.359Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 1739,
@@ -26461,6 +26320,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Shrimp Squat",
+          "original_name": "Shrimp Squad",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -28653,6 +28518,54 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-000000201096",
+      "name": "Standing Hip Abduction",
+      "dimension_ids": [
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000009",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000404"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1096,
+        "exercise_uuid": "d015a276-02ad-4c28-9d36-aedfbb431f53",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "tregga",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2055,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "tregga",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Standing Hip Abduction",
+          "original_name": "Abduction while standing",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-000000201875",
       "name": "Standing IT Band Stretch",
       "dimension_ids": [
@@ -29103,7 +29016,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800320928290",
-      "name": "Stiff Leg Dead from a Deficit",
+      "name": "Stiff Leg Deadlift from a Deficit",
       "dimension_ids": [
         "load",
         "reps"
@@ -29116,7 +29029,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbw9mrov00v99kv1r2dunlzs",
@@ -29134,7 +29047,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Stiff Leg Deadlift from a Deficit",
+          "original_name": "Stiff Leg Dead from a Deficit",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -30207,181 +30126,6 @@
           "object_url": null,
           "derivative_source_url": null
         }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-803662178945",
-      "name": "Warming up in Lunge (five)",
-      "dimension_ids": [
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000009",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwad02m0a0q9kv100omxtkn",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-802216678151",
-      "name": "Warming up in Lunge (four)",
-      "dimension_ids": [
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000009",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwad27d0a1g9kv14yitnuu6",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-802975821079",
-      "name": "Warming up in Lunge (one)",
-      "dimension_ids": [
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000009",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwad33s0a1r9kv1ni661md6",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-803901984078",
-      "name": "Warming up in Lunge (six)",
-      "dimension_ids": [
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000009",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwacrpa09xu9kv1jqzkqhe9",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-802452508766",
-      "name": "Warming up in Lunge (three)",
-      "dimension_ids": [
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000009",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwad0yh0a119kv1h9yiqe9c",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
       }
     },
     {
@@ -32317,7 +32061,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802168733643",
-      "name": "Criss Cross Upper Chest Raise (male)",
+      "name": "Criss Cross Upper Chest Raise",
       "dimension_ids": [
         "load",
         "reps"
@@ -32330,7 +32074,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa4mo0072c9kv1wbz1ql0e",
@@ -32348,7 +32092,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Criss Cross Upper Chest Raise",
+          "original_name": "Criss Cross Upper Chest Raise (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -32421,49 +32171,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201754",
-      "name": "Degree lateral raises",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000010",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:25.980Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1754,
-        "exercise_uuid": "1f2ba913-3b2e-4621-a70b-b7f0ce649032",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2891,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -33049,6 +32756,55 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-000000201714",
+      "name": "Dumbbell Shoulder Pendulum",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000010",
+      "equipment_ids": [
+        "dumbbell"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1714,
+        "exercise_uuid": "e237611c-2730-4d0c-891b-bb29d3d15297",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "Croak6728",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2837,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "Croak6728",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Dumbbell Shoulder Pendulum",
+          "original_name": "Shoulder Dumbbell Pendular Exercise",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -34591,7 +34347,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800077940285",
-      "name": "Lying Scalene Muscles Activation (female)",
+      "name": "Lying Scalene Muscles Activation",
       "dimension_ids": [
         "load",
         "reps"
@@ -34602,7 +34358,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwaaqii09879kv11nirp6ws",
@@ -34620,48 +34376,12 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201654",
-      "name": "Machine lateral wise",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000010",
-      "equipment_ids": [
-        "gymMat"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.836Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1654,
-        "exercise_uuid": "3d2adf99-8fe9-45cb-b669-c5b18242e282",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "roneydya",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2774,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "roneydya",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Lying Scalene Muscles Activation",
+          "original_name": "Lying Scalene Muscles Activation (female)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -35168,7 +34888,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802293255772",
-      "name": "Pike Push-up from Deficit (Male)",
+      "name": "Pike Push-up from Deficit",
       "dimension_ids": [
         "reps"
       ],
@@ -35180,7 +34900,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa666g07lk9kv1pci1yxk3",
@@ -35198,7 +34918,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Pike Push-up from Deficit",
+          "original_name": "Pike Push-up from Deficit (Male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -35676,7 +35402,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-801623885286",
-      "name": "Ring Handstand (male)",
+      "name": "Ring Handstand",
       "dimension_ids": [
         "reps"
       ],
@@ -35686,7 +35412,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa697507mn9kv1g9lssapk",
@@ -35704,7 +35430,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Ring Handstand",
+          "original_name": "Ring Handstand (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -35744,7 +35476,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800225672048",
-      "name": "Roll Neck Rotation Lying on Floor (female)",
+      "name": "Roll Neck Rotation Lying on Floor",
       "dimension_ids": [
         "duration"
       ],
@@ -35756,7 +35488,7 @@
         "01910000-0000-7000-8000-000000000405"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwaajso095r9kv1uju4ap2u",
@@ -35774,7 +35506,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Roll Neck Rotation Lying on Floor",
+          "original_name": "Roll Neck Rotation Lying on Floor (female)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -35845,49 +35583,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201338",
-      "name": "Schoulder Raise (Dumbbell)",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000010",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.237Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1338,
-        "exercise_uuid": "9a644b0e-8691-4216-b2cc-f058f58ec96d",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "Anastasious",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2308,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "Anastasious",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -36460,49 +36155,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201714",
-      "name": "Shoulder Dumbbell Pendular Exercise",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000010",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.339Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1714,
-        "exercise_uuid": "e237611c-2730-4d0c-891b-bb29d3d15297",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "Croak6728",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2837,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "Croak6728",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000201715",
       "name": "Shoulder External Rotation with Dumbbell",
       "dimension_ids": [
@@ -36671,43 +36323,51 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200569",
-      "name": "Shoulder Press, on Multi Press",
+      "id": "01910000-0000-7000-8000-000000201338",
+      "name": "Shoulder Raise (Dumbbell)",
       "dimension_ids": [
         "load",
         "reps"
       ],
       "category_id": "01910000-0000-7000-8000-000000000010",
-      "equipment_ids": [],
+      "equipment_ids": [
+        "dumbbell"
+      ],
       "focus_ids": [
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:27.349Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
-        "exercise_pk": 569,
-        "exercise_uuid": "141bc870-56be-4749-a3b9-e56d5d5618b4",
+        "exercise_pk": 1338,
+        "exercise_uuid": "9a644b0e-8691-4216-b2cc-f058f58ec96d",
         "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "Anastasious",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
         },
-        "translation_pk": 155,
+        "translation_pk": 2308,
         "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "Anastasious",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Shoulder Raise (Dumbbell)",
+          "original_name": "Schoulder Raise (Dumbbell)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -36984,51 +36644,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201582",
-      "name": "Side-laying interior rotation",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000010",
-      "equipment_ids": [
-        "barbell",
-        "bench",
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.390Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1582,
-        "exercise_uuid": "d9c1f78c-7bf6-4e6a-92e4-7bf4ed4a0a67",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "CptnFatbeard",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2530,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "CptnFatbeard",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000200578",
       "name": "Side-lying External Rotation",
       "dimension_ids": [
@@ -37066,6 +36681,57 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        }
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-000000201582",
+      "name": "Side-Lying Internal Rotation",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000010",
+      "equipment_ids": [
+        "barbell",
+        "bench",
+        "dumbbell"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1582,
+        "exercise_uuid": "d9c1f78c-7bf6-4e6a-92e4-7bf4ed4a0a67",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "CptnFatbeard",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2530,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "CptnFatbeard",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Side-Lying Internal Rotation",
+          "original_name": "Side-laying interior rotation",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -37324,7 +36990,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802106796897",
-      "name": "Sitting Neck Stretch (female)",
+      "name": "Sitting Neck Stretch",
       "dimension_ids": [
         "duration"
       ],
@@ -37334,7 +37000,7 @@
         "01910000-0000-7000-8000-000000000405"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwaab0z092p9kv1y30ch5jv",
@@ -37352,7 +37018,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Sitting Neck Stretch",
+          "original_name": "Sitting Neck Stretch (female)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -38263,47 +37935,6 @@
           "short_name": "CC-BY-SA 4",
           "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
           "author": "koreyhinton",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200691",
-      "name": "Upright Row, on Multi Press",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000010",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.764Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 691,
-        "exercise_uuid": "738137c0-5387-4215-b457-ea7af113b3ba",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 147,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -39766,48 +39397,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201320",
-      "name": "Bench Dips On Floor",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.098Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1320,
-        "exercise_uuid": "fbeb1fd5-d259-4a85-a993-03569d8146dc",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "hektkaso",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2292,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "hektkaso",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-800522692286",
       "name": "Bent Over Tricep Kickbacks",
       "dimension_ids": [
@@ -39841,47 +39430,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201768",
-      "name": "bicep",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.939Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1768,
-        "exercise_uuid": "f263ddc9-2418-4bb3-a22c-f79abea18d00",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2902,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -41654,7 +41202,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802037391407",
-      "name": "Dumbbell Bent Over Curl (male)",
+      "name": "Dumbbell Bent Over Curl",
       "dimension_ids": [
         "load",
         "reps"
@@ -41667,7 +41215,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwaarc4098i9kv161e1eb3x",
@@ -41685,7 +41233,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Dumbbell Bent Over Curl",
+          "original_name": "Dumbbell Bent Over Curl (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -42723,42 +42277,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-801929510161",
-      "name": "Dumbbell Standing Hands Torsion (male) Forearms",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwa8rm608ih9kv1ffkmvcu3",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-803361920311",
       "name": "Dumbbell Standing One Arm Concentration Curl",
       "dimension_ids": [
@@ -42792,6 +42310,98 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-801929510161",
+      "name": "Dumbbell Standing Wrist Rotation",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000011",
+      "equipment_ids": [
+        "dumbbell"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "Workout.cool",
+        "source_id": "cmbwa8rm608ih9kv1ffkmvcu3",
+        "source_url": "https://github.com/Snouzy/workout-cool",
+        "api_url": "https://workout.cool/api/exercises/all",
+        "imported_fields": [
+          "English name",
+          "type attributes",
+          "muscle attributes",
+          "equipment attributes"
+        ],
+        "excluded_fields": [
+          "description",
+          "video",
+          "thumbnail"
+        ],
+        "source_code_license": "MIT",
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Dumbbell Standing Wrist Rotation",
+          "original_name": "Dumbbell Standing Hands Torsion (male) Forearms",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-000000201824",
+      "name": "Dumbbell Tate Press",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000011",
+      "equipment_ids": [
+        "bench",
+        "dumbbell"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1824,
+        "exercise_uuid": "2affa71f-7308-4448-af57-dc44b424090e",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "beagle",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2959,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "beagle",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Dumbbell Tate Press",
+          "original_name": "Dumbell Tate Press",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -43033,91 +42643,6 @@
           "short_name": "CC-BY-SA 4",
           "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
           "author": "Deflation",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200208",
-      "name": "Dumbbells on Scott Machine",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2024-01-17T10:27:59.798Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 208,
-        "exercise_uuid": "fe328b2b-cc6d-4f12-a2c6-85ce374217c7",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 87,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201824",
-      "name": "Dumbell Tate Press",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [
-        "bench",
-        "dumbbell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.452Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1824,
-        "exercise_uuid": "2affa71f-7308-4448-af57-dc44b424090e",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "beagle",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2959,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "beagle",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -43760,7 +43285,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000200820",
-      "name": "Fingerboard 20 mm edge",
+      "name": "Fingerboard Hang (20 mm Edge)",
       "dimension_ids": [
         "load",
         "reps"
@@ -43771,7 +43296,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.527Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 820,
@@ -43796,6 +43321,60 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Fingerboard Hang (20 mm Edge)",
+          "original_name": "Fingerboard 20 mm edge",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-000000200804",
+      "name": "Fingerboard Sloper Hang",
+      "dimension_ids": [
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000011",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000404"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 804,
+        "exercise_uuid": "9f9edad8-7da0-448c-bfcb-ec61f2d28162",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "marcelbader",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 1071,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "marcelbader",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Fingerboard Sloper Hang",
+          "original_name": "Sloper hanging",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -44083,7 +43662,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000200275",
-      "name": "Hammercurls on Cable",
+      "name": "Hammer Curls on Cable",
       "dimension_ids": [
         "load",
         "reps"
@@ -44094,7 +43673,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.605Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 275,
@@ -44119,6 +43698,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Hammer Curls on Cable",
+          "original_name": "Hammercurls on Cable",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -44198,8 +43783,8 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201298",
-      "name": "High-Cable Cross Tricep Extention - NB",
+      "id": "01910000-0000-7000-8000-000000201216",
+      "name": "Hangboard Recruitment Pulls",
       "dimension_ids": [
         "load",
         "reps"
@@ -44210,7 +43795,54 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.626Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1216,
+        "exercise_uuid": "cf434716-f846-46d8-b267-8b33d311d8b5",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": null,
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2182,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": null,
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Hangboard Recruitment Pulls",
+          "original_name": "Recruitment Pulls",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-000000201298",
+      "name": "High-Cable Cross Tricep Extension - NB",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000011",
+      "equipment_ids": [],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 1298,
@@ -44235,6 +43867,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "High-Cable Cross Tricep Extension - NB",
+          "original_name": "High-Cable Cross Tricep Extention - NB",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -44540,7 +44178,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000200911",
-      "name": "Incline Skull Crush",
+      "name": "Incline Skull Crusher",
       "dimension_ids": [
         "load",
         "reps"
@@ -44551,7 +44189,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.662Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 911,
@@ -44576,6 +44214,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Incline Skull Crusher",
+          "original_name": "Incline Skull Crush",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -44600,41 +44244,6 @@
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa0bgx05js9kv1h4elb05v",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-800548345714",
-      "name": "Inversed dips",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwa7r39085d9kv1fepq6b44",
         "source_url": "https://github.com/Snouzy/workout-cool",
         "api_url": "https://workout.cool/api/exercises/all",
         "imported_fields": [
@@ -44771,7 +44380,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800459949152",
-      "name": "Kneeling Finger Press (male)",
+      "name": "Kneeling Finger Press",
       "dimension_ids": [
         "reps"
       ],
@@ -44783,7 +44392,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa8qsw08i69kv110dtamsa",
@@ -44801,12 +44410,18 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Kneeling Finger Press",
+          "original_name": "Kneeling Finger Press (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
       "id": "01910000-0000-7000-8000-800666964053",
-      "name": "Kneeling Fist Roll (male)",
+      "name": "Kneeling Fist Roll",
       "dimension_ids": [
         "reps"
       ],
@@ -44818,7 +44433,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa8xwn08kr9kv1y5elhgy2",
@@ -44836,7 +44451,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Kneeling Fist Roll",
+          "original_name": "Kneeling Fist Roll (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -45410,6 +45031,53 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-000000200661",
+      "name": "Machine Triceps Extension",
+      "dimension_ids": [
+        "load",
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000011",
+      "equipment_ids": [],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 661,
+        "exercise_uuid": "6c671e43-497f-4863-8d78-b592f3b5e7c6",
+        "exercise_license": {
+          "id": 1,
+          "full_name": "Creative Commons Attribution Share Alike 3",
+          "short_name": "CC-BY-SA 3",
+          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
+          "author": "wger.de",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 139,
+        "translation_license": {
+          "id": 1,
+          "full_name": "Creative Commons Attribution Share Alike 3",
+          "short_name": "CC-BY-SA 3",
+          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
+          "author": "wger.de",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Machine Triceps Extension",
+          "original_name": "Triceps on Machine",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-800220022708",
       "name": "Narrow Grip Barbell Tricep Press To Chin",
       "dimension_ids": [
@@ -45559,48 +45227,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201738",
-      "name": "Neutral-grip pull-ups or TRX rows",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [
-        "pullUpBar"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.872Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1738,
-        "exercise_uuid": "15fda45b-108b-4b28-bfe5-d0e55a0914bf",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "54str",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2868,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "54str",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -46328,88 +45954,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201216",
-      "name": "Recruitment Pulls",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.128Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1216,
-        "exercise_uuid": "cf434716-f846-46d8-b267-8b33d311d8b5",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2182,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201114",
-      "name": "Rest (for timed workouts)",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.145Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1114,
-        "exercise_uuid": "af5a3520-25eb-4dd7-b802-a7382b8ce3ef",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "philip",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2077,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "philip",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000200493",
       "name": "Reverse Bar Curl",
       "dimension_ids": [
@@ -46493,6 +46037,47 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        }
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-800548345714",
+      "name": "Reverse Dips",
+      "dimension_ids": [
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000011",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000404"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "Workout.cool",
+        "source_id": "cmbwa7r39085d9kv1fepq6b44",
+        "source_url": "https://github.com/Snouzy/workout-cool",
+        "api_url": "https://workout.cool/api/exercises/all",
+        "imported_fields": [
+          "English name",
+          "type attributes",
+          "muscle attributes",
+          "equipment attributes"
+        ],
+        "excluded_fields": [
+          "description",
+          "video",
+          "thumbnail"
+        ],
+        "source_code_license": "MIT",
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Reverse Dips",
+          "original_name": "Inversed dips",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -46814,7 +46399,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800433626263",
-      "name": "Roll Forearms Standing Against Wall (female)",
+      "name": "Roll Forearms Standing Against Wall",
       "dimension_ids": [
         "duration"
       ],
@@ -46826,7 +46411,7 @@
         "01910000-0000-7000-8000-000000000405"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa8vfv08ju9kv13tkonik1",
@@ -46844,7 +46429,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Roll Forearms Standing Against Wall",
+          "original_name": "Roll Forearms Standing Against Wall (female)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -47428,7 +47019,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802088617407",
-      "name": "Side Lying Single Arm Triceps Push-up (male)",
+      "name": "Side Lying Single Arm Triceps Push-up",
       "dimension_ids": [
         "reps"
       ],
@@ -47440,7 +47031,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa670c07lv9kv1opw657lf",
@@ -47458,7 +47049,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Side Lying Single Arm Triceps Push-up",
+          "original_name": "Side Lying Single Arm Triceps Push-up (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -47772,48 +47369,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200804",
-      "name": "Sloper hanging",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.432Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 804,
-        "exercise_uuid": "9f9edad8-7da0-448c-bfcb-ec61f2d28162",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "marcelbader",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 1071,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "marcelbader",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -48388,47 +47943,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200623",
-      "name": "Standing Rope Forearm",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.529Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 623,
-        "exercise_uuid": "7dc59fa0-5552-4ffa-954f-9bc8c22740bf",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "pwiltrout",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 382,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "pwiltrout",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-802058858035",
       "name": "Standing Tricep Stretch",
       "dimension_ids": [
@@ -48764,47 +48278,6 @@
           "derivative_source_url": null
         },
         "translation_pk": 90,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200661",
-      "name": "Triceps on Machine",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000011",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.713Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 661,
-        "exercise_uuid": "6c671e43-497f-4863-8d78-b592f3b5e7c6",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 139,
         "translation_license": {
           "id": 1,
           "full_name": "Creative Commons Attribution Share Alike 3",
@@ -49955,7 +49428,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802208171065",
-      "name": "3:4 Sit Up",
+      "name": "3/4 Sit-Up",
       "dimension_ids": [
         "reps"
       ],
@@ -49967,7 +49440,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbw9xhwd04lm9kv15uhjrxly",
@@ -49985,7 +49458,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "3/4 Sit-Up",
+          "original_name": "3:4 Sit Up",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -50066,48 +49545,6 @@
           "short_name": "CC-BY-SA 4",
           "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
           "author": "beagle",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200056",
-      "name": "Abdominal Stabilization",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000012",
-      "equipment_ids": [
-        "gymMat"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-01-05T22:30:30.237Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 56,
-        "exercise_uuid": "03db11cc-8079-463c-9399-6f346b100ce6",
-        "exercise_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "andikeller",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 1061,
-        "translation_license": {
-          "id": 1,
-          "full_name": "Creative Commons Attribution Share Alike 3",
-          "short_name": "CC-BY-SA 3",
-          "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
-          "author": "andikeller",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -51107,48 +50544,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201912",
-      "name": "Core Rotation",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000012",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000405"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.228Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1912,
-        "exercise_uuid": "1b140999-e1fa-49b5-9f2b-690bac959db3",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "cybro",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 3059,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "cybro",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-802273653763",
       "name": "Cross Body Crunches",
       "dimension_ids": [
@@ -51499,6 +50894,47 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-804174879861",
+      "name": "Decline Cable Crunch",
+      "dimension_ids": [
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000012",
+      "equipment_ids": [
+        "cable"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000401"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "Workout.cool",
+        "source_id": "cmbwacbxd09si9kv1ur2ftvha",
+        "source_url": "https://github.com/Snouzy/workout-cool",
+        "api_url": "https://workout.cool/api/exercises/all",
+        "imported_fields": [
+          "English name",
+          "type attributes",
+          "muscle attributes",
+          "equipment attributes"
+        ],
+        "excluded_fields": [
+          "description",
+          "video",
+          "thumbnail"
+        ],
+        "source_code_license": "MIT",
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Decline Cable Crunch",
+          "original_name": "Declined Crunch lower cable",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-802839878137",
       "name": "Decline Oblique Crunches",
       "dimension_ids": [
@@ -51516,41 +50952,6 @@
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbw9x2pg04gu9kv1mf5eqbzd",
-        "source_url": "https://github.com/Snouzy/workout-cool",
-        "api_url": "https://workout.cool/api/exercises/all",
-        "imported_fields": [
-          "English name",
-          "type attributes",
-          "muscle attributes",
-          "equipment attributes"
-        ],
-        "excluded_fields": [
-          "description",
-          "video",
-          "thumbnail"
-        ],
-        "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-804174879861",
-      "name": "Declined Crunch lower cable",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000012",
-      "equipment_ids": [
-        "cable"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401"
-      ],
-      "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
-      "source_attribution": {
-        "source": "Workout.cool",
-        "source_id": "cmbwacbxd09si9kv1ur2ftvha",
         "source_url": "https://github.com/Snouzy/workout-cool",
         "api_url": "https://workout.cool/api/exercises/all",
         "imported_fields": [
@@ -52349,50 +51750,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200009",
-      "name": "Handed Kettlebell Swing",
-      "dimension_ids": [
-        "load",
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000012",
-      "equipment_ids": [
-        "kettlebell"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000401",
-        "01910000-0000-7000-8000-000000000403"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:25.968Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 9,
-        "exercise_uuid": "1b020b3a-3732-4c7e-92fd-a0cec90ed69b",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "deusinvictus",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 345,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "deusinvictus",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-800703004640",
       "name": "Hanging Knee Raises",
       "dimension_ids": [
@@ -52590,50 +51947,8 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201101",
-      "name": "Horizontal traction isometry",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000012",
-      "equipment_ids": [
-        "pullUpBar"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.641Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1101,
-        "exercise_uuid": "8ccd5844-4b46-475d-b36f-5f58ca496840",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2061,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000201248",
-      "name": "Ice Scream maker",
+      "name": "Ice Cream Maker",
       "dimension_ids": [
         "reps"
       ],
@@ -52645,7 +51960,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:26.649Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 1248,
@@ -52670,6 +51985,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Ice Cream Maker",
+          "original_name": "Ice Scream maker",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -53115,48 +52436,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000200979",
-      "name": "Leg raises pull up bar",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000012",
-      "equipment_ids": [
-        "pullUpBar"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.786Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 979,
-        "exercise_uuid": "b2025776-2397-4de7-a49e-296321169481",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 1293,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000200378",
       "name": "Leg Raises, Standing",
       "dimension_ids": [
@@ -53190,48 +52469,6 @@
           "short_name": "CC-BY-SA 3",
           "url": "https://creativecommons.org/licenses/by-sa/3.0/deed.en",
           "author": "wger.de",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201909",
-      "name": "Leg Wheel",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000012",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.783Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1909,
-        "exercise_uuid": "19d10f51-3e53-4d8f-b283-1d8d9a7d3543",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "cybro",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 3056,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "cybro",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -53316,6 +52553,54 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-000000201909",
+      "name": "Lying Leg Circles",
+      "dimension_ids": [
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000012",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000404"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1909,
+        "exercise_uuid": "19d10f51-3e53-4d8f-b283-1d8d9a7d3543",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "cybro",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 3056,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "cybro",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Lying Leg Circles",
+          "original_name": "Leg Wheel",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-000000201313",
       "name": "Lying Leg Raise",
       "dimension_ids": [
@@ -53351,48 +52636,6 @@
           "short_name": "CC-BY-SA 4",
           "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
           "author": "hektkaso",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200976",
-      "name": "Medicine ball booklet crunch",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000012",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.842Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 976,
-        "exercise_uuid": "346634cf-3896-4c10-bd66-28fb69d02573",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 1286,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -53546,6 +52789,54 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        }
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-000000200976",
+      "name": "Medicine Ball V-Up",
+      "dimension_ids": [
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000012",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000404"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 976,
+        "exercise_uuid": "346634cf-3896-4c10-bd66-28fb69d02573",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "clafal",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 1286,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "clafal",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Medicine Ball V-Up",
+          "original_name": "Medicine ball booklet crunch",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -54473,7 +53764,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000200505",
-      "name": "Roman Chair",
+      "name": "Roman Chair Crunches",
       "dimension_ids": [
         "load",
         "reps"
@@ -54484,7 +53775,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:27.171Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 505,
@@ -54509,6 +53800,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Roman Chair Crunches",
+          "original_name": "Roman Chair",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -55217,7 +54514,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-801987832933",
-      "name": "Spider Plank (female)",
+      "name": "Spider Plank",
       "dimension_ids": [
         "duration"
       ],
@@ -55229,7 +54526,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa71yo07wk9kv1j4v9ymk2",
@@ -55247,7 +54544,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Spider Plank",
+          "original_name": "Spider Plank (female)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -55328,7 +54631,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-802352950783",
-      "name": "Stability Ball Rounded Rollout (female)",
+      "name": "Stability Ball Rounded Rollout",
       "dimension_ids": [
         "load",
         "reps"
@@ -55341,7 +54644,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa5ef807bx9kv1r3i0h957",
@@ -55359,7 +54662,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Stability Ball Rounded Rollout",
+          "original_name": "Stability Ball Rounded Rollout (female)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -56121,7 +55430,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-000000201259",
-      "name": "TRX Obliques",
+      "name": "TRX Oblique Crunches",
       "dimension_ids": [
         "load",
         "reps"
@@ -56132,7 +55441,7 @@
         "01910000-0000-7000-8000-000000000401"
       ],
       "notes": null,
-      "updated_at": "2026-04-13T18:58:27.609Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "wger",
         "exercise_pk": 1259,
@@ -56157,6 +55466,12 @@
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "TRX Oblique Crunches",
+          "original_name": "TRX Obliques",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
         }
       }
     },
@@ -56436,6 +55751,54 @@
       }
     },
     {
+      "id": "01910000-0000-7000-8000-000000201090",
+      "name": "V Push-Up",
+      "dimension_ids": [
+        "reps"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000012",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000404"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1090,
+        "exercise_uuid": "36b6919a-0e9d-49c6-891b-28fb55ae88ad",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "clafal",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2042,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "clafal",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "V Push-Up",
+          "original_name": "Vpushup",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
+      }
+    },
+    {
       "id": "01910000-0000-7000-8000-804242893361",
       "name": "V Sit Rotation",
       "dimension_ids": [
@@ -56578,48 +55941,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201090",
-      "name": "Vpushup",
-      "dimension_ids": [
-        "reps"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000012",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000404"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.793Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1090,
-        "exercise_uuid": "36b6919a-0e9d-49c6-891b-28fb55ae88ad",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2042,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -58169,49 +57490,6 @@
       }
     },
     {
-      "id": "01910000-0000-7000-8000-000000201092",
-      "name": "Bag training",
-      "dimension_ids": [
-        "distance",
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000002",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000403"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.060Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1092,
-        "exercise_uuid": "d301d901-a2c6-4916-b09e-07ab7a3c8519",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2046,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "clafal",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
       "id": "01910000-0000-7000-8000-000000201525",
       "name": "Ball Slams",
       "dimension_ids": [
@@ -58326,52 +57604,6 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201630",
-      "name": "Blaze",
-      "dimension_ids": [
-        "distance",
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000002",
-      "equipment_ids": [
-        "bench",
-        "dumbbell",
-        "kettlebell",
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000403"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.126Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1630,
-        "exercise_uuid": "24f988e7-51eb-44f5-92f2-d4e0199c2269",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "ricwheatley",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2739,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": "ricwheatley",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
       }
     },
     {
@@ -58523,47 +57755,6 @@
           "short_name": "CC-BY-SA 4",
           "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
           "author": "hpmbala@gmail.com",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000201204",
-      "name": "Cycling cardio session",
-      "dimension_ids": [
-        "distance",
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000002",
-      "equipment_ids": [],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000402"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:26.360Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 1204,
-        "exercise_uuid": "517265a2-e4f7-4b33-979f-9be1efd86343",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 2164,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -58733,7 +57924,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-803492493764",
-      "name": "Jack Burpee (male)",
+      "name": "Jack Burpee",
       "dimension_ids": [
         "reps"
       ],
@@ -58746,7 +57937,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwa65bn07l99kv1fskw8leg",
@@ -58764,7 +57955,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Jack Burpee",
+          "original_name": "Jack Burpee (male)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -58841,6 +58038,55 @@
         ],
         "source_code_license": "MIT",
         "exercise_data_provenance": "undeclared upstream"
+      }
+    },
+    {
+      "id": "01910000-0000-7000-8000-000000201092",
+      "name": "Punching Bag Training",
+      "dimension_ids": [
+        "distance",
+        "duration"
+      ],
+      "category_id": "01910000-0000-7000-8000-000000000002",
+      "equipment_ids": [
+        "bodyweight"
+      ],
+      "focus_ids": [
+        "01910000-0000-7000-8000-000000000403"
+      ],
+      "notes": null,
+      "updated_at": "2026-07-19T23:48:40.614Z",
+      "source_attribution": {
+        "source": "wger",
+        "exercise_pk": 1092,
+        "exercise_uuid": "d301d901-a2c6-4916-b09e-07ab7a3c8519",
+        "exercise_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "clafal",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "translation_pk": 2046,
+        "translation_license": {
+          "id": 2,
+          "full_name": "Creative Commons Attribution Share Alike 4",
+          "short_name": "CC-BY-SA 4",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+          "author": "clafal",
+          "author_url": null,
+          "object_url": null,
+          "derivative_source_url": null
+        },
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Punching Bag Training",
+          "original_name": "Bag training",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {
@@ -59237,49 +58483,6 @@
           "short_name": "CC-BY-SA 4",
           "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
           "author": "intelman",
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        }
-      }
-    },
-    {
-      "id": "01910000-0000-7000-8000-000000200927",
-      "name": "Suspended crossess",
-      "dimension_ids": [
-        "distance",
-        "duration"
-      ],
-      "category_id": "01910000-0000-7000-8000-000000000002",
-      "equipment_ids": [
-        "bodyweight"
-      ],
-      "focus_ids": [
-        "01910000-0000-7000-8000-000000000403"
-      ],
-      "notes": null,
-      "updated_at": "2026-04-13T18:58:27.592Z",
-      "source_attribution": {
-        "source": "wger",
-        "exercise_pk": 927,
-        "exercise_uuid": "e0d9e9ef-09ee-4d26-9504-622093810414",
-        "exercise_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
-          "author_url": null,
-          "object_url": null,
-          "derivative_source_url": null
-        },
-        "translation_pk": 1206,
-        "translation_license": {
-          "id": 2,
-          "full_name": "Creative Commons Attribution Share Alike 4",
-          "short_name": "CC-BY-SA 4",
-          "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
-          "author": null,
           "author_url": null,
           "object_url": null,
           "derivative_source_url": null
@@ -60835,7 +60038,7 @@
     },
     {
       "id": "01910000-0000-7000-8000-800732510073",
-      "name": "Jack Plank on Medicine Ball (female)",
+      "name": "Jack Plank on Medicine Ball",
       "dimension_ids": [
         "duration"
       ],
@@ -60847,7 +60050,7 @@
         "01910000-0000-7000-8000-000000000404"
       ],
       "notes": null,
-      "updated_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-07-19T23:48:40.614Z",
       "source_attribution": {
         "source": "Workout.cool",
         "source_id": "cmbwabs3m09ls9kv14r2p0fye",
@@ -60865,7 +60068,13 @@
           "thumbnail"
         ],
         "source_code_license": "MIT",
-        "exercise_data_provenance": "undeclared upstream"
+        "exercise_data_provenance": "undeclared upstream",
+        "reviewed_name_cleanup": {
+          "decision": "replace_with_english",
+          "english_name": "Jack Plank on Medicine Ball",
+          "original_name": "Jack Plank on Medicine Ball (female)",
+          "reviewed_at": "2026-07-19T23:48:40.614Z"
+        }
       }
     },
     {

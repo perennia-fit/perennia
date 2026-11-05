@@ -52,9 +52,8 @@ license id/title reported by wger.
 
 ### CC-BY-SA 3
 
-Distinct source author count: 34.
+Distinct source author count: 32.
 
-- andikeller
 - aszc
 - bizyguy
 - cgoob883
@@ -65,7 +64,6 @@ Distinct source author count: 34.
 - GiglioRosso
 - GrosseHund
 - http://www.bodybuilding.com/
-- http://www.carinatum.com/
 - http://www.exrx.net/WeightExercises/Brachialis/DBC
 - klabautermann
 - kwrindy
@@ -91,7 +89,7 @@ Distinct source author count: 34.
 
 ### CC-BY-SA 4
 
-Distinct source author count: 162.
+Distinct source author count: 156.
 
 - 2dPREtEZP221u68Akf0JImv5L48
 - 3leh
@@ -139,7 +137,6 @@ Distinct source author count: 162.
 - damnlost
 - Davidgj32
 - Deflation
-- deusinvictus
 - DiscoCop
 - donaddon
 - dookie1481
@@ -170,7 +167,6 @@ Distinct source author count: 162.
 - intelman
 - ISSACS
 - JackSparrow
-- James Mackay
 - jayninja
 - Jhonatan
 - Joculari
@@ -214,15 +210,11 @@ Distinct source author count: 162.
 - Paul@Chemistry
 - pera_perkan
 - philip
-- phpi
 - polloperro
 - prevail90
-- pwiltrout
 - ricardodavidrd
 - RiccaBaro
-- ricwheatley
 - Robertcoop
-- roneydya
 - Rottekongen
 - schweezer
 - schwolfar

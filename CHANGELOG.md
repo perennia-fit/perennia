@@ -26,6 +26,11 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Changed
 
+- **Cleaner Platform Exercise Library names.** On new installs, 80 names are
+  corrected, including every `(male)` or `(female)` label and typos like
+  `Shrimp Squad`. Twenty-three exercises merge into an equivalent, and 10
+  entries that were not real exercises, such as `bicep` and
+  `Rest (for timed workouts)`, are removed.
 - **The Platform Exercise Library loses its remaining non-English names.**
   Three exercises merge into their English equivalents, one is removed, and
   two are renamed on new installs (`Military Press with SZ-Bar`, `Biceps Curls
