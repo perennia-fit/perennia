@@ -30,6 +30,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   rounded corners, in both themes, floating above the screen's bottom bar and
   buttons. Its text and action pass WCAG AA; the Undo label was close to
   invisible in the light theme.
+- **Training Screen messages no longer cover the form.** "Set n logged" with
+  Undo and every other Training Screen message now show in the rest strip's
+  row, and the rest countdown comes back when the message ends. "Background
+  timer alerts are off" shows once per app run and never replaces an Undo.
 - **Cleaner Platform Exercise Library names.** On new installs, 80 names are
   corrected, including every `(male)` or `(female)` label and typos like
   `Shrimp Squad`. Twenty-three exercises merge into an equivalent, and 10
