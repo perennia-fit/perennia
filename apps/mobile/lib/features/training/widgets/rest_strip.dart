@@ -122,6 +122,7 @@ class RestStrip extends ConsumerStatefulWidget {
     required this.onConfirmation,
     required this.undoShowing,
     required this.whenUndoEnds,
+    required this.notificationTexts,
     this.confirmation,
   });
 
@@ -172,6 +173,10 @@ class RestStrip extends ConsumerStatefulWidget {
 
   /// Holds a message until the confirmation with Undo ends.
   final ValueChanged<VoidCallback> whenUndoEnds;
+
+  /// What the notifications say for a rest this strip schedules, built by the
+  /// screen for the exercise on screen.
+  final RestNotificationTexts notificationTexts;
 
   /// The message to show, if any. Its `sequence` keys the crossfade: a new
   /// number swaps with a transition, the same number updates in place.
@@ -514,6 +519,7 @@ class _RestStripState extends ConsumerState<RestStrip> {
     return ref.read(timerBackgroundSchedulerProvider).schedule(
           TimerBackgroundSchedule.rest(
             timer,
+            texts: widget.notificationTexts,
             workoutExerciseId: widget.workoutExerciseId,
             soundEnabled: _restTimerSoundsEnabled(),
           ),

@@ -651,8 +651,9 @@ Dart, since native code cannot read the ARB file. They are a record,
 
 *   `title`: "Rest timer"; `countdownLabel`: "Rest" (the ongoing countdown);
     `body`: "Rest over".
-*   `getReadyText`: "Get ready · Deadlift · Set 4", or null when the rest is
-    15 s or shorter. Null means no get-ready cue on either platform.
+*   `getReadyText`: "Get ready · Deadlift · Set 4". The schedule sends it as
+    null when the rest is 15 s or shorter. Null means no get-ready cue on
+    either platform.
 *   `prepareText`: "Deadlift · Set 4 in 0:03".
 
 The texts are computed once, when the rest is scheduled, and the schedule is
@@ -1201,8 +1202,10 @@ rest timer notifications on Android 8 and later."
 #### `apps/mobile/pubspec.yaml` (Modify)
 
 *   **Type / Scope**: dependencies.
-*   **Proposed Changes**: Add `clock` as a direct dependency, at the version
-    already in `pubspec.lock` (it is there as a transitive dependency today).
+*   **Proposed Changes**: Add `clock` as a direct dependency and `fake_async`
+    as a dev dependency (`rest_cue_scheduler_test` imports it, and
+    `flutter_test` does not export it), each at the version already in
+    `pubspec.lock`, where both stay transitive under the workspace root.
 
 #### `apps/mobile/lib/features/training/services/rest_cues.dart` (Create)
 
@@ -1345,10 +1348,16 @@ rest timer notifications on Android 8 and later."
 *   **Proposed Changes**:
     *   **Notification texts.** Build `RestNotificationTexts` as in [part
         4](#4-cues-and-notifications). In Log set they are built for the
-        exercise the screen will show (the next group member when it moves),
-        from the Performed Set count after this Log set, before
-        `_startRestAfterLog`. `getReadyText` is null when the rest is not
-        longer than `getReadyAfterRest`.
+        exercise the screen will show (the next group member when it moves,
+        which `_logSetInFlight` works out before `_startRestAfterLog`). Inside
+        `_startRestAfterLog`, after reading the timer, they are built from
+        Sets read with `listActiveForWorkout`, since `_workoutSets` may not
+        have re-emitted and the Performed Set count must include this Log set.
+        The screen always fills `getReadyText`;
+        `TimerBackgroundSchedule.rest` sends it as null when `timer.duration`
+        is not longer than `getReadyAfterRest`, because ±15 s and a Set's
+        planned rest can make the form's Rest after differ from the running
+        timer.
     *   **`_startRestAfterLog`** passes the texts to
         `TimerBackgroundSchedule.rest`. The strip gets the same texts for
         `_start` (a rest started from the strip, for the open exercise).
@@ -1602,7 +1611,8 @@ rest timer notifications on Android 8 and later."
     `apps/mobile/test/features/protocols/protocol_reminder_scheduler_test.dart`,
     `protocol_reminder_tap_test.dart` and `protocols_day_view_test.dart`
     implement `TimerBackgroundScheduler`; each fake gains
-    `setInAppTimerCues` as a no-op.
+    `setInAppTimerCues` as a no-op. `_RecordingTimerBackgroundScheduler` in
+    `training_screen_test.dart` implements it too, and records the values.
 *   **`apps/mobile/test/performance/performance_budgets_test.dart`
     (Modify):** add a case that seeds a running rest row with 2 s left, which
     puts the strip in countdown, taps Log set and expects

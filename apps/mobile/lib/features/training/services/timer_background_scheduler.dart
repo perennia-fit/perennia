@@ -2,6 +2,23 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/training_repositories.dart';
+import 'rest_cues.dart';
+
+/// The finished, localized strings a rest's notifications show. Native code
+/// cannot read the ARB file, so the schedule carries them. They are computed
+/// once, when the rest is scheduled: sending the schedule again for a new
+/// label would start a new schedule, which could post a threshold the lifter
+/// already heard.
+///
+/// [getReadyText] is the cue's text whatever the rest's length;
+/// [TimerBackgroundSchedule.rest] decides whether the cue is sent.
+typedef RestNotificationTexts = ({
+  String title,
+  String countdownLabel,
+  String body,
+  String? getReadyText,
+  String prepareText,
+});
 
 final timerBackgroundSchedulerProvider = Provider<TimerBackgroundScheduler>(
   (ref) => const MethodChannelTimerBackgroundScheduler(),
@@ -24,6 +41,11 @@ abstract interface class TimerBackgroundScheduler {
   );
 
   Future<void> cancel(String timerId);
+
+  /// Tells native whether a rest strip on the current route is playing the
+  /// cues in the app. While the app is visible and this is true, native posts
+  /// no cue notification, so each moment has one cue.
+  Future<void> setInAppTimerCues(bool active);
 }
 
 enum TimerBackgroundPermissionStatus {
@@ -50,13 +72,21 @@ class TimerBackgroundSchedule {
     required this.title,
     required this.body,
     required this.countdownLabel,
+    required this.prepareText,
+    this.getReadyText,
     this.workoutId,
     this.workoutExerciseId,
     this.soundEnabled = true,
   });
 
+  /// The one place that decides get-ready: a rest not longer than
+  /// [getReadyAfterRest] gets no cue on either platform. It reads
+  /// `timer.duration`, not the form's Rest after, because −15 s and +15 s move
+  /// the running timer's duration and a Set's planned rest can start it, so
+  /// the form's value can differ from the rest that runs.
   factory TimerBackgroundSchedule.rest(
     RestTimerRecord timer, {
+    required RestNotificationTexts texts,
     String? workoutExerciseId,
     bool soundEnabled = true,
   }) {
@@ -64,9 +94,12 @@ class TimerBackgroundSchedule {
       kind: TimerBackgroundKind.rest,
       timerId: timer.id,
       deadlineAt: timer.deadlineAt.toUtc(),
-      title: 'Rest timer',
-      body: 'Rest timer complete',
-      countdownLabel: 'Rest',
+      title: texts.title,
+      body: texts.body,
+      countdownLabel: texts.countdownLabel,
+      prepareText: texts.prepareText,
+      getReadyText:
+          timer.duration > getReadyAfterRest ? texts.getReadyText : null,
       workoutId: timer.workoutId,
       workoutExerciseId: workoutExerciseId,
       soundEnabled: soundEnabled,
@@ -79,6 +112,13 @@ class TimerBackgroundSchedule {
   final String title;
   final String body;
   final String countdownLabel;
+
+  /// The text of the notification 10 seconds before the deadline; null means
+  /// no get-ready cue.
+  final String? getReadyText;
+
+  /// The text of the notification 3 seconds before the deadline.
+  final String prepareText;
 
   /// Ids the notification carries so a tap can return to the exercise.
   /// `workoutExerciseId` is the active exercise at scheduling time;
@@ -99,6 +139,8 @@ class TimerBackgroundSchedule {
       'title': title,
       'body': body,
       'countdownLabel': countdownLabel,
+      if (getReadyText != null) 'getReadyText': getReadyText,
+      'prepareText': prepareText,
       'workoutId': workoutId,
       'workoutExerciseId': workoutExerciseId,
       'soundEnabled': soundEnabled,
@@ -145,6 +187,17 @@ class MethodChannelTimerBackgroundScheduler
     try {
       await _channel.invokeMethod<void>('cancelTimer', <String, Object?>{
         'timerId': timerId,
+      });
+    } on MissingPluginException {
+      return;
+    }
+  }
+
+  @override
+  Future<void> setInAppTimerCues(bool active) async {
+    try {
+      await _channel.invokeMethod<void>('setInAppTimerCues', <String, Object?>{
+        'active': active,
       });
     } on MissingPluginException {
       return;

@@ -3,6 +3,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/training/services/timer_background_scheduler.dart';
 
+const RestNotificationTexts _texts = (
+  title: 'Rest timer',
+  countdownLabel: 'Rest',
+  body: 'Rest over',
+  getReadyText: 'Get ready · Deadlift · Set 4',
+  prepareText: 'Deadlift · Set 4 in 0:03',
+);
+
+RestTimerRecord _restTimer({Duration duration = const Duration(minutes: 2)}) {
+  return RestTimerRecord(
+    id: 'rest-1',
+    workoutId: 'workout-1',
+    sourceSetId: 'set-1',
+    startedAt: DateTime.utc(2026, 6, 16, 8),
+    deadlineAt: DateTime.utc(2026, 6, 16, 8, 2),
+    duration: duration,
+    alertVolume: 0.75,
+    status: RestTimerStatus.running,
+    updatedAt: DateTime.utc(2026, 6, 16, 8),
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -16,17 +38,8 @@ void main() {
 
     test('maps rest timers to native schedule payloads', () {
       final schedule = TimerBackgroundSchedule.rest(
-        RestTimerRecord(
-          id: 'rest-1',
-          workoutId: 'workout-1',
-          sourceSetId: 'set-1',
-          startedAt: DateTime.utc(2026, 6, 16, 8),
-          deadlineAt: DateTime.utc(2026, 6, 16, 8, 2),
-          duration: const Duration(minutes: 2),
-          alertVolume: 0.75,
-          status: RestTimerStatus.running,
-          updatedAt: DateTime.utc(2026, 6, 16, 8),
-        ),
+        _restTimer(),
+        texts: _texts,
         workoutExerciseId: 'we-1',
       );
 
@@ -36,8 +49,10 @@ void main() {
         'deadlineAtMillis':
             DateTime.utc(2026, 6, 16, 8, 2).millisecondsSinceEpoch,
         'title': 'Rest timer',
-        'body': 'Rest timer complete',
+        'body': 'Rest over',
         'countdownLabel': 'Rest',
+        'getReadyText': 'Get ready · Deadlift · Set 4',
+        'prepareText': 'Deadlift · Set 4 in 0:03',
         // tap-to-return ids + the device-level sound flag.
         'workoutId': 'workout-1',
         'workoutExerciseId': 'we-1',
@@ -58,6 +73,7 @@ void main() {
           status: RestTimerStatus.running,
           updatedAt: DateTime.utc(2026, 6, 16, 8),
         ),
+        texts: _texts,
         workoutExerciseId: 'we-9',
         soundEnabled: false,
       );
@@ -66,6 +82,64 @@ void main() {
       expect(map['workoutId'], 'workout-9');
       expect(map['workoutExerciseId'], 'we-9');
       expect(map['soundEnabled'], false);
+    });
+
+    test('leaves getReadyText out of the map when it is null', () {
+      final schedule = TimerBackgroundSchedule.rest(
+        _restTimer(),
+        texts: (
+          title: _texts.title,
+          countdownLabel: _texts.countdownLabel,
+          body: _texts.body,
+          getReadyText: null,
+          prepareText: _texts.prepareText,
+        ),
+      );
+
+      final map = schedule.toPlatformMap();
+      expect(map.containsKey('getReadyText'), isFalse);
+      expect(map['prepareText'], 'Deadlift · Set 4 in 0:03');
+    });
+
+    test('a 15 s timer has no getReadyText even when the text is supplied', () {
+      final map = TimerBackgroundSchedule.rest(
+        _restTimer(duration: const Duration(seconds: 15)),
+        texts: _texts,
+      ).toPlatformMap();
+
+      expect(map.containsKey('getReadyText'), isFalse);
+    });
+
+    test('a 16 s timer keeps its getReadyText', () {
+      final map = TimerBackgroundSchedule.rest(
+        _restTimer(duration: const Duration(seconds: 16)),
+        texts: _texts,
+      ).toPlatformMap();
+
+      expect(map['getReadyText'], 'Get ready · Deadlift · Set 4');
+    });
+
+    test('setInAppTimerCues invokes the method with the value', () async {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        return null;
+      });
+
+      final scheduler = MethodChannelTimerBackgroundScheduler(channel: channel);
+      await scheduler.setInAppTimerCues(true);
+
+      expect(calls.single.method, 'setInAppTimerCues');
+      expect(calls.single.arguments, <String, Object?>{'active': true});
+    });
+
+    test('setInAppTimerCues swallows a missing native side', () async {
+      final scheduler = MethodChannelTimerBackgroundScheduler(
+        channel: const MethodChannel('test_timer_background_missing'),
+      );
+
+      await expectLater(scheduler.setInAppTimerCues(false), completes);
     });
 
     test('requests notification permission before scheduling', () async {
@@ -83,8 +157,9 @@ void main() {
           timerId: 'rest-1',
           deadlineAt: DateTime.utc(2026, 6, 16, 8, 2),
           title: 'Rest timer',
-          body: 'Rest timer complete',
+          body: 'Rest over',
           countdownLabel: 'Rest',
+          prepareText: 'Deadlift · Set 4 in 0:03',
         ),
       );
 
@@ -112,6 +187,7 @@ void main() {
           title: 'Work interval',
           body: 'Interval 1/8 complete',
           countdownLabel: 'Work',
+          prepareText: 'Interval 2/8 in 0:03',
         ),
       );
 

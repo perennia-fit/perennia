@@ -930,6 +930,213 @@ void main() {
     });
 
     _testTrainingScreen(
+        'after a superset Log set the scheduled texts name the next member and '
+        'its next Set; opening another exercise sends no new schedule',
+        (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final benchWorkoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final benchWorkoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(benchWorkoutExerciseId),
+      ))!;
+      final rowWorkoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExerciseInWorkout(
+          repositories,
+          workoutId: benchWorkoutExercise.workoutId,
+          name: 'Barbell Row',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final rowWorkoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(rowWorkoutExerciseId),
+      ))!;
+      // Row already has a Performed Set, so its next Set is Set 2.
+      await tester.runAsync(
+        () => _createBenchSet(
+          repositories,
+          workoutId: rowWorkoutExercise.workoutId,
+          exerciseId: rowWorkoutExercise.exerciseId,
+          position: 0,
+          load: '60',
+          reps: '8',
+          isCompleted: true,
+        ),
+      );
+      await tester.runAsync(
+        () => repositories.exerciseGroups.create(
+          ExerciseGroupDraft(
+            workoutId: benchWorkoutExercise.workoutId,
+            name: 'A1 superset',
+            colorHex: '#2F6FED',
+            workoutExerciseIds: <String>[
+              benchWorkoutExerciseId,
+              rowWorkoutExerciseId,
+            ],
+          ),
+        ),
+      );
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        benchWorkoutExerciseId,
+        timerBackgroundScheduler: scheduler,
+      );
+
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settleRepositoryWork(tester);
+      await _waitForFinder(tester, find.text('Barbell Row'));
+
+      final schedule = scheduler.schedules.single;
+      expect(schedule.title, 'Rest timer');
+      expect(schedule.countdownLabel, 'Rest');
+      expect(schedule.body, 'Rest over');
+      expect(schedule.getReadyText, 'Get ready · Barbell Row · Set 2');
+      expect(schedule.prepareText, 'Barbell Row · Set 2 in 0:03');
+
+      await tester.tap(find.byKey(TrainingScreen.navigationPanelButtonKey));
+      await _pumpDrawerAnimation(tester);
+      await tester.tap(
+        find.byKey(TrainingScreen.navigationItemKey(benchWorkoutExerciseId)),
+      );
+      await _pumpDrawerAnimation(tester);
+      await _settleRepositoryWork(tester);
+
+      expect(scheduler.schedules, hasLength(1));
+
+      await _disposeWidgetTree(tester);
+    });
+
+    _testTrainingScreen(
+        'the scheduled texts count this Log set when no other exercise has a '
+        'plan', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final benchWorkoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        benchWorkoutExerciseId,
+        timerBackgroundScheduler: scheduler,
+      );
+
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _waitForSchedules(tester, scheduler, 1);
+
+      expect(
+        scheduler.schedules.single.prepareText,
+        'Bench Press · Set 2 in 0:03',
+      );
+
+      await _disposeWidgetTree(tester);
+    });
+
+    _testTrainingScreen(
+        'the scheduled texts name the next exercise with a plan when this one '
+        'has no Planned Set left', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final benchWorkoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final benchWorkoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(benchWorkoutExerciseId),
+      ))!;
+      final rowWorkoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExerciseInWorkout(
+          repositories,
+          workoutId: benchWorkoutExercise.workoutId,
+          name: 'Barbell Row',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final rowWorkoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(rowWorkoutExerciseId),
+      ))!;
+      await tester.runAsync(
+        () => _createBenchSet(
+          repositories,
+          workoutId: rowWorkoutExercise.workoutId,
+          exerciseId: rowWorkoutExercise.exerciseId,
+          position: 0,
+          load: '60',
+          reps: '8',
+        ),
+      );
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        benchWorkoutExerciseId,
+        timerBackgroundScheduler: scheduler,
+      );
+
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _waitForSchedules(tester, scheduler, 1);
+
+      expect(
+        scheduler.schedules.single.prepareText,
+        'Barbell Row · Set 1 in 0:03',
+      );
+
+      await _disposeWidgetTree(tester);
+    });
+
+    _testTrainingScreen(
         'fires the 3-2-1 prepare cue exactly once inside the last 3 seconds',
         (tester) async {
       final workoutExerciseId = (await tester.runAsync(
@@ -4677,6 +4884,22 @@ Future<void> _settleRepositoryWork(WidgetTester tester) async {
   await tester.pump();
 }
 
+/// Waits for Log set's work to reach its background schedule, which needs a
+/// pump between each of its database reads.
+Future<void> _waitForSchedules(
+  WidgetTester tester,
+  _RecordingTimerBackgroundScheduler scheduler,
+  int count,
+) async {
+  for (var attempt = 0; attempt < 50; attempt += 1) {
+    await _settleRepositoryWork(tester);
+    if (scheduler.schedules.length >= count) {
+      return;
+    }
+  }
+  fail('Timed out waiting for $count schedules.');
+}
+
 Future<void> _pumpDrawerAnimation(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
@@ -4759,6 +4982,7 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
   final TimerBackgroundPermissionStatus status;
   final schedules = <TimerBackgroundSchedule>[];
   final cancels = <String>[];
+  final inAppTimerCues = <bool>[];
 
   @override
   Future<TimerBackgroundPermissionStatus> requestPermissionIfNeeded() async {
@@ -4781,6 +5005,11 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
   @override
   Future<void> cancel(String timerId) async {
     cancels.add(timerId);
+  }
+
+  @override
+  Future<void> setInAppTimerCues(bool active) async {
+    inAppTimerCues.add(active);
   }
 }
 

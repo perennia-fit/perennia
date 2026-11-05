@@ -1098,6 +1098,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trainingRestVolumeTitle => 'Alert volume';
 
   @override
+  String trainingRestGetReady(String time) {
+    return 'Get ready · $time';
+  }
+
+  @override
+  String get trainingRestOver => 'Rest over';
+
+  @override
+  String trainingRestOverElapsed(String time) {
+    return '+$time';
+  }
+
+  @override
+  String get trainingRestNotificationTitle => 'Rest timer';
+
+  @override
+  String get trainingRestNotificationCountdown => 'Rest';
+
+  @override
+  String trainingRestNotificationGetReady(String exercise, int number) {
+    return 'Get ready · $exercise · Set $number';
+  }
+
+  @override
+  String trainingRestNotificationPrepare(
+      String exercise, int number, String time) {
+    return '$exercise · Set $number in $time';
+  }
+
+  @override
+  String get trainingRestNotificationOver => 'Rest over';
+
+  @override
   String get trainingPersonalRecordTooltip => 'Personal record';
 
   @override
