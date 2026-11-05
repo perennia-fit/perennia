@@ -374,6 +374,13 @@ void main() {
     addTearDown(database.close);
     final repositories = TrainingRepositories(database);
     final mealId = repositories.nutrition.newMealId();
+    final target = NewMealTarget(
+      PendingMeal(
+        id: mealId,
+        startedAt: DateTime(2026, 6, 26, 15),
+        mealTypeName: 'Snack',
+      ),
+    );
     final popped = <String?>[];
 
     await _pumpPushed(
@@ -381,15 +388,10 @@ void main() {
       repositories: repositories,
       popped: popped,
       screen: LogPortionScreen(
-        target: NewMealTarget(
-          PendingMeal(
-            id: mealId,
-            startedAt: DateTime(2026, 6, 26, 15),
-            mealTypeName: 'Snack',
-          ),
-        ),
+        target: target,
         food: _solidFood(),
         contextLabel: '3:00 PM · Snack',
+        onSave: _logInto(repositories, target),
       ),
     );
 
@@ -436,6 +438,7 @@ void main() {
       screen: LogPortionScreen(
         target: ExistingMealTarget(mealId),
         food: _solidFood(),
+        onSave: _logInto(repositories, ExistingMealTarget(mealId)),
       ),
     );
 
@@ -509,7 +512,11 @@ void main() {
                       await Navigator.of(context).push<String>(
                         MaterialPageRoute<String>(
                           builder: (_) => Scaffold(
-                            body: LogPortionScreen(target: target, food: item),
+                            body: LogPortionScreen(
+                              target: target,
+                              food: item,
+                              onSave: _logInto(repositories, target),
+                            ),
                           ),
                         ),
                       ),
@@ -577,7 +584,15 @@ void main() {
       tester,
       repositories: repositories,
       popped: popped,
-      screen: LogPortionScreen.editEntry(entry: entry),
+      screen: LogPortionScreen.editEntry(
+        entry: entry,
+        onUpdatePortion: (portion) {
+          return repositories.nutrition.updateFoodEntryPortion(
+            id: entry.id,
+            portion: portion,
+          );
+        },
+      ),
     );
 
     expect(find.text('Greek yogurt'), findsOneWidget);
@@ -677,13 +692,32 @@ Future<void> _pumpLogPortion(
             child: LogPortionScreen(
               target: target ?? const ExistingMealTarget('meal-snack'),
               food: food,
-              onSave: onSave,
+              onSave: onSave ?? _ignoreSave,
             ),
           ),
         ),
       ),
     ),
   );
+}
+
+/// A Save hook that ignores the write, for tests that never press Save.
+Future<LogFoodEntryResult?> _ignoreSave(FoodEntrySnapshotDraft draft) async {
+  return null;
+}
+
+/// The Save hook the Meal screen's controller stands for here: one
+/// `logFoodEntrySnapshot` into [target].
+Future<LogFoodEntryResult?> Function(FoodEntrySnapshotDraft draft) _logInto(
+  TrainingRepositories repositories,
+  MealTarget target,
+) {
+  return (draft) {
+    return repositories.nutrition.logFoodEntrySnapshot(
+      target: target,
+      entry: draft,
+    );
+  };
 }
 
 /// A home screen whose button pushes [screen] as a route, keeping what the

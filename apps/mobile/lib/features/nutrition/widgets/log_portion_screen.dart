@@ -1,32 +1,36 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/nutrition/nutrition.dart';
 import '../../../domain/training/set_validation.dart'
     show NutrientValidationException;
 import '../../../theme/theme.dart';
-import '../controllers/nutrition_day_controller.dart';
 import '../repositories/add_food_repository.dart';
 import 'nutrition_attribution.dart';
 
 /// Chooses a Portion for one Food (docs/designs/meal-logging.md §6).
 ///
-/// The default constructor logs [food] into [target]: Save writes one Food
-/// Entry snapshot, creating the Meal first for a [NewMealTarget], and pops
-/// with the id of the Meal it landed in.
+/// The default constructor logs [food] into [target]: Save hands one Food
+/// Entry snapshot to [onSave], which creates the Meal first for a
+/// [NewMealTarget], and pops with the id of the Meal it landed in.
 ///
 /// [LogPortionScreen.editEntry] changes a logged Food Entry's Portion
 /// instead: it shows the entry's own snapshot, prefilled with its Portion,
-/// and Save pops with the entry's Meal id.
-class LogPortionScreen extends ConsumerStatefulWidget {
+/// hands the new Portion to [onUpdatePortion], and pops with the entry's
+/// Meal id.
+///
+/// The screen never writes on its own: the caller owns the write, so the
+/// Meal screen's in-flight guard, its already-exists handling, and its switch
+/// to the saved Meal cover every Save.
+class LogPortionScreen extends StatefulWidget {
   const LogPortionScreen({
     super.key,
     required MealTarget this.target,
     required this.food,
     this.contextLabel,
-    this.onSave,
+    required Future<LogFoodEntryResult?> Function(FoodEntrySnapshotDraft draft)
+        this.onSave,
   })  : entry = null,
         onUpdatePortion = null;
 
@@ -37,7 +41,8 @@ class LogPortionScreen extends ConsumerStatefulWidget {
     super.key,
     required FoodEntryRecord this.entry,
     this.contextLabel,
-    this.onUpdatePortion,
+    required Future<LogFoodEntryResult?> Function(Portion portion)
+        this.onUpdatePortion,
   })  : assert(
           entry.kind == FoodEntryKind.food &&
               entry.foodId != null &&
@@ -71,13 +76,13 @@ class LogPortionScreen extends ConsumerStatefulWidget {
   /// header text); nothing shows when null.
   final String? contextLabel;
 
-  /// Makes the log write instead of the screen. A null result means the write
+  /// Makes the log write; null in edit mode. A null result means the write
   /// was ignored, and the screen stays open.
   final Future<LogFoodEntryResult?> Function(FoodEntrySnapshotDraft draft)?
       onSave;
 
-  /// Makes the edit-mode write instead of the screen. A null result means the
-  /// write was ignored, and the screen stays open.
+  /// Makes the edit-mode write; null when logging a Food. A null result means
+  /// the write was ignored, and the screen stays open.
   final Future<LogFoodEntryResult?> Function(Portion portion)? onUpdatePortion;
 
   static Key unitChipKey(PortionUnit unit) {
@@ -89,10 +94,10 @@ class LogPortionScreen extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<LogPortionScreen> createState() => _LogPortionScreenState();
+  State<LogPortionScreen> createState() => _LogPortionScreenState();
 }
 
-class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
+class _LogPortionScreenState extends State<LogPortionScreen> {
   late PortionUnit _unit;
   late final TextEditingController _amountController;
   bool _saving = false;
@@ -324,12 +329,7 @@ class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
   Future<String?> _write(Portion portion) async {
     final entry = widget.entry;
     if (entry != null) {
-      final onUpdatePortion = widget.onUpdatePortion;
-      final result = onUpdatePortion != null
-          ? await onUpdatePortion(portion)
-          : await ref
-              .read(nutritionDayControllerProvider.notifier)
-              .updateFoodEntryPortion(id: entry.id, portion: portion);
+      final result = await widget.onUpdatePortion!(portion);
       if (result == null) {
         return null;
       }
@@ -353,12 +353,7 @@ class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
       packageSize: food.packageSize,
       portion: portion,
     );
-    final onSave = widget.onSave;
-    final result = onSave != null
-        ? await onSave(draft)
-        : await ref
-            .read(nutritionDayControllerProvider.notifier)
-            .logFoodEntrySnapshot(target: target, entry: draft);
+    final result = await widget.onSave!(draft);
     if (result == null) {
       return null;
     }

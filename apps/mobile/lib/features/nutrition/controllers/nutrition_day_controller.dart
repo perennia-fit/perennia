@@ -427,27 +427,6 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
     return ref.read(nutritionRepositoryProvider).logFoodEntry(entry: entry);
   }
 
-  Future<LogFoodEntryResult> logFoodEntrySnapshot({
-    required MealTarget target,
-    required FoodEntrySnapshotDraft entry,
-  }) {
-    return ref.read(nutritionRepositoryProvider).logFoodEntrySnapshot(
-          target: target,
-          entry: entry,
-        );
-  }
-
-  /// Changes a Food-backed, non-imported Food Entry's Portion in one Batch.
-  Future<LogFoodEntryResult> updateFoodEntryPortion({
-    required String id,
-    required Portion portion,
-  }) {
-    return ref.read(nutritionRepositoryProvider).updateFoodEntryPortion(
-          id: id,
-          portion: portion,
-        );
-  }
-
   Future<List<MealTypeRecord>> _activeMealTypes() async {
     final current = ref.read(mealTypeListProvider).value;
     if (current != null) {
