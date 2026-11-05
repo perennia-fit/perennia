@@ -3541,4 +3541,114 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get homeLogMeal => 'Meal';
+
+  @override
+  String get nutritionLogMeal => 'Log meal';
+
+  @override
+  String get mealScreenTitle => 'Meal';
+
+  @override
+  String get mealHeaderNow => 'now';
+
+  @override
+  String get mealHeaderChooseTime => 'Choose time';
+
+  @override
+  String get mealHeaderAddFoods => 'add foods';
+
+  @override
+  String get mealTimeNotRecorded => 'time not recorded';
+
+  @override
+  String mealHeaderLabel(String time, String type) {
+    return '$time · $type';
+  }
+
+  @override
+  String mealHeaderSemantics(String time, String type) {
+    return '$time, $type. Change time or meal type';
+  }
+
+  @override
+  String get mealTimeShift15 => '−15 min';
+
+  @override
+  String get mealTimeShift30 => '−30 min';
+
+  @override
+  String get mealTimeShift60 => '−1 h';
+
+  @override
+  String get mealTimeShift15Semantics => '15 minutes ago';
+
+  @override
+  String get mealTimeShift30Semantics => '30 minutes ago';
+
+  @override
+  String get mealTimeShift60Semantics => '1 hour ago';
+
+  @override
+  String get mealTimeSheetDate => 'Date';
+
+  @override
+  String get mealTimeSheetTime => 'Time';
+
+  @override
+  String get mealTimeSheetType => 'Meal type';
+
+  @override
+  String get mealAddFoodsLater => 'Add foods later';
+
+  @override
+  String get mealYourMeals => 'Your meals';
+
+  @override
+  String mealAddToRecent(String time, String type) {
+    return 'Add to $time · $type';
+  }
+
+  @override
+  String get mealLogged => 'Meal logged';
+
+  @override
+  String get mealUndo => 'Undo';
+
+  @override
+  String get mealFoodRemoved => 'Food removed';
+
+  @override
+  String get mealPortionUpdated => 'Portion updated';
+
+  @override
+  String get mealDelete => 'Delete meal';
+
+  @override
+  String get mealDeleteConfirmTitle => 'Delete this meal?';
+
+  @override
+  String get mealDeleteConfirmBody =>
+      'The meal and its foods are removed from the day.';
+
+  @override
+  String get mealDeleteConfirmAction => 'Delete';
+
+  @override
+  String get mealFutureTimeTitle => 'Time is in the future';
+
+  @override
+  String mealFutureTimeBody(String time) {
+    return 'Save $time anyway?';
+  }
+
+  @override
+  String get mealFutureTimeConfirm => 'Save';
+
+  @override
+  String mealRemoveEntry(String food) {
+    return 'Remove $food';
+  }
 }
