@@ -252,74 +252,6 @@ class TrainingRepositories {
     AppDatabase.compoundsTable,
   ];
 
-  static const starterWeightRepsExerciseName = 'Barbell Squat';
-
-  static const _starterWeightRepsValues = <SetDimensionValue>[
-    SetDimensionValue(
-      dimension: DimensionId.load,
-      entered: '100',
-      unit: TrainingUnit.kilogram,
-    ),
-    SetDimensionValue(
-      dimension: DimensionId.reps,
-      entered: '5',
-      unit: TrainingUnit.repetition,
-    ),
-  ];
-
-  static const starterTimedExerciseName = 'Plank';
-
-  Future<List<ExerciseRecord>> ensureStarterExercises({
-    String actor = 'app',
-  }) async {
-    await catalog.ensurePlatformLibrarySeeded(actor: actor);
-    return exercises.listActive();
-  }
-
-  Future<LogWorkoutResult> logDefaultWeightRepsSet({
-    DateTime? now,
-    String? timezone,
-    String actor = 'app',
-  }) async {
-    final starterExercises = await ensureStarterExercises(actor: actor);
-    final exercise = _defaultWeightRepsExercise(starterExercises);
-    final localNow = (now ?? DateTime.now()).toLocal();
-    final localDate = TrainingDayDate.fromDateTime(localNow);
-    final context = _writeContexts.create(actor: actor);
-
-    return database.transaction(() async {
-      final workout = await _findWorkoutForLocalDate(localDate);
-      final workoutId = workout == null
-          ? await workoutSessions._create(
-              WorkoutSessionDraft(
-                startedAt: localNow,
-                timezone: timezone ?? localNow.timeZoneName,
-                localDate: localDate,
-              ),
-              context,
-            )
-          : workout.id;
-      final existingSets = await sets.listActiveForWorkout(workoutId);
-      final setId = await sets._create(
-        LoggedSetDraft(
-          workoutId: workoutId,
-          exerciseId: exercise.id,
-          position: existingSets.length,
-          values: LoggedSet.fromValues(
-            _starterWeightRepsValues,
-          ),
-        ),
-        context,
-      );
-
-      return LogWorkoutResult(
-        batchId: context.batchId,
-        workoutSessionId: workoutId,
-        loggedSetId: setId,
-      );
-    });
-  }
-
   /// Erases every authored domain (the [eraseTableNames] tables) on this
   /// device and, through Synced Mode, everywhere else.
   ///
@@ -491,26 +423,6 @@ class TrainingRepositories {
   }
 
   String createId(DateTime timestamp) => _ids.create(timestamp);
-
-  ExerciseRecord _defaultWeightRepsExercise(List<ExerciseRecord> exercises) {
-    return exercises.firstWhere(
-      (exercise) => exercise.name == starterWeightRepsExerciseName,
-      orElse: () => exercises.firstWhere(
-        (exercise) => exercise.type.accepts(
-          LoggedSet.fromValues(
-            _starterWeightRepsValues,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<WorkoutSessionRecord?> _findWorkoutForLocalDate(
-    TrainingDayDate localDate,
-  ) async {
-    final sessions = await workoutSessions.listActiveForLocalDate(localDate);
-    return sessions.isEmpty ? null : sessions.first;
-  }
 }
 
 class CatalogRepository {
