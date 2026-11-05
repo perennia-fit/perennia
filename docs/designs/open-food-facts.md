@@ -7,6 +7,11 @@
     and CI notes; amended after the first bundle build: where nutrient values
     are read from; revised after Goldfish review 2026-10-26; first draft
     2026-10-25; 2026-10-28 to record behaviour found by a drift report)
+*   **Amended by:** [Meal Logging](meal-logging.md). The add-food picker now
+    takes a Meal target (a saved Meal, or a new Meal written by the first
+    pick) and is embedded in the Meal screen, which the Nutrition Day's
+    `Log meal` button and Meal cards open, instead of a sheet opened from a
+    Meal card's `Add food` button.
 
 --------------------------------------------------------------------------------
 

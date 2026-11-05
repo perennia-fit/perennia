@@ -1368,7 +1368,7 @@ void main() {
       expect(second.batchId, isNot(third.batchId));
     });
 
-    test('orders Nutrition Day Meals by Meal Type order then start instant',
+    test('orders Nutrition Day Meals by clock time, whatever the Meal Type',
         () async {
       final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
       await repositories.nutrition.ensureDefaultMealTypes();
@@ -1407,10 +1407,10 @@ void main() {
       expect(
         day.meals.map((meal) => meal.meal.id),
         <String>[
-          earlyBreakfastId,
-          lateBreakfastId,
           earlyLunchId,
           earlySnackId,
+          earlyBreakfastId,
+          lateBreakfastId,
         ],
       );
     });
@@ -2101,102 +2101,6 @@ void main() {
       final meal = (await repositories.nutrition.getMealById(mealId))!;
       expect(meal.startedAt, startedAt.toUtc());
       expect(meal.localDate, NutritionDayDate.fromDateTime(startedAt));
-    });
-
-    group('startMeal', () {
-      late ProviderContainer container;
-      final lunch = MealTypeRecord(
-        id: 'meal-type-lunch',
-        name: 'Lunch',
-        sortOrder: 1,
-        updatedAt: DateTime.utc(2026, 1, 1),
-      );
-
-      setUp(() {
-        container = ProviderContainer(
-          overrides: [
-            trainingRepositoriesProvider.overrideWith((ref) => repositories),
-          ],
-        );
-      });
-
-      tearDown(() => container.dispose());
-
-      test('on a past day stores that day at the current clock time', () async {
-        final today = NutritionDayDate.fromDateTime(DateTime.now());
-        final pastDay = today.addDays(-3);
-        container.read(selectedNutritionDayProvider.notifier).select(pastDay);
-
-        final before = DateTime.now();
-        final mealId = await container
-            .read(nutritionDayControllerProvider.notifier)
-            .startMeal(mealType: lunch);
-        final after = DateTime.now();
-
-        final meal = (await repositories.nutrition.getMealById(mealId))!;
-        expect(meal.localDate, pastDay);
-        final started = meal.startedAt.toLocal();
-        expect(
-          NutritionDayDate.fromDateTime(started),
-          pastDay,
-        );
-        // The clock time of the start is the clock time of the tap.
-        final tapClock = Duration(
-          hours: before.hour,
-          minutes: before.minute,
-          seconds: before.second,
-        );
-        final startClock = Duration(
-          hours: started.hour,
-          minutes: started.minute,
-          seconds: started.second,
-        );
-        final afterClock = Duration(
-          hours: after.hour,
-          minutes: after.minute,
-          seconds: after.second,
-        );
-        if (afterClock >= tapClock) {
-          expect(
-            startClock.inSeconds,
-            inInclusiveRange(tapClock.inSeconds, afterClock.inSeconds),
-          );
-        }
-        expect(meal.mealType, 'Lunch');
-      });
-
-      test('on today starts now', () async {
-        final today = NutritionDayDate.fromDateTime(DateTime.now());
-        container.read(selectedNutritionDayProvider.notifier).select(today);
-
-        // Drift stores whole seconds.
-        final before = DateTime.now().toUtc().subtract(
-              const Duration(seconds: 1),
-            );
-        final mealId = await container
-            .read(nutritionDayControllerProvider.notifier)
-            .startMeal(mealType: lunch);
-        final after = DateTime.now().toUtc();
-
-        final meal = (await repositories.nutrition.getMealById(mealId))!;
-        expect(meal.localDate, NutritionDayDate.fromDateTime(meal.startedAt));
-        expect(meal.startedAt.isBefore(before), isFalse);
-        expect(meal.startedAt.isAfter(after), isFalse);
-      });
-
-      test('honours an explicit start time', () async {
-        final pastDay = NutritionDayDate(year: 2026, month: 6, day: 20);
-        container.read(selectedNutritionDayProvider.notifier).select(pastDay);
-        final startedAt = DateTime(2026, 6, 24, 7, 45);
-
-        final mealId = await container
-            .read(nutritionDayControllerProvider.notifier)
-            .startMeal(mealType: lunch, startedAt: startedAt);
-
-        final meal = (await repositories.nutrition.getMealById(mealId))!;
-        expect(meal.startedAt, startedAt.toUtc());
-        expect(meal.localDate, NutritionDayDate(year: 2026, month: 6, day: 24));
-      });
     });
 
     test('reconstructs Meal and Quick Entry after kill-and-reopen', () async {

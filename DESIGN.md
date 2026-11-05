@@ -248,7 +248,7 @@ rectangles with `md` corners, never FABs.
   control (4 wk, 12 wk, 1 yr) over a scroll of summary cards, then the Body Tracker
   and Health metrics links.
 - **Today Log action:** one extended FAB opening a bottom sheet of authored daily writes
-  (Workout, Food, Supplement). Body measurements remain contextual to Progress → Body.
+  (Workout, Meal, Supplement). Body measurements remain contextual to Progress → Body.
 - **Tabs (Track | History | Graph):** text tabs in the chrome, active tab in Signal
   Cyan with a 2px underline; inactive tabs secondary-text gray.
 - **Navigation drawer:** an opaque surface listing the session's exercises with set

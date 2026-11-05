@@ -33,7 +33,6 @@
   "homeLogSheetTitle": "Log for this day",
   "homeLogWorkout": "Workout",
   "homeStartWorkoutFailed": "Could not start workout. Try again.",
-  "homeLogFood": "Food",
   "homeLogDose": "Dose",
   "homeDomainToggleLabel": "Home domain",
   "homeTrainingDomain": "Training",
@@ -2213,6 +2212,18 @@
   "nutritionLogMeal": "Log meal",
   "@nutritionLogMeal": {
     "description": "The Nutrition Day button that opens the Meal screen for that day."
+  },
+  "nutritionMealCardSemantics": "{time}, {type}. Open meal",
+  "@nutritionMealCardSemantics": {
+    "description": "Screen reader label of a Meal card on the Nutrition Day; tapping the card opens the Meal screen. The type may carry the 'add foods' hint.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "type": {
+        "type": "String"
+      }
+    }
   },
   "mealScreenTitle": "Meal",
   "@mealScreenTitle": {

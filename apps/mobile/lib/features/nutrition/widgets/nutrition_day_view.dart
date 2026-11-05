@@ -9,21 +9,19 @@ import '../../../data/repositories/training_repositories.dart'
         NutrientValidationException,
         validateNutritionGoalTargets;
 import '../../../domain/nutrition/nutrition.dart';
+import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
+import '../controllers/meal_screen_controller.dart'
+    show mealScreenClockProvider;
 import '../controllers/nutrition_day_controller.dart';
-import '../repositories/add_food_repository.dart';
-import 'add_food_picker.dart';
-import 'log_portion_screen.dart';
+import 'meal_screen.dart';
 import 'nutrition_attribution.dart';
 import 'nutrition_trends_view.dart';
 import 'portion_text.dart';
 import 'quick_entry_dialog.dart';
 
 class NutritionDayView extends ConsumerWidget {
-  const NutritionDayView({
-    super.key,
-    this.onFoodSelected,
-  });
+  const NutritionDayView({super.key});
 
   static const String routeName = '/nutrition';
   static const dayHeaderKey = Key('nutrition.dayHeader');
@@ -43,7 +41,9 @@ class NutritionDayView extends ConsumerWidget {
   static const confirmArchiveMealTypeButtonKey =
       Key('nutrition.mealType.confirmArchive');
 
-  final ValueChanged<FoodPickerItem>? onFoodSelected;
+  /// The one `Log meal` button (docs/designs/meal-logging.md §6). It opens
+  /// the Meal screen for the shown day and is hidden on a future day.
+  static const logMealButtonKey = Key('nutrition.logMeal');
 
   static Key summaryValueKey(NutrientId id) {
     return Key('nutrition.summaryValue-${id.name}');
@@ -59,10 +59,6 @@ class NutritionDayView extends ConsumerWidget {
 
   static Key mealCardKey(String mealId) {
     return Key('nutrition.meal-$mealId');
-  }
-
-  static Key startMealButtonKey(String mealTypeId) {
-    return Key('nutrition.startMeal-$mealTypeId');
   }
 
   static Key mealTypeTileKey(String mealTypeId) {
@@ -81,10 +77,6 @@ class NutritionDayView extends ConsumerWidget {
     return Key('nutrition.mealType.archive-$mealTypeId');
   }
 
-  static Key addFoodButtonKey(String mealId) {
-    return Key('nutrition.addFood-$mealId');
-  }
-
   /// Marks an imported (read-only) `Food Entry` row's provenance badge.
   static Key importedEntryBadgeKey(String foodEntryId) {
     return Key('nutrition.foodEntry.importedBadge-$foodEntryId');
@@ -100,10 +92,7 @@ class NutritionDayView extends ConsumerWidget {
     final state = ref.watch(nutritionDayControllerProvider);
 
     return state.when(
-      data: (state) => _NutritionDayContent(
-        day: state.day,
-        onFoodSelected: onFoodSelected,
-      ),
+      data: (state) => _NutritionDayContent(day: state.day),
       loading: () => const Scaffold(
         appBar: _NutritionDayAppBar(),
         body: SizedBox.expand(),
@@ -127,13 +116,9 @@ class NutritionDayView extends ConsumerWidget {
 }
 
 class _NutritionDayContent extends ConsumerWidget {
-  const _NutritionDayContent({
-    required this.day,
-    required this.onFoodSelected,
-  });
+  const _NutritionDayContent({required this.day});
 
   final NutritionDayRecord day;
-  final ValueChanged<FoodPickerItem>? onFoodSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -150,12 +135,6 @@ class _NutritionDayContent extends ConsumerWidget {
                 context: context,
                 ref: ref,
                 day: day,
-                onFoodSelected: onFoodSelected,
-                onStartMeal: (mealType) {
-                  return ref
-                      .read(nutritionDayControllerProvider.notifier)
-                      .startMeal(mealType: mealType);
-                },
               ),
             ],
           ),
@@ -178,17 +157,16 @@ class _NutritionDayAppBar extends StatelessWidget
   }
 }
 
+/// A Nutrition Day's summary, Meal cards and actions, shared by the
+/// Nutrition Day screen and Today's Nutrition view. Its `Log meal` button and
+/// card taps open the Meal screen (docs/designs/meal-logging.md §6).
 class NutritionDayBody extends ConsumerWidget {
   const NutritionDayBody({
     super.key,
     required this.day,
-    required this.onStartMeal,
-    this.onFoodSelected,
   });
 
   final NutritionDayRecord day;
-  final Future<String> Function(MealTypeRecord mealType) onStartMeal;
-  final ValueChanged<FoodPickerItem>? onFoodSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -198,8 +176,6 @@ class NutritionDayBody extends ConsumerWidget {
         context: context,
         ref: ref,
         day: day,
-        onFoodSelected: onFoodSelected,
-        onStartMeal: onStartMeal,
       ),
     );
   }
@@ -209,10 +185,14 @@ List<Widget> _nutritionDayBodyChildren({
   required BuildContext context,
   required WidgetRef ref,
   required NutritionDayRecord day,
-  required ValueChanged<FoodPickerItem>? onFoodSelected,
-  required Future<String> Function(MealTypeRecord mealType) onStartMeal,
 }) {
   final mealTypes = ref.watch(mealTypeListProvider);
+  // A Meal can't start after today (§8), so a future day offers no
+  // `Log meal`. The Meal screen reads "today" from the same clock.
+  final today = NutritionDayDate.fromDateTime(
+    ref.watch(mealScreenClockProvider)(),
+  );
+  final isFutureDay = day.localDate.compareTo(today) > 0;
 
   return [
     NutritionDaySummary(totals: day.totals),
@@ -227,17 +207,27 @@ List<Widget> _nutritionDayBodyChildren({
     else ...[
       Text('Meals', style: context.textStyles.h2),
       const SizedBox(height: AppDimens.dense),
-      for (final meal in day.meals)
-        _MealSummary(
-          meal: meal,
-          onFoodSelected: onFoodSelected,
-        ),
+      for (final meal in day.meals) _MealSummary(meal: meal),
     ],
     const SizedBox(height: AppDimens.base),
-    _MealTypeActions(
-      mealTypes: mealTypes,
-      onStartMeal: onStartMeal,
-    ),
+    if (!isFutureDay) ...[
+      FilledButton.icon(
+        key: NutritionDayView.logMealButtonKey,
+        onPressed: () {
+          unawaited(
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => MealScreen.newMeal(day: day.localDate),
+              ),
+            ),
+          );
+        },
+        icon: const Icon(Icons.add),
+        label: Text(context.l10n.nutritionLogMeal),
+      ),
+      const SizedBox(height: AppDimens.dense),
+    ],
+    _MealTypeActions(mealTypes: mealTypes),
     const SizedBox(height: AppDimens.touchTarget),
   ];
 }
@@ -399,13 +389,9 @@ class _NutrientSummaryTile extends StatelessWidget {
 }
 
 class _MealTypeActions extends ConsumerWidget {
-  const _MealTypeActions({
-    required this.mealTypes,
-    required this.onStartMeal,
-  });
+  const _MealTypeActions({required this.mealTypes});
 
   final AsyncValue<List<MealTypeRecord>> mealTypes;
-  final Future<String> Function(MealTypeRecord mealType) onStartMeal;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -417,29 +403,6 @@ class _MealTypeActions extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Start Meal', style: context.textStyles.h2),
-            const SizedBox(height: AppDimens.dense),
-            Wrap(
-              spacing: AppDimens.dense,
-              runSpacing: AppDimens.dense,
-              children: [
-                for (final type in types)
-                  OutlinedButton.icon(
-                    key: NutritionDayView.startMealButtonKey(type.id),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: context.colors.textPrimary,
-                    ),
-                    onPressed: () {
-                      unawaited(
-                        onStartMeal(type),
-                      );
-                    },
-                    icon: const Icon(Icons.add),
-                    label: Text(type.name),
-                  ),
-              ],
-            ),
-            const SizedBox(height: AppDimens.dense),
             TextButton.icon(
               key: NutritionDayView.manageMealTypesButtonKey,
               style: TextButton.styleFrom(
@@ -974,90 +937,94 @@ class _NutritionGoalFormState extends ConsumerState<_NutritionGoalForm> {
   }
 }
 
-class _MealSummary extends ConsumerWidget {
-  const _MealSummary({
-    required this.meal,
-    required this.onFoodSelected,
-  });
+/// A Meal card: `<time> · <type>` (§6), its Food Entries, then its energy
+/// total. A Meal with no Food Entries reads `<time> · <type> · add foods`.
+/// The time is [mealTimeText]: the clock at the Meal's frozen offset, or
+/// `time not recorded` for a `date` Meal. Tapping the card opens the Meal
+/// screen in its saved state, where foods are added, removed and changed.
+class _MealSummary extends StatelessWidget {
+  const _MealSummary({required this.meal});
 
   final NutritionDayMealRecord meal;
-  final ValueChanged<FoodPickerItem>? onFoodSelected;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final energy = meal.totals[NutrientId.energy];
-    final localizations = MaterialLocalizations.of(context);
-    final startedAt = localizations.formatTimeOfDay(
-      TimeOfDay.fromDateTime(meal.meal.startedAt.toLocal()),
-    );
+    final time = mealTimeText(context, meal.meal);
+    final type = meal.meal.mealType;
+    final hasEntries = meal.entries.isNotEmpty;
+    final typeAndHint =
+        hasEntries ? type : l10n.mealHeaderLabel(type, l10n.mealHeaderAddFoods);
+    final borderRadius = BorderRadius.circular(8);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppDimens.dense),
-      child: DecoratedBox(
+      child: Material(
         key: NutritionDayView.mealCardKey(meal.meal.id),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          border: Border.all(color: context.colors.divider),
-          borderRadius: BorderRadius.circular(8),
+        color: context.colors.surface,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: context.colors.divider),
+          borderRadius: borderRadius,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppDimens.dense),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.restaurant_outlined, size: 18),
-                  const SizedBox(width: AppDimens.dense),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        clipBehavior: Clip.antiAlias,
+        child: Semantics(
+          button: true,
+          label: l10n.nutritionMealCardSemantics(time, typeAndHint),
+          child: InkWell(
+            borderRadius: borderRadius,
+            onTap: () {
+              unawaited(
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => MealScreen.existing(mealId: meal.meal.id),
+                  ),
+                ),
+              );
+            },
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: AppDimens.touchTarget,
+                minWidth: double.infinity,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(AppDimens.dense),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          meal.meal.mealType,
-                          style: context.textStyles.body,
-                        ),
-                        Text(
-                          startedAt,
-                          style: context.textStyles.label.copyWith(
-                            color: context.colors.textSecondary,
+                        const Icon(Icons.restaurant_outlined, size: 18),
+                        const SizedBox(width: AppDimens.dense),
+                        Expanded(
+                          child: ExcludeSemantics(
+                            child: Text(
+                              l10n.mealHeaderLabel(time, typeAndHint),
+                              style: context.textStyles.body,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Text(
-                    _formatNutrientTotal(energy),
-                    style: context.textStyles.body.copyWith(
-                      color: context.colors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-              if (meal.entries.isNotEmpty) ...[
-                const SizedBox(height: AppDimens.dense),
-                for (final entry in meal.entries) _FoodEntryLine(entry: entry),
-              ],
-              const SizedBox(height: AppDimens.dense),
-              OutlinedButton.icon(
-                key: NutritionDayView.addFoodButtonKey(meal.meal.id),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: context.colors.textPrimary,
+                    if (hasEntries) ...[
+                      const SizedBox(height: AppDimens.dense),
+                      for (final entry in meal.entries)
+                        _FoodEntryLine(entry: entry),
+                      const SizedBox(height: AppDimens.dense / 2),
+                      Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: Text(
+                          _formatNutrientTotal(energy),
+                          style: context.textStyles.body.copyWith(
+                            color: context.colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                onPressed: () {
-                  unawaited(
-                    _showAddFoodPicker(
-                      context,
-                      ref,
-                      meal.meal,
-                      onFoodSelected,
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('Add food'),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1183,72 +1150,6 @@ class _ReviewFlagMarker extends StatelessWidget {
       ),
     );
   }
-}
-
-Future<void> _showAddFoodPicker(
-  BuildContext context,
-  WidgetRef ref,
-  MealRecord meal,
-  ValueChanged<FoodPickerItem>? onFoodSelected,
-) async {
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    builder: (sheetContext) {
-      return FractionallySizedBox(
-        heightFactor: 0.88,
-        child: AddFoodPicker(
-          target: ExistingMealTarget(meal.id),
-          onFoodSelected: (food) {
-            Navigator.of(sheetContext).pop();
-            if (onFoodSelected != null) {
-              onFoodSelected(food);
-              return;
-            }
-            unawaited(_showLogPortion(context, ref, meal, food));
-          },
-          onQuickEntry: (draft) {
-            return ref
-                .read(nutritionDayControllerProvider.notifier)
-                .logQuickEntry(
-                  target: ExistingMealTarget(meal.id),
-                  entry: draft,
-                )
-                .then((_) {});
-          },
-        ),
-      );
-    },
-  );
-}
-
-Future<void> _showLogPortion(
-  BuildContext context,
-  WidgetRef ref,
-  MealRecord meal,
-  FoodPickerItem food,
-) async {
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    builder: (_) {
-      return FractionallySizedBox(
-        heightFactor: 0.82,
-        child: LogPortionScreen(
-          target: ExistingMealTarget(meal.id),
-          food: food,
-          onSave: (draft) {
-            return ref
-                .read(nutritionDayControllerProvider.notifier)
-                .logFoodEntrySnapshot(
-                  target: ExistingMealTarget(meal.id),
-                  entry: draft,
-                );
-          },
-        ),
-      );
-    },
-  );
 }
 
 String _formatNutrientTotal(NutrientTotal total) {

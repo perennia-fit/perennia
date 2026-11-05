@@ -1,7 +1,7 @@
 # Meal Logging
 
 - **Author:** Leonardo Pinheiro
-- **Status:** Approved
+- **Status:** Current
 - **Date:** 2026-11-02
 
 Related documents:
@@ -1290,7 +1290,7 @@ during a first food and during Log again from the Meal screen; manual checks 1 t
 | `apps/mobile/lib/features/nutrition/controllers/nutrition_day_controller.dart` | Remove `startMeal` and `logQuickEntryForMeal`. |
 | `apps/mobile/lib/domain/nutrition/nutrition_day_assembly.dart` | Apply the §6 order. |
 | `apps/mobile/lib/features/home/widgets/home_screen.dart` | The Log sheet's Food item becomes Meal (`homeLogMeal`), opens the Meal screen for the selected day, and is hidden on a future day; rename `logFoodKey` to `logMealKey`; Today's Nutrition view replaces `onStartMeal` with the `Log meal` button. |
-| `apps/mobile/lib/l10n/app_en.arb` and generated localisations | Add `homeLogMeal`, `nutritionLogMeal`, the header forms (`now`, `Choose time`, `add foods`, `time not recorded`), the header's semantic label, the time-shift buttons, `Add foods later`, `Your meals`, `Add to {time} · {type}`, `Meal logged` and `Undo`, the Undo-bar messages `Food removed` (`mealFoodRemoved`) and `Portion updated` (`mealPortionUpdated`) (added while implementing PR 3), Delete meal and its confirmation, and the future-time confirmation. Remove `homeLogFood`. Remove the literal Start Meal strings from the widgets. |
+| `apps/mobile/lib/l10n/app_en.arb` and generated localisations | Add `homeLogMeal`, `nutritionLogMeal`, the header forms (`now`, `Choose time`, `add foods`, `time not recorded`), the header's semantic label, the time-shift buttons, `Add foods later`, `Your meals`, `Add to {time} · {type}`, `Meal logged` and `Undo`, the Undo-bar messages `Food removed` (`mealFoodRemoved`) and `Portion updated` (`mealPortionUpdated`) (added while implementing PR 3), the Meal card's semantic label `{time}, {type}. Open meal` (`nutritionMealCardSemantics`) (added while implementing PR 3), Delete meal and its confirmation, and the future-time confirmation. Remove `homeLogFood`. Remove the literal Start Meal strings from the widgets. |
 
 **Tests:**
 

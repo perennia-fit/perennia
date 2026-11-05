@@ -250,12 +250,6 @@ abstract class AppLocalizations {
   /// **'Could not start workout. Try again.'**
   String get homeStartWorkoutFailed;
 
-  /// No description provided for @homeLogFood.
-  ///
-  /// In en, this message translates to:
-  /// **'Food'**
-  String get homeLogFood;
-
   /// No description provided for @homeLogDose.
   ///
   /// In en, this message translates to:
@@ -5636,6 +5630,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Log meal'**
   String get nutritionLogMeal;
+
+  /// Screen reader label of a Meal card on the Nutrition Day; tapping the card opens the Meal screen. The type may carry the 'add foods' hint.
+  ///
+  /// In en, this message translates to:
+  /// **'{time}, {type}. Open meal'**
+  String nutritionMealCardSemantics(String time, String type);
 
   /// The Meal screen's app bar title.
   ///

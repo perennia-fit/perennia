@@ -88,7 +88,7 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
 
 - **Today root** — the daily authored-log dashboard: date header with swipe/arrow
   navigation, `Training | Nutrition | Protocols` day views, contextual Routine access,
-  and one **Log** action for Workout, Food, and Dose. Protocols shows the day's
+  and one **Log** action for Workout, Meal, and Dose. Protocols shows the day's
   planned and logged doses behind its lock, and a device setting hides the tab for
   users who want it out of sight. Training renders
   the exercise log as cards (exercise name + set rows of value × reps), with colored

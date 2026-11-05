@@ -91,9 +91,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeStartWorkoutFailed => 'Could not start workout. Try again.';
 
   @override
-  String get homeLogFood => 'Food';
-
-  @override
   String get homeLogDose => 'Dose';
 
   @override
@@ -3547,6 +3544,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get nutritionLogMeal => 'Log meal';
+
+  @override
+  String nutritionMealCardSemantics(String time, String type) {
+    return '$time, $type. Open meal';
+  }
 
   @override
   String get mealScreenTitle => 'Meal';
