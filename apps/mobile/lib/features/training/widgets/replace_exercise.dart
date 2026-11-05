@@ -201,7 +201,7 @@ void showTrainingSnackBar(
                 },
                 child: Text(message),
               ),
-        duration: Duration(seconds: onUndo == null ? 2 : 4),
+        duration: TrainingConfirmation.durationFor(hasUndo: onUndo != null),
         persist: false,
         action: onUndo == null || undoLabel == null
             ? null

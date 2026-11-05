@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
@@ -10,6 +10,7 @@ import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/analytics/progress_measure.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
+import 'package:perennia/features/analytics/widgets/exercise_overview_screen.dart';
 import 'package:perennia/features/home/widgets/finish_summary_sheet.dart';
 import 'package:perennia/features/home/widgets/workout_duration.dart';
 import 'package:perennia/features/home/widgets/workout_screen.dart';
@@ -20,6 +21,8 @@ import 'package:perennia/features/template_divergence/repositories/template_dive
 import 'package:perennia/l10n/app_localizations_en.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
+
+import '../../support/clipboard_capture.dart';
 
 const _emDash = '—';
 const _openKey = Key('test.open-sheet');
@@ -378,23 +381,7 @@ void main() {
     final fixture = (await tester.runAsync(
       () => _createLowerB(repositories),
     ))!;
-    final copied = <String>[];
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          final arguments = call.arguments as Map<Object?, Object?>;
-          copied.add(arguments['text']! as String);
-        }
-        return null;
-      },
-    );
-    addTearDown(() {
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      );
-    });
+    final copied = captureClipboard(tester);
     await _openSheet(
       tester,
       repositories,
@@ -731,6 +718,104 @@ void main() {
     await _settle(tester);
     expect(sheet, findsNothing);
   });
+
+  _testSheet(
+      'a New Best tap opens Exercise Overview over the sheet, and the sheet is '
+      'still there on return', (tester) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    await _openWorkoutScreen(tester, repositories, fixture.workoutId);
+
+    await tester
+        .tap(find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId)));
+    await _waitFor(tester, () => _isShown(find.byType(NewBestRow)));
+    await _settle(tester);
+
+    await tester.tap(find.byType(NewBestRow));
+    await _waitFor(tester, () => _isShown(find.byType(ExerciseOverviewScreen)));
+    await _settle(tester);
+    expect(find.byType(ExerciseOverviewScreen), findsOneWidget);
+
+    // A page route's reverse transition outlasts one _settle.
+    await tester.binding.handlePopRoute();
+    await _waitFor(
+        tester, () => !_isShown(find.byType(ExerciseOverviewScreen)));
+    await _settle(tester);
+
+    expect(find.byType(ExerciseOverviewScreen), findsNothing);
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+    expect(find.byType(WorkoutScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await _expectBackAtOpener(tester);
+  });
+
+  _testSheet(
+      'a Workout that goes unavailable under the sheet leaves Done, which '
+      'still returns to the opener', (tester) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    await _openWorkoutScreen(tester, repositories, fixture.workoutId);
+
+    await tester
+        .tap(find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId)));
+    await _waitFor(tester, () => _isShown(find.byType(NewBestRow)));
+    await _settle(tester);
+
+    await tester.runAsync(
+      () => repositories.workoutSessions.softDelete(fixture.workoutId),
+    );
+    await _waitFor(
+      tester,
+      () => !_isShown(find.byKey(FinishSummarySheet.copySummaryKey)),
+    );
+    await _settle(tester);
+
+    expect(find.byKey(FinishSummarySheet.doneKey), findsOneWidget);
+    expect(find.byKey(FinishSummarySheet.copySummaryKey), findsNothing);
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await _expectBackAtOpener(tester);
+  });
+
+  _testSheet('at 2x text the Update row and its lines show in full', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories),
+    ))!;
+    await _openSheet(
+      tester,
+      repositories,
+      fixture.workoutId,
+      divergenceSummary: fixture.divergenceSummary,
+      surfaceSize: const Size(360, 640),
+      textScaler: const TextScaler.linear(2),
+    );
+    await _waitFor(tester, () => _isShown(find.byType(NewBestRow)));
+    await _settle(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(_textsUnder(tester, FinishSummarySheet.updateTemplateKey), [
+      'Update "Lower B"',
+      'Remove Hip Thrust',
+      'Deadlift: sets changed',
+    ]);
+    for (final text in [
+      'Update "Lower B"',
+      'Remove Hip Thrust',
+      'Deadlift: sets changed',
+      'Deadlift · 140 kg',
+    ]) {
+      expect(
+        tester.renderObject<RenderParagraph>(find.text(text)).didExceedMaxLines,
+        isFalse,
+        reason: text,
+      );
+    }
+  });
 }
 
 void _testSheet(String description, WidgetTesterCallback callback) {
@@ -874,14 +959,14 @@ class _LowerB {
   final TemplateDivergenceSummary divergenceSummary;
 }
 
-/// Pumps a screen with a button that opens the sheet, and opens it. The
-/// [progress] override skips the real New Bests read, which runs `compute`,
-/// for a test about something else.
-Future<void> _openSheet(
+/// Pumps a small screen with one button, which runs [onPressed]. The tests'
+/// openers differ only in that callback and in the wait after the tap.
+Future<void> _pumpHost(
   WidgetTester tester,
-  TrainingRepositories repositories,
-  String workoutId, {
-  required TemplateDivergenceSummary? divergenceSummary,
+  TrainingRepositories repositories, {
+  required Key buttonKey,
+  required String buttonLabel,
+  required void Function(BuildContext) onPressed,
   ProgressFeatureRepository? progress,
   TemplateDivergenceFeatureRepository? divergence,
   SettingsRepository? settings,
@@ -920,21 +1005,49 @@ Future<void> _openSheet(
           body: Builder(
             builder: (context) => Center(
               child: TextButton(
-                key: _openKey,
-                onPressed: () => unawaited(
-                  showFinishSummarySheet(
-                    context,
-                    workoutId: workoutId,
-                    divergenceSummary: divergenceSummary,
-                  ),
-                ),
-                child: const Text('Open'),
+                key: buttonKey,
+                onPressed: () => onPressed(context),
+                child: Text(buttonLabel),
               ),
             ),
           ),
         ),
       ),
     ),
+  );
+}
+
+/// Pumps a screen with a button that opens the sheet, and opens it. The
+/// [progress] override skips the real New Bests read, which runs `compute`,
+/// for a test about something else.
+Future<void> _openSheet(
+  WidgetTester tester,
+  TrainingRepositories repositories,
+  String workoutId, {
+  required TemplateDivergenceSummary? divergenceSummary,
+  ProgressFeatureRepository? progress,
+  TemplateDivergenceFeatureRepository? divergence,
+  SettingsRepository? settings,
+  Size surfaceSize = const Size(400, 900),
+  TextScaler? textScaler,
+}) async {
+  await _pumpHost(
+    tester,
+    repositories,
+    buttonKey: _openKey,
+    buttonLabel: 'Open',
+    onPressed: (context) => unawaited(
+      showFinishSummarySheet(
+        context,
+        workoutId: workoutId,
+        divergenceSummary: divergenceSummary,
+      ),
+    ),
+    progress: progress,
+    divergence: divergence,
+    settings: settings,
+    surfaceSize: surfaceSize,
+    textScaler: textScaler,
   );
   await tester.tap(find.byKey(_openKey));
   await tester.pump();
@@ -949,38 +1062,15 @@ Future<void> _openWorkoutScreen(
   TrainingRepositories repositories,
   String workoutId,
 ) async {
-  tester.view.physicalSize = const Size(400, 900);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        appDatabaseProvider.overrideWith((ref) => repositories.database),
-        trainingRepositoriesProvider.overrideWith((ref) => repositories),
-        settingsRepositoryProvider.overrideWith(
-          (ref) => InMemorySettingsRepository(),
-        ),
-      ],
-      child: MaterialApp(
-        theme: AppTheme.light(),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => Center(
-              child: TextButton(
-                key: _pushWorkoutKey,
-                onPressed: () => unawaited(
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => WorkoutScreen(workoutId: workoutId),
-                    ),
-                  ),
-                ),
-                child: const Text('Open Workout'),
-              ),
-            ),
-          ),
+  await _pumpHost(
+    tester,
+    repositories,
+    buttonKey: _pushWorkoutKey,
+    buttonLabel: 'Open Workout',
+    onPressed: (context) => unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => WorkoutScreen(workoutId: workoutId),
         ),
       ),
     ),

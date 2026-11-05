@@ -65,6 +65,8 @@ import 'package:perennia/features/up_next/repositories/up_next_feature_repositor
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
+import 'support/clipboard_capture.dart';
+
 void main() {
   testWidgets('launches home through the ProviderScope app root',
       (tester) async {
@@ -2104,7 +2106,7 @@ void main() {
       'finishing a workout opens the summary over the Workout, and Done '
       'returns to Home', (tester) async {
     final repository = _FinishableWorkoutHomeRepository();
-    final copiedSummaries = _captureClipboard(tester);
+    final copiedSummaries = captureClipboard(tester);
 
     await tester.pumpWidget(_finishableWorkoutApp(repository));
     await tester.pump();
@@ -2184,7 +2186,7 @@ void main() {
   testWidgets('the Workout menu\'s Share copies the text, and says so for 2 s',
       (tester) async {
     final repository = _FinishableWorkoutHomeRepository();
-    final copiedSummaries = _captureClipboard(tester);
+    final copiedSummaries = captureClipboard(tester);
 
     await tester.pumpWidget(_finishableWorkoutApp(repository));
     await tester.pump();
@@ -3405,28 +3407,6 @@ Widget _finishableWorkoutApp(_FinishableWorkoutHomeRepository repository) {
     ],
     child: const PerenniaApp(),
   );
-}
-
-/// The texts put on the clipboard during the test.
-List<String> _captureClipboard(WidgetTester tester) {
-  final copied = <String>[];
-  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-    SystemChannels.platform,
-    (call) async {
-      if (call.method == 'Clipboard.setData') {
-        final arguments = call.arguments as Map<Object?, Object?>;
-        copied.add(arguments['text']! as String);
-      }
-      return null;
-    },
-  );
-  addTearDown(() {
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      null,
-    );
-  });
-  return copied;
 }
 
 /// An open, zero-set workout used to exercise the Finish flow: the summary
