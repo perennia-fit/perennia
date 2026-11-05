@@ -112,3 +112,22 @@ export function offsetMinutesInTimezone(instant: Date, timeZone: string): number
   const instantSeconds = Math.floor(instant.getTime() / 1000) * 1000;
   return Math.round((wallClockAsUtc - instantSeconds) / 60_000);
 }
+
+/**
+ * The `YYYY-MM-DD` date of `instant` read at a frozen UTC offset of
+ * `offsetMinutes` (east of UTC): the date of `instant + offsetMinutes` read in
+ * UTC. Pure: it needs no zone database, so it is defined for any offset.
+ *
+ * The rule that derives a Meal's `localDate` from its `startedAt` and frozen
+ * offset (docs/designs/meal-logging.md §1). The Dart twin is
+ * `localDateAtOffset` in apps/mobile/lib/domain/common/local_clock.dart; the
+ * golden vector packages/golden-vectors/vectors/m39-meal-validation.json pins
+ * both.
+ */
+export function localDateAtOffset(instant: Date, offsetMinutes: number): string {
+  const shifted = new Date(instant.getTime() + offsetMinutes * 60_000);
+  const year = String(shifted.getUTCFullYear()).padStart(4, "0");
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(shifted.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}

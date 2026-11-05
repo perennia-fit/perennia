@@ -13,12 +13,17 @@ void main() {
     String mealType, {
     NutritionDayDate? localDate,
     int hour = 8,
+    int offsetMinutes = 0,
+    MealTimePrecision timePrecision = MealTimePrecision.instant,
   }) {
+    // [hour] is the UTC hour; the clock reads it at [offsetMinutes].
     return MealRecord(
       id: id,
       mealType: mealType,
       startedAt: DateTime.utc(2026, 6, 16, hour),
       timezone: 'UTC',
+      timezoneOffsetMinutes: offsetMinutes,
+      timePrecision: timePrecision,
       localDate: localDate ?? day1,
       updatedAt: updatedAt,
     );
@@ -54,17 +59,14 @@ void main() {
   List<String> mealIds(NutritionDayRecord day) =>
       day.meals.map((dayMeal) => dayMeal.meal.id).toList();
 
-  test('orders Meals by Meal Type, start time, type name, then id', () {
+  test('orders instant Meals by clock time, whatever their Meal Type', () {
     final day = assembleNutritionDay(
       localDate: day1,
       meals: <MealRecord>[
-        meal('unknown-b', 'Zeta', hour: 6),
-        meal('unknown-a', 'Alpha', hour: 6),
         meal('dinner', 'Dinner', hour: 19),
-        meal('lunch-late', 'Lunch', hour: 13),
-        meal('lunch-b', 'Lunch', hour: 12),
-        meal('lunch-a', 'Lunch', hour: 12),
-        meal('breakfast', 'Breakfast', hour: 20),
+        meal('late-breakfast', 'Breakfast', hour: 15),
+        meal('lunch', 'Lunch', hour: 12),
+        meal('unknown', 'Zeta', hour: 6),
       ],
       entries: const <FoodEntryRecord>[],
       mealTypes: mealTypes,
@@ -72,13 +74,72 @@ void main() {
 
     expect(day.localDate, day1);
     expect(mealIds(day), <String>[
-      'breakfast',
-      'lunch-a',
-      'lunch-b',
-      'lunch-late',
+      'unknown',
+      'lunch',
+      'late-breakfast',
       'dinner',
-      'unknown-a',
-      'unknown-b',
+    ]);
+  });
+
+  test('puts date Meals first, ordered among themselves by sort order', () {
+    const date = MealTimePrecision.date;
+    final day = assembleNutritionDay(
+      localDate: day1,
+      meals: <MealRecord>[
+        meal('instant-early', 'Dinner', hour: 1),
+        meal('date-unknown', 'Zeta', hour: 0, timePrecision: date),
+        meal('date-dinner', 'Dinner', hour: 0, timePrecision: date),
+        meal('date-breakfast', 'Breakfast', hour: 23, timePrecision: date),
+        meal('instant-late', 'Breakfast', hour: 9),
+      ],
+      entries: const <FoodEntryRecord>[],
+      mealTypes: mealTypes,
+    );
+
+    expect(mealIds(day), <String>[
+      'date-breakfast',
+      'date-dinner',
+      'date-unknown',
+      'instant-early',
+      'instant-late',
+    ]);
+  });
+
+  test('orders Meals with different frozen offsets by clock, not instant', () {
+    // 'abroad' is the earlier instant (10:00 UTC) but reads 12:00 at +02:00;
+    // 'home' is the later instant (11:00 UTC) and reads 11:00 at UTC.
+    final day = assembleNutritionDay(
+      localDate: day1,
+      meals: <MealRecord>[
+        meal('abroad', 'Lunch', hour: 10, offsetMinutes: 120),
+        meal('home', 'Lunch', hour: 11),
+      ],
+      entries: const <FoodEntryRecord>[],
+      mealTypes: mealTypes,
+    );
+
+    expect(mealIds(day), <String>['home', 'abroad']);
+  });
+
+  test('breaks ties by id', () {
+    const date = MealTimePrecision.date;
+    final day = assembleNutritionDay(
+      localDate: day1,
+      meals: <MealRecord>[
+        meal('instant-b', 'Dinner', hour: 12),
+        meal('instant-a', 'Breakfast', hour: 12),
+        meal('date-b', 'Lunch', timePrecision: date),
+        meal('date-a', 'Lunch', hour: 20, timePrecision: date),
+      ],
+      entries: const <FoodEntryRecord>[],
+      mealTypes: mealTypes,
+    );
+
+    expect(mealIds(day), <String>[
+      'date-a',
+      'date-b',
+      'instant-a',
+      'instant-b',
     ]);
   });
 

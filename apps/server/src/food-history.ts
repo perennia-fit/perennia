@@ -18,8 +18,38 @@ export const FOOD_HISTORY_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
  * seconds, so it cannot see milliseconds, and the two must agree on the
  * latest entry, its Portion and the 90-day window.
  */
-function toSecond(ms: number): number {
+export function toSecond(ms: number): number {
   return Math.floor(ms / 1000) * 1000;
+}
+
+/** The fields of a Food Entry that decide whether Food or Meal History reads it. */
+export type HistoryFoodEntryFields = {
+  kind: string;
+  foodSource: string | null;
+  foodId: string | null;
+  isLiquid: boolean | null;
+  deletedAt: string | null;
+};
+
+/**
+ * Whether a Food Entry can count towards Food History or Meal History: an
+ * active `food` entry with a Food Source, a Food id and a liquid flag, and not
+ * an entry of an archived User Food. Archiving is the user-facing delete, so
+ * neither history offers the Food again; its entries stay. Each builder adds
+ * its own rules about the entry's Meal.
+ */
+export function isHistoryFoodEntry<E extends HistoryFoodEntryFields>(
+  entry: E,
+  archivedUserFoodIds: ReadonlySet<string>
+): entry is E & { foodSource: string; foodId: string; isLiquid: boolean } {
+  return (
+    entry.deletedAt === null &&
+    entry.kind === "food" &&
+    entry.foodSource !== null &&
+    entry.foodId !== null &&
+    entry.isLiquid !== null &&
+    !(entry.foodSource === "user" && archivedUserFoodIds.has(entry.foodId))
+  );
 }
 
 export type FoodHistoryPortion = {
@@ -118,19 +148,14 @@ export function buildFoodHistory({
   for (const entry of entries) {
     const startedAt = mealStarts.get(entry.mealId);
     const updatedAt = toSecond(Date.parse(entry.updatedAt));
-    const { foodSource, foodId } = entry;
     if (
-      entry.deletedAt !== null ||
       startedAt === undefined ||
       !Number.isFinite(updatedAt) ||
-      entry.kind !== "food" ||
-      foodSource === null ||
-      foodId === null ||
-      entry.isLiquid === null ||
-      (foodSource === "user" && archived.has(foodId))
+      !isHistoryFoodEntry(entry, archived)
     ) {
       continue;
     }
+    const { foodSource, foodId } = entry;
     const counted: CountedEntry = {
       id: entry.id,
       foodSource,
@@ -198,6 +223,6 @@ function latestFirst(left: CountedEntry, right: CountedEntry): number {
 }
 
 /** Code-unit order, as SQLite's default BINARY collation orders ASCII text. */
-function compareText(left: string, right: string): number {
+export function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }

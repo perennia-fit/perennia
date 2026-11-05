@@ -4900,6 +4900,13 @@
             "items": {
               "$ref": "#/components/schemas/AgentMealBatchWriteEntryResult"
             }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentMealBatchWriteIssue"
+            },
+            "description": "Meal-level soft warnings (for example meal_time_in_future). Per-entry nutrient warnings stay on entries[].warnings."
           }
         },
         "required": [
@@ -4909,7 +4916,8 @@
           "batchId",
           "mealId",
           "serverClock",
-          "entries"
+          "entries",
+          "warnings"
         ]
       },
       "AgentMealBatchWriteEntryResult": {
@@ -5031,6 +5039,38 @@
         ],
         "description": "Nutrient for this issue, or null for Portion-level rules."
       },
+      "AgentMealBatchWriteIssue": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AgentNutrientValidationIssue"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "itemIndex": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "Index of the Food Entry item that produced the issue, or null for a Meal-level issue."
+              },
+              "entryId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "description": "Client-supplied Food Entry id for the failed item, or null for a Meal-level issue."
+              }
+            },
+            "required": [
+              "itemIndex",
+              "entryId"
+            ]
+          }
+        ]
+      },
       "AgentMealBatchWriteErrorResponse": {
         "type": "object",
         "properties": {
@@ -5066,32 +5106,6 @@
           "errors",
           "warnings",
           "limits"
-        ]
-      },
-      "AgentMealBatchWriteIssue": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/AgentNutrientValidationIssue"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "itemIndex": {
-                "type": "integer",
-                "minimum": 0,
-                "description": "Index of the Food Entry item that produced the issue."
-              },
-              "entryId": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Client-supplied Food Entry id for the failed item."
-              }
-            },
-            "required": [
-              "itemIndex",
-              "entryId"
-            ]
-          }
         ]
       },
       "AgentNutrientValidationLimits": {
@@ -5172,9 +5186,9 @@
             "items": {
               "$ref": "#/components/schemas/AgentMealBatchWriteEntry"
             },
-            "minItems": 1,
+            "minItems": 0,
             "maxItems": 100,
-            "description": "Food Entries to apply atomically as one Activity Log batch."
+            "description": "Food Entries to apply atomically with the Meal fields as one Activity Log batch. May be empty when the request sends Meal fields."
           }
         },
         "required": [
@@ -5193,49 +5207,56 @@
           },
           "mealType": {
             "type": "string",
-            "minLength": 1,
-            "description": "Meal Type (eating-occasion label, e.g. Breakfast/Lunch/Dinner/Snack)."
+            "description": "Meal Type label, stored as sent. Required to create a Meal; omit it to keep the stored value."
           },
           "startedAt": {
             "type": "string",
-            "minLength": 1,
-            "description": "Meal start instant in UTC."
+            "format": "date-time",
+            "description": "Meal start instant in UTC. Required to create a Meal. Sent with timezoneOffsetMinutes, timezone, or both; omit the whole time block to keep the stored time."
           },
           "endedAt": {
             "type": [
               "string",
               "null"
             ],
-            "minLength": 1,
-            "default": null,
-            "description": "Meal end instant in UTC, or null while still open."
+            "format": "date-time",
+            "description": "Meal end instant in UTC. Omit to keep the stored value; null clears it."
           },
           "timezone": {
             "type": "string",
             "minLength": 1,
-            "description": "IANA timezone captured at Meal creation."
+            "description": "The Meal's time zone as entered: an IANA name lets the server derive the offset; any other label is stored for display only."
+          },
+          "timezoneOffsetMinutes": {
+            "type": "integer",
+            "minimum": -720,
+            "maximum": 840,
+            "description": "UTC offset at startedAt, in minutes east of UTC (UTC-3 is -180), -720 to +840. Frozen on the Meal; wins over the offset derived from timezone. Sent only with startedAt."
           },
           "localDate": {
             "type": "string",
-            "minLength": 1,
-            "description": "Nutrition Day date (YYYY-MM-DD) the Meal falls on in its local timezone."
+            "description": "Nutrition Day date (YYYY-MM-DD). Ignored when the offset is known (sent, or derived from an IANA timezone): the server derives it from startedAt. Required with startedAt when the offset can't be resolved. Sent only with startedAt.",
+            "example": "2026-10-26"
+          },
+          "timePrecision": {
+            "type": "string",
+            "enum": [
+              "instant",
+              "date"
+            ],
+            "description": "instant: startedAt is the time eaten. date: only the date is known and startedAt is local midnight. Sending startedAt sets instant unless this is also sent; omit to keep the stored value."
           },
           "deletedAt": {
             "type": [
               "string",
               "null"
             ],
-            "minLength": 1,
-            "default": null,
-            "description": "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge."
+            "format": "date-time",
+            "description": "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value; null un-archives. Archiving also needs every Food Entry stored active in the Meal sent with deletedAt set in the same request, with updatedAt omitted or newer than the stored entry's, or the write fails with 422 meal_archived."
           }
         },
         "required": [
-          "id",
-          "mealType",
-          "startedAt",
-          "timezone",
-          "localDate"
+          "id"
         ]
       },
       "AgentMealBatchWriteEntry": {
@@ -5344,7 +5365,7 @@
           },
           "updatedAt": {
             "type": "string",
-            "minLength": 1,
+            "format": "date-time",
             "description": "Client-observed row update clock. Defaults to the server receive time when omitted."
           },
           "deletedAt": {
@@ -5352,9 +5373,8 @@
               "string",
               "null"
             ],
-            "minLength": 1,
-            "default": null,
-            "description": "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge."
+            "format": "date-time",
+            "description": "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value (null for a new entry)."
           }
         },
         "required": [
@@ -7265,7 +7285,8 @@
           "reverted",
           "skipped_stale",
           "skipped_missing",
-          "skipped_unsupported"
+          "skipped_unsupported",
+          "skipped_dependent"
         ]
       },
       "AgentActivityBatchNotFoundResponse": {
@@ -12114,6 +12135,21 @@
             "type": "string",
             "minLength": 1
           },
+          "timezoneOffsetMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The Meal's UTC offset in minutes, frozen when its time was set; null when the offset is unknown (the Meal was logged with only a time zone abbreviation)."
+          },
+          "timePrecision": {
+            "type": "string",
+            "enum": [
+              "instant",
+              "date"
+            ],
+            "description": "instant when startedAt is the time the user ate; date when only the Meal's date is known, as with date-only imports."
+          },
           "entries": {
             "type": "array",
             "items": {
@@ -12278,6 +12314,8 @@
           "endedAt",
           "timezone",
           "localDate",
+          "timezoneOffsetMinutes",
+          "timePrecision",
           "entries"
         ]
       },
@@ -12365,6 +12403,112 @@
           "recentCount",
           "lastLoggedAt",
           "lastPortion"
+        ]
+      },
+      "AgentMealHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentMealHistoryItem"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AgentMealHistoryItem": {
+        "type": "object",
+        "properties": {
+          "foods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentMealHistoryFood"
+            },
+            "description": "The distinct Foods of the meal, ordered by `foodSource:foodId` in byte order."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Meals in the last 90 days with this set of Foods."
+          },
+          "lastMealId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The most recent Meal with this set of Foods, Portions and Quick Entries included."
+          },
+          "lastStartedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ISO-8601 start of the most recent Meal with this set of Foods."
+          }
+        },
+        "required": [
+          "foods",
+          "count",
+          "lastMealId",
+          "lastStartedAt"
+        ]
+      },
+      "AgentMealHistoryFood": {
+        "type": "object",
+        "properties": {
+          "foodSource": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Food Source name, such as openFoodFacts, as AgentMealEntry.foodSource carries it."
+          },
+          "foodId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "description": "The Food's name on its Food Entry in the most recent Meal with this set of Foods."
+          }
+        },
+        "required": [
+          "foodSource",
+          "foodId",
+          "name"
+        ]
+      },
+      "AgentMealTypesResponse": {
+        "type": "object",
+        "properties": {
+          "mealTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentMealTypeItem"
+            }
+          }
+        },
+        "required": [
+          "mealTypes"
+        ]
+      },
+      "AgentMealTypeItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "description": "The Meal Type name, as batchWriteAgentMeal's meal.mealType carries it."
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "The position the app lists this Meal Type in."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sortOrder"
         ]
       },
       "AgentNutritionGoalListResponse": {
@@ -19690,7 +19834,7 @@
           "Agent Writes"
         ],
         "summary": "Batch-write a Meal with Food Entries as one Activity Log batch.",
-        "description": "Authenticated agent write path for nutrition. Snapshots a self-describing Food Entry per item (nutrient vector, name, Food Source, serving/package, isLiquid) plus the semantic Portion, validates every item with the shared two-tier nutrient validation module, applies the request atomically, and records one Activity Log batch. No nutrition totals are stored; energy and macros are derived on read. Purge and hard-delete are intentionally absent.",
+        "description": "Authenticated agent write path for nutrition. Writes only the Meal fields a request sends: an absent field keeps its stored value and null clears endedAt or deletedAt. Creating a Meal needs mealType and the time block (startedAt with timezoneOffsetMinutes and/or timezone); the offset is the one sent, else derived from an IANA timezone, and with a known offset localDate is derived. A request whose meal carries only id writes its entries and leaves the Meal row untouched. Snapshots a self-describing Food Entry per item (nutrient vector, name, Food Source, serving/package, isLiquid) plus the semantic Portion, validates every item with the shared two-tier nutrient validation module, applies the request atomically, and records one Activity Log batch. No nutrition totals are stored; energy and macros are derived on read. Purge and hard-delete are intentionally absent.",
         "security": [
           {
             "bearerAuth": []
@@ -19727,8 +19871,28 @@
               }
             }
           },
+          "404": {
+            "description": "The request carries only the Meal id and entries, and no Meal with that id exists (meal_not_found); nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentMealBatchWriteErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The Meal id or a Food Entry id belongs to another account (meal_id_conflict, entry_id_conflict); nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentMealBatchWriteErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
-            "description": "One or more items failed hard validation; no rows were written.",
+            "description": "One or more items or the Meal failed hard validation (nutrient rules, meal_ended_before_start, meal_type_required, meal_create_incomplete, meal_offset_unknown, meal_archived, entry_meal_mismatch); no rows were written.",
             "content": {
               "application/json": {
                 "schema": {
@@ -20949,7 +21113,7 @@
           "Agent Writes"
         ],
         "summary": "Revert an Activity Log batch as a new ordinary write.",
-        "description": "Applies the inverse images of a prior Activity Log batch as a NEW ordinary write batch (mirroring the app's undoBatch), propagating via a sync nudge. Rows whose current state no longer matches the recorded after-image are skipped and surfaced per row (silent LWW). Idempotent by idempotencyKey; nothing is hard-deleted.",
+        "description": "Applies the inverse images of a prior Activity Log batch as a NEW ordinary write batch (mirroring the app's undoBatch), propagating via a sync nudge. Rows whose current state no longer matches the recorded after-image are skipped and surfaced per row (silent LWW); undoing a Meal's creation after another batch added an active Food Entry to it is refused with skipped_dependent. Idempotent by idempotencyKey; nothing is hard-deleted.",
         "security": [
           {
             "bearerAuth": []
@@ -23910,10 +24074,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "description": "Comma-separated list of Meal fields to return. id, mealType, and startedAt are always returned; omitting fields returns the minimal default. Include entries to get the raw Food Entry list for each Meal."
+              "description": "Comma-separated list of Meal fields to return. id, mealType, and startedAt are always returned; omitting fields returns the minimal default (id, mealType, startedAt, timezoneOffsetMinutes, timePrecision). Include entries to get the raw Food Entry list for each Meal."
             },
             "required": false,
-            "description": "Comma-separated list of Meal fields to return. id, mealType, and startedAt are always returned; omitting fields returns the minimal default. Include entries to get the raw Food Entry list for each Meal.",
+            "description": "Comma-separated list of Meal fields to return. id, mealType, and startedAt are always returned; omitting fields returns the minimal default (id, mealType, startedAt, timezoneOffsetMinutes, timePrecision). Include entries to get the raw Food Entry list for each Meal.",
             "name": "fields",
             "in": "query"
           }
@@ -24038,6 +24202,217 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentFoodHistoryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or read storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentNutritionReadUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/meals/history": {
+      "get": {
+        "operationId": "listAgentMealHistory",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "List the user's Meal History: the meals they repeat, most often in the last 90 days first.",
+        "description": "Returns the meals the caller repeats (Meal History, shown in the app as Your meals), derived on each call from live Meals and Food Entries and never stored. A meal is the set of distinct Foods in a timed Meal of the last 90 days holding two or more Foods; Portions and Quick Entries don't count, and archived Meals, date-only Meals and archived User Foods are left out. Ordered by how many Meals had that set, then the most recent one, then the Foods. Each item lists its Foods with the names they had in that most recent Meal, which is lastMealId: the Meal the app's Log again copies, Portions and Quick Entries included. Bounded by limit.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "description": "Maximum meals to return, bounded to 50."
+            },
+            "required": false,
+            "description": "Maximum meals to return, bounded to 50.",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's Meal History, bounded by limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentMealHistoryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or read storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentNutritionReadUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/meal-types": {
+      "get": {
+        "operationId": "listAgentMealTypes",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "List the user's active Meal Types, in the order the app shows them.",
+        "description": "Returns the caller's active Meal Types, ordered by sortOrder then id, as the app lists them. Archived Meal Types are left out. Call it before choosing a mealType for batchWriteAgentMeal: a Meal stores the Meal Type name it was sent, so send a name from this list.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's active Meal Types.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentMealTypesResponse"
                 }
               }
             }

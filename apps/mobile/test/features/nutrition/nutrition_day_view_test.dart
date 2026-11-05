@@ -7,18 +7,17 @@ import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart'
     show
         DuplicateMealTypeNameException,
-        FoodEntrySnapshotDraft,
-        MealDraft,
-        TrainingRepositories;
+        TrainingRepositories,
+        trainingRepositoriesProvider;
 import 'package:perennia/domain/nutrition/nutrition.dart';
+import 'package:perennia/features/nutrition/controllers/meal_screen_controller.dart';
 import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
-import 'package:perennia/features/nutrition/widgets/add_food_picker.dart';
-import 'package:perennia/features/nutrition/widgets/barcode_scanner.dart';
-import 'package:perennia/features/nutrition/widgets/log_portion_screen.dart';
+import 'package:perennia/features/nutrition/widgets/meal_screen.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_attribution.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_day_view.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
+import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
 import 'add_food_repository_fakes.dart';
@@ -102,6 +101,8 @@ void main() {
           ],
           child: MaterialApp(
             theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: const NutritionDayView(),
           ),
         ),
@@ -138,6 +139,8 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: const NutritionDayView(),
         ),
       ),
@@ -173,6 +176,8 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: const NutritionDayView(),
         ),
       ),
@@ -212,6 +217,8 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: const NutritionDayView(),
         ),
       ),
@@ -255,6 +262,8 @@ void main() {
           ],
           child: MaterialApp(
             theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: const NutritionDayView(),
           ),
         ),
@@ -289,6 +298,8 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: const NutritionDayView(),
         ),
       ),
@@ -316,126 +327,6 @@ void main() {
     expect(controller.nextDayCount, 2);
   });
 
-  testWidgets('lists same-type Meals as separate occasions and targets actions',
-      (tester) async {
-    final controller = _FakeNutritionDayController(
-      _nutritionDayWithThreeSnacks(),
-    );
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          nutritionDayControllerProvider.overrideWith(() => controller),
-          settingsRepositoryProvider.overrideWith(
-            (ref) => InMemorySettingsRepository(),
-          ),
-          openFoodFactsRepositoryProvider.overrideWith(
-            (ref) => const StubOpenFoodFactsRepository(),
-          ),
-          addFoodRepositoryProvider.overrideWith(
-            (ref) => const _EmptyAddFoodRepository(),
-          ),
-          mealTypeListProvider.overrideWith(
-            (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
-          ),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: const NutritionDayView(),
-        ),
-      ),
-    );
-    await _pumpUntilFound(tester, find.byKey(NutritionDayView.daySummaryKey));
-    final thirdSnackCard = find.byKey(
-      NutritionDayView.mealCardKey('meal-snack-3'),
-    );
-    await tester.scrollUntilVisible(
-      thirdSnackCard,
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
-
-    expect(find.text('Snack'), findsWidgets);
-    expect(find.text('9:00 PM'), findsOneWidget);
-    expect(thirdSnackCard, findsOneWidget);
-
-    final startSnackButton = find.byKey(
-      NutritionDayView.startMealButtonKey('meal-type-snack'),
-    );
-    await tester.scrollUntilVisible(
-      startSnackButton,
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -96));
-    await tester.pumpAndSettle();
-    await tester.tap(startSnackButton);
-    await tester.pump();
-    expect(controller.startedMealTypes, <String>['Snack']);
-
-    final addFoodButton = find.byKey(
-      NutritionDayView.addFoodButtonKey('meal-snack-2'),
-    );
-    await tester.scrollUntilVisible(
-      addFoodButton,
-      -400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.ensureVisible(addFoodButton);
-    await tester.pumpAndSettle();
-    await tester.tap(addFoodButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(AddFoodPicker.quickAddButtonKey));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(NutritionDayView.quickEntryNameFieldKey),
-      'Crackers',
-    );
-    await tester.enterText(
-      find.byKey(NutritionDayView.quickEntryEnergyFieldKey),
-      '90',
-    );
-    await tester.tap(find.byKey(NutritionDayView.quickEntrySaveButtonKey));
-    await tester.pump();
-
-    expect(controller.loggedMealIds, <String>['meal-snack-2']);
-  });
-
-  testWidgets(
-      'starting a Meal uses the tapped Meal Type without auto-assigning',
-      (tester) async {
-    final controller = _FakeNutritionDayController(_emptyNutritionDay());
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          nutritionDayControllerProvider.overrideWith(() => controller),
-          mealTypeListProvider.overrideWith(
-            (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
-          ),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: const NutritionDayView(),
-        ),
-      ),
-    );
-    await _pumpUntilFound(tester, find.byKey(NutritionDayView.daySummaryKey));
-
-    final dinnerButton = find.byKey(
-      NutritionDayView.startMealButtonKey('meal-type-dinner'),
-    );
-    await tester.scrollUntilVisible(
-      dinnerButton,
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(dinnerButton);
-    await tester.pump();
-
-    expect(controller.startedMealTypes, <String>['Dinner']);
-  });
-
   testWidgets('Meal Type manager adds renames archives and exposes reorder', (
     tester,
   ) async {
@@ -451,6 +342,8 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: const NutritionDayView(),
         ),
       ),
@@ -548,6 +441,8 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: const NutritionDayView(),
         ),
       ),
@@ -594,6 +489,8 @@ void main() {
           ],
           child: MaterialApp(
             theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: const NutritionDayView(),
           ),
         ),
@@ -644,312 +541,306 @@ void main() {
     }
   });
 
-  testWidgets('a selected Your foods row opens prefilled Log Portion and saves',
-      (tester) async {
-    final controller = _FakeNutritionDayController(
-      _nutritionDayWithThreeSnacks(),
-    );
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          nutritionDayControllerProvider.overrideWith(() => controller),
-          settingsRepositoryProvider.overrideWith(
-            (ref) => InMemorySettingsRepository(),
-          ),
-          openFoodFactsRepositoryProvider.overrideWith(
-            (ref) => const StubOpenFoodFactsRepository(),
-          ),
-          addFoodRepositoryProvider.overrideWith(
-            (ref) => _SingleFoodRepository(_pickerFood()),
-          ),
-          mealTypeListProvider.overrideWith(
-            (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
-          ),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: const NutritionDayView(),
-        ),
-      ),
-    );
-    await _pumpUntilFound(
-      tester,
-      find.byKey(NutritionDayView.mealCardKey('meal-snack-2')),
-    );
-
-    final addFoodButton = find.byKey(
-      NutritionDayView.addFoodButtonKey('meal-snack-2'),
-    );
-    await tester.scrollUntilVisible(
-      addFoodButton,
-      -400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(addFoodButton);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(
-        AddFoodPicker.resultKey(_pickerFood()),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Chicken breast'), findsOneWidget);
-    expect(
-      find.byKey(LogPortionScreen.unitChipKey(PortionUnit.gram)),
-      findsOneWidget,
-    );
-    expect(_logPortionAmountText(tester), '1.5');
-    expect(
-      _logPortionReadoutValue(tester, NutrientId.energy),
-      '212.8 kcal',
-    );
-
-    await tester.tap(find.byKey(LogPortionScreen.saveButtonKey));
-    await tester.pumpAndSettle();
-
-    expect(controller.loggedFoodEntries, hasLength(1));
-    final entry = controller.loggedFoodEntries.single;
-    expect(entry.mealId, 'meal-snack-2');
-    expect(entry.foodId, 'usda-chicken');
-    expect(entry.name, 'Chicken breast');
-    expect(entry.foodSource, FoodSource.usda);
-    expect(entry.nutrientsPer100[NutrientId.energy].value, 165);
-    expect(entry.isLiquid, isFalse);
-    expect(entry.servingLabel, 'piece');
-    expect(entry.servingSize, 86);
-    expect(entry.packageSize, isNull);
-    expect(entry.portion.value, 1.5);
-    expect(entry.portion.entered, '1.5');
-    expect(entry.portion.unit, PortionUnit.serving);
-  });
-
-  testWidgets(
-      'CUJ 1: the usual Food is first in Your foods and logs in two taps',
-      (tester) async {
-    // A phone-height surface, so the sheet shows Your foods without scrolling.
-    tester.view.physicalSize = const Size(800, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final database = AppDatabase.inMemory();
-    addTearDown(database.close);
-    final repositories = TrainingRepositories(database);
-    final now = DateTime.now().toUtc();
-    final oatMilk = _oatMilkProduct();
-    Future<void> log(
-      DateTime startedAt, {
-      required String foodId,
-      required String name,
-      required FoodSource foodSource,
-      required Portion portion,
-      required bool isLiquid,
+  group('Meal cards (docs/designs/meal-logging.md §6)', () {
+    Future<void> pumpDay(
+      WidgetTester tester,
+      NutritionDayRecord day, {
+      DateTime? now,
     }) async {
-      final mealId = await repositories.nutrition.createMeal(
-        MealDraft(
-          mealType: 'Breakfast',
-          startedAt: startedAt,
-          timezone: 'UTC',
-          localDate: NutritionDayDate(
-            year: startedAt.year,
-            month: startedAt.month,
-            day: startedAt.day,
-          ),
-        ),
-      );
-      await repositories.nutrition.logFoodEntrySnapshot(
-        entry: FoodEntrySnapshotDraft(
-          mealId: mealId,
-          foodId: foodId,
-          name: name,
-          foodSource: foodSource,
-          nutrientsPer100: oatMilk.nutrientsPer100,
-          isLiquid: isLiquid,
-          portion: portion,
-        ),
-      );
-    }
-
-    // Oat milk most mornings; a one-off snack logged more recently.
-    for (var day = 3; day >= 1; day -= 1) {
-      await log(
-        now.subtract(Duration(days: day)),
-        foodId: oatMilk.id,
-        name: oatMilk.name,
-        foodSource: FoodSource.openFoodFacts,
-        portion: Portion(
-          value: 250,
-          entered: '250',
-          unit: PortionUnit.milliliter,
-        ),
-        isLiquid: true,
-      );
-    }
-    await log(
-      now.subtract(const Duration(hours: 2)),
-      foodId: 'usda-fdc-171077',
-      name: 'Chicken breast',
-      foodSource: FoodSource.usda,
-      portion: Portion(value: 120, entered: '120', unit: PortionUnit.gram),
-      isLiquid: false,
-    );
-    final controller = _FakeNutritionDayController(
-      _nutritionDayWithThreeSnacks(),
-    );
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          nutritionDayControllerProvider.overrideWith(() => controller),
-          settingsRepositoryProvider.overrideWith(
-            (ref) => InMemorySettingsRepository(),
-          ),
-          openFoodFactsRepositoryProvider.overrideWith(
-            (ref) => const StubOpenFoodFactsRepository(),
-          ),
-          addFoodRepositoryProvider.overrideWith(
-            (ref) => RepositoryAddFoodRepository(
-              repositories,
-              openFoodFacts: _DeviceProducts([oatMilk]),
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            nutritionDayControllerProvider.overrideWith(
+              () => _FakeNutritionDayController(day),
             ),
+            mealTypeListProvider.overrideWith(
+              (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
+            ),
+            mealScreenClockProvider.overrideWith(
+              (ref) => () => now ?? DateTime(2026, 6, 26, 16),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const NutritionDayView(),
           ),
-          mealTypeListProvider.overrideWith(
-            (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
-          ),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: const NutritionDayView(),
         ),
-      ),
-    );
-    await _pumpUntilFound(
-      tester,
-      find.byKey(NutritionDayView.mealCardKey('meal-snack-2')),
-    );
-    final addFoodButton = find.byKey(
-      NutritionDayView.addFoodButtonKey('meal-snack-2'),
-    );
-    await tester.scrollUntilVisible(
-      addFoodButton,
-      -400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(addFoodButton);
-    await _pumpUntilFound(tester, find.byKey(AddFoodPicker.yourFoodsLabelKey));
+      );
+      await _pumpUntilFound(tester, find.byKey(NutritionDayView.daySummaryKey));
+    }
 
-    final oatMilkRow = find.byKey(
-      AddFoodPicker.resultKey(_oatMilkPickerKeyItem()),
-    );
-    final chickenRow = find.byKey(
-      const Key('nutrition.addFood.result-usda-usda-fdc-171077'),
-    );
-    expect(
-      tester.getTopLeft(oatMilkRow).dy,
-      lessThan(tester.getTopLeft(chickenRow).dy),
-    );
-    expect(
-      find.descendant(of: oatMilkRow, matching: find.text('Oatly')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: oatMilkRow, matching: find.text('Last: 250 ml')),
-      findsOneWidget,
-    );
+    testWidgets(
+        'a card leads with its time at the frozen offset and its type, '
+        'then entries and totals', (tester) async {
+      await pumpDay(tester, _nutritionDayWithHeaderForms());
 
-    await tester.tap(oatMilkRow);
-    await tester.pumpAndSettle();
-    expect(_logPortionAmountText(tester), '250');
-    await tester.tap(find.byKey(LogPortionScreen.saveButtonKey));
-    await tester.pumpAndSettle();
+      // 02:00 UTC read at +10:00 is 12:00 where it was eaten, whatever the
+      // device's zone.
+      final lunch = find.byKey(NutritionDayView.mealCardKey('meal-lunch'));
+      expect(
+        find.descendant(of: lunch, matching: find.text('12:00 PM · Lunch')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .getTopLeft(
+              find.descendant(
+                  of: lunch, matching: find.text('12:00 PM · Lunch')),
+            )
+            .dy,
+        lessThan(
+          tester
+              .getTopLeft(
+                find.descendant(of: lunch, matching: find.text('Rice')),
+              )
+              .dy,
+        ),
+      );
+      expect(
+        find.descendant(of: lunch, matching: find.text('100 kcal')),
+        findsWidgets,
+      );
 
-    final entry = controller.loggedFoodEntries.single;
-    expect(entry.mealId, 'meal-snack-2');
-    expect(entry.foodId, oatMilk.id);
-    expect(entry.name, 'Oat milk');
-    expect(entry.foodSource, FoodSource.openFoodFacts);
-    expect(entry.portion.entered, '250');
-    expect(entry.portion.unit, PortionUnit.milliliter);
+      // A date Meal never shows a clock time.
+      expect(
+        find.descendant(
+          of: find.byKey(NutritionDayView.mealCardKey('meal-imported')),
+          matching: find.text('time not recorded · Breakfast'),
+        ),
+        findsOneWidget,
+      );
+
+      // A Meal with no Food Entries asks for foods, and has no totals row.
+      final empty = find.byKey(NutritionDayView.mealCardKey('meal-empty'));
+      expect(
+        find.descendant(
+          of: empty,
+          matching: find.text('3:30 PM · Snack · add foods'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: empty, matching: find.textContaining('kcal')),
+        findsNothing,
+      );
+
+      // One Log meal button replaces the per-Meal-Type chips, and cards
+      // carry no Add food button: foods are added on the Meal screen.
+      expect(find.text('Add food'), findsNothing);
+      final scrollable = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(
+        find.byKey(NutritionDayView.logMealButtonKey),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(NutritionDayView.editGoalsButtonKey),
+        200,
+        scrollable: scrollable,
+      );
+      expect(
+        find.byKey(NutritionDayView.manageMealTypesButtonKey),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('lists same-type Meals as separate occasions', (tester) async {
+      await pumpDay(tester, _nutritionDayWithThreeSnacks());
+
+      for (final id in <String>['meal-snack-1', 'meal-snack-2']) {
+        expect(find.byKey(NutritionDayView.mealCardKey(id)), findsOneWidget);
+      }
+      final thirdSnackCard = find.byKey(
+        NutritionDayView.mealCardKey('meal-snack-3'),
+      );
+      await tester.scrollUntilVisible(
+        thirdSnackCard,
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(thirdSnackCard, findsOneWidget);
+      expect(find.text('9:00 PM · Snack'), findsOneWidget);
+    });
+
+    testWidgets('a card is a labelled tap target of at least 48 dp',
+        (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpDay(tester, _nutritionDayWithHeaderForms());
+
+      final empty = find.byKey(NutritionDayView.mealCardKey('meal-empty'));
+      expect(tester.getSize(empty).height, greaterThanOrEqualTo(48));
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'^3:30 PM, Snack · add foods\. Open meal'),
+        ),
+        findsOneWidget,
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+
+      semantics.dispose();
+    });
+
+    testWidgets('Log meal is hidden on a future day, shown on today',
+        (tester) async {
+      await pumpDay(
+        tester,
+        _emptyNutritionDay(),
+        now: DateTime(2026, 6, 25, 23, 50),
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(NutritionDayView.manageMealTypesButtonKey),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.byKey(NutritionDayView.logMealButtonKey), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpDay(
+        tester,
+        _emptyNutritionDay(),
+        now: DateTime(2026, 6, 26, 0, 10),
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(NutritionDayView.logMealButtonKey),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Log meal'), findsOneWidget);
+    });
   });
 
-  testWidgets('barcode scan opens Log Portion with Open Food Facts snapshot',
-      (tester) async {
-    final controller = _FakeNutritionDayController(
-      _nutritionDayWithThreeSnacks(),
-    );
+  group('the Nutrition Day over a real database', () {
+    const day = NutritionDayDate(year: 2026, month: 6, day: 26);
+    late AppDatabase database;
+    late TrainingRepositories repositories;
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          nutritionDayControllerProvider.overrideWith(() => controller),
-          settingsRepositoryProvider.overrideWith(
-            (ref) => InMemorySettingsRepository(),
+    setUp(() async {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+      await repositories.nutrition.ensureDefaultMealTypes();
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<void> pumpDay(WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            trainingRepositoriesProvider.overrideWith((ref) => repositories),
+            selectedNutritionDayProvider.overrideWith(
+              () => _FixedNutritionDay(day),
+            ),
+            mealScreenClockProvider.overrideWith(
+              (ref) => () => DateTime(2026, 6, 26, 16),
+            ),
+            addFoodRepositoryProvider.overrideWith(
+              (ref) => const _NoFoodsRepository(),
+            ),
+            openFoodFactsRepositoryProvider.overrideWith(
+              (ref) => const StubOpenFoodFactsRepository(),
+            ),
+            settingsRepositoryProvider.overrideWith(
+              (ref) => InMemorySettingsRepository(),
+            ),
+            bundleStatusProvider.overrideWith(
+              (ref) => Stream<BundleStatus>.value(BundleStatus.ready),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const NutritionDayView(),
           ),
-          openFoodFactsRepositoryProvider.overrideWith(
-            (ref) => const StubOpenFoodFactsRepository(),
-          ),
-          addFoodRepositoryProvider.overrideWith(
-            (ref) => _BarcodeFoodRepository(_openFoodFactsBar()),
-          ),
-          barcodeScannerProvider.overrideWith(
-            (ref) => const _FakeBarcodeScanner('3017620422003'),
-          ),
-          mealTypeListProvider.overrideWith(
-            (ref) => Stream<List<MealTypeRecord>>.value(_mealTypes()),
-          ),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: const NutritionDayView(),
         ),
-      ),
-    );
-    await _pumpUntilFound(
-      tester,
-      find.byKey(NutritionDayView.mealCardKey('meal-snack-2')),
-    );
+      );
+      await tester.pumpAndSettle();
+    }
 
-    final addFoodButton = find.byKey(
-      NutritionDayView.addFoodButtonKey('meal-snack-2'),
-    );
-    await tester.scrollUntilVisible(
-      addFoodButton,
-      -400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(addFoodButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(AddFoodPicker.scanBarcodeButtonKey));
-    await tester.pumpAndSettle();
+    Future<String> seedMeal(DateTime startedAt, String mealType) {
+      return repositories.nutrition.createMeal(
+        PendingMeal(
+          id: repositories.nutrition.newMealId(),
+          startedAt: startedAt,
+          mealTypeName: mealType,
+        ),
+      );
+    }
 
-    expect(find.text('Hazelnut cocoa spread'), findsOneWidget);
-    expect(
-      find.byKey(LogPortionScreen.unitChipKey(PortionUnit.serving)),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(LogPortionScreen.unitChipKey(PortionUnit.package)),
-      findsOneWidget,
-    );
+    testWidgets(
+        'lists Meals in time order: a 15:00 Breakfast after a 12:00 Lunch',
+        (tester) async {
+      final breakfastId = await seedMeal(
+        DateTime(2026, 6, 26, 15),
+        'Breakfast',
+      );
+      final lunchId = await seedMeal(DateTime(2026, 6, 26, 12), 'Lunch');
 
-    await tester.tap(find.byKey(LogPortionScreen.saveButtonKey));
-    await tester.pumpAndSettle();
+      await pumpDay(tester);
 
-    expect(controller.loggedFoodEntries, hasLength(1));
-    final entry = controller.loggedFoodEntries.single;
-    expect(entry.mealId, 'meal-snack-2');
-    expect(entry.foodId, '3017620422003');
-    expect(entry.name, 'Hazelnut cocoa spread');
-    expect(entry.foodSource, FoodSource.openFoodFacts);
-    expect(entry.nutrientsPer100[NutrientId.energy].value, 539);
-    expect(entry.nutrientsPer100[NutrientId.protein].value, 6.3);
-    expect(entry.isLiquid, isFalse);
-    expect(entry.servingLabel, 'serving');
-    expect(entry.servingSize, 15);
-    expect(entry.packageSize, 400);
-    expect(entry.portion.value, 100);
-    expect(entry.portion.entered, '100');
-    expect(entry.portion.unit, PortionUnit.gram);
+      final lunch = find.byKey(NutritionDayView.mealCardKey(lunchId));
+      final breakfast = find.byKey(NutritionDayView.mealCardKey(breakfastId));
+      expect(lunch, findsOneWidget);
+      expect(breakfast, findsOneWidget);
+      expect(
+        tester.getTopLeft(lunch).dy,
+        lessThan(tester.getTopLeft(breakfast).dy),
+      );
+      expect(find.text('12:00 PM · Lunch · add foods'), findsOneWidget);
+      expect(find.text('3:00 PM · Breakfast · add foods'), findsOneWidget);
+
+      await _unmount(tester);
+    });
+
+    testWidgets('a card tap opens that Meal on the Meal screen',
+        (tester) async {
+      final mealId = await seedMeal(DateTime(2026, 6, 26, 12), 'Lunch');
+
+      await pumpDay(tester);
+      await tester.tap(find.byKey(NutritionDayView.mealCardKey(mealId)));
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<MealScreen>(find.byType(MealScreen));
+      expect(screen.mealId, mealId);
+      expect(
+        find.descendant(
+          of: find.byKey(MealScreen.headerKey),
+          matching: find.text('12:00 PM · Lunch · add foods'),
+        ),
+        findsOneWidget,
+      );
+
+      await _unmount(tester);
+    });
+
+    testWidgets('Log meal opens a new Meal on the shown day', (tester) async {
+      await pumpDay(tester);
+
+      final logMeal = find.byKey(NutritionDayView.logMealButtonKey);
+      await tester.scrollUntilVisible(
+        logMeal,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(logMeal);
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<MealScreen>(find.byType(MealScreen));
+      expect(screen.mealId, isNull);
+      expect(screen.day, day);
+      expect(
+        await database.select(database.meals).get(),
+        isEmpty,
+        reason: 'opening the Meal screen writes nothing',
+      );
+
+      await _unmount(tester);
+    });
   });
 }
 
@@ -963,9 +854,6 @@ class _FakeNutritionDayController extends NutritionDayController {
 
   final NutritionDayRecord day;
   final Set<String> duplicateMealTypeNames;
-  final startedMealTypes = <String>[];
-  final loggedMealIds = <String>[];
-  final loggedFoodEntries = <FoodEntrySnapshotDraft>[];
   final createdMealTypeNames = <String>[];
   final renamedMealTypes = <String>[];
   final reorderedMealTypeIds = <List<String>>[];
@@ -976,16 +864,6 @@ class _FakeNutritionDayController extends NutritionDayController {
   @override
   Stream<NutritionDayState> build() {
     return Stream<NutritionDayState>.value(NutritionDayState(day: day));
-  }
-
-  @override
-  Future<String> startMeal({
-    required MealTypeRecord mealType,
-    DateTime? startedAt,
-    NutritionDayDate? localDate,
-  }) async {
-    startedMealTypes.add(mealType.name);
-    return 'created-meal-id';
   }
 
   @override
@@ -1023,31 +901,6 @@ class _FakeNutritionDayController extends NutritionDayController {
   }
 
   @override
-  Future<LogQuickEntryResult> logQuickEntryForMeal({
-    required String mealId,
-    required QuickFoodEntryDraft entry,
-  }) async {
-    loggedMealIds.add(mealId);
-    return LogQuickEntryResult(
-      batchId: 'batch-$mealId',
-      mealId: mealId,
-      foodEntryId: 'entry-$mealId',
-    );
-  }
-
-  @override
-  Future<LogFoodEntryResult> logFoodEntrySnapshot({
-    required FoodEntrySnapshotDraft entry,
-  }) async {
-    loggedFoodEntries.add(entry);
-    return LogFoodEntryResult(
-      batchId: 'batch-${entry.mealId}',
-      mealId: entry.mealId,
-      foodEntryId: 'entry-${entry.mealId}',
-    );
-  }
-
-  @override
   void showPreviousDay() {
     previousDayCount += 1;
   }
@@ -1058,104 +911,9 @@ class _FakeNutritionDayController extends NutritionDayController {
   }
 }
 
-class _EmptyAddFoodRepository with NoOnlineLookups implements AddFoodRepository {
-  const _EmptyAddFoodRepository();
-
-  @override
-  Future<List<FoodPickerItem>> search({
-    required AddFoodPickerFilter filter,
-    required String query,
-    required YourFoods yourFoods,
-  }) async {
-    return const <FoodPickerItem>[];
-  }
-}
-
-class _SingleFoodRepository with NoOnlineLookups implements AddFoodRepository {
-  const _SingleFoodRepository(this.food);
-
-  final FoodPickerItem food;
-
-  @override
-  Future<List<FoodPickerItem>> search({
-    required AddFoodPickerFilter filter,
-    required String query,
-    required YourFoods yourFoods,
-  }) async {
-    if (filter != AddFoodPickerFilter.all) {
-      return const <FoodPickerItem>[];
-    }
-    return <FoodPickerItem>[food];
-  }
-}
-
-class _BarcodeFoodRepository with NoOnlineLookups implements AddFoodRepository {
-  const _BarcodeFoodRepository(this.food);
-
-  final FoodPickerItem food;
-
-  @override
-  Future<List<FoodPickerItem>> search({
-    required AddFoodPickerFilter filter,
-    required String query,
-    required YourFoods yourFoods,
-  }) async {
-    return const <FoodPickerItem>[];
-  }
-
-  @override
-  Future<({BarcodeLookupOutcome status, FoodPickerItem? item})> lookupBarcode(
-    String raw, {
-    required YourFoods yourFoods,
-  }) async {
-    return raw == '3017620422003'
-        ? (status: BarcodeLookupOutcome.found, item: food)
-        : (status: BarcodeLookupOutcome.notFound, item: null);
-  }
-}
-
-/// The device's Open Food Facts products, for resolving Your foods.
-class _DeviceProducts extends StubOpenFoodFactsRepository {
-  const _DeviceProducts(this.products);
-
-  final List<PlatformFoodRecord> products;
-
-  @override
-  Future<List<PlatformFoodRecord>> localProductsByCodes(
-    List<String> codes,
-  ) async {
-    return [
-      for (final product in products)
-        if (codes.contains(product.id)) product,
-    ];
-  }
-}
-
-class _FakeBarcodeScanner implements BarcodeScanner {
-  const _FakeBarcodeScanner(this.result);
-
-  final String? result;
-
-  @override
-  Future<String?> scan(BuildContext context) async => result;
-}
-
 String? _summaryValueText(WidgetTester tester, NutrientId id) {
   return tester
       .widget<Text>(find.byKey(NutritionDayView.summaryValueKey(id)))
-      .data;
-}
-
-String? _logPortionAmountText(WidgetTester tester) {
-  return tester
-      .widget<TextField>(find.byKey(LogPortionScreen.amountFieldKey))
-      .controller
-      ?.text;
-}
-
-String? _logPortionReadoutValue(WidgetTester tester, NutrientId id) {
-  return tester
-      .widget<Text>(find.byKey(LogPortionScreen.readoutValueKey(id)))
       .data;
 }
 
@@ -1541,125 +1299,6 @@ List<MealTypeRecord> _mealTypes() {
   ];
 }
 
-FoodPickerItem _pickerFood() {
-  return FoodPickerItem(
-    id: 'usda-chicken',
-    name: 'Chicken breast',
-    origin: FoodPickerOrigin.history,
-    foodSource: FoodSource.usda,
-    nutrientsPer100: NutrientVector.energyAndMacros(
-      energy: NutrientAmount.complete(
-        value: 165,
-        entered: '165',
-        unit: NutrientUnit.kilocalorie,
-      ),
-      protein: NutrientAmount.complete(
-        value: 31,
-        entered: '31',
-        unit: NutrientUnit.gram,
-      ),
-      carbohydrate: NutrientAmount.complete(
-        value: 0,
-        entered: '0',
-        unit: NutrientUnit.gram,
-      ),
-      fat: NutrientAmount.complete(
-        value: 3.6,
-        entered: '3.6',
-        unit: NutrientUnit.gram,
-      ),
-    ),
-    isLiquid: false,
-    servingLabel: 'piece',
-    servingSize: 86,
-    lastPortion: Portion(
-      value: 1.5,
-      entered: '1.5',
-      unit: PortionUnit.serving,
-    ),
-  );
-}
-
-PlatformFoodRecord _oatMilkProduct() {
-  return PlatformFoodRecord(
-    id: '7394376616037',
-    name: 'Oat milk',
-    foodSource: FoodSource.openFoodFacts,
-    nutrientsPer100: NutrientVector.energyAndMacros(
-      energy: NutrientAmount.complete(
-        value: 46,
-        entered: '46',
-        unit: NutrientUnit.kilocalorie,
-      ),
-      protein: NutrientAmount.complete(
-        value: 1,
-        entered: '1',
-        unit: NutrientUnit.gram,
-      ),
-      carbohydrate: NutrientAmount.complete(
-        value: 6.7,
-        entered: '6.7',
-        unit: NutrientUnit.gram,
-      ),
-      fat: NutrientAmount.complete(
-        value: 1.5,
-        entered: '1.5',
-        unit: NutrientUnit.gram,
-      ),
-    ),
-    isLiquid: true,
-    brand: 'Oatly',
-  );
-}
-
-/// Only the picker key matters for the row's widget key.
-FoodPickerItem _oatMilkPickerKeyItem() {
-  final product = _oatMilkProduct();
-  return FoodPickerItem(
-    id: product.id,
-    name: product.name,
-    origin: FoodPickerOrigin.history,
-    foodSource: product.foodSource,
-    nutrientsPer100: product.nutrientsPer100,
-    isLiquid: product.isLiquid,
-  );
-}
-
-FoodPickerItem _openFoodFactsBar() {
-  return FoodPickerItem(
-    id: '3017620422003',
-    name: 'Hazelnut cocoa spread',
-    origin: FoodPickerOrigin.openFoodFacts,
-    foodSource: FoodSource.openFoodFacts,
-    nutrientsPer100: NutrientVector.energyAndMacros(
-      energy: NutrientAmount.complete(
-        value: 539,
-        entered: '539',
-        unit: NutrientUnit.kilocalorie,
-      ),
-      protein: NutrientAmount.complete(
-        value: 6.3,
-        entered: '6.3',
-        unit: NutrientUnit.gram,
-      ),
-      carbohydrate: NutrientAmount.complete(
-        value: 56.3,
-        entered: '56.3',
-        unit: NutrientUnit.gram,
-      ),
-      fat: NutrientAmount.complete(
-        value: 30.9,
-        entered: '30.9',
-        unit: NutrientUnit.gram,
-      ),
-    ),
-    isLiquid: false,
-    servingLabel: 'serving',
-    servingSize: 15,
-    packageSize: 400,
-  );
-}
-
 Future<void> _pumpUntilFound(
   WidgetTester tester,
   Finder finder, {
@@ -1672,4 +1311,91 @@ Future<void> _pumpUntilFound(
     }
   }
   fail('Could not find $finder.');
+}
+
+/// Disposes the ProviderScope inside the test body, so the database streams'
+/// closing timers run before the binding checks for pending timers.
+Future<void> _unmount(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(Duration.zero);
+}
+
+class _FixedNutritionDay extends SelectedNutritionDayController {
+  _FixedNutritionDay(this.day);
+
+  final NutritionDayDate day;
+
+  @override
+  NutritionDayDate build() => day;
+}
+
+class _NoFoodsRepository with NoOnlineLookups implements AddFoodRepository {
+  const _NoFoodsRepository();
+
+  @override
+  Future<YourFoods> loadYourFoods({DateTime? now}) async => YourFoods.empty;
+
+  @override
+  Future<List<FoodPickerItem>> search({
+    required AddFoodPickerFilter filter,
+    required String query,
+    required YourFoods yourFoods,
+  }) async {
+    return const <FoodPickerItem>[];
+  }
+}
+
+/// A Lunch at 12:00 at +10:00 with one entry, a `date` Breakfast and an
+/// empty 15:30 Snack, in the order the assembly gives.
+NutritionDayRecord _nutritionDayWithHeaderForms() {
+  const localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
+  final updatedAt = DateTime.utc(2026, 6, 26);
+  final snack = _snackMeal(
+    id: 'meal-empty',
+    startedAt: DateTime(2026, 6, 26, 15, 30),
+    entryName: 'unused',
+  ).meal;
+  return NutritionDayRecord(
+    localDate: localDate,
+    meals: [
+      NutritionDayMealRecord(
+        meal: MealRecord(
+          id: 'meal-imported',
+          mealType: 'Breakfast',
+          startedAt: DateTime.utc(2026, 6, 26),
+          timezone: 'UTC',
+          timezoneOffsetMinutes: 0,
+          timePrecision: MealTimePrecision.date,
+          localDate: localDate,
+          updatedAt: updatedAt,
+        ),
+        entries: [
+          _snackMeal(
+            id: 'meal-imported',
+            startedAt: DateTime(2026, 6, 26),
+            entryName: 'Imported oats',
+          ).entries.single,
+        ],
+      ),
+      NutritionDayMealRecord(
+        meal: MealRecord(
+          id: 'meal-lunch',
+          mealType: 'Lunch',
+          startedAt: DateTime.utc(2026, 6, 26, 2),
+          timezone: 'Australia/Brisbane',
+          timezoneOffsetMinutes: 600,
+          localDate: localDate,
+          updatedAt: updatedAt,
+        ),
+        entries: [
+          _snackMeal(
+            id: 'meal-lunch',
+            startedAt: DateTime(2026, 6, 26, 12),
+            entryName: 'Rice',
+          ).entries.single,
+        ],
+      ),
+      NutritionDayMealRecord(meal: snack, entries: const <FoodEntryRecord>[]),
+    ],
+  );
 }

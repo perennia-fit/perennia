@@ -29,12 +29,18 @@ const _visibleFoodPickerFilters = <AddFoodPickerFilter>[
 
 const _noMatchLine = 'No foods match.';
 
+/// The add-food picker, embedded in the Meal screen
+/// (docs/designs/meal-logging.md §6; docs/designs/unified-food-search.md).
+///
+/// The picker never writes on its own: the caller owns every write, through
+/// [onFoodSelected] and [onQuickEntry], so the Meal screen's in-flight guard
+/// and its switch to the saved Meal cover them. Its results area is an
+/// [Expanded], so the caller must give it a bounded height.
 class AddFoodPicker extends ConsumerWidget {
   const AddFoodPicker({
     super.key,
-    required this.meal,
     this.onFoodSelected,
-    this.onQuickEntry,
+    required this.onQuickEntry,
   });
 
   static const searchFieldKey = Key('nutrition.addFood.search');
@@ -66,9 +72,12 @@ class AddFoodPicker extends ConsumerWidget {
   static const searchDebounceDuration =
       AddFoodPickerController.searchDebounceDuration;
 
-  final MealRecord meal;
+  /// Opens a picked Food. Null makes the picker browse-only: its results
+  /// don't open.
   final ValueChanged<FoodPickerItem>? onFoodSelected;
-  final Future<void> Function(QuickFoodEntryDraft draft)? onQuickEntry;
+
+  /// Makes the Quick add write for the draft the Quick Entry dialog returns.
+  final Future<void> Function(QuickFoodEntryDraft draft) onQuickEntry;
 
   static Key filterChipKey(AddFoodPickerFilter filter) {
     return Key('nutrition.addFood.filter-${filter.name}');
@@ -87,14 +96,10 @@ class AddFoodPicker extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Embedded under the Meal screen's header, so no title of its own.
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Expanded(
-                child: Text(
-                  'Add Food',
-                  style: context.textStyles.h1,
-                ),
-              ),
               IconButton.outlined(
                 key: scanBarcodeButtonKey,
                 tooltip: 'Scan barcode',
@@ -107,7 +112,7 @@ class AddFoodPicker extends ConsumerWidget {
               FilledButton.icon(
                 key: quickAddButtonKey,
                 onPressed: () {
-                  unawaited(_quickAdd(context, ref));
+                  unawaited(_quickAdd(context));
                 },
                 icon: const Icon(Icons.add),
                 label: const Text('Quick add'),
@@ -148,7 +153,7 @@ class AddFoodPicker extends ConsumerWidget {
             data: (value) => _LookupBoundaryBanner(
               state: value,
               onQuickAdd: () {
-                unawaited(_quickAdd(context, ref));
+                unawaited(_quickAdd(context));
               },
               onUseUsda: () {
                 unawaited(
@@ -194,24 +199,15 @@ class AddFoodPicker extends ConsumerWidget {
     );
   }
 
-  Future<void> _quickAdd(BuildContext context, WidgetRef ref) async {
+  Future<void> _quickAdd(BuildContext context) async {
     final draft = await showDialog<QuickFoodEntryDraft>(
       context: context,
-      builder: (context) => QuickEntryDialog(mealType: meal.mealType),
+      builder: (context) => const QuickEntryDialog(),
     );
     if (draft == null) {
       return;
     }
-    if (onQuickEntry != null) {
-      await onQuickEntry!(draft);
-      return;
-    }
-    await ref
-        .read(addFoodPickerControllerProvider.notifier)
-        .logQuickEntryForMeal(
-          mealId: meal.id,
-          entry: draft,
-        );
+    await onQuickEntry(draft);
   }
 
   Future<void> _scanBarcode(BuildContext context, WidgetRef ref) async {

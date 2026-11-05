@@ -746,7 +746,12 @@ class PortableArchiveRepository {
               ]);
             return query.get();
           },
-          fromJson: MealRow.fromJson,
+          // Archives written before schema 65 carry no time precision on
+          // Meals (docs/designs/meal-logging.md §1); they read `instant`, and
+          // a missing offset reads null.
+          fromJson: (json) => MealRow.fromJson(
+            <String, dynamic>{'timePrecision': 'instant', ...json},
+          ),
           toJson: (row) => row.toJson(),
           findById: (id) {
             final query = _database.select(_database.meals)

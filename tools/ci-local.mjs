@@ -193,6 +193,10 @@ const JOBS = {
       'apps/server/test/barcode-candidates.golden.test.mjs',
       'apps/server/src/food-history.ts',
       'apps/server/test/food-history.golden.test.mjs',
+      'apps/server/src/meal-history.ts',
+      'apps/server/test/meal-history.golden.test.mjs',
+      'apps/server/src/timezone.ts',
+      'apps/server/test/timezone.test.mjs',
       'apps/server/test/training-progress.golden.test.mjs',
       'apps/server/test/progress-measure.golden.test.mjs',
       'apps/server/test/metric-trend.golden.test.mjs',
@@ -307,6 +311,13 @@ function pidAlive(pid) {
   }
 }
 
+// Remove a Postgres container and its data. The image declares an anonymous data
+// volume, and `docker rm -f` without `-v` leaves it behind even for a `--rm`
+// container, so every run would leak one database's worth of disk.
+function removePostgres(container) {
+  capture(`docker rm -fv ${container}`);
+}
+
 // Remove containers whose owning run is gone (killed by Ctrl-C or a crash, so
 // its `finally` never ran). Containers of live runs are left alone.
 function sweepOrphanedPostgres() {
@@ -318,14 +329,14 @@ function sweepOrphanedPostgres() {
   for (const line of list.out.split('\n')) {
     const [id, labels = ''] = line.trim().split(/\s+(.*)/);
     const pid = owner.exec(labels)?.[1];
-    if (id && pid && !pidAlive(Number(pid))) capture(`docker rm -f ${id}`);
+    if (id && pid && !pidAlive(Number(pid))) removePostgres(id);
   }
 }
 
 function startPostgres() {
   console.log(`\n▸ Starting ephemeral Postgres (${PG_IMAGE}) as ${PG_CONTAINER}…`);
   sweepOrphanedPostgres();
-  capture(`docker rm -f ${PG_CONTAINER}`); // a dead run that had our pid
+  removePostgres(PG_CONTAINER); // a dead run that had our pid
   const up = run(
     `docker run -d --rm --name ${PG_CONTAINER} --label ${PG_OWNER_LABEL}=${process.pid} ` +
     `-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres ` +
@@ -392,7 +403,7 @@ function resetDatabase(job) {
 }
 
 function stopPostgres() {
-  capture(`docker rm -f ${PG_CONTAINER}`);
+  removePostgres(PG_CONTAINER);
 }
 
 // ---- GitHub publish (commit status + sticky PR comment) --------------------

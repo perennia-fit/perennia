@@ -1,5 +1,4 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 import {
   AgentApiKeyUnavailableResponseSchema,
@@ -7,17 +6,16 @@ import {
 } from "./agent-api-keys.js";
 import {
   AgentNutritionReadUnavailableResponseSchema,
-  numberValue,
   parseRawPortion,
   stringValue
 } from "./agent-nutrition-reads.js";
 import type { ServerDatabase } from "./db/client.js";
-import * as schema from "./db/schema.js";
 import {
   buildFoodHistory,
   type FoodHistoryEntry,
   type FoodHistoryMeal
 } from "./food-history.js";
+import { historyEntryBaseFromPayload, loadHistoryRows } from "./history-rows.js";
 import { RateLimitExceededOpenApiResponse } from "./rate-limit.js";
 
 export const AGENT_FOOD_HISTORY_DEFAULT_LIMIT = 50;
@@ -140,55 +138,26 @@ export function createDrizzleAgentFoodHistoryReadStore(
 ): AgentFoodHistoryReadStore {
   return {
     async listFoodHistory({ userId, limit, now }) {
-      const meal = schema.meals.payload;
-      const entry = schema.foodEntries.payload;
-      const [mealRows, entryRows, archivedRows] = await Promise.all([
-        db
-          .select({
-            id: schema.meals.id,
-            startedAt: sql<string | null>`CASE WHEN jsonb_typeof(${meal} -> 'started_at') = 'string' THEN ${meal} ->> 'started_at' END`
-          })
-          .from(schema.meals)
-          .where(
-            and(eq(schema.meals.userId, userId), isNull(schema.meals.deletedAt))
-          ),
-        // Only the entries that can count, and only the fields Food History
-        // reads; buildFoodHistory still applies every rule.
-        db
-          .select({
-            id: schema.foodEntries.id,
-            payload: sql<Record<string, unknown>>`jsonb_build_object(
-              'meal_id', ${entry} -> 'meal_id',
-              'entry_kind', ${entry} -> 'entry_kind',
-              'position', ${entry} -> 'position',
-              'name', ${entry} -> 'name',
-              'food_source', ${entry} -> 'food_source',
-              'food_id', ${entry} -> 'food_id',
-              'is_liquid', ${entry} -> 'is_liquid',
-              'portion_json', ${entry} -> 'portion_json',
-              'updated_at', ${entry} -> 'updated_at'
-            )`
-          })
-          .from(schema.foodEntries)
-          .where(
-            and(
-              eq(schema.foodEntries.userId, userId),
-              isNull(schema.foodEntries.deletedAt),
-              sql`${entry} ->> 'entry_kind' = 'food'`,
-              sql`${entry} ->> 'food_source' IS NOT NULL`,
-              sql`${entry} ->> 'food_id' IS NOT NULL`
-            )
-          ),
-        db
-          .select({ id: schema.foods.id })
-          .from(schema.foods)
-          .where(
-            and(
-              eq(schema.foods.userId, userId),
-              isNotNull(schema.foods.deletedAt)
-            )
-          )
-      ]);
+      // Every query is scoped to the caller: another user's Meals, Food
+      // Entries and Foods never reach buildFoodHistory.
+      const {
+        meals: mealRows,
+        entries: entryRows,
+        archivedUserFoodIds
+      } = await loadHistoryRows(db, userId, {
+        includeTimePrecision: false,
+        entryFields: [
+          "meal_id",
+          "entry_kind",
+          "position",
+          "name",
+          "food_source",
+          "food_id",
+          "is_liquid",
+          "portion_json",
+          "updated_at"
+        ]
+      });
 
       const meals: FoodHistoryMeal[] = mealRows.flatMap(({ id, startedAt }) =>
         startedAt === null ? [] : [{ id, startedAt, deletedAt: null }]
@@ -206,7 +175,7 @@ export function createDrizzleAgentFoodHistoryReadStore(
       const history = buildFoodHistory({
         entries,
         meals,
-        archivedUserFoodIds: archivedRows.map((row) => row.id),
+        archivedUserFoodIds,
         now
       });
 
@@ -227,29 +196,21 @@ export function createDrizzleAgentFoodHistoryReadStore(
 }
 
 /**
- * A synced Food Entry payload as Food History reads it. The liquid flag is
- * read as stored: a null flag leaves the entry out, as it does in the app, so
- * this does not use the meal read's mapper, which reads null as false.
+ * A synced Food Entry payload as Food History reads it: the fields both
+ * histories read, plus the entry's updatedAt, which it needs, and its Portion.
  */
 function foodHistoryEntryFromPayload(
   id: string,
   payload: Record<string, unknown>
 ): FoodHistoryEntry | null {
-  const mealId = stringValue(payload.meal_id);
+  const base = historyEntryBaseFromPayload(id, payload);
   const updatedAt = stringValue(payload.updated_at);
-  if (mealId === null || updatedAt === null) {
+  if (base === null || updatedAt === null) {
     return null;
   }
   return {
-    id,
-    mealId,
-    kind: stringValue(payload.entry_kind) ?? "quickEntry",
-    position: numberValue(payload.position) ?? 0,
-    foodSource: stringValue(payload.food_source),
-    foodId: stringValue(payload.food_id),
-    isLiquid: typeof payload.is_liquid === "boolean" ? payload.is_liquid : null,
+    ...base,
     portion: parseRawPortion(payload.portion_json),
-    updatedAt,
-    deletedAt: null
+    updatedAt
   };
 }

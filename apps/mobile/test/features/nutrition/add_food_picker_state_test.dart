@@ -366,9 +366,12 @@ void main() {
 ProviderContainer _container(
   AddFoodRepository repository, {
   Stream<BundleStatus>? bundleStatus,
+  TrainingRepositories? repositories,
 }) {
   final container = ProviderContainer(
     overrides: [
+      if (repositories != null)
+        trainingRepositoriesProvider.overrideWith((ref) => repositories),
       addFoodRepositoryProvider.overrideWith((ref) => repository),
       settingsRepositoryProvider.overrideWith(
         (ref) => InMemorySettingsRepository(),

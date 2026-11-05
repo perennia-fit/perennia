@@ -7,6 +7,7 @@ import '../../../data/repositories/training_repositories.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
+import 'training_confirmation.dart';
 
 /// A Replace that its **Undo** reverted: [newWorkoutExerciseId] is
 /// soft-deleted and [oldWorkoutExerciseId] is back in its place.
@@ -35,20 +36,18 @@ final replaceUndoneProvider = Provider<StreamController<ReplaceUndone>>((ref) {
 /// reports it. A pick already active in the Workout (the exercise itself
 /// included) shows "Already in this workout" and writes nothing.
 ///
-/// [snackBarMargin] floats the confirmation above a screen's pinned
-/// buttons, as the Training Screen's own confirmations do. The confirmation
-/// goes when the calling screen closes (see [showTrainingSnackBar]).
+/// [show] puts its results on the calling screen: the Training Screen's
+/// status row, or a SnackBar from the Workout screen (see
+/// [showTrainingSnackBar]).
 Future<String?> replaceExercise(
   BuildContext context,
   WidgetRef ref,
   String workoutExerciseId, {
-  EdgeInsetsGeometry? snackBarMargin,
+  required ShowTrainingConfirmation show,
 }) async {
   final repositories = ref.read(trainingRepositoriesProvider);
   // Read now: the calling screen may be gone by the time Undo is tapped.
   final undoneEvents = ref.read(replaceUndoneProvider);
-  final messenger = ScaffoldMessenger.of(context);
-  final route = ModalRoute.of(context);
   final l10n = context.l10n;
 
   final workoutExercise =
@@ -76,49 +75,31 @@ Future<String?> replaceExercise(
       batchId: batchId,
     );
   } on AlreadyInWorkoutException {
-    showTrainingSnackBar(
-      messenger,
-      l10n.replaceExerciseAlreadyInWorkout,
-      margin: snackBarMargin,
-      route: route,
-    );
+    show(TrainingConfirmation(message: l10n.replaceExerciseAlreadyInWorkout));
     return null;
   } on StateError {
     // The exercise was removed, or the picked Exercise was archived, since
     // the screen read it; nothing was written.
-    showTrainingSnackBar(
-      messenger,
-      l10n.replaceExerciseNotReplaced,
-      margin: snackBarMargin,
-      route: route,
-    );
+    show(TrainingConfirmation(message: l10n.replaceExerciseNotReplaced));
     return null;
   }
 
-  showTrainingSnackBar(
-    messenger,
-    l10n.replaceExerciseReplaced,
-    margin: snackBarMargin,
-    route: route,
-    undoLabel: l10n.trainingUndo,
-    onUndo: () => unawaited(
-      undoTrainingBatch(
-        repositories,
-        messenger,
-        l10n,
-        batchId,
-        margin: snackBarMargin,
-        route: route,
-      ).then((undone) {
-        if (undone && !undoneEvents.isClosed) {
-          undoneEvents.add(
-            (
-              oldWorkoutExerciseId: workoutExerciseId,
-              newWorkoutExerciseId: newWorkoutExerciseId,
-            ),
-          );
-        }
-      }),
+  show(
+    TrainingConfirmation(
+      message: l10n.replaceExerciseReplaced,
+      undoLabel: l10n.trainingUndo,
+      onUndo: () => unawaited(
+        undoTrainingBatch(repositories, show, l10n, batchId).then((undone) {
+          if (undone && !undoneEvents.isClosed) {
+            undoneEvents.add(
+              (
+                oldWorkoutExerciseId: workoutExerciseId,
+                newWorkoutExerciseId: newWorkoutExerciseId,
+              ),
+            );
+          }
+        }),
+      ),
     ),
   );
   return newWorkoutExerciseId;
@@ -163,39 +144,28 @@ Future<ExerciseRecord?> _pickExercise(
 /// share it, so every Undo on the gym-floor path behaves alike.
 Future<bool> undoTrainingBatch(
   TrainingRepositories repositories,
-  ScaffoldMessengerState messenger,
+  ShowTrainingConfirmation show,
   AppLocalizations l10n,
-  String batchId, {
-  EdgeInsetsGeometry? margin,
-  ModalRoute<Object?>? route,
-}) async {
+  String batchId,
+) async {
   final ActivityLogUndoResult result;
   try {
     result = await repositories.activityLog.undoBatch(batchId);
   } on StateError {
-    showTrainingSnackBar(
-      messenger,
-      l10n.trainingUndoConflict,
-      margin: margin,
-      route: route,
-    );
+    show(TrainingConfirmation(message: l10n.trainingUndoConflict));
     return false;
   }
   if (result.hasConflicts) {
-    showTrainingSnackBar(
-      messenger,
-      l10n.trainingUndoConflict,
-      margin: margin,
-      route: route,
-    );
+    show(TrainingConfirmation(message: l10n.trainingUndoConflict));
     return false;
   }
   return true;
 }
 
 /// Replaces the current confirmation with [message]: 4 s with **Undo**
-/// ([undoLabel], [onUndo]), else 2 s. With [margin] it floats there, as the
-/// Training Screen's do above its pinned buttons.
+/// ([undoLabel], [onUndo]), else 2 s. It is how the Workout screen shows a
+/// [TrainingConfirmation]; the Training Screen shows its own on its status
+/// row.
 ///
 /// `persist: false` is what makes those durations hold: a SnackBar with an
 /// action otherwise stays until it is dismissed, so "Set 3 logged · Undo"
@@ -208,8 +178,6 @@ Future<bool> undoTrainingBatch(
 void showTrainingSnackBar(
   ScaffoldMessengerState messenger,
   String message, {
-  Key? key,
-  EdgeInsetsGeometry? margin,
   ModalRoute<Object?>? route,
   String? undoLabel,
   VoidCallback? onUndo,
@@ -219,7 +187,6 @@ void showTrainingSnackBar(
     ..removeCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
-        key: key,
         content: route == null
             ? Text(message)
             : _ClosesWithRoute(
@@ -236,8 +203,6 @@ void showTrainingSnackBar(
               ),
         duration: Duration(seconds: onUndo == null ? 2 : 4),
         persist: false,
-        behavior: margin == null ? null : SnackBarBehavior.floating,
-        margin: margin,
         action: onUndo == null || undoLabel == null
             ? null
             : SnackBarAction(label: undoLabel, onPressed: onUndo),

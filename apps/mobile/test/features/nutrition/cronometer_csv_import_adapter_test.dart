@@ -20,6 +20,35 @@ void main() {
       expect(resolution.preservedProvider, isNull);
     });
 
+    test('sets instant precision for a row with a time, date without one', () {
+      // docs/designs/meal-logging.md §1.
+      const csv = '''
+Day,Time,Group,Food Name,Amount,Energy (kcal),Protein (g),Carbs (g),Fat (g)
+2026-06-01,08:00,Breakfast,Oats,100 g,389,16.9,66.3,6.9
+2026-06-01,,Snacks,Banana,118 g,105,1.3,27,0.4
+''';
+
+      final meals = adapter.parse(csv).meals;
+
+      expect(meals, hasLength(2));
+      expect(meals.first.timePrecision, MealTimePrecision.instant);
+      expect(meals.first.startedAt, DateTime(2026, 6, 1, 8));
+      expect(meals[1].timePrecision, MealTimePrecision.date);
+      expect(meals[1].startedAt, DateTime(2026, 6, 1));
+    });
+
+    test('sets date precision when the export has no Time column', () {
+      const csv = '''
+Day,Group,Food Name,Amount,Energy (kcal),Protein (g),Carbs (g),Fat (g)
+2026-06-01,Breakfast,Oats,100 g,389,16.9,66.3,6.9
+''';
+
+      final meal = adapter.parse(csv).meals.single;
+
+      expect(meal.timePrecision, MealTimePrecision.date);
+      expect(meal.startedAt, DateTime(2026, 6, 1));
+    });
+
     test('maps rows into Meals grouped by the CSV meal grouping', () {
       const csv = '''
 Day,Time,Group,Food Name,Amount,Energy (kcal),Protein (g),Carbs (g),Fat (g)

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../common/local_clock.dart';
+
 class NutritionDayDate implements Comparable<NutritionDayDate> {
   const NutritionDayDate({
     required this.year,
@@ -769,6 +771,26 @@ class FoodEntrySnapshotDraft {
     Iterable<NutritionReviewFlag> reviewFlags = const <NutritionReviewFlag>[],
   }) : reviewFlags = List<NutritionReviewFlag>.unmodifiable(reviewFlags);
 
+  /// This draft, landing in the Meal [mealId] instead.
+  FoodEntrySnapshotDraft forMeal(String mealId) {
+    return FoodEntrySnapshotDraft(
+      mealId: mealId,
+      foodId: foodId,
+      name: name,
+      foodSource: foodSource,
+      nutrientsPer100: nutrientsPer100,
+      isLiquid: isLiquid,
+      portion: portion,
+      servingLabel: servingLabel,
+      servingSize: servingSize,
+      packageSize: packageSize,
+      importSource: importSource,
+      importExternalId: importExternalId,
+      importProvider: importProvider,
+      reviewFlags: reviewFlags,
+    );
+  }
+
   final String mealId;
 
   /// The catalogue `Food` this snapshot was taken from, or null for an
@@ -819,20 +841,119 @@ class MealTypeDraft {
   final int sortOrder;
 }
 
+/// How much of a Meal's `startedAt` is known (docs/designs/meal-logging.md
+/// §1). Stored in `meals.time_precision` by [name].
+enum MealTimePrecision {
+  /// `startedAt` is the time the user ate.
+  instant,
+
+  /// Only the date is known: `startedAt` is local midnight of the Meal's
+  /// local date and is never shown as a clock time.
+  date;
+
+  /// The precision stored as [storage], or [instant] for anything unknown
+  /// (the column default, and what every Meal written before schema 65 reads).
+  static MealTimePrecision fromStorage(String? storage) {
+    for (final value in values) {
+      if (value.name == storage) {
+        return value;
+      }
+    }
+    return instant;
+  }
+}
+
+/// A Meal to create. It has no local date: a Meal's Nutrition Day is always
+/// derived from [startedAt] and its frozen offset (docs/designs/meal-logging.md
+/// §1), so it can never disagree with the Meal's time.
 class MealDraft {
   const MealDraft({
     required this.mealType,
     required this.startedAt,
-    this.localDate,
     this.timezone,
+    this.timezoneOffsetMinutes,
+    this.timePrecision = MealTimePrecision.instant,
     this.endedAt,
   });
 
   final String mealType;
   final DateTime startedAt;
-  final NutritionDayDate? localDate;
+
+  /// The zone label; the repository writes the device zone's abbreviation at
+  /// [startedAt] when null.
   final String? timezone;
+
+  /// The UTC offset to freeze; the repository uses the device zone's offset
+  /// at [startedAt] when null.
+  final int? timezoneOffsetMinutes;
+  final MealTimePrecision timePrecision;
   final DateTime? endedAt;
+}
+
+/// The Meal a logging write lands in (docs/designs/meal-logging.md §3): an
+/// existing Meal, or a Meal the same write creates, in the same transaction
+/// and Batch as the entry.
+sealed class MealTarget {
+  const MealTarget();
+
+  /// The id of the Meal the write lands in.
+  String get mealId;
+}
+
+/// An existing Meal. Writing into an archived Meal is rejected.
+final class ExistingMealTarget extends MealTarget {
+  const ExistingMealTarget(this.mealId);
+
+  @override
+  final String mealId;
+}
+
+/// A Meal the write creates. If a Meal with [PendingMeal.id] already exists,
+/// active or archived, the write throws [MealAlreadyExistsException] and
+/// writes nothing (a double tap).
+final class NewMealTarget extends MealTarget {
+  const NewMealTarget(this.meal);
+
+  final PendingMeal meal;
+
+  @override
+  String get mealId => meal.id;
+}
+
+/// A Meal not yet written: the Meal screen's state before its first write
+/// (docs/designs/meal-logging.md §3).
+///
+/// The repository resolves the nulls inside the write transaction: a null
+/// [startedAt] becomes the clock time of the write, and a null
+/// [mealTypeName] becomes the proposed Meal Type at that time (§4). So the
+/// stored time is the time of the write, not the time the screen opened.
+class PendingMeal {
+  const PendingMeal({
+    required this.id,
+    this.startedAt,
+    this.mealTypeName,
+  });
+
+  /// Minted when the Meal screen opens (`NutritionRepository.newMealId`), so
+  /// a repeated write of the same pending Meal is detected as a double tap.
+  final String id;
+
+  /// Null means now: the time of the write.
+  final DateTime? startedAt;
+
+  /// Null means proposed from the Meal's time (§4).
+  final String? mealTypeName;
+}
+
+/// A [NewMealTarget] whose Meal id already exists, active or archived. The
+/// write that threw it wrote nothing.
+class MealAlreadyExistsException implements Exception {
+  const MealAlreadyExistsException(this.mealId);
+
+  final String mealId;
+
+  @override
+  String toString() => 'Meal already exists: $mealId.';
 }
 
 class MealTypeRecord {
@@ -954,6 +1075,8 @@ class MealRecord {
     required this.timezone,
     required this.localDate,
     required this.updatedAt,
+    this.timezoneOffsetMinutes,
+    this.timePrecision = MealTimePrecision.instant,
     this.endedAt,
     this.deletedAt,
   });
@@ -963,9 +1086,18 @@ class MealRecord {
   final DateTime startedAt;
   final String timezone;
   final NutritionDayDate localDate;
+
+  /// The UTC offset frozen when the Meal's time was set; null on Meals written
+  /// before schema 65, which read in the device zone.
+  final int? timezoneOffsetMinutes;
+  final MealTimePrecision timePrecision;
   final DateTime? endedAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
+
+  /// The Meal's clock where it was eaten: [startedAt] at its frozen offset
+  /// (the device zone for a null offset), read the way a Dose's is.
+  DateTime get clock => clockAtOffset(startedAt, timezoneOffsetMinutes);
 }
 
 class FoodEntryRecord {
@@ -1087,6 +1219,47 @@ final class FoodHistoryRecord {
 
   /// The **Last Portion**: the Portion of the latest entry that has one.
   final Portion? lastPortion;
+}
+
+/// One Food of a [MealHistoryRecord]: its identity and the snapshot name it
+/// had in the most recent Meal with that identity.
+final class MealHistoryFood {
+  const MealHistoryFood({
+    required this.foodSource,
+    required this.foodId,
+    required this.name,
+  });
+
+  final FoodSource foodSource;
+  final String foodId;
+  final String name;
+}
+
+/// One meal in the user's **Meal History**: a distinct set of Foods the user
+/// repeats, derived from their active timed Meals of the last 90 days on each
+/// read and never stored or synced (docs/designs/meal-logging.md §5). Shown
+/// as Your meals.
+final class MealHistoryRecord {
+  MealHistoryRecord({
+    required Iterable<MealHistoryFood> foods,
+    required this.count,
+    required this.lastMealId,
+    required this.lastStartedAt,
+  }) : foods = List<MealHistoryFood>.unmodifiable(foods);
+
+  /// The Foods, in canonical order: by `foodSource:foodId` in ordinal
+  /// (byte) order.
+  final List<MealHistoryFood> foods;
+
+  /// The qualifying Meals with this set of Foods.
+  final int count;
+
+  /// The most recent such Meal: the source `logMealAgain` copies, Portions
+  /// and Quick Entries included.
+  final String lastMealId;
+
+  /// That Meal's start, in UTC.
+  final DateTime lastStartedAt;
 }
 
 class NutritionDayMealRecord {
@@ -1563,6 +1736,29 @@ class LogFoodEntryResult {
   final String batchId;
   final String mealId;
   final String foodEntryId;
+  final List<NutrientValidationIssue> warnings;
+}
+
+/// The result of `NutritionRepository.logMealAgain`: one Batch that copied a
+/// source Meal's active Food Entries into the target Meal
+/// (docs/designs/meal-logging.md §3).
+class LogMealAgainResult {
+  LogMealAgainResult({
+    required this.batchId,
+    required this.mealId,
+    required Iterable<String> foodEntryIds,
+    Iterable<NutrientValidationIssue> warnings =
+        const <NutrientValidationIssue>[],
+  })  : foodEntryIds = List<String>.unmodifiable(foodEntryIds),
+        warnings = List<NutrientValidationIssue>.unmodifiable(warnings);
+
+  final String batchId;
+  final String mealId;
+
+  /// The copies, in the source Meal's position order.
+  final List<String> foodEntryIds;
+
+  /// The nutrition soft warnings of every copy, in copy order.
   final List<NutrientValidationIssue> warnings;
 }
 

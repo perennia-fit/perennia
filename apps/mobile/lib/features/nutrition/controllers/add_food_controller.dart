@@ -3,16 +3,15 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/open_food_facts_repository.dart';
-import '../../../domain/nutrition/nutrition.dart';
 import '../../../domain/nutrition/open_food_facts.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../repositories/add_food_repository.dart';
-import 'nutrition_day_controller.dart';
 
-/// Auto-disposed: the picker sheet is its only listener, so each opening
-/// builds a fresh controller with filter All, an empty query and a fresh
-/// Your foods read (docs/designs/unified-food-search.md § Controller
-/// lifecycle).
+/// Auto-disposed: the picker embedded in the Meal screen is its only
+/// listener, so the controller is created and disposed with that screen. Each
+/// opening builds a fresh controller with filter All, an empty query and a
+/// fresh Your foods read (docs/designs/unified-food-search.md § Controller
+/// lifecycle; docs/designs/meal-logging.md §6).
 final addFoodPickerControllerProvider = AsyncNotifierProvider.autoDispose<
     AddFoodPickerController, AddFoodPickerState>(
   AddFoodPickerController.new,
@@ -338,16 +337,6 @@ class AddFoodPickerController extends AsyncNotifier<AddFoodPickerState> {
     if (item.isLiveResult) {
       unawaited(ref.read(addFoodRepositoryProvider).keepOpenedProduct(item));
     }
-  }
-
-  Future<LogQuickEntryResult> logQuickEntryForMeal({
-    required String mealId,
-    required QuickFoodEntryDraft entry,
-  }) {
-    return ref.read(nutritionRepositoryProvider).logQuickEntryForMeal(
-          mealId: mealId,
-          entry: entry,
-        );
   }
 
   /// Re-runs the device search for the current query and filter, keeping

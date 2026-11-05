@@ -112,6 +112,14 @@ components:
     pointRadius: 3px
     ringWidth: 1.5px
     lineWidth: 2px
+  notice:
+    backgroundColor: "{colors.chrome-dark}"
+    borderColor: "{colors.divider-dark}"
+    textColor: "{colors.text-primary-dark}"
+    actionColor: "{colors.primary}"
+    typography: "{typography.body}"
+    rounded: "{rounded.md}"
+    inset: "{spacing.base}"
 ---
 
 # Design System: Perennia
@@ -248,7 +256,7 @@ rectangles with `md` corners, never FABs.
   control (4 wk, 12 wk, 1 yr) over a scroll of summary cards, then the Body Tracker
   and Health metrics links.
 - **Today Log action:** one extended FAB opening a bottom sheet of authored daily writes
-  (Workout, Food, Supplement). Body measurements remain contextual to Progress → Body.
+  (Workout, Meal, Supplement). Body measurements remain contextual to Progress → Body.
 - **Tabs (Track | History | Graph):** text tabs in the chrome, active tab in Signal
   Cyan with a 2px underline; inactive tabs secondary-text gray.
 - **Navigation drawer:** an opaque surface listing the session's exercises with set
@@ -293,6 +301,9 @@ rectangles with `md` corners, never FABs.
 - **New best row:** a Trophy Gold trophy glyph beside "{exercise} · {value}" and the
   date in the secondary text color, at least 48px tall; gold always comes with the
   glyph and the words.
+- **Notice:** messages are a dark bar in both themes and float above the screen's
+  bottom bar or buttons; the Training Screen shows its own messages in the rest
+  strip's row.
 
 ## Do's and Don'ts
 

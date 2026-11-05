@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
+import 'app_dimens.dart';
 import 'app_text_styles.dart';
 import 'design_tokens.g.dart';
 
@@ -62,6 +63,27 @@ class AppTheme {
         scrolledUnderElevation: 0,
         centerTitle: true,
       ),
+      snackBarTheme: _noticeTheme(),
+    );
+  }
+
+  /// The DESIGN.md `notice` component. The bar is dark in both themes because
+  /// one colour pair then passes AA in both; Signal Cyan on a light bar is
+  /// about 2.4:1 and would need a new token.
+  static SnackBarThemeData _noticeTheme() {
+    return SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: DesignTokens.chromeDark,
+      contentTextStyle: AppTextStyles.tokens.body.copyWith(
+        color: DesignTokens.textPrimaryDark,
+      ),
+      actionTextColor: DesignTokens.primary,
+      shape: const RoundedRectangleBorder(
+        borderRadius: AppRadii.cardMd,
+        side: BorderSide(color: DesignTokens.dividerDark),
+      ),
+      insetPadding: const EdgeInsets.all(AppDimens.base),
+      elevation: 0,
     );
   }
 }

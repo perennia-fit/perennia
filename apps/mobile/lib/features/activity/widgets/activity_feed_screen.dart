@@ -6,6 +6,7 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/activity_feed_controller.dart';
 import '../repositories/activity_feed_repository.dart';
+import '../undo_conflict_message.dart';
 
 class ActivityFeedScreen extends ConsumerWidget {
   const ActivityFeedScreen({super.key});
@@ -35,7 +36,7 @@ class ActivityFeedScreen extends ConsumerWidget {
                 SnackBar(
                   content: Text(
                     result.hasConflicts
-                        ? _undoConflictMessage(l10n, result)
+                        ? undoConflictMessage(l10n, result)
                         : l10n.activityUndoSuccess,
                   ),
                 ),
@@ -177,18 +178,6 @@ String _activityActorLabel(AppLocalizations l10n, String actor) {
     );
   }
   return actor;
-}
-
-String _undoConflictMessage(
-  AppLocalizations l10n,
-  ActivityLogUndoResult result,
-) {
-  final count = result.conflicts.length;
-  if (result.conflicts.isEmpty) {
-    return l10n.activityUndoGenericConflict;
-  }
-  final first = result.conflicts.first;
-  return l10n.activityUndoConflict(count, first.entityTable, first.entityId);
 }
 
 String formatActivityRelativeTimestamp(
