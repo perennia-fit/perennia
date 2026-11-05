@@ -443,9 +443,12 @@ restPhaseAt(timer, newestPerformed, now):
     next, and a label on the strip would repeat them.
 *   **Rest over survives kill-and-reopen,** since it is derived from the row.
 *   **Marking the end.** Whenever the strip, while the app is visible
-    ([part 4](#4-cues-and-notifications)), sees a row with status `running` at
-    or past its deadline, it writes `markAlertFired` and cancels the
-    background schedule. It checks on every tick and when the app comes back.
+    ([part 4](#4-cues-and-notifications)) and the strip's route is current,
+    sees a row with status `running` at or past its deadline, it writes
+    `markAlertFired` and cancels the background schedule. A covered strip must
+    not cancel the schedule before the native side posts, since the
+    notification is the only cue on that route. It checks on every tick and
+    when the app comes back.
     This one rule covers the end reached in the app, an end that passed while
     the app was in the background, and a reopen after 0:00. Marking plays
     nothing; only the end cue ([part 4](#4-cues-and-notifications)) plays a
@@ -1331,9 +1334,12 @@ rest timer notifications on Android 8 and later."
     *   **On each timer row and each tick:**
         *   `scheduler.update(timer)`;
         *   `RestCueOwner.report(this, current: <route is current>)`;
-        *   while visible, a row with status `running` at or past its
-            deadline: write `markAlertFired` and cancel the background
-            schedule, once per row id ([part 3](#3-rest-phases)).
+        *   while visible and the strip's route is current, a row with status
+            `running` at or past its deadline: write `markAlertFired` and
+            cancel the background schedule, once per row id ([part
+            3](#3-rest-phases)). A covered strip must not cancel the schedule
+            before the native side posts, since the notification is the only
+            cue on that route.
     *   **On resume** (the listener's state becomes visible), the same check
         runs at once.
     *   **Ticker.** The first tick fires at the next whole second of
@@ -1595,7 +1601,9 @@ rest timer notifications on Android 8 and later."
         *   sounds off plays nothing and still changes the strip;
         *   with the lifecycle at `paused`, no cue plays;
         *   with a second route pushed over the Training Screen, no cue plays,
-            and `setInAppTimerCues(false)` is sent;
+            and `setInAppTimerCues(false)` is sent; an end reached while covered
+            writes no `markAlertFired` and cancels no schedule until the route
+            is popped;
         *   kill-and-reopen at 0:05 plays countdown, ticks and end, but no
             getReady;
         *   reopen after 0:00 shows "Rest over" with the right elapsed time,

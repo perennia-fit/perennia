@@ -23,6 +23,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   latest Meal that had them.
 - **Log a meal from one screen:** repeat a whole meal from Your meals, add
   foods, or save just the time and add foods later.
+- **The rest timer warns you before it ends.** The strip and a tone mark Get
+  ready 10 seconds before the end of a longer rest, 3-2-1 plays in the app, and
+  after 0:00 the strip shows Rest over with the time since.
 
 ### Changed
 
@@ -93,6 +96,7 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **A Meal started on a past day is saved on that day, not today.**
 - **Re-importing a file no longer moves a food out of a meal you edited.**
 - **Backups keep restoring after the update.**
+- Rest timer sounds off now silences rest timer notifications on Android 8 and later.
 
 ## [0.2.0] - 2026-11-03
 
