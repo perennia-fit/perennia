@@ -177,6 +177,20 @@ import UserNotifications
 
       let deadline = Date(timeIntervalSince1970: deadlineAtMillis.doubleValue / 1000.0)
       let remaining = deadline.timeIntervalSinceNow
+      let identifiers = [
+        timerId, self.prepareIdentifier(timerId), self.getReadyIdentifier(timerId),
+      ]
+
+      // The end has already passed, so add nothing, as Android's service stays
+      // silent for an end behind a new schedule. The strip's cancel only follows a
+      // passed deadline, so a schedule that overtook it lands here, having just
+      // cleared the rest from `cancelledTimerIds`: a request now would present a
+      // banner and sound about 1 s after the end the strip played.
+      guard remaining > 0 else {
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        self.complete(result, with: "granted")
+        return
+      }
 
       // Completion request at the deadline.
       let completion = UNMutableNotificationContent()
@@ -235,9 +249,7 @@ import UserNotifications
         requests.append(getReadyRequest)
       }
 
-      center.removePendingNotificationRequests(withIdentifiers: [
-        timerId, self.prepareIdentifier(timerId), self.getReadyIdentifier(timerId),
-      ])
+      center.removePendingNotificationRequests(withIdentifiers: identifiers)
 
       let group = DispatchGroup()
       var scheduleError: Error?
@@ -252,9 +264,7 @@ import UserNotifications
         // Cancelled while these were on their way: the cancel's removal found
         // nothing, so they would still fire, even in the background.
         if self.cancelledTimerIds.contains(timerId) {
-          center.removePendingNotificationRequests(withIdentifiers: [
-            timerId, self.prepareIdentifier(timerId), self.getReadyIdentifier(timerId),
-          ])
+          center.removePendingNotificationRequests(withIdentifiers: identifiers)
         }
         if let scheduleError {
           self.complete(

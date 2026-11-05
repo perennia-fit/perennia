@@ -21,7 +21,7 @@ typedef RestNotificationTexts = ({
 });
 
 final timerBackgroundSchedulerProvider = Provider<TimerBackgroundScheduler>(
-  (ref) => const MethodChannelTimerBackgroundScheduler(),
+  (ref) => MethodChannelTimerBackgroundScheduler(),
 );
 
 abstract interface class TimerBackgroundScheduler {
@@ -150,7 +150,7 @@ class TimerBackgroundSchedule {
 
 class MethodChannelTimerBackgroundScheduler
     implements TimerBackgroundScheduler {
-  const MethodChannelTimerBackgroundScheduler({
+  MethodChannelTimerBackgroundScheduler({
     MethodChannel channel = _defaultChannel,
   }) : _channel = channel;
 
@@ -159,6 +159,15 @@ class MethodChannelTimerBackgroundScheduler
   );
 
   final MethodChannel _channel;
+
+  /// The latest [schedule] of each timer still waiting on the permission answer.
+  /// A cancel that lands during that wait reaches native first, and native
+  /// forgets a cancel once `scheduleTimer` arrives, so the schedule must not be
+  /// sent: it would fire for a rest the lifter stopped or the strip already
+  /// ended. The first-ever rest waits for as long as the system prompt stays up.
+  /// Once `scheduleTimer` is sent, the channel's order keeps a later cancel
+  /// behind it, and native removes what that cancel overtook.
+  final Map<String, Object> _awaitingPermission = <String, Object>{};
 
   @override
   Future<TimerBackgroundPermissionStatus> requestPermissionIfNeeded() {
@@ -174,7 +183,14 @@ class MethodChannelTimerBackgroundScheduler
   Future<TimerBackgroundPermissionStatus> schedule(
     TimerBackgroundSchedule schedule,
   ) async {
+    final timerId = schedule.timerId;
+    final attempt = Object();
+    _awaitingPermission[timerId] = attempt;
     final permission = await requestPermissionIfNeeded();
+    if (!identical(_awaitingPermission[timerId], attempt)) {
+      return permission;
+    }
+    _awaitingPermission.remove(timerId);
     if (permission != TimerBackgroundPermissionStatus.granted) {
       return permission;
     }
@@ -184,6 +200,7 @@ class MethodChannelTimerBackgroundScheduler
 
   @override
   Future<void> cancel(String timerId) async {
+    _awaitingPermission.remove(timerId);
     try {
       await _channel.invokeMethod<void>('cancelTimer', <String, Object?>{
         'timerId': timerId,

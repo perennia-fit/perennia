@@ -540,6 +540,15 @@ rest with one boolean, `setInAppTimerCues {active: bool}`:
     scheduled again, `willPresent` presents nothing for those, and a schedule
     that a cancel overtook is removed once its requests are added. The strip
     sends the cancel before the row's write can turn the value false.
+*   **A cancel beats a schedule still waiting on the permission answer.** On
+    both platforms `schedule` asks for the permission before it sends
+    `scheduleTimer`, and the first-ever rest waits for as long as the system
+    prompt stays up. A cancel for that rest during the wait stops the schedule
+    being sent, so an end the strip played or a rest the lifter stopped can't
+    post later.
+*   **A schedule whose deadline has passed adds nothing.** Android's service
+    stays silent for an end already behind it; on iOS, `scheduleTimer` adds no
+    request and removes any pending ones when no time remains.
 
 **Playing a cue.** `TimerCuePlayer` has two methods, `prepare()` and
 `play(TimerCue cue, {required double volume})`, where `TimerCue` is
@@ -1308,6 +1317,11 @@ rest timer notifications on Android 8 and later."
         `getReadyText` is sent as absent.
     *   **`TimerBackgroundSchedule.rest`** takes a `RestNotificationTexts`
         from its caller instead of hard-coding English.
+    *   **`MethodChannelTimerBackgroundScheduler`** keeps, per `timerId`, the
+        latest `schedule` still waiting on the permission answer. `cancel`
+        clears the entry, and a `schedule` no longer the entry when the answer
+        arrives returns that answer without sending `scheduleTimer`. The
+        constructor stops being `const` to hold this.
 
 #### `apps/mobile/lib/data/repositories/training_repositories.dart` (Modify)
 
@@ -1523,7 +1537,11 @@ rest timer notifications on Android 8 and later."
             `GetReady.caf` and `getReadyText`, when `getReadyText` is present;
         *   the prepare request uses `prepareText`;
         *   a getReady or prepare request whose fire time is less than 0.5 s
-            away is not added (today's `max(1.0, …)` is removed for both).
+            away is not added (today's `max(1.0, …)` is removed for both);
+        *   when the deadline has passed by the time the settings are read, it
+            adds no request, removes any pending ones for `timerId` and answers
+            `"granted"`; `max(1.0, remaining)` stays for the completion request
+            of a small positive remaining.
     *   **`cancelTimer`** inserts `timerId` into `cancelledTimerIds` and removes
         the get-ready identifier with the others.
     *   **`willPresent`,** for a timer notification, on the main thread: iOS 14
@@ -1645,7 +1663,9 @@ rest timer notifications on Android 8 and later."
 *   **`apps/mobile/test/features/training/timer_background_scheduler_test.dart`
     (Modify):** the platform map carries `getReadyText` and `prepareText`, has
     no `getReadyText` key when it is null, and `setInAppTimerCues` invokes the
-    method and swallows `MissingPluginException`.
+    method and swallows `MissingPluginException`. A cancel during the permission
+    wait stops that schedule being sent, only the latest schedule of a rest is
+    sent, and another rest's cancel changes nothing.
 *   **`apps/mobile/test/data/training_repositories_test.dart` (Modify):**
     remove the `markPrepareAlertFired` test.
 *   **Protocol test fakes (Modify):**
@@ -1851,7 +1871,9 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         once, with no banner or second tone after it. The shade holds no rest
         notification after the end tone, nor after Stop during another rest.
         Repeat with −15 s taps that take the rest to zero: the end plays once,
-        and no banner or tone follows about 1 s later.
+        and no banner or tone follows about 1 s later. On iOS, repeat with the
+        first-ever rest of a fresh install, answering the permission prompt
+        with Allow after the rest is over: no banner or tone follows.
     3.  **CUJ 4.** The same rest with the app in the background: notifications
         "Get ready · *Exercise* · Set *k*", "*Exercise* · Set *k* in 0:03" and
         "Rest over", each with its tone. Reopening after 0:00 shows

@@ -799,9 +799,11 @@ class _RestStripState extends ConsumerState<RestStrip> {
   /// again at the new deadline; when the adjust left no time, it is not
   /// rescheduled, because the strip plays and marks the end right away. A
   /// deadline rounded up to the next second still schedules: native posts
-  /// nothing while the strip plays the cues, and iOS presents nothing for a
-  /// rest cancelled while that schedule is on its way. A refused permission was already
-  /// reported when the rest started, so it is not reported again on every tap.
+  /// nothing while the strip plays the cues, a cancel that lands while the
+  /// schedule waits on the permission answer stops it being sent, and native
+  /// adds nothing for a deadline that has passed by the time the schedule
+  /// arrives. A refused permission was already reported when the rest started,
+  /// so it is not reported again on every tap.
   Future<void> _adjust(RestTimerRecord timer, Duration delta) async {
     final repository = ref.read(trainingRepositoriesProvider).restTimers;
     final scheduler = ref.read(timerBackgroundSchedulerProvider);

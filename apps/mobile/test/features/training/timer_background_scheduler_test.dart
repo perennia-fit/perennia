@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
@@ -196,6 +198,98 @@ void main() {
         calls.map((call) => call.method),
         <String>['requestNotificationPermissionIfNeeded'],
       );
+    });
+
+    group('a cancel during the permission wait', () {
+      TimerBackgroundSchedule scheduleAt(DateTime deadlineAt) {
+        return TimerBackgroundSchedule(
+          kind: TimerBackgroundKind.rest,
+          timerId: 'rest-1',
+          deadlineAt: deadlineAt,
+          title: 'Rest timer',
+          body: 'Rest over',
+          countdownLabel: 'Rest',
+          prepareText: 'Deadlift · Set 4 in 0:03',
+        );
+      }
+
+      /// Holds each permission answer until its completer is completed, the
+      /// way the system prompt does on the first-ever rest.
+      (List<MethodCall>, List<Completer<String>>) holdPermission() {
+        final calls = <MethodCall>[];
+        final answers = <Completer<String>>[];
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) {
+          calls.add(call);
+          if (call.method == 'requestNotificationPermissionIfNeeded') {
+            final answer = Completer<String>();
+            answers.add(answer);
+            return answer.future;
+          }
+          return Future<Object?>.value('granted');
+        });
+        return (calls, answers);
+      }
+
+      test('the schedule is never sent, so the end stays silent', () async {
+        final (calls, answers) = holdPermission();
+        final scheduler =
+            MethodChannelTimerBackgroundScheduler(channel: channel);
+
+        final status = scheduler.schedule(
+          scheduleAt(DateTime.utc(2026, 6, 16, 8, 2)),
+        );
+        await pumpEventQueue();
+        await scheduler.cancel('rest-1');
+        answers.single.complete('granted');
+
+        expect(await status, TimerBackgroundPermissionStatus.granted);
+        expect(
+          calls.map((call) => call.method),
+          <String>['requestNotificationPermissionIfNeeded', 'cancelTimer'],
+        );
+      });
+
+      test('only the latest schedule of the rest is sent', () async {
+        final (calls, answers) = holdPermission();
+        final scheduler =
+            MethodChannelTimerBackgroundScheduler(channel: channel);
+        final adjustedDeadline = DateTime.utc(2026, 6, 16, 8, 3);
+
+        final first = scheduler.schedule(
+          scheduleAt(DateTime.utc(2026, 6, 16, 8, 2)),
+        );
+        await pumpEventQueue();
+        await scheduler.cancel('rest-1');
+        final second = scheduler.schedule(scheduleAt(adjustedDeadline));
+        await pumpEventQueue();
+        answers[0].complete('granted');
+        answers[1].complete('granted');
+        await Future.wait([first, second]);
+
+        final sent = calls.where((call) => call.method == 'scheduleTimer');
+        expect(sent, hasLength(1));
+        expect(
+          (sent.single.arguments as Map)['deadlineAtMillis'],
+          adjustedDeadline.millisecondsSinceEpoch,
+        );
+      });
+
+      test('another rest\'s cancel does not stop the schedule', () async {
+        final (calls, answers) = holdPermission();
+        final scheduler =
+            MethodChannelTimerBackgroundScheduler(channel: channel);
+
+        final status = scheduler.schedule(
+          scheduleAt(DateTime.utc(2026, 6, 16, 8, 2)),
+        );
+        await pumpEventQueue();
+        await scheduler.cancel('rest-2');
+        answers.single.complete('granted');
+        await status;
+
+        expect(calls.last.method, 'scheduleTimer');
+      });
     });
 
     group('notificationPermissionStatus (read-only, D5)', () {
