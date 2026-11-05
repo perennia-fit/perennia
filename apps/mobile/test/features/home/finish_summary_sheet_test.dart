@@ -87,8 +87,7 @@ void main() {
 
     // One row: the Workout's Deadlift, the earlier 130 kg beaten, and no
     // date, since every row is from this Workout. Leg Press has no earlier
-    // Workout, so its first point is no New Best. The row's wording is
-    // NewBestRow's, covered by new_bests_card_test.dart.
+    // Workout, so its first point is no New Best.
     final row = tester.widget<NewBestRow>(find.byType(NewBestRow));
     expect(row.today, isNull);
     expect(row.unitSystem, UnitSystem.metric);
@@ -96,6 +95,7 @@ void main() {
     expect(row.row.best.workoutId, fixture.workoutId);
     expect(row.row.best.measure, ProgressMeasureKind.maxLoad);
     expect(row.row.best.value, 140);
+    expect(find.text('Deadlift · 140 kg'), findsOneWidget);
     expect(find.byIcon(Icons.emoji_events_outlined), findsOneWidget);
 
     expect(find.text('Update "Lower B"'), findsOneWidget);
