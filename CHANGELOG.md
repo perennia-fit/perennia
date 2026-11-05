@@ -63,6 +63,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 - **An Agent write no longer un-archives a Meal, drops Food Entry import
   keys, or moves an entry to another Meal.**
+- **`batchWriteAgentMeal` rejects a malformed timestamp with a 400.**
+  `startedAt`, `endedAt`, `deletedAt` and an entry's `updatedAt` and `deletedAt`
+  must be ISO-8601 with `Z` or a UTC offset.
 - **An Agent undo is refused when other writes added foods to the Meal it
   created.** The undo returns `skipped_dependent` and applies nothing.
 - **Confirmations with Undo now go away.** "Set 3 logged · Undo", "Replaced ·

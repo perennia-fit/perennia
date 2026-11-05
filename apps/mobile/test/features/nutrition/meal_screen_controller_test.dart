@@ -415,6 +415,69 @@ void main() {
         (await repositories.nutrition.getMealById(mealId))!.mealType, 'Snack');
   });
 
+  test(
+      'a Save from a Log Portion opened before the first Batch was undone '
+      'lands in the screen\'s new Meal', () async {
+    final record = await seedSourceMeal();
+    final controller = open(todayArgs);
+    final logged = (await controller.logAgain(record))!;
+    // Log Portion opens here, and builds its draft from this target.
+    final heldMealId = stateOf(todayArgs).target.mealId;
+
+    await controller.undo(logged.batchId);
+    final saved = await controller.logFoodSnapshot(_snapshot(heldMealId));
+
+    expect(saved!.mealId, isNot(heldMealId));
+    expect(saved.mealId, stateOf(todayArgs).savedMealId);
+    final entries =
+        await repositories.nutrition.listActiveEntriesForMeal(saved.mealId);
+    expect(entries.single.name, 'Yoghurt');
+    expect(
+      await repositories.nutrition.listActiveEntriesForMeal(heldMealId),
+      isEmpty,
+    );
+  });
+
+  test(
+      'removing an entry already removed is ignored, and works again once '
+      'undo restores it', () async {
+    final mealId = await repositories.nutrition.createMeal(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 26, 12, 30),
+        mealTypeName: 'Lunch',
+      ),
+    );
+    final entryId = (await repositories.nutrition.logQuickEntry(
+      target: ExistingMealTarget(mealId),
+      entry: quick('Rice'),
+    ))
+        .foodEntryId;
+    final controller = open(MealScreenArgs.existing(mealId));
+
+    final batchId = await controller.removeEntry(entryId);
+    expect(batchId, isNotNull);
+    final logged = (await activity()).length;
+
+    expect(await controller.removeEntry(entryId), isNull);
+    expect((await activity()).length, logged);
+
+    await controller.undo(batchId!);
+    expect(await controller.removeEntry(entryId), isNotNull);
+  });
+
+  test('new Meal screens with their own instance share no controller',
+      () async {
+    final first = MealScreenArgs.newMeal(today, instance: Object());
+    final second = MealScreenArgs.newMeal(today, instance: Object());
+
+    expect(first, isNot(second));
+    await open(first).addFoodsLater();
+    open(second);
+    expect(stateOf(first).isSaved, isTrue);
+    expect(stateOf(second).isSaved, isFalse);
+  });
+
   test('MealScreenArgs compare by value', () {
     expect(
       const MealScreenArgs.newMeal(today),
@@ -429,6 +492,18 @@ void main() {
       isNot(const MealScreenArgs.newMeal(yesterday)),
     );
   });
+}
+
+FoodEntrySnapshotDraft _snapshot(String mealId) {
+  return FoodEntrySnapshotDraft(
+    mealId: mealId,
+    foodId: 'usda-yoghurt',
+    name: 'Yoghurt',
+    foodSource: FoodSource.usda,
+    nutrientsPer100: _energy(100),
+    isLiquid: false,
+    portion: Portion(value: 100, entered: '100', unit: PortionUnit.gram),
+  );
 }
 
 NutrientVector _energy(double kilocalories) {

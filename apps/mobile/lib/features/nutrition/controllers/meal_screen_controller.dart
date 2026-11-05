@@ -20,11 +20,16 @@ import 'nutrition_day_controller.dart' show nutritionRepositoryProvider;
 /// [mealId]. The key of [mealScreenControllerProvider].
 @immutable
 final class MealScreenArgs {
-  /// A Meal not written yet, logged on [day].
-  const MealScreenArgs.newMeal(NutritionDayDate this.day) : mealId = null;
+  /// A Meal not written yet, logged on [day]. A screen passes its own
+  /// [instance], so it never shares a controller with another new Meal screen
+  /// on that day, such as the last one while it is still closing.
+  const MealScreenArgs.newMeal(NutritionDayDate this.day, {this.instance})
+      : mealId = null;
 
   /// A saved Meal, opened from its card or the recent-Meal shortcut.
-  const MealScreenArgs.existing(String this.mealId) : day = null;
+  const MealScreenArgs.existing(String this.mealId)
+      : day = null,
+        instance = null;
 
   /// The day a new Meal is logged on; null for [MealScreenArgs.existing].
   final NutritionDayDate? day;
@@ -32,16 +37,22 @@ final class MealScreenArgs {
   /// The saved Meal; null for [MealScreenArgs.newMeal].
   final String? mealId;
 
+  /// Compared by identity; see [MealScreenArgs.newMeal].
+  final Object? instance;
+
   bool get isNewMeal => mealId == null;
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
-        other is MealScreenArgs && other.day == day && other.mealId == mealId;
+        other is MealScreenArgs &&
+            other.day == day &&
+            other.mealId == mealId &&
+            identical(other.instance, instance);
   }
 
   @override
-  int get hashCode => Object.hash(day, mealId);
+  int get hashCode => Object.hash(day, mealId, identityHashCode(instance));
 
   @override
   String toString() => isNewMeal
@@ -392,12 +403,16 @@ class MealScreenController extends Notifier<MealScreenState> {
     );
   }
 
-  /// Save on the Portion screen: [entry] must carry [MealScreenState.target]'s
-  /// Meal id.
+  /// Save on the Portion screen. [entry] lands in the Meal the screen holds
+  /// now: Log Portion built it for the target when it opened, and undoing the
+  /// first Batch since then gave the screen a new Meal.
   Future<LogFoodEntryResult?> logFoodSnapshot(FoodEntrySnapshotDraft entry) {
     final target = state.target;
     return _write(
-      () => _repository.logFoodEntrySnapshot(target: target, entry: entry),
+      () => _repository.logFoodEntrySnapshot(
+        target: target,
+        entry: entry.forMeal(target.mealId),
+      ),
       mealIdOf: (result) => result.mealId,
       batchIdOf: (result) => result.batchId,
     );
@@ -414,11 +429,19 @@ class MealScreenController extends Notifier<MealScreenState> {
   }
 
   /// Removes one Food Entry. Removing the last one keeps the Meal (§2).
-  /// Returns the Batch id, or null if ignored.
+  /// Returns the Batch id, or null if ignored: the in-flight guard clears
+  /// before [savedMealProvider] drops the row, so a double tap can ask to
+  /// remove an entry that is already gone.
   Future<String?> removeEntry(String foodEntryId) {
     final mealId = _requireSavedMealId('removeEntry');
-    return _write(
-      () => _repository.deleteFoodEntry(foodEntryId),
+    return _write<String?>(
+      () async {
+        final entry = await _repository.getFoodEntryById(foodEntryId);
+        if (entry == null || entry.deletedAt != null) {
+          return null;
+        }
+        return _repository.deleteFoodEntry(foodEntryId);
+      },
       mealIdOf: (_) => mealId,
       batchIdOf: (batchId) => batchId,
     );

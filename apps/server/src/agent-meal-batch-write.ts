@@ -44,6 +44,13 @@ const ISO8601StringSchema = z.string().min(1).openapi({
   description: "ISO-8601 timestamp."
 });
 
+// Every timestamp in this request ends up in the app's `DateTime.parse` and in
+// `new Date` here. `Date.parse` alone isn't enough: it accepts forms the app
+// throws on, and reads a value with no zone in the server's zone.
+const MealInstantSchema = z.iso.datetime({ offset: true }).openapi({
+  description: "ISO-8601 timestamp with Z or a UTC offset."
+});
+
 // Deliberately neither trimmed nor length-checked here: mealType is stored as
 // the name sent (meal-logging.md §9), and an empty or blank label is the
 // shared `meal_type_required` hard reject (§8), a 422 the request schema must
@@ -70,11 +77,11 @@ export const AgentMealBatchWriteMealSchema = z
       description:
         "Meal Type label, stored as sent. Required to create a Meal; omit it to keep the stored value."
     }),
-    startedAt: ISO8601StringSchema.optional().openapi({
+    startedAt: MealInstantSchema.optional().openapi({
       description:
         "Meal start instant in UTC. Required to create a Meal. Sent with timezoneOffsetMinutes, timezone, or both; omit the whole time block to keep the stored time."
     }),
-    endedAt: ISO8601StringSchema.nullable().optional().openapi({
+    endedAt: MealInstantSchema.nullable().optional().openapi({
       description:
         "Meal end instant in UTC. Omit to keep the stored value; null clears it."
     }),
@@ -100,7 +107,7 @@ export const AgentMealBatchWriteMealSchema = z
       description:
         "instant: startedAt is the time eaten. date: only the date is known and startedAt is local midnight. Sending startedAt sets instant unless this is also sent; omit to keep the stored value."
     }),
-    deletedAt: ISO8601StringSchema.nullable().optional().openapi({
+    deletedAt: MealInstantSchema.nullable().optional().openapi({
       description:
         "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value; null un-archives. Archiving also needs every Food Entry stored active in the Meal sent with deletedAt set in the same request, with updatedAt omitted or newer than the stored entry's, or the write fails with 422 meal_archived."
     })
@@ -170,11 +177,11 @@ export const AgentMealBatchWriteEntrySchema = z
       description:
         "Snapshotted package size in g/ml, if any. Resolved from the Food when omitted on a reference Food entry."
     }),
-    updatedAt: ISO8601StringSchema.optional().openapi({
+    updatedAt: MealInstantSchema.optional().openapi({
       description:
         "Client-observed row update clock. Defaults to the server receive time when omitted."
     }),
-    deletedAt: ISO8601StringSchema.nullable().optional().openapi({
+    deletedAt: MealInstantSchema.nullable().optional().openapi({
       description:
         "Nullable archive tombstone. Setting it is an ordinary LWW write of a tombstone, the same archive semantics the app's own delete affordance produces — never a purge. Omit to keep the stored value (null for a new entry)."
     })

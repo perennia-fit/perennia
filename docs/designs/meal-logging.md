@@ -601,6 +601,14 @@ place of `<time>`. Choosing a time makes it `instant`.
 - **Delete meal** sits in the app bar's overflow menu. It asks for confirmation, then calls
   `deleteMeal`, which archives the Meal and its Food Entries in one Batch, so one undo
   restores all of it. The screen then closes.
+- **A Meal archived elsewhere** (a sync pull, an agent) closes the screen and a Log Portion
+  above it. While the screen's own write is in flight this waits, because undoing the first
+  Batch archives the Meal and then gives the screen a new one.
+- **Log Portion across an undo.** A Save from a Log Portion opened before the first Batch was
+  undone lands in the screen's new Meal.
+- **Each new-Meal screen has its own controller**, so one opened while the last is still
+  closing starts a new Meal.
+- **Removing an entry already removed** (a double tap) is ignored.
 - **After undoing a new Meal's first action** from the Undo bar, the screen returns to the
   new-Meal state with a fresh pending id.
 - **A refused undo** shows the shared undo-conflict message (§7).
@@ -656,9 +664,12 @@ on every app and agent Meal write, against the Meal as it will be stored.
 
 Input shape is checked by the agent request schema, as the Dose write does, and fails with
 a 400: the offset range through `AGENT_PROTOCOLS_MIN_OFFSET_MINUTES` and
-`AGENT_PROTOCOLS_MAX_OFFSET_MINUTES` (−720 to +840), and the `localDate` format through
-`LocalDateSchema` (both in `agent-protocols.ts`). In the app the offset comes from the
-device and the date is derived, so neither can be malformed.
+`AGENT_PROTOCOLS_MAX_OFFSET_MINUTES` (−720 to +840), the `localDate` format through
+`LocalDateSchema` (both in `agent-protocols.ts`), and every timestamp in the request
+(`startedAt`, `endedAt`, `deletedAt` and an entry's `updatedAt` and `deletedAt`), which must
+be ISO-8601 with `Z` or a UTC offset. `Date.parse` alone isn't enough: it accepts forms the
+app's `DateTime.parse` throws on, and reads a value with no zone in the server's zone. In the
+app the offset comes from the device and the date is derived, so neither can be malformed.
 
 - **Dart:** `validateMealTime(MealTimeInput input, {required DateTime now}) →
   MealValidationResult`, with `MealTimeInput(startedAt, endedAt?, mealType)`, shaped like

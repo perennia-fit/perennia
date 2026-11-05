@@ -406,6 +406,9 @@ request sends, with its entries, as one idempotent Activity Log batch.
   `{ "mealTypes": [{ "id", "name", "sortOrder" }] }`, in the order the app
   lists them. A Meal stores the `mealType` name it was sent, so send one of
   these names.
+- **Timestamps.** `startedAt`, `endedAt`, `deletedAt` and an entry's
+  `updatedAt` and `deletedAt` must be ISO-8601 with `Z` or a UTC offset.
+  Anything else is a 400.
 - **Meal fields.** `meal.id` is required. `mealType`, `endedAt`, `deletedAt`
   and `timePrecision` may each be sent on their own. An absent field keeps its
   stored value; `null` clears `endedAt`, and `deletedAt: null` un-archives.
