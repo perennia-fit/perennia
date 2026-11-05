@@ -113,7 +113,7 @@ void main() {
       final saved = (await repositories.nutrition.getMealById(mealId!))!;
       expect(saved.mealType, 'Breakfast');
       expect(saved.startedAt, DateTime(2026, 6, 26, 7, 30).toUtc());
-      expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+      expect(stateOf(todayArgs).isSaved, isTrue);
       expect(stateOf(todayArgs).target, isA<ExistingMealTarget>());
 
       await controller.changeTime(DateTime(2026, 6, 26, 19));
@@ -162,18 +162,6 @@ void main() {
         saved.clock,
         await repositories.nutrition.listMealTypes(),
       ),
-    );
-  });
-
-  test('time-shift buttons replace the time instead of stacking', () {
-    final controller = open(todayArgs);
-
-    controller.shiftTime(const Duration(minutes: 15));
-    controller.shiftTime(const Duration(minutes: 30));
-
-    expect(
-      stateOf(todayArgs).pendingStart,
-      DateTime(2026, 6, 26, 12, 10),
     );
   });
 
@@ -297,7 +285,7 @@ void main() {
         .toSet()
         .difference(batchesBefore);
     expect(newBatches, {result.batchId});
-    expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+    expect(stateOf(todayArgs).isSaved, isTrue);
     expect(stateOf(todayArgs).savedMealId, result.mealId);
     expect(stateOf(todayArgs).firstBatchId, result.batchId);
     expect(stateOf(todayArgs).writing, isFalse);
@@ -314,7 +302,7 @@ void main() {
     final result = await controller.logQuickEntry(quick('Coffee'));
 
     expect(result, isNull);
-    expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+    expect(stateOf(todayArgs).isSaved, isTrue);
     expect(stateOf(todayArgs).savedMealId, pendingId);
     expect(stateOf(todayArgs).writing, isFalse);
     expect(
@@ -336,7 +324,7 @@ void main() {
 
     expect(undo.hasConflicts, isFalse);
     final state = stateOf(todayArgs);
-    expect(state.phase, MealScreenPhase.newMeal);
+    expect(state.isSaved, isFalse);
     expect(state.savedMealId, isNull);
     expect(state.firstBatchId, isNull);
     expect(state.pendingMealId, isNot(firstPendingId));
@@ -363,7 +351,7 @@ void main() {
       undo.conflicts.map((conflict) => conflict.reason),
       contains(ActivityLogUndoConflictReason.dependent),
     );
-    expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+    expect(stateOf(todayArgs).isSaved, isTrue);
     expect(stateOf(todayArgs).savedMealId, first.mealId);
     expect(
       (await repositories.nutrition.getMealById(first.mealId))!.deletedAt,
@@ -378,7 +366,7 @@ void main() {
     final batchId = await controller.removeEntry(logged.foodEntryId);
 
     expect(batchId, isNotNull);
-    expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+    expect(stateOf(todayArgs).isSaved, isTrue);
     expect(stateOf(todayArgs).savedMealId, logged.mealId);
     final provider = savedMealProvider(logged.mealId);
     container.listen(provider, (_, __) {});
@@ -415,7 +403,7 @@ void main() {
     );
     final args = MealScreenArgs.existing(mealId);
     final controller = open(args);
-    expect(stateOf(args).phase, MealScreenPhase.saved);
+    expect(stateOf(args).isSaved, isTrue);
     expect(stateOf(args).canPick, isTrue);
 
     final logged = (await controller.logQuickEntry(quick('Coffee')))!;

@@ -22,11 +22,10 @@ import '../../workout_templates/widgets/workout_template_list_screen.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../../settings/widgets/settings_screen.dart';
 import '../../nutrition/controllers/meal_screen_controller.dart'
-    show mealScreenClockProvider;
+    show isFutureNutritionDay, mealScreenClockProvider;
 import '../../nutrition/widgets/meal_screen.dart';
 import '../../nutrition/widgets/nutrition_day_view.dart';
 import '../../progress/widgets/progress_overview.dart';
-import '../../../domain/nutrition/nutrition.dart' show NutritionDayDate;
 import '../../../domain/protocols/protocols.dart';
 import '../../../domain/training/training_records.dart';
 import '../../../domain/training/training_day.dart';
@@ -539,10 +538,10 @@ class _HomeNavigationBar extends StatelessWidget {
 /// Meal screen's clock, which tests override.
 bool _isFutureDay(WidgetRef ref) {
   final selectedDate = ref.read(selectedTrainingDayProvider);
-  final today = NutritionDayDate.fromDateTime(
+  return isFutureNutritionDay(
+    nutritionDayDateFromTrainingDay(selectedDate),
     ref.read(mealScreenClockProvider)(),
   );
-  return nutritionDayDateFromTrainingDay(selectedDate).compareTo(today) > 0;
 }
 
 /// The Log sheet: Workout, Meal and Dose for the selected day. Meal is

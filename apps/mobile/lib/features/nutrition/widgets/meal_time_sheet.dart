@@ -133,9 +133,8 @@ class _MealTimeSheetState extends ConsumerState<MealTimeSheet> {
     final mealTypes = activeMealTypes(
       ref.watch(mealTypeListProvider).value ?? const <MealTypeRecord>[],
     );
-    final savedMealId = state.savedMealId;
     MealRecord? meal;
-    if (state.isSaved && savedMealId != null) {
+    if (state.savedMealId case final savedMealId?) {
       meal = ref.watch(savedMealProvider(savedMealId)).value?.meal;
       if (meal == null) {
         return const SizedBox.shrink();
@@ -333,7 +332,7 @@ class _MealTimeSheetState extends ConsumerState<MealTimeSheet> {
     }
     widget.pendingDate.value = null;
     if (view.meal == null) {
-      _notifier.shiftTime(amount);
+      _notifier.setPendingTime(instant);
     } else {
       await _notifier.changeTime(instant);
     }

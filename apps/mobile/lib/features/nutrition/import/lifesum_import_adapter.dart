@@ -348,7 +348,7 @@ class _BatchBuilder {
     final startedAt = _parseDate(dateText);
     // A date with no time of day only knows its day; its `startedAt` is
     // local midnight (docs/designs/meal-logging.md §1).
-    final timePrecision = _hasTimeOfDay(dateText)
+    final timePrecision = importTextHasTimeOfDay(dateText)
         ? MealTimePrecision.instant
         : MealTimePrecision.date;
     final localDate = NutritionDayDate.fromDateTime(startedAt);
@@ -423,14 +423,6 @@ class _BatchBuilder {
     return fixed
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
-  }
-
-  /// Whether [dateText] parses as an ISO date-time carrying a time of day
-  /// (`2024-03-05T08:30`, `2024-03-05 08:30`), not a bare date.
-  static bool _hasTimeOfDay(String dateText) {
-    final text = dateText.trim();
-    return DateTime.tryParse(text) != null &&
-        RegExp(r'^\S+?[Tt ]\d').hasMatch(text);
   }
 
   static DateTime _parseDate(String dateText) {

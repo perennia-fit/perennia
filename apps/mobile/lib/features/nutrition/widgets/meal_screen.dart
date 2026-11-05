@@ -49,6 +49,25 @@ String mealTimeText(BuildContext context, MealRecord meal) {
   return formatMealClock(context, meal.clock);
 }
 
+/// A saved Meal's label in two parts, shared by the Meal screen's header
+/// and the Nutrition Day's Meal card (§6): [mealTimeText], and the Meal
+/// Type, followed by `add foods` while the Meal has no Food Entries. Each
+/// caller joins them into `<time> · <type>[ · add foods]` and its own
+/// semantic label.
+({String time, String typeAndHint}) mealLabelParts(
+  BuildContext context,
+  NutritionDayMealRecord meal,
+) {
+  final l10n = context.l10n;
+  final type = meal.meal.mealType;
+  return (
+    time: mealTimeText(context, meal.meal),
+    typeAndHint: meal.entries.isEmpty
+        ? l10n.mealHeaderLabel(type, l10n.mealHeaderAddFoods)
+        : type,
+  );
+}
+
 /// The Meal screen; see the library comment.
 class MealScreen extends ConsumerStatefulWidget {
   /// A Meal not written yet, logged on [day].
@@ -137,10 +156,10 @@ class _MealScreenState extends ConsumerState<MealScreen> {
     final mealTypes = activeMealTypes(
       ref.watch(mealTypeListProvider).value ?? const <MealTypeRecord>[],
     );
-    final savedMealId = state.savedMealId;
-    final NutritionDayMealRecord? saved = state.isSaved && savedMealId != null
-        ? ref.watch(savedMealProvider(savedMealId)).value
-        : null;
+    final NutritionDayMealRecord? saved = switch (state.savedMealId) {
+      final savedMealId? => ref.watch(savedMealProvider(savedMealId)).value,
+      null => null,
+    };
     final entries = saved?.entries ?? const <FoodEntryRecord>[];
     final header = _header(context, state, saved, mealTypes);
     final showYourMeals = !state.isSaved || (saved != null && entries.isEmpty);
@@ -239,7 +258,8 @@ class _MealScreenState extends ConsumerState<MealScreen> {
                         _EntryRow(
                           key: MealScreen.entryRowKey(entry.id),
                           entry: entry,
-                          onEdit: _hasEditablePortion(entry) && !state.writing
+                          onEdit: LogPortionScreen.canEditEntry(entry) &&
+                                  !state.writing
                               ? () => unawaited(
                                     _editPortion(entry, header?.text),
                                   )
@@ -262,7 +282,6 @@ class _MealScreenState extends ConsumerState<MealScreen> {
                     child: _Disabled(
                       disabled: !state.canPick,
                       child: AddFoodPicker(
-                        target: state.target,
                         onFoodSelected: (food) {
                           unawaited(_logFood(food, header?.text));
                         },
@@ -314,18 +333,10 @@ class _MealScreenState extends ConsumerState<MealScreen> {
       if (saved == null) {
         return null;
       }
-      final time = mealTimeText(context, saved.meal);
-      final type = saved.meal.mealType;
-      if (saved.entries.isEmpty) {
-        final typeAndHint = l10n.mealHeaderLabel(type, l10n.mealHeaderAddFoods);
-        return (
-          text: l10n.mealHeaderLabel(time, typeAndHint),
-          semanticsLabel: l10n.mealHeaderSemantics(time, typeAndHint),
-        );
-      }
+      final (:time, :typeAndHint) = mealLabelParts(context, saved);
       return (
-        text: l10n.mealHeaderLabel(time, type),
-        semanticsLabel: l10n.mealHeaderSemantics(time, type),
+        text: l10n.mealHeaderLabel(time, typeAndHint),
+        semanticsLabel: l10n.mealHeaderSemantics(time, typeAndHint),
       );
     }
     if (!state.timeChosen) {
@@ -552,18 +563,6 @@ class _MealScreenState extends ConsumerState<MealScreen> {
       return null;
     }
   }
-}
-
-/// Whether [entry] opens the Portion edit: a Food-backed entry without
-/// import keys. Imported entries are immutable observations and Quick
-/// Entries have no Portion, so both are remove-only (§6).
-bool _hasEditablePortion(FoodEntryRecord entry) {
-  return entry.kind == FoodEntryKind.food &&
-      entry.foodId != null &&
-      entry.foodSource != null &&
-      entry.portion != null &&
-      entry.importSource == null &&
-      entry.importExternalId == null;
 }
 
 enum _MealMenuAction { delete }

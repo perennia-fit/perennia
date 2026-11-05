@@ -32,16 +32,15 @@ const _noMatchLine = 'No foods match.';
 /// The add-food picker, embedded in the Meal screen
 /// (docs/designs/meal-logging.md §6; docs/designs/unified-food-search.md).
 ///
-/// It takes the [MealTarget] its writes land in: an existing Meal, or the
-/// Meal screen's pending Meal, which the first write creates in the same
-/// Batch. Its results area is an [Expanded], so the caller must give it a
-/// bounded height.
+/// The picker never writes on its own: the caller owns every write, through
+/// [onFoodSelected] and [onQuickEntry], so the Meal screen's in-flight guard
+/// and its switch to the saved Meal cover them. Its results area is an
+/// [Expanded], so the caller must give it a bounded height.
 class AddFoodPicker extends ConsumerWidget {
   const AddFoodPicker({
     super.key,
-    required this.target,
     this.onFoodSelected,
-    this.onQuickEntry,
+    required this.onQuickEntry,
   });
 
   static const searchFieldKey = Key('nutrition.addFood.search');
@@ -73,13 +72,12 @@ class AddFoodPicker extends ConsumerWidget {
   static const searchDebounceDuration =
       AddFoodPickerController.searchDebounceDuration;
 
-  /// The Meal a Quick add without [onQuickEntry] writes into.
-  final MealTarget target;
+  /// Opens a picked Food. Null makes the picker browse-only: its results
+  /// don't open.
   final ValueChanged<FoodPickerItem>? onFoodSelected;
 
-  /// Makes the Quick Entry write instead of the picker. Without it, the
-  /// picker writes the draft into [target] through its controller.
-  final Future<void> Function(QuickFoodEntryDraft draft)? onQuickEntry;
+  /// Makes the Quick add write for the draft the Quick Entry dialog returns.
+  final Future<void> Function(QuickFoodEntryDraft draft) onQuickEntry;
 
   static Key filterChipKey(AddFoodPickerFilter filter) {
     return Key('nutrition.addFood.filter-${filter.name}');
@@ -114,7 +112,7 @@ class AddFoodPicker extends ConsumerWidget {
               FilledButton.icon(
                 key: quickAddButtonKey,
                 onPressed: () {
-                  unawaited(_quickAdd(context, ref));
+                  unawaited(_quickAdd(context));
                 },
                 icon: const Icon(Icons.add),
                 label: const Text('Quick add'),
@@ -155,7 +153,7 @@ class AddFoodPicker extends ConsumerWidget {
             data: (value) => _LookupBoundaryBanner(
               state: value,
               onQuickAdd: () {
-                unawaited(_quickAdd(context, ref));
+                unawaited(_quickAdd(context));
               },
               onUseUsda: () {
                 unawaited(
@@ -201,7 +199,7 @@ class AddFoodPicker extends ConsumerWidget {
     );
   }
 
-  Future<void> _quickAdd(BuildContext context, WidgetRef ref) async {
+  Future<void> _quickAdd(BuildContext context) async {
     final draft = await showDialog<QuickFoodEntryDraft>(
       context: context,
       builder: (context) => const QuickEntryDialog(),
@@ -209,14 +207,7 @@ class AddFoodPicker extends ConsumerWidget {
     if (draft == null) {
       return;
     }
-    if (onQuickEntry != null) {
-      await onQuickEntry!(draft);
-      return;
-    }
-    await ref.read(addFoodPickerControllerProvider.notifier).logQuickEntry(
-          target: target,
-          entry: draft,
-        );
+    await onQuickEntry(draft);
   }
 
   Future<void> _scanBarcode(BuildContext context, WidgetRef ref) async {

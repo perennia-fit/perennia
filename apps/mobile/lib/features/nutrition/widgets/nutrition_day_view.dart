@@ -12,13 +12,12 @@ import '../../../domain/nutrition/nutrition.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../controllers/meal_screen_controller.dart'
-    show mealScreenClockProvider;
+    show isFutureNutritionDay, mealScreenClockProvider;
 import '../controllers/nutrition_day_controller.dart';
 import 'meal_screen.dart';
 import 'nutrition_attribution.dart';
 import 'nutrition_trends_view.dart';
 import 'portion_text.dart';
-import 'quick_entry_dialog.dart';
 
 class NutritionDayView extends ConsumerWidget {
   const NutritionDayView({super.key});
@@ -28,9 +27,6 @@ class NutritionDayView extends ConsumerWidget {
   static const previousDayButtonKey = Key('nutrition.previousDay');
   static const nextDayButtonKey = Key('nutrition.nextDay');
   static const daySummaryKey = Key('nutrition.daySummary');
-  static const quickEntryNameFieldKey = QuickEntryDialog.nameFieldKey;
-  static const quickEntryEnergyFieldKey = QuickEntryDialog.energyFieldKey;
-  static const quickEntrySaveButtonKey = QuickEntryDialog.saveButtonKey;
   static const manageMealTypesButtonKey = Key('nutrition.manageMealTypes');
   static const editGoalsButtonKey = Key('nutrition.editGoals');
   static const viewTrendsButtonKey = Key('nutrition.viewTrends');
@@ -189,10 +185,10 @@ List<Widget> _nutritionDayBodyChildren({
   final mealTypes = ref.watch(mealTypeListProvider);
   // A Meal can't start after today (§8), so a future day offers no
   // `Log meal`. The Meal screen reads "today" from the same clock.
-  final today = NutritionDayDate.fromDateTime(
+  final isFutureDay = isFutureNutritionDay(
+    day.localDate,
     ref.watch(mealScreenClockProvider)(),
   );
-  final isFutureDay = day.localDate.compareTo(today) > 0;
 
   return [
     NutritionDaySummary(totals: day.totals),
@@ -939,9 +935,10 @@ class _NutritionGoalFormState extends ConsumerState<_NutritionGoalForm> {
 
 /// A Meal card: `<time> · <type>` (§6), its Food Entries, then its energy
 /// total. A Meal with no Food Entries reads `<time> · <type> · add foods`.
-/// The time is [mealTimeText]: the clock at the Meal's frozen offset, or
-/// `time not recorded` for a `date` Meal. Tapping the card opens the Meal
-/// screen in its saved state, where foods are added, removed and changed.
+/// The parts come from [mealLabelParts], as in the Meal screen's header: the
+/// time is the clock at the Meal's frozen offset, or `time not recorded` for
+/// a `date` Meal. Tapping the card opens the Meal screen in its saved state,
+/// where foods are added, removed and changed.
 class _MealSummary extends StatelessWidget {
   const _MealSummary({required this.meal});
 
@@ -951,11 +948,8 @@ class _MealSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final energy = meal.totals[NutrientId.energy];
-    final time = mealTimeText(context, meal.meal);
-    final type = meal.meal.mealType;
+    final (:time, :typeAndHint) = mealLabelParts(context, meal);
     final hasEntries = meal.entries.isNotEmpty;
-    final typeAndHint =
-        hasEntries ? type : l10n.mealHeaderLabel(type, l10n.mealHeaderAddFoods);
     final borderRadius = BorderRadius.circular(8);
 
     return Padding(

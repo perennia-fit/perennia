@@ -411,22 +411,6 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
     return ref.read(nutritionRepositoryProvider).clearNutritionGoal(nutrient);
   }
 
-  Future<LogQuickEntryResult> logQuickEntry({
-    required MealTarget target,
-    required QuickFoodEntryDraft entry,
-  }) {
-    return ref.read(nutritionRepositoryProvider).logQuickEntry(
-          target: target,
-          entry: entry,
-        );
-  }
-
-  Future<LogFoodEntryResult> logFoodEntry({
-    required FoodEntryDraft entry,
-  }) {
-    return ref.read(nutritionRepositoryProvider).logFoodEntry(entry: entry);
-  }
-
   Future<List<MealTypeRecord>> _activeMealTypes() async {
     final current = ref.read(mealTypeListProvider).value;
     if (current != null) {

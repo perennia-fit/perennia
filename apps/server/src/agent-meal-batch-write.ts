@@ -9,11 +9,16 @@ import {
   AgentNutrientAmountSchema,
   AgentNutrientValidationIssueSchema,
   AgentNutrientValidationLimitsSchema,
+  nutrientValidationLimitsResponse,
   validateAgentFoodEntry,
   validateAgentMealTime,
   type AgentMealValidationIssue,
   type AgentNutrientValidationIssue
 } from "./agent-validation.js";
+import {
+  mealPayloadOffset,
+  mealPayloadTimePrecision
+} from "./agent-nutrition-reads.js";
 import {
   AGENT_PROTOCOLS_MAX_OFFSET_MINUTES,
   AGENT_PROTOCOLS_MIN_OFFSET_MINUTES,
@@ -462,8 +467,9 @@ export type AgentMealBatchStoredState = {
   entries: ReadonlyMap<string, AgentMealBatchStoredRow>;
   /**
    * The caller's Food Entries stored active (deleted_at null) under this Meal
-   * id, whether or not the request sends them, keyed by id. Empty when the
-   * Meal doesn't exist or belongs to another account.
+   * id, whether or not the request sends them, keyed by id. Read only for a
+   * Meal archived after this request; the Drizzle store leaves it empty
+   * otherwise, and when the Meal doesn't exist or belongs to another account.
    */
   activeEntries: ReadonlyMap<string, AgentMealBatchStoredClock>;
 };
@@ -570,7 +576,7 @@ export async function resolveAgentMealBatchEntries({
   const responseEntries: AgentMealBatchWriteEntryResult[] = [];
 
   for (const [itemIndex, rawItem] of request.entries.entries()) {
-    const kind = rawItem.foodId === null ? "quickEntry" : "food";
+    const kind = foodEntryKind(rawItem);
 
     // A reference Food carries a semantic Portion; a Quick Entry does not.
     if (kind === "food" && rawItem.portion === null) {
@@ -851,8 +857,9 @@ export function prepareAgentMealBatchWrite(
     const storedEntry = stored.entries.get(entry.id);
     if (storedEntry !== undefined && storedEntry.userId !== stored.userId) {
       conflicts.push(
-        entryLevelIssue(itemIndex, entry.id, {
+        issueForItem(itemIndex, entry, {
           field: `entries[${itemIndex}].id`,
+          nutrient: null,
           rule: "entry_id_conflict",
           message: "This Food Entry id already belongs to another account.",
           limit: null
@@ -894,8 +901,9 @@ export function prepareAgentMealBatchWrite(
       storedEntry.payload.meal_id !== meal.id
     ) {
       errors.push(
-        entryLevelIssue(itemIndex, entry.id, {
+        issueForItem(itemIndex, entry, {
           field: `entries[${itemIndex}].id`,
+          nutrient: null,
           rule: "entry_meal_mismatch",
           message:
             "This Food Entry already exists under a different Meal; an agent write never moves an entry to another Meal.",
@@ -927,9 +935,6 @@ export function prepareAgentMealBatchWrite(
   };
 
   if (rewritesMeal) {
-    const base: Record<string, unknown> =
-      storedMeal === null ? {} : storedMeal.payload;
-
     if (storedMeal === null) {
       const incomplete: AgentMealBatchWriteIssue[] = [];
       if (meal.mealType === undefined) {
@@ -963,13 +968,13 @@ export function prepareAgentMealBatchWrite(
       }
     }
 
-    const mealType = meal.mealType ?? storedString(base.meal_type) ?? "";
-    let startedAt = storedString(base.started_at);
-    let timezone: string | null = storedString(base.timezone);
-    let localDate = storedString(base.local_date);
-    let offsetMinutes = storedOffset(base.timezone_offset_minutes);
+    const mealType = meal.mealType ?? storedString(storedPayload.meal_type) ?? "";
+    let startedAt = storedString(storedPayload.started_at);
+    let timezone: string | null = storedString(storedPayload.timezone);
+    let localDate = storedString(storedPayload.local_date);
+    let offsetMinutes = mealPayloadOffset(storedPayload.timezone_offset_minutes);
     let timePrecision =
-      meal.timePrecision ?? storedTimePrecision(base.time_precision);
+      meal.timePrecision ?? mealPayloadTimePrecision(storedPayload.time_precision);
 
     if (meal.startedAt !== undefined) {
       const instant = new Date(meal.startedAt);
@@ -1002,13 +1007,9 @@ export function prepareAgentMealBatchWrite(
     }
 
     const endedAt =
-      meal.endedAt !== undefined ? meal.endedAt : storedString(base.ended_at);
+      meal.endedAt !== undefined ? meal.endedAt : storedString(storedPayload.ended_at);
     const deletedAt =
-      meal.deletedAt !== undefined
-        ? meal.deletedAt
-        : storedMeal === null
-          ? null
-          : storedDeletedAt(storedMeal);
+      meal.deletedAt !== undefined ? meal.deletedAt : resultingMealDeletedAt;
     resultingMealDeletedAt = deletedAt;
     resultingTime = { startedAt: startedAt ?? "", endedAt, mealType };
 
@@ -1017,7 +1018,7 @@ export function prepareAgentMealBatchWrite(
       updatedAt: nowIso,
       deletedAt,
       payload: {
-        ...base,
+        ...storedPayload,
         id: meal.id,
         meal_type: mealType,
         started_at: startedAt,
@@ -1112,21 +1113,13 @@ export function prepareAgentMealBatchWrite(
 
   const entries = request.entries.map((entry, index) => {
     const updatedAt = entry.updatedAt ?? nowIso;
-    const deletedAt = entryDeletedAt[index] ?? null;
+    const deletedAt = entryDeletedAt[index];
     return {
       id: entry.id,
       updatedAt,
       deletedAt,
-      payload: buildFoodEntryPayload({
-        item: entry,
-        name: entry.name,
-        nutrients: entry.nutrients,
-        isLiquid: entry.isLiquid,
-        servingLabel: entry.servingLabel,
-        servingSize: entry.servingSize,
-        packageSize: entry.packageSize,
+      payload: buildFoodEntryPayload(entry, {
         mealId: meal.id,
-        kind: entry.foodId === null ? "quickEntry" : "food",
         updatedAt,
         deletedAt
       })
@@ -1167,12 +1160,14 @@ export function createDrizzleAgentMealBatchWriteStore(
           };
         }
 
-        // Read the stored rows for any user, locked for the rest of the
-        // transaction, so the field rules judge the rows this batch will
-        // overwrite and a concurrent write can't slip in between. The same
-        // locked pass reads the caller's Food Entries stored active under this
-        // Meal, so the archive rule (meal-logging.md §9 'Archived Meals') sees
-        // every entry a concurrent write could otherwise add or revive.
+        // Read the stored Meal and request entries for any user, locked for
+        // the rest of the transaction, so the field rules judge the rows this
+        // batch will overwrite. The Meal row's FOR UPDATE serializes agent
+        // writes to the same Meal. The caller's Food Entries stored active
+        // under this Meal are read (and locked) only when the Meal is archived
+        // after this request: the archive rule (meal-logging.md §9 'Archived
+        // Meals') is the only reader of stored.activeEntries, and
+        // prepareAgentMealBatchWrite reads them only for an archived result.
         const storedMealRows = await transaction
           .select({
             userId: schema.meals.userId,
@@ -1198,8 +1193,17 @@ export function createDrizzleAgentMealBatchWriteStore(
                 .for("update");
 
         const storedMealRow = storedMealRows[0];
+        // Mirrors prepareAgentMealBatchWrite's resultingMealDeletedAt: a sent
+        // deletedAt decides (and always counts as a Meal field sent), else the
+        // stored column does.
+        const mealArchivedAfterWrite =
+          request.meal.deletedAt !== undefined
+            ? request.meal.deletedAt !== null
+            : storedMealRow?.deletedAt != null;
         const activeEntryRows =
-          storedMealRow !== undefined && storedMealRow.userId === userId
+          storedMealRow !== undefined &&
+          storedMealRow.userId === userId &&
+          mealArchivedAfterWrite
             ? await transaction
                 .select({
                   id: schema.foodEntries.id,
@@ -1340,6 +1344,24 @@ export function agentMealBatchWriteRejectionMessage(
   }
 }
 
+/**
+ * The error body for a rejected Meal batch, shared by REST and MCP: the
+ * resolve step's hard failures (422) and the stored-state rejections alike.
+ */
+export function agentMealBatchWriteErrorBody(
+  status: AgentMealBatchRejectionStatus,
+  errors: AgentMealBatchWriteIssue[],
+  warnings: AgentMealBatchWriteIssue[]
+) {
+  return AgentMealBatchWriteErrorResponseSchema.parse({
+    code: "agent_meal_batch_write_failed",
+    message: agentMealBatchWriteRejectionMessage(status),
+    errors,
+    warnings,
+    limits: nutrientValidationLimitsResponse()
+  });
+}
+
 /** A stored row's tombstone: the column decides, the payload keeps its text. */
 function storedDeletedAt(row: AgentMealBatchStoredRow): string | null {
   if (row.deletedAt === null) {
@@ -1352,15 +1374,6 @@ function storedDeletedAt(row: AgentMealBatchStoredRow): string | null {
 
 function storedString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
-}
-
-function storedOffset(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) ? value : null;
-}
-
-/** A payload written before time precision existed reads as `instant`. */
-function storedTimePrecision(value: unknown): "instant" | "date" {
-  return value === "date" ? "date" : "instant";
 }
 
 /**
@@ -1389,19 +1402,6 @@ function mealLevelIssue(issue: {
   });
 }
 
-function entryLevelIssue(
-  itemIndex: number,
-  entryId: string,
-  issue: { field: string; rule: string; message: string; limit: number | string | null }
-): AgentMealBatchWriteIssue {
-  return AgentMealBatchWriteIssueSchema.parse({
-    ...issue,
-    nutrient: null,
-    itemIndex,
-    entryId
-  });
-}
-
 function mealValidationIssue(
   issue: AgentMealValidationIssue
 ): AgentMealBatchWriteIssue {
@@ -1413,52 +1413,42 @@ function mealValidationIssue(
   });
 }
 
-function buildFoodEntryPayload({
-  item,
-  name,
-  nutrients,
-  isLiquid,
-  servingLabel,
-  servingSize,
-  packageSize,
-  mealId,
-  kind,
-  updatedAt,
-  deletedAt
-}: {
-  item: AgentMealBatchWriteEntry;
-  name: string;
-  nutrients: Record<string, z.infer<typeof AgentNutrientAmountSchema>>;
-  isLiquid: boolean;
-  servingLabel: string | null;
-  servingSize: number | null;
-  packageSize: number | null;
-  mealId: string;
-  kind: "food" | "quickEntry";
-  updatedAt: string;
-  deletedAt: string | null;
-}): Record<string, unknown> {
+/** A Food Entry is a reference Food when it names one, else a Quick Entry. */
+function foodEntryKind(entry: {
+  foodId: string | null;
+}): AgentMealBatchWriteEntryResult["kind"] {
+  return entry.foodId === null ? "quickEntry" : "food";
+}
+
+function buildFoodEntryPayload(
+  entry: AgentMealBatchResolvedEntry,
+  {
+    mealId,
+    updatedAt,
+    deletedAt
+  }: { mealId: string; updatedAt: string; deletedAt: string | null }
+): Record<string, unknown> {
   return {
-    id: item.id,
+    id: entry.id,
     meal_id: mealId,
-    entry_kind: kind,
-    position: item.position,
-    name,
-    nutrient_values_json: JSON.stringify(nutrientVectorStorage(nutrients)),
-    food_id: item.foodId,
+    entry_kind: foodEntryKind(entry),
+    position: entry.position,
+    name: entry.name,
+    nutrient_values_json: JSON.stringify(nutrientVectorStorage(entry.nutrients)),
+    food_id: entry.foodId,
     portion_json:
-      item.portion === null
+      entry.portion === null
         ? null
         : JSON.stringify({
-            value: item.portion.value,
-            entered: item.portion.entered,
-            unit: item.portion.unit
+            value: entry.portion.value,
+            entered: entry.portion.entered,
+            unit: entry.portion.unit
           }),
-    food_source: item.foodSource,
-    is_liquid: isLiquid,
-    serving_label: servingLabel,
-    serving_size: servingSize,
-    package_size: packageSize,
+    food_source: entry.foodSource,
+    is_liquid: entry.isLiquid,
+    serving_label: entry.servingLabel,
+    serving_size: entry.servingSize,
+    package_size: entry.packageSize,
     updated_at: updatedAt,
     deleted_at: deletedAt
   };

@@ -2,12 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/nutrition/meal_type_proposal.dart';
-import 'package:perennia/features/nutrition/controllers/nutrition_day_controller.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -133,7 +131,8 @@ void main() {
     test('logs a Quick Entry into a Meal and reads the Nutrition Day',
         () async {
       final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
-      final startedAt = DateTime.utc(2026, 6, 26, 7, 15);
+      // A device-local time, so the Nutrition Day is 2026-06-26 in any zone.
+      final startedAt = DateTime(2026, 6, 26, 7, 15);
 
       final result = await repositories.nutrition.logQuickEntry(
         target: NewMealTarget(
@@ -157,7 +156,7 @@ void main() {
       final meal = day.meals.single.meal;
       expect(meal.id, result.mealId);
       expect(meal.mealType, 'Breakfast');
-      expect(meal.startedAt, startedAt);
+      expect(meal.startedAt, startedAt.toUtc());
       expect(meal.timezone, startedAt.toLocal().timeZoneName);
       expect(meal.localDate, localDate);
       expect(meal.endedAt, isNull);
@@ -1957,38 +1956,6 @@ void main() {
           await repositories.nutrition.getFoodEntryById(result.foodEntryId);
       expect(entry!.resolvedBaseQuantity, 500);
       expect(entry.resolvedNutrients[NutrientId.energy].value, 300);
-    });
-
-    test('controller logs through the repository path', () async {
-      final container = ProviderContainer(
-        overrides: [
-          trainingRepositoriesProvider.overrideWith((ref) => repositories),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
-      container.read(selectedNutritionDayProvider.notifier).select(localDate);
-
-      final result = await container
-          .read(nutritionDayControllerProvider.notifier)
-          .logQuickEntry(
-            target: NewMealTarget(
-              PendingMeal(
-                id: repositories.nutrition.newMealId(),
-                startedAt: DateTime(2026, 6, 26, 19),
-                mealTypeName: 'Dinner',
-              ),
-            ),
-            entry: QuickFoodEntryDraft(
-              name: 'Quick omelette',
-              nutrients: _energyAndMacros(),
-            ),
-          );
-
-      final day = await repositories.nutrition.nutritionDay(localDate);
-      expect(day.meals.single.meal.id, result.mealId);
-      expect(day.meals.single.entries.single.id, result.foodEntryId);
     });
 
     test(
