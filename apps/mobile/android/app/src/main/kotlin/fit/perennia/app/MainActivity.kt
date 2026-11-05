@@ -212,10 +212,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun scheduleTimer(call: MethodCall, result: MethodChannel.Result) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
+        // No tone from an invisible service, and "Background timer alerts are off" stays true.
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
             result.success(STATUS_DENIED)
             return
         }

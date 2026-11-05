@@ -94,6 +94,7 @@ class TimerBackgroundSchedule {
     this.workoutId,
     this.workoutExerciseId,
     this.soundEnabled = true,
+    this.alertVolume = 1.0,
   });
 
   /// The one place that decides get-ready: a rest not longer than
@@ -120,6 +121,7 @@ class TimerBackgroundSchedule {
       workoutId: timer.workoutId,
       workoutExerciseId: workoutExerciseId,
       soundEnabled: soundEnabled,
+      alertVolume: timer.alertVolume,
     );
   }
 
@@ -143,10 +145,16 @@ class TimerBackgroundSchedule {
   final String? workoutId;
   final String? workoutExerciseId;
 
-  /// When false, native prepare/completion notifications post WITHOUT their
-  /// custom sound (silent/default-importance), keeping the visual notification.
-  /// Mirrors the device-level `restTimerSoundsEnabled` setting.
+  /// When false, the service plays no tones. The notifications post either
+  /// way. Mirrors the device-level `restTimerSoundsEnabled` setting.
   final bool soundEnabled;
+
+  /// The volume the service plays cues at. A volume change during a rest
+  /// reaches the service only from the next schedule (a new rest or +/-15 s):
+  /// the schedule is never sent again just for a change like this, because
+  /// that would start a new schedule, which could replay a threshold the
+  /// lifter already heard.
+  final double alertVolume;
 
   Map<String, Object?> toPlatformMap() {
     return <String, Object?>{
@@ -161,6 +169,7 @@ class TimerBackgroundSchedule {
       'workoutId': workoutId,
       'workoutExerciseId': workoutExerciseId,
       'soundEnabled': soundEnabled,
+      'alertVolume': alertVolume,
     };
   }
 }

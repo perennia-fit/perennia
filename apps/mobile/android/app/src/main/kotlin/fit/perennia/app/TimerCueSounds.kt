@@ -11,14 +11,12 @@ import android.os.Vibrator
 import android.os.VibratorManager
 
 /**
- * Plays a rest's cues in the app: the cue's tone, ducking other audio, and its
- * vibration. Used while the lifter can see the app; the notifications in
- * [TimerForegroundService] cover every other moment.
+ * Plays a rest's cues: the cue's tone, ducking other audio, and its vibration.
+ * [MainActivity] and [TimerForegroundService] each hold an instance, the first
+ * for cues in the app and the second for every other moment.
  *
  * The tones are named through `R.raw`, never `getIdentifier`. A release build
- * shrinks resources, and the notification channels' by-name sound URIs are
- * invisible to the shrinker, so these references are what keep the three files
- * in the APK for both this class and the channels.
+ * shrinks resources, and these references are what keep the files in the APK.
  */
 class TimerCueSounds(context: Context) {
     private class Tone(val player: MediaPlayer) {

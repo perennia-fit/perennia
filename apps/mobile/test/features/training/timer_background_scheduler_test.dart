@@ -13,7 +13,10 @@ const RestNotificationTexts _texts = (
   prepareText: 'Deadlift · Set 4 in 0:03',
 );
 
-RestTimerRecord _restTimer({Duration duration = const Duration(minutes: 2)}) {
+RestTimerRecord _restTimer({
+  Duration duration = const Duration(minutes: 2),
+  double alertVolume = 0.75,
+}) {
   return RestTimerRecord(
     id: 'rest-1',
     workoutId: 'workout-1',
@@ -21,7 +24,7 @@ RestTimerRecord _restTimer({Duration duration = const Duration(minutes: 2)}) {
     startedAt: DateTime.utc(2026, 6, 16, 8),
     deadlineAt: DateTime.utc(2026, 6, 16, 8, 2),
     duration: duration,
-    alertVolume: 0.75,
+    alertVolume: alertVolume,
     status: RestTimerStatus.running,
     updatedAt: DateTime.utc(2026, 6, 16, 8),
   );
@@ -59,7 +62,32 @@ void main() {
         'workoutId': 'workout-1',
         'workoutExerciseId': 'we-1',
         'soundEnabled': true,
+        'alertVolume': 0.75,
       });
+    });
+
+    test('takes alertVolume from the rest timer', () {
+      final schedule = TimerBackgroundSchedule.rest(
+        _restTimer(alertVolume: 0.3),
+        texts: _texts,
+      );
+
+      expect(schedule.alertVolume, 0.3);
+      expect(schedule.toPlatformMap()['alertVolume'], 0.3);
+    });
+
+    test('a schedule built without alertVolume sends 1.0', () {
+      final schedule = TimerBackgroundSchedule(
+        kind: TimerBackgroundKind.interval,
+        timerId: 'interval-1',
+        deadlineAt: DateTime.utc(2026, 6, 16, 8, 20),
+        title: 'Work interval',
+        body: 'Interval 1/8 complete',
+        countdownLabel: 'Work',
+        prepareText: 'Interval 2/8 in 0:03',
+      );
+
+      expect(schedule.toPlatformMap()['alertVolume'], 1.0);
     });
 
     test('carries the workoutExerciseId and soundEnabled flag through', () {
