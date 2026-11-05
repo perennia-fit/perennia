@@ -21,9 +21,12 @@ import '../../up_next/widgets/up_next_strip.dart';
 import '../../workout_templates/widgets/workout_template_list_screen.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../../settings/widgets/settings_screen.dart';
-import '../../nutrition/controllers/nutrition_day_controller.dart';
+import '../../nutrition/controllers/meal_screen_controller.dart'
+    show mealScreenClockProvider;
+import '../../nutrition/widgets/meal_screen.dart';
 import '../../nutrition/widgets/nutrition_day_view.dart';
 import '../../progress/widgets/progress_overview.dart';
+import '../../../domain/nutrition/nutrition.dart' show NutritionDayDate;
 import '../../../domain/protocols/protocols.dart';
 import '../../../domain/training/training_records.dart';
 import '../../../domain/training/training_day.dart';
@@ -46,7 +49,7 @@ class HomeScreen extends ConsumerWidget {
   static const accountAndAppSettingsKey = Key('home.accountAndApp.settings');
   static const logButtonKey = Key('home.log');
   static const logWorkoutKey = Key('home.log.workout');
-  static const logFoodKey = Key('home.log.food');
+  static const logMealKey = Key('home.log.meal');
   static const logDoseKey = Key('home.log.dose');
   static const routinePlansButtonKey = Key('home.routinePlans');
   static const workoutTemplatesButtonKey = Key('home.workoutTemplates');
@@ -169,13 +172,16 @@ class HomeScreen extends ConsumerWidget {
       );
     }
 
-    void openFood(BuildContext navigationContext) {
+    // Log → Meal opens the Meal screen for the selected day
+    // (docs/designs/meal-logging.md §6), not the Nutrition Day.
+    void openMeal(BuildContext navigationContext) {
       final selectedDate = ref.read(selectedTrainingDayProvider);
-      ref
-          .read(selectedNutritionDayProvider.notifier)
-          .select(nutritionDayDateFromTrainingDay(selectedDate));
       Navigator.of(navigationContext).push(
-        MaterialPageRoute<void>(builder: (_) => const NutritionDayView()),
+        MaterialPageRoute<void>(
+          builder: (_) => MealScreen.newMeal(
+            day: nutritionDayDateFromTrainingDay(selectedDate),
+          ),
+        ),
       );
     }
 
@@ -285,8 +291,9 @@ class HomeScreen extends ConsumerWidget {
               key: HomeScreen.logButtonKey,
               onPressed: () => _showLogSheet(
                 context,
+                isFutureDay: _isFutureDay(ref),
                 onStartWorkout: openStartSheet,
-                onOpenFood: openFood,
+                onOpenMeal: openMeal,
                 onOpenDose: openDoseLog,
               ),
               icon: const Icon(Icons.add),
@@ -401,9 +408,7 @@ class _HomeContent extends StatelessWidget {
                 ),
               )
             else if (selectedDomain == HomeDomain.nutrition)
-              _NutritionHomeBody(
-                localDate: summary.selectedDate,
-              )
+              const _NutritionHomeBody()
             else
               KeyedSubtree(
                 key: HomeScreen.protocolsDomainBodyKey,
@@ -529,10 +534,24 @@ class _HomeNavigationBar extends StatelessWidget {
   }
 }
 
+/// Whether Today's selected day is after today. A Meal can't start in the
+/// future (§8), so the Log sheet offers no Meal there; "today" comes from the
+/// Meal screen's clock, which tests override.
+bool _isFutureDay(WidgetRef ref) {
+  final selectedDate = ref.read(selectedTrainingDayProvider);
+  final today = NutritionDayDate.fromDateTime(
+    ref.read(mealScreenClockProvider)(),
+  );
+  return nutritionDayDateFromTrainingDay(selectedDate).compareTo(today) > 0;
+}
+
+/// The Log sheet: Workout, Meal and Dose for the selected day. Meal is
+/// hidden when [isFutureDay].
 Future<void> _showLogSheet(
   BuildContext context, {
+  required bool isFutureDay,
   required Future<void> Function(BuildContext context) onStartWorkout,
-  required void Function(BuildContext context) onOpenFood,
+  required void Function(BuildContext context) onOpenMeal,
   required void Function(BuildContext context) onOpenDose,
 }) {
   final navigator = Navigator.of(context);
@@ -551,15 +570,16 @@ Future<void> _showLogSheet(
             unawaited(onStartWorkout(context));
           },
         ),
-        ListTile(
-          key: HomeScreen.logFoodKey,
-          leading: const Icon(Icons.restaurant_outlined),
-          title: Text(l10n.homeLogFood),
-          onTap: () {
-            Navigator.of(sheetContext).pop();
-            onOpenFood(navigator.context);
-          },
-        ),
+        if (!isFutureDay)
+          ListTile(
+            key: HomeScreen.logMealKey,
+            leading: const Icon(Icons.restaurant_outlined),
+            title: Text(l10n.homeLogMeal),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              onOpenMeal(navigator.context);
+            },
+          ),
         ListTile(
           key: HomeScreen.logDoseKey,
           leading: const Icon(Icons.medication_outlined),
@@ -912,12 +932,10 @@ ButtonStyle _homeDomainToggleStyle(BuildContext context) {
   );
 }
 
+/// Today's Nutrition view: the selected day's [NutritionDayBody], whose
+/// `Log meal` button and Meal cards open the Meal screen.
 class _NutritionHomeBody extends ConsumerWidget {
-  const _NutritionHomeBody({
-    required this.localDate,
-  });
-
-  final TrainingDayDate localDate;
+  const _NutritionHomeBody();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -929,17 +947,7 @@ class _NutritionHomeBody extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           day.when(
-            data: (day) => NutritionDayBody(
-              day: day,
-              onStartMeal: (mealType) {
-                return ref
-                    .read(nutritionDayControllerProvider.notifier)
-                    .startMeal(
-                      mealType: mealType,
-                      localDate: nutritionDayDateFromTrainingDay(localDate),
-                    );
-              },
-            ),
+            data: (day) => NutritionDayBody(day: day),
             loading: () => const SizedBox.shrink(),
             error: (_, __) => Text(
               context.l10n.homeNutritionUnavailable,

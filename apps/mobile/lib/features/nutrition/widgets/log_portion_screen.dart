@@ -1,23 +1,61 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/nutrition/nutrition.dart';
 import '../../../domain/training/set_validation.dart'
     show NutrientValidationException;
 import '../../../theme/theme.dart';
-import '../controllers/nutrition_day_controller.dart';
 import '../repositories/add_food_repository.dart';
 import 'nutrition_attribution.dart';
 
-class LogPortionScreen extends ConsumerStatefulWidget {
+/// Chooses a Portion for one Food (docs/designs/meal-logging.md §6).
+///
+/// The default constructor logs [food] into [target]: Save hands one Food
+/// Entry snapshot to [onSave], which creates the Meal first for a
+/// [NewMealTarget], and pops with the id of the Meal it landed in.
+///
+/// [LogPortionScreen.editEntry] changes a logged Food Entry's Portion
+/// instead: it shows the entry's own snapshot, prefilled with its Portion,
+/// hands the new Portion to [onUpdatePortion], and pops with the entry's
+/// Meal id.
+///
+/// The screen never writes on its own: the caller owns the write, so the
+/// Meal screen's in-flight guard, its already-exists handling, and its switch
+/// to the saved Meal cover every Save.
+class LogPortionScreen extends StatefulWidget {
   const LogPortionScreen({
     super.key,
-    required this.meal,
+    required MealTarget this.target,
     required this.food,
-    this.onSave,
-  });
+    this.contextLabel,
+    required Future<LogFoodEntryResult?> Function(FoodEntrySnapshotDraft draft)
+        this.onSave,
+  })  : entry = null,
+        onUpdatePortion = null;
+
+  /// Edit mode, only for a Food-backed entry without import keys: the Meal
+  /// screen decides which entries open it. Imported entries are immutable and
+  /// Quick Entries have no Portion.
+  LogPortionScreen.editEntry({
+    super.key,
+    required FoodEntryRecord this.entry,
+    this.contextLabel,
+    required Future<LogFoodEntryResult?> Function(Portion portion)
+        this.onUpdatePortion,
+  })  : assert(
+          entry.kind == FoodEntryKind.food &&
+              entry.foodId != null &&
+              entry.foodSource != null &&
+              entry.portion != null &&
+              entry.importSource == null &&
+              entry.importExternalId == null,
+          'Only a Food-backed entry without import keys has an editable '
+          'Portion.',
+        ),
+        target = null,
+        food = _foodOfEntry(entry),
+        onSave = null;
 
   static const amountFieldKey = Key('nutrition.logPortion.amount');
   static const brandKey = Key('nutrition.logPortion.brand');
@@ -25,10 +63,27 @@ class LogPortionScreen extends ConsumerStatefulWidget {
   static const incrementButtonKey = Key('nutrition.logPortion.increment');
   static const saveButtonKey = Key('nutrition.logPortion.save');
 
-  final MealRecord meal;
+  /// The Meal Save logs into; null in edit mode.
+  final MealTarget? target;
+
+  /// The Food shown: the picked Food, or in edit mode the entry's snapshot.
   final FoodPickerItem food;
-  final Future<LogFoodEntryResult> Function(FoodEntrySnapshotDraft draft)?
+
+  /// The Food Entry whose Portion Save changes; null when logging a Food.
+  final FoodEntryRecord? entry;
+
+  /// A line under the Food naming where it is logged (the Meal screen's
+  /// header text); nothing shows when null.
+  final String? contextLabel;
+
+  /// Makes the log write; null in edit mode. A null result means the write
+  /// was ignored, and the screen stays open.
+  final Future<LogFoodEntryResult?> Function(FoodEntrySnapshotDraft draft)?
       onSave;
+
+  /// Makes the edit-mode write; null when logging a Food. A null result means
+  /// the write was ignored, and the screen stays open.
+  final Future<LogFoodEntryResult?> Function(Portion portion)? onUpdatePortion;
 
   static Key unitChipKey(PortionUnit unit) {
     return Key('nutrition.logPortion.unit-${unit.name}');
@@ -39,10 +94,10 @@ class LogPortionScreen extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<LogPortionScreen> createState() => _LogPortionScreenState();
+  State<LogPortionScreen> createState() => _LogPortionScreenState();
 }
 
-class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
+class _LogPortionScreenState extends State<LogPortionScreen> {
   late PortionUnit _unit;
   late final TextEditingController _amountController;
   bool _saving = false;
@@ -117,12 +172,13 @@ class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
                   showLicense:
                       widget.food.foodSource == FoodSource.openFoodFacts,
                 ),
-                Text(
-                  widget.meal.mealType,
-                  style: context.textStyles.label.copyWith(
-                    color: context.colors.textSecondary,
+                if (widget.contextLabel case final label?)
+                  Text(
+                    label,
+                    style: context.textStyles.label.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: AppDimens.base),
@@ -252,32 +308,10 @@ class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
 
   Future<void> _save(Portion portion) async {
     setState(() => _saving = true);
-    final draft = FoodEntrySnapshotDraft(
-      mealId: widget.meal.id,
-      foodId: widget.food.id,
-      name: widget.food.name,
-      foodSource: widget.food.foodSource,
-      nutrientsPer100: widget.food.nutrientsPer100,
-      isLiquid: widget.food.isLiquid,
-      servingLabel: widget.food.servingLabel,
-      servingSize: widget.food.servingSize,
-      packageSize: widget.food.packageSize,
-      portion: portion,
-    );
-
     try {
-      final result = await () {
-        final onSave = widget.onSave;
-        if (onSave != null) {
-          return onSave(draft);
-        }
-        return ref
-            .read(nutritionDayControllerProvider.notifier)
-            .logFoodEntrySnapshot(entry: draft);
-      }();
-      if (mounted) {
-        _showWarnings(result.warnings);
-        await Navigator.of(context).maybePop();
+      final mealId = await _write(portion);
+      if (mounted && mealId != null) {
+        await Navigator.of(context).maybePop<String>(mealId);
       }
     } on NutrientValidationException catch (error) {
       if (mounted) {
@@ -288,6 +322,45 @@ class _LogPortionScreenState extends ConsumerState<LogPortionScreen> {
         setState(() => _saving = false);
       }
     }
+  }
+
+  /// Makes Save's one write and shows its warnings. Returns the id of the
+  /// Meal it landed in, or null when the hook ignored it.
+  Future<String?> _write(Portion portion) async {
+    final entry = widget.entry;
+    if (entry != null) {
+      final result = await widget.onUpdatePortion!(portion);
+      if (result == null) {
+        return null;
+      }
+      if (mounted) {
+        _showWarnings(result.warnings);
+      }
+      return entry.mealId;
+    }
+
+    final target = widget.target!;
+    final food = widget.food;
+    final draft = FoodEntrySnapshotDraft(
+      mealId: target.mealId,
+      foodId: food.id,
+      name: food.name,
+      foodSource: food.foodSource,
+      nutrientsPer100: food.nutrientsPer100,
+      isLiquid: food.isLiquid,
+      servingLabel: food.servingLabel,
+      servingSize: food.servingSize,
+      packageSize: food.packageSize,
+      portion: portion,
+    );
+    final result = await widget.onSave!(draft);
+    if (result == null) {
+      return null;
+    }
+    if (mounted) {
+      _showWarnings(result.warnings);
+    }
+    return result.mealId;
   }
 
   void _showValidationError(NutrientValidationException error) {
@@ -485,6 +558,24 @@ String _formatAmount(NutrientAmount? amount) {
 
 String _defaultAmountText(PortionUnit unit) {
   return _formatPortionInput(_defaultAmount(unit));
+}
+
+/// The entry's own snapshot in the shape the shared readout reads, with its
+/// Portion as the prefill. Facts come from the entry, never from the current
+/// Food: a Food Entry is self-describing.
+FoodPickerItem _foodOfEntry(FoodEntryRecord entry) {
+  return FoodPickerItem(
+    id: entry.foodId ?? '',
+    name: entry.name,
+    origin: FoodPickerOrigin.history,
+    foodSource: entry.foodSource ?? FoodSource.user,
+    nutrientsPer100: entry.nutrients,
+    isLiquid: entry.isLiquid ?? false,
+    servingLabel: entry.servingLabel,
+    servingSize: entry.servingSize,
+    packageSize: entry.packageSize,
+    lastPortion: entry.portion,
+  );
 }
 
 Portion _initialPortionForFood(FoodPickerItem food) {

@@ -15,6 +15,7 @@
 /// and sync land in later slices.
 library;
 
+import '../common/local_clock.dart';
 import 'protocol_plan.dart';
 
 /// A frozen `Protocol Day` local date (YYYY-MM-DD). Mirrors `TrainingDayDate` /
@@ -711,22 +712,6 @@ class CompoundScheduleOptionRecord {
   final String name;
   final DoseUnit defaultUnit;
   final DoseRoute defaultRoute;
-}
-
-/// The clock reading of [instant] where it was taken (D2): the instant at the
-/// frozen [timezoneOffsetMinutes], as a UTC `DateTime` whose fields are that
-/// clock, so formatting and date parts read them as they are. With a null
-/// offset (a Dose logged before offsets were recorded) it is [instant] in the
-/// device's current zone, as a local `DateTime`.
-///
-/// The one place a Dose's clock is worked out. A Dose's row, its edit sheet
-/// and the local date `editDose` freezes all read it here, so a fix here
-/// reaches every reader at once and a row can never disagree with its edit
-/// sheet about when the Dose was taken.
-DateTime clockAtOffset(DateTime instant, int? timezoneOffsetMinutes) {
-  return timezoneOffsetMinutes == null
-      ? instant.toLocal()
-      : instant.toUtc().add(Duration(minutes: timezoneOffsetMinutes));
 }
 
 /// A persisted `Dose` (self-describing logged event read model). Renders from

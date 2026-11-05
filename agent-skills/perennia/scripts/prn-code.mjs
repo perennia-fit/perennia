@@ -583,12 +583,31 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async listAgentMealHistory(input = {}, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/meals/history",
+      expectedStatus: 200,
+      query: pick(input, ["limit"]),
+      signal: options.signal
+    });
+  }
+
   async listAgentMeals(input = {}, options = {}) {
     return this.request({
       method: "GET",
       path: "/agent/meals",
       expectedStatus: 200,
       query: pick(input, ["from", "to", "limit", "cursor", "fields"]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentMealTypes(options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/meal-types",
+      expectedStatus: 200,
       signal: options.signal
     });
   }

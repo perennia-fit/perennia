@@ -360,15 +360,102 @@ void main() {
       expect(reopened.query, '');
       expect(repository.loadCalls, 2);
     });
+
+    group('logQuickEntry', () {
+      late AppDatabase database;
+      late TrainingRepositories repositories;
+
+      setUp(() {
+        database = AppDatabase.inMemory();
+        repositories = TrainingRepositories(database);
+      });
+
+      tearDown(() => database.close());
+
+      QuickFoodEntryDraft draft() {
+        return QuickFoodEntryDraft(
+          name: 'Cafe latte',
+          nutrients: NutrientVector.full(<NutrientId, NutrientAmount>{
+            NutrientId.energy: NutrientAmount.complete(
+              value: 140,
+              entered: '140',
+              unit: NutrientUnit.kilocalorie,
+            ),
+          }),
+        );
+      }
+
+      test(
+          'a new Meal target creates the Meal and its Quick Entry in one '
+          'Batch', () async {
+        final container =
+            _container(_FakeAddFoodRepository(), repositories: repositories);
+        final mealId = repositories.nutrition.newMealId();
+
+        final result = await container
+            .read(addFoodPickerControllerProvider.notifier)
+            .logQuickEntry(
+              target: NewMealTarget(
+                PendingMeal(
+                  id: mealId,
+                  startedAt: DateTime(2026, 6, 26, 15),
+                  mealTypeName: 'Snack',
+                ),
+              ),
+              entry: draft(),
+            );
+
+        expect(result.mealId, mealId);
+        expect(
+          (await repositories.nutrition.getMealById(mealId))?.mealType,
+          'Snack',
+        );
+        final entries =
+            await repositories.nutrition.listActiveEntriesForMeal(mealId);
+        expect(entries.single.id, result.foodEntryId);
+        final activity = await repositories.activityLog.listEntries();
+        expect(activity, hasLength(2));
+        expect(
+          activity.map((entry) => entry.batchId).toSet(),
+          <String>{result.batchId},
+        );
+      });
+
+      test('an existing Meal target adds to that Meal', () async {
+        final container =
+            _container(_FakeAddFoodRepository(), repositories: repositories);
+        final mealId = await repositories.nutrition.createMeal(
+          PendingMeal(
+            id: repositories.nutrition.newMealId(),
+            startedAt: DateTime(2026, 6, 26, 15),
+            mealTypeName: 'Snack',
+          ),
+        );
+
+        final result = await container
+            .read(addFoodPickerControllerProvider.notifier)
+            .logQuickEntry(target: ExistingMealTarget(mealId), entry: draft());
+
+        expect(result.mealId, mealId);
+        expect(
+          await repositories.nutrition.listActiveEntriesForMeal(mealId),
+          hasLength(1),
+        );
+        expect(await database.select(database.meals).get(), hasLength(1));
+      });
+    });
   });
 }
 
 ProviderContainer _container(
   AddFoodRepository repository, {
   Stream<BundleStatus>? bundleStatus,
+  TrainingRepositories? repositories,
 }) {
   final container = ProviderContainer(
     overrides: [
+      if (repositories != null)
+        trainingRepositoriesProvider.overrideWith((ref) => repositories),
       addFoodRepositoryProvider.overrideWith((ref) => repository),
       settingsRepositoryProvider.overrideWith(
         (ref) => InMemorySettingsRepository(),

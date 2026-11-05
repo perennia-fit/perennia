@@ -42,6 +42,8 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `list-food-history` | GET | `/agent/foods/history` |
 | `list-foods` | GET | `/agent/foods` |
 | `list-history-sets` | GET | `/agent/history/sets` |
+| `list-meal-history` | GET | `/agent/meals/history` |
+| `list-meal-types` | GET | `/agent/meal-types` |
 | `list-meals` | GET | `/agent/meals` |
 | `list-metric-readings` | GET | `/agent/metrics/readings` |
 | `list-metrics` | GET | `/agent/metrics` |
@@ -396,6 +398,76 @@ Routine/slot must contain an active Routine Entry referencing the Template.
 }
 ```
 
+`log-meal` (`POST /agent/meals/batch-write`) writes only the Meal fields a
+request sends, with its entries, as one idempotent Activity Log batch.
+
+- **Meal Types.** Read them with `list-meal-types` (`GET /agent/meal-types`)
+  before choosing a `mealType`. It returns the user's active Meal Types as
+  `{ "mealTypes": [{ "id", "name", "sortOrder" }] }`, in the order the app
+  lists them. A Meal stores the `mealType` name it was sent, so send one of
+  these names.
+- **Meal fields.** `meal.id` is required. `mealType`, `endedAt`, `deletedAt`
+  and `timePrecision` may each be sent on their own. An absent field keeps its
+  stored value; `null` clears `endedAt`, and `deletedAt: null` un-archives.
+  To delete a Meal, send `meal.deletedAt` together with every active Food
+  Entry of that Meal, each as its full entry with `deletedAt` set (read them
+  with `list-meals`), as the app's delete does in one Batch.
+- **Entries only.** A request whose `meal` carries only `id` writes its
+  entries and leaves the Meal row, and its `updatedAt`, untouched. For an id
+  that doesn't exist it fails with `404` `meal_not_found`.
+- **No foods yet.** `entries: []` with Meal fields creates or edits a Meal
+  with no Food Entries. A request with neither Meal fields nor entries is a
+  `400`.
+- **Create.** A new Meal id needs `mealType` and the time block, or the write
+  fails with `422` `meal_create_incomplete`.
+- **Time block.** Send `startedAt` with `timezoneOffsetMinutes` (minutes east
+  of UTC, -720 to +840), a `timezone`, or both. `timezone`,
+  `timezoneOffsetMinutes` and `localDate` are never sent without `startedAt`
+  (`400`). The offset is resolved in this order: the sent
+  `timezoneOffsetMinutes`, else the offset of an IANA `timezone` at
+  `startedAt`, else none. With an offset, the server derives `localDate` and
+  ignores one you send, and the offset is frozen on the Meal. With no offset
+  (a label such as `BRT`), `localDate` is required and stored as sent;
+  without it the write fails with `422` `meal_offset_unknown`. When only an
+  offset is sent, the stored `timezone` is `UTC+hh:mm` or `UTC-hh:mm`.
+- **`timePrecision`.** `instant` means `startedAt` is when the user ate;
+  `date` means only the day is known, and `startedAt` is local midnight.
+  Sending `startedAt` sets `instant` unless `timePrecision` is also sent.
+- **Entries** are written as sent, except that an unsent entry `deletedAt`
+  keeps its stored value.
+- **Errors.** `409` `meal_id_conflict` or `entry_id_conflict` when an id
+  belongs to another user; `422` `entry_meal_mismatch` when an existing entry
+  id is sent under a different `meal.id`; `422` `meal_archived` when entries
+  are added to an archived Meal (send `deletedAt: null` in the same request
+  to un-archive it first), and when a request archives a Meal, or edits an
+  archived one, without tombstoning every Food Entry stored active in it
+  (each sent with `deletedAt` set and an `updatedAt` that is newer than the
+  stored entry's, or omitted so the server clock stamps it). The
+  Meal as it will be stored is validated: `422` `meal_ended_before_start` and
+  `meal_type_required` reject the request, with `itemIndex` and `entryId`
+  `null` on Meal-level issues.
+- **Warnings.** Meal-level soft warnings, such as `meal_time_in_future` (a
+  start more than 5 minutes ahead), come back in the response's top-level
+  `warnings`; per-entry nutrient warnings stay on `entries[].warnings`.
+
+To move a Meal's time, send only `id`, `startedAt` and its offset or zone; the
+derived `localDate` moves with it, across midnight if need be:
+
+```json
+{
+  "idempotencyKey": "stable-meal-time-key",
+  "meal": {
+    "id": "meal-id",
+    "startedAt": "2026-06-24T14:30:00.000Z",
+    "timezone": "Australia/Brisbane"
+  },
+  "entries": []
+}
+```
+
+`list-meals` returns each Meal's `timezoneOffsetMinutes` (`null` when unknown)
+and `timePrecision` in its default fields.
+
 ## Food Library Reads and Writes
 
 `list-foods` (`GET /agent/foods`) searches or lists the caller's own Food
@@ -409,6 +481,18 @@ the last 90 days first, then most recently logged. Each item carries the
 `search-platform-foods` otherwise), the name it was last logged under, and its
 `lastPortion`, so "log my usual breakfast" is this read followed by
 `log-meal`. Archived User Foods are left out; `limit` bounds it (default 50).
+
+`list-meal-history` (`GET /agent/meals/history`) lists the meals the caller
+repeats, which the app shows as Your meals. A meal is the set of distinct
+Foods in a timed Meal of the last 90 days that holds two or more Foods;
+Portions and Quick Entries don't count, and archived Meals, date-only Meals
+and archived User Foods are left out. It returns
+`{ "items": [{ "foods": [{ "foodSource", "foodId", "name" }], "count", "lastMealId", "lastStartedAt" }] }`,
+most often first, then most recent. `lastMealId` is the most recent Meal with
+that set of Foods, the one the app's Log again copies: read it with
+`list-meals` (around `lastStartedAt`) for its Portions and Quick Entries
+before repeating it with `log-meal`. `limit` bounds it (default 20, at most
+50). It is computed on each call and never stored.
 
 `search-platform-foods` (`GET /agent/foods/platform-search`) searches the
 Platform Food reference data the app ships, with `source`/`search`/`limit`.
@@ -826,7 +910,10 @@ push path (silent LWW, tenant isolation, its own Activity Log entry). Undo is
 **batch-atomic**: if any single entry's current state no longer matches its
 recorded after-image, nothing is applied, no new Activity Log batch is
 recorded, and the response reports the conflicting entries with
-`applied: false` and `undoBatchId: null`. Idempotent by `idempotencyKey` —
+`applied: false` and `undoBatchId: null`. Undoing the batch that created a
+Meal is refused the same way, with `skipped_dependent` on the Meal's entry,
+when another batch has since added an active Food Entry to that Meal.
+Idempotent by `idempotencyKey` —
 undo-of-undo resurrects the original rows.
 
 ```json

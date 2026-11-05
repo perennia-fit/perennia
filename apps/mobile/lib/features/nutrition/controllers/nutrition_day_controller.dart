@@ -365,23 +365,6 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
     ref.read(selectedNutritionDayProvider.notifier).addDays(1);
   }
 
-  Future<String> startMeal({
-    required MealTypeRecord mealType,
-    DateTime? startedAt,
-    NutritionDayDate? localDate,
-  }) {
-    final selectedDate = localDate ?? ref.read(selectedNutritionDayProvider);
-    final effectiveStartedAt = startedAt ?? DateTime.now();
-    return ref.read(nutritionRepositoryProvider).createMeal(
-          MealDraft(
-            mealType: mealType.name,
-            startedAt: effectiveStartedAt,
-            localDate: selectedDate,
-            timezone: effectiveStartedAt.toLocal().timeZoneName,
-          ),
-        );
-  }
-
   Future<String> createMealType({
     required String name,
   }) async {
@@ -401,7 +384,7 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
     required MealTypeRecord mealType,
     required String name,
   }) {
-    return ref.read(nutritionRepositoryProvider).updateMealType(
+    return ref.read(nutritionRepositoryProvider).editMealType(
           mealType.id,
           MealTypeDraft(name: name, sortOrder: mealType.sortOrder),
         );
@@ -429,21 +412,11 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
   }
 
   Future<LogQuickEntryResult> logQuickEntry({
-    required MealDraft meal,
+    required MealTarget target,
     required QuickFoodEntryDraft entry,
   }) {
     return ref.read(nutritionRepositoryProvider).logQuickEntry(
-          meal: meal,
-          entry: entry,
-        );
-  }
-
-  Future<LogQuickEntryResult> logQuickEntryForMeal({
-    required String mealId,
-    required QuickFoodEntryDraft entry,
-  }) {
-    return ref.read(nutritionRepositoryProvider).logQuickEntryForMeal(
-          mealId: mealId,
+          target: target,
           entry: entry,
         );
   }
@@ -452,14 +425,6 @@ class NutritionDayController extends StreamNotifier<NutritionDayState> {
     required FoodEntryDraft entry,
   }) {
     return ref.read(nutritionRepositoryProvider).logFoodEntry(entry: entry);
-  }
-
-  Future<LogFoodEntryResult> logFoodEntrySnapshot({
-    required FoodEntrySnapshotDraft entry,
-  }) {
-    return ref.read(nutritionRepositoryProvider).logFoodEntrySnapshot(
-          entry: entry,
-        );
   }
 
   Future<List<MealTypeRecord>> _activeMealTypes() async {

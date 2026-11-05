@@ -29,10 +29,17 @@ const _visibleFoodPickerFilters = <AddFoodPickerFilter>[
 
 const _noMatchLine = 'No foods match.';
 
+/// The add-food picker, embedded in the Meal screen
+/// (docs/designs/meal-logging.md §6; docs/designs/unified-food-search.md).
+///
+/// It takes the [MealTarget] its writes land in: an existing Meal, or the
+/// Meal screen's pending Meal, which the first write creates in the same
+/// Batch. Its results area is an [Expanded], so the caller must give it a
+/// bounded height.
 class AddFoodPicker extends ConsumerWidget {
   const AddFoodPicker({
     super.key,
-    required this.meal,
+    required this.target,
     this.onFoodSelected,
     this.onQuickEntry,
   });
@@ -66,8 +73,12 @@ class AddFoodPicker extends ConsumerWidget {
   static const searchDebounceDuration =
       AddFoodPickerController.searchDebounceDuration;
 
-  final MealRecord meal;
+  /// The Meal a Quick add without [onQuickEntry] writes into.
+  final MealTarget target;
   final ValueChanged<FoodPickerItem>? onFoodSelected;
+
+  /// Makes the Quick Entry write instead of the picker. Without it, the
+  /// picker writes the draft into [target] through its controller.
   final Future<void> Function(QuickFoodEntryDraft draft)? onQuickEntry;
 
   static Key filterChipKey(AddFoodPickerFilter filter) {
@@ -87,14 +98,10 @@ class AddFoodPicker extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Embedded under the Meal screen's header, so no title of its own.
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Expanded(
-                child: Text(
-                  'Add Food',
-                  style: context.textStyles.h1,
-                ),
-              ),
               IconButton.outlined(
                 key: scanBarcodeButtonKey,
                 tooltip: 'Scan barcode',
@@ -197,7 +204,7 @@ class AddFoodPicker extends ConsumerWidget {
   Future<void> _quickAdd(BuildContext context, WidgetRef ref) async {
     final draft = await showDialog<QuickFoodEntryDraft>(
       context: context,
-      builder: (context) => QuickEntryDialog(mealType: meal.mealType),
+      builder: (context) => const QuickEntryDialog(),
     );
     if (draft == null) {
       return;
@@ -206,10 +213,8 @@ class AddFoodPicker extends ConsumerWidget {
       await onQuickEntry!(draft);
       return;
     }
-    await ref
-        .read(addFoodPickerControllerProvider.notifier)
-        .logQuickEntryForMeal(
-          mealId: meal.id,
+    await ref.read(addFoodPickerControllerProvider.notifier).logQuickEntry(
+          target: target,
           entry: draft,
         );
   }

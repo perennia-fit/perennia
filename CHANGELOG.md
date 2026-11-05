@@ -9,8 +9,43 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+### Added
+
+- **Agents can list Meal Types** (`listAgentMealTypes`,
+  `GET /agent/meal-types`, `agent_list_meal_types`): the user's active Meal
+  Types in the order the app shows them, to choose a `mealType` from.
+- **`listAgentMeals` returns each Meal's `timezoneOffsetMinutes` and
+  `timePrecision`.** Meals written before this change read `null` and
+  `instant`.
+- **Agents can read the user's repeated meals** (`listAgentMealHistory`,
+  `GET /agent/meals/history`, `agent_list_meal_history`): the sets of Foods
+  they log together, most often in the last 90 days first, each with the
+  latest Meal that had them.
+- **Log a meal from one screen:** repeat a whole meal from Your meals, add
+  foods, or save just the time and add foods later.
+
+### Changed
+
+- **`batchWriteAgentMeal` writes only the Meal fields a request sends.** An
+  absent field keeps its stored value, `null` clears `endedAt` or
+  `deletedAt`, a request with only entries leaves the Meal untouched, and
+  `entries` may be empty. `localDate` is derived when the offset is known,
+  from `timezoneOffsetMinutes` or an IANA `timezone`.
+- **Archiving a Meal through `batchWriteAgentMeal` must tombstone its Food
+  Entries.** A request that sets `meal.deletedAt` sends every active Food Entry
+  of that Meal with `deletedAt` set, as the app's delete does, or fails with
+  `422` `meal_archived`; so does a tombstone whose `updatedAt` would lose to
+  the stored entry.
+- **A meal's time is shown and can be changed,** and its meal type is
+  proposed from the time.
+- **The Nutrition Day lists meals in time order.**
+
 ### Fixed
 
+- **An Agent write no longer un-archives a Meal, drops Food Entry import
+  keys, or moves an entry to another Meal.**
+- **An Agent undo is refused when other writes added foods to the Meal it
+  created.** The undo returns `skipped_dependent` and applies nothing.
 - **Confirmations with Undo now go away.** "Set 3 logged · Undo", "Replaced ·
   Undo" and "Workout finished · Share" stayed on screen until the next message,
   covering the logging form and following you to Today, where "Workout
@@ -29,6 +64,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   next sync. The server now keeps the star when an Agent write leaves it out,
   and a Compound an Agent created can be undone on the device instead of being
   reported as changed since.
+- **A Meal started on a past day is saved on that day, not today.**
+- **Re-importing a file no longer moves a food out of a meal you edited.**
+- **Backups keep restoring after the update.**
 
 ## [0.2.0] - 2026-11-03
 

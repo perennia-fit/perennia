@@ -100,6 +100,11 @@ class YazioImportAdapter implements NutritionImportAdapter {
       final dateText =
           _string(map, const ['date', 'consumed_at', 'datetime']).trim();
       final startedAt = _parseDate(dateText);
+      // A date with no time of day only knows its day; its `startedAt` is
+      // local midnight (docs/designs/meal-logging.md §1).
+      final timePrecision = _hasTimeOfDay(dateText)
+          ? MealTimePrecision.instant
+          : MealTimePrecision.date;
       final localDate = NutritionDayDate.fromDateTime(startedAt);
       final mealType = _canonicalMealType(
         _string(map, const ['daytime', 'meal', 'meal_type']),
@@ -160,6 +165,7 @@ class YazioImportAdapter implements NutritionImportAdapter {
           mealType: mealType,
           startedAt: startedAt,
           localDate: localDate,
+          timePrecision: timePrecision,
         );
       });
       accumulator.entries.add(entry);
@@ -270,6 +276,14 @@ class YazioImportAdapter implements NutritionImportAdapter {
         .replaceFirst(RegExp(r'\.$'), '');
   }
 
+  /// Whether [dateText] parses as an ISO date-time carrying a time of day
+  /// (`2024-03-05T08:30`, `2024-03-05 08:30`), not a bare date.
+  static bool _hasTimeOfDay(String dateText) {
+    final text = dateText.trim();
+    return DateTime.tryParse(text) != null &&
+        RegExp(r'^\S+?[Tt ]\d').hasMatch(text);
+  }
+
   static DateTime _parseDate(String dateText) {
     final text = dateText.trim();
     if (text.isEmpty) {
@@ -307,11 +321,13 @@ class _MealAccumulator {
     required this.mealType,
     required this.startedAt,
     required this.localDate,
+    required this.timePrecision,
   });
 
   final String mealType;
   final DateTime startedAt;
   final NutritionDayDate localDate;
+  final MealTimePrecision timePrecision;
   final List<NutritionImportFoodEntry> entries = <NutritionImportFoodEntry>[];
 
   NutritionImportMeal toMeal() {
@@ -319,6 +335,7 @@ class _MealAccumulator {
       mealType: mealType,
       startedAt: startedAt,
       localDate: localDate,
+      timePrecision: timePrecision,
       entries: List<NutritionImportFoodEntry>.unmodifiable(entries),
     );
   }

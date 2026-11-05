@@ -141,6 +141,18 @@ class Meals extends Table {
   TextColumn get localDate =>
       text().withDefault(const Constant('1970-01-01'))();
   DateTimeColumn get endedAt => dateTime().nullable()();
+
+  /// The UTC offset frozen when the Meal's time was set: the device zone's
+  /// offset at the Meal's own instant (docs/designs/meal-logging.md §1).
+  /// Null only on Meals written before schema 65 and on agent writes whose
+  /// zone the server can't resolve; readers then use the device zone.
+  IntColumn get timezoneOffsetMinutes => integer().nullable()();
+
+  /// `instant` when `started_at` is the time the user ate; `date` when only
+  /// the date is known and `started_at` is local midnight of `local_date`
+  /// (docs/designs/meal-logging.md §1). Stored by `MealTimePrecision.name`.
+  TextColumn get timePrecision =>
+      text().withDefault(const Constant('instant'))();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -1339,7 +1351,7 @@ class AppDatabase extends _$AppDatabase {
   ];
 
   @override
-  int get schemaVersion => 64;
+  int get schemaVersion => 65;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -2055,6 +2067,28 @@ class AppDatabase extends _$AppDatabase {
             if (!await _tableExists(protocolSkips.actualTableName)) {
               await migrator.createTable(protocolSkips);
               await migrator.createIndex(protocolSkipsLocalDateIndex);
+            }
+          }
+          if (from < 65) {
+            // A Meal's frozen UTC offset and time precision
+            // (docs/designs/meal-logging.md §1). No value changes and no
+            // backfill: existing Meals read `instant` with a null offset,
+            // and readers use the device zone for a null offset, as they do
+            // for legacy Doses. Upgrades that create meals above already
+            // have both columns.
+            if (await _tableExists(meals.actualTableName)) {
+              if (!await _columnExists(
+                meals.actualTableName,
+                meals.timezoneOffsetMinutes.name,
+              )) {
+                await migrator.addColumn(meals, meals.timezoneOffsetMinutes);
+              }
+              if (!await _columnExists(
+                meals.actualTableName,
+                meals.timePrecision.name,
+              )) {
+                await migrator.addColumn(meals, meals.timePrecision);
+              }
             }
           }
         },

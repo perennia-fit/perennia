@@ -109,11 +109,17 @@ class NutritionImportMeal {
     required this.startedAt,
     required this.localDate,
     required Iterable<NutritionImportFoodEntry> entries,
+    this.timePrecision = MealTimePrecision.instant,
   }) : entries = List<NutritionImportFoodEntry>.unmodifiable(entries);
 
   final String mealType;
   final DateTime startedAt;
   final NutritionDayDate localDate;
+
+  /// `date` when the source row carries no time of day: [startedAt] is then
+  /// local midnight of [localDate] and is never shown as a clock time
+  /// (docs/designs/meal-logging.md §1).
+  final MealTimePrecision timePrecision;
   final List<NutritionImportFoodEntry> entries;
 }
 
