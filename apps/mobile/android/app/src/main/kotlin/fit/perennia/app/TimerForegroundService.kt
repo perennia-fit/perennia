@@ -7,8 +7,6 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -291,78 +289,47 @@ class TimerForegroundService : Service() {
         }
         notificationManager.createNotificationChannel(channel)
 
-        // A channel's sound can't change after the channel is created, so a new
-        // sound needs a new channel id. The sound is addressed by name
-        // (rawSoundUri), since aapt2 assigns R.raw ids in name order and a new
-        // file would shift an id-addressed one to the wrong tone.
-        createAlertChannels(
-            GET_READY_CHANNEL_ID,
+        createAlertChannel(
             GET_READY_SILENT_CHANNEL_ID,
             R.string.timer_get_ready_channel_name,
-            R.string.timer_get_ready_silent_channel_name,
             R.string.timer_get_ready_channel_description,
-            "get_ready",
         )
-        createAlertChannels(
-            PREPARE_CHANNEL_ID,
+        createAlertChannel(
             PREPARE_SILENT_CHANNEL_ID,
             R.string.timer_prepare_channel_name,
-            R.string.timer_prepare_silent_channel_name,
             R.string.timer_prepare_channel_description,
-            "prepare_beep",
         )
-        createAlertChannels(
-            COMPLETION_CHANNEL_ID,
+        createAlertChannel(
             COMPLETION_SILENT_CHANNEL_ID,
             R.string.timer_completion_channel_name,
-            R.string.timer_completion_silent_channel_name,
             R.string.timer_completion_channel_description,
-            "timer_complete",
         )
 
         notificationManager.deleteNotificationChannel(LEGACY_COMPLETION_CHANNEL_ID)
         notificationManager.deleteNotificationChannel(LEGACY_COMPLETION_V2_CHANNEL_ID)
         notificationManager.deleteNotificationChannel(LEGACY_PREPARE_CHANNEL_ID)
+        notificationManager.deleteNotificationChannel(LEGACY_GET_READY_V1_CHANNEL_ID)
+        notificationManager.deleteNotificationChannel(LEGACY_PREPARE_V3_CHANNEL_ID)
+        notificationManager.deleteNotificationChannel(LEGACY_COMPLETION_V3_CHANNEL_ID)
     }
 
     /**
-     * A sounded channel and its silent twin. On Android 8 and later a
-     * notification's sound and vibration come from its channel, so Rest timer
-     * sounds off has to post to the twin.
+     * High importance keeps the heads-up, with no sound or vibration, because the
+     * service plays the cues itself. The ids keep their "_silent" suffix: those
+     * channels already exist silent, and a channel's sound can't change after
+     * the channel is created.
      */
-    private fun createAlertChannels(
-        soundedId: String,
-        silentId: String,
-        nameRes: Int,
-        silentNameRes: Int,
-        descriptionRes: Int,
-        soundName: String,
-    ) {
-        val audioAttributes = AudioAttributes.Builder()
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
-            .build()
-        val sounded = NotificationChannel(
-            soundedId,
+    private fun createAlertChannel(id: String, nameRes: Int, descriptionRes: Int) {
+        val channel = NotificationChannel(
+            id,
             getString(nameRes),
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = getString(descriptionRes)
-            setSound(rawSoundUri(soundName), audioAttributes)
-            enableVibration(true)
-        }
-        notificationManager.createNotificationChannel(sounded)
-
-        val silent = NotificationChannel(
-            silentId,
-            getString(silentNameRes),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = getString(descriptionRes)
             setSound(null, null)
             enableVibration(false)
         }
-        notificationManager.createNotificationChannel(silent)
+        notificationManager.createNotificationChannel(channel)
     }
 
     private fun buildNotification(
@@ -377,11 +344,7 @@ class TimerForegroundService : Service() {
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(
                 this,
-                when {
-                    !complete -> COUNTDOWN_CHANNEL_ID
-                    soundEnabled -> COMPLETION_CHANNEL_ID
-                    else -> COMPLETION_SILENT_CHANNEL_ID
-                },
+                if (complete) COMPLETION_SILENT_CHANNEL_ID else COUNTDOWN_CHANNEL_ID,
             )
         } else {
             @Suppress("DEPRECATION")
@@ -405,7 +368,8 @@ class TimerForegroundService : Service() {
                 },
             )
             .apply {
-                if (complete && !soundEnabled) {
+                if (complete) {
+                    // The service plays the cues, so a notification never sounds.
                     // Below API 26 there are no channels, so the sound and
                     // vibration are muted on the notification itself.
                     setSound(null)
@@ -418,11 +382,7 @@ class TimerForegroundService : Service() {
 
     private fun buildGetReadyNotification(): Notification {
         return buildCueNotification(
-            channelId = if (soundEnabled) {
-                GET_READY_CHANNEL_ID
-            } else {
-                GET_READY_SILENT_CHANNEL_ID
-            },
+            channelId = GET_READY_SILENT_CHANNEL_ID,
             text = getReadyText.orEmpty(),
             timeoutMillis = GET_READY_WINDOW_MILLIS,
         )
@@ -430,11 +390,7 @@ class TimerForegroundService : Service() {
 
     private fun buildPrepareNotification(): Notification {
         return buildCueNotification(
-            channelId = if (soundEnabled) {
-                PREPARE_CHANNEL_ID
-            } else {
-                PREPARE_SILENT_CHANNEL_ID
-            },
+            channelId = PREPARE_SILENT_CHANNEL_ID,
             text = prepareText,
             timeoutMillis = PREPARE_WINDOW_MILLIS + ONE_SECOND_MILLIS,
         )
@@ -462,13 +418,12 @@ class TimerForegroundService : Service() {
             .setAutoCancel(true)
             .setShowWhen(false)
             .setPriority(Notification.PRIORITY_HIGH)
-            .apply {
-                if (!soundEnabled) {
-                    setSound(null)
-                    setDefaults(0)
-                    setVibrate(null)
-                }
-            }
+            // The service plays the cues, so a notification never sounds. Below
+            // API 26 there are no channels, so the sound and vibration are muted
+            // on the notification itself.
+            .setSound(null)
+            .setDefaults(0)
+            .setVibrate(null)
             .build()
     }
 
@@ -495,13 +450,6 @@ class TimerForegroundService : Service() {
             launch,
             flags,
         )
-    }
-
-    // By name, so no later file can shift it. The shrinker can't see this URI;
-    // TimerCueSounds' direct R.raw references are what keep the files in a
-    // release APK.
-    private fun rawSoundUri(name: String): Uri {
-        return Uri.parse("android.resource://$packageName/raw/$name")
     }
 
     private fun detachForegroundNotification() {
@@ -539,19 +487,20 @@ class TimerForegroundService : Service() {
         var inAppCuesActive = false
 
         private const val COUNTDOWN_CHANNEL_ID = "workout_timer_countdowns"
-        private const val GET_READY_CHANNEL_ID = "workout_timer_get_ready_v1"
         private const val GET_READY_SILENT_CHANNEL_ID =
             "workout_timer_get_ready_v1_silent"
-        private const val PREPARE_CHANNEL_ID = "workout_timer_prepare_v3"
         private const val PREPARE_SILENT_CHANNEL_ID =
             "workout_timer_prepare_v3_silent"
-        private const val COMPLETION_CHANNEL_ID = "workout_timer_completions_v3"
         private const val COMPLETION_SILENT_CHANNEL_ID =
             "workout_timer_completions_v3_silent"
         private const val LEGACY_COMPLETION_CHANNEL_ID = "workout_timer_completions"
         private const val LEGACY_COMPLETION_V2_CHANNEL_ID =
             "workout_timer_completions_v2"
         private const val LEGACY_PREPARE_CHANNEL_ID = "workout_timer_prepare"
+        private const val LEGACY_GET_READY_V1_CHANNEL_ID = "workout_timer_get_ready_v1"
+        private const val LEGACY_PREPARE_V3_CHANNEL_ID = "workout_timer_prepare_v3"
+        private const val LEGACY_COMPLETION_V3_CHANNEL_ID =
+            "workout_timer_completions_v3"
         private const val ONE_SECOND_MILLIS = 1000L
         private const val GET_READY_WINDOW_MILLIS = 10000L
         private const val PREPARE_WINDOW_MILLIS = 3000L
