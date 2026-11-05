@@ -2902,11 +2902,6 @@ class _ErrorHomeRepository extends _HomeRepositoryTestDefaults {
   }) async {
     throw StateError('Training Day unavailable');
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {
-    throw StateError('Training Day unavailable');
-  }
 }
 
 class _LoadingHomeRepository extends _HomeRepositoryTestDefaults {
@@ -2955,9 +2950,6 @@ class _LoadingHomeRepository extends _HomeRepositoryTestDefaults {
     required String workoutId,
     String? comment,
   }) async {}
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class _ScrollableHomeRepository extends _HomeRepositoryTestDefaults {
@@ -3021,9 +3013,6 @@ class _ScrollableHomeRepository extends _HomeRepositoryTestDefaults {
     required String workoutId,
     String? comment,
   }) async {}
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class _DateEchoHomeRepository extends _HomeRepositoryTestDefaults {
@@ -3093,9 +3082,6 @@ class _DateEchoHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 class _StartWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
@@ -3179,9 +3165,6 @@ class _StartWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 
   Future<void> dispose() => _controller.close();
 
@@ -3295,9 +3278,6 @@ class _AddExerciseHomeRepository extends _HomeRepositoryTestDefaults {
     return 'Workout summary';
   }
 
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
-
   Future<void> dispose() => _controller.close();
 
   void _emit(HomeSummary summary) {
@@ -3397,9 +3377,6 @@ class _WorkoutActionsHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 /// An open, zero-set workout used to exercise the Finish flow:
@@ -3476,9 +3453,6 @@ class _FinishableWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 /// Always reports "not linked" — keeps the Finish flow in these tests from
@@ -3680,9 +3654,6 @@ class _WorkoutExerciseManagementHomeRepository
     return 'Workout summary';
   }
 
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
-
   Future<void> dispose() => _controller.close();
 
   void _emit() {
@@ -3814,9 +3785,6 @@ class _MultiSessionHomeRepository extends _HomeRepositoryTestDefaults {
   Future<String> shareWorkout(String workoutId) async {
     return 'Workout summary';
   }
-
-  @override
-  Future<void> logDefaultWeightRepsSet() async {}
 }
 
 Future<void> _pumpUntilFound(

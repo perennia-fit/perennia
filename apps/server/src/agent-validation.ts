@@ -1472,7 +1472,12 @@ export const AgentDoseValidationRequestSchema = z
   })
   .openapi("AgentDoseValidationRequest");
 
-export const AgentDoseValidationIssueSchema = z
+/**
+ * The issue shape the Dose and Meal rules share: no nutrient, unlike
+ * AgentNutrientValidationIssue. Each domain registers it under its own
+ * component name, so the contract keeps both.
+ */
+const ValidationIssueBaseSchema = z
   .object({
     field: z.string().min(1).openapi({
       description: "Request field path that triggered the rule."
@@ -1486,8 +1491,11 @@ export const AgentDoseValidationIssueSchema = z
     limit: z.union([z.number(), z.string()]).nullable().openapi({
       description: "Rule limit or allowed value summary."
     })
-  })
-  .openapi("AgentDoseValidationIssue");
+  });
+
+export const AgentDoseValidationIssueSchema = ValidationIssueBaseSchema.openapi(
+  "AgentDoseValidationIssue"
+);
 
 const DoseUnitLimitSchema = z.object({
   warnAbove: z.number(),
@@ -1748,22 +1756,9 @@ export const MEAL_VALIDATION_LIMITS = {
   futureToleranceMinutes: 5
 } as const;
 
-export const AgentMealValidationIssueSchema = z
-  .object({
-    field: z.string().min(1).openapi({
-      description: "Request field path that triggered the rule."
-    }),
-    rule: z.string().min(1).openapi({
-      description: "Stable machine-readable validation rule id."
-    }),
-    message: z.string().min(1).openapi({
-      description: "Human-readable explanation of the rule."
-    }),
-    limit: z.union([z.number(), z.string()]).nullable().openapi({
-      description: "Rule limit or allowed value summary."
-    })
-  })
-  .openapi("AgentMealValidationIssue");
+export const AgentMealValidationIssueSchema = ValidationIssueBaseSchema.openapi(
+  "AgentMealValidationIssue"
+);
 
 export type AgentMealValidationIssue = z.infer<
   typeof AgentMealValidationIssueSchema

@@ -49,6 +49,25 @@ String mealTimeText(BuildContext context, MealRecord meal) {
   return formatMealClock(context, meal.clock);
 }
 
+/// A saved Meal's label in two parts, shared by the Meal screen's header
+/// and the Nutrition Day's Meal card (§6): [mealTimeText], and the Meal
+/// Type, followed by `add foods` while the Meal has no Food Entries. Each
+/// caller joins them into `<time> · <type>[ · add foods]` and its own
+/// semantic label.
+({String time, String typeAndHint}) mealLabelParts(
+  BuildContext context,
+  NutritionDayMealRecord meal,
+) {
+  final l10n = context.l10n;
+  final type = meal.meal.mealType;
+  return (
+    time: mealTimeText(context, meal.meal),
+    typeAndHint: meal.entries.isEmpty
+        ? l10n.mealHeaderLabel(type, l10n.mealHeaderAddFoods)
+        : type,
+  );
+}
+
 /// The Meal screen; see the library comment.
 class MealScreen extends ConsumerStatefulWidget {
   /// A Meal not written yet, logged on [day].
@@ -61,13 +80,6 @@ class MealScreen extends ConsumerStatefulWidget {
 
   final NutritionDayDate? day;
   final String? mealId;
-
-  MealScreenArgs get args {
-    final mealId = this.mealId;
-    return mealId == null
-        ? MealScreenArgs.newMeal(day!)
-        : MealScreenArgs.existing(mealId);
-  }
 
   static const headerKey = Key('nutrition.meal.header');
   static const addFoodsLaterKey = Key('nutrition.meal.addFoodsLater');
@@ -102,7 +114,14 @@ class _MealScreenState extends ConsumerState<MealScreen> {
   /// closes, so its Undo never outlives the controller it calls.
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _undoBar;
 
-  late final MealScreenArgs _args = widget.args;
+  /// Whether [_close] ran: Delete meal and the archived Meal it then sees
+  /// both close the screen, and only one may pop.
+  bool _closed = false;
+
+  late final MealScreenArgs _args = switch (widget.mealId) {
+    final mealId? => MealScreenArgs.existing(mealId),
+    null => MealScreenArgs.newMeal(widget.day!, instance: Object()),
+  };
 
   MealScreenController get _notifier =>
       ref.read(mealScreenControllerProvider(_args).notifier);
@@ -137,10 +156,10 @@ class _MealScreenState extends ConsumerState<MealScreen> {
     final mealTypes = activeMealTypes(
       ref.watch(mealTypeListProvider).value ?? const <MealTypeRecord>[],
     );
-    final savedMealId = state.savedMealId;
-    final NutritionDayMealRecord? saved = state.isSaved && savedMealId != null
-        ? ref.watch(savedMealProvider(savedMealId)).value
-        : null;
+    final NutritionDayMealRecord? saved = switch (state.savedMealId) {
+      final savedMealId? => ref.watch(savedMealProvider(savedMealId)).value,
+      null => null,
+    };
     final entries = saved?.entries ?? const <FoodEntryRecord>[];
     final header = _header(context, state, saved, mealTypes);
     final showYourMeals = !state.isSaved || (saved != null && entries.isEmpty);
@@ -152,151 +171,156 @@ class _MealScreenState extends ConsumerState<MealScreen> {
         : null;
     final canWrite = state.canPick && !state.writing;
 
-    return PopScope(
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) {
-          _undoBar?.close();
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(l10n.mealScreenTitle),
-          actions: [
-            if (saved != null)
-              PopupMenuButton<_MealMenuAction>(
-                key: MealScreen.overflowMenuKey,
-                onSelected: (action) {
-                  switch (action) {
-                    case _MealMenuAction.delete:
-                      unawaited(_deleteMeal());
-                  }
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem<_MealMenuAction>(
-                    key: MealScreen.deleteMealKey,
-                    value: _MealMenuAction.delete,
-                    child: Text(l10n.mealDelete),
+    return _ClosesWhenArchived(
+      args: _args,
+      onArchived: _close,
+      child: PopScope(
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) {
+            _undoBar?.close();
+          }
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(l10n.mealScreenTitle),
+            actions: [
+              if (saved != null)
+                PopupMenuButton<_MealMenuAction>(
+                  key: MealScreen.overflowMenuKey,
+                  onSelected: (action) {
+                    switch (action) {
+                      case _MealMenuAction.delete:
+                        unawaited(_deleteMeal());
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem<_MealMenuAction>(
+                      key: MealScreen.deleteMealKey,
+                      value: _MealMenuAction.delete,
+                      child: Text(l10n.mealDelete),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              return CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppDimens.base,
+                        AppDimens.dense,
+                        AppDimens.base,
+                        0,
+                      ),
+                      child: _HeaderButton(
+                        text: header?.text,
+                        semanticsLabel: header?.semanticsLabel,
+                        onPressed: header == null ? null : _openTimeSheet,
+                      ),
+                    ),
+                  ),
+                  if (shortcut != null)
+                    SliverToBoxAdapter(
+                      child: _RecentShortcut(
+                        label: l10n.mealAddToRecent(
+                          mealTimeText(context, shortcut.meal),
+                          shortcut.meal.mealType,
+                        ),
+                        onTap: state.writing
+                            ? null
+                            : () => _openSavedMeal(shortcut.meal.id),
+                      ),
+                    ),
+                  if (showYourMeals && history.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: _SectionHeading(
+                        key: MealScreen.yourMealsSectionKey,
+                        text: l10n.mealYourMeals,
+                      ),
+                    ),
+                    SliverList.list(
+                      children: [
+                        for (final record in history)
+                          _YourMealRow(
+                            key: MealScreen.yourMealRowKey(record.lastMealId),
+                            record: record,
+                            onTap: canWrite
+                                ? () => unawaited(_logAgain(record))
+                                : null,
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (entries.isNotEmpty)
+                    SliverList.list(
+                      children: [
+                        for (final entry in entries)
+                          _EntryRow(
+                            key: MealScreen.entryRowKey(entry.id),
+                            entry: entry,
+                            onEdit: LogPortionScreen.canEditEntry(entry) &&
+                                    !state.writing
+                                ? () => unawaited(
+                                      _editPortion(entry, header?.text),
+                                    )
+                                : null,
+                            onRemove: state.writing
+                                ? null
+                                : () => unawaited(_removeEntry(entry)),
+                          ),
+                      ],
+                    ),
+                  SliverFillRemaining(
+                    hasScrollBody: true,
+                    // The picker's results area is an Expanded, so it gets the
+                    // viewport's height even while the rows above push it
+                    // partly out of view; the outer scroll brings it up.
+                    child: OverflowBox(
+                      alignment: Alignment.topCenter,
+                      minHeight: constraints.maxHeight,
+                      maxHeight: constraints.maxHeight,
+                      child: _Disabled(
+                        disabled: !state.canPick,
+                        child: AddFoodPicker(
+                          onFoodSelected: (food) {
+                            unawaited(_logFood(food, header?.text));
+                          },
+                          onQuickEntry: (draft) {
+                            return _guard(() => _notifier.logQuickEntry(draft))
+                                .then((_) {});
+                          },
+                        ),
+                      ),
+                    ),
                   ),
                 ],
-              ),
-          ],
-        ),
-        body: LayoutBuilder(
-          builder: (context, constraints) {
-            return CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
+              );
+            },
+          ),
+          bottomNavigationBar: state.isSaved
+              ? null
+              : SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppDimens.base,
-                      AppDimens.dense,
-                      AppDimens.base,
-                      0,
-                    ),
-                    child: _HeaderButton(
-                      text: header?.text,
-                      semanticsLabel: header?.semanticsLabel,
-                      onPressed: header == null ? null : _openTimeSheet,
-                    ),
-                  ),
-                ),
-                if (shortcut != null)
-                  SliverToBoxAdapter(
-                    child: _RecentShortcut(
-                      label: l10n.mealAddToRecent(
-                        mealTimeText(context, shortcut.meal),
-                        shortcut.meal.mealType,
+                    padding: const EdgeInsets.all(AppDimens.base),
+                    child: FilledButton(
+                      key: MealScreen.addFoodsLaterKey,
+                      style: FilledButton.styleFrom(
+                        minimumSize:
+                            const Size.fromHeight(AppDimens.touchTarget),
                       ),
-                      onTap: state.writing
-                          ? null
-                          : () => _openSavedMeal(shortcut.meal.id),
-                    ),
-                  ),
-                if (showYourMeals && history.isNotEmpty) ...[
-                  SliverToBoxAdapter(
-                    child: _SectionHeading(
-                      key: MealScreen.yourMealsSectionKey,
-                      text: l10n.mealYourMeals,
-                    ),
-                  ),
-                  SliverList.list(
-                    children: [
-                      for (final record in history)
-                        _YourMealRow(
-                          key: MealScreen.yourMealRowKey(record.lastMealId),
-                          record: record,
-                          onTap: canWrite
-                              ? () => unawaited(_logAgain(record))
-                              : null,
-                        ),
-                    ],
-                  ),
-                ],
-                if (entries.isNotEmpty)
-                  SliverList.list(
-                    children: [
-                      for (final entry in entries)
-                        _EntryRow(
-                          key: MealScreen.entryRowKey(entry.id),
-                          entry: entry,
-                          onEdit: _hasEditablePortion(entry) && !state.writing
-                              ? () => unawaited(
-                                    _editPortion(entry, header?.text),
-                                  )
-                              : null,
-                          onRemove: state.writing
-                              ? null
-                              : () => unawaited(_removeEntry(entry)),
-                        ),
-                    ],
-                  ),
-                SliverFillRemaining(
-                  hasScrollBody: true,
-                  // The picker's results area is an Expanded, so it gets the
-                  // viewport's height even while the rows above push it
-                  // partly out of view; the outer scroll brings it up.
-                  child: OverflowBox(
-                    alignment: Alignment.topCenter,
-                    minHeight: constraints.maxHeight,
-                    maxHeight: constraints.maxHeight,
-                    child: _Disabled(
-                      disabled: !state.canPick,
-                      child: AddFoodPicker(
-                        target: state.target,
-                        onFoodSelected: (food) {
-                          unawaited(_logFood(food, header?.text));
-                        },
-                        onQuickEntry: (draft) {
-                          return _guard(() => _notifier.logQuickEntry(draft))
-                              .then((_) {});
-                        },
+                      onPressed:
+                          canWrite ? () => unawaited(_addFoodsLater()) : null,
+                      child: Text(
+                        l10n.mealAddFoodsLater,
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ),
                 ),
-              ],
-            );
-          },
         ),
-        bottomNavigationBar: state.isSaved
-            ? null
-            : SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppDimens.base),
-                  child: FilledButton(
-                    key: MealScreen.addFoodsLaterKey,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(AppDimens.touchTarget),
-                    ),
-                    onPressed:
-                        canWrite ? () => unawaited(_addFoodsLater()) : null,
-                    child: Text(
-                      l10n.mealAddFoodsLater,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ),
       ),
     );
   }
@@ -314,18 +338,10 @@ class _MealScreenState extends ConsumerState<MealScreen> {
       if (saved == null) {
         return null;
       }
-      final time = mealTimeText(context, saved.meal);
-      final type = saved.meal.mealType;
-      if (saved.entries.isEmpty) {
-        final typeAndHint = l10n.mealHeaderLabel(type, l10n.mealHeaderAddFoods);
-        return (
-          text: l10n.mealHeaderLabel(time, typeAndHint),
-          semanticsLabel: l10n.mealHeaderSemantics(time, typeAndHint),
-        );
-      }
+      final (:time, :typeAndHint) = mealLabelParts(context, saved);
       return (
-        text: l10n.mealHeaderLabel(time, type),
-        semanticsLabel: l10n.mealHeaderSemantics(time, type),
+        text: l10n.mealHeaderLabel(time, typeAndHint),
+        semanticsLabel: l10n.mealHeaderSemantics(time, typeAndHint),
       );
     }
     if (!state.timeChosen) {
@@ -387,13 +403,17 @@ class _MealScreenState extends ConsumerState<MealScreen> {
     final notifier = _notifier;
     await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
-        builder: (_) => Scaffold(
-          appBar: AppBar(),
-          body: LogPortionScreen(
-            target: state.target,
-            food: food,
-            contextLabel: contextLabel,
-            onSave: notifier.logFoodSnapshot,
+        builder: (_) => _ClosesWhenArchived(
+          args: _args,
+          onArchived: _close,
+          child: Scaffold(
+            appBar: AppBar(),
+            body: LogPortionScreen(
+              target: state.target,
+              food: food,
+              contextLabel: contextLabel,
+              onSave: notifier.logFoodSnapshot,
+            ),
           ),
         ),
       ),
@@ -414,16 +434,20 @@ class _MealScreenState extends ConsumerState<MealScreen> {
     LogFoodEntryResult? updated;
     await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
-        builder: (_) => Scaffold(
-          appBar: AppBar(),
-          body: LogPortionScreen.editEntry(
-            entry: entry,
-            contextLabel: contextLabel,
-            onUpdatePortion: (portion) async {
-              final result = await notifier.updatePortion(entry.id, portion);
-              updated = result ?? updated;
-              return result;
-            },
+        builder: (_) => _ClosesWhenArchived(
+          args: _args,
+          onArchived: _close,
+          child: Scaffold(
+            appBar: AppBar(),
+            body: LogPortionScreen.editEntry(
+              entry: entry,
+              contextLabel: contextLabel,
+              onUpdatePortion: (portion) async {
+                final result = await notifier.updatePortion(entry.id, portion);
+                updated = result ?? updated;
+                return result;
+              },
+            ),
           ),
         ),
       ),
@@ -475,9 +499,25 @@ class _MealScreenState extends ConsumerState<MealScreen> {
       return;
     }
     final batchId = await _guard(() => _notifier.deleteMeal());
-    if (batchId != null && mounted) {
-      Navigator.of(context).pop();
+    if (batchId != null) {
+      _close();
     }
+  }
+
+  /// Closes this screen and whatever is above it (Log Portion, the time
+  /// sheet), once.
+  void _close() {
+    if (_closed || !mounted) {
+      return;
+    }
+    final route = ModalRoute.of(context);
+    if (route == null) {
+      return;
+    }
+    _closed = true;
+    Navigator.of(context)
+      ..popUntil((candidate) => candidate == route)
+      ..pop();
   }
 
   /// The Undo bar's action. A refused undo shows the shared undo-conflict
@@ -552,18 +592,6 @@ class _MealScreenState extends ConsumerState<MealScreen> {
       return null;
     }
   }
-}
-
-/// Whether [entry] opens the Portion edit: a Food-backed entry without
-/// import keys. Imported entries are immutable observations and Quick
-/// Entries have no Portion, so both are remove-only (§6).
-bool _hasEditablePortion(FoodEntryRecord entry) {
-  return entry.kind == FoodEntryKind.food &&
-      entry.foodId != null &&
-      entry.foodSource != null &&
-      entry.portion != null &&
-      entry.importSource == null &&
-      entry.importExternalId == null;
 }
 
 enum _MealMenuAction { delete }
@@ -780,6 +808,37 @@ class _EntryRow extends StatelessWidget {
       );
     }
     return parts.join(' · ');
+  }
+}
+
+/// Calls [onArchived] once the Meal the screen shows is archived elsewhere (a
+/// sync pull, an agent): there is nothing left to show or write into. While
+/// the screen's own write is in flight it isn't decided yet: undoing the first
+/// Batch archives the Meal and then gives the screen a new one.
+///
+/// Log Portion's route needs one too: Riverpod pauses a consumer that isn't
+/// visible, so the Meal screen under it sees nothing until it shows again.
+class _ClosesWhenArchived extends ConsumerWidget {
+  const _ClosesWhenArchived({
+    required this.args,
+    required this.onArchived,
+    required this.child,
+  });
+
+  final MealScreenArgs args;
+  final VoidCallback onArchived;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(mealScreenControllerProvider(args));
+    if (state.savedMealId case final savedMealId?) {
+      final meal = ref.watch(savedMealProvider(savedMealId));
+      if (meal.hasValue && meal.value == null && !state.writing) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => onArchived());
+      }
+    }
+    return child;
   }
 }
 

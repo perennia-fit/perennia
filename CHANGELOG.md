@@ -26,6 +26,25 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Changed
 
+- **Messages have one style.** Every message in the app is now a dark bar with
+  rounded corners, in both themes, floating above the screen's bottom bar and
+  buttons. Its text and action pass WCAG AA; the Undo label was close to
+  invisible in the light theme.
+- **Cleaner Platform Exercise Library names.** On new installs, 80 names are
+  corrected, including every `(male)` or `(female)` label and typos like
+  `Shrimp Squad`. Twenty-three exercises merge into an equivalent, and 10
+  entries that were not real exercises, such as `bicep` and
+  `Rest (for timed workouts)`, are removed.
+- **The Platform Exercise Library loses its remaining non-English names.**
+  Three exercises merge into their English equivalents, one is removed, and
+  two are renamed on new installs (`Military Press with SZ-Bar`, `Biceps Curls
+  Trifecta`).
+- **The Platform Exercise Library drops 162 near-duplicates** (1,745 to 1,583
+  exercises), such as "Benchpress Dumbbells" alongside "Dumbbell Bench Press".
+  On a device that already has a removed exercise it is archived, so sets
+  logged under it keep their history. The Endurance, Weights and
+  Calisthenics staples now offer Running, Skipping - Standard, Overhead
+  Barbell Press and Full Plank.
 - **`batchWriteAgentMeal` writes only the Meal fields a request sends.** An
   absent field keeps its stored value, `null` clears `endedAt` or
   `deletedAt`, a request with only entries leaves the Meal untouched, and
@@ -44,6 +63,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 - **An Agent write no longer un-archives a Meal, drops Food Entry import
   keys, or moves an entry to another Meal.**
+- **`batchWriteAgentMeal` rejects a malformed timestamp with a 400.**
+  `startedAt`, `endedAt`, `deletedAt` and an entry's `updatedAt` and `deletedAt`
+  must be ISO-8601 with `Z` or a UTC offset.
 - **An Agent undo is refused when other writes added foods to the Meal it
   created.** The undo returns `skipped_dependent` and applies nothing.
 - **Confirmations with Undo now go away.** "Set 3 logged · Undo", "Replaced ·

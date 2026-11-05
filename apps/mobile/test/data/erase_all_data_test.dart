@@ -111,7 +111,7 @@ void main() {
       }
       expect(
           await database.select(database.userSettings).get(), settingsBefore);
-      expect(await repositories.ensureStarterExercises(), isNotEmpty);
+      expect(await repositories.exercises.listActive(), isNotEmpty);
     });
 
     test('records one Activity Log tombstone per erased row, in one batch',
@@ -211,7 +211,7 @@ typedef _SeededIds = ({
 /// Library, OTC compounds, default meal types) erase must keep.
 Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
   final database = repositories.database;
-  await repositories.ensureStarterExercises();
+  await repositories.catalog.ensurePlatformLibrarySeeded();
   await repositories.protocols.ensureOtcLibrarySeeded();
   await repositories.nutrition.ensureDefaultMealTypes();
   await repositories.accountSettings.save(AccountSettings.defaults);

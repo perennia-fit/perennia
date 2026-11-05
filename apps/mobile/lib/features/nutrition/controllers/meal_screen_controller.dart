@@ -20,11 +20,16 @@ import 'nutrition_day_controller.dart' show nutritionRepositoryProvider;
 /// [mealId]. The key of [mealScreenControllerProvider].
 @immutable
 final class MealScreenArgs {
-  /// A Meal not written yet, logged on [day].
-  const MealScreenArgs.newMeal(NutritionDayDate this.day) : mealId = null;
+  /// A Meal not written yet, logged on [day]. A screen passes its own
+  /// [instance], so it never shares a controller with another new Meal screen
+  /// on that day, such as the last one while it is still closing.
+  const MealScreenArgs.newMeal(NutritionDayDate this.day, {this.instance})
+      : mealId = null;
 
   /// A saved Meal, opened from its card or the recent-Meal shortcut.
-  const MealScreenArgs.existing(String this.mealId) : day = null;
+  const MealScreenArgs.existing(String this.mealId)
+      : day = null,
+        instance = null;
 
   /// The day a new Meal is logged on; null for [MealScreenArgs.existing].
   final NutritionDayDate? day;
@@ -32,16 +37,22 @@ final class MealScreenArgs {
   /// The saved Meal; null for [MealScreenArgs.newMeal].
   final String? mealId;
 
+  /// Compared by identity; see [MealScreenArgs.newMeal].
+  final Object? instance;
+
   bool get isNewMeal => mealId == null;
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
-        other is MealScreenArgs && other.day == day && other.mealId == mealId;
+        other is MealScreenArgs &&
+            other.day == day &&
+            other.mealId == mealId &&
+            identical(other.instance, instance);
   }
 
   @override
-  int get hashCode => Object.hash(day, mealId);
+  int get hashCode => Object.hash(day, mealId, identityHashCode(instance));
 
   @override
   String toString() => isNewMeal
@@ -58,6 +69,14 @@ final class MealScreenArgs {
 final mealScreenClockProvider = Provider<DateTime Function()>((ref) {
   return DateTime.now;
 });
+
+/// Whether [day] is after the day [now] falls on. A Meal can't start in the
+/// future (§8), so a future day offers no `Log meal` on the Nutrition Day
+/// view and no Meal in Today's Log sheet. Callers pass "now" from
+/// [mealScreenClockProvider].
+bool isFutureNutritionDay(NutritionDayDate day, DateTime now) {
+  return day.compareTo(NutritionDayDate.fromDateTime(now)) > 0;
+}
 
 /// The Meal screen controller, one per [MealScreenArgs] (§6).
 final mealScreenControllerProvider = NotifierProvider.autoDispose
@@ -136,22 +155,11 @@ NutritionDayMealRecord? eligibleRecentMeal(
   return best;
 }
 
-/// Whether the screen's Meal is written yet (§6).
-enum MealScreenPhase {
-  /// Not written: the screen holds a pending Meal, and the first write
-  /// creates it.
-  newMeal,
-
-  /// Written: every write lands in [MealScreenState.savedMealId].
-  saved,
-}
-
 /// The Meal screen's state (§6). Immutable; the controller replaces it.
 @immutable
 final class MealScreenState {
   const MealScreenState({
     required this.day,
-    required this.phase,
     required this.pendingMealId,
     required this.pendingStart,
     required this.pendingMealType,
@@ -164,8 +172,6 @@ final class MealScreenState {
   /// The day a new Meal screen opened for; null for a screen opened on a
   /// saved Meal, which reads its day from the Meal itself.
   final NutritionDayDate? day;
-
-  final MealScreenPhase phase;
 
   /// The id the first write creates the Meal with, minted by
   /// `NutritionRepository.newMealId` when the screen opens, so a repeated
@@ -185,7 +191,8 @@ final class MealScreenState {
   /// proposal), false on another day until the user chooses one (CUJ 5).
   final bool timeChosen;
 
-  /// The Meal every write lands in once [phase] is [MealScreenPhase.saved].
+  /// The Meal every write lands in once it is written; null while the screen
+  /// holds a pending Meal, which the first write creates (§6).
   final String? savedMealId;
 
   /// The Batch that created the Meal on a new screen. Undoing it returns the
@@ -196,7 +203,8 @@ final class MealScreenState {
   /// double tap, §3).
   final bool writing;
 
-  bool get isSaved => phase == MealScreenPhase.saved;
+  /// Whether the screen's Meal is written yet (§6).
+  bool get isSaved => savedMealId != null;
 
   /// Whether a pick (a food, Your meals, `Add foods later`) may write: false
   /// on a new Meal on another day until a time is chosen (§6, CUJ 5).
@@ -206,8 +214,8 @@ final class MealScreenState {
   /// saved one after. Null fields of the pending Meal stay null, so the
   /// repository resolves now and the proposal at the write.
   MealTarget get target {
-    if (isSaved) {
-      return ExistingMealTarget(savedMealId!);
+    if (savedMealId case final mealId?) {
+      return ExistingMealTarget(mealId);
     }
     return NewMealTarget(
       PendingMeal(
@@ -226,7 +234,6 @@ final class MealScreenState {
   }) {
     return MealScreenState(
       day: day,
-      phase: phase,
       pendingMealId: pendingMealId,
       pendingStart: pendingStart == null ? this.pendingStart : pendingStart(),
       pendingMealType:
@@ -244,7 +251,6 @@ final class MealScreenState {
   MealScreenState saved(String mealId, {String? batchId}) {
     return MealScreenState(
       day: day,
-      phase: MealScreenPhase.saved,
       pendingMealId: pendingMealId,
       pendingStart: pendingStart,
       pendingMealType: pendingMealType,
@@ -260,7 +266,6 @@ final class MealScreenState {
   MealScreenState pending(String mealId) {
     return MealScreenState(
       day: day,
-      phase: MealScreenPhase.newMeal,
       pendingMealId: mealId,
       pendingStart: pendingStart,
       pendingMealType: pendingMealType,
@@ -299,7 +304,6 @@ class MealScreenController extends Notifier<MealScreenState> {
     if (mealId != null) {
       return MealScreenState(
         day: null,
-        phase: MealScreenPhase.saved,
         pendingMealId: null,
         pendingStart: null,
         pendingMealType: null,
@@ -312,7 +316,6 @@ class MealScreenController extends Notifier<MealScreenState> {
     final day = args.day!;
     return MealScreenState(
       day: day,
-      phase: MealScreenPhase.newMeal,
       pendingMealId: _repository.newMealId(),
       pendingStart: null,
       pendingMealType: null,
@@ -339,20 +342,14 @@ class MealScreenController extends Notifier<MealScreenState> {
     return proposeMealType(state.pendingStart ?? _clock(), mealTypes);
   }
 
-  /// Sets the pending Meal's local clock time (the time sheet on a new Meal).
+  /// Sets the pending Meal's local clock time (the time sheet on a new Meal:
+  /// a picked time, or a time-shift button's now minus its amount, §6).
   void setPendingTime(DateTime localClock) {
     _requireNew('setPendingTime');
     state = state.copyWith(
       pendingStart: () => localClock,
       timeChosen: true,
     );
-  }
-
-  /// A time-shift button on a new Meal (§6): the time becomes now minus
-  /// [amount], replacing any earlier choice, so shifts don't stack. On a
-  /// saved Meal the sheet calls [changeTime] with the same instant.
-  void shiftTime(Duration amount) {
-    setPendingTime(_clock().subtract(amount));
   }
 
   /// Hand-picks the pending Meal's Meal Type; the proposal no longer applies.
@@ -406,12 +403,16 @@ class MealScreenController extends Notifier<MealScreenState> {
     );
   }
 
-  /// Save on the Portion screen: [entry] must carry [MealScreenState.target]'s
-  /// Meal id.
+  /// Save on the Portion screen. [entry] lands in the Meal the screen holds
+  /// now: Log Portion built it for the target when it opened, and undoing the
+  /// first Batch since then gave the screen a new Meal.
   Future<LogFoodEntryResult?> logFoodSnapshot(FoodEntrySnapshotDraft entry) {
     final target = state.target;
     return _write(
-      () => _repository.logFoodEntrySnapshot(target: target, entry: entry),
+      () => _repository.logFoodEntrySnapshot(
+        target: target,
+        entry: entry.forMeal(target.mealId),
+      ),
       mealIdOf: (result) => result.mealId,
       batchIdOf: (result) => result.batchId,
     );
@@ -428,11 +429,19 @@ class MealScreenController extends Notifier<MealScreenState> {
   }
 
   /// Removes one Food Entry. Removing the last one keeps the Meal (§2).
-  /// Returns the Batch id, or null if ignored.
+  /// Returns the Batch id, or null if ignored: the in-flight guard clears
+  /// before [savedMealProvider] drops the row, so a double tap can ask to
+  /// remove an entry that is already gone.
   Future<String?> removeEntry(String foodEntryId) {
     final mealId = _requireSavedMealId('removeEntry');
-    return _write(
-      () => _repository.deleteFoodEntry(foodEntryId),
+    return _write<String?>(
+      () async {
+        final entry = await _repository.getFoodEntryById(foodEntryId);
+        if (entry == null || entry.deletedAt != null) {
+          return null;
+        }
+        return _repository.deleteFoodEntry(foodEntryId);
+      },
       mealIdOf: (_) => mealId,
       batchIdOf: (batchId) => batchId,
     );
@@ -534,10 +543,9 @@ class MealScreenController extends Notifier<MealScreenState> {
   }
 
   String _requireSavedMealId(String action) {
-    final mealId = state.savedMealId;
-    if (!state.isSaved || mealId == null) {
-      throw StateError('$action applies to a saved Meal.');
+    if (state.savedMealId case final mealId?) {
+      return mealId;
     }
-    return mealId;
+    throw StateError('$action applies to a saved Meal.');
   }
 }

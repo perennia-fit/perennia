@@ -184,7 +184,8 @@ void main() {
         'samplesFor a performance outcome sums load x reps of completed '
         'sets per Workout session, excluding a session with no scoreable set',
         () async {
-      final exercises = await repositories.ensureStarterExercises();
+      await repositories.catalog.ensurePlatformLibrarySeeded();
+      final exercises = await repositories.exercises.listActive();
       final exerciseId = exercises.first.id;
 
       // In-window session with a completed, load+reps set: 100kg x 5 = 500.
@@ -277,7 +278,8 @@ void main() {
     test(
         'performance volume converts load to kilograms and excludes '
         'assisted-load exercises, like the exercise volume series', () async {
-      final exercises = await repositories.ensureStarterExercises();
+      await repositories.catalog.ensurePlatformLibrarySeeded();
+      final exercises = await repositories.exercises.listActive();
       final barbellId = exercises.first.id;
       final assistedId = await repositories.exercises.create(
         ExerciseDraft(

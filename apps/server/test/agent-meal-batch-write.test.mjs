@@ -916,11 +916,7 @@ test("prepare: an unsent entry deletedAt keeps the stored value; null for a new 
 test("prepare: active entries into an archived Meal are 422 meal_archived, accepted when the request sends deletedAt: null", () => {
   const archivedAt = "2026-06-24T06:00:00.000Z";
   const stored = storedState({
-    meal: storedRow(
-      USER,
-      { ...legacyMealPayload(), deleted_at: archivedAt },
-      archivedAt
-    )
+    meal: archivedMealRow(archivedAt)
   });
 
   const rejected = prepareAgentMealBatchWrite(
@@ -982,7 +978,7 @@ test("prepare: archiving a Meal is accepted when the request tombstones every st
     storedState({
       meal: storedRow(USER, legacyMealPayload()),
       entries: [
-        ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+        ["entry-active", storedEntryRow("entry-active")]
       ],
       activeEntryIds: ["entry-active"]
     }),
@@ -1004,7 +1000,7 @@ test("prepare: archiving a Meal is 422 meal_archived when an entry tombstone tie
   const stored = storedState({
     meal: storedRow(USER, legacyMealPayload()),
     entries: [
-      ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+      ["entry-active", storedEntryRow("entry-active")]
     ],
     activeEntries: [["entry-active", storedClock]]
   });
@@ -1042,7 +1038,7 @@ test("prepare: an entry sent without deletedAt keeps its stored null and does no
     storedState({
       meal: storedRow(USER, legacyMealPayload()),
       entries: [
-        ["entry-active", storedRow(USER, { id: "entry-active", meal_id: MEAL_ID })]
+        ["entry-active", storedEntryRow("entry-active")]
       ],
       activeEntryIds: ["entry-active"]
     }),
@@ -1075,11 +1071,7 @@ test("prepare: a Meal-fields-only edit of an archived Meal that still holds stor
   const prepared = prepareAgentMealBatchWrite(
     resolvedRequest({ meal: { id: MEAL_ID, mealType: "Lunch" } }),
     storedState({
-      meal: storedRow(
-        USER,
-        { ...legacyMealPayload(), deleted_at: archivedAt },
-        archivedAt
-      ),
+      meal: archivedMealRow(archivedAt),
       activeEntryIds: ["entry-b", "entry-a"]
     }),
     FAKE_NOW_LATER
@@ -1097,11 +1089,7 @@ test("prepare: un-archiving a Meal with stored active entries is accepted", () =
   const prepared = prepareAgentMealBatchWrite(
     resolvedRequest({ meal: { id: MEAL_ID, deletedAt: null } }),
     storedState({
-      meal: storedRow(
-        USER,
-        { ...legacyMealPayload(), deleted_at: archivedAt },
-        archivedAt
-      ),
+      meal: archivedMealRow(archivedAt),
       activeEntryIds: ["entry-active"]
     }),
     FAKE_NOW_LATER
@@ -1251,6 +1239,33 @@ test("agent meal batch write rejects malformed partial requests with 400 before 
   const cases = [
     { name: "id only, no entries", meal: { id: MEAL_ID }, entries: [] },
     {
+      name: "unparseable startedAt",
+      meal: { id: MEAL_ID, mealType: "Lunch", startedAt: "not-a-date", timezoneOffsetMinutes: 0 },
+      entries: []
+    },
+    {
+      name: "startedAt Date.parse accepts but the app's DateTime.parse doesn't",
+      meal: { id: MEAL_ID, mealType: "Lunch", startedAt: "Jun 24 2026 05:00", timezoneOffsetMinutes: 0 },
+      entries: []
+    },
+    {
+      name: "startedAt with no zone",
+      meal: { id: MEAL_ID, mealType: "Lunch", startedAt: "2026-06-24T05:00:00", timezoneOffsetMinutes: 0 },
+      entries: []
+    },
+    { name: "unparseable endedAt", meal: { id: MEAL_ID, endedAt: "soon" }, entries: [] },
+    { name: "unparseable Meal deletedAt", meal: { id: MEAL_ID, deletedAt: "yesterday" }, entries: [] },
+    {
+      name: "unparseable entry updatedAt",
+      meal: { id: MEAL_ID },
+      entries: [quickEntry({ updatedAt: "later" })]
+    },
+    {
+      name: "unparseable entry deletedAt",
+      meal: { id: MEAL_ID },
+      entries: [quickEntry({ deletedAt: "gone" })]
+    },
+    {
       name: "startedAt without offset or timezone",
       meal: { id: MEAL_ID, mealType: "Lunch", startedAt: "2026-06-24T05:00:00.000Z" },
       entries: []
@@ -1388,6 +1403,22 @@ test("agent meal batch write maps a store rejection to its HTTP status and retur
   const body = await response.json();
   assert.deepEqual(rules(body.warnings), ["meal_time_in_future"]);
   assert.deepEqual(body.entries, []);
+});
+
+test("agent meal batch write accepts a startedAt with Z or a UTC offset", async () => {
+  const writes = [];
+  const app = createAgentMealApp({
+    agentMealBatchWriteStore: recordingMealStore(writes)
+  });
+  for (const startedAt of ["2026-06-24T05:00:00Z", "2026-06-24T15:00:00.000+10:00"]) {
+    const response = await postAgentMeal(app, {
+      idempotencyKey: `agent-meal-instant-${startedAt}`,
+      meal: { id: MEAL_ID, mealType: "Lunch", startedAt, timezoneOffsetMinutes: 600 },
+      entries: []
+    });
+    assert.equal(response.status, 200, startedAt);
+  }
+  assert.equal(writes.length, 2);
 });
 
 test("agent meal batch write rejects a blank mealType with 422 meal_type_required, not a 400, and stores a padded name as sent", async () => {
@@ -2162,4 +2193,14 @@ function legacyMealPayload() {
     updated_at: "2026-06-24T01:00:00.000Z",
     deleted_at: null
   };
+}
+
+/** The caller's legacy Meal, archived at `archivedAt` in payload and column. */
+function archivedMealRow(archivedAt) {
+  return storedRow(USER, { ...legacyMealPayload(), deleted_at: archivedAt }, archivedAt);
+}
+
+/** The caller's active stored Food Entry `id` under MEAL_ID. */
+function storedEntryRow(id) {
+  return storedRow(USER, { id, meal_id: MEAL_ID });
 }

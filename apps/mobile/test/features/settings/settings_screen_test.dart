@@ -898,6 +898,10 @@ void main() {
       expect(purgeRepository.calls.map((call) => call.scope),
           <ImportedDataPurgeScope>[ImportedDataPurgeScope.gpsOnly]);
       expect(find.text('Garmin GPS purged'), findsOneWidget);
+      // The floating bar would otherwise cover the buttons tapped below.
+      ScaffoldMessenger.of(tester.element(find.text('Garmin GPS purged')))
+          .hideCurrentSnackBar();
+      await tester.pumpAndSettle();
 
       await tester.ensureVisible(
         find.byKey(SettingsScreen.garminImportDisconnectButtonKey),

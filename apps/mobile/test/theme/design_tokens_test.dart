@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:perennia/theme/app_theme.dart';
 import 'package:perennia/theme/design_tokens.g.dart';
 import 'package:yaml/yaml.dart';
 
@@ -109,6 +110,40 @@ void main() {
       );
     });
 
+    test('notice component', () {
+      final notice = components['notice'] as YamlMap;
+      Color color(String key) => _resolveColor(notice[key] as String, colors);
+
+      expect(notice['typography'], '{typography.body}');
+
+      final radius = px(rounded[_tokenKey(notice['rounded'] as String)]);
+      final inset = px(spacing[_tokenKey(notice['inset'] as String)]);
+
+      for (final theme in [AppTheme.light(), AppTheme.dark()]) {
+        final reason = theme.brightness.name;
+        final snackBar = theme.snackBarTheme;
+        expect(snackBar.backgroundColor, color('backgroundColor'),
+            reason: reason);
+        expect(snackBar.actionTextColor, color('actionColor'), reason: reason);
+        expect(snackBar.contentTextStyle?.color, color('textColor'),
+            reason: reason);
+        expect(snackBar.contentTextStyle?.fontSize, DesignTokens.body.size,
+            reason: reason);
+
+        final shape = snackBar.shape;
+        expect(shape, isA<RoundedRectangleBorder>(), reason: reason);
+        final rectangle = shape as RoundedRectangleBorder;
+        expect(rectangle.borderRadius, BorderRadius.circular(radius),
+            reason: reason);
+        expect(rectangle.side.color, color('borderColor'), reason: reason);
+        expect(rectangle.side.width, 1, reason: reason);
+
+        expect(snackBar.insetPadding, EdgeInsets.all(inset), reason: reason);
+        expect(snackBar.behavior, SnackBarBehavior.floating, reason: reason);
+        expect(snackBar.elevation, 0, reason: reason);
+      }
+    });
+
     test('typography', () {
       void check(TokenTextStyle style, String key) {
         final token = typography[key] as YamlMap;
@@ -196,6 +231,17 @@ void main() {
       checkComponent('button-save');
       checkComponent('button-destructive');
     });
+
+    test('notice', () {
+      final notice = components['notice'] as YamlMap;
+      final background =
+          _resolveColor(notice['backgroundColor'] as String, colors);
+      final text = _resolveColor(notice['textColor'] as String, colors);
+      final action = _resolveColor(notice['actionColor'] as String, colors);
+
+      expect(_ratio(text, background), greaterThanOrEqualTo(aa));
+      expect(_ratio(action, background), greaterThanOrEqualTo(aa));
+    });
   });
 }
 
@@ -238,6 +284,11 @@ double _ratio(Color a, Color b) {
   final lighter = math.max(luminanceA, luminanceB);
   final darker = math.min(luminanceA, luminanceB);
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+/// The token name in a reference such as `{rounded.md}`.
+String _tokenKey(String ref) {
+  return ref.substring(ref.indexOf('.') + 1, ref.length - 1);
 }
 
 Color _resolveColor(String value, YamlMap colors) {

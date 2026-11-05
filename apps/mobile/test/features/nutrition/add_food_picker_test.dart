@@ -591,7 +591,7 @@ void main() {
             body: ValueListenableBuilder<bool>(
               valueListenable: shown,
               builder: (context, isShown, _) => isShown
-                  ? const AddFoodPicker(target: _target)
+                  ? AddFoodPicker(onQuickEntry: (_) async {})
                   : const SizedBox.shrink(),
             ),
           ),
@@ -716,7 +716,8 @@ void main() {
     );
   });
 
-  testWidgets('Quick add with an onQuickEntry hook writes nothing itself',
+  testWidgets(
+      'Quick add hands the draft to onQuickEntry and writes nothing itself',
       (tester) async {
     final database = AppDatabase.inMemory();
     addTearDown(database.close);
@@ -1360,9 +1361,16 @@ Future<void> _pumpPicker(
         home: Scaffold(
           body: SafeArea(
             child: AddFoodPicker(
-              target: target,
               onFoodSelected: onFoodSelected,
-              onQuickEntry: onQuickEntry,
+              // The Meal screen's write, without its guard: into [target]
+              // through the repository, when the test has one.
+              onQuickEntry: onQuickEntry ??
+                  (draft) async {
+                    await repositories?.nutrition.logQuickEntry(
+                      target: target,
+                      entry: draft,
+                    );
+                  },
             ),
           ),
         ),
@@ -1506,7 +1514,7 @@ class _BarcodeAddFoodHarnessState extends State<_BarcodeAddFoodHarness> {
     final food = _food;
     if (food == null) {
       return AddFoodPicker(
-        target: widget.target,
+        onQuickEntry: (_) async {},
         onFoodSelected: (food) {
           setState(() {
             _food = food;

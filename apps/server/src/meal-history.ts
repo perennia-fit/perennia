@@ -10,16 +10,12 @@
  * app see the same meals in the same order.
  */
 
-import { FOOD_HISTORY_WINDOW_MS } from "./food-history.js";
-
-/**
- * Times compare in whole seconds, rounded down: the app stores them as Unix
- * seconds, so it cannot see milliseconds, and the two must agree on the
- * 90-day window and on which Meal is the latest.
- */
-function toSecond(ms: number): number {
-  return Math.floor(ms / 1000) * 1000;
-}
+import {
+  compareText,
+  FOOD_HISTORY_WINDOW_MS,
+  isHistoryFoodEntry,
+  toSecond
+} from "./food-history.js";
 
 export type MealHistoryMeal = {
   id: string;
@@ -110,19 +106,10 @@ export function buildMealHistory(
 
   for (const entry of entries) {
     const meal = considered.get(entry.mealId);
-    const { foodSource, foodId } = entry;
-    if (
-      meal === undefined ||
-      entry.deletedAt !== null ||
-      entry.kind !== "food" ||
-      foodSource === null ||
-      foodId === null ||
-      entry.isLiquid === null ||
-      (foodSource === "user" && archived.has(foodId))
-    ) {
+    if (meal === undefined || !isHistoryFoodEntry(entry, archived)) {
       continue;
     }
-    const key = `${foodSource}:${foodId}`;
+    const key = `${entry.foodSource}:${entry.foodId}`;
     const current = meal.foods.get(key);
     if (current === undefined || firstInMeal(entry, current.entry) < 0) {
       meal.foods.set(key, { entry, key });
@@ -185,12 +172,4 @@ function canonicalString(meal: ConsideredMeal): string {
 /** The entry whose name a Meal shows for a Food: lowest position, then id. */
 function firstInMeal(left: MealHistoryEntry, right: MealHistoryEntry): number {
   return left.position - right.position || compareText(left.id, right.id);
-}
-
-/**
- * Code-unit order, which for the ASCII ids Meal History compares is the byte
- * order of SQLite's default BINARY collation.
- */
-function compareText(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }

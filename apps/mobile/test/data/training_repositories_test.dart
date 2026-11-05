@@ -2856,7 +2856,7 @@ void main() {
 
     test('auto-finish uses the latest workout activity when it is newer',
         () async {
-      await repositories.ensureStarterExercises(actor: 'tester');
+      await repositories.catalog.ensurePlatformLibrarySeeded(actor: 'tester');
       final exercise = (await repositories.exercises.listActive()).first;
       final workoutId = await repositories.workoutSessions.create(
         WorkoutSessionDraft(
@@ -2947,9 +2947,9 @@ void main() {
       );
     });
 
-    test('starter exercises are seeded exactly once', () async {
-      await repositories.ensureStarterExercises(actor: 'tester');
-      await repositories.ensureStarterExercises(actor: 'tester');
+    test('the Platform Library is seeded exactly once', () async {
+      await repositories.catalog.ensurePlatformLibrarySeeded(actor: 'tester');
+      await repositories.catalog.ensurePlatformLibrarySeeded(actor: 'tester');
 
       final exercises = await repositories.exercises.listActive();
 
@@ -2973,9 +2973,9 @@ void main() {
       );
     });
 
-    test('logs a starter weight and reps set through the activity log',
-        () async {
-      await repositories.ensureStarterExercises(actor: 'tester');
+    test('logs a weight and reps set through the activity log', () async {
+      await repositories.catalog.ensurePlatformLibrarySeeded(actor: 'tester');
+      final exercise = (await repositories.exercises.listActive()).first;
 
       final emissions = <List<LoggedSetRecord>>[];
       final subscription =
@@ -2985,9 +2985,29 @@ void main() {
       await _waitFor(() => emissions.isNotEmpty);
       expect(emissions.single, isEmpty);
 
-      final result = await repositories.logDefaultWeightRepsSet(
-        now: DateTime(2026, 6, 14, 16, 30),
-        timezone: 'Australia/Brisbane',
+      final result = await repositories.logWorkoutWithSet(
+        WorkoutSessionDraft(
+          startedAt: DateTime(2026, 6, 14, 16, 30),
+          timezone: 'Australia/Brisbane',
+        ),
+        LoggedSetDraft(
+          exerciseId: exercise.id,
+          position: 0,
+          values: LoggedSet.fromValues(
+            const <SetDimensionValue>[
+              SetDimensionValue(
+                dimension: DimensionId.load,
+                entered: '100',
+                unit: TrainingUnit.kilogram,
+              ),
+              SetDimensionValue(
+                dimension: DimensionId.reps,
+                entered: '5',
+                unit: TrainingUnit.repetition,
+              ),
+            ],
+          ),
+        ),
         actor: 'tester',
       );
 
@@ -3032,10 +3052,32 @@ void main() {
         platformSeedSource: const _StarterSeedSource(),
       );
 
-      await firstRepositories.ensureStarterExercises(actor: 'tester');
-      final result = await firstRepositories.logDefaultWeightRepsSet(
-        now: DateTime(2026, 6, 14, 16, 30),
-        timezone: 'Australia/Brisbane',
+      await firstRepositories.catalog
+          .ensurePlatformLibrarySeeded(actor: 'tester');
+      final exercise = (await firstRepositories.exercises.listActive()).first;
+      final result = await firstRepositories.logWorkoutWithSet(
+        WorkoutSessionDraft(
+          startedAt: DateTime(2026, 6, 14, 16, 30),
+          timezone: 'Australia/Brisbane',
+        ),
+        LoggedSetDraft(
+          exerciseId: exercise.id,
+          position: 0,
+          values: LoggedSet.fromValues(
+            const <SetDimensionValue>[
+              SetDimensionValue(
+                dimension: DimensionId.load,
+                entered: '100',
+                unit: TrainingUnit.kilogram,
+              ),
+              SetDimensionValue(
+                dimension: DimensionId.reps,
+                entered: '5',
+                unit: TrainingUnit.repetition,
+              ),
+            ],
+          ),
+        ),
         actor: 'tester',
       );
       await firstDatabase.close();
@@ -3047,7 +3089,8 @@ void main() {
         platformSeedSource: const _StarterSeedSource(),
       );
 
-      await reopenedRepositories.ensureStarterExercises(actor: 'tester');
+      await reopenedRepositories.catalog
+          .ensurePlatformLibrarySeeded(actor: 'tester');
 
       final exercises = await reopenedRepositories.exercises.listActive();
       final workouts = await reopenedRepositories.workoutSessions.listActive();

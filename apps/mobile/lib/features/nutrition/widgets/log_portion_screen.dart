@@ -34,9 +34,8 @@ class LogPortionScreen extends StatefulWidget {
   })  : entry = null,
         onUpdatePortion = null;
 
-  /// Edit mode, only for a Food-backed entry without import keys: the Meal
-  /// screen decides which entries open it. Imported entries are immutable and
-  /// Quick Entries have no Portion.
+  /// Edit mode, only for an entry [canEditEntry] accepts: the Meal screen
+  /// decides which entries open it.
   LogPortionScreen.editEntry({
     super.key,
     required FoodEntryRecord this.entry,
@@ -44,12 +43,7 @@ class LogPortionScreen extends StatefulWidget {
     required Future<LogFoodEntryResult?> Function(Portion portion)
         this.onUpdatePortion,
   })  : assert(
-          entry.kind == FoodEntryKind.food &&
-              entry.foodId != null &&
-              entry.foodSource != null &&
-              entry.portion != null &&
-              entry.importSource == null &&
-              entry.importExternalId == null,
+          canEditEntry(entry),
           'Only a Food-backed entry without import keys has an editable '
           'Portion.',
         ),
@@ -84,6 +78,18 @@ class LogPortionScreen extends StatefulWidget {
   /// Makes the edit-mode write; null when logging a Food. A null result means
   /// the write was ignored, and the screen stays open.
   final Future<LogFoodEntryResult?> Function(Portion portion)? onUpdatePortion;
+
+  /// Whether [entry]'s Portion can be edited here: a Food-backed entry
+  /// without import keys. Imported entries are immutable observations and
+  /// Quick Entries have no Portion, so both are remove-only (§6).
+  static bool canEditEntry(FoodEntryRecord entry) {
+    return entry.kind == FoodEntryKind.food &&
+        entry.foodId != null &&
+        entry.foodSource != null &&
+        entry.portion != null &&
+        entry.importSource == null &&
+        entry.importExternalId == null;
+  }
 
   static Key unitChipKey(PortionUnit unit) {
     return Key('nutrition.logPortion.unit-${unit.name}');
@@ -371,7 +377,6 @@ class _LogPortionScreenState extends State<LogPortionScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior: SnackBarBehavior.floating,
         ),
       );
   }
@@ -388,7 +393,6 @@ class _LogPortionScreenState extends State<LogPortionScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior: SnackBarBehavior.floating,
         ),
       );
   }

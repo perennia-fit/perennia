@@ -46,7 +46,6 @@ import {
   AgentSetValidationErrorResponseSchema,
   AgentSetValidationResponseSchema,
   doseValidationLimitsResponse,
-  nutrientValidationLimitsResponse,
   setValidationLimitsResponse,
   validateAgentDose,
   validateAgentSet
@@ -68,11 +67,10 @@ import {
   type AgentExerciseCatalogBatchWriteStore
 } from "./agent-exercise-catalog-batch-write.js";
 import {
+  agentMealBatchWriteErrorBody,
   agentMealBatchWriteRoute,
-  AgentMealBatchWriteErrorResponseSchema,
   AgentMealBatchWriteResponseSchema,
   AgentMealBatchWriteUnavailableResponseSchema,
-  agentMealBatchWriteRejectionMessage,
   resolveAgentMealBatchEntries,
   type AgentMealBatchWriteStore
 } from "./agent-meal-batch-write.js";
@@ -2605,14 +2603,7 @@ export function createApp(options: CreateAppOptions = {}) {
     });
     if (!resolved.accepted) {
       return context.json(
-        AgentMealBatchWriteErrorResponseSchema.parse({
-          code: "agent_meal_batch_write_failed",
-          message:
-            "Batch contains one or more hard validation failures.",
-          errors: resolved.errors,
-          warnings: resolved.warnings,
-          limits: nutrientValidationLimitsResponse()
-        }),
+        agentMealBatchWriteErrorBody(422, resolved.errors, resolved.warnings),
         422
       );
     }
@@ -2626,13 +2617,11 @@ export function createApp(options: CreateAppOptions = {}) {
     });
     if (writeResult.status === "rejected") {
       return context.json(
-        AgentMealBatchWriteErrorResponseSchema.parse({
-          code: "agent_meal_batch_write_failed",
-          message: agentMealBatchWriteRejectionMessage(writeResult.httpStatus),
-          errors: writeResult.errors,
-          warnings: writeResult.warnings,
-          limits: nutrientValidationLimitsResponse()
-        }),
+        agentMealBatchWriteErrorBody(
+          writeResult.httpStatus,
+          writeResult.errors,
+          writeResult.warnings
+        ),
         writeResult.httpStatus
       );
     }

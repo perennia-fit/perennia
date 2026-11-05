@@ -771,6 +771,26 @@ class FoodEntrySnapshotDraft {
     Iterable<NutritionReviewFlag> reviewFlags = const <NutritionReviewFlag>[],
   }) : reviewFlags = List<NutritionReviewFlag>.unmodifiable(reviewFlags);
 
+  /// This draft, landing in the Meal [mealId] instead.
+  FoodEntrySnapshotDraft forMeal(String mealId) {
+    return FoodEntrySnapshotDraft(
+      mealId: mealId,
+      foodId: foodId,
+      name: name,
+      foodSource: foodSource,
+      nutrientsPer100: nutrientsPer100,
+      isLiquid: isLiquid,
+      portion: portion,
+      servingLabel: servingLabel,
+      servingSize: servingSize,
+      packageSize: packageSize,
+      importSource: importSource,
+      importExternalId: importExternalId,
+      importProvider: importProvider,
+      reviewFlags: reviewFlags,
+    );
+  }
+
   final String mealId;
 
   /// The catalogue `Food` this snapshot was taken from, or null for an

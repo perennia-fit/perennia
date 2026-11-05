@@ -115,6 +115,14 @@ components:
     pointRadius: 3px
     ringWidth: 1.5px
     lineWidth: 2px
+  notice:
+    backgroundColor: "{colors.chrome-dark}"
+    borderColor: "{colors.divider-dark}"
+    textColor: "{colors.text-primary-dark}"
+    actionColor: "{colors.primary}"
+    typography: "{typography.body}"
+    rounded: "{rounded.md}"
+    inset: "{spacing.base}"
 ---
 
 # Design System: Perennia

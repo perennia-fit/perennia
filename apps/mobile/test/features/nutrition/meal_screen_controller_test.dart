@@ -113,7 +113,7 @@ void main() {
       final saved = (await repositories.nutrition.getMealById(mealId!))!;
       expect(saved.mealType, 'Breakfast');
       expect(saved.startedAt, DateTime(2026, 6, 26, 7, 30).toUtc());
-      expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+      expect(stateOf(todayArgs).isSaved, isTrue);
       expect(stateOf(todayArgs).target, isA<ExistingMealTarget>());
 
       await controller.changeTime(DateTime(2026, 6, 26, 19));
@@ -162,18 +162,6 @@ void main() {
         saved.clock,
         await repositories.nutrition.listMealTypes(),
       ),
-    );
-  });
-
-  test('time-shift buttons replace the time instead of stacking', () {
-    final controller = open(todayArgs);
-
-    controller.shiftTime(const Duration(minutes: 15));
-    controller.shiftTime(const Duration(minutes: 30));
-
-    expect(
-      stateOf(todayArgs).pendingStart,
-      DateTime(2026, 6, 26, 12, 10),
     );
   });
 
@@ -297,7 +285,7 @@ void main() {
         .toSet()
         .difference(batchesBefore);
     expect(newBatches, {result.batchId});
-    expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+    expect(stateOf(todayArgs).isSaved, isTrue);
     expect(stateOf(todayArgs).savedMealId, result.mealId);
     expect(stateOf(todayArgs).firstBatchId, result.batchId);
     expect(stateOf(todayArgs).writing, isFalse);
@@ -314,7 +302,7 @@ void main() {
     final result = await controller.logQuickEntry(quick('Coffee'));
 
     expect(result, isNull);
-    expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+    expect(stateOf(todayArgs).isSaved, isTrue);
     expect(stateOf(todayArgs).savedMealId, pendingId);
     expect(stateOf(todayArgs).writing, isFalse);
     expect(
@@ -336,7 +324,7 @@ void main() {
 
     expect(undo.hasConflicts, isFalse);
     final state = stateOf(todayArgs);
-    expect(state.phase, MealScreenPhase.newMeal);
+    expect(state.isSaved, isFalse);
     expect(state.savedMealId, isNull);
     expect(state.firstBatchId, isNull);
     expect(state.pendingMealId, isNot(firstPendingId));
@@ -363,7 +351,7 @@ void main() {
       undo.conflicts.map((conflict) => conflict.reason),
       contains(ActivityLogUndoConflictReason.dependent),
     );
-    expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+    expect(stateOf(todayArgs).isSaved, isTrue);
     expect(stateOf(todayArgs).savedMealId, first.mealId);
     expect(
       (await repositories.nutrition.getMealById(first.mealId))!.deletedAt,
@@ -378,7 +366,7 @@ void main() {
     final batchId = await controller.removeEntry(logged.foodEntryId);
 
     expect(batchId, isNotNull);
-    expect(stateOf(todayArgs).phase, MealScreenPhase.saved);
+    expect(stateOf(todayArgs).isSaved, isTrue);
     expect(stateOf(todayArgs).savedMealId, logged.mealId);
     final provider = savedMealProvider(logged.mealId);
     container.listen(provider, (_, __) {});
@@ -415,7 +403,7 @@ void main() {
     );
     final args = MealScreenArgs.existing(mealId);
     final controller = open(args);
-    expect(stateOf(args).phase, MealScreenPhase.saved);
+    expect(stateOf(args).isSaved, isTrue);
     expect(stateOf(args).canPick, isTrue);
 
     final logged = (await controller.logQuickEntry(quick('Coffee')))!;
@@ -425,6 +413,69 @@ void main() {
     expect(stateOf(args).firstBatchId, isNull);
     expect(
         (await repositories.nutrition.getMealById(mealId))!.mealType, 'Snack');
+  });
+
+  test(
+      'a Save from a Log Portion opened before the first Batch was undone '
+      'lands in the screen\'s new Meal', () async {
+    final record = await seedSourceMeal();
+    final controller = open(todayArgs);
+    final logged = (await controller.logAgain(record))!;
+    // Log Portion opens here, and builds its draft from this target.
+    final heldMealId = stateOf(todayArgs).target.mealId;
+
+    await controller.undo(logged.batchId);
+    final saved = await controller.logFoodSnapshot(_snapshot(heldMealId));
+
+    expect(saved!.mealId, isNot(heldMealId));
+    expect(saved.mealId, stateOf(todayArgs).savedMealId);
+    final entries =
+        await repositories.nutrition.listActiveEntriesForMeal(saved.mealId);
+    expect(entries.single.name, 'Yoghurt');
+    expect(
+      await repositories.nutrition.listActiveEntriesForMeal(heldMealId),
+      isEmpty,
+    );
+  });
+
+  test(
+      'removing an entry already removed is ignored, and works again once '
+      'undo restores it', () async {
+    final mealId = await repositories.nutrition.createMeal(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 26, 12, 30),
+        mealTypeName: 'Lunch',
+      ),
+    );
+    final entryId = (await repositories.nutrition.logQuickEntry(
+      target: ExistingMealTarget(mealId),
+      entry: quick('Rice'),
+    ))
+        .foodEntryId;
+    final controller = open(MealScreenArgs.existing(mealId));
+
+    final batchId = await controller.removeEntry(entryId);
+    expect(batchId, isNotNull);
+    final logged = (await activity()).length;
+
+    expect(await controller.removeEntry(entryId), isNull);
+    expect((await activity()).length, logged);
+
+    await controller.undo(batchId!);
+    expect(await controller.removeEntry(entryId), isNotNull);
+  });
+
+  test('new Meal screens with their own instance share no controller',
+      () async {
+    final first = MealScreenArgs.newMeal(today, instance: Object());
+    final second = MealScreenArgs.newMeal(today, instance: Object());
+
+    expect(first, isNot(second));
+    await open(first).addFoodsLater();
+    open(second);
+    expect(stateOf(first).isSaved, isTrue);
+    expect(stateOf(second).isSaved, isFalse);
   });
 
   test('MealScreenArgs compare by value', () {
@@ -441,6 +492,18 @@ void main() {
       isNot(const MealScreenArgs.newMeal(yesterday)),
     );
   });
+}
+
+FoodEntrySnapshotDraft _snapshot(String mealId) {
+  return FoodEntrySnapshotDraft(
+    mealId: mealId,
+    foodId: 'usda-yoghurt',
+    name: 'Yoghurt',
+    foodSource: FoodSource.usda,
+    nutrientsPer100: _energy(100),
+    isLiquid: false,
+    portion: Portion(value: 100, entered: '100', unit: PortionUnit.gram),
+  );
 }
 
 NutrientVector _energy(double kilocalories) {

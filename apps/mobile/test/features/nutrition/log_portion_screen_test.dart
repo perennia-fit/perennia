@@ -506,7 +506,7 @@ void main() {
             builder: (context) => Scaffold(
               body: SafeArea(
                 child: AddFoodPicker(
-                  target: target,
+                  onQuickEntry: (_) async {},
                   onFoodSelected: (item) async {
                     popped.add(
                       await Navigator.of(context).push<String>(
