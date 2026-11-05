@@ -1239,6 +1239,33 @@ test("agent meal batch write rejects malformed partial requests with 400 before 
   const cases = [
     { name: "id only, no entries", meal: { id: MEAL_ID }, entries: [] },
     {
+      name: "unparseable startedAt",
+      meal: { id: MEAL_ID, mealType: "Lunch", startedAt: "not-a-date", timezoneOffsetMinutes: 0 },
+      entries: []
+    },
+    {
+      name: "startedAt Date.parse accepts but the app's DateTime.parse doesn't",
+      meal: { id: MEAL_ID, mealType: "Lunch", startedAt: "Jun 24 2026 05:00", timezoneOffsetMinutes: 0 },
+      entries: []
+    },
+    {
+      name: "startedAt with no zone",
+      meal: { id: MEAL_ID, mealType: "Lunch", startedAt: "2026-06-24T05:00:00", timezoneOffsetMinutes: 0 },
+      entries: []
+    },
+    { name: "unparseable endedAt", meal: { id: MEAL_ID, endedAt: "soon" }, entries: [] },
+    { name: "unparseable Meal deletedAt", meal: { id: MEAL_ID, deletedAt: "yesterday" }, entries: [] },
+    {
+      name: "unparseable entry updatedAt",
+      meal: { id: MEAL_ID },
+      entries: [quickEntry({ updatedAt: "later" })]
+    },
+    {
+      name: "unparseable entry deletedAt",
+      meal: { id: MEAL_ID },
+      entries: [quickEntry({ deletedAt: "gone" })]
+    },
+    {
       name: "startedAt without offset or timezone",
       meal: { id: MEAL_ID, mealType: "Lunch", startedAt: "2026-06-24T05:00:00.000Z" },
       entries: []
@@ -1376,6 +1403,22 @@ test("agent meal batch write maps a store rejection to its HTTP status and retur
   const body = await response.json();
   assert.deepEqual(rules(body.warnings), ["meal_time_in_future"]);
   assert.deepEqual(body.entries, []);
+});
+
+test("agent meal batch write accepts a startedAt with Z or a UTC offset", async () => {
+  const writes = [];
+  const app = createAgentMealApp({
+    agentMealBatchWriteStore: recordingMealStore(writes)
+  });
+  for (const startedAt of ["2026-06-24T05:00:00Z", "2026-06-24T15:00:00.000+10:00"]) {
+    const response = await postAgentMeal(app, {
+      idempotencyKey: `agent-meal-instant-${startedAt}`,
+      meal: { id: MEAL_ID, mealType: "Lunch", startedAt, timezoneOffsetMinutes: 600 },
+      entries: []
+    });
+    assert.equal(response.status, 200, startedAt);
+  }
+  assert.equal(writes.length, 2);
 });
 
 test("agent meal batch write rejects a blank mealType with 422 meal_type_required, not a 400, and stores a padded name as sent", async () => {
