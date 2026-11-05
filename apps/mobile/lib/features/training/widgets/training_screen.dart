@@ -21,6 +21,7 @@ import '../services/timer_background_scheduler.dart';
 import 'plan_progress_labels.dart';
 import 'replace_exercise.dart';
 import 'rest_strip.dart';
+import 'training_confirmation.dart';
 
 class TrainingScreen extends ConsumerStatefulWidget {
   const TrainingScreen({
@@ -223,6 +224,13 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// The rest strip's volume, which Log set's timer starts with.
   double _alertVolume = RestTimerRepository.defaultAlertVolume;
 
+  /// The one message the rest strip shows, if any.
+  TrainingConfirmation? _confirmation;
+
+  /// Keys the strip's crossfade between messages.
+  int _confirmationSequence = 0;
+  Timer? _confirmationTimer;
+
   @override
   void initState() {
     super.initState();
@@ -272,6 +280,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     unawaited(_groupsSubscription?.cancel());
     unawaited(_exercisesSubscription?.cancel());
     unawaited(_replaceUndoneSubscription?.cancel());
+    _confirmationTimer?.cancel();
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -764,7 +773,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       context,
       ref,
       _activeWorkoutExerciseId,
-      snackBarMargin: _snackBarMargin,
+      show: _showConfirmation,
     );
     if (newId != null && mounted) {
       _selectWorkoutExercise(newId);
@@ -821,6 +830,7 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   }) {
     final l10n = context.l10n;
     final workoutExerciseId = state.workoutExercise.id;
+    final confirmation = _confirmation;
     final exerciseSets = _exerciseSetsFor(state);
     final selectedSetId = _selectedSetId;
     final selectedSet = selectedSetId == null
@@ -955,6 +965,9 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
           enableTicker: widget.enableRestTimerTicker,
           revision: _restTimerRevision,
           onAlertVolumeChanged: (volume) => _alertVolume = volume,
+          confirmation: confirmation == null
+              ? null
+              : (confirmation: confirmation, sequence: _confirmationSequence),
         ),
         const SizedBox(height: AppDimens.dense),
         actions,
@@ -1112,7 +1125,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     final exercise = state.exercise;
     final repositories = ref.read(trainingRepositoriesProvider);
     final scheduler = ref.read(timerBackgroundSchedulerProvider);
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     final batchId = repositories.uuidGenerator.generate();
     final exerciseSets = _exerciseSetsFor(state);
@@ -1137,10 +1149,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         (currentSet == null &&
             exerciseSets.lastOrNull?.plannedRestAfter != null);
 
-    _showSnackBar(
-      messenger,
-      l10n.trainingSetLogged(number),
-      key: TrainingScreen.saveSetConfirmationKey,
+    _showConfirmation(
+      TrainingConfirmation(
+        message: l10n.trainingSetLogged(number),
+        textKey: TrainingScreen.saveSetConfirmationKey,
+      ),
     );
 
     final LogSetResult result;
@@ -1160,11 +1173,17 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         batchId: batchId,
       );
     } catch (error) {
-      _showSnackBar(messenger, l10n.trainingSetNotLogged(_errorReason(error)));
+      _showConfirmation(
+        TrainingConfirmation(
+          message: l10n.trainingSetNotLogged(_errorReason(error)),
+        ),
+      );
       return;
     }
     if (result.alreadyLogged) {
-      messenger.removeCurrentSnackBar();
+      if (mounted) {
+        setState(() => _confirmation = null);
+      }
       return;
     }
 
@@ -1193,23 +1212,25 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       soundEnabled: settings.restTimerSoundsEnabled,
     );
 
-    _showSnackBar(
-      messenger,
-      result.carriedCount > 0
-          ? l10n.trainingSetLoggedCarried(number, result.carriedCount)
-          : l10n.trainingSetLogged(number),
-      key: TrainingScreen.saveSetConfirmationKey,
-      undoLabel: l10n.trainingUndo,
-      onUndo: () => unawaited(
-        _undoLogSet(
-          repositories,
-          scheduler,
-          messenger,
-          l10n,
-          batchId: batchId,
-          timerId: timerId,
-          workoutId: state.workoutExercise.workoutId,
+    _showConfirmation(
+      TrainingConfirmation(
+        message: result.carriedCount > 0
+            ? l10n.trainingSetLoggedCarried(number, result.carriedCount)
+            : l10n.trainingSetLogged(number),
+        textKey: TrainingScreen.saveSetConfirmationKey,
+        undoLabel: l10n.trainingUndo,
+        onUndo: () => unawaited(
+          _undoLogSet(
+            repositories,
+            scheduler,
+            _showConfirmation,
+            l10n,
+            batchId: batchId,
+            timerId: timerId,
+            workoutId: state.workoutExercise.workoutId,
+          ),
         ),
+        replacesCurrent: true,
       ),
     );
 
@@ -1280,13 +1301,13 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   Future<void> _undoLogSet(
     TrainingRepositories repositories,
     TimerBackgroundScheduler scheduler,
-    ScaffoldMessengerState messenger,
+    ShowTrainingConfirmation show,
     AppLocalizations l10n, {
     required String batchId,
     required String? timerId,
     required String workoutId,
   }) async {
-    final undone = await _undoBatch(repositories, messenger, l10n, batchId);
+    final undone = await _undoBatch(repositories, show, l10n, batchId);
     if (!undone || timerId == null) {
       return;
     }
@@ -1304,18 +1325,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// See [undoTrainingBatch].
   Future<bool> _undoBatch(
     TrainingRepositories repositories,
-    ScaffoldMessengerState messenger,
+    ShowTrainingConfirmation show,
     AppLocalizations l10n,
     String batchId,
   ) {
-    return undoTrainingBatch(
-      repositories,
-      messenger,
-      l10n,
-      batchId,
-      margin: _snackBarMargin,
-      route: _route,
-    );
+    return undoTrainingBatch(repositories, show, l10n, batchId);
   }
 
   Future<void> _updateSelected(
@@ -1328,7 +1342,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       return;
     }
     final repositories = ref.read(trainingRepositoriesProvider);
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     try {
       await repositories.sets.updatePerformed(
@@ -1342,9 +1355,10 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         batchId: repositories.uuidGenerator.generate(),
       );
     } catch (error) {
-      _showSnackBar(
-        messenger,
-        l10n.trainingSetNotUpdated(_errorReason(error)),
+      _showConfirmation(
+        TrainingConfirmation(
+          message: l10n.trainingSetNotUpdated(_errorReason(error)),
+        ),
       );
       return;
     }
@@ -1362,7 +1376,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     LoggedSetRecord set,
   ) async {
     final repositories = ref.read(trainingRepositoriesProvider);
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     final batchId = repositories.uuidGenerator.generate();
     setState(() {
@@ -1370,12 +1383,13 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       _loadCurrentSet(state, _exerciseSetsFor(state));
     });
     await repositories.sets.softDelete(set.id, batchId: batchId);
-    _showSnackBar(
-      messenger,
-      l10n.trainingSetDeleted,
-      undoLabel: l10n.trainingUndo,
-      onUndo: () => unawaited(
-        _undoBatch(repositories, messenger, l10n, batchId),
+    _showConfirmation(
+      TrainingConfirmation(
+        message: l10n.trainingSetDeleted,
+        undoLabel: l10n.trainingUndo,
+        onUndo: () => unawaited(
+          _undoBatch(repositories, _showConfirmation, l10n, batchId),
+        ),
       ),
     );
   }
@@ -1399,7 +1413,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
 
   Future<void> _removePlannedSet(LoggedSetRecord set) async {
     final repositories = ref.read(trainingRepositoriesProvider);
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     final batchId = repositories.uuidGenerator.generate();
     setState(() {
@@ -1408,19 +1421,21 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       _reconcileForm();
     });
     await repositories.sets.softDelete(set.id, batchId: batchId);
-    _showSnackBar(
-      messenger,
-      l10n.trainingPlannedSetRemoved,
-      undoLabel: l10n.trainingUndo,
-      onUndo: () => unawaited(
-        _undoBatch(repositories, messenger, l10n, batchId).then((undone) {
-          if (undone && mounted) {
-            setState(() {
-              _removingSetIds.remove(set.id);
-              _setsByExerciseIdCache = null;
-            });
-          }
-        }),
+    _showConfirmation(
+      TrainingConfirmation(
+        message: l10n.trainingPlannedSetRemoved,
+        undoLabel: l10n.trainingUndo,
+        onUndo: () => unawaited(
+          _undoBatch(repositories, _showConfirmation, l10n, batchId)
+              .then((undone) {
+            if (undone && mounted) {
+              setState(() {
+                _removingSetIds.remove(set.id);
+                _setsByExerciseIdCache = null;
+              });
+            }
+          }),
+        ),
       ),
     );
   }
@@ -1465,7 +1480,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     ExerciseGroupRecord group,
   ) async {
     final repositories = ref.read(trainingRepositoriesProvider);
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     final batchId = repositories.uuidGenerator.generate();
     final workoutId = state.workoutExercise.workoutId;
@@ -1522,36 +1536,60 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       drafts,
       batchId: batchId,
     );
-    _showSnackBar(
-      messenger,
-      l10n.trainingRoundAdded,
-      undoLabel: l10n.trainingUndo,
-      onUndo: () => unawaited(
-        _undoBatch(repositories, messenger, l10n, batchId),
+    _showConfirmation(
+      TrainingConfirmation(
+        message: l10n.trainingRoundAdded,
+        undoLabel: l10n.trainingUndo,
+        onUndo: () => unawaited(
+          _undoBatch(repositories, _showConfirmation, l10n, batchId),
+        ),
       ),
     );
   }
 
-  /// This screen's route, whose closing takes its confirmations with it.
-  ModalRoute<Object?>? get _route => mounted ? ModalRoute.of(context) : null;
-
-  /// See [showTrainingSnackBar].
-  void _showSnackBar(
-    ScaffoldMessengerState messenger,
-    String message, {
-    Key? key,
-    String? undoLabel,
-    VoidCallback? onUndo,
-  }) {
-    showTrainingSnackBar(
-      messenger,
-      message,
-      key: key,
-      margin: _snackBarMargin,
-      route: _route,
-      undoLabel: undoLabel,
-      onUndo: onUndo,
-    );
+  /// Puts [confirmation] on the rest strip's row, in place of whatever
+  /// message it shows, until its duration ends. It can run after an await
+  /// that outlives the screen, so it does nothing once unmounted.
+  ///
+  /// Tapping Undo clears the message but leaves the timer running: only a
+  /// new message or [dispose] cancels it. The Undo wrapper is once-only: the
+  /// outgoing child of the strip's crossfade keeps a live button for its
+  /// 150 ms, so a second tap could otherwise reach the original again.
+  void _showConfirmation(TrainingConfirmation confirmation) {
+    if (!mounted) {
+      return;
+    }
+    final onUndo = confirmation.onUndo;
+    var undoTapped = false;
+    setState(() {
+      if (!confirmation.replacesCurrent) {
+        _confirmationSequence += 1;
+      }
+      _confirmation = TrainingConfirmation(
+        message: confirmation.message,
+        textKey: confirmation.textKey,
+        undoLabel: confirmation.undoLabel,
+        replacesCurrent: confirmation.replacesCurrent,
+        onUndo: onUndo == null
+            ? null
+            : () {
+                if (undoTapped) {
+                  return;
+                }
+                undoTapped = true;
+                if (mounted) {
+                  setState(() => _confirmation = null);
+                }
+                onUndo();
+              },
+      );
+    });
+    _confirmationTimer?.cancel();
+    _confirmationTimer = Timer(confirmation.duration, () {
+      if (mounted) {
+        setState(() => _confirmation = null);
+      }
+    });
   }
 
   void _notifyRestTimerChanged() {
@@ -1576,14 +1614,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
 }
 
 enum _TrainingScreenMenuAction { replaceExercise, exerciseOverview }
-
-/// Floats the screen's confirmations above the pinned Log set buttons.
-const _snackBarMargin = EdgeInsets.fromLTRB(
-  AppDimens.base * 2,
-  AppDimens.base * 2,
-  AppDimens.base * 2,
-  AppDimens.base * 12,
-);
 
 /// What the form last loaded, for the reload rules: a different Current Set
 /// always reloads, and changed stored values or rest reload a clean form.

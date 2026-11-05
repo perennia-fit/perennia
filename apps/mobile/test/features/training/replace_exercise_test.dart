@@ -8,6 +8,7 @@ import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/catalog/repositories/exercise_catalog_repository.dart';
 import 'package:perennia/features/catalog/widgets/exercise_catalog_picker.dart';
 import 'package:perennia/features/training/widgets/replace_exercise.dart';
+import 'package:perennia/features/training/widgets/training_confirmation.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
@@ -45,7 +46,8 @@ void main() {
       () => _createFixture(repositories, focusId: 'focus-weights'),
     ))!;
     final results = <String?>[];
-    await _pumpHarness(tester, repositories, fixture, results);
+    final shown = <TrainingConfirmation>[];
+    await _pumpHarness(tester, repositories, fixture, results, shown);
     final before = (await tester.runAsync(
       () => _workoutRows(repositories, fixture.workoutId),
     ))!;
@@ -67,7 +69,7 @@ void main() {
 
     expect(find.byType(ExerciseCatalogPicker), findsNothing);
     expect(results, <String?>[null]);
-    expect(find.byType(SnackBar), findsNothing);
+    expect(shown, isEmpty);
     final after = (await tester.runAsync(
       () => _workoutRows(repositories, fixture.workoutId),
     ))!;
@@ -81,7 +83,8 @@ void main() {
       () => _createFixture(repositories),
     ))!;
     final results = <String?>[];
-    await _pumpHarness(tester, repositories, fixture, results);
+    final shown = <TrainingConfirmation>[];
+    await _pumpHarness(tester, repositories, fixture, results, shown);
 
     await _replaceWith(tester, fixture.squat.id);
     final rows = (await tester.runAsync(
@@ -91,16 +94,68 @@ void main() {
     ))!;
     expect(rows.map((row) => row.exerciseId), <String>[fixture.squat.id]);
     expect(results, <String?>[rows.single.id]);
-    expect(find.widgetWithText(SnackBar, 'Replaced'), findsOneWidget);
+    expect(shown.single.message, 'Replaced');
+    expect(shown.single.undoLabel, 'Undo');
+    expect(shown.single.onUndo, isNotNull);
 
     // Replacing the new one with its own Exercise is refused.
     fixture.workoutExerciseId = rows.single.id;
     await _replaceWith(tester, fixture.squat.id);
     expect(results, <String?>[rows.single.id, null]);
-    expect(
-      find.widgetWithText(SnackBar, 'Already in this workout'),
-      findsOneWidget,
+    expect(shown, hasLength(2));
+    expect(shown.last.message, 'Already in this workout');
+    expect(shown.last.undoLabel, isNull);
+    expect(shown.last.onUndo, isNull);
+  });
+
+  _testReplace('the Undo it hands over reverts the Replace', (tester) async {
+    final fixture = (await tester.runAsync(
+      () => _createFixture(repositories),
+    ))!;
+    final shown = <TrainingConfirmation>[];
+    await _pumpHarness(tester, repositories, fixture, <String?>[], shown);
+    await _replaceWith(tester, fixture.squat.id);
+
+    shown.single.onUndo!();
+    await _settle(tester);
+
+    final rows = (await tester.runAsync(
+      () => repositories.workoutExercises.listActiveForWorkout(
+        fixture.workoutId,
+      ),
+    ))!;
+    expect(rows.map((row) => row.id), <String>[fixture.workoutExerciseId]);
+    expect(shown, hasLength(1));
+  });
+
+  _testReplace('its Undo says so when the rows changed since', (tester) async {
+    final fixture = (await tester.runAsync(
+      () => _createFixture(repositories),
+    ))!;
+    final results = <String?>[];
+    final shown = <TrainingConfirmation>[];
+    await _pumpHarness(tester, repositories, fixture, results, shown);
+    await _replaceWith(tester, fixture.squat.id);
+    // Another device removes the new one.
+    await tester.runAsync(
+      () => repositories.workoutExercises.softDelete(
+        results.single!,
+        actor: 'sync',
+      ),
     );
+
+    shown.first.onUndo!();
+    await _settle(tester);
+
+    expect(shown, hasLength(2));
+    expect(shown.last.message, "Couldn't undo: changed since");
+    expect(shown.last.onUndo, isNull);
+    final rows = (await tester.runAsync(
+      () => repositories.workoutExercises.listActiveForWorkout(
+        fixture.workoutId,
+      ),
+    ))!;
+    expect(rows, isEmpty);
   });
 
   _testReplace(
@@ -110,7 +165,8 @@ void main() {
       () => _createFixture(repositories),
     ))!;
     final results = <String?>[];
-    await _pumpHarness(tester, repositories, fixture, results);
+    final shown = <TrainingConfirmation>[];
+    await _pumpHarness(tester, repositories, fixture, results, shown);
 
     await tester.tap(find.byKey(_replaceButtonKey));
     await _settle(tester);
@@ -132,11 +188,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(results, <String?>[null]);
-    expect(
-      find.widgetWithText(SnackBar, 'Exercise not replaced'),
-      findsOneWidget,
-    );
-    expect(find.widgetWithText(SnackBarAction, 'Undo'), findsNothing);
+    expect(shown.single.message, 'Exercise not replaced');
+    expect(shown.single.undoLabel, isNull);
+    expect(shown.single.onUndo, isNull);
     final after = (await tester.runAsync(
       () => _replaceEntries(repositories),
     ))!;
@@ -252,12 +306,13 @@ Future<List<String>> _workoutRows(
 }
 
 /// A screen with one button that runs [replaceExercise] on the fixture's
-/// Workout Exercise and records what it returns.
+/// Workout Exercise and records what it returns and what it shows.
 Future<void> _pumpHarness(
   WidgetTester tester,
   TrainingRepositories repositories,
   _Fixture fixture,
   List<String?> results,
+  List<TrainingConfirmation> shown,
 ) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -283,6 +338,7 @@ Future<void> _pumpHarness(
                       context,
                       ref,
                       fixture.workoutExerciseId,
+                      show: shown.add,
                     ),
                   );
                 },

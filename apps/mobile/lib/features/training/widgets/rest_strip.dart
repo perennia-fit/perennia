@@ -9,6 +9,7 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../settings/repositories/settings_repository.dart';
 import '../services/timer_background_scheduler.dart';
+import 'training_confirmation.dart';
 
 final restTimerAlertProvider = Provider<RestTimerAlert>(
   (ref) => const SystemRestTimerAlert(),
@@ -83,6 +84,11 @@ String formatRestDuration(Duration duration) {
 /// ticker, the 3-2-1 prepare cue, the end alert and the background
 /// schedule) is never torn down mid-rest, and no other screen fires a rest
 /// alert.
+///
+/// It is also the screen's status row: while [confirmation] is set, it draws
+/// that message in place of the running or idle content, with a crossfade.
+/// Only the drawing changes: the ticker and the cues keep running under the
+/// message, and the rest shows again when it ends.
 class RestStrip extends ConsumerStatefulWidget {
   const RestStrip({
     super.key,
@@ -92,6 +98,7 @@ class RestStrip extends ConsumerStatefulWidget {
     required this.enableTicker,
     required this.revision,
     required this.onAlertVolumeChanged,
+    this.confirmation,
   });
 
   static const stripKey = Key('training.restStrip');
@@ -122,6 +129,10 @@ class RestStrip extends ConsumerStatefulWidget {
   /// Reports the strip's volume (the slider, or a loaded timer's volume),
   /// which Log set's timer starts with.
   final ValueChanged<double> onAlertVolumeChanged;
+
+  /// The message to show, if any. Its `sequence` keys the crossfade: a new
+  /// number swaps with a transition, the same number updates in place.
+  final ({TrainingConfirmation confirmation, int sequence})? confirmation;
 
   @override
   ConsumerState<RestStrip> createState() => _RestStripState();
@@ -219,6 +230,7 @@ class _RestStripState extends ConsumerState<RestStrip> {
     final running = timer != null &&
         timer.status == RestTimerStatus.running &&
         remaining > Duration.zero;
+    final shown = widget.confirmation;
 
     return DecoratedBox(
       key: RestStrip.stripKey,
@@ -228,9 +240,33 @@ class _RestStripState extends ConsumerState<RestStrip> {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppDimens.dense),
-        child: running
-            ? _buildRunning(context, timer, remaining)
-            : _buildIdle(context),
+        child: AnimatedSwitcher(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 150),
+          // The default centres its children; the strip's content starts at
+          // the leading edge.
+          layoutBuilder: (currentChild, previousChildren) => Stack(
+            alignment: AlignmentDirectional.centerStart,
+            children: [
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          ),
+          child: shown != null
+              ? KeyedSubtree(
+                  key: ValueKey<int>(shown.sequence),
+                  child: _ConfirmationContent(shown.confirmation),
+                )
+              // One key for both phases: running and idle swap with no
+              // transition.
+              : KeyedSubtree(
+                  key: const ValueKey('phase'),
+                  child: running
+                      ? _buildRunning(context, timer, remaining)
+                      : _buildIdle(context),
+                ),
+        ),
       ),
     );
   }
@@ -485,6 +521,55 @@ class _RestStripState extends ConsumerState<RestStrip> {
 
 /// −15 s or +15 s: a text button, since no icon reads as fifteen seconds;
 /// the screen reader hears [label] ("Rest 15 seconds less").
+/// A [TrainingConfirmation] in the strip's row. Only the message is a live
+/// region, so a screen reader reads each one once and never the countdown.
+class _ConfirmationContent extends StatelessWidget {
+  const _ConfirmationContent(this.confirmation);
+
+  final TrainingConfirmation confirmation;
+
+  @override
+  Widget build(BuildContext context) {
+    final onUndo = confirmation.onUndo;
+    final undoLabel = confirmation.undoLabel;
+    // The minimum height is the Undo button's: without it, the strip's height
+    // jumps between Log set's first message and its Undo version, moving the
+    // form.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                confirmation.message,
+                key: confirmation.textKey,
+                style: context.textStyles.label.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          if (onUndo != null && undoLabel != null)
+            TextButton(
+              style: TextButton.styleFrom(
+                minimumSize: const Size(
+                  AppDimens.touchTarget,
+                  AppDimens.touchTarget,
+                ),
+              ),
+              onPressed: onUndo,
+              child: Text(undoLabel),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AdjustButton extends StatelessWidget {
   const _AdjustButton({
     required this.seconds,

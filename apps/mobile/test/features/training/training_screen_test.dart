@@ -512,6 +512,9 @@ void main() {
       expect(timer?.duration, const Duration(seconds: 120));
       expect(timer?.sourceSetId, isNotNull);
 
+      // Stop is hidden while Log set's message shows.
+      await tester.pump(_confirmationDuration);
+      await tester.pump(_crossfade);
       await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
       expect(_restStripSeconds(tester), inInclusiveRange(117, 120));
       expect(find.byKey(TrainingScreen.restStripStartKey), findsNothing);
@@ -2331,8 +2334,8 @@ void main() {
       );
       await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settle(tester);
-      expect(find.text('Set 1 logged'), findsOneWidget);
-      expect(find.text('Undo'), findsOneWidget);
+      expect(_inRestStrip(find.text('Set 1 logged')), findsOneWidget);
+      expect(_undoInRestStrip, findsOneWidget);
     }
 
     _testTrainingScreen('the Log set confirmation goes after 4 s', (
@@ -2340,10 +2343,8 @@ void main() {
     ) async {
       await logOneSet(tester);
 
-      // The 4 s start once the entrance animation has finished.
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump(const Duration(seconds: 4));
-      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(_confirmationDuration);
+      await tester.pump(_crossfade);
 
       expect(find.text('Set 1 logged'), findsNothing);
       expect(find.text('Undo'), findsNothing);
@@ -2756,8 +2757,8 @@ void main() {
         find.widgetWithText(AppBar, 'Incline Machine Press'),
       );
       await _settle(tester);
-      expect(find.widgetWithText(SnackBar, 'Replaced'), findsOneWidget);
-      expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget);
+      expect(_inRestStrip(find.text('Replaced')), findsOneWidget);
+      expect(_undoInRestStrip, findsOneWidget);
       expect(_logSetLabel(tester), 'Log set 1 of 2');
       // Its own last performed values, not Incline Press's plan.
       expect(
@@ -2839,10 +2840,10 @@ void main() {
       await _settle(tester);
 
       expect(
-        find.widgetWithText(SnackBar, 'Already in this workout'),
+        _inRestStrip(find.text('Already in this workout')),
         findsOneWidget,
       );
-      expect(find.widgetWithText(SnackBarAction, 'Undo'), findsNothing);
+      expect(_undoInRestStrip, findsNothing);
       expect(find.widgetWithText(AppBar, 'Incline Press'), findsOneWidget);
       final after = (await tester.runAsync(
         () => _workoutSnapshot(repositories, fixture.incline.workoutId),
@@ -2936,7 +2937,7 @@ void main() {
       await _settle(tester);
 
       expect(
-        find.widgetWithText(SnackBar, "Couldn't undo: changed since"),
+        _inRestStrip(find.text("Couldn't undo: changed since")),
         findsOneWidget,
       );
       expect(
@@ -3453,6 +3454,7 @@ void main() {
       );
       await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
       await _settle(tester);
+      await tester.pump(_crossfade);
 
       expect(
         find.text('Set not logged: Load must be no more than 1000 kg.'),
@@ -4555,8 +4557,24 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-/// Taps the confirmation's Undo once the snack bar has finished sliding in.
+/// How long a confirmation with Undo shows on the status row.
+const _confirmationDuration = Duration(seconds: 4);
+
+/// Past the strip's 150 ms crossfade, whose outgoing child stays mounted.
+const _crossfade = Duration(milliseconds: 200);
+
+Finder _inRestStrip(Finder finder) {
+  return find.descendant(
+    of: find.byKey(TrainingScreen.restStripKey),
+    matching: finder,
+  );
+}
+
+Finder get _undoInRestStrip {
+  return _inRestStrip(find.widgetWithText(TextButton, 'Undo'));
+}
+
+/// Taps the confirmation's Undo on the status row.
 Future<void> _tapUndo(WidgetTester tester) async {
-  await tester.pump(const Duration(milliseconds: 400));
-  await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+  await tester.tap(_undoInRestStrip);
 }
