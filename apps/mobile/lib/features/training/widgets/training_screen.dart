@@ -1407,6 +1407,9 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     if (loggedSet == null) {
       return null;
     }
+    final previous = await repositories.restTimers.getCurrentForWorkout(
+      loggedSet.workoutId,
+    );
     final timerId = await repositories.restTimers.startForSet(
       loggedSet,
       defaultDuration: rest,
@@ -1416,6 +1419,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     if (timerId == null) {
       return null;
     }
+    await cancelReplacedRestSchedule(
+      scheduler,
+      previous: previous,
+      startedTimerId: timerId,
+    );
     final timer = await repositories.restTimers.getById(timerId);
     if (timer != null) {
       final setsByExerciseId = <String, List<LoggedSetRecord>>{};

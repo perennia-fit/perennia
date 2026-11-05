@@ -118,7 +118,10 @@ class TimerForegroundService : Service() {
             if (id == timerId || timerId.isEmpty()) {
                 handler.removeCallbacks(tick)
                 removeForegroundNotification()
-                stopSelf()
+                // Only if no start is queued behind this cancel, as with -15 s
+                // or a Log set during a rest. Stopping would destroy the service
+                // before that start's startForeground, which crashes the app.
+                stopSelf(startId)
             }
             return START_NOT_STICKY
         }

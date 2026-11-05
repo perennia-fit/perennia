@@ -3292,6 +3292,29 @@ void main() {
     });
 
     _testTrainingScreen(
+        "Log set during a running rest cancels that rest's schedule before "
+        'scheduling the new one', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+
+      await logOneSet(tester, scheduler: scheduler);
+      final firstRest = scheduler.schedules.single.timerId;
+      expect(scheduler.scheduleCalls, <String>['schedule:$firstRest']);
+
+      await fillAndTapLogSet(tester);
+      await _settle(tester);
+
+      final secondRest = scheduler.schedules.last.timerId;
+      expect(secondRest, isNot(firstRest));
+      expect(scheduler.scheduleCalls, <String>[
+        'schedule:$firstRest',
+        'cancel:$firstRest',
+        'schedule:$secondRest',
+      ]);
+    });
+
+    _testTrainingScreen(
         "a denied Start rest that lands during a Log set waits for Log set's "
         'message to end', (tester) async {
       // Holds the rest's start after the Set is written, so Log set's first
@@ -5502,6 +5525,9 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
   final cancels = <String>[];
   final inAppTimerCues = <bool>[];
 
+  /// Schedules and cancels together, in the order native receives them.
+  final scheduleCalls = <String>[];
+
   /// Cancels and in-app cue values together, in the order native receives them.
   final cueCalls = <String>[];
 
@@ -5520,12 +5546,14 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
     TimerBackgroundSchedule schedule,
   ) async {
     schedules.add(schedule);
+    scheduleCalls.add('schedule:${schedule.timerId}');
     return status;
   }
 
   @override
   Future<void> cancel(String timerId) async {
     cancels.add(timerId);
+    scheduleCalls.add('cancel:$timerId');
     cueCalls.add('cancel:$timerId');
   }
 

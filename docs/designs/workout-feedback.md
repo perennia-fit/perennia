@@ -1399,6 +1399,15 @@ rest timer notifications on Android 8 and later."
     *   **`_startRestAfterLog`** passes the texts to
         `TimerBackgroundSchedule.rest`. The strip gets the same texts for
         `_start` (a rest started from the strip, for the open exercise).
+    *   **A rest that replaces a running one.** Starting a rest cancels the
+        Workout's running row, but iOS keeps each rest's requests under its own
+        id, so they would still fire for a rest that no longer exists.
+        `_startRestAfterLog` and the strip's `_start` read
+        `getCurrentForWorkout` before the start. After it, they call
+        `cancelReplacedRestSchedule` (in `timer_background_scheduler.dart`),
+        which cancels that rest's schedule when it was running and has a
+        different id, before the new rest is scheduled. A Set whose rest is
+        zero starts nothing, so the running rest keeps its schedule.
     *   **Strip inputs.** Pass the strip `newestPerformed`: the Workout's
         Performed Set with the latest `performedAt`, from the Sets stream the
         screen already watches.
@@ -1499,7 +1508,11 @@ rest timer notifications on Android 8 and later."
     *   **Cancel.** `ACTION_CANCEL` for the running timer stops the foreground
         with `STOP_FOREGROUND_REMOVE`. The system ignores an app's cancel of a
         live foreground notification, so detaching it would leave a stuck
-        countdown in the shade. This is the usual in-app end.
+        countdown in the shade. This is the usual in-app end. It stops with
+        `stopSelf(startId)`, so a start queued behind the cancel (−15 s, or a
+        Log set during a rest) keeps the service alive. A plain `stopSelf()`
+        would destroy it before that start's `startForeground`, which crashes
+        the app.
     *   **Text.** The prepare notification uses `prepareText`.
 
 #### `apps/mobile/android/app/src/main/res/values/strings.xml` (Modify)
@@ -1877,7 +1890,9 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
     3.  **CUJ 4.** The same rest with the app in the background: notifications
         "Get ready · *Exercise* · Set *k*", "*Exercise* · Set *k* in 0:03" and
         "Rest over", each with its tone. Reopening after 0:00 shows
-        "Rest over · +*m*:*ss*" and plays nothing.
+        "Rest over · +*m*:*ss*" and plays nothing. Log a set during a running
+        rest, then background the app: only the new rest's notifications post,
+        and the app does not crash.
     4.  **On Today during a rest:** the same three notifications, with sound.
         The same on the Training Screen of another Workout, whose strip has no
         running rest.

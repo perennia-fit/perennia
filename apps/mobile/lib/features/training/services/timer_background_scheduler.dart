@@ -48,6 +48,23 @@ abstract interface class TimerBackgroundScheduler {
   Future<void> setInAppTimerCues(bool active);
 }
 
+/// Cancels the schedule of [previous] when starting a rest replaced it.
+/// Starting a rest cancels the Workout's running row, but iOS keeps each rest's
+/// requests under its own id, so scheduling the new rest leaves the old ones to
+/// fire for a rest that no longer exists. Call it after the start and before
+/// scheduling the new rest.
+Future<void> cancelReplacedRestSchedule(
+  TimerBackgroundScheduler scheduler, {
+  required RestTimerRecord? previous,
+  required String startedTimerId,
+}) async {
+  if (previous != null &&
+      previous.status == RestTimerStatus.running &&
+      previous.id != startedTimerId) {
+    await scheduler.cancel(previous.id);
+  }
+}
+
 enum TimerBackgroundPermissionStatus {
   granted,
   denied,

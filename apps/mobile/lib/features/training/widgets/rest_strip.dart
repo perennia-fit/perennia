@@ -771,6 +771,7 @@ class _RestStripState extends ConsumerState<RestStrip> {
 
   Future<void> _start(Duration rest) async {
     final repository = ref.read(trainingRepositoriesProvider).restTimers;
+    final previous = await repository.getCurrentForWorkout(widget.workoutId);
     final timerId = await repository.start(
       RestTimerDraft(
         workoutId: widget.workoutId,
@@ -778,6 +779,11 @@ class _RestStripState extends ConsumerState<RestStrip> {
         alertVolume: _alertVolume,
       ),
       now: clock.now(),
+    );
+    await cancelReplacedRestSchedule(
+      ref.read(timerBackgroundSchedulerProvider),
+      previous: previous,
+      startedTimerId: timerId,
     );
     final timer = await repository.getById(timerId);
     if (timer != null) {
