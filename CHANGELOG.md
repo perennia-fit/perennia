@@ -37,6 +37,12 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   Undo and every other Training Screen message now show in the rest strip's
   row, and the rest countdown comes back when the message ends. "Background
   timer alerts are off" shows once per app run and never replaces an Undo.
+- **Finish ends on one summary.** Finish Workout opens a sheet with the
+  Workout's duration, sets, exercises and New Bests, an Update row that lists
+  template changes in plain words ("Remove Hip Thrust", "Deadlift: sets
+  changed"), Copy summary and Done, replacing the "Workout finished" message
+  and the update dialog. The Workout menu's Update template dialog uses the
+  same words.
 - **Cleaner Platform Exercise Library names.** On new installs, 80 names are
   corrected, including every `(male)` or `(female)` label and typos like
   `Shrimp Squad`. Twenty-three exercises merge into an equivalent, and 10

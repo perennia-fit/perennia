@@ -1,7 +1,7 @@
 # Workout Feedback
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved
+*   **Status:** Current
 *   **Date:** 2026-11-04
 
 --------------------------------------------------------------------------------
@@ -2016,10 +2016,9 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
 
 *   **Type / Scope**: spec.
 *   **Proposed Changes**: The passages that describe the Finish-time prompt
-    (in the Goals, the CUJ on template updates, the rest prescription notes
-    and the Replace section's divergence note) now say that the Finish
-    summary's Update row offers the update, linking to this spec. The
-    Workout menu's **Update template** is unchanged.
+    (in the Non-Goals, CUJ 2, CUJ 6 and the Replace section's divergence
+    note) now say that the Finish summary's Update row offers the update,
+    linking to this spec. The Workout menu's **Update template** is unchanged.
 
 #### `AGENTS.md` (Modify)
 
