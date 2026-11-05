@@ -5,6 +5,7 @@ import 'package:drift/drift.dart'
     show ApplyInterceptor, QueryExecutor, QueryInterceptor, driftRuntimeOptions;
 import 'package:drift/native.dart' show NativeDatabase;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
@@ -33,6 +34,8 @@ void main() {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases =
         warnAboutMultipleDatabases;
   });
+
+  setUp(RestStrip.resetBackgroundAlertsNoticeForTesting);
 
   group('training screen', () {
     late AppDatabase database;
@@ -778,9 +781,11 @@ void main() {
       expect(scheduler.schedules.map((schedule) => schedule.timerId),
           <String>[timer!.id]);
       expect(
-        find.textContaining('Background timer alerts are off'),
+        _inRestStrip(find.textContaining('Background timer alerts are off')),
         findsOneWidget,
       );
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(_crossfade);
       await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
     });
 
@@ -2306,8 +2311,12 @@ void main() {
       await database.close();
     });
 
-    /// Logs one Set of Bench Press and returns once its confirmation shows.
-    Future<void> logOneSet(WidgetTester tester) async {
+    /// Opens Bench Press on the Training Screen and returns its Workout.
+    Future<String> openBenchPress(
+      WidgetTester tester, {
+      TimerBackgroundScheduler? scheduler,
+      bool disableAnimations = false,
+    }) async {
       final workoutExerciseId = (await tester.runAsync(
         () => _createWorkoutExercise(
           repositories,
@@ -2317,13 +2326,23 @@ void main() {
           ),
         ),
       ))!;
+      final workoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(workoutExerciseId),
+      ))!;
       await _pumpTrainingScreen(
         tester,
         repositories,
         workoutExerciseId,
         liveSets: true,
+        timerBackgroundScheduler: scheduler,
+        disableAnimations: disableAnimations,
       );
       await _settle(tester);
+      return workoutExercise.workoutId;
+    }
+
+    /// Fills the form and taps Log set, without waiting for the write.
+    Future<void> fillAndTapLogSet(WidgetTester tester) async {
       await tester.enterText(
         find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
         '60',
@@ -2333,9 +2352,20 @@ void main() {
         '10',
       );
       await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+    }
+
+    /// Logs one Set of Bench Press, returns its Workout once the confirmation
+    /// shows.
+    Future<String> logOneSet(
+      WidgetTester tester, {
+      TimerBackgroundScheduler? scheduler,
+    }) async {
+      final workoutId = await openBenchPress(tester, scheduler: scheduler);
+      await fillAndTapLogSet(tester);
       await _settle(tester);
       expect(_inRestStrip(find.text('Set 1 logged')), findsOneWidget);
       expect(_undoInRestStrip, findsOneWidget);
+      return workoutId;
     }
 
     _testTrainingScreen('the Log set confirmation goes after 4 s', (
@@ -2369,6 +2399,389 @@ void main() {
       expect(find.text('Workout'), findsOneWidget);
       expect(find.text('Set 1 logged'), findsNothing);
       expect(find.text('Undo'), findsNothing);
+    });
+
+    _testTrainingScreen(
+        'Log set shows its message with Undo in the strip, clear of the '
+        'Comment field', (tester) async {
+      await logOneSet(tester);
+
+      final strip = tester.getRect(find.byKey(TrainingScreen.restStripKey));
+      final comment =
+          tester.getRect(find.byKey(TrainingScreen.commentFieldKey));
+      expect(strip.overlaps(comment), isFalse);
+    });
+
+    _testTrainingScreen('after 4 s the strip shows the rest countdown', (
+      tester,
+    ) async {
+      await logOneSet(tester);
+
+      await tester.pump(_confirmationDuration);
+      await tester.pump(_crossfade);
+
+      expect(find.text('Set 1 logged'), findsNothing);
+      expect(_restStripSeconds(tester), inInclusiveRange(110, 120));
+    });
+
+    _testTrainingScreen(
+        'Undo clears the message at once, reverts the Set and cancels the rest',
+        (tester) async {
+      final workoutId = await logOneSet(tester);
+
+      await _tapUndo(tester);
+      await tester.pump();
+      await tester.pump(_crossfade);
+
+      expect(find.text('Set 1 logged'), findsNothing);
+      expect(find.text('Undo'), findsNothing);
+
+      await _settle(tester);
+      final sets = (await tester.runAsync(
+        () => repositories.sets.listActiveForWorkout(workoutId),
+      ))!;
+      expect(sets, isEmpty);
+      final timer = await tester.runAsync(
+        () => repositories.restTimers.getCurrentForWorkout(workoutId),
+      );
+      expect(timer, isNull);
+      expect(find.byKey(TrainingScreen.restStripStartKey), findsOneWidget);
+    });
+
+    _testTrainingScreen(
+        'Log set during a running rest shows the confirmation, not the rest', (
+      tester,
+    ) async {
+      await openBenchPress(tester);
+      await tester.tap(find.byKey(TrainingScreen.restStripStartKey));
+      await _settle(tester);
+      expect(_restStripSeconds(tester), inInclusiveRange(110, 120));
+
+      await fillAndTapLogSet(tester);
+      await _settle(tester);
+      await tester.pump(_crossfade);
+
+      expect(_inRestStrip(find.text('Set 1 logged')), findsOneWidget);
+      expect(_undoInRestStrip, findsOneWidget);
+      expect(_inRestStrip(find.textContaining(_restCountdown)), findsNothing);
+      expect(find.byKey(TrainingScreen.restStripStopKey), findsNothing);
+    });
+
+    _testTrainingScreen(
+        'at text scale 2.0 a long message wraps and Undo stays 48 x 48', (
+      tester,
+    ) async {
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '0', reps: '10'),
+          ),
+        ),
+      ))!;
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+        textScaler: const TextScaler.linear(2.0),
+      );
+      await _settle(tester);
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '26',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      const message = 'Set 1 logged · 2 later sets updated';
+      final text = _inRestStrip(find.text(message));
+      expect(text, findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(text);
+      final lineTops = paragraph
+          .getBoxesForSelection(
+            const TextSelection(baseOffset: 0, extentOffset: message.length),
+          )
+          .map((box) => box.top)
+          .toSet();
+      expect(lineTops, hasLength(2));
+      expect(paragraph.didExceedMaxLines, isFalse);
+      _expectMinimumTargetSize(tester, _undoInRestStrip);
+    });
+
+    _testTrainingScreen('with animations disabled the swap has no transition', (
+      tester,
+    ) async {
+      await openBenchPress(tester, disableAnimations: true);
+      expect(find.byKey(TrainingScreen.restStripStartKey), findsOneWidget);
+
+      await fillAndTapLogSet(tester);
+      await tester.pump();
+
+      expect(_inRestStrip(find.text('Set 1 logged')), findsOneWidget);
+      expect(find.byKey(TrainingScreen.restStripStartKey), findsNothing);
+
+      await _settle(tester);
+      await _tapUndo(tester);
+      await tester.pump();
+
+      expect(find.text('Set 1 logged'), findsNothing);
+    });
+
+    _testTrainingScreen(
+        "Log set's message and its Undo version keep one switcher child", (
+      tester,
+    ) async {
+      await openBenchPress(tester);
+
+      await fillAndTapLogSet(tester);
+      // No time passes in these frames, so an outgoing child would stay.
+      for (var attempt = 0;
+          attempt < 50 && _undoInRestStrip.evaluate().isEmpty;
+          attempt += 1) {
+        await tester.pump();
+        expect(
+          find.byKey(TrainingScreen.saveSetConfirmationKey),
+          findsOneWidget,
+        );
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+      }
+      await tester.pump();
+
+      expect(_undoInRestStrip, findsOneWidget);
+      expect(find.byKey(TrainingScreen.saveSetConfirmationKey), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    _testTrainingScreen(
+        'with alerts denied, the notice waits for Undo to end and shows once', (
+      tester,
+    ) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.denied,
+      );
+      final notice = find.textContaining('Background timer alerts are off');
+
+      await logOneSet(tester, scheduler: scheduler);
+      expect(notice, findsNothing);
+
+      await fillAndTapLogSet(tester);
+      await _settle(tester);
+      await tester.pump(_crossfade);
+      expect(_inRestStrip(find.text('Set 2 logged')), findsOneWidget);
+      expect(_undoInRestStrip, findsOneWidget);
+      expect(notice, findsNothing);
+
+      await tester.pump(_confirmationDuration);
+      await tester.pump(_crossfade);
+      expect(find.text('Set 2 logged'), findsNothing);
+      expect(_inRestStrip(notice), findsOneWidget);
+      expect(_undoInRestStrip, findsNothing);
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(_crossfade);
+      expect(notice, findsNothing);
+      expect(_restStripSeconds(tester), inInclusiveRange(110, 120));
+
+      await fillAndTapLogSet(tester);
+      await _settle(tester);
+      await tester.pump(_crossfade);
+      expect(_inRestStrip(find.text('Set 3 logged')), findsOneWidget);
+      expect(_undoInRestStrip, findsOneWidget);
+
+      await tester.pump(_confirmationDuration);
+      await tester.pump(_crossfade);
+      expect(notice, findsNothing);
+      expect(_restStripSeconds(tester), inInclusiveRange(110, 120));
+      expect(scheduler.schedules, hasLength(3));
+    });
+
+    _testTrainingScreen(
+        "a denied Start rest that lands during a Log set waits for Log set's "
+        'message to end', (tester) async {
+      // Holds the rest's start after the Set is written, so Log set's first
+      // message, which has no Undo yet, is showing when Start rest's schedule
+      // comes back denied.
+      final gate = _RestTimerReadGate();
+      final gatedDatabase =
+          AppDatabase(NativeDatabase.memory().interceptWith(gate));
+      addTearDown(() => tester.runAsync(gatedDatabase.close));
+      final gatedRepositories = TrainingRepositories(gatedDatabase);
+      final workoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          gatedRepositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final scheduler = _HoldFirstScheduleScheduler(
+        TimerBackgroundPermissionStatus.denied,
+      );
+      final notice = find.textContaining('Background timer alerts are off');
+      await _pumpTrainingScreen(
+        tester,
+        gatedRepositories,
+        workoutExerciseId,
+        liveSets: true,
+        timerBackgroundScheduler: scheduler,
+      );
+      await _settle(tester);
+
+      await tester.tap(find.byKey(TrainingScreen.restStripStartKey));
+      await _settle(tester);
+      expect(scheduler.schedules, hasLength(1));
+
+      gate.arm();
+      await fillAndTapLogSet(tester);
+      for (var attempt = 0; attempt < 50 && !gate.holding; attempt += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump();
+      }
+      expect(gate.holding, isTrue);
+
+      scheduler.firstResult.complete(scheduler.status);
+      await tester.pump();
+      await tester.pump(_crossfade);
+      expect(_inRestStrip(find.text('Set 1 logged')), findsOneWidget);
+      expect(notice, findsNothing);
+
+      gate.release();
+      await _settle(tester);
+      await tester.pump(_crossfade);
+      expect(_undoInRestStrip, findsOneWidget);
+      expect(notice, findsNothing);
+
+      await tester.pump(_confirmationDuration);
+      await tester.pump(_crossfade);
+      expect(_inRestStrip(notice), findsOneWidget);
+    });
+
+    _testTrainingScreen(
+        'a confirmation requested after the screen is popped raises no error', (
+      tester,
+    ) async {
+      // Holds the rest's start after the Set is written, so Log set's Undo
+      // version is requested after the screen has gone.
+      final gate = _RestTimerReadGate();
+      final gatedDatabase =
+          AppDatabase(NativeDatabase.memory().interceptWith(gate));
+      addTearDown(() => tester.runAsync(gatedDatabase.close));
+      final gatedRepositories = TrainingRepositories(gatedDatabase);
+      final workoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          gatedRepositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.denied,
+      );
+      await _pumpTrainingScreen(
+        tester,
+        gatedRepositories,
+        workoutExerciseId,
+        liveSets: true,
+        timerBackgroundScheduler: scheduler,
+      );
+      await _settle(tester);
+
+      gate.arm();
+      await fillAndTapLogSet(tester);
+      for (var attempt = 0; attempt < 50 && !gate.holding; attempt += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump();
+      }
+      expect(gate.holding, isTrue);
+
+      unawaited(
+        tester.state<NavigatorState>(find.byType(Navigator)).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => const Scaffold(body: Text('Workout')),
+              ),
+            ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(TrainingScreen), findsNothing);
+
+      gate.release();
+      await _settle(tester);
+
+      expect(scheduler.schedules, hasLength(1));
+      expect(tester.takeException(), isNull);
+    });
+
+    _testTrainingScreen('the message is a live region, the countdown is not', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await logOneSet(tester);
+
+      expect(
+        tester.getSemantics(_inRestStrip(find.text('Set 1 logged'))),
+        isSemantics(label: 'Set 1 logged', isLiveRegion: true),
+      );
+
+      await tester.pump(_confirmationDuration);
+      await tester.pump(_crossfade);
+
+      expect(
+        tester.getSemantics(_inRestStrip(find.textContaining(_restCountdown))),
+        isSemantics(isLiveRegion: false),
+      );
+      semantics.dispose();
+    });
+
+    _testTrainingScreen(
+        'a second tap on Undo inside the crossfade reverts once', (
+      tester,
+    ) async {
+      // A plan's zero rest leaves the strip idle, so nothing of the incoming
+      // content sits over the outgoing Undo and the second tap reaches it.
+      final plan = (await tester.runAsync(
+        () => _createPlannedExercise(
+          repositories,
+          name: 'Bench Press',
+          planned: List<LoggedSet>.filled(
+            3,
+            _loadRepsValues(load: '60', reps: '10'),
+          ),
+          rest: Duration.zero,
+        ),
+      ))!;
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        plan.workoutExerciseId,
+        liveSets: true,
+      );
+      await _settle(tester);
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settle(tester);
+
+      await _tapUndo(tester);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(_undoInRestStrip, findsOneWidget);
+      await _tapUndo(tester);
+      await _settle(tester);
+      await tester.pump(_crossfade);
+
+      final sets = (await tester.runAsync(() => _setsOf(repositories, plan)))!;
+      expect(sets.map((set) => set.isCompleted), <bool>[false, false, false]);
+      expect(find.textContaining("Couldn't undo"), findsNothing);
     });
 
     _testTrainingScreen('CUJ 1: logs a planned Set and Undo reverts it', (
@@ -3897,6 +4310,7 @@ Future<void> _pumpTrainingScreen(
   SettingsRepository? settingsRepository,
   ThemeData? theme,
   TextScaler? textScaler,
+  bool disableAnimations = false,
   bool enableRestTimerTicker = false,
   bool liveSets = false,
   Size surfaceSize = const Size(800, 1600),
@@ -3944,11 +4358,15 @@ Future<void> _pumpTrainingScreen(
         supportedLocales: AppLocalizations.supportedLocales,
         builder: (context, child) {
           final scaler = textScaler;
-          if (scaler == null || child == null) {
+          if ((scaler == null && !disableAnimations) || child == null) {
             return child ?? const SizedBox.shrink();
           }
+          final media = MediaQuery.of(context);
           return MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaler: scaler),
+            data: media.copyWith(
+              textScaler: scaler ?? media.textScaler,
+              disableAnimations: disableAnimations,
+            ),
             child: child,
           );
         },
@@ -4164,6 +4582,22 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
   @override
   Future<void> cancel(String timerId) async {
     cancels.add(timerId);
+  }
+}
+
+/// Holds the first schedule's result until the test completes [firstResult].
+class _HoldFirstScheduleScheduler extends _RecordingTimerBackgroundScheduler {
+  _HoldFirstScheduleScheduler(super.status);
+
+  final firstResult = Completer<TimerBackgroundPermissionStatus>();
+
+  @override
+  Future<TimerBackgroundPermissionStatus> schedule(
+    TimerBackgroundSchedule schedule,
+  ) {
+    final isFirst = schedules.isEmpty;
+    schedules.add(schedule);
+    return isFirst ? firstResult.future : Future.value(status);
   }
 }
 
@@ -4562,6 +4996,9 @@ const _confirmationDuration = Duration(seconds: 4);
 
 /// Past the strip's 150 ms crossfade, whose outgoing child stays mounted.
 const _crossfade = Duration(milliseconds: 200);
+
+/// The strip's remaining time, "Rest m:ss".
+final _restCountdown = RegExp(r'^Rest \d+:\d\d$');
 
 Finder _inRestStrip(Finder finder) {
   return find.descendant(

@@ -1011,7 +1011,9 @@ Performance budget with no rest and with a rest running; manual check 1.
 *   **Type / Scope**: widget.
 *   **Proposed Changes**:
     *   **New parameters:** `({TrainingConfirmation confirmation, int
-        sequence})? confirmation` and `ShowTrainingConfirmation onConfirmation`.
+        sequence})? confirmation`, `ShowTrainingConfirmation onConfirmation`,
+        `bool Function() undoShowing` and `ValueChanged<VoidCallback>
+        whenUndoEnds`.
     *   **What it draws.** When `confirmation` is set, the strip draws it in
         place of the running or idle content, with no icon:
         *   the message in `label` style, wrapping to at most two lines, with
@@ -1025,24 +1027,32 @@ Performance budget with no rest and with a rest running; manual check 1.
         `sequence` key. `textKey` sits on the `Text` inside each child, so two
         children that both carry `saveSetConfirmationKey` (two Log sets in a
         row) never hold it as siblings.
-    *   **Background alerts message.** `notifyIfBackgroundAlertsDenied` takes
-        a `ShowTrainingConfirmation` and a `bool Function() undoShowing`
-        instead of a `BuildContext`, and shows "Background timer alerts are
-        off" through the first:
+    *   **Background alerts message.** `notifyIfBackgroundAlertsDenied(status,
+        {required String message, required ShowTrainingConfirmation show,
+        required bool Function() undoShowing, required
+        ValueChanged<VoidCallback> whenUndoEnds})` takes these instead of a
+        `BuildContext`, and shows `message` ("Background timer alerts are off")
+        through `show`:
         *   a static `_backgroundAlertsNoticeShown` flag makes it show once per
-            app run;
-        *   while `undoShowing()` is true, it waits and shows when the
-            confirmation with Undo ends (the screen calls a pending callback
-            from its clear timer).
+            app run. It is set when the message shows, not when it is
+            requested, so a screen closed during the wait does not use up the
+            one showing;
+        *   while `undoShowing()` is true, it passes its show step to
+            `whenUndoEnds` and shows when the confirmation with Undo ends (the
+            screen calls a pending callback from its clear timer).
     *   **Callers.** Both callers pass the screen's functions: the strip's
-        `_start` and the screen's `_startRestAfterLog`.
+        `_start`, through its new parameters, with
+        `context.l10n.trainingBackgroundAlertsDenied` after its mounted check,
+        and the screen's `_startRestAfterLog`.
 
 #### `apps/mobile/lib/features/training/widgets/training_screen.dart` (Modify)
 
 *   **Type / Scope**: screen.
 *   **Proposed Changes**:
     *   **State.** `TrainingConfirmation? _confirmation`, `int
-        _confirmationSequence` and `Timer? _confirmationTimer`.
+        _confirmationSequence`, `Timer? _confirmationTimer` and `VoidCallback?
+        _afterUndoEnds` (one slot; a later request replaces it, and `dispose`
+        does not run it).
     *   **`_showConfirmation(c)`:**
         *   returns at once when `!mounted` (it can run after an await that
             outlives the screen);
@@ -1062,12 +1072,16 @@ Performance budget with no rest and with a rest running; manual check 1.
         same key and `replacesCurrent: true`.
     *   **Undo helpers.** `_undoBatch` and `_undoLogSet` take
         `ShowTrainingConfirmation` instead of a messenger.
-    *   **`_startRestAfterLog`** passes `_showConfirmation` and
-        `() => _confirmation?.onUndo != null` to
-        `notifyIfBackgroundAlertsDenied`.
+    *   **`_startRestAfterLog`** passes `_showConfirmation`,
+        `() => _logInFlight || _confirmation?.onUndo != null` and a function
+        that sets `_afterUndoEnds` to `notifyIfBackgroundAlertsDenied`.
+        `_logInFlight` counts because Log set's first message has no Undo yet:
+        a schedule result that arrives then, such as Start rest's, would show
+        the notice only for the Undo version to overwrite it at once.
     *   **Replace.** `_replaceOpenExercise` passes `_showConfirmation` to
         `replaceExercise`.
-    *   **The strip** gets `confirmation` and `onConfirmation`.
+    *   **The strip** gets `confirmation`, `onConfirmation`, and the same
+        `undoShowing` and `whenUndoEnds` functions.
     *   **SnackBars from other screens.**
         *   The four children of the outer `Column` that make up the pinned
             block (`SizedBox(dense)`, `RestStrip`, `SizedBox(dense)` and the

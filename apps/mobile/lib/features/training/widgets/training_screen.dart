@@ -231,6 +231,11 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   int _confirmationSequence = 0;
   Timer? _confirmationTimer;
 
+  /// Runs when [_confirmationTimer] fires: the background alerts message,
+  /// waiting for the confirmation with Undo to end. One slot; a later request
+  /// replaces it. Dropped, not run, when the screen closes.
+  VoidCallback? _afterUndoEnds;
+
   @override
   void initState() {
     super.initState();
@@ -965,6 +970,9 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
           enableTicker: widget.enableRestTimerTicker,
           revision: _restTimerRevision,
           onAlertVolumeChanged: (volume) => _alertVolume = volume,
+          onConfirmation: _showConfirmation,
+          undoShowing: _undoShowing,
+          whenUndoEnds: _whenUndoEnds,
           confirmation: confirmation == null
               ? null
               : (confirmation: confirmation, sequence: _confirmationSequence),
@@ -1287,7 +1295,13 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
         )
             .then((status) {
           if (mounted) {
-            notifyIfBackgroundAlertsDenied(context, status);
+            notifyIfBackgroundAlertsDenied(
+              status,
+              message: context.l10n.trainingBackgroundAlertsDenied,
+              show: _showConfirmation,
+              undoShowing: _undoShowing,
+              whenUndoEnds: _whenUndoEnds,
+            );
           }
         }),
       );
@@ -1588,9 +1602,23 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     _confirmationTimer = Timer(confirmation.duration, () {
       if (mounted) {
         setState(() => _confirmation = null);
+        final afterUndoEnds = _afterUndoEnds;
+        _afterUndoEnds = null;
+        afterUndoEnds?.call();
       }
     });
   }
+
+  /// Whether a message would take Undo away from the lifter.
+  ///
+  /// `_logInFlight` counts because Log set's first message has no Undo yet: a
+  /// schedule result that arrives then, such as Start rest's, would show the
+  /// notice only for the Undo version to overwrite it at once, so the lifter
+  /// would never see it. Log set restarts [_confirmationTimer], so the waiting
+  /// message runs when Log set's message ends.
+  bool _undoShowing() => _logInFlight || _confirmation?.onUndo != null;
+
+  void _whenUndoEnds(VoidCallback callback) => _afterUndoEnds = callback;
 
   void _notifyRestTimerChanged() {
     if (mounted) {

@@ -47,22 +47,39 @@ class SystemRestTimerAlert implements RestTimerAlert {
   }
 }
 
-/// Shows "Background timer alerts are off" when scheduling the background
-/// notification was refused; the in-app timer runs either way.
+/// Shows [message] ("Background timer alerts are off") through [show] when
+/// scheduling the background notification was refused; the in-app timer runs
+/// either way.
+///
+/// It shows once per app run and never over a confirmation with Undo: while
+/// [undoShowing] is true, the show step goes to [whenUndoEnds]. Without these
+/// two rules, a lifter who denied notifications would lose Undo on every Log
+/// set. The flag is set when the message shows, not when it is requested, so
+/// a screen closed during the wait does not use up the one showing.
 void notifyIfBackgroundAlertsDenied(
-  BuildContext context,
-  TimerBackgroundPermissionStatus status,
-) {
-  if (status != TimerBackgroundPermissionStatus.denied || !context.mounted) {
+  TimerBackgroundPermissionStatus status, {
+  required String message,
+  required ShowTrainingConfirmation show,
+  required bool Function() undoShowing,
+  required ValueChanged<VoidCallback> whenUndoEnds,
+}) {
+  if (status != TimerBackgroundPermissionStatus.denied ||
+      RestStrip._backgroundAlertsNoticeShown) {
     return;
   }
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        context.l10n.trainingBackgroundAlertsDenied,
-      ),
-    ),
-  );
+  void showNotice() {
+    if (RestStrip._backgroundAlertsNoticeShown) {
+      return;
+    }
+    RestStrip._backgroundAlertsNoticeShown = true;
+    show(TrainingConfirmation(message: message));
+  }
+
+  if (undoShowing()) {
+    whenUndoEnds(showNotice);
+  } else {
+    showNotice();
+  }
 }
 
 /// A rest as "m:ss" (minutes not capped at 59), for Rest after and the strip.
@@ -98,6 +115,9 @@ class RestStrip extends ConsumerStatefulWidget {
     required this.enableTicker,
     required this.revision,
     required this.onAlertVolumeChanged,
+    required this.onConfirmation,
+    required this.undoShowing,
+    required this.whenUndoEnds,
     this.confirmation,
   });
 
@@ -111,6 +131,15 @@ class RestStrip extends ConsumerStatefulWidget {
 
   static Key adjustKey(int seconds) {
     return Key('training.restStrip.adjust.$seconds');
+  }
+
+  /// Whether "Background timer alerts are off" has shown in this app run.
+  static bool _backgroundAlertsNoticeShown = false;
+
+  /// The flag above lives for the whole test isolate.
+  @visibleForTesting
+  static void resetBackgroundAlertsNoticeForTesting() {
+    _backgroundAlertsNoticeShown = false;
   }
 
   final String workoutId;
@@ -129,6 +158,16 @@ class RestStrip extends ConsumerStatefulWidget {
   /// Reports the strip's volume (the slider, or a loaded timer's volume),
   /// which Log set's timer starts with.
   final ValueChanged<double> onAlertVolumeChanged;
+
+  /// Shows a message on this strip's row, through the screen that owns it.
+  final ShowTrainingConfirmation onConfirmation;
+
+  /// Whether a message must not be replaced yet; see
+  /// [notifyIfBackgroundAlertsDenied].
+  final bool Function() undoShowing;
+
+  /// Holds a message until the confirmation with Undo ends.
+  final ValueChanged<VoidCallback> whenUndoEnds;
 
   /// The message to show, if any. Its `sequence` keys the crossfade: a new
   /// number swaps with a transition, the same number updates in place.
@@ -395,7 +434,13 @@ class _RestStripState extends ConsumerState<RestStrip> {
     if (timer != null) {
       final status = await _scheduleBackground(timer);
       if (mounted) {
-        notifyIfBackgroundAlertsDenied(context, status);
+        notifyIfBackgroundAlertsDenied(
+          status,
+          message: context.l10n.trainingBackgroundAlertsDenied,
+          show: widget.onConfirmation,
+          undoShowing: widget.undoShowing,
+          whenUndoEnds: widget.whenUndoEnds,
+        );
       }
     }
     _refreshTimer();
