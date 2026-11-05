@@ -250,12 +250,6 @@ abstract class AppLocalizations {
   /// **'Could not start workout. Try again.'**
   String get homeStartWorkoutFailed;
 
-  /// No description provided for @homeLogFood.
-  ///
-  /// In en, this message translates to:
-  /// **'Food'**
-  String get homeLogFood;
-
   /// No description provided for @homeLogDose.
   ///
   /// In en, this message translates to:
@@ -5624,6 +5618,210 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{{name}: 1 reading and its trend in this period} other{{name}: {count} readings and their trend in this period}}'**
   String progressBodyChartSemantics(int count, String name);
+
+  /// The Log sheet item that opens the Meal screen for the selected day.
+  ///
+  /// In en, this message translates to:
+  /// **'Meal'**
+  String get homeLogMeal;
+
+  /// The Nutrition Day button that opens the Meal screen for that day.
+  ///
+  /// In en, this message translates to:
+  /// **'Log meal'**
+  String get nutritionLogMeal;
+
+  /// Screen reader label of a Meal card on the Nutrition Day; tapping the card opens the Meal screen. The type may carry the 'add foods' hint.
+  ///
+  /// In en, this message translates to:
+  /// **'{time}, {type}. Open meal'**
+  String nutritionMealCardSemantics(String time, String type);
+
+  /// The Meal screen's app bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Meal'**
+  String get mealScreenTitle;
+
+  /// The Meal screen header's time while a new Meal on today has no chosen time: it is logged at the time of the first write.
+  ///
+  /// In en, this message translates to:
+  /// **'now'**
+  String get mealHeaderNow;
+
+  /// The Meal screen header on a new Meal on a past day before a time is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose time'**
+  String get mealHeaderChooseTime;
+
+  /// Appended to a saved Meal's header and card when the Meal has no Food Entries.
+  ///
+  /// In en, this message translates to:
+  /// **'add foods'**
+  String get mealHeaderAddFoods;
+
+  /// Shown in place of a Meal's clock time when only its date is known (an imported date-only Meal).
+  ///
+  /// In en, this message translates to:
+  /// **'time not recorded'**
+  String get mealTimeNotRecorded;
+
+  /// The Meal screen header: the Meal's time (or 'now') and its Meal Type.
+  ///
+  /// In en, this message translates to:
+  /// **'{time} · {type}'**
+  String mealHeaderLabel(String time, String type);
+
+  /// Screen reader label of the Meal screen header button.
+  ///
+  /// In en, this message translates to:
+  /// **'{time}, {type}. Change time or meal type'**
+  String mealHeaderSemantics(String time, String type);
+
+  /// Time-shift button: sets the Meal's time to 15 minutes before now.
+  ///
+  /// In en, this message translates to:
+  /// **'−15 min'**
+  String get mealTimeShift15;
+
+  /// Time-shift button: sets the Meal's time to 30 minutes before now.
+  ///
+  /// In en, this message translates to:
+  /// **'−30 min'**
+  String get mealTimeShift30;
+
+  /// Time-shift button: sets the Meal's time to 1 hour before now.
+  ///
+  /// In en, this message translates to:
+  /// **'−1 h'**
+  String get mealTimeShift60;
+
+  /// Screen reader label of the −15 min time-shift button.
+  ///
+  /// In en, this message translates to:
+  /// **'15 minutes ago'**
+  String get mealTimeShift15Semantics;
+
+  /// Screen reader label of the −30 min time-shift button.
+  ///
+  /// In en, this message translates to:
+  /// **'30 minutes ago'**
+  String get mealTimeShift30Semantics;
+
+  /// Screen reader label of the −1 h time-shift button.
+  ///
+  /// In en, this message translates to:
+  /// **'1 hour ago'**
+  String get mealTimeShift60Semantics;
+
+  /// The Meal time sheet's date row label.
+  ///
+  /// In en, this message translates to:
+  /// **'Date'**
+  String get mealTimeSheetDate;
+
+  /// The Meal time sheet's time row label.
+  ///
+  /// In en, this message translates to:
+  /// **'Time'**
+  String get mealTimeSheetTime;
+
+  /// The Meal time sheet's Meal Type list heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Meal type'**
+  String get mealTimeSheetType;
+
+  /// Saves a new Meal with its time and Meal Type and no Food Entries.
+  ///
+  /// In en, this message translates to:
+  /// **'Add foods later'**
+  String get mealAddFoodsLater;
+
+  /// Heading of the Meal screen's list of meals the user repeats.
+  ///
+  /// In en, this message translates to:
+  /// **'Your meals'**
+  String get mealYourMeals;
+
+  /// Recent-Meal shortcut on a new Meal screen: opens the Meal logged in the last 30 minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to {time} · {type}'**
+  String mealAddToRecent(String time, String type);
+
+  /// Undo bar message after a Your meals row logs the Meal again.
+  ///
+  /// In en, this message translates to:
+  /// **'Meal logged'**
+  String get mealLogged;
+
+  /// The Undo bar action on the Meal screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get mealUndo;
+
+  /// Undo bar message after a Food Entry is removed from a Meal.
+  ///
+  /// In en, this message translates to:
+  /// **'Food removed'**
+  String get mealFoodRemoved;
+
+  /// Undo bar message after a Food Entry's Portion is changed.
+  ///
+  /// In en, this message translates to:
+  /// **'Portion updated'**
+  String get mealPortionUpdated;
+
+  /// Overflow menu item that archives the Meal and its Food Entries.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete meal'**
+  String get mealDelete;
+
+  /// Title of the Delete meal confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this meal?'**
+  String get mealDeleteConfirmTitle;
+
+  /// Body of the Delete meal confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'The meal and its foods are removed from the day.'**
+  String get mealDeleteConfirmBody;
+
+  /// Confirms Delete meal.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get mealDeleteConfirmAction;
+
+  /// Title of the confirmation shown when a chosen Meal time is more than 5 minutes ahead of now.
+  ///
+  /// In en, this message translates to:
+  /// **'Time is in the future'**
+  String get mealFutureTimeTitle;
+
+  /// Body of the future-time confirmation, naming the chosen time.
+  ///
+  /// In en, this message translates to:
+  /// **'Save {time} anyway?'**
+  String mealFutureTimeBody(String time);
+
+  /// Confirms a Meal time in the future.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get mealFutureTimeConfirm;
+
+  /// Tooltip and screen reader label of a Food Entry's remove button on the Meal screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {food}'**
+  String mealRemoveEntry(String food);
 }
 
 class _AppLocalizationsDelegate

@@ -3,11 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/repositories/open_food_facts_repository.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/nutrition/repositories/add_food_repository.dart';
+import 'package:perennia/features/nutrition/widgets/add_food_picker.dart';
 import 'package:perennia/features/nutrition/widgets/log_portion_screen.dart';
 import 'package:perennia/features/nutrition/widgets/nutrition_attribution.dart';
+import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/theme/theme.dart';
+
+import 'add_food_repository_fakes.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -333,12 +338,11 @@ void main() {
         mealTypeName: 'Snack',
       ),
     );
-    final meal = (await repositories.nutrition.getMealById(mealId))!;
 
     await _pumpLogPortion(
       tester,
       food: _solidFood(),
-      meal: meal,
+      target: ExistingMealTarget(mealId),
       onSave: (draft) {
         return repositories.nutrition.logFoodEntrySnapshot(
           target: ExistingMealTarget(draft.mealId),
@@ -361,6 +365,270 @@ void main() {
       await repositories.nutrition.listActiveEntriesForMeal(mealId),
       isEmpty,
     );
+  });
+
+  testWidgets(
+      'Save with a new Meal target creates the Meal and its entry in one '
+      'Batch, then pops with the Meal id', (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+    final mealId = repositories.nutrition.newMealId();
+    final target = NewMealTarget(
+      PendingMeal(
+        id: mealId,
+        startedAt: DateTime(2026, 6, 26, 15),
+        mealTypeName: 'Snack',
+      ),
+    );
+    final popped = <String?>[];
+
+    await _pumpPushed(
+      tester,
+      repositories: repositories,
+      popped: popped,
+      screen: LogPortionScreen(
+        target: target,
+        food: _solidFood(),
+        contextLabel: '3:00 PM · Snack',
+        onSave: _logInto(repositories, target),
+      ),
+    );
+
+    expect(find.text('3:00 PM · Snack'), findsOneWidget);
+    await tester.tap(find.byKey(LogPortionScreen.saveButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(popped, <String?>[mealId]);
+    expect(find.byType(LogPortionScreen), findsNothing);
+    final meal = await repositories.nutrition.getMealById(mealId);
+    expect(meal?.mealType, 'Snack');
+    final entries =
+        await repositories.nutrition.listActiveEntriesForMeal(mealId);
+    expect(entries, hasLength(1));
+    expect(entries.single.foodId, 'usda-yogurt');
+    expect(entries.single.portion?.value, 100);
+    final batchIds = (await repositories.activityLog.listEntries())
+        .map((entry) => entry.batchId)
+        .toSet();
+    expect(batchIds, hasLength(1));
+    expect(await _batch(repositories, batchIds.single), hasLength(2));
+    await _unmount(tester);
+  });
+
+  testWidgets(
+      'Save with an existing Meal target adds the entry to that Meal and pops '
+      'with its id', (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+    final mealId = await repositories.nutrition.createMeal(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 26, 15),
+        mealTypeName: 'Snack',
+      ),
+    );
+    final popped = <String?>[];
+
+    await _pumpPushed(
+      tester,
+      repositories: repositories,
+      popped: popped,
+      screen: LogPortionScreen(
+        target: ExistingMealTarget(mealId),
+        food: _solidFood(),
+        onSave: _logInto(repositories, ExistingMealTarget(mealId)),
+      ),
+    );
+
+    await tester.enterText(find.byKey(LogPortionScreen.amountFieldKey), '150');
+    await tester.pump();
+    await tester.tap(find.byKey(LogPortionScreen.saveButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(popped, <String?>[mealId]);
+    final entries =
+        await repositories.nutrition.listActiveEntriesForMeal(mealId);
+    expect(entries, hasLength(1));
+    expect(entries.single.portion?.value, 150);
+    expect(await database.select(database.meals).get(), hasLength(1));
+    await _unmount(tester);
+  });
+
+  testWidgets('a repeat food is still two taps: the row, then Save',
+      (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+    final mealId = await repositories.nutrition.createMeal(
+      PendingMeal(
+        id: repositories.nutrition.newMealId(),
+        startedAt: DateTime(2026, 6, 26, 15),
+        mealTypeName: 'Snack',
+      ),
+    );
+    final target = ExistingMealTarget(mealId);
+    final food = FoodPickerItem(
+      id: 'usda-yogurt',
+      name: 'Greek yogurt',
+      origin: FoodPickerOrigin.history,
+      foodSource: FoodSource.usda,
+      nutrientsPer100: _solidFood().nutrientsPer100,
+      isLiquid: false,
+      servingLabel: 'cup',
+      servingSize: 170,
+      lastPortion:
+          Portion(value: 1.5, entered: '1.5', unit: PortionUnit.serving),
+    );
+    final popped = <String?>[];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          trainingRepositoriesProvider.overrideWith((ref) => repositories),
+          addFoodRepositoryProvider.overrideWith(
+            (ref) => _YourFoodsRepository(food),
+          ),
+          openFoodFactsRepositoryProvider.overrideWith(
+            (ref) => const StubOpenFoodFactsRepository(),
+          ),
+          settingsRepositoryProvider.overrideWith(
+            (ref) => InMemorySettingsRepository(),
+          ),
+          bundleStatusProvider.overrideWith(
+            (ref) => Stream<BundleStatus>.value(BundleStatus.ready),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: SafeArea(
+                child: AddFoodPicker(
+                  target: target,
+                  onFoodSelected: (item) async {
+                    popped.add(
+                      await Navigator.of(context).push<String>(
+                        MaterialPageRoute<String>(
+                          builder: (_) => Scaffold(
+                            body: LogPortionScreen(
+                              target: target,
+                              food: item,
+                              onSave: _logInto(repositories, target),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(AddFoodPicker.resultKey(food)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(LogPortionScreen.saveButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(popped, <String?>[mealId]);
+    final entries =
+        await repositories.nutrition.listActiveEntriesForMeal(mealId);
+    expect(entries, hasLength(1));
+    expect(entries.single.foodId, 'usda-yogurt');
+    expect(entries.single.portion?.value, 1.5);
+    expect(entries.single.portion?.unit, PortionUnit.serving);
+    await _unmount(tester);
+  });
+
+  testWidgets(
+      'edit mode is prefilled with the entry\'s Portion and Save updates it '
+      'in one Batch, then pops with the Meal id', (tester) async {
+    final database = AppDatabase.inMemory();
+    addTearDown(database.close);
+    final repositories = TrainingRepositories(database);
+    final food = _solidFood();
+    final mealId = repositories.nutrition.newMealId();
+    final logged = await repositories.nutrition.logFoodEntrySnapshot(
+      target: NewMealTarget(
+        PendingMeal(
+          id: mealId,
+          startedAt: DateTime(2026, 6, 26, 15),
+          mealTypeName: 'Snack',
+        ),
+      ),
+      entry: FoodEntrySnapshotDraft(
+        mealId: mealId,
+        foodId: food.id,
+        name: food.name,
+        foodSource: food.foodSource,
+        nutrientsPer100: food.nutrientsPer100,
+        isLiquid: food.isLiquid,
+        servingLabel: food.servingLabel,
+        servingSize: food.servingSize,
+        portion: Portion(value: 1.5, entered: '1.5', unit: PortionUnit.serving),
+      ),
+    );
+    final entry = (await repositories.nutrition.listActiveEntriesForMeal(
+      logged.mealId,
+    ))
+        .single;
+    final popped = <String?>[];
+
+    await _pumpPushed(
+      tester,
+      repositories: repositories,
+      popped: popped,
+      screen: LogPortionScreen.editEntry(
+        entry: entry,
+        onUpdatePortion: (portion) {
+          return repositories.nutrition.updateFoodEntryPortion(
+            id: entry.id,
+            portion: portion,
+          );
+        },
+      ),
+    );
+
+    expect(find.text('Greek yogurt'), findsOneWidget);
+    expect(_amountText(tester), '1.5');
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(LogPortionScreen.unitChipKey(PortionUnit.serving)),
+          )
+          .selected,
+      isTrue,
+    );
+    expect(_readoutValue(tester, NutrientId.energy), '510 kcal');
+
+    await tester.enterText(find.byKey(LogPortionScreen.amountFieldKey), '2');
+    await tester.pump();
+    await tester.tap(find.byKey(LogPortionScreen.saveButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(popped, <String?>[logged.mealId]);
+    final updated = (await repositories.nutrition.listActiveEntriesForMeal(
+      logged.mealId,
+    ))
+        .single;
+    expect(updated.id, entry.id);
+    expect(updated.portion?.value, 2);
+    expect(updated.portion?.unit, PortionUnit.serving);
+    final batchIds = (await repositories.activityLog.listEntries())
+        .map((entry) => entry.batchId)
+        .where((batchId) => batchId != logged.batchId)
+        .toSet();
+    expect(batchIds, hasLength(1));
+    final batch = await _batch(repositories, batchIds.single);
+    expect(batch, hasLength(1));
+    expect(batch.single.entityId, entry.id);
+    await _unmount(tester);
   });
 
   testWidgets('Log Portion meets accessibility guidelines in both themes', (
@@ -412,8 +680,8 @@ Future<void> _pumpLogPortion(
   WidgetTester tester, {
   ThemeData? theme,
   required FoodPickerItem food,
-  MealRecord? meal,
-  Future<LogFoodEntryResult> Function(FoodEntrySnapshotDraft draft)? onSave,
+  MealTarget? target,
+  Future<LogFoodEntryResult?> Function(FoodEntrySnapshotDraft draft)? onSave,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -422,15 +690,109 @@ Future<void> _pumpLogPortion(
         home: Scaffold(
           body: SafeArea(
             child: LogPortionScreen(
-              meal: meal ?? _meal(),
+              target: target ?? const ExistingMealTarget('meal-snack'),
               food: food,
-              onSave: onSave,
+              onSave: onSave ?? _ignoreSave,
             ),
           ),
         ),
       ),
     ),
   );
+}
+
+/// A Save hook that ignores the write, for tests that never press Save.
+Future<LogFoodEntryResult?> _ignoreSave(FoodEntrySnapshotDraft draft) async {
+  return null;
+}
+
+/// The Save hook the Meal screen's controller stands for here: one
+/// `logFoodEntrySnapshot` into [target].
+Future<LogFoodEntryResult?> Function(FoodEntrySnapshotDraft draft) _logInto(
+  TrainingRepositories repositories,
+  MealTarget target,
+) {
+  return (draft) {
+    return repositories.nutrition.logFoodEntrySnapshot(
+      target: target,
+      entry: draft,
+    );
+  };
+}
+
+/// A home screen whose button pushes [screen] as a route, keeping what the
+/// route pops with in [popped].
+Future<void> _pumpPushed(
+  WidgetTester tester, {
+  required TrainingRepositories repositories,
+  required Widget screen,
+  required List<String?> popped,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        trainingRepositoriesProvider.overrideWith((ref) => repositories),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () async {
+                  popped.add(
+                    await Navigator.of(context).push<String>(
+                      MaterialPageRoute<String>(
+                        builder: (_) => Scaffold(body: screen),
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('Open'));
+  await tester.pumpAndSettle();
+}
+
+/// Disposes the ProviderScope inside the test body, so the Nutrition Day
+/// stream's closing timer runs before the binding checks for pending timers.
+Future<void> _unmount(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(Duration.zero);
+}
+
+Future<List<ActivityLogEntry>> _batch(
+  TrainingRepositories repositories,
+  String batchId,
+) async {
+  return (await repositories.activityLog.listEntries())
+      .where((entry) => entry.batchId == batchId)
+      .toList(growable: false);
+}
+
+/// Your foods with one food the user logged before, at [lastPortion].
+class _YourFoodsRepository with NoOnlineLookups implements AddFoodRepository {
+  const _YourFoodsRepository(this.food);
+
+  final FoodPickerItem food;
+
+  @override
+  Future<YourFoods> loadYourFoods({DateTime? now}) async => YourFoods([food]);
+
+  @override
+  Future<List<FoodPickerItem>> search({
+    required AddFoodPickerFilter filter,
+    required String query,
+    required YourFoods yourFoods,
+  }) async {
+    return yourFoods.items;
+  }
 }
 
 String? _amountText(WidgetTester tester) {
@@ -444,17 +806,6 @@ String? _readoutValue(WidgetTester tester, NutrientId id) {
   return tester
       .widget<Text>(find.byKey(LogPortionScreen.readoutValueKey(id)))
       .data;
-}
-
-MealRecord _meal() {
-  return MealRecord(
-    id: 'meal-snack',
-    mealType: 'Snack',
-    startedAt: DateTime.utc(2026, 6, 26, 15),
-    timezone: 'Australia/Brisbane',
-    localDate: const NutritionDayDate(year: 2026, month: 6, day: 26),
-    updatedAt: DateTime.utc(2026, 6, 26, 15),
-  );
 }
 
 FoodPickerItem _solidFood({

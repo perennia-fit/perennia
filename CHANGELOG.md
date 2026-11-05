@@ -21,6 +21,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   `GET /agent/meals/history`, `agent_list_meal_history`): the sets of Foods
   they log together, most often in the last 90 days first, each with the
   latest Meal that had them.
+- **Log a meal from one screen:** repeat a whole meal from Your meals, add
+  foods, or save just the time and add foods later.
 
 ### Changed
 
@@ -34,6 +36,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   of that Meal with `deletedAt` set, as the app's delete does, or fails with
   `422` `meal_archived`; so does a tombstone whose `updatedAt` would lose to
   the stored entry.
+- **A meal's time is shown and can be changed,** and its meal type is
+  proposed from the time.
+- **The Nutrition Day lists meals in time order.**
 
 ### Fixed
 

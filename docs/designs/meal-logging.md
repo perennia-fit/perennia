@@ -1,7 +1,7 @@
 # Meal Logging
 
 - **Author:** Leonardo Pinheiro
-- **Status:** Approved
+- **Status:** Current
 - **Date:** 2026-11-02
 
 Related documents:
@@ -428,6 +428,7 @@ time. So the stored time is the time of the write, not the time the screen opene
 | `updateMealTime(String mealId, DateTime startedAt) → Future<String>` (new) | The Dose-model time edit from §1, and `time_precision = 'instant'`. Returns the Batch id. | Header on a saved Meal |
 | `updateMealType(String mealId, String mealTypeName) → Future<String>` (new) | Stores the Meal Type name. Returns the Batch id. | Header on a saved Meal |
 | `listMealHistory({DateTime? now, int limit = 20}) → Future<List<MealHistoryRecord>>` (new) | Nothing: the Meal History read from §5. | Your meals |
+| `watchMeal(String mealId) → Stream<NutritionDayMealRecord?>` (new) | Nothing: one Meal and its active Food Entries, reactive, null once archived | The Meal screen, which follows a Meal across days |
 | `deleteFoodEntry`, `updateFoodEntryPortion`, `deleteMeal` (existing, unchanged) | As today. | Remove an entry, edit a Portion, Delete meal |
 
 Two names differ from a plain reading of the table. NutritionRepository already had
@@ -543,8 +544,8 @@ filters, window and time rules.
 
 **It is a full-screen route**, `MealScreen` in
 `lib/features/nutrition/widgets/meal_screen.dart`, driven by `MealScreenController`, an
-`AutoDisposeNotifier` family keyed by `MealScreenArgs.newMeal(NutritionDayDate day)` or
-`MealScreenArgs.existing(String mealId)`. `MealScreen` has matching `MealScreen.newMeal`
+auto-dispose Riverpod 3 `Notifier` family keyed by
+`MealScreenArgs.newMeal(NutritionDayDate day)` or `MealScreenArgs.existing(String mealId)`. `MealScreen` has matching `MealScreen.newMeal`
 and `MealScreen.existing` constructors.
 
 | State | Header | Body | Actions |
@@ -1280,6 +1281,7 @@ during a first food and during Log again from the Meal screen; manual checks 1 t
 |---|---|
 | `apps/mobile/lib/features/nutrition/controllers/meal_screen_controller.dart` | Create. `MealScreenArgs` and the `MealScreenController` family (§6): the pending Meal, the saved Meal stream once written, the Meal History future, the recent-Meal shortcut, and the in-flight guard; it exposes the §6 states and calls the repository. |
 | `apps/mobile/lib/features/nutrition/widgets/meal_screen.dart` | Create. The full-screen route with the states and behaviour of §6. |
+| `apps/mobile/lib/data/repositories/training_repositories.dart` | Add watchMeal (added while implementing PR 3) |
 | `apps/mobile/lib/features/nutrition/widgets/meal_time_sheet.dart` | Create. The date and time pickers, the time-shift buttons, the Meal Type list and the future-time confirmation (§6). |
 | `apps/mobile/lib/features/nutrition/widgets/add_food_picker.dart`, `controllers/add_food_controller.dart` | Replace the required `MealRecord` with a `MealTarget`; render embedded in the Meal screen; route Quick Entry through `logQuickEntry(target: ...)`. Search, source chips, Your foods and the two-tap repeat are unchanged. |
 | `apps/mobile/lib/features/nutrition/widgets/log_portion_screen.dart` | Take a `MealTarget`; Save calls `logFoodEntrySnapshot` and pops with the saved Meal id. Add the prefilled edit mode whose Save calls `updateFoodEntryPortion`. |
@@ -1288,7 +1290,7 @@ during a first food and during Log again from the Meal screen; manual checks 1 t
 | `apps/mobile/lib/features/nutrition/controllers/nutrition_day_controller.dart` | Remove `startMeal` and `logQuickEntryForMeal`. |
 | `apps/mobile/lib/domain/nutrition/nutrition_day_assembly.dart` | Apply the §6 order. |
 | `apps/mobile/lib/features/home/widgets/home_screen.dart` | The Log sheet's Food item becomes Meal (`homeLogMeal`), opens the Meal screen for the selected day, and is hidden on a future day; rename `logFoodKey` to `logMealKey`; Today's Nutrition view replaces `onStartMeal` with the `Log meal` button. |
-| `apps/mobile/lib/l10n/app_en.arb` and generated localisations | Add `homeLogMeal`, `nutritionLogMeal`, the header forms (`now`, `Choose time`, `add foods`, `time not recorded`), the header's semantic label, the time-shift buttons, `Add foods later`, `Your meals`, `Add to {time} · {type}`, `Meal logged` and `Undo`, Delete meal and its confirmation, and the future-time confirmation. Remove `homeLogFood`. Remove the literal Start Meal strings from the widgets. |
+| `apps/mobile/lib/l10n/app_en.arb` and generated localisations | Add `homeLogMeal`, `nutritionLogMeal`, the header forms (`now`, `Choose time`, `add foods`, `time not recorded`), the header's semantic label, the time-shift buttons, `Add foods later`, `Your meals`, `Add to {time} · {type}`, `Meal logged` and `Undo`, the Undo-bar messages `Food removed` (`mealFoodRemoved`) and `Portion updated` (`mealPortionUpdated`) (added while implementing PR 3), the Meal card's semantic label `{time}, {type}. Open meal` (`nutritionMealCardSemantics`) (added while implementing PR 3), Delete meal and its confirmation, and the future-time confirmation. Remove `homeLogFood`. Remove the literal Start Meal strings from the widgets. |
 
 **Tests:**
 

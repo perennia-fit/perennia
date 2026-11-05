@@ -1368,7 +1368,7 @@ void main() {
       expect(second.batchId, isNot(third.batchId));
     });
 
-    test('orders Nutrition Day Meals by Meal Type order then start instant',
+    test('orders Nutrition Day Meals by clock time, whatever the Meal Type',
         () async {
       final localDate = NutritionDayDate(year: 2026, month: 6, day: 26);
       await repositories.nutrition.ensureDefaultMealTypes();
@@ -1407,10 +1407,10 @@ void main() {
       expect(
         day.meals.map((meal) => meal.meal.id),
         <String>[
-          earlyBreakfastId,
-          lateBreakfastId,
           earlyLunchId,
           earlySnackId,
+          earlyBreakfastId,
+          lateBreakfastId,
         ],
       );
     });
@@ -2101,102 +2101,6 @@ void main() {
       final meal = (await repositories.nutrition.getMealById(mealId))!;
       expect(meal.startedAt, startedAt.toUtc());
       expect(meal.localDate, NutritionDayDate.fromDateTime(startedAt));
-    });
-
-    group('startMeal', () {
-      late ProviderContainer container;
-      final lunch = MealTypeRecord(
-        id: 'meal-type-lunch',
-        name: 'Lunch',
-        sortOrder: 1,
-        updatedAt: DateTime.utc(2026, 1, 1),
-      );
-
-      setUp(() {
-        container = ProviderContainer(
-          overrides: [
-            trainingRepositoriesProvider.overrideWith((ref) => repositories),
-          ],
-        );
-      });
-
-      tearDown(() => container.dispose());
-
-      test('on a past day stores that day at the current clock time', () async {
-        final today = NutritionDayDate.fromDateTime(DateTime.now());
-        final pastDay = today.addDays(-3);
-        container.read(selectedNutritionDayProvider.notifier).select(pastDay);
-
-        final before = DateTime.now();
-        final mealId = await container
-            .read(nutritionDayControllerProvider.notifier)
-            .startMeal(mealType: lunch);
-        final after = DateTime.now();
-
-        final meal = (await repositories.nutrition.getMealById(mealId))!;
-        expect(meal.localDate, pastDay);
-        final started = meal.startedAt.toLocal();
-        expect(
-          NutritionDayDate.fromDateTime(started),
-          pastDay,
-        );
-        // The clock time of the start is the clock time of the tap.
-        final tapClock = Duration(
-          hours: before.hour,
-          minutes: before.minute,
-          seconds: before.second,
-        );
-        final startClock = Duration(
-          hours: started.hour,
-          minutes: started.minute,
-          seconds: started.second,
-        );
-        final afterClock = Duration(
-          hours: after.hour,
-          minutes: after.minute,
-          seconds: after.second,
-        );
-        if (afterClock >= tapClock) {
-          expect(
-            startClock.inSeconds,
-            inInclusiveRange(tapClock.inSeconds, afterClock.inSeconds),
-          );
-        }
-        expect(meal.mealType, 'Lunch');
-      });
-
-      test('on today starts now', () async {
-        final today = NutritionDayDate.fromDateTime(DateTime.now());
-        container.read(selectedNutritionDayProvider.notifier).select(today);
-
-        // Drift stores whole seconds.
-        final before = DateTime.now().toUtc().subtract(
-              const Duration(seconds: 1),
-            );
-        final mealId = await container
-            .read(nutritionDayControllerProvider.notifier)
-            .startMeal(mealType: lunch);
-        final after = DateTime.now().toUtc();
-
-        final meal = (await repositories.nutrition.getMealById(mealId))!;
-        expect(meal.localDate, NutritionDayDate.fromDateTime(meal.startedAt));
-        expect(meal.startedAt.isBefore(before), isFalse);
-        expect(meal.startedAt.isAfter(after), isFalse);
-      });
-
-      test('honours an explicit start time', () async {
-        final pastDay = NutritionDayDate(year: 2026, month: 6, day: 20);
-        container.read(selectedNutritionDayProvider.notifier).select(pastDay);
-        final startedAt = DateTime(2026, 6, 24, 7, 45);
-
-        final mealId = await container
-            .read(nutritionDayControllerProvider.notifier)
-            .startMeal(mealType: lunch, startedAt: startedAt);
-
-        final meal = (await repositories.nutrition.getMealById(mealId))!;
-        expect(meal.startedAt, startedAt.toUtc());
-        expect(meal.localDate, NutritionDayDate(year: 2026, month: 6, day: 24));
-      });
     });
 
     test('reconstructs Meal and Quick Entry after kill-and-reopen', () async {
@@ -3136,6 +3040,120 @@ void main() {
         await repositories.nutrition.listActiveEntriesForMeal(meal.id),
         isEmpty,
       );
+    });
+
+    group('watchMeal (the Meal screen follows one Meal, §6)', () {
+      Future<void> waitFor(bool Function() condition) async {
+        final deadline = DateTime.now().add(const Duration(seconds: 2));
+        while (!condition()) {
+          if (DateTime.now().isAfter(deadline)) {
+            fail('Timed out waiting for the watched Meal.');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+      }
+
+      List<NutritionDayMealRecord?> watch(String mealId) {
+        final emissions = <NutritionDayMealRecord?>[];
+        final subscription =
+            repositories.nutrition.watchMeal(mealId).listen(emissions.add);
+        addTearDown(() => subscription.cancel());
+        return emissions;
+      }
+
+      test('emits the Meal again once a Food Entry is added', () async {
+        final meal = pendingMeal(
+          startedAt: DateTime(2026, 6, 26, 12, 30),
+          mealTypeName: 'Lunch',
+        );
+        await repositories.nutrition.createMeal(meal);
+        final emissions = watch(meal.id);
+        await waitFor(() => emissions.isNotEmpty);
+        expect(emissions.last!.meal.id, meal.id);
+        expect(emissions.last!.entries, isEmpty);
+
+        final first = await repositories.nutrition.logQuickEntry(
+          target: ExistingMealTarget(meal.id),
+          entry: QuickFoodEntryDraft(
+            name: 'Rice',
+            nutrients: _energyAndMacros(energy: 200),
+          ),
+        );
+        final second = await repositories.nutrition.logQuickEntry(
+          target: ExistingMealTarget(meal.id),
+          entry: QuickFoodEntryDraft(
+            name: 'Chicken',
+            nutrients: _energyAndMacros(energy: 300),
+          ),
+        );
+
+        await waitFor(() => emissions.last?.entries.length == 2);
+        expect(
+          emissions.last!.entries.map((entry) => entry.id),
+          <String>[first.foodEntryId, second.foodEntryId],
+        );
+      });
+
+      test('still emits the Meal after its time moves across midnight',
+          () async {
+        await _insertMealRow(
+          database,
+          id: 'meal-watched',
+          // 23:50 at +01:00.
+          startedAt: DateTime.utc(2026, 6, 26, 22, 50),
+          localDate: '2026-06-26',
+          timezone: 'CET',
+          offsetMinutes: 60,
+        );
+        final emissions = watch('meal-watched');
+        await waitFor(() => emissions.isNotEmpty);
+        expect(
+          emissions.last!.meal.localDate,
+          NutritionDayDate(year: 2026, month: 6, day: 26),
+        );
+
+        // 00:10 the next day at +01:00.
+        await repositories.nutrition.updateMealTime(
+          'meal-watched',
+          DateTime.utc(2026, 6, 26, 23, 10),
+        );
+
+        await waitFor(
+          () =>
+              emissions.last?.meal.localDate ==
+              NutritionDayDate(year: 2026, month: 6, day: 27),
+        );
+        expect(emissions.last!.meal.id, 'meal-watched');
+        expect(emissions.last!.meal.clock, DateTime.utc(2026, 6, 27, 0, 10));
+      });
+
+      test('emits null once the Meal is deleted', () async {
+        final meal = pendingMeal(
+          startedAt: DateTime(2026, 6, 26, 19),
+          mealTypeName: 'Dinner',
+        );
+        await repositories.nutrition.logQuickEntry(
+          target: NewMealTarget(meal),
+          entry: QuickFoodEntryDraft(
+            name: 'Soup',
+            nutrients: _energyAndMacros(energy: 150),
+          ),
+        );
+        final emissions = watch(meal.id);
+        await waitFor(() => emissions.isNotEmpty);
+        expect(emissions.last, isNotNull);
+
+        await repositories.nutrition.deleteMeal(meal.id);
+
+        await waitFor(() => emissions.last == null);
+      });
+
+      test('emits null for an unknown id', () async {
+        final emissions = watch('meal-unknown');
+
+        await waitFor(() => emissions.isNotEmpty);
+        expect(emissions, <NutritionDayMealRecord?>[null]);
+      });
     });
   });
 
