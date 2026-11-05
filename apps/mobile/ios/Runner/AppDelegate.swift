@@ -9,6 +9,20 @@ import UserNotifications
   private let timerBackgroundChannelName = "perennia/timer_background"
   private var timerBackgroundChannel: FlutterMethodChannel?
   private let backupExport = BackupExportChannel()
+  private let cueSounds = TimerCueSounds()
+
+  // Whether a rest strip on the current route is playing the cues in the app.
+  // `willPresent` runs only while the app is in the foreground, so this alone
+  // decides whether a timer notification presents.
+  private var inAppCuesActive = false
+
+  // The rests whose schedule Dart has cancelled and not scheduled again. Removing
+  // a request does not stop one the system has already fired, or one still on its
+  // way to `center.add`, and by then `inAppCuesActive` can be false: without this,
+  // an end the strip already played would also present a banner and its sound.
+  // Read and written only on the main thread. One short id per rest, for the life
+  // of the process.
+  private var cancelledTimerIds = Set<String>()
 
   // a cold-start tap arrives before Flutter registers its callback.
   // Buffer the payload until `timerNotificationsReady` drains it.
@@ -28,6 +42,8 @@ import UserNotifications
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    // A value left from an engine that died must never silence later rests.
+    inAppCuesActive = false
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     if let backupRegistrar = engineBridge.pluginRegistry.registrar(
       forPlugin: "BackupExportChannel")
@@ -67,6 +83,20 @@ import UserNotifications
       scheduleTimer(call: call, result: result)
     case "cancelTimer":
       cancelTimer(call: call, result: result)
+    case "prepareCues":
+      cueSounds.prepare()
+      result(nil)
+    case "playCue":
+      let arguments = call.arguments as? [String: Any]
+      if let cue = arguments?["cue"] as? String {
+        let volume = (arguments?["volume"] as? NSNumber)?.floatValue ?? 1.0
+        cueSounds.play(cue: cue, volume: volume)
+      }
+      result(nil)
+    case "setInAppTimerCues":
+      let arguments = call.arguments as? [String: Any]
+      inAppCuesActive = (arguments?["active"] as? Bool) ?? false
+      result(nil)
     case "pendingProtocolReminders":
       pendingProtocolReminders(result: result)
     case "timerNotificationsReady":
@@ -115,7 +145,8 @@ import UserNotifications
       let timerId = arguments["timerId"] as? String,
       let deadlineAtMillis = arguments["deadlineAtMillis"] as? NSNumber,
       let title = arguments["title"] as? String,
-      let body = arguments["body"] as? String
+      let body = arguments["body"] as? String,
+      let prepareText = arguments["prepareText"] as? String
     else {
       result(
         FlutterError(
@@ -127,8 +158,10 @@ import UserNotifications
       return
     }
 
+    cancelledTimerIds.remove(timerId)
+
     let soundEnabled = (arguments["soundEnabled"] as? Bool) ?? true
-    let countdownLabel = (arguments["countdownLabel"] as? String) ?? ""
+    let getReadyText = arguments["getReadyText"] as? String
     let userInfo: [String: Any] = [
       "timerId": timerId,
       "workoutId": arguments["workoutId"] as? String as Any,
@@ -143,7 +176,21 @@ import UserNotifications
       }
 
       let deadline = Date(timeIntervalSince1970: deadlineAtMillis.doubleValue / 1000.0)
-      let interval = max(1.0, deadline.timeIntervalSinceNow)
+      let remaining = deadline.timeIntervalSinceNow
+      let identifiers = [
+        timerId, self.prepareIdentifier(timerId), self.getReadyIdentifier(timerId),
+      ]
+
+      // The end has already passed, so add nothing, as Android's service stays
+      // silent for an end behind a new schedule. The strip's cancel only follows a
+      // passed deadline, so a schedule that overtook it lands here, having just
+      // cleared the rest from `cancelledTimerIds`: a request now would present a
+      // banner and sound about 1 s after the end the strip played.
+      guard remaining > 0 else {
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        self.complete(result, with: "granted")
+        return
+      }
 
       // Completion request at the deadline.
       let completion = UNMutableNotificationContent()
@@ -156,33 +203,57 @@ import UserNotifications
       let completionRequest = UNNotificationRequest(
         identifier: timerId,
         content: completion,
-        trigger: UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
-      )
-
-      // prepare request 3s before the deadline (never earlier than 1s
-      // from now). Scheduled alongside completion; cancelled together.
-      let prepareInterval = max(1.0, interval - 3.0)
-      let prepare = UNMutableNotificationContent()
-      prepare.title = title
-      prepare.body = "\(countdownLabel) 0:03"
-      prepare.sound = soundEnabled
-        ? UNNotificationSound(named: UNNotificationSoundName("PrepareBeep.caf"))
-        : nil
-      prepare.userInfo = userInfo
-      let prepareRequest = UNNotificationRequest(
-        identifier: self.prepareIdentifier(timerId),
-        content: prepare,
         trigger: UNTimeIntervalNotificationTrigger(
-          timeInterval: prepareInterval, repeats: false)
+          timeInterval: max(1.0, remaining), repeats: false)
       )
 
-      center.removePendingNotificationRequests(withIdentifiers: [
-        timerId, self.prepareIdentifier(timerId),
-      ])
+      // A cue before the deadline, scheduled alongside completion and cancelled
+      // together. One less than 0.5 s away is not added: its moment has passed,
+      // and firing it late would play a stale cue.
+      func cueRequest(
+        identifier: String, leadTime: TimeInterval, text: String, sound: String
+      ) -> UNNotificationRequest? {
+        let interval = remaining - leadTime
+        guard interval >= 0.5 else { return nil }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = text
+        content.sound = soundEnabled
+          ? UNNotificationSound(named: UNNotificationSoundName(sound))
+          : nil
+        content.userInfo = userInfo
+        return UNNotificationRequest(
+          identifier: identifier,
+          content: content,
+          trigger: UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+        )
+      }
+
+      var requests = [completionRequest]
+      if let prepareRequest = cueRequest(
+        identifier: self.prepareIdentifier(timerId),
+        leadTime: 3.0,
+        text: prepareText,
+        sound: "PrepareBeep.caf"
+      ) {
+        requests.append(prepareRequest)
+      }
+      if let getReadyText,
+        let getReadyRequest = cueRequest(
+          identifier: self.getReadyIdentifier(timerId),
+          leadTime: 10.0,
+          text: getReadyText,
+          sound: "GetReady.caf"
+        )
+      {
+        requests.append(getReadyRequest)
+      }
+
+      center.removePendingNotificationRequests(withIdentifiers: identifiers)
 
       let group = DispatchGroup()
       var scheduleError: Error?
-      for request in [prepareRequest, completionRequest] {
+      for request in requests {
         group.enter()
         center.add(request) { error in
           if let error, scheduleError == nil { scheduleError = error }
@@ -190,6 +261,11 @@ import UserNotifications
         }
       }
       group.notify(queue: .main) {
+        // Cancelled while these were on their way: the cancel's removal found
+        // nothing, so they would still fire, even in the background.
+        if self.cancelledTimerIds.contains(timerId) {
+          center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        }
         if let scheduleError {
           self.complete(
             result,
@@ -221,8 +297,10 @@ import UserNotifications
       return
     }
 
+    cancelledTimerIds.insert(timerId)
+
     let center = UNUserNotificationCenter.current()
-    let ids = [timerId, prepareIdentifier(timerId)]
+    let ids = [timerId, prepareIdentifier(timerId), getReadyIdentifier(timerId)]
     center.removePendingNotificationRequests(withIdentifiers: ids)
     center.removeDeliveredNotifications(withIdentifiers: ids)
     result(nil)
@@ -257,14 +335,32 @@ import UserNotifications
       @escaping (UNNotificationPresentationOptions) -> Void
   ) {
     // A Supplement reminder shows as a banner and stays in the list.
-    // Foreground: the rest timer shows a banner only. The in-app cue already
-    // covers sound, so passing [.sound] here would double the audio.
+    // A rest timer's cue has exactly one player: nothing here while a strip on
+    // the current route plays it in the app or after its rest was cancelled, else
+    // this notification's banner and sound (on another screen of the app, the only
+    // cue left).
     // `.banner` and `.list` need iOS 14; iOS 13 shows both as an alert.
-    let isReminder = protocolReminderDate(notification.request.content.userInfo) != nil
-    if #available(iOS 14.0, *) {
-      completionHandler(isReminder ? [.banner, .list] : [.banner])
-    } else {
-      completionHandler([.alert])
+    let userInfo = notification.request.content.userInfo
+    if protocolReminderDate(userInfo) != nil {
+      if #available(iOS 14.0, *) {
+        completionHandler([.banner, .list])
+      } else {
+        completionHandler([.alert])
+      }
+      return
+    }
+    let timerId = userInfo["timerId"] as? String
+    // On the main thread because the channel writes both values there: the system
+    // does not promise which thread calls this, and a Set is not safe to share.
+    DispatchQueue.main.async {
+      let cancelled = timerId.map { self.cancelledTimerIds.contains($0) } ?? false
+      if self.inAppCuesActive || cancelled {
+        completionHandler([])
+      } else if #available(iOS 14.0, *) {
+        completionHandler([.banner, .sound])
+      } else {
+        completionHandler([.alert, .sound])
+      }
     }
   }
 
@@ -335,6 +431,10 @@ import UserNotifications
 
   private func prepareIdentifier(_ timerId: String) -> String {
     return "prepare:\(timerId)"
+  }
+
+  private func getReadyIdentifier(_ timerId: String) -> String {
+    return "getReady:\(timerId)"
   }
 
   private func isNotificationAuthorized(_ status: UNAuthorizationStatus) -> Bool {

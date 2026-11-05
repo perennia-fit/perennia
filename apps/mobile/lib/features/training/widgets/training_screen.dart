@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -18,6 +19,7 @@ import '../../analytics/repositories/exercise_analytics_repository.dart';
 import '../../analytics/widgets/exercise_overview_screen.dart';
 import '../../catalog/widgets/exercise_catalog_picker.dart';
 import '../../settings/repositories/settings_repository.dart';
+import '../services/rest_cues.dart';
 import '../services/timer_background_scheduler.dart';
 import 'plan_progress_labels.dart';
 import 'replace_exercise.dart';
@@ -1009,6 +1011,17 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
                 onConfirmation: _showConfirmation,
                 undoShowing: _undoShowing,
                 whenUndoEnds: _whenUndoEnds,
+                // Only a rest the strip schedules reads these. A schedule
+                // already sent keeps its texts when the open exercise or row
+                // changes: sending it again could post a threshold the lifter
+                // already heard.
+                notificationTexts: _restNotificationTexts(
+                  l10n,
+                  state,
+                  workoutExerciseId: workoutExerciseId,
+                  setsOf: _setsOfWorkoutExercise,
+                ),
+                newestPerformed: _newestPerformed,
                 confirmation: confirmation == null
                     ? null
                     : (
@@ -1061,6 +1074,77 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
             ? l10n.trainingContextRound(group.name, round, of)
             : l10n.trainingContextRoundNext(group.name, round, of, nextName);
     }
+  }
+
+  /// The Workout's Performed Set with the latest `performedAt`, which can end
+  /// the strip's Rest over.
+  ({String id, DateTime performedAt})? get _newestPerformed {
+    ({String id, DateTime performedAt})? newest;
+    for (final sets in _setsByExerciseId.values) {
+      for (final set in sets) {
+        final performedAt = set.performedAt;
+        if (set.isCompleted &&
+            performedAt != null &&
+            (newest == null || performedAt.isAfter(newest.performedAt))) {
+          newest = (id: set.id, performedAt: performedAt);
+        }
+      }
+    }
+    return newest;
+  }
+
+  /// What a rest's notifications say. They are read away from the screen, so
+  /// they always name the exercise and the Set that comes next: the exercise
+  /// at [workoutExerciseId] with its Performed Set count plus one, or, when it
+  /// has no Planned Set left and [nextExerciseWithPlan] returns another
+  /// exercise, that one with its own count plus one.
+  ///
+  /// [setsOf] gives a Workout Exercise's Sets. Log set passes Sets it read
+  /// after the write, since `_workoutSets` may not have re-emitted yet and the
+  /// count must include the Set just logged.
+  RestNotificationTexts _restNotificationTexts(
+    AppLocalizations l10n,
+    _TrainingExerciseState state, {
+    required String workoutExerciseId,
+    required List<LoggedSetRecord> Function(String workoutExerciseId) setsOf,
+  }) {
+    ProgressExercise progressOf(String id) {
+      return progressExerciseFor(
+        workoutExerciseId: id,
+        groupId: _groupFor(id)?.id,
+        sets: setsOf(id).map(progressSetOf),
+      );
+    }
+
+    var namedId = workoutExerciseId;
+    if (progressOf(workoutExerciseId).planned == 0) {
+      namedId = nextExerciseWithPlan(
+            exercises: <ProgressExercise>[
+              for (final workoutExercise in _workoutExercises)
+                progressOf(workoutExercise.id),
+            ],
+            fromWorkoutExerciseId: workoutExerciseId,
+          ) ??
+          workoutExerciseId;
+    }
+    var name = _exerciseNameFor(namedId);
+    if (name == null) {
+      // That exercise's name has not loaded; the open exercise's always has.
+      namedId = state.workoutExercise.id;
+      name = state.exercise.name;
+    }
+    final number = progressOf(namedId).performed + 1;
+    return (
+      title: l10n.trainingRestNotificationTitle,
+      countdownLabel: l10n.trainingRestNotificationCountdown,
+      body: l10n.trainingRestNotificationOver,
+      getReadyText: l10n.trainingRestNotificationGetReady(name, number),
+      prepareText: l10n.trainingRestNotificationPrepare(
+        name,
+        number,
+        formatRestDuration(countdownLead),
+      ),
+    );
   }
 
   /// The Next button's target: only when this exercise (and every member
@@ -1253,10 +1337,22 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       FocusManager.instance.primaryFocus?.unfocus();
     }
 
+    // Before the rest starts, since its notifications name the exercise the
+    // screen moves to.
+    final nextWorkoutExerciseId = nextGroupMemberAfterLog(
+      memberIdsInOrder: memberIds,
+      loggedWorkoutExerciseId: state.workoutExercise.id,
+      membersWithPlannedSetBefore: membersWithPlannedSetBefore,
+      loggedAPlannedSet: currentSet != null,
+      autoSelectNextSet: settings.autoSelectNextSet,
+    );
+
     final timerId = await _startRestAfterLog(
       repositories,
       scheduler,
+      l10n,
       state,
+      shownAfterLogId: nextWorkoutExerciseId ?? state.workoutExercise.id,
       setId: result.setId,
       rest: rest,
       soundEnabled: settings.restTimerSoundsEnabled,
@@ -1284,13 +1380,6 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
       ),
     );
 
-    final nextWorkoutExerciseId = nextGroupMemberAfterLog(
-      memberIdsInOrder: memberIds,
-      loggedWorkoutExerciseId: state.workoutExercise.id,
-      membersWithPlannedSetBefore: membersWithPlannedSetBefore,
-      loggedAPlannedSet: currentSet != null,
-      autoSelectNextSet: settings.autoSelectNextSet,
-    );
     if (nextWorkoutExerciseId != null && mounted) {
       _selectWorkoutExercise(nextWorkoutExerciseId);
     }
@@ -1299,12 +1388,14 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
   /// Starts the rest after a logged Set, unless the rest that runs is zero
   /// (Off, or a plan's zero) or the Workout has ended. The timer is written
   /// under its own batch, never the Log set's: the strip writes the timer
-  /// row again later (prepare cue, end alert, Stop), which would make the
-  /// Log set's batch impossible to undo.
+  /// row again later (the end, Stop), which would make the Log set's batch
+  /// impossible to undo.
   Future<String?> _startRestAfterLog(
     TrainingRepositories repositories,
     TimerBackgroundScheduler scheduler,
+    AppLocalizations l10n,
     _TrainingExerciseState state, {
+    required String shownAfterLogId,
     required String setId,
     required Duration rest,
     required bool soundEnabled,
@@ -1316,21 +1407,51 @@ class _TrainingScreenState extends ConsumerState<TrainingScreen> {
     if (loggedSet == null) {
       return null;
     }
+    final previous = await repositories.restTimers.getCurrentForWorkout(
+      loggedSet.workoutId,
+    );
     final timerId = await repositories.restTimers.startForSet(
       loggedSet,
       defaultDuration: rest,
       alertVolume: _alertVolume,
+      now: clock.now(),
     );
     if (timerId == null) {
       return null;
     }
+    await cancelReplacedRestSchedule(
+      scheduler,
+      previous: previous,
+      startedTimerId: timerId,
+    );
     final timer = await repositories.restTimers.getById(timerId);
     if (timer != null) {
+      final setsByExerciseId = <String, List<LoggedSetRecord>>{};
+      final sets = await repositories.sets.listActiveForWorkout(
+        state.workoutExercise.workoutId,
+      );
+      for (final set in sets) {
+        if (!_removingSetIds.contains(set.id)) {
+          setsByExerciseId
+              .putIfAbsent(set.exerciseId, () => <LoggedSetRecord>[])
+              .add(set);
+        }
+      }
+      final texts = _restNotificationTexts(
+        l10n,
+        state,
+        workoutExerciseId: shownAfterLogId,
+        setsOf: (workoutExerciseId) =>
+            setsByExerciseId[
+                _workoutExerciseById(workoutExerciseId)?.exerciseId] ??
+            const <LoggedSetRecord>[],
+      );
       unawaited(
         scheduler
             .schedule(
           TimerBackgroundSchedule.rest(
             timer,
+            texts: texts,
             workoutExerciseId: state.workoutExercise.id,
             soundEnabled: soundEnabled,
           ),

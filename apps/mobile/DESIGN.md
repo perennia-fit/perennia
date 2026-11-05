@@ -148,3 +148,8 @@ performed set) and the rest strip above it are pinned below the scroll, in thumb
 reach. Set rows show their state as performed (check icon), current (arrow and
 the selected-row cyan tint) or planned (secondary text) instead of a checkbox,
 and each state is also in the row's semantics label.
+
+Rest strip: resting shows the elapsed bar; Get ready and 3-2-1 show a 2 dp
+`primary` border with no fill; Rest over uses `surface`. The strip's elapsed bar
+and its Get-ready border count as one cyan element, separate from the Current
+row's highlight; no other part of the strip is cyan.

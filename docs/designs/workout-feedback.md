@@ -443,9 +443,12 @@ restPhaseAt(timer, newestPerformed, now):
     next, and a label on the strip would repeat them.
 *   **Rest over survives kill-and-reopen,** since it is derived from the row.
 *   **Marking the end.** Whenever the strip, while the app is visible
-    ([part 4](#4-cues-and-notifications)), sees a row with status `running` at
-    or past its deadline, it writes `markAlertFired` and cancels the
-    background schedule. It checks on every tick and when the app comes back.
+    ([part 4](#4-cues-and-notifications)) and the strip's route is current,
+    sees a row with status `running` at or past its deadline, it writes
+    `markAlertFired` and cancels the background schedule. A covered strip must
+    not cancel the schedule before the native side posts, since the
+    notification is the only cue on that route. It checks on every tick and
+    when the app comes back.
     This one rule covers the end reached in the app, an end that passed while
     the app was in the background, and a reopen after 0:00. Marking plays
     nothing; only the end cue ([part 4](#4-cues-and-notifications)) plays a
@@ -470,8 +473,9 @@ from `deadlineAt`:
 
 *   **Arming.** A cue is armed if its time is at most 1 s in the past, and
     skipped if it is further back. So −15 s that brings the deadline to now
-    (`adjust` sets a deadline at or before now to exactly now) still arms the
-    end cue. Stop, a new timer and `dispose` cancel the armed cues.
+    (`adjust` sets a deadline at or before now to now, rounded up to a whole
+    second because the column stores whole seconds) still arms the end cue.
+    Stop, a new timer and `dispose` cancel the armed cues.
 *   **Playing.** When an armed cue fires, it plays if it fires at most 1 s late
     (`cueLateLimit`) and `canPlay()` holds. Otherwise it is skipped, and the
     system notification covers that moment, as below.
@@ -507,16 +511,20 @@ lifter can see it:
 *   **The app plays it** when the app is visible and a strip on the current
     route is showing that rest.
 *   **The system notification plays it** otherwise: in the background, on a
-    locked screen, or on another screen of the app (where no strip is
-    current, and the notification is the only cue left).
+    locked screen, on another screen of the app (where no strip is current),
+    or on the Training Screen of another Workout (whose strip has no running
+    rest). In each, the notification is the only cue left.
 
-Dart tells native whether a strip is current with one boolean,
-`setInAppTimerCues {active: bool}`:
+Dart tells native whether a strip on the current route is showing a running
+rest with one boolean, `setInAppTimerCues {active: bool}`:
 
 *   **`RestCueOwner`,** a Riverpod provider, keeps one entry per mounted
-    strip. On every tick, each strip updates its entry to whether its route is
-    current. The router can push a second Training Screen over the first, and
-    only the top one is current, so only one strip plays.
+    strip. On every tick and every row change, each strip updates its entry
+    to whether its route is current and its row has status `running`. The
+    router can push a second Training Screen over the first, and only the top
+    one is current, so only one strip plays. A strip with no running row has
+    no cues armed, so it must not claim the cues of a rest running in another
+    Workout.
 *   `RestCueOwner` sends `active = any entry is true` each time that value
     changes, and `false` when the last strip disposes.
 *   **Native resets the value to false when the Flutter engine starts**
@@ -525,6 +533,22 @@ Dart tells native whether a strip is current with one boolean,
     rests.
 *   **Native posts a cue's notification** unless the app is visible and the
     value is true.
+*   **On iOS, a cancelled rest stays silent.** Removing a request cannot stop
+    one the system has already fired, or one still on its way to being added,
+    and the value goes false as soon as the strip writes the end. So
+    `AppDelegate` remembers the rests it was told to cancel until they are
+    scheduled again, `willPresent` presents nothing for those, and a schedule
+    that a cancel overtook is removed once its requests are added. The strip
+    sends the cancel before the row's write can turn the value false.
+*   **A cancel beats a schedule still waiting on the permission answer.** On
+    both platforms `schedule` asks for the permission before it sends
+    `scheduleTimer`, and the first-ever rest waits for as long as the system
+    prompt stays up. A cancel for that rest during the wait stops the schedule
+    being sent, so an end the strip played or a rest the lifter stopped can't
+    post later.
+*   **A schedule whose deadline has passed adds nothing.** Android's service
+    stays silent for an end already behind it; on iOS, `scheduleTimer` adds no
+    request and removes any pending ones when no time remains.
 
 **Playing a cue.** `TimerCuePlayer` has two methods, `prepare()` and
 `play(TimerCue cue, {required double volume})`, where `TimerCue` is
@@ -552,8 +576,9 @@ The tone and vibration for each cue:
         in `MainActivity.cleanUpFlutterEngine`.
     *   Before a tone plays, the player requests transient audio focus with
         `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`, so other audio ducks (its volume
-        drops while the tone plays). It abandons focus in the player's
-        `OnCompletionListener`. `tick` has no tone and requests no focus.
+        drops while the tone plays). The tone plays whatever the request
+        returns. It abandons focus in the player's `OnCompletionListener`.
+        `tick` has no tone and requests no focus.
     *   On API 26 and later, focus uses an `AudioFocusRequest`. Below 26 it
         uses `requestAudioFocus(listener, STREAM_MUSIC,
         AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)`.
@@ -629,9 +654,9 @@ name (`android.resource://<pkg>/raw/<name>`), which no later file can shift:
     *   A getReady or prepare request whose fire time is less than 0.5 s away
         is not added.
     *   `willPresent` returns, for a timer notification: on iOS 14 and later,
-        `[]` when in-app cues are active, else `[.banner, .sound]`; on iOS 13
-        (the deployment target), `[]` or `[.alert, .sound]`. Protocol
-        reminders are unchanged.
+        `[]` when in-app cues are active or its rest was cancelled, else
+        `[.banner, .sound]`; on iOS 13 (the deployment target), `[]` or
+        `[.alert, .sound]`. Protocol reminders are unchanged.
 
 **Rest timer sounds off.** On Android 8 and later a notification's sound and
 vibration come from its channel, and the per-notification `setSound(null)` and
@@ -651,8 +676,9 @@ Dart, since native code cannot read the ARB file. They are a record,
 
 *   `title`: "Rest timer"; `countdownLabel`: "Rest" (the ongoing countdown);
     `body`: "Rest over".
-*   `getReadyText`: "Get ready · Deadlift · Set 4", or null when the rest is
-    15 s or shorter. Null means no get-ready cue on either platform.
+*   `getReadyText`: "Get ready · Deadlift · Set 4". The schedule sends it as
+    null when the rest is 15 s or shorter. Null means no get-ready cue on
+    either platform.
 *   `prepareText`: "Deadlift · Set 4 in 0:03".
 
 The texts are computed once, when the rest is scheduled, and the schedule is
@@ -1201,8 +1227,10 @@ rest timer notifications on Android 8 and later."
 #### `apps/mobile/pubspec.yaml` (Modify)
 
 *   **Type / Scope**: dependencies.
-*   **Proposed Changes**: Add `clock` as a direct dependency, at the version
-    already in `pubspec.lock` (it is there as a transitive dependency today).
+*   **Proposed Changes**: Add `clock` as a direct dependency and `fake_async`
+    as a dev dependency (`rest_cue_scheduler_test` imports it, and
+    `flutter_test` does not export it), each at the version already in
+    `pubspec.lock`, where both stay transitive under the workspace root.
 
 #### `apps/mobile/lib/features/training/services/rest_cues.dart` (Create)
 
@@ -1259,7 +1287,8 @@ rest timer notifications on Android 8 and later."
     *   `restCueOwnerProvider`, a `Provider<RestCueOwner>` kept alive for the
         app's life, reading `timerBackgroundSchedulerProvider`.
     *   `RestCueOwner.report(Object strip, {required bool current})` stores
-        the entry; `remove(Object strip)` drops it.
+        the entry, where `current` means the strip's route is current and its
+        row is `running`; `remove(Object strip)` drops it.
     *   After each change it computes `active = any entry is true`. When that
         differs from the last value sent, it calls
         `TimerBackgroundScheduler.setInAppTimerCues(active)`. The first value
@@ -1288,6 +1317,11 @@ rest timer notifications on Android 8 and later."
         `getReadyText` is sent as absent.
     *   **`TimerBackgroundSchedule.rest`** takes a `RestNotificationTexts`
         from its caller instead of hard-coding English.
+    *   **`MethodChannelTimerBackgroundScheduler`** keeps, per `timerId`, the
+        latest `schedule` still waiting on the permission answer. `cancel`
+        clears the entry, and a `schedule` no longer the entry when the answer
+        arrives returns that answer without sending `scheduleTimer`. The
+        constructor stops being `const` to hold this.
 
 #### `apps/mobile/lib/data/repositories/training_repositories.dart` (Modify)
 
@@ -1295,7 +1329,10 @@ rest timer notifications on Android 8 and later."
 *   **Proposed Changes**: Remove `RestTimerRepository.markPrepareAlertFired`,
     which has no caller after this pull request. `adjust` keeps clearing
     `prepareAlertFiredAt`. The column stays, so the Drift schema does not
-    change.
+    change. A deadline `adjust` clamps to now is rounded up to a whole second:
+    `deadlineAt` stores whole seconds, and rounded down it could land more
+    than `cueArmLimit` behind the clock by the time the row reaches the strip,
+    which would lose the end cue.
 
 #### `apps/mobile/lib/features/training/widgets/rest_strip.dart` (Modify)
 
@@ -1323,10 +1360,14 @@ rest timer notifications on Android 8 and later."
             `RestCueOwner.remove(this)`.
     *   **On each timer row and each tick:**
         *   `scheduler.update(timer)`;
-        *   `RestCueOwner.report(this, current: <route is current>)`;
-        *   while visible, a row with status `running` at or past its
-            deadline: write `markAlertFired` and cancel the background
-            schedule, once per row id ([part 3](#3-rest-phases)).
+        *   `RestCueOwner.report(this, current: <route is current and the row
+            is running>)`;
+        *   while visible and the strip's route is current, a row with status
+            `running` at or past its deadline: write `markAlertFired` and
+            cancel the background schedule, once per row id ([part
+            3](#3-rest-phases)). A covered strip must not cancel the schedule
+            before the native side posts, since the notification is the only
+            cue on that route.
     *   **On resume** (the listener's state becomes visible), the same check
         runs at once.
     *   **Ticker.** The first tick fires at the next whole second of
@@ -1345,13 +1386,28 @@ rest timer notifications on Android 8 and later."
 *   **Proposed Changes**:
     *   **Notification texts.** Build `RestNotificationTexts` as in [part
         4](#4-cues-and-notifications). In Log set they are built for the
-        exercise the screen will show (the next group member when it moves),
-        from the Performed Set count after this Log set, before
-        `_startRestAfterLog`. `getReadyText` is null when the rest is not
-        longer than `getReadyAfterRest`.
+        exercise the screen will show (the next group member when it moves,
+        which `_logSetInFlight` works out before `_startRestAfterLog`). Inside
+        `_startRestAfterLog`, after reading the timer, they are built from
+        Sets read with `listActiveForWorkout`, since `_workoutSets` may not
+        have re-emitted and the Performed Set count must include this Log set.
+        The screen always fills `getReadyText`;
+        `TimerBackgroundSchedule.rest` sends it as null when `timer.duration`
+        is not longer than `getReadyAfterRest`, because ±15 s and a Set's
+        planned rest can make the form's Rest after differ from the running
+        timer.
     *   **`_startRestAfterLog`** passes the texts to
         `TimerBackgroundSchedule.rest`. The strip gets the same texts for
         `_start` (a rest started from the strip, for the open exercise).
+    *   **A rest that replaces a running one.** Starting a rest cancels the
+        Workout's running row, but iOS keeps each rest's requests under its own
+        id, so they would still fire for a rest that no longer exists.
+        `_startRestAfterLog` and the strip's `_start` read
+        `getCurrentForWorkout` before the start. After it, they call
+        `cancelReplacedRestSchedule` (in `timer_background_scheduler.dart`),
+        which cancels that rest's schedule when it was running and has a
+        different id, before the new rest is scheduled. A Set whose rest is
+        zero starts nothing, so the running rest keeps its schedule.
     *   **Strip inputs.** Pass the strip `newestPerformed`: the Workout's
         Performed Set with the latest `performedAt`, from the Sets stream the
         screen already watches.
@@ -1410,8 +1466,9 @@ rest timer notifications on Android 8 and later."
         *   for a cue with a tone: request
             `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` (an `AudioFocusRequest` on
             API 26 and later, `requestAudioFocus(listener, STREAM_MUSIC,
-            AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)` below), set the volume, seek
-            to 0 and start, and abandon focus in `OnCompletionListener`;
+            AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)` below), then, whatever the
+            request returns, set the volume, seek to 0 and start, and abandon
+            focus in `OnCompletionListener`;
         *   `tick` requests no focus and plays no tone;
         *   every cue runs its vibration from the table in [part
             4](#4-cues-and-notifications).
@@ -1448,6 +1505,14 @@ rest timer notifications on Android 8 and later."
         10 s timeout, posted under `getReadyNotificationId(timerId) =
         notificationId("getReady:$timerId")`. `ACTION_CANCEL` cancels it with
         the others.
+    *   **Cancel.** `ACTION_CANCEL` for the running timer stops the foreground
+        with `STOP_FOREGROUND_REMOVE`. The system ignores an app's cancel of a
+        live foreground notification, so detaching it would leave a stuck
+        countdown in the shade. This is the usual in-app end. It stops with
+        `stopSelf(startId)`, so a start queued behind the cancel (−15 s, or a
+        Log set during a rest) keeps the service alive. A plain `stopSelf()`
+        would destroy it before that start's `startForeground`, which crashes
+        the app.
     *   **Text.** The prepare notification uses `prepareText`.
 
 #### `apps/mobile/android/app/src/main/res/values/strings.xml` (Modify)
@@ -1472,20 +1537,31 @@ rest timer notifications on Android 8 and later."
     *   **In-app cues flag.** `private var inAppCuesActive = false`, set to
         false in `didInitializeImplicitFlutterEngine` before the timer channel
         is registered.
+    *   **Cancelled rests.** `private var cancelledTimerIds = Set<String>()`,
+        read and written on the main thread.
     *   **New channel methods:** `prepareCues` and `playCue` go through
         `TimerCueSounds`; `setInAppTimerCues {active}` sets the flag.
     *   **`scheduleTimer`:**
+        *   removes `timerId` from `cancelledTimerIds` first, before it waits
+            for the notification settings, and once its requests are added
+            removes them again if `timerId` is back in the set;
         *   adds the `getReadyIdentifier(timerId)` request
             (`"getReady:\(timerId)"`) at the deadline minus 10 s, with
             `GetReady.caf` and `getReadyText`, when `getReadyText` is present;
         *   the prepare request uses `prepareText`;
         *   a getReady or prepare request whose fire time is less than 0.5 s
-            away is not added (today's `max(1.0, …)` is removed for both).
-    *   **`cancelTimer`** removes the get-ready identifier with the others.
-    *   **`willPresent`,** for a timer notification: iOS 14 and later, `[]`
-        when `inAppCuesActive`, else `[.banner, .sound]`; iOS 13, `[]` or
-        `[.alert, .sound]`. The `#available` branch stays. Protocol reminders
-        are unchanged.
+            away is not added (today's `max(1.0, …)` is removed for both);
+        *   when the deadline has passed by the time the settings are read, it
+            adds no request, removes any pending ones for `timerId` and answers
+            `"granted"`; `max(1.0, remaining)` stays for the completion request
+            of a small positive remaining.
+    *   **`cancelTimer`** inserts `timerId` into `cancelledTimerIds` and removes
+        the get-ready identifier with the others.
+    *   **`willPresent`,** for a timer notification, on the main thread: iOS 14
+        and later, `[]` when `inAppCuesActive` or the notification's
+        `userInfo` `timerId` is in `cancelledTimerIds`, else
+        `[.banner, .sound]`; iOS 13, `[]` or `[.alert, .sound]`. The
+        `#available` branch stays. Protocol reminders are unchanged.
 
 #### `apps/mobile/ios/Runner/TimerCueSounds.swift` (Create)
 
@@ -1582,7 +1658,12 @@ rest timer notifications on Android 8 and later."
         *   sounds off plays nothing and still changes the strip;
         *   with the lifecycle at `paused`, no cue plays;
         *   with a second route pushed over the Training Screen, no cue plays,
-            and `setInAppTimerCues(false)` is sent;
+            and `setInAppTimerCues(false)` is sent; an end reached while covered
+            writes no `markAlertFired` and cancels no schedule until the route
+            is popped;
+        *   a current strip with no running row, while a rest runs in another
+            Workout, only ever sends `setInAppTimerCues(false)`, and a strip
+            whose row ends on its own route sends `false` after the end;
         *   kill-and-reopen at 0:05 plays countdown, ticks and end, but no
             getReady;
         *   reopen after 0:00 shows "Rest over" with the right elapsed time,
@@ -1595,14 +1676,17 @@ rest timer notifications on Android 8 and later."
 *   **`apps/mobile/test/features/training/timer_background_scheduler_test.dart`
     (Modify):** the platform map carries `getReadyText` and `prepareText`, has
     no `getReadyText` key when it is null, and `setInAppTimerCues` invokes the
-    method and swallows `MissingPluginException`.
+    method and swallows `MissingPluginException`. A cancel during the permission
+    wait stops that schedule being sent, only the latest schedule of a rest is
+    sent, and another rest's cancel changes nothing.
 *   **`apps/mobile/test/data/training_repositories_test.dart` (Modify):**
     remove the `markPrepareAlertFired` test.
 *   **Protocol test fakes (Modify):**
     `apps/mobile/test/features/protocols/protocol_reminder_scheduler_test.dart`,
     `protocol_reminder_tap_test.dart` and `protocols_day_view_test.dart`
     implement `TimerBackgroundScheduler`; each fake gains
-    `setInAppTimerCues` as a no-op.
+    `setInAppTimerCues` as a no-op. `_RecordingTimerBackgroundScheduler` in
+    `training_screen_test.dart` implements it too, and records the values.
 *   **`apps/mobile/test/performance/performance_budgets_test.dart`
     (Modify):** add a case that seeds a running rest row with 2 s left, which
     puts the strip in countdown, taps Log set and expects
@@ -1796,12 +1880,22 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
         open: the get-ready tone at 0:10 with the strip reading
         "Get ready · 0:10", beeps as the strip shows 0:03, 0:02 and 0:01, the
         end tone at 0:00 with "Rest over · +0:00", the music ducking and
-        coming back after each tone, and no heads-up or banner.
+        coming back after each tone, and no heads-up or banner. The end plays
+        once, with no banner or second tone after it. The shade holds no rest
+        notification after the end tone, nor after Stop during another rest.
+        Repeat with −15 s taps that take the rest to zero: the end plays once,
+        and no banner or tone follows about 1 s later. On iOS, repeat with the
+        first-ever rest of a fresh install, answering the permission prompt
+        with Allow after the rest is over: no banner or tone follows.
     3.  **CUJ 4.** The same rest with the app in the background: notifications
         "Get ready · *Exercise* · Set *k*", "*Exercise* · Set *k* in 0:03" and
         "Rest over", each with its tone. Reopening after 0:00 shows
-        "Rest over · +*m*:*ss*" and plays nothing.
+        "Rest over · +*m*:*ss*" and plays nothing. Log a set during a running
+        rest, then background the app: only the new rest's notifications post,
+        and the app does not crash.
     4.  **On Today during a rest:** the same three notifications, with sound.
+        The same on the Training Screen of another Workout, whose strip has no
+        running rest.
     5.  **Pull down the notification shade** during a rest on the Training
         Screen: the in-app cues still play, and no notification posts.
     6.  **Rest timer sounds off:** no tones and no vibration in the app; the
@@ -1823,8 +1917,9 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
     in earbuds ducks under each tone and comes back; with the phone face-up on
     a bench, each vibration is felt; with the app in the background, the 0:03
     and 0:00 notifications are still audible after the 0:10 one (Android 15's
-    notification cooldown).
+    notification cooldown); during a phone call, each tone still plays.
 *   **Not covered by automated tests**: whether audio ducks on a real device,
-    how strong the vibration feels, Android 15's notification cooldown, and
-    the channel migration on an update install. The steps above cover them by
-    hand.
+    how strong the vibration feels, Android 15's notification cooldown, the
+    channel migration on an update install, the foreground notification's
+    removal on cancel, and a tone during refused audio focus. The steps above
+    cover them by hand.

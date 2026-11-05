@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:drift/drift.dart'
     show ApplyInterceptor, QueryExecutor, QueryInterceptor, driftRuntimeOptions;
 import 'package:drift/native.dart' show NativeDatabase;
@@ -16,7 +17,9 @@ import 'package:perennia/features/catalog/repositories/exercise_catalog_reposito
 import 'package:perennia/features/catalog/widgets/exercise_catalog_picker.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
 import 'package:perennia/features/analytics/widgets/exercise_overview_screen.dart';
+import 'package:perennia/features/training/services/rest_cues.dart';
 import 'package:perennia/features/training/services/timer_background_scheduler.dart';
+import 'package:perennia/features/training/services/timer_cue_player.dart';
 import 'package:perennia/features/training/widgets/rest_strip.dart';
 import 'package:perennia/features/training/widgets/training_screen.dart';
 import 'package:perennia/l10n/l10n.dart';
@@ -36,6 +39,7 @@ void main() {
   });
 
   setUp(RestStrip.resetBackgroundAlertsNoticeForTesting);
+  setUp(RestStrip.resetCuesPreparedForTesting);
 
   group('training screen', () {
     late AppDatabase database;
@@ -790,10 +794,9 @@ void main() {
       await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
     });
 
-    _testTrainingScreen('fires foreground alert for an expired persisted timer',
-        (
-      tester,
-    ) async {
+    _testTrainingScreen(
+        'an expired persisted timer plays no cue and writes its end once',
+        (tester) async {
       final workoutExerciseId = await tester.runAsync(
         () => _createWorkoutExercise(
           repositories,
@@ -806,7 +809,10 @@ void main() {
       final workoutExercise = (await tester.runAsync(
         () => repositories.workoutExercises.getById(workoutExerciseId!),
       ))!;
-      final alert = _RecordingRestTimerAlert();
+      final player = _RecordingTimerCuePlayer();
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
       final timerId = (await tester.runAsync<String>(
         () => repositories.restTimers.start(
           RestTimerDraft(
@@ -822,16 +828,21 @@ void main() {
         tester,
         repositories,
         workoutExerciseId!,
-        restTimerAlert: alert,
+        timerCuePlayer: player,
+        timerBackgroundScheduler: scheduler,
+        enableRestTimerTicker: true,
       );
-      await _pumpFrames(tester);
+      await _waitForCancels(tester, scheduler, 1);
+      await tester.pump(const Duration(seconds: 2));
+      await _settleRepositoryWork(tester);
 
       final timer = await tester.runAsync(
         () => repositories.restTimers.getById(timerId),
       );
-      expect(alert.volumes, <double>[0.25]);
+      expect(player.played, isEmpty);
       expect(timer?.status, RestTimerStatus.expired);
       expect(timer?.alertFiredAt, isNotNull);
+      expect(scheduler.cancels, <String>[timerId]);
     });
 
     _testTrainingScreen(
@@ -930,9 +941,13 @@ void main() {
     });
 
     _testTrainingScreen(
-        'fires the 3-2-1 prepare cue exactly once inside the last 3 seconds',
+        'after a superset Log set the scheduled texts name the next member and '
+        'its next Set; opening another exercise sends no new schedule',
         (tester) async {
-      final workoutExerciseId = (await tester.runAsync(
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final benchWorkoutExerciseId = (await tester.runAsync(
         () => _createWorkoutExercise(
           repositories,
           name: 'Bench Press',
@@ -941,57 +956,94 @@ void main() {
           ),
         ),
       ))!;
-      final workoutExercise = (await tester.runAsync(
-        () => repositories.workoutExercises.getById(workoutExerciseId),
+      final benchWorkoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(benchWorkoutExerciseId),
       ))!;
-      final alert = _RecordingRestTimerAlert();
-      // 2s remaining => already inside the <= 3s prepare window on first tick,
-      // but NOT yet expired (end cue must not fire).
-      final timerId = (await tester.runAsync<String>(
-        () => repositories.restTimers.start(
-          RestTimerDraft(
-            workoutId: workoutExercise.workoutId,
-            duration: const Duration(seconds: 2),
-            alertVolume: 0.5,
+      final rowWorkoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExerciseInWorkout(
+          repositories,
+          workoutId: benchWorkoutExercise.workoutId,
+          name: 'Barbell Row',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
           ),
         ),
       ))!;
+      final rowWorkoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(rowWorkoutExerciseId),
+      ))!;
+      // Row already has a Performed Set, so its next Set is Set 2.
+      await tester.runAsync(
+        () => _createBenchSet(
+          repositories,
+          workoutId: rowWorkoutExercise.workoutId,
+          exerciseId: rowWorkoutExercise.exerciseId,
+          position: 0,
+          load: '60',
+          reps: '8',
+          isCompleted: true,
+        ),
+      );
+      await tester.runAsync(
+        () => repositories.exerciseGroups.create(
+          ExerciseGroupDraft(
+            workoutId: benchWorkoutExercise.workoutId,
+            name: 'A1 superset',
+            colorHex: '#2F6FED',
+            workoutExerciseIds: <String>[
+              benchWorkoutExerciseId,
+              rowWorkoutExerciseId,
+            ],
+          ),
+        ),
+      );
 
       await _pumpTrainingScreen(
         tester,
         repositories,
-        workoutExerciseId,
-        restTimerAlert: alert,
-        enableRestTimerTicker: true,
+        benchWorkoutExerciseId,
+        timerBackgroundScheduler: scheduler,
       );
-      await _pumpFrames(tester);
-      // Pump again: the prepare cue must NOT fire a second time (fire-once).
-      await _settleRepositoryWork(tester);
-      await _pumpFrames(tester);
 
-      expect(
-        alert.prepareVolumes,
-        <double>[0.5],
-        reason: 'The prepare cue fires exactly once, at the slider volume.',
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
       );
-      expect(
-        alert.volumes,
-        isEmpty,
-        reason: 'The end cue must not fire while the timer is still running.',
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
       );
-      final timer = await tester.runAsync(
-        () => repositories.restTimers.getById(timerId),
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _settleRepositoryWork(tester);
+      await _waitForFinder(tester, find.text('Barbell Row'));
+
+      final schedule = scheduler.schedules.single;
+      expect(schedule.title, 'Rest timer');
+      expect(schedule.countdownLabel, 'Rest');
+      expect(schedule.body, 'Rest over');
+      expect(schedule.getReadyText, 'Get ready · Barbell Row · Set 2');
+      expect(schedule.prepareText, 'Barbell Row · Set 2 in 0:03');
+
+      await tester.tap(find.byKey(TrainingScreen.navigationPanelButtonKey));
+      await _pumpDrawerAnimation(tester);
+      await tester.tap(
+        find.byKey(TrainingScreen.navigationItemKey(benchWorkoutExerciseId)),
       );
-      expect(timer?.prepareAlertFiredAt, isNotNull);
-      expect(timer?.status, RestTimerStatus.running);
+      await _pumpDrawerAnimation(tester);
+      await _settleRepositoryWork(tester);
+
+      expect(scheduler.schedules, hasLength(1));
 
       await _disposeWidgetTree(tester);
     });
 
     _testTrainingScreen(
-        'suppresses the prepare cue when timer sounds are turned off',
-        (tester) async {
-      final workoutExerciseId = (await tester.runAsync(
+        'the scheduled texts count this Log set when no other exercise has a '
+        'plan', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final benchWorkoutExerciseId = (await tester.runAsync(
         () => _createWorkoutExercise(
           repositories,
           name: 'Bench Press',
@@ -1000,41 +1052,679 @@ void main() {
           ),
         ),
       ))!;
-      final workoutExercise = (await tester.runAsync(
-        () => repositories.workoutExercises.getById(workoutExerciseId),
-      ))!;
-      final alert = _RecordingRestTimerAlert();
-      await tester.runAsync<String>(
-        () => repositories.restTimers.start(
-          RestTimerDraft(
-            workoutId: workoutExercise.workoutId,
-            duration: const Duration(seconds: 2),
-            alertVolume: 0.5,
+
+      await _pumpTrainingScreen(
+        tester,
+        repositories,
+        benchWorkoutExerciseId,
+        timerBackgroundScheduler: scheduler,
+      );
+
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _waitForSchedules(tester, scheduler, 1);
+
+      expect(
+        scheduler.schedules.single.prepareText,
+        'Bench Press · Set 2 in 0:03',
+      );
+
+      await _disposeWidgetTree(tester);
+    });
+
+    _testTrainingScreen(
+        'the scheduled texts name the next exercise with a plan when this one '
+        'has no Planned Set left', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+      final benchWorkoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExercise(
+          repositories,
+          name: 'Bench Press',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
           ),
+        ),
+      ))!;
+      final benchWorkoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(benchWorkoutExerciseId),
+      ))!;
+      final rowWorkoutExerciseId = (await tester.runAsync(
+        () => _createWorkoutExerciseInWorkout(
+          repositories,
+          workoutId: benchWorkoutExercise.workoutId,
+          name: 'Barbell Row',
+          type: ExerciseType(
+            const <DimensionId>[DimensionId.load, DimensionId.reps],
+          ),
+        ),
+      ))!;
+      final rowWorkoutExercise = (await tester.runAsync(
+        () => repositories.workoutExercises.getById(rowWorkoutExerciseId),
+      ))!;
+      await tester.runAsync(
+        () => _createBenchSet(
+          repositories,
+          workoutId: rowWorkoutExercise.workoutId,
+          exerciseId: rowWorkoutExercise.exerciseId,
+          position: 0,
+          load: '60',
+          reps: '8',
         ),
       );
 
       await _pumpTrainingScreen(
         tester,
         repositories,
-        workoutExerciseId,
-        restTimerAlert: alert,
-        enableRestTimerTicker: true,
-        settingsRepository: InMemorySettingsRepository(
-          AppSettings.defaults.copyWith(restTimerSoundsEnabled: false),
-        ),
+        benchWorkoutExerciseId,
+        timerBackgroundScheduler: scheduler,
       );
-      await _pumpFrames(tester);
-      await _settleRepositoryWork(tester);
-      await _pumpFrames(tester);
+
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await _waitForSchedules(tester, scheduler, 1);
 
       expect(
-        alert.prepareVolumes,
-        isEmpty,
-        reason: 'Toggle off => no prepare sound/haptic beyond visual.',
+        scheduler.schedules.single.prepareText,
+        'Barbell Row · Set 1 in 0:03',
       );
 
       await _disposeWidgetTree(tester);
+    });
+
+    group('rest phases and cues', () {
+      late String workoutExerciseId;
+      late String workoutId;
+      late _RecordingTimerCuePlayer player;
+      late _RecordingTimerBackgroundScheduler scheduler;
+
+      setUp(() {
+        player = _RecordingTimerCuePlayer();
+        scheduler = _RecordingTimerBackgroundScheduler(
+          TimerBackgroundPermissionStatus.granted,
+        );
+      });
+
+      /// A rest of [duration] with [remaining] left by the test's clock, and a
+      /// Training Screen open on it. Returns the rest's id and deadline.
+      Future<({String id, DateTime deadline})> openOnRest(
+        WidgetTester tester, {
+        required Duration duration,
+        required Duration remaining,
+        double alertVolume = 1,
+        SettingsRepository? settingsRepository,
+        TextScaler? textScaler,
+        Size surfaceSize = const Size(800, 1600),
+        bool liveSets = false,
+      }) async {
+        workoutExerciseId = (await tester.runAsync(
+          () => _createWorkoutExercise(
+            repositories,
+            name: 'Bench Press',
+            type: ExerciseType(
+              const <DimensionId>[DimensionId.load, DimensionId.reps],
+            ),
+          ),
+        ))!;
+        workoutId = (await tester.runAsync(
+          () => repositories.workoutExercises.getById(workoutExerciseId),
+        ))!
+            .workoutId;
+        // Inside `runAsync`, clock.now() is real time; rows must line up with
+        // the time `tester.pump` advances. The column stores whole seconds, so
+        // the deadline starts on one: up to 1 s more than [remaining] is left.
+        final exact = clock.now().toUtc().add(remaining);
+        final deadline = exact.add(
+          Duration(
+            microseconds:
+                -exact.microsecondsSinceEpoch % Duration.microsecondsPerSecond,
+          ),
+        );
+        final id = (await tester.runAsync(
+          () => repositories.restTimers.start(
+            RestTimerDraft(
+              workoutId: workoutId,
+              duration: duration,
+              alertVolume: alertVolume,
+            ),
+            now: deadline.subtract(duration),
+          ),
+        ))!;
+        await _pumpTrainingScreen(
+          tester,
+          repositories,
+          workoutExerciseId,
+          timerCuePlayer: player,
+          timerBackgroundScheduler: scheduler,
+          enableRestTimerTicker: true,
+          settingsRepository: settingsRepository,
+          textScaler: textScaler,
+          surfaceSize: surfaceSize,
+          liveSets: liveSets,
+        );
+        await _settleRepositoryWork(tester);
+        await _waitForFinder(tester, find.byKey(TrainingScreen.restStripKey));
+        return (id: id, deadline: deadline);
+      }
+
+      Finder richText(String text) => find.text(text, findRichText: true);
+
+      _testTrainingScreen(
+          "CUJ 3: the strip's texts at 0:10, 0:03 and 0:00, and the cue order",
+          (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(minutes: 2),
+          remaining: const Duration(seconds: 12),
+        );
+
+        await _pumpToRemaining(tester, rest.deadline, _s(11));
+        expect(find.text('Rest 0:11'), findsOneWidget);
+        expect(find.byKey(RestStrip.elapsedBarKey), findsOneWidget);
+        expect(player.played, isEmpty);
+
+        await _pumpToRemaining(tester, rest.deadline, _s(10));
+        expect(richText('Get ready · 0:10'), findsOneWidget);
+        expect(find.byKey(RestStrip.elapsedBarKey), findsNothing);
+        expect(player.played, <TimerCue>[TimerCue.getReady]);
+
+        await _pumpToRemaining(tester, rest.deadline, _s(3));
+        expect(richText('Get ready · 0:03'), findsOneWidget);
+        expect(
+            player.played, <TimerCue>[TimerCue.getReady, TimerCue.countdown]);
+
+        await _pumpToRemaining(tester, rest.deadline, _s(2));
+        expect(richText('Get ready · 0:02'), findsOneWidget);
+        await _pumpToRemaining(tester, rest.deadline, _s(1));
+        expect(richText('Get ready · 0:01'), findsOneWidget);
+
+        await _pumpToRemaining(tester, rest.deadline, Duration.zero);
+        expect(find.text('Rest over'), findsOneWidget);
+        expect(find.text('+0:00'), findsOneWidget);
+        expect(player.played, <TimerCue>[
+          TimerCue.getReady,
+          TimerCue.countdown,
+          TimerCue.tick,
+          TimerCue.tick,
+          TimerCue.end,
+        ]);
+
+        // The mark reads expired and keeps counting up, and plays nothing.
+        await _waitForCancels(tester, scheduler, 1);
+        await _pumpToRemaining(tester, rest.deadline, -_s(2));
+        expect(find.text('Rest over'), findsOneWidget);
+        expect(find.text('+0:02'), findsOneWidget);
+        expect(player.played, hasLength(5));
+        expect(scheduler.cancels, <String>[rest.id]);
+        expect(player.prepares, 1);
+      });
+
+      _testTrainingScreen(
+          'the digits read 0:03 when the countdown cue plays, at the volume of '
+          'the row, once', (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 5),
+          alertVolume: 0.5,
+        );
+
+        await _pumpToRemaining(
+          tester,
+          rest.deadline,
+          _s(3) + const Duration(milliseconds: 1),
+        );
+        expect(player.played, isEmpty);
+        expect(richText('Get ready · 0:04'), findsOneWidget);
+
+        await _pumpToRemaining(tester, rest.deadline, _s(3));
+        expect(player.played, <TimerCue>[TimerCue.countdown]);
+        expect(player.volumes, <double>[0.5]);
+        expect(richText('Get ready · 0:03'), findsOneWidget);
+
+        await _pumpToRemaining(
+          tester,
+          rest.deadline,
+          _s(2) + const Duration(milliseconds: 500),
+        );
+        expect(player.played, <TimerCue>[TimerCue.countdown]);
+        final timer = await tester.runAsync(
+          () => repositories.restTimers.getById(rest.id),
+        );
+        expect(timer?.status, RestTimerStatus.running);
+      });
+
+      _testTrainingScreen(
+          'sounds off plays nothing and still changes the strip',
+          (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 11),
+          settingsRepository: InMemorySettingsRepository(
+            AppSettings.defaults.copyWith(restTimerSoundsEnabled: false),
+          ),
+        );
+
+        await _pumpToRemaining(tester, rest.deadline, _s(10));
+        expect(richText('Get ready · 0:10'), findsOneWidget);
+        await _pumpToRemaining(tester, rest.deadline, _s(3));
+        expect(richText('Get ready · 0:03'), findsOneWidget);
+        await _pumpToRemaining(tester, rest.deadline, Duration.zero);
+        expect(find.text('Rest over'), findsOneWidget);
+        await _waitForCancels(tester, scheduler, 1);
+
+        expect(player.played, isEmpty);
+      });
+
+      _testTrainingScreen(
+          'with the lifecycle paused no cue plays and no end is written; '
+          'coming back writes it once', (tester) async {
+        final binding = tester.binding;
+        addTearDown(() {
+          // Only valid steps: a live AppLifecycleListener asserts on the rest.
+          if (binding.lifecycleState == AppLifecycleState.paused) {
+            binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+          }
+          if (binding.lifecycleState == AppLifecycleState.hidden) {
+            binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          }
+          binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        });
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 5),
+        );
+        await tester.pump(const Duration(seconds: 1));
+
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+
+        await tester.pump(const Duration(seconds: 7));
+        await _settleRepositoryWork(tester);
+        expect(player.played, isEmpty);
+        expect(scheduler.cancels, isEmpty);
+
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        await _waitForCancels(tester, scheduler, 1);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+
+        expect(scheduler.cancels, <String>[rest.id]);
+        expect(find.text('Rest over'), findsOneWidget);
+        expect(player.played, isEmpty);
+      });
+
+      _testTrainingScreen(
+          'kill and reopen at 0:05 plays the countdown, ticks and end, but no '
+          'get ready', (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 5),
+        );
+
+        await _pumpToRemaining(tester, rest.deadline, Duration.zero);
+
+        expect(player.played, <TimerCue>[
+          TimerCue.countdown,
+          TimerCue.tick,
+          TimerCue.tick,
+          TimerCue.end,
+        ]);
+      });
+
+      _testTrainingScreen(
+          'reopen after 0:00 shows Rest over with the right elapsed time, plays '
+          'no cue and writes its end once', (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: -8),
+        );
+        await _waitForCancels(tester, scheduler, 1);
+
+        expect(find.text('Rest over'), findsOneWidget);
+        await _pumpToRemaining(tester, rest.deadline, -_s(12));
+        expect(find.text('+0:12'), findsOneWidget);
+        await _pumpToRemaining(tester, rest.deadline, -_s(13));
+        expect(find.text('+0:13'), findsOneWidget);
+        expect(player.played, isEmpty);
+        expect(scheduler.cancels, <String>[rest.id]);
+
+        final entries = await tester.runAsync(
+          () => repositories.activityLog.listEntries(),
+        );
+        // The start and the mark.
+        expect(
+            entries!.where((entry) => entry.entityId == rest.id), hasLength(2));
+      });
+
+      _testTrainingScreen('Stop clears Rest over', (tester) async {
+        await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: -7),
+        );
+        await _waitForCancels(tester, scheduler, 1);
+        expect(find.text('Rest over'), findsOneWidget);
+
+        await tester.tap(find.byKey(TrainingScreen.restStripStopKey));
+        await _waitForCancels(tester, scheduler, 2);
+        await _waitForFinder(
+          tester,
+          find.byKey(TrainingScreen.restStripStartKey),
+        );
+
+        expect(find.text('Rest over'), findsNothing);
+        expect(player.played, isEmpty);
+      });
+
+      _testTrainingScreen(
+          'Log set with Rest after Off during Rest over returns to idle after '
+          'the confirmation', (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: -7),
+          liveSets: true,
+        );
+        await _waitForCancels(tester, scheduler, 1);
+        expect(find.text('Rest over'), findsOneWidget);
+
+        for (var step = 0; step < 8; step += 1) {
+          await tester.tap(find.byKey(TrainingScreen.restAfterDecrementKey));
+        }
+        await tester.pump();
+        expect(_restText(tester), 'Off');
+        await tester.enterText(
+          find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+          '100',
+        );
+        await tester.enterText(
+          find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+          '5',
+        );
+        await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+        await _waitForFinder(
+          tester,
+          find.byKey(TrainingScreen.saveSetConfirmationKey),
+        );
+        for (var settled = 0; settled < 5; settled += 1) {
+          await _settleRepositoryWork(tester);
+        }
+
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pump(const Duration(milliseconds: 200));
+
+        expect(find.byKey(TrainingScreen.restStripStartKey), findsOneWidget);
+        expect(find.text('Rest over'), findsNothing);
+        expect(
+          scheduler.cancels,
+          <String>[rest.id],
+          reason: 'Log set with Rest after Off leaves the old timer alone.',
+        );
+      });
+
+      _testTrainingScreen(
+          'a route over the screen: no cue, no end written, in-app cues off; '
+          'popping writes the end once', (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 6),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        expect(scheduler.inAppTimerCues, <bool>[true]);
+
+        unawaited(
+          Navigator.of(tester.element(find.byType(TrainingScreen))).push(
+            MaterialPageRoute<void>(
+              builder: (context) => const Scaffold(),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        await _pumpToRemaining(tester, rest.deadline, -_s(1));
+        await _settleRepositoryWork(tester);
+
+        expect(player.played, isEmpty);
+        expect(scheduler.inAppTimerCues, <bool>[true, false]);
+        expect(scheduler.cancels, isEmpty);
+        final covered = await tester.runAsync(
+          () => repositories.restTimers.getById(rest.id),
+        );
+        expect(covered?.status, RestTimerStatus.running);
+
+        Navigator.of(tester.element(find.byType(Scaffold).last)).pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump(const Duration(seconds: 1));
+        await _waitForCancels(tester, scheduler, 1);
+        await tester.pump(const Duration(seconds: 1));
+        await _settleRepositoryWork(tester);
+
+        expect(scheduler.cancels, <String>[rest.id]);
+        // True on the pop while the row still runs, false once its end is
+        // written.
+        expect(scheduler.inAppTimerCues, <bool>[true, false, true, false]);
+        expect(player.played, isEmpty);
+        final popped = await tester.runAsync(
+          () => repositories.restTimers.getById(rest.id),
+        );
+        expect(popped?.status, RestTimerStatus.expired);
+      });
+
+      _testTrainingScreen(
+          'a current strip with no rest leaves the cues of another Workout\'s '
+          'rest to native', (tester) async {
+        // The rest runs in another Workout, so this strip has no row.
+        final otherExerciseId = (await tester.runAsync(
+          () => _createWorkoutExercise(
+            repositories,
+            name: 'Squat',
+            type: ExerciseType(
+              const <DimensionId>[DimensionId.load, DimensionId.reps],
+            ),
+          ),
+        ))!;
+        final otherWorkoutId = (await tester.runAsync(
+          () => repositories.workoutExercises.getById(otherExerciseId),
+        ))!
+            .workoutId;
+        await tester.runAsync(
+          () => repositories.restTimers.start(
+            RestTimerDraft(
+              workoutId: otherWorkoutId,
+              duration: const Duration(seconds: 20),
+              alertVolume: 1,
+            ),
+            now: clock.now().toUtc(),
+          ),
+        );
+        workoutExerciseId = (await tester.runAsync(
+          () => _createWorkoutExercise(
+            repositories,
+            name: 'Bench Press',
+            type: ExerciseType(
+              const <DimensionId>[DimensionId.load, DimensionId.reps],
+            ),
+          ),
+        ))!;
+
+        await _pumpTrainingScreen(
+          tester,
+          repositories,
+          workoutExerciseId,
+          timerCuePlayer: player,
+          timerBackgroundScheduler: scheduler,
+          enableRestTimerTicker: true,
+        );
+        await _settleRepositoryWork(tester);
+        await _waitForFinder(tester, find.byKey(TrainingScreen.restStripKey));
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(scheduler.inAppTimerCues, isNotEmpty);
+        expect(scheduler.inAppTimerCues, everyElement(isFalse));
+      });
+
+      _testTrainingScreen(
+          'in-app cues go off when the running row ends, on the same route',
+          (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 4),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        expect(scheduler.inAppTimerCues, <bool>[true]);
+
+        await _pumpToRemaining(tester, rest.deadline, -_s(1));
+        await _waitForCancels(tester, scheduler, 1);
+        await tester.pump(const Duration(seconds: 1));
+        await _settleRepositoryWork(tester);
+
+        expect(scheduler.inAppTimerCues, <bool>[true, false]);
+        // iOS keeps an end notification that already fired silent by its
+        // cancel, once the claim is off: the cancel must get there first.
+        expect(
+          scheduler.cueCalls,
+          <String>['inAppCues:true', 'cancel:${rest.id}', 'inAppCues:false'],
+        );
+      });
+
+      _testTrainingScreen(
+          'a −15 s that reaches zero plays the end once and reads Rest over',
+          (tester) async {
+        await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 10),
+        );
+        await _waitForFinder(
+            tester, find.byKey(TrainingScreen.restStripStopKey));
+
+        await tester.tap(
+          find.byKey(TrainingScreen.restStripAdjustKey(-15)),
+        );
+        for (var settled = 0; settled < 5; settled += 1) {
+          await _settleRepositoryWork(tester);
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        await tester.pump(const Duration(seconds: 1));
+        await _settleRepositoryWork(tester);
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(find.text('Rest over'), findsOneWidget);
+        expect(
+          player.played.where((cue) => cue == TimerCue.end),
+          hasLength(1),
+        );
+      });
+
+      _testTrainingScreen(
+          'phase changes are announced once each, and never the digits',
+          (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 11),
+        );
+        // The first row sets the baseline.
+        expect(tester.takeAnnouncements(), isEmpty);
+
+        await _pumpToRemaining(tester, rest.deadline, _s(10));
+        await tester.pump();
+        await _pumpToRemaining(tester, rest.deadline, _s(3));
+        await _pumpToRemaining(tester, rest.deadline, _s(2));
+        await _pumpToRemaining(tester, rest.deadline, Duration.zero);
+        await tester.pump();
+        await _waitForCancels(tester, scheduler, 1);
+        await _pumpToRemaining(tester, rest.deadline, -_s(2));
+
+        expect(
+          tester.takeAnnouncements().map((entry) => entry.message),
+          <String>['Get ready', 'Rest over'],
+        );
+      });
+
+      _testTrainingScreen('the first row at Rest over announces nothing',
+          (tester) async {
+        await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: -7),
+        );
+        await _waitForCancels(tester, scheduler, 1);
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(find.text('Rest over'), findsOneWidget);
+        expect(tester.takeAnnouncements(), isEmpty);
+      });
+
+      _testTrainingScreen(
+          "the strip's height is stable across resting, get ready and over",
+          (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 11),
+        );
+        double height() =>
+            tester.getSize(find.byKey(TrainingScreen.restStripKey)).height;
+
+        await _pumpToRemaining(tester, rest.deadline, _s(10) + _s(1) ~/ 2);
+        expect(find.byKey(RestStrip.elapsedBarKey), findsOneWidget);
+        final resting = height();
+
+        await _pumpToRemaining(tester, rest.deadline, _s(10));
+        expect(richText('Get ready · 0:10'), findsOneWidget);
+        expect(height(), resting);
+
+        await _pumpToRemaining(tester, rest.deadline, Duration.zero);
+        expect(find.text('Rest over'), findsOneWidget);
+        expect(height(), resting);
+      });
+
+      _testTrainingScreen(
+          'at textScaler 2.0 on a 360 wide surface, get ready and over do not '
+          'overflow', (tester) async {
+        final rest = await openOnRest(
+          tester,
+          duration: const Duration(seconds: 20),
+          remaining: const Duration(seconds: 11),
+          textScaler: const TextScaler.linear(2),
+          surfaceSize: const Size(360, 1600),
+        );
+
+        await _pumpToRemaining(tester, rest.deadline, _s(10));
+        expect(richText('Get ready · 0:10'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        await _pumpToRemaining(tester, rest.deadline, Duration.zero);
+        expect(find.text('Rest over'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
     });
 
     _testTrainingScreen('saves comments RPE and alternating unilateral sides', (
@@ -2599,6 +3289,29 @@ void main() {
       expect(notice, findsNothing);
       expect(_restStripSeconds(tester), inInclusiveRange(110, 120));
       expect(scheduler.schedules, hasLength(3));
+    });
+
+    _testTrainingScreen(
+        "Log set during a running rest cancels that rest's schedule before "
+        'scheduling the new one', (tester) async {
+      final scheduler = _RecordingTimerBackgroundScheduler(
+        TimerBackgroundPermissionStatus.granted,
+      );
+
+      await logOneSet(tester, scheduler: scheduler);
+      final firstRest = scheduler.schedules.single.timerId;
+      expect(scheduler.scheduleCalls, <String>['schedule:$firstRest']);
+
+      await fillAndTapLogSet(tester);
+      await _settle(tester);
+
+      final secondRest = scheduler.schedules.last.timerId;
+      expect(secondRest, isNot(firstRest));
+      expect(scheduler.scheduleCalls, <String>[
+        'schedule:$firstRest',
+        'cancel:$firstRest',
+        'schedule:$secondRest',
+      ]);
     });
 
     _testTrainingScreen(
@@ -4504,7 +5217,7 @@ Future<void> _pumpTrainingScreen(
   Stream<List<LoggedSetRecord>>? setsStream,
   Stream<Set<String>>? recordSetIdsStream,
   bool useProductionRecordProvider = false,
-  RestTimerAlert? restTimerAlert,
+  TimerCuePlayer? timerCuePlayer,
   TimerBackgroundScheduler? timerBackgroundScheduler,
   SettingsRepository? settingsRepository,
   ThemeData? theme,
@@ -4544,8 +5257,8 @@ Future<void> _pumpTrainingScreen(
           exerciseCatalogRepositoryProvider.overrideWith(
             (ref) => catalogRepository,
           ),
-        if (restTimerAlert != null)
-          restTimerAlertProvider.overrideWith((ref) => restTimerAlert),
+        if (timerCuePlayer != null)
+          timerCuePlayerProvider.overrideWith((ref) => timerCuePlayer),
         if (timerBackgroundScheduler != null)
           timerBackgroundSchedulerProvider.overrideWith(
             (ref) => timerBackgroundScheduler,
@@ -4677,6 +5390,55 @@ Future<void> _settleRepositoryWork(WidgetTester tester) async {
   await tester.pump();
 }
 
+Duration _s(int seconds) => Duration(seconds: seconds);
+
+/// Advances the test's clock to the moment [remaining] before [deadline], and
+/// draws the frame for it. Negative [remaining] is past the deadline.
+Future<void> _pumpToRemaining(
+  WidgetTester tester,
+  DateTime deadline,
+  Duration remaining,
+) async {
+  final delta = deadline.subtract(remaining).difference(clock.now());
+  expect(delta.isNegative, isFalse, reason: 'The clock is already past that.');
+  await tester.pump(delta);
+  await tester.pump();
+}
+
+/// Waits for the strip to finish writing an end. Reading the row before that
+/// would wait forever: `tester.runAsync` pumps nothing, so the write's open
+/// transaction would never finish.
+Future<void> _waitForCancels(
+  WidgetTester tester,
+  _RecordingTimerBackgroundScheduler scheduler,
+  int count,
+) async {
+  for (var attempt = 0; attempt < 50; attempt += 1) {
+    await _settleRepositoryWork(tester);
+    if (scheduler.cancels.length >= count) {
+      await _settleRepositoryWork(tester);
+      return;
+    }
+  }
+  fail('Timed out waiting for $count cancels.');
+}
+
+/// Waits for Log set's work to reach its background schedule, which needs a
+/// pump between each of its database reads.
+Future<void> _waitForSchedules(
+  WidgetTester tester,
+  _RecordingTimerBackgroundScheduler scheduler,
+  int count,
+) async {
+  for (var attempt = 0; attempt < 50; attempt += 1) {
+    await _settleRepositoryWork(tester);
+    if (scheduler.schedules.length >= count) {
+      return;
+    }
+  }
+  fail('Timed out waiting for $count schedules.');
+}
+
 Future<void> _pumpDrawerAnimation(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
@@ -4692,18 +5454,20 @@ Future<void> _disposeWidgetTree(WidgetTester tester) async {
   await _pumpFrames(tester);
 }
 
-class _RecordingRestTimerAlert implements RestTimerAlert {
+class _RecordingTimerCuePlayer implements TimerCuePlayer {
+  final played = <TimerCue>[];
   final volumes = <double>[];
-  final prepareVolumes = <double>[];
+  var prepares = 0;
 
   @override
-  Future<void> fire(double volume) async {
-    volumes.add(volume);
+  Future<void> prepare() async {
+    prepares += 1;
   }
 
   @override
-  Future<void> firePrepare(double volume) async {
-    prepareVolumes.add(volume);
+  Future<void> play(TimerCue cue, {required double volume}) async {
+    played.add(cue);
+    volumes.add(volume);
   }
 }
 
@@ -4759,6 +5523,13 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
   final TimerBackgroundPermissionStatus status;
   final schedules = <TimerBackgroundSchedule>[];
   final cancels = <String>[];
+  final inAppTimerCues = <bool>[];
+
+  /// Schedules and cancels together, in the order native receives them.
+  final scheduleCalls = <String>[];
+
+  /// Cancels and in-app cue values together, in the order native receives them.
+  final cueCalls = <String>[];
 
   @override
   Future<TimerBackgroundPermissionStatus> requestPermissionIfNeeded() async {
@@ -4775,12 +5546,21 @@ class _RecordingTimerBackgroundScheduler implements TimerBackgroundScheduler {
     TimerBackgroundSchedule schedule,
   ) async {
     schedules.add(schedule);
+    scheduleCalls.add('schedule:${schedule.timerId}');
     return status;
   }
 
   @override
   Future<void> cancel(String timerId) async {
     cancels.add(timerId);
+    scheduleCalls.add('cancel:$timerId');
+    cueCalls.add('cancel:$timerId');
+  }
+
+  @override
+  Future<void> setInAppTimerCues(bool active) async {
+    inAppTimerCues.add(active);
+    cueCalls.add('inAppCues:$active');
   }
 }
 

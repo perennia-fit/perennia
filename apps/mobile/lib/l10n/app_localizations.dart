@@ -1927,6 +1927,55 @@ abstract class AppLocalizations {
   /// **'Alert volume'**
   String get trainingRestVolumeTitle;
 
+  /// The rest strip in the last 10 seconds of a rest longer than 15 seconds, with the remaining time as m:ss.
+  ///
+  /// In en, this message translates to:
+  /// **'Get ready · {time}'**
+  String trainingRestGetReady(String time);
+
+  /// No description provided for @trainingRestOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest over'**
+  String get trainingRestOver;
+
+  /// How long ago the rest ended, as m:ss, beside Rest over on the rest strip.
+  ///
+  /// In en, this message translates to:
+  /// **'+{time}'**
+  String trainingRestOverElapsed(String time);
+
+  /// No description provided for @trainingRestNotificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest timer'**
+  String get trainingRestNotificationTitle;
+
+  /// No description provided for @trainingRestNotificationCountdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest'**
+  String get trainingRestNotificationCountdown;
+
+  /// The notification 10 seconds before a rest ends, naming the Set that comes next.
+  ///
+  /// In en, this message translates to:
+  /// **'Get ready · {exercise} · Set {number}'**
+  String trainingRestNotificationGetReady(String exercise, int number);
+
+  /// The notification 3 seconds before a rest ends, naming the Set that comes next, with the time as m:ss.
+  ///
+  /// In en, this message translates to:
+  /// **'{exercise} · Set {number} in {time}'**
+  String trainingRestNotificationPrepare(
+      String exercise, int number, String time);
+
+  /// No description provided for @trainingRestNotificationOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest over'**
+  String get trainingRestNotificationOver;
+
   /// No description provided for @trainingPersonalRecordTooltip.
   ///
   /// In en, this message translates to:

@@ -1923,6 +1923,9 @@ class _BannerPermissions implements TimerBackgroundScheduler {
 
   @override
   Future<void> cancel(String timerId) async {}
+
+  @override
+  Future<void> setInAppTimerCues(bool active) async {}
 }
 
 class _BannerPlatform implements ProtocolReminderPlatform {
