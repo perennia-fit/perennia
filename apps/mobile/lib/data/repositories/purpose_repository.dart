@@ -27,16 +27,6 @@ class PurposeRepository {
     return rows.map(_purposeFromRow).toList(growable: false);
   }
 
-  /// Every Purpose, archived ones included, so the Compound editor can tell an
-  /// archived tag it keeps attached from a live one.
-  Stream<Map<String, PurposeRecord>> watchAllById() {
-    return _database.select(_database.purposes).watch().map(
-          (rows) => <String, PurposeRecord>{
-            for (final row in rows) row.id: _purposeFromRow(row),
-          },
-        );
-  }
-
   /// Creates a Purpose at the end of the user's order and returns its id.
   /// Throws [PurposeNameException] for an empty or duplicate name.
   Future<String> create(
@@ -170,9 +160,9 @@ class PurposeRepository {
   }
 
   /// Inserts the starter Purposes this device has never had, at the fixed seed
-  /// timestamp so a real edit on any device is always newer. Runs inside the
-  /// OTC seed transaction; a starter the user renamed or archived is left alone
-  /// because its row already exists.
+  /// timestamp so an edit made after that date on any device is newer. Runs
+  /// inside the OTC seed transaction; a starter the user renamed or archived is
+  /// left alone because its row already exists.
   Future<void> _seedStarterPurposes(WriteContext context) async {
     final existingIds = (await _database.select(_database.purposes).get())
         .map((row) => row.id)

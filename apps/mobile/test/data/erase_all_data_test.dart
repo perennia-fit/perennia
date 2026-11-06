@@ -153,7 +153,10 @@ void main() {
       final purposes = await repositories.protocols.purposes.listActive();
       expect(purposes, hasLength(6));
       expect(purposes.first.name, 'Rest');
-      expect(purposes.every((purpose) => purpose.isStarter), isTrue);
+      expect(
+        purposes.map((p) => p.id).toSet(),
+        starterPurposes.map((s) => s.id).toSet(),
+      );
     });
 
     test('records one Activity Log tombstone per erased row, in one batch',

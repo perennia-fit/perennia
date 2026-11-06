@@ -5606,9 +5606,6 @@ class ProtocolsRepository {
       actor: 'otc_purpose_seed',
     );
     return _database.transaction(() async {
-      final seedNames = <String, String>{
-        for (final seed in _otcSeedSource.load()) seed.id: seed.name,
-      };
       final candidateQuery = _database.select(_database.compounds)
         ..where(
           (row) =>
@@ -5622,6 +5619,9 @@ class ProtocolsRepository {
       if (candidates.isEmpty) {
         return;
       }
+      final seedNames = <String, String>{
+        for (final seed in _otcSeedSource.load()) seed.id: seed.name,
+      };
       final entries = await (_database.select(_database.activityLog)
             ..where(
               (row) =>

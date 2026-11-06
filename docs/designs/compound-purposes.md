@@ -1317,8 +1317,7 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Type / Scope**: domain records.
 *   **Proposed Changes**:
     *   **`PurposeRecord`:** `id`, `name`, `sortOrder`, `updatedAt`,
-        `deletedAt`, getter `isArchived`, and `isStarter` (its id is in
-        `starterPurposes`).
+        `deletedAt`.
     *   **`CompoundRecord`:** gains `purposeIds`, the stored list.
     *   **`CompoundScheduleOptionRecord`:** gains `purposeIds`, for the picker's
         row of a Compound it just created (file 33).
@@ -1348,8 +1347,8 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Type / Scope**: a repository, a `part of training_repositories.dart`,
     modelled on `focus_repository.dart`.
 *   **Proposed Changes**:
-    *   **Reads:** `watchActive()`, `listActive()` (ordered by `sortOrder`,
-        then name) and `watchAllById()`.
+    *   **Reads:** `watchActive()` and `listActive()` (ordered by `sortOrder`,
+        then name).
     *   **Writes:**
         *   `create(name)` appends at the end of the order;
         *   `rename(id, name)`, `reorder(List<String> ids)` and `archive(id)`.

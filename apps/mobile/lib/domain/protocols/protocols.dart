@@ -16,7 +16,6 @@
 library;
 
 import '../common/local_clock.dart';
-import 'compound_purposes.dart';
 import 'protocol_plan.dart';
 
 /// A frozen `Protocol Day` local date (YYYY-MM-DD). Mirrors `TrainingDayDate` /
@@ -713,12 +712,6 @@ class PurposeRecord {
   final int sortOrder;
   final DateTime updatedAt;
   final DateTime? deletedAt;
-
-  bool get isArchived => deletedAt != null;
-
-  /// Whether this is one of the seeded [starterPurposes], which the user may
-  /// still rename or archive.
-  bool get isStarter => starterPurposes.any((starter) => starter.id == id);
 }
 
 /// A lightweight active `Compound` picker/read option. This intentionally
