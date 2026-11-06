@@ -2887,9 +2887,9 @@
       }
     }
   },
-  "profileFieldSex": "Sex",
+  "profileFieldSex": "Sex used for default reference ranges",
   "@profileFieldSex": {
-    "description": "User Profile field label."
+    "description": "User Profile field label. It names the field's purpose, which is why the choices are Female, Male and Not set."
   },
   "profileFieldBirthYear": "Birth year",
   "@profileFieldBirthYear": {

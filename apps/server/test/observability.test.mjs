@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { DrizzleQueryError } from "drizzle-orm";
+
 import { createApp } from "../src/app.ts";
 import {
   createPrivacyLogger,
@@ -351,6 +353,130 @@ test("privacy logger strips the User Profile values of a logged agent write and 
   for (const value of ["1984", "Left knee", "Private note", "Right wrist"]) {
     assert.doesNotMatch(serialized, new RegExp(value), value);
   }
+});
+
+function profileQueryError() {
+  const cause = Object.assign(new Error("Key (text)=(Left knee) is invalid"), {
+    code: "23514",
+    constraint_name: "user_profile_sections_check",
+    detail: "Failing row contains (Left knee)",
+    where: "JSON data, line 1: Left knee"
+  });
+  return new DrizzleQueryError(
+    'insert into "user_profile_sections" values ($1)',
+    [
+      JSON.stringify({
+        section: "health_limitations",
+        values: { text: "Left knee" }
+      })
+    ],
+    cause
+  );
+}
+
+function assertNoQueryData(serialized) {
+  for (const value of ["Left knee", "Failed query", "health_limitations", "insert into"]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+}
+
+test("privacy logger keeps only codes of a failed query, never its params", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info() {},
+    error(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  logger.error({ userId: "user-1", error: profileQueryError() }, "request failed");
+
+  assert.deepEqual(logEvents[0].payload.error, {
+    type: "DrizzleQueryError",
+    message: "Database query failed.",
+    cause: {
+      type: "Error",
+      code: "23514",
+      constraint: "user_profile_sections_check"
+    }
+  });
+  assertNoQueryData(JSON.stringify(logEvents[0].payload));
+});
+
+test("a postgres.js error is treated as a failed query, with its hidden query", () => {
+  const error = Object.assign(new Error("Failing row contains (Left knee)"), {
+    code: "23514",
+    constraint_name: "user_profile_sections_check"
+  });
+  Object.defineProperty(error, "query", { value: "insert into x", enumerable: false });
+
+  const serialized = scrubObservabilityData({ error }).error;
+  assert.equal(serialized.message, "Database query failed.");
+  assert.equal(serialized.code, "23514");
+  assert.equal(serialized.constraint, "user_profile_sections_check");
+  assertNoQueryData(JSON.stringify(serialized));
+});
+
+test("a crash report of a failed query carries no query data", () => {
+  const sdk = createFakeSentrySdk();
+  const reporter = createSentryCrashReporterFromEnv(
+    {
+      SERVER_CRASH_REPORTING_ENABLED: "true",
+      SERVER_CRASH_REPORTING_DSN: "https://public@example.com/1"
+    },
+    { sdk }
+  );
+
+  reporter.captureException(profileQueryError(), {
+    correlationId: "corr-1",
+    method: "POST",
+    path: "/agent/profile/batch-write"
+  });
+
+  const { error } = sdk.capturedEvents[0].extra;
+  assert.equal(error.type, "DrizzleQueryError");
+  assert.equal(error.cause.code, "23514");
+  assertNoQueryData(JSON.stringify(error));
+});
+
+test("Sentry beforeSend keeps an event's exceptions, without their messages", () => {
+  const sdk = createFakeSentrySdk();
+  createSentryCrashReporterFromEnv(
+    {
+      SERVER_CRASH_REPORTING_ENABLED: "true",
+      SERVER_CRASH_REPORTING_DSN: "https://public@example.com/1"
+    },
+    { sdk }
+  );
+
+  const frames = [{ filename: "app.js", lineno: 3 }];
+  const event = sdk.initCalls[0].beforeSend({
+    exception: {
+      values: [
+        {
+          type: "DrizzleQueryError",
+          value: "Failed query: params: Left knee",
+          stacktrace: { frames }
+        }
+      ]
+    },
+    extra: { values: { text: "Right wrist" } }
+  });
+
+  assert.deepEqual(event.exception.values, [
+    {
+      type: "DrizzleQueryError",
+      value: "[Filtered]",
+      stacktrace: { frames }
+    }
+  ]);
+  assert.equal(event.extra.values, "[Filtered]");
+
+  // The exemption is the event's own path: `values` stays filtered elsewhere.
+  assert.equal(
+    scrubObservabilityData({ exception: { values: ["Left knee"] } }).exception.values,
+    "[Filtered]"
+  );
 });
 
 test("Sentry crash reporting is opt-in and requires a DSN", () => {

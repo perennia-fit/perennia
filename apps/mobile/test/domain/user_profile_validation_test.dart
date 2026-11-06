@@ -435,10 +435,11 @@ void main() {
       );
     });
 
-    test('an unknown equipment id is kept', () {
+    test('an unknown equipment id is kept, and one the rules reject is dropped',
+        () {
       expect(
         TrainingSetupValues.fromJson(<String, Object?>{
-          'equipment': <Object?>['rower', '', 7],
+          'equipment': <Object?>['rower', 'rower', '', 'x' * 65, 7],
         }).equipment,
         <String>['rower'],
       );

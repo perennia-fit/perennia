@@ -4127,7 +4127,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get profileFieldSex => 'Sex';
+  String get profileFieldSex => 'Sex used for default reference ranges';
 
   @override
   String get profileFieldBirthYear => 'Birth year';

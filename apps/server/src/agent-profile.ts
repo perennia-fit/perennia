@@ -1,5 +1,6 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { and, asc, eq, isNull } from "drizzle-orm";
 
 import {
@@ -7,7 +8,6 @@ import {
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
 import {
-  USER_PROFILE_VALIDATION_LIMITS,
   validateUserProfileSection,
   type UserProfileSectionName,
   type UserProfileValidationIssue
@@ -521,7 +521,15 @@ export function createDrizzleAgentProfileStore(
           errors.push(...toAgentIssues(agent, validation.errors));
           warnings.push(...toAgentIssues(agent, validation.warnings));
 
-          if (existing === undefined && isSectionUnset(wire, merged)) {
+          // A write that says nothing new stays off the record, as a device Save
+          // does: a new Batch would make undo of the earlier one read as "changed
+          // since" although no value changed. It is still validated above, so a
+          // stored value the rules reject is reported and warnings are returned.
+          if (
+            existing === undefined
+              ? isSectionUnset(wire, merged)
+              : isDeepStrictEqual(merged, existing.values)
+          ) {
             continue;
           }
 
@@ -670,7 +678,7 @@ function readSectionValues(
     case "training_setup":
       return {
         ...raw,
-        equipment: readEquipment(raw.equipment),
+        equipment: readStringList(raw.equipment),
         days_per_week: readInteger(raw.days_per_week),
         session_minutes: readInteger(raw.session_minutes)
       };
@@ -711,26 +719,6 @@ function readStringList(value: unknown): string[] | null {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : null;
-}
-
-/**
- * An entry the validator would reject is dropped, as it is on the device, so a
- * stray one in a stored row can't block a later write of Days per week or Session
- * length. An unknown id is kept: CONTEXT.md allows those for Equipment.
- */
-function readEquipment(value: unknown): string[] | null {
-  const ids = readStringList(value);
-  return ids === null
-    ? null
-    : [
-        ...new Set(
-          ids.filter(
-            (id) =>
-              id.length > 0 &&
-              id.length <= USER_PROFILE_VALIDATION_LIMITS.equipmentIdMaxLength
-          )
-        )
-      ];
 }
 
 function readLevels(

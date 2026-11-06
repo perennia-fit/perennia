@@ -366,9 +366,12 @@ Rules for the values:
     both apply this before validating, so `none: true` with text cannot be stored.
 *   **Tolerant reads.** Push does no domain validation, so a stored row can hold anything.
     *   On the device, a field of the wrong JSON type reads as unset, and an unknown enum entry
-        is dropped from the typed getters.
-    *   In the agent read, a field of the wrong JSON type reads as `null`, and unknown string
-        ids are kept.
+        is dropped from the typed getters. So is an Equipment id the rules reject (empty, over
+        64 characters, or a duplicate), because the user couldn't see or fix what blocked their
+        Save of Days per week. An unknown Equipment id within the rules is kept.
+    *   In the agent read, a field of the wrong JSON type reads as `null`, a non-string list
+        entry is dropped, and every string id is kept, including one the rules reject, so the
+        agent sees it and the merge keeps it (see Agent surface, Validation).
     *   Neither read throws, and merges run over the tolerantly read values.
 
 **Save semantics.** One rule holds on the device and in the agent write:
@@ -377,6 +380,9 @@ Rules for the values:
     the whole list.
 *   A section with no row is *unset*. A save that would create a row with every field `null` (or
     `none: false` and `text: null`) creates nothing.
+*   A save that changes nothing on an existing row writes nothing: `updated_at` stays, and there
+    is no Activity Log entry or Sync Nudge. Otherwise a retry would make undo of the earlier
+    Batch read as changed since, although no value changed.
 *   Once a row exists, clearing every field keeps the row, with all fields unset. The user never
     deletes the record, only empties it.
 *   The **None** choice on the Profile screen writes `[]` or `none: true`. Selecting nothing
@@ -541,13 +547,16 @@ section values above.
         agent clears or corrects it in the same write. Only a push can store such a value. The
         merge never drops it, because that would erase a value the write didn't name.
     *   A section given with no fields names nothing: it is not merged, validated or written.
+    *   A section whose merged values equal its tolerantly read values is validated but not
+        written (see Save semantics). Its warnings are returned. If no section changed, there is
+        no Batch, so sending the same key again runs as a new write, not a replay.
     *   Otherwise the write applies, and the 200 response is `{ accepted: true, duplicate,
         idempotencyKey, batchId, serverClock, profile, warnings }`. `profile` is the read shape
         after the write. Each warning is `{ section, field, rule, message }`.
     *   A replay of the same `idempotencyKey` returns the same envelope with `duplicate: true`.
         On a replay, `profile` is the current read shape and `warnings` are recomputed by
         validating the after-images of the Batch's Activity Log entries. Nothing stores the
-        original response.
+        original response, so a section the first write left unchanged returns no warnings.
     *   When the store is unavailable, the route returns 503 with code
         `agent_profile_unavailable`, following `agent_settings_unavailable`.
 *   **Contract diff:** two new operations and their schemas, and a new `user_profile_sections`
@@ -643,7 +652,16 @@ is approved: if it needs a change, the change is made in this spec, in the same 
         `apps/server/src/observability.ts`, in a commented block like the Protocols one.
         `shouldFilterKey` replaces the whole subtree under a filtered key, and `payload`,
         `changes`, `beforeimage` and `afterimage` are already filtered, so sync payloads and
-        Activity Log images are covered today. The agent route bodies are the only new carriers.
+        Activity Log images are covered today.
+    *   The agent route bodies are one new carrier. A failed query is the other: Drizzle's
+        `DrizzleQueryError` puts the bound params, and so the section values, into `message` and
+        `stack`, and the scrubber filters by key only. `serializeErrorForObservability`, which
+        the logger and Sentry both use, therefore reduces any error with `query`, `params` or
+        `parameters` to its type, a fixed message, and the `code` and constraint name of the
+        error and its `cause`.
+    *   Sentry keeps an event's exceptions under `exception.values`, so `beforeSend` exempts that
+        one path from the `values` filter and scrubs its items. An item's `value`, the message,
+        stays filtered.
     *   On the device, `client_crash_reporting.dart` already replaces every exception value with
         `filteredCrashValue` and keeps only allow-listed breadcrumb keys, so it needs no change.
     *   Logs record only ids and section names.
@@ -1354,7 +1372,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
             reject;
         4.  in one transaction, updates the newest row in place or inserts a row with a random
             UUID, and appends one Activity Log Batch with before and after images and actor
-            `agent`;
+            `agent`, for each section whose merged values differ from its current values;
         5.  returns the applied response with `warnings`.
 *   **File 33.** Build the profile store next to the settings store, pass it to `createApp` and
     to `AgentMcpServerOptions`, and re-export `validateUserProfileSection` and
@@ -1397,6 +1415,11 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   a strict-schema 400 for an unknown field and for `birthYear: "1990"`;
     *   a hard reject returns 422 and writes nothing;
     *   a soft warning (birth year 1915) applies and returns the warning;
+    *   a stored Equipment id the rules reject reads back as stored, and blocks a write of its
+        section with a 422 naming `equipment`;
+    *   re-sending the same fields adds no Batch and no nudge, leaves `updated_at` alone, and
+        undo of the first Batch still applies;
+    *   a write the database refuses returns 500, and the logged error holds no value;
     *   an idempotent replay returns `duplicate: true` and appends no Batch;
     *   newest-per-section read when two rows exist;
     *   undo, and undo of the whole Batch refused after an intervening change;
@@ -1409,7 +1432,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     devices editing one section converge on the newer row (CUJ 5 shape).
 *   **File 46:** add the two tool names to the expected list, and assert that
     `agent_list_activity` returns redacted values for a Health & limitations change.
-*   **File 47:** assert that `sections` and `values` are scrubbed.
+*   **File 47:** assert that `sections` and `values` are scrubbed, that a real
+    `DrizzleQueryError` holding a profile payload reaches the logger and Sentry with no query
+    text or params, and that `beforeSend` keeps `exception.values` with each message filtered.
 *   **File 48:** assert that `user_profile_sections` is empty for the user after purge.
 *   **File 49** (in-memory SQLite):
     *   save and watch; unset versus none; clear a field;

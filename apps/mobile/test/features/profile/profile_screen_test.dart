@@ -276,7 +276,10 @@ void main() {
       });
       await pumpScreen(tester);
 
-      expect(find.text('Sex: Female'), findsOneWidget);
+      expect(
+        find.text('Sex used for default reference ranges: Female'),
+        findsOneWidget,
+      );
       expect(find.text('Birth year: 1990'), findsOneWidget);
       expect(find.text('Height: 170.5 cm'), findsOneWidget);
       expect(find.text('None'), findsOneWidget);
@@ -666,6 +669,22 @@ void main() {
       final values = await stored(tester, UserProfileSection.aboutYou);
       expect(values!['sex'], 'female');
       expect(values['height'], <String, Object?>{'value': 170.5, 'unit': 'cm'});
+      await disposeScreen(tester);
+    });
+
+    testWidgets('the sex field is labelled for its purpose', (tester) async {
+      await pumpScreen(tester);
+      await openEditor(tester, UserProfileSection.aboutYou);
+
+      const label = 'Sex used for default reference ranges';
+      expect(find.text(label), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.byKey(AboutYouFields.sexKey),
+          matching: find.bySemanticsLabel(label),
+        ),
+        findsOneWidget,
+      );
       await disposeScreen(tester);
     });
 

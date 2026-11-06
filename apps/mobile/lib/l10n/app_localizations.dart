@@ -6466,10 +6466,10 @@ abstract class AppLocalizations {
   /// **'{label}: {value}'**
   String profileFieldValue(String label, String value);
 
-  /// User Profile field label.
+  /// User Profile field label. It names the field's purpose, which is why the choices are Female, Male and Not set.
   ///
   /// In en, this message translates to:
-  /// **'Sex'**
+  /// **'Sex used for default reference ranges'**
   String get profileFieldSex;
 
   /// User Profile field label.

@@ -38,9 +38,15 @@ function profileTest(name, body) {
     const database = createDatabaseClient(databaseUrl);
     const userId = `agent-profile-user-${randomUUID()}`;
     const nudges = [];
+    const errorLogs = [];
     const sessionToken = `session-${randomUUID()}`;
     const app = createApp({
-      logger: { info() {}, error() {} },
+      logger: {
+        info() {},
+        error(payload, message) {
+          errorLogs.push({ payload, message });
+        }
+      },
       agentApiKeyStore: createAgentKeyStore(userId),
       agentProfileStore: createDrizzleAgentProfileStore(database.db),
       agentActivityStore: createDrizzleAgentActivityStore(database.db),
@@ -65,7 +71,7 @@ function profileTest(name, body) {
         userId,
         expiresAt: new Date("2099-01-01T00:00:00.000Z")
       });
-      await body({ app, database, userId, nudges, sessionToken });
+      await body({ app, database, userId, nudges, sessionToken, errorLogs });
     } finally {
       await database.close();
     }
@@ -305,6 +311,50 @@ profileTest(
 );
 
 profileTest(
+  "a stored Equipment id the rules reject blocks a write of its section, and the merge keeps it",
+  async ({ app, sessionToken, database, userId }) => {
+    const equipment = ["barbell", "barbell", "x".repeat(65), "future_gear"];
+    await pushSection(app, sessionToken, randomUUID(), "training_setup", {
+      equipment,
+      days_per_week: 3,
+      session_minutes: null
+    });
+    assert.deepEqual(
+      (await readSections(app)).trainingSetup.values.equipment,
+      equipment
+    );
+
+    const blocked = await write(app, { trainingSetup: { daysPerWeek: 4 } });
+    assert.equal(blocked.status, 422);
+    assert.deepEqual(
+      (await blocked.json()).errors.map(({ section, field, rule }) => [
+        section,
+        field,
+        rule
+      ]),
+      [
+        ["trainingSetup", "equipment", "equipment.invalid"],
+        ["trainingSetup", "equipment", "equipment.duplicate"]
+      ]
+    );
+    assert.equal(await countBatches(database, userId), 0);
+    const [row] = await sectionRows(database, userId, "training_setup");
+    assert.deepEqual(storedJson(row.payload).values.equipment, equipment);
+
+    await assertOk(
+      write(app, {
+        trainingSetup: { equipment: ["future_gear"], daysPerWeek: 4 }
+      })
+    );
+    assert.deepEqual((await readSections(app)).trainingSetup.values, {
+      equipment: ["future_gear"],
+      daysPerWeek: 4,
+      sessionMinutes: null
+    });
+  }
+);
+
+profileTest(
   "a soft warning applies, and is returned in camelCase with the message",
   async ({ app }) => {
     const birthYear = year - 111;
@@ -378,6 +428,92 @@ profileTest(
     assert.equal(await countRows(database, userId), 0);
     assert.equal(await countBatches(database, userId), 0);
     assert.equal(nudges.length, 0);
+  }
+);
+
+profileTest(
+  "re-sending the same fields adds no Batch and no nudge, and undo of the first Batch still applies",
+  async ({ app, database, userId, nudges }) => {
+    const first = await assertOk(
+      write(app, {
+        trainingGoals: { goals: ["strength"] },
+        aboutYou: { birthYear: year - 111 }
+      })
+    );
+    const before = await sectionRows(database, userId, "training_goals");
+    assert.equal(nudges.length, 1);
+
+    const again = await assertOk(
+      write(app, {
+        trainingGoals: { goals: ["strength"] },
+        aboutYou: { birthYear: year - 111 }
+      })
+    );
+    assert.equal(again.duplicate, false);
+    assert.equal(again.warnings.length, 1, "warnings are still returned");
+    assert.deepEqual(again.profile, first.profile);
+    assert.equal(await countBatches(database, userId), 1);
+    assert.equal(nudges.length, 1, "nothing changed, so nothing to nudge");
+    assert.deepEqual(
+      await sectionRows(database, userId, "training_goals"),
+      before,
+      "the row and its clock did not move"
+    );
+
+    // One changed section beside an unchanged one writes only the changed one.
+    const mixed = await assertOk(
+      write(app, {
+        trainingGoals: { goals: ["strength"] },
+        generalNotes: { text: "Prefers mornings" }
+      })
+    );
+    assert.deepEqual(
+      (await listProfileActivity(app))
+        .find((batch) => batch.batchId === mixed.batchId)
+        .entries.map((entry) => entry.afterImage.section),
+      ["general_notes"]
+    );
+    assert.equal(await countBatches(database, userId), 2);
+
+    const undo = await postUndo(app, first.batchId);
+    assert.equal(undo.status, 200);
+    assert.equal((await undo.json()).applied, true);
+    assert.equal((await readSections(app)).trainingGoals, null);
+  }
+);
+
+profileTest(
+  "clearing an already all-unset row adds no Batch",
+  async ({ app, database, userId, nudges }) => {
+    await assertOk(write(app, { aboutYou: { sex: "female" } }));
+    await assertOk(write(app, { aboutYou: { sex: null } }));
+    assert.equal(await countBatches(database, userId), 2);
+    assert.equal(nudges.length, 2);
+
+    await assertOk(write(app, { aboutYou: { sex: null } }));
+    assert.equal(await countBatches(database, userId), 2);
+    assert.equal(nudges.length, 2);
+  }
+);
+
+profileTest(
+  "a write the database refuses logs no value",
+  async ({ app, errorLogs }) => {
+    // Postgres refuses NUL in jsonb, after the schema and the validator accept it.
+    const response = await write(app, {
+      healthLimitations: { text: "HIVSECRET meds\u0000" }
+    });
+    assert.equal(response.status, 500);
+
+    const failure = errorLogs.find((log) => log.message === "request failed");
+    assert.ok(failure, "the failure is logged");
+    assert.equal(failure.payload.error.message, "Database query failed.");
+    assert.equal(failure.payload.error.type, "DrizzleQueryError");
+    assert.equal(failure.payload.error.cause.type, "PostgresError");
+    const serialized = JSON.stringify(failure.payload);
+    assert.doesNotMatch(serialized, /HIVSECRET/);
+    assert.doesNotMatch(serialized, /Failed query/);
+    assert.doesNotMatch(serialized, /health_limitations/);
   }
 );
 
@@ -480,7 +616,13 @@ profileTest(
       { focusId: "a", level: "beginner" }
     ]);
     assert.deepEqual(sections.trainingSetup.values, {
-      equipment: ["barbell", "future_gear"],
+      equipment: [
+        "barbell",
+        "barbell",
+        "",
+        "x".repeat(65),
+        "future_gear"
+      ],
       daysPerWeek: null,
       sessionMinutes: null
     });
@@ -492,7 +634,6 @@ profileTest(
 
     // A later write merges over those reads, without tripping on them.
     await assertOk(write(app, { aboutYou: { birthYear: 1990 } }));
-    await assertOk(write(app, { trainingSetup: { daysPerWeek: 4 } }));
     assert.equal((await readSections(app)).aboutYou.values.birthYear, 1990);
   }
 );
