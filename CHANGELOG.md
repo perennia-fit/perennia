@@ -11,6 +11,7 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Added
 
+- Optional first-open onboarding, skippable from its first screen.
 - Profile under Account & app, with agent read and write (`read-profile`,
   `update-profile`). Upgrade a Self-Hosted Deployment before the app.
 - **Agents can list Meal Types** (`listAgentMealTypes`,

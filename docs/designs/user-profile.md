@@ -1,7 +1,7 @@
 # User Profile and First-Open Onboarding
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review
+*   **Status:** Current
 *   **Date:** 2026-11-04
 
 Read with: [AGENTS.md](../../AGENTS.md) (invariants and conventions),
@@ -1542,7 +1542,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   Every screen has **Skip all** in the app bar, and **Skip this** and **Next** at the
         bottom. Screen 3's **Next** reads **Done**.
     *   Screen 1 has the **Already use Perennia? Sign in** link.
-    *   The disclosure line for the current mode sits in the footer.
+    *   The screen title sits at the top of the scrolling body, and the back arrow (screens 2
+        and 3) in the app bar.
+    *   The disclosure line for the current mode sits in the footer, at the end of the scrolling
+        content: pinned, it would squeeze the fields at 200% text.
     *   Nothing asks for an OS permission.
 *   **File 5.** `OnboardingLauncher` wraps `HomeScreen`. On its first frame it reads
     `onboardingGateProvider.future`. If the result is true, it pushes `OnboardingFlow` as a
@@ -1573,8 +1576,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     false`; `AppSettings.defaults` is `true`; the value round-trips.
 *   **File 11.** Replace the "No onboarding wizards" bullet with the text given under Repository
     doc changes.
-*   **File 12.** Add the onboarding screen component: **Skip all** in the app bar, the bottom
-    action row (**Skip this**, **Next**), and the footer disclosure line.
+*   **File 12.** Add the onboarding screen component: **Skip all** in the app bar, the screen
+    title at the top of the scrolling body, the bottom action row (**Skip this**, **Next**, which
+    reads **Done** on the last screen), and the footer disclosure line at the end of the scrolling
+    content. Extend the disclosure line component with the footer placement on onboarding.
 *   **File 13.** Added: "Optional first-open onboarding, skippable from its first screen."
 *   **Files 14 and 15.** Set this spec's Status, and its SITEMAP row, to Current.
 
