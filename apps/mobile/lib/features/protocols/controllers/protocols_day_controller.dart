@@ -296,11 +296,13 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   ///
   /// It is also where a signed-out device runs the seed tag backfill
   /// (docs/designs/compound-purposes.md, D3). A signed-in device must not run
-  /// it here: `SyncRepository` runs it at the end of each successful Sync Run,
-  /// so it sees the edits other devices made first. A signed-out device tags
-  /// only rows that never synced, one second past each row's own stamp, so the
-  /// write can't beat an edit made elsewhere: one that has signed out still
-  /// holds rows with a server copy, and those wait for a signed-in Sync Run.
+  /// it here: `RepositorySyncCycleRunner` runs it through `SyncCycleRepository`
+  /// after each Sync Run's pull has drained, before that run's final push, so
+  /// it sees the edits other devices made first and the same run pushes what it
+  /// wrote. A signed-out device tags only rows that never synced, one second
+  /// past each row's own stamp, so the write can't beat an edit made after this
+  /// device seeded: one that has signed out still holds rows with a server
+  /// copy, and those wait for a signed-in Sync Run.
   /// [ProtocolsRepository] has no auth, so the rule lives in this controller. If
   /// the auth read fails the backfill is skipped, because tagging before a pull
   /// could overwrite an edit made elsewhere and the next open retries.

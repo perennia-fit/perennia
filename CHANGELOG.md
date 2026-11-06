@@ -88,7 +88,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Fixed
 
-- **A second device's seed no longer overrides a renamed built-in Compound.**
+- **A second device's seed no longer overrides a built-in Compound renamed after
+  24 October 2026.**
 - **An Agent write no longer un-archives a Meal, drops Food Entry import
   keys, or moves an entry to another Meal.**
 - **`batchWriteAgentMeal` rejects a malformed timestamp with a 400.**

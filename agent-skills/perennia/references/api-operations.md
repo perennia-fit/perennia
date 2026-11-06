@@ -726,6 +726,24 @@ keep the stored list; `[]` clears it. An id that isn't an active Purpose refuses
 the batch with `purpose_not_found`, so drop an archived id read back from
 `list-compounds`, or omit `purposeIds`.
 
+```json
+{
+  "idempotencyKey": "stable-compound-batch-key",
+  "compounds": [
+    {
+      "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d011",
+      "name": "Creatine Monohydrate",
+      "defaultUnit": "gram",
+      "defaultRoute": "oral",
+      "strength": { "value": 5, "massUnit": "gram", "perUnit": "unit" },
+      "purposeIds": ["019200ff-0000-7000-8000-000000000103"],
+      "updatedAt": "2026-06-24T05:00:00.000Z",
+      "deletedAt": null
+    }
+  ]
+}
+```
+
 ## Purpose Write Shape
 
 A Purpose is a label for why the user takes a Compound. `list-purposes` returns
@@ -754,23 +772,8 @@ leaves: an empty name refuses the batch with `purpose_name_required`, and the
 name of another active Purpose, in any case, with `duplicate_purpose_name`. An
 archived Purpose's name is free to reuse. Archiving never touches a Compound: its
 tags keep the id. Undo through the Activity Log restores a Purpose.
-
-```json
-{
-  "idempotencyKey": "stable-compound-batch-key",
-  "compounds": [
-    {
-      "id": "018f6a90-6d7f-7d63-bfc1-6f1025e0d011",
-      "name": "Creatine Monohydrate",
-      "defaultUnit": "gram",
-      "defaultRoute": "oral",
-      "strength": { "value": 5, "massUnit": "gram", "perUnit": "unit" },
-      "updatedAt": "2026-06-24T05:00:00.000Z",
-      "deletedAt": null
-    }
-  ]
-}
-```
+Undo doesn't check names, so it can leave two active Purposes with one name;
+rename or archive one to resolve it.
 
 ## Protocol Write Shape
 

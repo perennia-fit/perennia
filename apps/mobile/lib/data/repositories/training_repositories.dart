@@ -5584,10 +5584,11 @@ class ProtocolsRepository {
   /// a `manual` entry, so it stays empty, and Erase all data keeps the Activity
   /// Log, so that survives an Erase too.
   ///
-  /// Each row gets a fresh `updatedAt` and an entry with actor
-  /// `otc_purpose_seed`, so the change syncs and can be undone. A fresh install
-  /// inserts the rows tagged and this does nothing. It is cheap (six rows, one
-  /// Activity Log query) and does nothing once every row is touched.
+  /// Each row gets a new `updatedAt` (the current time, or as [onlyNeverSynced]
+  /// says) and an entry with actor `otc_purpose_seed`, so the change syncs and
+  /// can be undone. A fresh install inserts the rows tagged and this does
+  /// nothing. It is cheap (six rows, one Activity Log query) and does nothing
+  /// once every row is touched.
   ///
   /// [onlyNeverSynced] is the signed-out call. A signed-out device can't see
   /// edits made elsewhere, and a Sync Run pushes before it pulls, so a fresh
