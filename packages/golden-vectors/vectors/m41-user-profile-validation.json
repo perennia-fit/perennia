@@ -169,6 +169,12 @@
       "expected": {"accepted":false,"errorRules":["height.unit"],"warningRules":[]}
     },
     {
+      "name": "height-bad-value-bad-unit-reports-unit",
+      "note": "A value in an unknown unit can't be compared to the limits, so only the unit is reported.",
+      "input": {"referenceYear":2026,"section":"about_you","values":{"sex":null,"birth_year":null,"height":{"value":0,"unit":"ft"}}},
+      "expected": {"accepted":false,"errorRules":["height.unit"],"warningRules":[]}
+    },
+    {
       "name": "sex-female-passes",
       "input": {"referenceYear":2026,"section":"about_you","values":{"sex":"female","birth_year":null,"height":null}},
       "expected": {"accepted":true,"errorRules":[],"warningRules":[]}

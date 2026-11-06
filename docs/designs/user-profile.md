@@ -366,9 +366,11 @@ Rules for the values:
     both apply this before validating, so `none: true` with text cannot be stored.
 *   **Tolerant reads.** Push does no domain validation, so a stored row can hold anything.
     *   On the device, a field of the wrong JSON type reads as unset, and an unknown enum entry
-        is dropped from the typed getters. So is an Equipment id the rules reject (empty, over
-        64 characters, or a duplicate), because the user couldn't see or fix what blocked their
-        Save of Days per week. An unknown Equipment id within the rules is kept.
+        is dropped from the typed getters. So is any list entry the rules reject, because the
+        user couldn't see or fix what blocked their Save: an Equipment id (empty, over 64
+        characters, or a duplicate), a duplicate goal, an Experience entry with an empty
+        `focus_id`, and a second entry for one Focus. An unknown Equipment id within the rules is
+        kept.
     *   In the agent read, a field of the wrong JSON type reads as `null`, a non-string list
         entry is dropped, and every string id is kept, including one the rules reject, so the
         agent sees it and the merge keeps it (see Agent surface, Validation).
@@ -537,9 +539,10 @@ section values above.
     unknown sections or fields, wrong JSON types and non-integer counts return the route's 400
     validation response. At least one field is required.
 *   **Merge.** The server merges the given fields into the current values of each named section,
-    following Save semantics and the Health & limitations normalisation, and writes the whole
-    section row. That is one Activity Log Batch with `batchId` equal to `idempotencyKey`, as the
-    settings write does.
+    following Save semantics and the Health & limitations normalisation, and, for each section
+    whose values changed, writes the whole section row. That is one Activity Log Batch with
+    `batchId` equal to `idempotencyKey`, as the settings write does. The Batch exists only if a
+    section changed.
 *   **Validation** runs through the shared module on the merged values of each named section,
     with `referenceYear` set to the server's current UTC year.
     *   Any hard reject returns status 422 with `AgentProfileBatchWriteErrorResponseSchema`,
@@ -556,7 +559,8 @@ section values above.
         no Batch, so sending the same key again runs as a new write, not a replay.
     *   Otherwise the write applies, and the 200 response is `{ accepted: true, duplicate,
         idempotencyKey, batchId, serverClock, profile, warnings }`. `profile` is the read shape
-        after the write. Each warning is `{ section, field, rule, message }`.
+        after the write. `batchId` names no Batch when nothing changed. Each warning is
+        `{ section, field, rule, message }`.
     *   A replay of the same `idempotencyKey` returns the same envelope with `duplicate: true`.
         On a replay, `profile` is the current read shape and `warnings` are recomputed by
         validating the after-images of the Batch's Activity Log entries. Nothing stores the
@@ -585,6 +589,9 @@ section values above.
         you send change, null clears a field, and a list replaces the whole list. Improbable
         values are saved and returned as warnings to confirm with the user. Each call is one
         Activity Log Batch the user can undo."
+    *   That last sentence of `agent_batch_write_profile` describes the ordinary write: a write
+        that changes nothing appends no Batch (see the Validation bullet above). This
+        imprecision is accepted, because the text is fixed verbatim.
 
 ### Validation
 
@@ -1124,7 +1131,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 33 | `apps/server/src/index.ts` | Modify | Store wiring and re-exports |
 | 34 | `apps/server/src/agent-mcp.ts` | Modify | MCP tools |
 | 35 | `apps/server/src/agent-activity.ts` | Modify | Undo registry and redaction |
-| 36 | `apps/server/src/observability.ts` | Modify | Log scrubbing |
+| 36 | `apps/server/src/observability.ts` | Modify | Log and crash report scrubbing |
 | 37 | `packages/contract/src/agent-skill-reference.ts` | Modify | Command and tool names |
 | 38 | `agent-skills/perennia/scripts/prn-agent.mjs` | Modify | CLI commands |
 | 39 | `packages/contract/openapi.json` | Modify (generated) | Contract |
@@ -1149,6 +1156,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 58 | `CHANGELOG.md` | Modify | Release note |
 | 59 | `agent-skills/perennia/scripts/prn-code.mjs` | Modify | Portable client keeps identical method names |
 | 60 | `agent-skills/perennia/SKILL.md` | Modify | `read-profile` and `update-profile` examples |
+| 61 | `apps/mobile/test/app_shell_test.dart` | Modify | Profile tile position and route |
+| 62 | `apps/mobile/test/features/activity/activity_feed_repository_test.dart` | Modify | Feed labels |
+| 63 | `apps/mobile/lib/data/local/app_database.g.dart` | Modify (generated) | Generated Drift code |
 
 **Verifies:** Verification Plan items V1 to V7 and V9.
 
@@ -1213,6 +1223,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   A field of the wrong JSON type is skipped as unset, because the schema or the tolerant
         read has already handled it. Each rule is reported at most once per field. Issues appear
         in the order of the Data model's fields and, within a field, of the Validation table.
+    *   A bad height unit stops the other height checks, because a value in an unknown unit
+        can't be compared to the limits.
 *   **File 6.** Runs every case in file 1 and asserts `accepted`, `errorRules` and
     `warningRules`, that `limits` equal `UserProfileValidationLimits`, and the exact message text
     of `birth_year.improbable_age`, `height.improbable` and `text.too_long`. It also unit-tests
@@ -1406,8 +1418,14 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         no image gives a readable section, replace the before and after `values` with
         `{ "redacted": true }`. A null image stays null. The MCP tool `agent_list_activity` uses
         the same read, so it is redacted too.
-*   **File 36.** Add `sections` and `values` to `TRAINING_DATA_KEYS`, in a commented block like
-    the Protocols one, saying they carry User Profile values in agent route bodies.
+*   **File 36.** The changes are the ones under Lifecycle:
+    *   Add `sections` and `values` to `TRAINING_DATA_KEYS`, in a commented block like the
+        Protocols one, saying they carry User Profile values in agent route bodies.
+    *   `sdk.init` sets `httpIntegration({ maxIncomingRequestBodySize: "none" })`.
+    *   `beforeSend` removes `request.data` and exempts `exception.values` from the `values`
+        filter.
+    *   `serializeErrorForObservability` reduces a query error to its type, a fixed message,
+        and the `code` and constraint name of the error and its `cause`.
 *   **File 37.** Add `readAgentProfile: "read-profile"` and `batchWriteAgentProfile:
     "update-profile"` to `AGENT_SKILL_COMMAND_NAMES`, and the two tool names to
     `AGENT_MCP_TOOL_NAMES`.
@@ -1421,7 +1439,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 *   **File 60.** Add `read-profile` and `update-profile` examples next to the `read-settings` and
     `update-settings` examples.
 
-#### Tests (files 43 to 53)
+#### Tests (files 43 to 53, 61 and 62)
 
 *   **File 43** (`js` job, against Postgres):
     *   read when empty, and `null` for an all-unset row;
@@ -1474,6 +1492,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   every control meets the 48 dp target and has a semantics label;
     *   at 200% text scale nothing overflows and every control can be reached;
     *   a soft warning shows the confirm dialog, and **Save anyway** saves.
+*   **Files 61 and 62:** the Profile tile sits between the status tile and Settings under
+    Account & app and opens the Profile screen; the Activity feed labels a User Profile Batch
+    by its sections, and uses the generic summary for a mixed Batch.
 
 #### Docs (files 54 to 58)
 
