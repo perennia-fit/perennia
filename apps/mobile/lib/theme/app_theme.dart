@@ -15,6 +15,16 @@ ButtonStyle saveButtonStyle(BuildContext context) {
   );
 }
 
+/// [saveButtonStyle] in a form: the Profile editor's Save, onboarding's actions,
+/// Workout capture's Save. Its corners match the form's fields.
+ButtonStyle saveFormButtonStyle(BuildContext context) {
+  return saveButtonStyle(context).copyWith(
+    shape: const WidgetStatePropertyAll<OutlinedBorder>(
+      RoundedRectangleBorder(borderRadius: AppRadii.cardMd),
+    ),
+  );
+}
+
 class AppTheme {
   AppTheme._();
 

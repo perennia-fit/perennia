@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/local/app_database.dart';
 import '../../../data/repositories/training_repositories.dart';
+import '../../../domain/profile/user_profile.dart';
 
 final activityFeedRepositoryProvider = Provider<ActivityFeedRepository>((ref) {
   return ActivityFeedRepository(ref.watch(trainingRepositoriesProvider));
@@ -205,14 +206,17 @@ class _ActivityFeedBatchBuilder {
 }
 
 String? _userProfileSectionLabel(Object? wireName) {
-  return switch (wireName) {
-    'about_you' => 'About you',
-    'training_goals' => 'Training Goals',
-    'experience' => 'Experience',
-    'training_setup' => 'Training setup',
-    'health_limitations' => 'Health & limitations',
-    'general_notes' => 'General Notes',
-    _ => null,
+  final section = UserProfileSection.fromWireName(wireName);
+  if (section == null) {
+    return null;
+  }
+  return switch (section) {
+    UserProfileSection.aboutYou => 'About you',
+    UserProfileSection.trainingGoals => 'Training Goals',
+    UserProfileSection.experience => 'Experience',
+    UserProfileSection.trainingSetup => 'Training setup',
+    UserProfileSection.healthLimitations => 'Health & limitations',
+    UserProfileSection.generalNotes => 'General Notes',
   };
 }
 

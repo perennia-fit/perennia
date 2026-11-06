@@ -42,43 +42,6 @@ final profileControllerProvider =
   ProfileController.new,
 );
 
-/// The result of checking a save against the shared validator.
-///
-/// [values] and [referenceYear] travel with the issues because two messages name
-/// a value the issue doesn't carry: the age and the height.
-@immutable
-class ProfileSaveCheck {
-  const ProfileSaveCheck({
-    this.errors = const <UserProfileValidationIssue>[],
-    this.warnings = const <UserProfileValidationIssue>[],
-    this.values = const <String, Object?>{},
-    this.referenceYear = 0,
-  });
-
-  factory ProfileSaveCheck.validate(
-    UserProfileSection section,
-    Map<String, Object?> values, {
-    required int referenceYear,
-  }) {
-    final result = validateUserProfileSection(
-      section,
-      values,
-      referenceYear: referenceYear,
-    );
-    return ProfileSaveCheck(
-      errors: result.errors,
-      warnings: result.warnings,
-      values: values,
-      referenceYear: referenceYear,
-    );
-  }
-
-  final List<UserProfileValidationIssue> errors;
-  final List<UserProfileValidationIssue> warnings;
-  final Map<String, Object?> values;
-  final int referenceYear;
-}
-
 class ProfileController extends StreamNotifier<UserProfile> {
   @override
   Stream<UserProfile> build() {
@@ -88,29 +51,32 @@ class ProfileController extends StreamNotifier<UserProfile> {
   /// Checks [changes] against the section's current values and saves them if
   /// nothing stands in the way.
   ///
-  /// A returned check with errors saved nothing, and one with warnings saved
+  /// A returned result with errors saved nothing, and one with warnings saved
   /// nothing either: the screen confirms them and calls [saveAnyway]. When the
-  /// repository says saving would change nothing, the check is empty, so it warns
-  /// about nothing.
-  Future<ProfileSaveCheck> save(
+  /// repository says saving would change nothing, the result is empty, so it
+  /// warns about nothing.
+  Future<UserProfileValidationResult> save(
     UserProfileSection section,
     Map<String, Object?> changes,
   ) async {
     final repository = ref.read(trainingRepositoriesProvider).userProfile;
     final merged = await repository.mergedIfChanged(section, changes);
     if (merged == null) {
-      return const ProfileSaveCheck();
+      return UserProfileValidationResult(
+        errors: const <UserProfileValidationIssue>[],
+        warnings: const <UserProfileValidationIssue>[],
+      );
     }
 
-    final check = ProfileSaveCheck.validate(
+    final result = validateUserProfileSection(
       section,
       merged,
       referenceYear: DateTime.now().year,
     );
-    if (check.errors.isEmpty && check.warnings.isEmpty) {
+    if (result.errors.isEmpty && result.warnings.isEmpty) {
       await repository.saveSection(section, changes);
     }
-    return check;
+    return result;
   }
 
   /// Saves a change whose soft warnings the user has confirmed. Hard errors still

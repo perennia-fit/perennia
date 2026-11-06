@@ -72,6 +72,7 @@ class UserProfileValidationIssue {
     required this.rule,
     required this.message,
     this.limit,
+    this.placeholder,
   });
 
   /// The field's sync-payload name, for example `birth_year`.
@@ -79,6 +80,12 @@ class UserProfileValidationIssue {
   final String rule;
   final String message;
   final Object? limit;
+
+  /// The value the rule's message names, for translated copy: the age (an int)
+  /// for `birth_year.improbable_age`, the formatted `<value> <unit>` string for
+  /// `height.improbable`. Dart only: the TypeScript twin and the golden vector
+  /// have no such field.
+  final Object? placeholder;
 }
 
 class UserProfileValidationResult {
@@ -217,6 +224,7 @@ void _validateBirthYear(
         field: 'birth_year',
         rule: 'birth_year.improbable_age',
         message: 'That makes you ${_formatNumber(age)}. Check the birth year.',
+        placeholder: referenceYear - birthYear.toInt(),
       ),
     );
   }
@@ -268,12 +276,13 @@ void _validateHeight(
   }
   if (centimetres < UserProfileValidationLimits.heightWarnMinCentimetres ||
       centimetres > UserProfileValidationLimits.heightWarnMaxCentimetres) {
+    final formatted = '${_formatNumber(height)} $unit';
     warnings.add(
       UserProfileValidationIssue(
         field: 'height',
         rule: 'height.improbable',
-        message:
-            'A height of ${_formatNumber(height)} $unit is unusual. Check it.',
+        message: 'A height of $formatted is unusual. Check it.',
+        placeholder: formatted,
       ),
     );
   }

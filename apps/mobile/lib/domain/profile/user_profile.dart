@@ -12,7 +12,7 @@ library;
 import 'package:flutter/foundation.dart';
 
 /// Exactly 2.54 cm per inch. Height is stored as entered and converted on read
-/// only, so this is the one place the factor lives on the device.
+/// only.
 const double centimetresPerInch = 2.54;
 
 /// The longest Equipment id a section may hold. A tolerant read and the

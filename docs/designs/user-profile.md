@@ -1200,8 +1200,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   `UserProfileValidationResult validateUserProfileSection(UserProfileSection section,
         Map<String, Object?> values, {required int referenceYear})`.
     *   It reuses the shape of `settings_validation.dart`: a `UserProfileValidationIssue` with
-        `field`, `rule`, `message` and optional `limit`, and a result with `errors`,
-        `warnings`, `accepted` and `throwIfRejected()`.
+        `field`, `rule`, `message` and optional `limit` and `placeholder` (Dart only: the value
+        the message names, for translated copy), and a result with `errors`, `warnings`,
+        `accepted` and `throwIfRejected()`.
     *   Limits live in a `UserProfileValidationLimits` class, following
         `SettingsValidationLimits`. Messages are the strings in the Validation table.
     *   Equipment ids are checked for length and duplicates only.
