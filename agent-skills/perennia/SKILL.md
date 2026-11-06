@@ -124,6 +124,8 @@ node scripts/prn-agent.mjs resolve-exercise --query name="Back Squat"
 node scripts/prn-agent.mjs list-metrics --query metricKey=bodyWeight --query enabledOnly=true --query fields=id,name,canonicalKey,unit
 node scripts/prn-agent.mjs list-metric-readings --query metricKey=sleepScore --query limit=25 --select readings[].scalarValue
 node scripts/prn-agent.mjs list-compounds --query search=creatine --query limit=10 --query fields=id,name,defaultUnit
+node scripts/prn-agent.mjs list-purposes
+node scripts/prn-agent.mjs list-compounds --query purpose=purpose-id --query fields=id,name,purposeIds
 node scripts/prn-agent.mjs list-protocols --query limit=10
 node scripts/prn-agent.mjs list-doses --query from=2026-06-01 --query to=2026-06-30 --query compoundId=compound-id --query limit=50
 node scripts/prn-agent.mjs effect-window --query compoundId=compound-id --query metricKey=hrv --query from=2026-06-01 --query to=2026-06-30
@@ -149,6 +151,7 @@ node scripts/prn-agent.mjs update-workout-template-from-workout --file update.js
 node scripts/prn-agent.mjs log-doses --file doses.json --dry-run
 node scripts/prn-agent.mjs log-doses --file doses.json
 node scripts/prn-agent.mjs manage-compounds --file compounds.json
+node scripts/prn-agent.mjs manage-purposes --file purposes.json
 node scripts/prn-agent.mjs manage-protocols --file protocols.json
 node scripts/prn-agent.mjs delete-protocols --json '{"idempotencyKey":"delete-key","protocolIds":["protocol-id"]}'
 node scripts/prn-agent.mjs log-protocol-skips --json '{"idempotencyKey":"skip-key","today":"2026-11-02","skips":[{"id":"skip-uuidv7","protocolId":"protocol-id","compoundId":"compound-id","localDate":"2026-11-02","plannedLocalTime":"21:00"}]}'
@@ -156,7 +159,7 @@ node scripts/prn-agent.mjs update-settings --file settings.json
 node scripts/prn-agent.mjs undo-activity-batch --json '{"batchId":"batch-id","idempotencyKey":"undo-key"}'
 ```
 
-For `log-doses`, `manage-compounds`, `manage-protocols`, and `log-protocol-skips`,
+For `log-doses`, `manage-compounds`, `manage-purposes`, `manage-protocols`, and `log-protocol-skips`,
 generate UUIDv7 ids for every newly authored row and reuse both those ids and the same
 `idempotencyKey` on retry. Existing legacy ids remain valid only when editing or
 archiving rows that already belong to the account. Results report `applied`,
@@ -300,7 +303,9 @@ record Activity Log entries and sync nudges on the server.
 
 Protocols (Compound/Dose/Protocol) is a neutral logbook: track a Compound, log a
 Dose, and describe an outcome. Never categorize a Compound by substance type or
-legality, and never surface Protocols values in workout/nutrition analytics. The
+legality, and never surface Protocols values in workout/nutrition analytics. A
+Purpose is a label for why the user takes a Compound; never read one as saying
+that the Compound does anything. The
 `effect-window` read is strictly descriptive — a before/during/after summary of an
 outcome Metric around the logged Dose timeline — never a causal, efficacy, or
 medical claim, and nothing it returns is stored.

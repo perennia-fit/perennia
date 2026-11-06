@@ -179,6 +179,9 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         async listCompounds() {
           return { compounds: [], fields: ["id", "name"], limit: 50, nextCursor: null, totalMatched: 0 };
         },
+        async listPurposes() {
+          return { purposes: [] };
+        },
         async listProtocols() {
           return { protocols: [], limit: 50, nextCursor: null, totalMatched: 0 };
         },
@@ -213,6 +216,21 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
             applied: input.compounds.map((compound) => ({
               id: compound.id,
               updatedAt: compound.updatedAt,
+              deviceId: input.deviceId
+            })),
+            validationErrors: []
+          };
+        },
+        async writePurposeBatch(input) {
+          return {
+            duplicate: false,
+            idempotencyConflict: false,
+            receiptUnavailable: false,
+            serverClock: "2026-06-24T05:00:01.000Z",
+            accepted: input.purposes.map((purpose) => purpose.id),
+            applied: input.purposes.map((purpose) => ({
+              id: purpose.id,
+              updatedAt: purpose.updatedAt,
               deviceId: input.deviceId
             })),
             validationErrors: []
@@ -254,6 +272,7 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_batch_write_plan_tree",
         "agent_batch_write_protocol_skips",
         "agent_batch_write_protocols",
+        "agent_batch_write_purposes",
         "agent_batch_write_settings",
         "agent_batch_write_workout",
         "agent_capture_workout_template",
@@ -285,6 +304,7 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_list_protocol_day_statuses",
         "agent_list_protocol_planned_days",
         "agent_list_protocols",
+        "agent_list_purposes",
         "agent_list_routines",
         "agent_list_training_days",
         "agent_list_workout_templates",

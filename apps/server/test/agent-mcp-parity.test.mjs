@@ -131,6 +131,143 @@ test("the planned-day and Day Status tools answer exactly as their REST reads do
   }
 });
 
+test("the Purpose tools answer exactly as their REST routes do, refusal included", async () => {
+  const listQueries = [];
+  const writes = [];
+  const sleep = {
+    id: "019200ff-0000-7000-8000-000000000101",
+    name: "Sleep",
+    sortOrder: 0,
+    starter: true,
+    deletedAt: null
+  };
+  const store = {
+    async listPurposes({ query }) {
+      listQueries.push(query);
+      return { purposes: query.includeArchived === "true" ? [sleep] : [] };
+    },
+    async writePurposeBatch(input) {
+      writes.push(input);
+      return {
+        duplicate: false,
+        idempotencyConflict: false,
+        receiptUnavailable: false,
+        serverClock: "2026-11-06T09:00:00.000Z",
+        accepted: input.purposes.map((purpose) => purpose.id),
+        applied: input.purposes.map((purpose) => ({
+          id: purpose.id,
+          updatedAt: "2026-11-06T09:00:00.000Z",
+          deviceId: input.deviceId
+        })),
+        validationErrors:
+          input.purposes[0].payload.name === ""
+            ? [
+                {
+                  field: "purposes[0].name",
+                  rule: "purpose_name_required",
+                  message: "A Purpose name must not be empty after trimming.",
+                  itemIndex: 0,
+                  entityId: input.purposes[0].id
+                }
+              ]
+            : []
+      };
+    }
+  };
+  const app = createApp({
+    logger: { info() {}, error() {} },
+    agentApiKeyStore: authenticatingKeyStore(),
+    agentProtocolsStore: store
+  });
+  const { client, close } = await createMcpClient(
+    createAgentMcpServer({
+      agentApiKeyStore: authenticatingKeyStore(),
+      agentProtocolsStore: store,
+      logger: { info() {}, error() {} }
+    })
+  );
+  const write = async (request) => [
+    await app.request("/agent/protocols/purposes/batch-write", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer prn_agent_secret",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(request)
+    }),
+    await client.callTool({
+      name: "agent_batch_write_purposes",
+      arguments: { apiKey: "prn_agent_secret", request }
+    })
+  ];
+
+  try {
+    for (const query of [{}, { includeArchived: "true" }, { includeArchived: "false" }]) {
+      const restResponse = await app.request(
+        `/agent/protocols/purposes?${new URLSearchParams(query).toString()}`,
+        { headers: { authorization: "Bearer prn_agent_secret" } }
+      );
+      assert.equal(restResponse.status, 200);
+      const mcpResponse = await client.callTool({
+        name: "agent_list_purposes",
+        arguments: { apiKey: "prn_agent_secret", query }
+      });
+      assert.equal(mcpResponse.isError, undefined, JSON.stringify(mcpResponse.content));
+      assert.deepEqual(mcpResponse.structuredContent, await restResponse.json());
+    }
+    assert.deepEqual(
+      listQueries.map((query) => query.includeArchived),
+      ["false", "false", "true", "true", "false", "false"]
+    );
+
+    const purpose = {
+      id: "019a0000-0000-7000-8000-000000000001",
+      name: "  Skin ",
+      sortOrder: 6
+    };
+    const [restWrite, mcpWrite] = await write({
+      idempotencyKey: "purposes-parity",
+      purposes: [purpose]
+    });
+    assert.equal(restWrite.status, 200);
+    assert.equal(mcpWrite.isError, undefined, JSON.stringify(mcpWrite.content));
+    assert.deepEqual(mcpWrite.structuredContent, await restWrite.json());
+    assert.deepEqual(mcpWrite.structuredContent.purposes, [
+      { id: purpose.id, name: "Skin", outcome: "applied" }
+    ]);
+    assert.deepEqual(
+      writes.map((input) => input.purposes[0].payload.name),
+      ["Skin", "Skin"]
+    );
+
+    // The store's name refusal is the same refusal on both surfaces.
+    const [restRefused, mcpRefused] = await write({
+      idempotencyKey: "purposes-parity-refused",
+      purposes: [{ ...purpose, name: "   " }]
+    });
+    assert.equal(restRefused.status, 422);
+    assert.equal(mcpRefused.isError, true);
+    const refusedBody = await restRefused.json();
+    assert.deepEqual(mcpRefused.structuredContent, refusedBody);
+    assert.equal(refusedBody.errors[0].rule, "purpose_name_required");
+
+    // So is the pure step's refusal of a repeated id, which no store sees.
+    const writesBefore = writes.length;
+    const [restRepeat, mcpRepeat] = await write({
+      idempotencyKey: "purposes-parity-repeat",
+      purposes: [purpose, purpose]
+    });
+    assert.equal(restRepeat.status, 422);
+    assert.equal(mcpRepeat.isError, true);
+    const repeatBody = await restRepeat.json();
+    assert.deepEqual(mcpRepeat.structuredContent, repeatBody);
+    assert.equal(repeatBody.errors[0].rule, "duplicate_purpose_id");
+    assert.equal(writes.length, writesBefore);
+  } finally {
+    await close();
+  }
+});
+
 test("the Protocol delete tool answers exactly as its REST route does, refusal included", async () => {
   const calls = [];
   const nudges = [];
@@ -576,6 +713,9 @@ function fullyWiredMcpServer() {
       async listCompounds() {
         throw new Error("not used");
       },
+      async listPurposes() {
+        throw new Error("not used");
+      },
       async listProtocols() {
         throw new Error("not used");
       },
@@ -595,6 +735,9 @@ function fullyWiredMcpServer() {
         throw new Error("not used");
       },
       async writeCompoundBatch() {
+        throw new Error("not used");
+      },
+      async writePurposeBatch() {
         throw new Error("not used");
       },
       async writeProtocolBatch() {

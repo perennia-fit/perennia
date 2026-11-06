@@ -215,6 +215,11 @@ const COMMANDS = {
     path: "/agent/protocols/compounds",
     operationId: "listAgentCompounds"
   },
+  "list-purposes": {
+    method: "GET",
+    path: "/agent/protocols/purposes",
+    operationId: "listAgentPurposes"
+  },
   "list-protocols": {
     method: "GET",
     path: "/agent/protocols",
@@ -251,6 +256,12 @@ const COMMANDS = {
     path: "/agent/protocols/compounds/batch-write",
     body: true,
     operationId: "batchWriteAgentCompounds"
+  },
+  "manage-purposes": {
+    method: "POST",
+    path: "/agent/protocols/purposes/batch-write",
+    body: true,
+    operationId: "batchWriteAgentPurposes"
   },
   "manage-protocols": {
     method: "POST",

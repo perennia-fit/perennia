@@ -1511,9 +1511,12 @@ this PR changes no golden vectors, contract or sync shape.
         batch-write request, item and response schemas, shaped as D9 says.
     *   **Purpose routes:** `listAgentPurposes` merges `STARTER_PURPOSES` with
         the user's rows (a user row wins by id) and drops archived rows unless
-        `includeArchived`. `batchWriteAgentPurposes` validates names against
-        the merged active names after the batch is applied in order, then
-        writes through `pushPurposesInTransaction`.
+        `includeArchived` is `true`, a `"true"`/`"false"` string because
+        `z.coerce.boolean` reads `"false"` as true. `batchWriteAgentPurposes`
+        validates names against the merged active names after the batch is
+        applied in order, then writes through `pushPurposesInTransaction`. A
+        first write to a starter with no stored row logs that starter as its
+        before image, so undo restores it instead of tombstoning it.
     *   **`createActivePurposeCheck`:** modelled on `createActiveFocusCheck`;
         loads stored rows merged with `STARTER_PURPOSES` once per request.
     *   **Compound read and write:**
@@ -1527,7 +1530,9 @@ this PR changes no golden vectors, contract or sync shape.
         *   `prepareAgentCompoundBatchWrite` writes `purpose_ids` with
             `JSON.stringify` only when it is given, after
             `normalizePurposeIds`. The store step rejects an id that fails
-            `createActivePurposeCheck` with `purpose_not_found`.
+            `createActivePurposeCheck` with `purpose_not_found`, in `finalize`,
+            so a replay of a recorded batch still returns its receipt after
+            that Purpose is archived.
     *   **The Protocol batch write** is unchanged (D4).
 
 #### 29. `apps/server/src/agent-mcp.ts` (Modify)
@@ -1546,12 +1551,14 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Proposed Changes**: regenerate with `pnpm --filter @perennia/contract
     generate`. They are never edited by hand.
 
-#### 31. `packages/contract/src/agent-skill-reference.ts` and `agent-skills/perennia/scripts/prn-agent.mjs` (Modify)
+#### 31. `packages/contract/src/agent-skill-reference.ts`, `agent-skills/perennia/scripts/prn-agent.mjs`, `prn-code.mjs` and `SKILL.md` (Modify)
 
 *   **Type / Scope**: the agent skill.
 *   **Proposed Changes**: add the commands `list-purposes` and
-    `manage-purposes` to the skill reference, and the matching commands and
-    client methods to `prn-agent.mjs`, next to `list-compounds`.
+    `manage-purposes` to the skill reference, the matching commands to
+    `prn-agent.mjs`, next to `list-compounds`, the client methods
+    `listAgentPurposes` and `batchWriteAgentPurposes` to `prn-code.mjs`, and
+    the command examples to `SKILL.md`.
 
 #### 32. `apps/mobile/lib/features/protocols/widgets/purpose_filter_row.dart` (Create)
 
