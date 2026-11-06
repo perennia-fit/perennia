@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { applyPlatformExerciseCleanup } from "../../../tools/platform-exercise-cleanup.mjs";
+import {
+  applyPlatformExerciseCleanup,
+  buildRetiredExercises,
+} from "../../../tools/platform-exercise-cleanup.mjs";
+import {
+  focusIdsForRetired,
+  platformFocuses,
+} from "../../../tools/platform-exercise-focus.mjs";
 
 test("reviewed cleanup collapses duplicate chains and applies English primary names", () => {
   const exercises = [
@@ -176,4 +183,372 @@ test("bundled Platform Library reflects every recorded cleanup outcome", () => {
       `kept-distinct pair ${itemId} collapsed to one record`,
     );
   }
+});
+
+const retiredCategories = [
+  { id: "cat-legs", name: "Legs" },
+  { id: "cat-mobility", name: "Mobility" },
+];
+const retiredReviewedAt = "2026-07-19T23:48:40.614Z";
+const retiredStamp = "2026-11-05T00:00:00.000Z";
+
+function exerciseRecord(id, overrides = {}) {
+  return {
+    id,
+    name: `Exercise ${id}`,
+    dimension_ids: ["load", "reps"],
+    category_id: "cat-legs",
+    equipment_ids: ["barbell"],
+    focus_ids: ["focus-from-previous-seed"],
+    notes: null,
+    updated_at: "2026-06-29T00:00:00Z",
+    source_attribution: { source: "wger" },
+    ...overrides,
+  };
+}
+
+function retiredExerciseRecord(id, overrides = {}) {
+  const { source_attribution: sourceAttribution, ...fields } = exerciseRecord(id);
+  return {
+    ...fields,
+    retired_at: "2026-08-01T00:00:00.000Z",
+    source_attribution: sourceAttribution,
+    ...overrides,
+  };
+}
+
+function buildRetired({
+  previousSeed = null,
+  sourceRecords = [],
+  live = [],
+  excluded = [],
+  merged = [],
+  retiredAt = retiredStamp,
+  reviewedAt = retiredReviewedAt,
+} = {}) {
+  return buildRetiredExercises({
+    previousSeed,
+    sourceRecords,
+    cleanup: {
+      exercises: live,
+      excludedIds: new Set(excluded),
+      redirects: new Map(merged.map((id) => [id, "merge-target"])),
+    },
+    retiredAt,
+    reviewedAt,
+    categories: retiredCategories,
+    focusIdsFor: (record) => [`focus-for-${record.id}`],
+  });
+}
+
+test("reviewed cleanup returns the excluded ids", () => {
+  const result = applyPlatformExerciseCleanup(
+    [
+      { id: "a", name: "Pull Up" },
+      { id: " b ", name: "Agachamento" },
+    ],
+    { reviewedAt: "2026-07-20T00:00:00Z", excludedExerciseIds: ["b"] },
+  );
+
+  assert.deepEqual([...result.excludedIds], ["b"]);
+});
+
+test("retired list carries a previous record forward unchanged", () => {
+  const carried = retiredExerciseRecord("old", { focus_ids: ["frozen"] });
+  const before = JSON.stringify(carried);
+
+  const [record] = buildRetired({
+    previousSeed: { exercises: [], retired_exercises: [carried] },
+    // The source and the cleanup no longer agree with the frozen record.
+    sourceRecords: [exerciseRecord("old", { name: "Renamed upstream" })],
+    excluded: ["old"],
+    merged: ["old"],
+    retiredAt: "2026-12-01T00:00:00.000Z",
+  });
+
+  assert.equal(record, carried);
+  assert.equal(JSON.stringify(record), before);
+});
+
+test("newly retired id prefers the previous seed's record", () => {
+  const [record] = buildRetired({
+    previousSeed: {
+      exercises: [exerciseRecord("a", { name: "Corrected name" })],
+    },
+    sourceRecords: [
+      exerciseRecord("a", {
+        name: "Uncorrected source name",
+        focus_ids: ["source"],
+      }),
+    ],
+    merged: ["a"],
+  });
+
+  assert.equal(record.name, "Corrected name");
+  assert.deepEqual(record.focus_ids, ["focus-from-previous-seed"]);
+  assert.equal(record.retired_at, retiredStamp);
+});
+
+test("source-only retired id takes source fields and focusIdsFor", () => {
+  const { focus_ids: _focusIds, ...source } = exerciseRecord(200, {
+    name: "Only in source",
+    internal_source_key: "not copied",
+  });
+
+  const retired = buildRetired({ sourceRecords: [source], excluded: ["200"] });
+
+  assert.deepEqual(retired, [
+    {
+      id: "200",
+      name: "Only in source",
+      dimension_ids: ["load", "reps"],
+      category_id: "cat-legs",
+      equipment_ids: ["barbell"],
+      focus_ids: ["focus-for-200"],
+      notes: null,
+      updated_at: "2026-06-29T00:00:00Z",
+      retired_at: retiredStamp,
+      source_attribution: { source: "wger" },
+    },
+  ]);
+  assert.deepEqual(Object.keys(retired[0]), [
+    "id",
+    "name",
+    "dimension_ids",
+    "category_id",
+    "equipment_ids",
+    "focus_ids",
+    "notes",
+    "updated_at",
+    "retired_at",
+    "source_attribution",
+  ]);
+});
+
+test("retired record omits source_attribution where the source has none", () => {
+  const { source_attribution: _attribution, ...source } = exerciseRecord("a");
+
+  const [record] = buildRetired({ sourceRecords: [source], excluded: ["a"] });
+
+  assert.equal("source_attribution" in record, false);
+});
+
+test("retired list is sorted by id across carried and new records", () => {
+  const retired = buildRetired({
+    previousSeed: {
+      exercises: [],
+      retired_exercises: [
+        retiredExerciseRecord("b"),
+        retiredExerciseRecord("d"),
+      ],
+    },
+    sourceRecords: [exerciseRecord("c"), exerciseRecord("a")],
+    excluded: ["c"],
+    merged: ["a"],
+  });
+
+  assert.deepEqual(
+    retired.map((record) => record.id),
+    ["a", "b", "c", "d"],
+  );
+});
+
+test("retired list treats a null previous seed and a missing key as empty", () => {
+  const source = exerciseRecord("a");
+  const fromNull = buildRetired({
+    previousSeed: null,
+    sourceRecords: [source],
+    excluded: ["a"],
+  });
+  const fromSeedWithoutKey = buildRetired({
+    previousSeed: { exercises: [exerciseRecord("a")] },
+    sourceRecords: [source],
+    excluded: ["a"],
+  });
+
+  assert.deepEqual(
+    fromNull.map((record) => record.id),
+    ["a"],
+  );
+  assert.deepEqual(
+    fromSeedWithoutKey.map((record) => record.id),
+    ["a"],
+  );
+});
+
+test("retired list fails for a previous id in neither new list", () => {
+  assert.throws(
+    () =>
+      buildRetired({
+        previousSeed: { exercises: [exerciseRecord("gone")] },
+      }),
+    /Exercise gone from the previous seed is neither live nor retired/,
+  );
+});
+
+test("retired list fails for an id in both new lists", () => {
+  assert.throws(
+    () =>
+      buildRetired({
+        previousSeed: {
+          exercises: [],
+          retired_exercises: [retiredExerciseRecord("back")],
+        },
+        live: [exerciseRecord("back")],
+      }),
+    /Exercise back is both live and retired/,
+  );
+  assert.throws(
+    () =>
+      buildRetired({
+        sourceRecords: [exerciseRecord("both")],
+        live: [exerciseRecord("both")],
+        merged: ["both"],
+      }),
+    /Exercise both is both live and retired/,
+  );
+});
+
+test("retired list fails for an invalid or missing retiredAt, even with nothing to retire", () => {
+  for (const retiredAt of ["not-a-timestamp", "", null]) {
+    assert.throws(
+      () => buildRetired({ retiredAt }),
+      /valid retiredAt timestamp/,
+    );
+  }
+  assert.throws(
+    () =>
+      buildRetiredExercises({
+        previousSeed: null,
+        sourceRecords: [],
+        cleanup: { exercises: [], excludedIds: new Set(), redirects: new Map() },
+        reviewedAt: retiredReviewedAt,
+        categories: retiredCategories,
+        focusIdsFor: () => [],
+      }),
+    /valid retiredAt timestamp/,
+  );
+});
+
+test("retired list fails when a new retirement's retiredAt is not later than reviewedAt", () => {
+  for (const retiredAt of [retiredReviewedAt, "2026-07-01T00:00:00.000Z"]) {
+    assert.throws(
+      () =>
+        buildRetired({
+          sourceRecords: [
+            exerciseRecord("a", { updated_at: "2026-01-01T00:00:00Z" }),
+          ],
+          excluded: ["a"],
+          retiredAt,
+        }),
+      /retiredAt .* must be later than reviewedAt .* to retire a/,
+    );
+  }
+});
+
+test("rename-only run accepts a retiredAt older than reviewedAt", () => {
+  const carried = retiredExerciseRecord("old");
+
+  const retired = buildRetired({
+    previousSeed: {
+      exercises: [exerciseRecord("live")],
+      retired_exercises: [carried],
+    },
+    live: [exerciseRecord("live", { name: "Renamed by review" })],
+    excluded: ["old"],
+    retiredAt: "2026-01-01T00:00:00.000Z",
+  });
+
+  assert.deepEqual(retired, [carried]);
+});
+
+test("retired list fails when a live id's dimensions changed", () => {
+  assert.throws(
+    () =>
+      buildRetired({
+        previousSeed: { exercises: [exerciseRecord("a")] },
+        live: [exerciseRecord("a", { dimension_ids: ["reps"] })],
+      }),
+    /Live exercise a changed dimension_ids/,
+  );
+});
+
+test("retired list fails for an unknown category, carried or new", () => {
+  assert.throws(
+    () =>
+      buildRetired({
+        sourceRecords: [exerciseRecord("a", { category_id: "cat-gone" })],
+        excluded: ["a"],
+      }),
+    /Retired exercise a names unknown category cat-gone/,
+  );
+  assert.throws(
+    () =>
+      buildRetired({
+        previousSeed: {
+          exercises: [],
+          retired_exercises: [
+            retiredExerciseRecord("b", { category_id: "cat-gone" }),
+          ],
+        },
+      }),
+    /Retired exercise b names unknown category cat-gone/,
+  );
+});
+
+test("retired list fails when retired_at is not later than updated_at", () => {
+  // The same instant in the two forms the seed uses: a string comparison would
+  // call retired_at the later one, because "Z" sorts after ".".
+  assert.throws(
+    () =>
+      buildRetired({
+        sourceRecords: [
+          exerciseRecord("a", { updated_at: "2026-11-05T00:00:00.000Z" }),
+        ],
+        excluded: ["a"],
+        retiredAt: "2026-11-05T00:00:00Z",
+      }),
+    /Retired exercise a has retired_at .* not later than updated_at/,
+  );
+  assert.throws(
+    () =>
+      buildRetired({
+        previousSeed: {
+          exercises: [],
+          retired_exercises: [
+            retiredExerciseRecord("b", {
+              updated_at: "2026-09-01T00:00:00Z",
+            }),
+          ],
+        },
+      }),
+    /Retired exercise b has retired_at .* not later than updated_at/,
+  );
+});
+
+test("focusIdsForRetired returns rule Focuses in starter-Focus order", () => {
+  const focusId = (key) => platformFocuses.find((entry) => entry.key === key).id;
+
+  // A sled push reaches Functional before Weights in the rule, but Weights comes
+  // first in starter-Focus order.
+  assert.deepEqual(
+    focusIdsForRetired(
+      {
+        name: "Barbell Sled Push",
+        dimension_ids: ["load", "distance"],
+        equipment_ids: ["sled"],
+      },
+      "Legs",
+    ),
+    [focusId("weights"), focusId("functional")],
+  );
+  // "Deadlift" is a Weights starter by name; no starter lookup means a retired
+  // record with no load or weights equipment does not pick it up.
+  assert.deepEqual(
+    focusIdsForRetired(
+      { name: "Deadlift", dimension_ids: ["reps"], equipment_ids: [] },
+      "Legs",
+    ),
+    [focusId("calisthenics")],
+  );
 });

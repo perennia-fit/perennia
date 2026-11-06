@@ -676,7 +676,7 @@ Data, and Server and generator tests.
 *   **Proposed Changes**:
     *   `applyPlatformExerciseCleanup` also returns `excludedIds`.
     *   Export pure
-        `buildRetiredExercises({ previousSeed, sourceRecords, cleanup, retiredAt, categories, focusIdsFor })`,
+        `buildRetiredExercises({ previousSeed, sourceRecords, cleanup, retiredAt, reviewedAt, categories, focusIdsFor })`,
         returning the sorted `retired_exercises` list. `sourceRecords` is the
         input given to `applyPlatformExerciseCleanup`. `previousSeed` is null on
         a first run, and a seed with no `retired_exercises` counts as an empty
