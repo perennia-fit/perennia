@@ -525,11 +525,9 @@ Exercise's Focuses are `focus_ids`. There is no join table:
 
     For each untouched row, it writes the seed tags with a new `updatedAt`
     and one Activity Log entry with actor `otc_purpose_seed`, so the change
-    syncs and can be undone. This follows `_reconcilePlatformSeedFocuses` in
-    `training_repositories.dart`, which writes a customization's Focuses with
-    a fresh stamp and an Activity Log entry. The stamp is the current time
-    after a pull, and one second past the row's own stamp on a signed-out
-    device (see **When it runs**).
+    syncs and can be undone. The stamp is the current time after a pull, and
+    one second past the row's own stamp on a signed-out device (see **When it
+    runs**).
     *   **It runs once per row.** After it runs, the row has an
         `otc_purpose_seed` entry, so it is no longer untouched. Any edit by the
         user, an Agent or another device (a pulled change logs an entry with

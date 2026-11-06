@@ -57,7 +57,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **Exercise library updates now reach installed apps.** Renames and corrections
   apply in place. An exercise the library merges or removes stays as your own if
   you logged it or have it in a Workout or Template, and disappears otherwise.
-  Agents see a kept exercise as yours, with its own Sets.
+  Agents see a kept exercise as yours, with its own Sets. If you sync more than
+  one device, update them together: a device on an older build can't update its
+  exercise library once it pulls an exercise you kept.
 - **Cleaner Platform Exercise Library names.** Eighty names are corrected,
   including every `(male)` or `(female)` label and typos like `Shrimp Squad`.
   Twenty-three exercises merge into an equivalent, and 10
