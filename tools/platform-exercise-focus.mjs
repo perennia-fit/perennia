@@ -282,9 +282,7 @@ export function applyPlatformExerciseFocuses(exercises, categories, overrides = 
     for (const key of starterFocusKeysByExerciseId.get(exercise.id) ?? []) {
       keys.add(key);
     }
-    const focusIds = platformFocuses
-      .filter((entry) => keys.has(entry.key))
-      .map((entry) => entry.id);
+    const focusIds = focusIdsInStarterOrder(keys);
     return withFocusIdsAfterEquipment(exercise, focusIds);
   });
 
@@ -306,7 +304,10 @@ export function applyPlatformExerciseFocuses(exercises, categories, overrides = 
  * exercises, and a retired record is frozen once written.
  */
 export function focusIdsForRetired(record, categoryName) {
-  const keys = focusKeysFor(record, categoryName);
+  return focusIdsInStarterOrder(focusKeysFor(record, categoryName));
+}
+
+function focusIdsInStarterOrder(keys) {
   return platformFocuses
     .filter((entry) => keys.has(entry.key))
     .map((entry) => entry.id);

@@ -733,8 +733,10 @@ export function createInMemoryAgentCatalogStore(
 
   return {
     async getExerciseById(input) {
-      const resolve = callerExerciseIdResolver(exercises, input.userId);
-      const resolvedExerciseId = resolve(input.exerciseId);
+      const resolvedExerciseId = callerExerciseIdResolveFn(
+        exercises,
+        input.userId,
+      )(input.exerciseId);
       const exercise = filterVisibleExercises(exercises, input.userId).find(
         (candidate) => candidate.id === resolvedExerciseId,
       );
@@ -743,7 +745,7 @@ export function createInMemoryAgentCatalogStore(
     },
     async getExercisesByIds(input) {
       const exerciseIds = new Set(
-        input.exerciseIds.map(callerExerciseIdResolver(exercises, input.userId)),
+        input.exerciseIds.map(callerExerciseIdResolveFn(exercises, input.userId)),
       );
       const candidates =
         input.includeShadowed === true
@@ -913,15 +915,23 @@ function callerCatalogExercises(
  * kept exercise reads as itself. It looks only at the caller's rows because
  * another account's row under a redirect source must not mask the redirect.
  */
-function callerExerciseIdResolver(
+function callerExerciseIdResolveFn(
   exercises: readonly AgentCatalogExercise[],
   userId: string,
 ): (exerciseId: string) => string {
-  const callerIds = new Set(
-    callerCatalogExercises(exercises, userId).map((exercise) => exercise.id),
+  return exactIdOrRedirect(
+    new Set(
+      callerCatalogExercises(exercises, userId).map((exercise) => exercise.id),
+    ),
   );
+}
+
+/** An id the account holds reads as itself; any other id follows its seed redirect. */
+function exactIdOrRedirect(
+  heldIds: ReadonlySet<string>,
+): (exerciseId: string) => string {
   return (exerciseId) =>
-    callerIds.has(exerciseId)
+    heldIds.has(exerciseId)
       ? exerciseId
       : resolvePlatformExerciseId(exerciseId);
 }
@@ -1221,7 +1231,7 @@ export async function loadExerciseIdResolver(
   const keptIds = new Set(rows.map((row) => row.id));
 
   return {
-    resolve: (id) => (keptIds.has(id) ? id : resolvePlatformExerciseId(id)),
+    resolve: exactIdOrRedirect(keptIds),
     idsResolvingTo: (id) =>
       exerciseIdsResolvingTo(id).filter(
         (source) => source === id || !keptIds.has(source),

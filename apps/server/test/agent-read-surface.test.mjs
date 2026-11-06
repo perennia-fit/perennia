@@ -743,18 +743,18 @@ test(
           }
         });
       }
-      const readSet = async (userId) => {
+      const readSets = async (userId, query) => {
         const response = await getAgent(
           createAgentReadApp({
             agentReadStore: createDrizzleAgentReadStore(database.db),
             userId
           }),
-          "/agent/history/sets?limit=1"
+          `/agent/history/sets?${query}`
         );
         assert.equal(response.status, 200);
-        const [set] = (await response.json()).sets;
-        return set;
+        return (await response.json()).sets;
       };
+      const readSet = async (userId) => (await readSets(userId, "limit=1"))[0];
 
       const keptSet = await readSet(keeperId);
       assert.equal(keptSet.exerciseId, redirect.fromExerciseId);
@@ -768,6 +768,30 @@ test(
       assert.equal(redirectedSet.exerciseId, redirect.fromExerciseId);
       assert.equal(redirectedSet.exerciseName, target.name);
       assert.deepEqual(redirectedSet.category, target.category);
+
+      // A kept exercise reads only its own Sets, and its merge target does not
+      // include them.
+      await seedLoggedSet(database, {
+        userId: keeperId,
+        id: randomUUID(),
+        exerciseId: redirect.toExerciseId,
+        exerciseName: null,
+        exerciseCategoryId: null,
+        exerciseCategoryName: null,
+        performedAt: "2026-11-02T06:00:00.000Z",
+        position: 0,
+        values: {
+          load: { entered: "100", unit: "kilogram" },
+          reps: { entered: "5", unit: "repetition" }
+        }
+      });
+      for (const exerciseId of [redirect.fromExerciseId, redirect.toExerciseId]) {
+        const sets = await readSets(keeperId, `exerciseId=${exerciseId}`);
+        assert.deepEqual(
+          sets.map((set) => set.exerciseId),
+          [exerciseId]
+        );
+      }
     } finally {
       await database.close();
     }
