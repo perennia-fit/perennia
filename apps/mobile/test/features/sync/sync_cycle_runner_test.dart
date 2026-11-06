@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
+import 'package:perennia/features/sync/models/sync_status.dart';
 import 'package:perennia/features/sync/repositories/sync_repository.dart';
 import 'package:perennia/features/sync/services/sync_cycle_runner.dart';
 
@@ -75,6 +78,68 @@ void main() {
     await runner.run(session: _session, deviceId: 'mobile:pixel-8');
 
     expect(settingsInvalidations, 0);
+  });
+
+  // docs/designs/platform-library-updates.md: "Hide, do not delete".
+  group('ensureLibrarySeeded', () {
+    test('is awaited before the first push', () async {
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final repository = _ScriptedSyncRepository();
+      final started = Completer<void>();
+      final seeded = Completer<void>();
+      final runner = RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: SyncStatusRepository(database),
+        ensureLibrarySeeded: () {
+          repository.events.add('seed');
+          started.complete();
+          return seeded.future;
+        },
+      );
+
+      final run = runner.run(session: _session, deviceId: 'mobile:pixel-8');
+      await started.future;
+      await pumpEventQueue();
+
+      // The run stays parked on the pass until it finishes.
+      expect(repository.events, <String>['seed']);
+
+      seeded.complete();
+      await run;
+
+      expect(repository.events, <String>[
+        'seed',
+        'push',
+        'pull',
+        'backfill',
+        'pending',
+      ]);
+    });
+
+    test('a failure records a sync failure, rethrows and makes no push',
+        () async {
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final repository = _ScriptedSyncRepository();
+      final statusRepository = SyncStatusRepository(database);
+      final failure = StateError('seed defect');
+      final runner = RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: statusRepository,
+        ensureLibrarySeeded: () async => throw failure,
+      );
+
+      await expectLater(
+        runner.run(session: _session, deviceId: 'mobile:pixel-8'),
+        throwsA(same(failure)),
+      );
+
+      expect(repository.events, isEmpty);
+      final status = await statusRepository.loadStatus();
+      expect(status.kind, SyncStatusKind.failed);
+      expect(status.lastFailureAt, isNotNull);
+    });
   });
 
   // docs/designs/compound-purposes.md, D3: "When it runs".

@@ -143,10 +143,10 @@ void main() {
     ]);
   });
 
-  test('a customization made before Focus existed gets its Focuses once',
-      () async {
-    // Before the upgrade: Platform rows name no Focus, and the user has a
-    // customized copy of the squat, also with none.
+  test('a customization keeps its empty Focuses when the pass refills Platform '
+      'rows', () async {
+    // Platform rows name no Focus, and the user has a customized copy of the
+    // squat, also with none.
     await (database.update(database.exercises)
           ..where((row) => row.libraryOrigin.equals('platform')))
         .write(const ExercisesCompanion(focusIds: Value<String>('[]')));
@@ -159,22 +159,10 @@ void main() {
       database,
       platformSeedSource: _SeedSource(_seed),
     ).catalog.ensurePlatformLibrarySeeded();
-    final filled = await repositories.exercises.getById(copyId);
-    expect(filled!.focusIds, <String>[_weightsId]);
 
-    // A user who then clears it keeps that choice on later launches.
-    await repositories.exercises.update(
-      copyId,
-      ExerciseDraft(
-        name: filled.name,
-        type: filled.type,
-        focusIds: const <String>[],
-      ),
-    );
-    await TrainingRepositories(
-      database,
-      platformSeedSource: _SeedSource(_seed),
-    ).catalog.ensurePlatformLibrarySeeded();
+    expect((await repositories.exercises.getById(_squatId))!.focusIds, <String>[
+      _weightsId,
+    ]);
     expect((await repositories.exercises.getById(copyId))!.focusIds, isEmpty);
   });
 

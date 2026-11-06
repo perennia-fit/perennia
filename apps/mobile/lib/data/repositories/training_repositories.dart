@@ -263,10 +263,12 @@ class TrainingRepositories {
   /// batch. Sync push reads only the Activity Log, so a row without one would
   /// stay on the server and on other devices; the batch also keeps the erase
   /// recoverable with an undo. Settings and integration consents are not
-  /// authored log data and stay. So do rows the bundled seeds own (the
-  /// Platform Library, the OTC Compounds and starter Purposes, the default Meal
-  /// Types): every seed skips ids it has already written, so an erased seed row
-  /// would never return.
+  /// authored log data and stay. So do rows the bundled seeds own. Platform
+  /// Library rows stay because a hidden one must keep resolving for a Set that
+  /// arrives later, and the launch pass would reinstate an erased one. The OTC
+  /// Compounds, starter Purposes, starter Focuses, seed categories and default
+  /// Meal Types stay because those seeds skip ids they have already written, so
+  /// an erased seed row would never return.
   Future<void> eraseAllData() async {
     final seedOwnedIds = await _seedOwnedIdsForErase();
     final context = _writeContexts.create(actor: 'settings');
@@ -470,7 +472,8 @@ class CatalogRepository {
     final seed = await _platformSeedSource.load();
     if (seed.categories.isEmpty &&
         seed.focuses.isEmpty &&
-        seed.exercises.isEmpty) {
+        seed.exercises.isEmpty &&
+        seed.retired.isEmpty) {
       return;
     }
 
@@ -479,10 +482,6 @@ class CatalogRepository {
     await _database.transaction(() async {
       final existingCategoryIds =
           (await _database.select(_database.exerciseCategories).get())
-              .map((row) => row.id)
-              .toSet();
-      final existingExerciseIds =
-          (await _database.select(_database.exercises).get())
               .map((row) => row.id)
               .toSet();
 
@@ -510,340 +509,351 @@ class CatalogRepository {
         );
       }
 
-      for (final exercise in seed.exercises) {
-        if (existingExerciseIds.contains(exercise.id)) {
-          continue;
-        }
-
-        final exerciseType = ExerciseType(exercise.dimensions);
-        const loadMode = ExerciseLoadMode.added;
-        await _database.into(_database.exercises).insert(
-              ExercisesCompanion.insert(
-                id: exercise.id,
-                libraryOrigin: Value<String>(
-                  ExerciseLibraryOrigin.platform.name,
-                ),
-                name: exercise.name,
-                dimensionIds: _encodeDimensions(exerciseType),
-                loadMode: Value<String>(loadMode.name),
-                recordProfile: Value<String>(
-                  defaultRecordProfileFor(
-                    type: exerciseType,
-                    loadMode: loadMode,
-                  ).name,
-                ),
-                defaultLoadUnit: Value<String>(
-                  TrainingUnit.kilogram.name,
-                ),
-                isUnilateral: const Value<bool>(false),
-                usesRpe: const Value<bool>(false),
-                categoryId: Value<String?>(exercise.categoryId),
-                equipmentIds:
-                    Value<String>(_encodeEquipment(exercise.equipment)),
-                focusIds: Value<String>(_encodeFocusIds(exercise.focusIds)),
-                notes: Value<String?>(exercise.notes),
-                updatedAt: exercise.updatedAt,
-              ),
-            );
-        final after = await _requireExerciseRow(exercise.id);
-        await _repositories._activityLogWriter.append(
-          context,
-          entityTable: AppDatabase.exercisesTable,
-          entityId: exercise.id,
-          beforeImage: null,
-          afterImage: _exerciseImage(after),
-        );
-      }
+      await _reconcilePlatformExercises(seed, context);
 
       await _repositories.focuses._seedStarterFocuses(seed.focuses, context);
-
-      await _applyPlatformExerciseRedirects(seed, context);
-
-      await _sanitizeLegacyWgerAttributionNotes(context);
-      await _backfillExistingPlatformSeedEquipment(seed, context);
-      await _reconcilePlatformSeedFocuses(seed, context);
     });
   }
 
-  Future<void> _applyPlatformExerciseRedirects(
+  /// Makes this device's exercise rows agree with the bundled seed, by the
+  /// table in `docs/designs/platform-library-updates.md`: a live seed id gets
+  /// the seed's fields, a retired one is kept if used and hidden otherwise.
+  ///
+  /// It compares fields and not versions, so it is idempotent: with nothing to
+  /// change it writes nothing, and a new library needs no new migration code.
+  /// Only written rows are re-read, so a launch with no change does no per-row
+  /// reads. A User Library row is never touched, whatever its id, and neither
+  /// is a Platform row in neither list.
+  ///
+  /// `isFavorite`, `loadMode`, `defaultLoadUnit`, `isUnilateral` and `usesRpe`
+  /// are never written on an existing row, and a live row's Exercise Type is
+  /// never corrected in place: changing one means retiring the id.
+  Future<void> _reconcilePlatformExercises(
     PlatformExerciseSeed seed,
     WriteContext context,
   ) async {
-    if (seed.redirects.isEmpty) {
-      return;
+    final rowsById = <String, ExerciseRow>{
+      for (final row in await _database.select(_database.exercises).get())
+        row.id: row,
+    };
+    final usedIds = await _usedRetiredExerciseIds(<String>[
+      for (final retired in seed.retired)
+        if (rowsById[retired.id]?.libraryOrigin ==
+            ExerciseLibraryOrigin.platform.name)
+          retired.id,
+    ]);
+
+    // The bundled seed is not guaranteed to be id-sorted, so sort copies. The
+    // write order is what fixes the order of the Activity Log entries.
+    final exercises = seed.exercises.toList()
+      ..sort((left, right) => left.id.compareTo(right.id));
+    for (final exercise in exercises) {
+      final row = rowsById[exercise.id];
+      if (row == null) {
+        await _insertPlatformExercise(
+          id: exercise.id,
+          name: exercise.name,
+          dimensions: exercise.dimensions,
+          categoryId: exercise.categoryId,
+          equipment: exercise.equipment,
+          focusIds: exercise.focusIds,
+          notes: exercise.notes,
+          updatedAt: exercise.updatedAt,
+          deletedAt: null,
+          context: context,
+        );
+        continue;
+      }
+      if (row.libraryOrigin != ExerciseLibraryOrigin.platform.name) {
+        continue;
+      }
+      if (row.deletedAt == null &&
+          _platformFieldsMatch(
+            row,
+            name: exercise.name,
+            categoryId: exercise.categoryId,
+            equipment: exercise.equipment,
+            focusIds: exercise.focusIds,
+            notes: exercise.notes,
+          )) {
+        continue;
+      }
+      await _writeReconciledExercise(
+        row,
+        ExercisesCompanion(
+          name: Value<String>(exercise.name),
+          categoryId: Value<String?>(exercise.categoryId),
+          equipmentIds: Value<String>(_encodeEquipment(exercise.equipment)),
+          focusIds: Value<String>(_encodeFocusIds(exercise.focusIds)),
+          notes: Value<String?>(exercise.notes),
+          updatedAt: Value<DateTime>(exercise.updatedAt),
+          deletedAt: const Value<DateTime?>(null),
+        ),
+        context,
+      );
     }
 
-    final exercisesById = <String, SeedExercise>{
-      for (final exercise in seed.exercises) exercise.id: exercise,
-    };
-    for (final redirect in seed.redirects) {
-      final canonical = exercisesById[redirect.toExerciseId];
-      if (canonical == null) {
-        throw StateError(
-          'Platform exercise redirect ${redirect.fromExerciseId} points to '
-          'missing exercise ${redirect.toExerciseId}.',
+    final retiredExercises = seed.retired.toList()
+      ..sort((left, right) => left.id.compareTo(right.id));
+    for (final retired in retiredExercises) {
+      final row = rowsById[retired.id];
+      if (row == null) {
+        // Hidden, not absent: logged_sets, workout_exercises and
+        // template_exercises all have foreign keys to exercises, and a Set for
+        // this id can still arrive from another device or an old backup.
+        await _insertPlatformExercise(
+          id: retired.id,
+          name: retired.name,
+          dimensions: retired.dimensions,
+          categoryId: retired.categoryId,
+          equipment: retired.equipment,
+          focusIds: retired.focusIds,
+          notes: retired.notes,
+          updatedAt: retired.updatedAt,
+          deletedAt: retired.retiredAt,
+          context: context,
         );
+        continue;
       }
+      if (row.libraryOrigin != ExerciseLibraryOrigin.platform.name) {
+        continue;
+      }
+      if (usedIds.contains(retired.id)) {
+        await _keepRetiredExercise(row, retired, context);
+      } else {
+        await _hideRetiredExercise(row, retired, context);
+      }
+    }
+  }
 
-      final existing = await (_database.select(_database.exercises)
-            ..where((row) => row.id.equals(redirect.fromExerciseId)))
-          .getSingleOrNull();
-      if (existing != null) {
-        if (existing.libraryOrigin != ExerciseLibraryOrigin.platform.name) {
-          throw StateError(
-            'Platform exercise redirect ${redirect.fromExerciseId} conflicts '
-            'with a User Library Exercise.',
-          );
-        }
-        if (existing.deletedAt != null) {
-          continue;
-        }
+  /// The retired [candidateIds] that a live Set, Workout entry or Template
+  /// entry names. Each branch checks only its own row's `deleted_at`: a Planned
+  /// Set counts because a Workout naming the exercise must keep working, and a
+  /// live entry in an archived Template counts because that Template can be
+  /// restored. A deleted Workout soft-deletes its children, so it does not count.
+  Future<Set<String>> _usedRetiredExerciseIds(List<String> candidateIds) async {
+    // Also the fresh-install case, and `IN ()` is not valid SQL.
+    if (candidateIds.isEmpty) {
+      return const <String>{};
+    }
+    final placeholders = List<String>.filled(
+      candidateIds.length,
+      '?',
+    ).join(', ');
+    final rows = await _database.customSelect(
+      'SELECT exercise_id FROM logged_sets '
+      'WHERE deleted_at IS NULL AND exercise_id IN ($placeholders) '
+      'UNION '
+      'SELECT exercise_id FROM workout_exercises '
+      'WHERE deleted_at IS NULL AND exercise_id IN ($placeholders) '
+      'UNION '
+      'SELECT exercise_id FROM template_exercises '
+      'WHERE deleted_at IS NULL AND exercise_id IN ($placeholders)',
+      variables: <Variable<Object>>[
+        for (var branch = 0; branch < 3; branch += 1)
+          for (final id in candidateIds) Variable<String>(id),
+      ],
+    ).get();
+    return rows.map((row) => row.read<String>('exercise_id')).toSet();
+  }
 
-        await (_database.update(_database.exercises)
-              ..where((row) => row.id.equals(redirect.fromExerciseId)))
-            .write(
-          ExercisesCompanion(
-            updatedAt: Value<DateTime>(canonical.updatedAt),
-            deletedAt: Value<DateTime?>(canonical.updatedAt),
+  Future<void> _insertPlatformExercise({
+    required String id,
+    required String name,
+    required List<DimensionId> dimensions,
+    required String? categoryId,
+    required List<ExerciseEquipment> equipment,
+    required List<String> focusIds,
+    required String? notes,
+    required DateTime updatedAt,
+    required DateTime? deletedAt,
+    required WriteContext context,
+  }) async {
+    final exerciseType = ExerciseType(dimensions);
+    const loadMode = ExerciseLoadMode.added;
+    await _database.into(_database.exercises).insert(
+          ExercisesCompanion.insert(
+            id: id,
+            libraryOrigin: Value<String>(
+              ExerciseLibraryOrigin.platform.name,
+            ),
+            name: name,
+            dimensionIds: _encodeDimensions(exerciseType),
+            loadMode: Value<String>(loadMode.name),
+            recordProfile: Value<String>(
+              defaultRecordProfileFor(
+                type: exerciseType,
+                loadMode: loadMode,
+              ).name,
+            ),
+            defaultLoadUnit: Value<String>(
+              TrainingUnit.kilogram.name,
+            ),
+            isUnilateral: const Value<bool>(false),
+            usesRpe: const Value<bool>(false),
+            categoryId: Value<String?>(categoryId),
+            equipmentIds: Value<String>(_encodeEquipment(equipment)),
+            focusIds: Value<String>(_encodeFocusIds(focusIds)),
+            notes: Value<String?>(notes),
+            updatedAt: updatedAt,
+            deletedAt: Value<DateTime?>(deletedAt),
           ),
         );
-        final after = await _requireExerciseRow(redirect.fromExerciseId);
-        await _repositories._activityLogWriter.append(
-          context,
-          entityTable: AppDatabase.exercisesTable,
-          entityId: redirect.fromExerciseId,
-          beforeImage: _exerciseImage(existing),
-          afterImage: _exerciseImage(after),
-        );
-        continue;
-      }
-
-      final exerciseType = ExerciseType(canonical.dimensions);
-      const loadMode = ExerciseLoadMode.added;
-      await _database.into(_database.exercises).insert(
-            ExercisesCompanion.insert(
-              id: redirect.fromExerciseId,
-              libraryOrigin: Value<String>(
-                ExerciseLibraryOrigin.platform.name,
-              ),
-              name: canonical.name,
-              dimensionIds: _encodeDimensions(exerciseType),
-              loadMode: Value<String>(loadMode.name),
-              recordProfile: Value<String>(
-                defaultRecordProfileFor(
-                  type: exerciseType,
-                  loadMode: loadMode,
-                ).name,
-              ),
-              defaultLoadUnit: Value<String>(TrainingUnit.kilogram.name),
-              isUnilateral: const Value<bool>(false),
-              usesRpe: const Value<bool>(false),
-              categoryId: Value<String?>(canonical.categoryId),
-              equipmentIds:
-                  Value<String>(_encodeEquipment(canonical.equipment)),
-              focusIds: Value<String>(_encodeFocusIds(canonical.focusIds)),
-              notes: Value<String?>(canonical.notes),
-              updatedAt: canonical.updatedAt,
-              deletedAt: Value<DateTime?>(canonical.updatedAt),
-            ),
-          );
-      final alias = await _requireExerciseRow(redirect.fromExerciseId);
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.exercisesTable,
-        entityId: redirect.fromExerciseId,
-        beforeImage: null,
-        afterImage: _exerciseImage(alias),
-      );
-    }
+    final after = await _requireExerciseRow(id);
+    await _repositories._activityLogWriter.append(
+      context,
+      entityTable: AppDatabase.exercisesTable,
+      entityId: id,
+      beforeImage: null,
+      afterImage: _exerciseImage(after),
+    );
   }
 
-  Future<void> _backfillExistingPlatformSeedEquipment(
-    PlatformExerciseSeed seed,
+  /// Hides an unused Retired Exercise, a Platform row shown nowhere. The stamps
+  /// are part of the comparison because a hidden row's stamp must hold even if
+  /// a favorite wrote a later one: `setFavorite` stamps the current time on a
+  /// Platform row, and a stamp later than `retired_at` would beat a kept row
+  /// pulled from another device.
+  Future<void> _hideRetiredExercise(
+    ExerciseRow row,
+    SeedRetiredExercise retired,
     WriteContext context,
   ) async {
-    final platformRows = await (_database.select(_database.exercises)
-          ..where(
-            (row) =>
-                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name),
-          ))
-        .get();
-    final platformRowsById = <String, ExerciseRow>{
-      for (final row in platformRows) row.id: row,
-    };
-    for (final exercise in seed.exercises) {
-      if (exercise.equipment.isEmpty) {
-        continue;
-      }
-
-      // Removed on use so a repeated seed id sees no row, as a re-read of the
-      // just-written row would have skipped it.
-      final before = platformRowsById.remove(exercise.id);
-      if (before == null || _decodeEquipment(before.equipmentIds).isNotEmpty) {
-        continue;
-      }
-
-      await (_database.update(_database.exercises)
-            ..where((row) => row.id.equals(exercise.id)))
-          .write(
-        ExercisesCompanion(
-          equipmentIds: Value<String>(_encodeEquipment(exercise.equipment)),
-          updatedAt: Value<DateTime>(exercise.updatedAt),
-        ),
-      );
-      final after = await _requireExerciseRow(exercise.id);
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.exercisesTable,
-        entityId: exercise.id,
-        beforeImage: _exerciseImage(before),
-        afterImage: _exerciseImage(after),
-      );
-    }
-  }
-
-  /// Keeps every Platform exercise's Focuses equal to the bundled seed.
-  /// Platform rows are read-only to users (customizing makes a separate User
-  /// Library copy), so the seed is their only source of truth and a later
-  /// seed that remaps an exercise reaches every install. `updatedAt` is left
-  /// as seeded: Platform rows never sync, and every device holds the same row.
-  ///
-  /// The run that first fills Platform rows (the upgrade that introduced
-  /// Focus) also gives each customization made before it, a user exercise
-  /// shadowing a Platform one by name and still naming no Focus, that Platform
-  /// exercise's Focuses. That happens once: Platform rows are never empty
-  /// again, so a user who later clears a customization's Focuses keeps it.
-  Future<void> _reconcilePlatformSeedFocuses(
-    PlatformExerciseSeed seed,
-    WriteContext context,
-  ) async {
-    final seedById = <String, SeedExercise>{
-      for (final exercise in seed.exercises) exercise.id: exercise,
-    };
-    final platformRows = await (_database.select(_database.exercises)
-          ..where(
-            (row) =>
-                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name),
-          ))
-        .get();
-    final platformFocusIdsByName = <String, String>{};
-    var filledEmptyPlatformRows = false;
-    for (final before in platformRows) {
-      final seeded = seedById[before.id];
-      if (seeded == null) {
-        continue;
-      }
-      final focusIds = _encodeFocusIds(seeded.focusIds);
-      if (before.deletedAt == null) {
-        platformFocusIdsByName[normalizeExerciseName(before.name)] = focusIds;
-      }
-      if (_sameStringSet(
-        _decodeFocusIds(before.focusIds).toSet(),
-        seeded.focusIds.toSet(),
-      )) {
-        continue;
-      }
-      filledEmptyPlatformRows |= before.focusIds == '[]';
-      await (_database.update(_database.exercises)
-            ..where((row) => row.id.equals(before.id)))
-          .write(ExercisesCompanion(focusIds: Value<String>(focusIds)));
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.exercisesTable,
-        entityId: before.id,
-        beforeImage: _exerciseImage(before),
-        afterImage: _exerciseImage(before.copyWith(focusIds: focusIds)),
-      );
-    }
-    if (!filledEmptyPlatformRows) {
+    final deletedAt = row.deletedAt;
+    if (deletedAt != null &&
+        _sameStoredInstant(deletedAt, retired.retiredAt) &&
+        _sameStoredInstant(row.updatedAt, retired.updatedAt) &&
+        row.dimensionIds ==
+            _encodeDimensions(ExerciseType(retired.dimensions)) &&
+        _platformFieldsMatch(
+          row,
+          name: retired.name,
+          categoryId: retired.categoryId,
+          equipment: retired.equipment,
+          focusIds: retired.focusIds,
+          notes: retired.notes,
+        )) {
       return;
     }
-
-    final customizations = await (_database.select(_database.exercises)
-          ..where(
-            (row) =>
-                row.libraryOrigin.equals(ExerciseLibraryOrigin.user.name) &
-                row.focusIds.equals('[]') &
-                row.deletedAt.isNull(),
-          ))
-        .get();
-    for (final before in customizations) {
-      final focusIds =
-          platformFocusIdsByName[normalizeExerciseName(before.name)];
-      if (focusIds == null || focusIds == '[]') {
-        continue;
-      }
-      // A User Library row syncs, so the change carries a fresh stamp.
-      final after = before.copyWith(
-        focusIds: focusIds,
-        updatedAt: context.timestamp,
-      );
-      await (_database.update(_database.exercises)
-            ..where((row) => row.id.equals(before.id)))
-          .write(
-        ExercisesCompanion(
-          focusIds: Value<String>(focusIds),
-          updatedAt: Value<DateTime>(context.timestamp),
-        ),
-      );
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.exercisesTable,
-        entityId: before.id,
-        beforeImage: _exerciseImage(before),
-        afterImage: _exerciseImage(after),
-      );
-    }
+    await _writeReconciledExercise(
+      row,
+      _retiredRecordCompanion(row, retired).copyWith(
+        updatedAt: Value<DateTime>(retired.updatedAt),
+        deletedAt: Value<DateTime?>(retired.retiredAt),
+      ),
+      context,
+    );
   }
 
-  Future<void> _sanitizeLegacyWgerAttributionNotes(
+  /// Keeps a used Retired Exercise as the user's own, in place: the id does not
+  /// change, so no Set, Workout or Template is rewritten.
+  ///
+  /// `updatedAt` is the record's fixed `retired_at`, never the clock, so every
+  /// device computes the same stamp. A clock stamp would let a device updating
+  /// later overwrite the user's rename from a device that updated first.
+  ///
+  /// Entries this row queued while it was a Platform row are acknowledged here.
+  /// The sync guard reads the row's current origin, so from now on it would let
+  /// them through, and only the kept image should go out.
+  Future<void> _keepRetiredExercise(
+    ExerciseRow row,
+    SeedRetiredExercise retired,
     WriteContext context,
   ) async {
-    // Only platform rows whose note still carries the legacy prefix can
-    // change; everything else would be read and decoded on every launch.
-    final rows = await (_database.select(_database.exercises)
+    await (_database.update(_database.activityLog)
           ..where(
-            (row) =>
-                row.libraryOrigin.equals(ExerciseLibraryOrigin.platform.name) &
-                row.notes.like('$_legacyWgerAttributionPrefix%'),
+            (entry) =>
+                entry.entityTable.equals(AppDatabase.exercisesTable) &
+                entry.entityId.equals(row.id) &
+                entry.syncAcknowledgedAt.isNull(),
           ))
-        .get();
-    for (final before in rows) {
-      final migration = _legacyEquipmentMigrationFromNote(before.notes);
-      final cleanedNote = migration != null
-          ? migration.notes
-          : _cleanLegacyWgerAttributionNote(before.notes);
-      final existingEquipment = _decodeEquipment(before.equipmentIds);
-      final migratedEquipment =
-          migration?.equipment ?? const <ExerciseEquipment>[];
-      final nextEquipment =
-          existingEquipment.isEmpty && migratedEquipment.isNotEmpty
-              ? migratedEquipment
-              : existingEquipment;
-      if (cleanedNote == before.notes &&
-          _equipmentListEquals(nextEquipment, existingEquipment)) {
-        continue;
-      }
-
-      await (_database.update(_database.exercises)
-            ..where((row) => row.id.equals(before.id)))
-          .write(
-        ExercisesCompanion(
-          equipmentIds: Value<String>(_encodeEquipment(nextEquipment)),
-          notes: Value<String?>(cleanedNote),
-          updatedAt: Value<DateTime>(context.timestamp),
-        ),
-      );
-      final after = await _requireExerciseRow(before.id);
-      await _repositories._activityLogWriter.append(
-        context,
-        entityTable: AppDatabase.exercisesTable,
-        entityId: before.id,
-        beforeImage: _exerciseImage(before),
-        afterImage: _exerciseImage(after),
-      );
-    }
+        .write(
+      ActivityLogCompanion(
+        syncAcknowledgedAt: Value<DateTime?>(context.timestamp),
+      ),
+    );
+    await _writeReconciledExercise(
+      row,
+      _retiredRecordCompanion(row, retired).copyWith(
+        libraryOrigin: Value<String>(ExerciseLibraryOrigin.user.name),
+        updatedAt: Value<DateTime>(retired.retiredAt),
+        deletedAt: const Value<DateTime?>(null),
+      ),
+      context,
+    );
   }
+
+  /// The fields a Retired Exercise's record sets, whether it is kept or hidden.
+  /// `recordProfile` follows the dimensions, so it is recalculated only when
+  /// they differ, and from the row's own `loadMode`, which is never written.
+  ExercisesCompanion _retiredRecordCompanion(
+    ExerciseRow row,
+    SeedRetiredExercise retired,
+  ) {
+    final type = ExerciseType(retired.dimensions);
+    final dimensionIds = _encodeDimensions(type);
+    return ExercisesCompanion(
+      name: Value<String>(retired.name),
+      dimensionIds: Value<String>(dimensionIds),
+      recordProfile: dimensionIds == row.dimensionIds
+          ? const Value<String>.absent()
+          : Value<String>(
+              defaultRecordProfileFor(
+                type: type,
+                loadMode: ExerciseLoadMode.values.byName(row.loadMode),
+              ).name,
+            ),
+      categoryId: Value<String?>(retired.categoryId),
+      equipmentIds: Value<String>(_encodeEquipment(retired.equipment)),
+      focusIds: Value<String>(_encodeFocusIds(retired.focusIds)),
+      notes: Value<String?>(retired.notes),
+    );
+  }
+
+  /// The fields shared by both lists of the seed. Equipment and Focuses compare
+  /// as sets, so a stored order alone never causes a write.
+  bool _platformFieldsMatch(
+    ExerciseRow row, {
+    required String name,
+    required String? categoryId,
+    required List<ExerciseEquipment> equipment,
+    required List<String> focusIds,
+    required String? notes,
+  }) {
+    return row.name == name &&
+        row.categoryId == categoryId &&
+        row.notes == notes &&
+        _sameStringSet(
+          _normalizedEquipmentIds(_decodeEquipment(row.equipmentIds)).toSet(),
+          _normalizedEquipmentIds(equipment).toSet(),
+        ) &&
+        _sameStringSet(
+          _decodeFocusIds(row.focusIds).toSet(),
+          focusIds.toSet(),
+        );
+  }
+
+  /// Writes [changes] over [before] and appends its Activity Log entry. The
+  /// after-image is read back from the stored row, so it shows a stamp as the
+  /// database holds it, in whole seconds.
+  Future<void> _writeReconciledExercise(
+    ExerciseRow before,
+    ExercisesCompanion changes,
+    WriteContext context,
+  ) async {
+    await (_database.update(_database.exercises)
+          ..where((row) => row.id.equals(before.id)))
+        .write(changes);
+    final after = await _requireExerciseRow(before.id);
+    await _repositories._activityLogWriter.append(
+      context,
+      entityTable: AppDatabase.exercisesTable,
+      entityId: before.id,
+      beforeImage: _exerciseImage(before),
+      afterImage: _exerciseImage(after),
+    );
+  }
+
 
   Future<List<ExerciseCatalogSectionRecord>> listMergedCatalog() async {
     final categories = await _activeCategoryQuery().get();
@@ -19160,115 +19170,6 @@ List<String> _normalizedEquipmentIds(Iterable<ExerciseEquipment> equipment) {
   return ids;
 }
 
-bool _equipmentListEquals(
-  List<ExerciseEquipment> left,
-  List<ExerciseEquipment> right,
-) {
-  final leftIds = _normalizedEquipmentIds(left);
-  final rightIds = _normalizedEquipmentIds(right);
-  if (leftIds.length != rightIds.length) {
-    return false;
-  }
-  final rightIdSet = rightIds.toSet();
-  return leftIds.every(rightIdSet.contains);
-}
-
-_LegacyEquipmentMigration? _legacyEquipmentMigrationFromNote(String? notes) {
-  if (notes == null || !notes.startsWith(_legacyWgerAttributionPrefix)) {
-    return null;
-  }
-
-  final cleanedNote = _cleanLegacyWgerAttributionNote(notes);
-  if (cleanedNote == null) {
-    return _LegacyEquipmentMigration(
-      equipment: const <ExerciseEquipment>[],
-      notes: null,
-    );
-  }
-
-  final match = RegExp(r'^Equipment:\s+(.+)\.$').firstMatch(cleanedNote);
-  if (match == null) {
-    return cleanedNote == notes
-        ? null
-        : _LegacyEquipmentMigration(
-            equipment: const <ExerciseEquipment>[],
-            notes: cleanedNote.isEmpty ? null : cleanedNote,
-          );
-  }
-
-  final equipment = match
-      .group(1)!
-      .split(',')
-      .map((name) => _equipmentFromLegacyName(name.trim()))
-      .whereType<ExerciseEquipment>()
-      .toList(growable: false);
-  return _LegacyEquipmentMigration(
-    equipment: equipment,
-    notes: null,
-  );
-}
-
-String? _cleanLegacyWgerAttributionNote(String? notes) {
-  if (notes == null || !notes.startsWith(_legacyWgerAttributionPrefix)) {
-    return notes;
-  }
-
-  final cleaned =
-      notes.substring(_legacyWgerAttributionPrefix.length).trimLeft();
-  return cleaned.isEmpty ? null : cleaned;
-}
-
-const _legacyWgerAttributionPrefix = 'Adapted from the wger exercise database.';
-
-ExerciseEquipment? _equipmentFromLegacyName(String name) {
-  final id = switch (name.toLowerCase()) {
-    'none (bodyweight exercise)' => 'bodyweight',
-    'resistance band' => 'band',
-    'pull-up bar' => 'pullUpBar',
-    'incline bench' => 'inclineBench',
-    'gym mat' => 'gymMat',
-    'swiss ball' => 'swissBall',
-    'sz-bar' => 'ezBar',
-    'barbell' => 'barbell',
-    'bench' => 'bench',
-    'dumbbell' => 'dumbbell',
-    'kettlebell' => 'kettlebell',
-    'plate' => 'plate',
-    _ => _equipmentIdFromLegacyName(name),
-  };
-  return id.isEmpty ? null : ExerciseEquipment.fromId(id);
-}
-
-String _equipmentIdFromLegacyName(String name) {
-  final words = name
-      .trim()
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-      .split(RegExp(r'\s+'))
-      .where((word) => word.isNotEmpty)
-      .toList(growable: false);
-  if (words.isEmpty) {
-    return '';
-  }
-
-  final buffer = StringBuffer(words.first);
-  for (final word in words.skip(1)) {
-    buffer.write(word[0].toUpperCase());
-    buffer.write(word.substring(1));
-  }
-  return buffer.toString();
-}
-
-class _LegacyEquipmentMigration {
-  const _LegacyEquipmentMigration({
-    required this.equipment,
-    required this.notes,
-  });
-
-  final List<ExerciseEquipment> equipment;
-  final String? notes;
-}
-
 LoggedSet _loggedSetValuesFromRow(LoggedSetRow row) {
   final values = <SetDimensionValue>[];
   _addSetValue(
@@ -19443,3 +19344,12 @@ Map<String, Object?>? _decodeImage(String? encoded) {
 }
 
 String _iso(DateTime value) => value.toUtc().toIso8601String();
+
+/// Whether two stamps are the same once stored. Drift keeps a DateTime as whole
+/// unix seconds here, and seed stamps can carry milliseconds, so a row read back
+/// never equals its parsed seed stamp exactly. Comparing them directly would
+/// rewrite and log those rows on every launch.
+bool _sameStoredInstant(DateTime left, DateTime right) {
+  return left.millisecondsSinceEpoch ~/ 1000 ==
+      right.millisecondsSinceEpoch ~/ 1000;
+}

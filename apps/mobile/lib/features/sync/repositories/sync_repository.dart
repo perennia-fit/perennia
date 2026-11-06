@@ -4816,14 +4816,15 @@ class SyncRepository implements SyncCycleRepository {
     );
   }
 
-  ///the Platform Library is a deterministic bundled seed
-  // that never crosses the server — only User Library exercises (and user
-  // customizations of a Platform exercise, i.e. a shadowing copy per
-  //) sync. `ensurePlatformLibrarySeeded` appends Activity Log rows
-  // for the seeded Platform rows too, so this guard keeps them off the wire
-  // by checking the CURRENT row's `libraryOrigin` (not the stale image, since
-  // shadowing/promotion can change origin after the write that queued this
-  // entry) and acknowledging them so they are never retried.
+  // The Platform Library is a deterministic bundled seed that never crosses the
+  // server: only User Library exercises sync, which includes a shadowing copy
+  // of a Platform exercise and a kept Retired Exercise.
+  // `ensurePlatformLibrarySeeded` appends Activity Log rows for the Platform
+  // rows it writes too, so this guard keeps them off the wire by checking the
+  // CURRENT row's `libraryOrigin` (not the stale image, since shadowing or
+  // keeping can change origin after the write that queued this entry) and
+  // acknowledging them so they are never retried. A kept row passes because
+  // its current origin is `user`.
   Future<_GuardedPendingRows> _guardAgainstPlatformExerciseRows(
     List<ActivityLogRow> pendingRows,
   ) async {

@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
+import 'package:drift/drift.dart'
+    show BooleanExpressionOperators, OrderingTerm, Value, driftRuntimeOptions;
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -9,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:perennia/api/perennia_api_client.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/data/seeds/platform_exercise_seed.dart';
 import 'package:perennia/domain/settings/account_settings.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/activity/repositories/activity_feed_repository.dart';
@@ -565,7 +567,8 @@ void main() {
 
     group('a device that backfilled with no account, then signs in', () {
       // Before any edit below, as a schema-65 device stamped its seed.
-      final seededAt = DateTime.now().toUtc().subtract(const Duration(days: 30));
+      final seededAt =
+          DateTime.now().toUtc().subtract(const Duration(days: 30));
 
       Future<TrainingRepositories> backfilledSignedOut() async {
         final repositories = TrainingRepositories(database);
@@ -5690,6 +5693,342 @@ void main() {
       );
     });
   });
+
+  // docs/designs/platform-library-updates.md: "Hide, do not delete", "Keep in
+  // place" and "Timestamps make devices agree".
+  group('Retired Exercises across sync', () {
+    late AppDatabase other;
+
+    setUp(() {
+      other = AppDatabase.inMemory();
+    });
+
+    tearDown(() async {
+      await other.close();
+    });
+
+    test('a pulled Set on a hidden id applies, and the next launch keeps it',
+        () async {
+      await _launchLibrary(database, _updatedLibrary);
+      final updatedAt = DateTime.utc(2026, 2, 1, 8);
+      await _insertLoggedSetDependencies(database, updatedAt: updatedAt);
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _pulledChange(
+          id: 'late-set',
+          updatedAt: updatedAt,
+          repsEntered: '8',
+          deviceId: 'device-a',
+          afterImage: <String, Object?>{
+            ..._loggedSetPayload('late-set', updatedAt, repsEntered: '8'),
+            'exercise_id': _plankExerciseId,
+          },
+        ),
+      );
+
+      expect(
+        (await _loggedSet(database, 'late-set')).exerciseId,
+        _plankExerciseId,
+      );
+      expect(await _quarantinedChanges(database), isEmpty);
+      _expectHiddenPlank(await _exerciseRow(database, _plankExerciseId));
+
+      await _launchLibrary(database, _updatedLibrary);
+
+      _expectKeptPlank(await _exerciseRow(database, _plankExerciseId));
+    });
+
+    test(
+        'a pulled Template entry on a hidden id applies, and the next launch '
+        'keeps it', () async {
+      await _launchLibrary(database, _updatedLibrary);
+      final updatedAt = DateTime.utc(2026, 2, 1, 8);
+      await database.into(database.workoutTemplates).insert(
+            WorkoutTemplatesCompanion.insert(
+              id: 'late-template',
+              name: 'Core',
+              updatedAt: updatedAt,
+            ),
+          );
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: <String, Object?>{
+          'entity': AppDatabase.templateExercisesTable,
+          'id': 'late-entry',
+          'deviceId': 'device-a',
+          'payload': <String, Object?>{
+            'id': 'late-entry',
+            'workout_template_id': 'late-template',
+            'exercise_id': _plankExerciseId,
+            'position': 0,
+            'note': null,
+            'updated_at': updatedAt.toIso8601String(),
+            'deleted_at': null,
+          },
+          'updatedAt': updatedAt.toIso8601String(),
+          'deletedAt': null,
+        },
+      );
+
+      final entry = await (database.select(database.templateExercises)
+            ..where((row) => row.id.equals('late-entry')))
+          .getSingle();
+      expect(entry.exerciseId, _plankExerciseId);
+      expect(await _quarantinedChanges(database), isEmpty);
+      _expectHiddenPlank(await _exerciseRow(database, _plankExerciseId));
+
+      await _launchLibrary(database, _updatedLibrary);
+
+      _expectKeptPlank(await _exerciseRow(database, _plankExerciseId));
+    });
+
+    test('a pulled kept row applies over a hidden one', () async {
+      await _keepPlankOn(other);
+      final kept = _lastExerciseChange(
+        await _pushExerciseChanges(other, deviceId: 'device-a'),
+        _plankExerciseId,
+      );
+      await _launchLibrary(database, _updatedLibrary);
+      _expectHiddenPlank(await _exerciseRow(database, _plankExerciseId));
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _pulledChangeFromPush(
+          entity: AppDatabase.exercisesTable,
+          deviceId: 'device-a',
+          change: kept,
+        ),
+      );
+
+      final pulled = await _exerciseRow(database, _plankExerciseId);
+      _expectKeptPlank(pulled);
+      expect(pulled.syncDeviceId, 'device-a');
+
+      // Later launches leave it alone: it is a User Library row now.
+      final entriesBefore = await database.select(database.activityLog).get();
+      await _launchLibrary(database, _updatedLibrary);
+      expect(await _exerciseRow(database, _plankExerciseId), pulled);
+      expect(await database.select(database.activityLog).get(), entriesBefore);
+    });
+
+    test(
+        "a Sync Run seeds first, so a favorite's later stamp does not beat the "
+        'pulled kept row', () async {
+      await _keepPlankOn(other);
+      final kept = _lastExerciseChange(
+        await _pushExerciseChanges(other, deviceId: 'device-a'),
+        _plankExerciseId,
+      );
+      final installed = await _launchLibrary(database, _updatedLibrary);
+      await installed.exercises.setFavorite(_plankExerciseId, isFavorite: true);
+      final favorited = await _exerciseRow(database, _plankExerciseId);
+      expect(favorited.updatedAt.toUtc().isAfter(_plankRetiredAt), isTrue);
+
+      final nextLaunch = TrainingRepositories(
+        database,
+        platformSeedSource: _LibrarySource(_updatedLibrary),
+      );
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: _acceptingSyncApi(
+          pushes: pushes,
+          pullChanges: <Map<String, Object?>>[
+            _pulledChangeFromPush(
+              entity: AppDatabase.exercisesTable,
+              deviceId: 'device-a',
+              change: kept,
+            ),
+          ],
+        ),
+      );
+
+      await RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: repository.statusRepository,
+        ensureLibrarySeeded: nextLaunch.catalog.ensurePlatformLibrarySeeded,
+      ).run(session: _session(), deviceId: 'device-b');
+
+      _expectKeptPlank(await _exerciseRow(database, _plankExerciseId));
+    });
+
+    test("a device's automatic keep loses to a later pulled rename (CUJ 8)",
+        () async {
+      // Device A updates first, and the user renames the kept exercise there.
+      final deviceA = await _keepPlankOn(other);
+      await deviceA.exercises.rename(_plankExerciseId, name: 'Forearm Hold');
+      final renamedRow = await _exerciseRow(other, _plankExerciseId);
+      expect(renamedRow.updatedAt.toUtc().isAfter(_plankRetiredAt), isTrue);
+      final renamed = _lastExerciseChange(
+        await _pushExerciseChanges(other, deviceId: 'device-a'),
+        _plankExerciseId,
+      );
+
+      // Device B updates later. Its automatic keep goes out first and the
+      // server drops it, then the rename comes back in the same Sync Run.
+      await _logPlankOnOlderLibrary(database);
+      final nextLaunch = TrainingRepositories(
+        database,
+        platformSeedSource: _LibrarySource(_updatedLibrary),
+      );
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: _acceptingSyncApi(
+          pushes: pushes,
+          applyPushes: false,
+          pullChanges: <Map<String, Object?>>[
+            _pulledChangeFromPush(
+              entity: AppDatabase.exercisesTable,
+              deviceId: 'device-a',
+              change: renamed,
+            ),
+          ],
+        ),
+      );
+
+      await RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: repository.statusRepository,
+        ensureLibrarySeeded: nextLaunch.catalog.ensurePlatformLibrarySeeded,
+      ).run(session: _session(), deviceId: 'device-b');
+
+      final automaticKeep = _lastExerciseChange(
+        _exerciseChangesIn(pushes),
+        _plankExerciseId,
+      );
+      expect(
+        (automaticKeep['payload']! as Map<String, Object?>)['name'],
+        'Plank',
+      );
+      final deviceBRow = await _exerciseRow(database, _plankExerciseId);
+      expect(deviceBRow.name, 'Forearm Hold');
+      expect(deviceBRow.libraryOrigin, ExerciseLibraryOrigin.user.name);
+      expect(deviceBRow.syncDeviceId, 'device-a');
+      expect(deviceBRow.updatedAt, renamedRow.updatedAt);
+      expect(await repository.hasPendingChanges(), isFalse);
+
+      // Were device A to pull device B's automatic keep, it would lose there.
+      await _pullChangeInto(
+        other,
+        localDeviceId: 'device-a',
+        change: _pulledChangeFromPush(
+          entity: AppDatabase.exercisesTable,
+          deviceId: 'device-b',
+          change: automaticKeep,
+        ),
+      );
+      expect(
+        (await _exerciseRow(other, _plankExerciseId)).name,
+        'Forearm Hold',
+      );
+    });
+
+    for (final firstPull in <String>['device-a', 'device-b']) {
+      test(
+          "two devices' kept rows at one stamp converge by the device-id "
+          'tie-break, with $firstPull pulling first', () async {
+        // Only `isFavorite` can differ between two kept rows, which is what
+        // shows here whose row won.
+        await _logPlankOnOlderLibrary(other);
+        await (other.update(other.exercises)
+              ..where((row) => row.id.equals(_plankExerciseId)))
+            .write(const ExercisesCompanion(isFavorite: Value<bool>(true)));
+        await _launchLibrary(other, _updatedLibrary);
+        await _keepPlankOn(database);
+        expect(
+          (await _exerciseRow(other, _plankExerciseId)).updatedAt,
+          (await _exerciseRow(database, _plankExerciseId)).updatedAt,
+        );
+
+        final fromA = _pulledChangeFromPush(
+          entity: AppDatabase.exercisesTable,
+          deviceId: 'device-a',
+          change: _lastExerciseChange(
+            await _pushExerciseChanges(other, deviceId: 'device-a'),
+            _plankExerciseId,
+          ),
+        );
+        final fromB = _pulledChangeFromPush(
+          entity: AppDatabase.exercisesTable,
+          deviceId: 'device-b',
+          change: _lastExerciseChange(
+            await _pushExerciseChanges(database, deviceId: 'device-b'),
+            _plankExerciseId,
+          ),
+        );
+
+        Future<void> pullIntoA() => _pullChangeInto(
+              other,
+              localDeviceId: 'device-a',
+              change: fromB,
+            );
+        Future<void> pullIntoB() => _pullChangeInto(
+              database,
+              localDeviceId: 'device-b',
+              change: fromA,
+            );
+        if (firstPull == 'device-a') {
+          await pullIntoA();
+          await pullIntoB();
+        } else {
+          await pullIntoB();
+          await pullIntoA();
+        }
+
+        final deviceARow = await _exerciseRow(other, _plankExerciseId);
+        final deviceBRow = await _exerciseRow(database, _plankExerciseId);
+        _expectKeptPlank(deviceARow);
+        _expectKeptPlank(deviceBRow);
+        // 'device-b' sorts later, so its row, with no favorite, wins on both.
+        expect(deviceARow.isFavorite, isFalse);
+        expect(deviceBRow.isFavorite, isFalse);
+        expect(deviceARow.syncDeviceId, 'device-b');
+        expect(deviceBRow.syncDeviceId, 'device-b');
+      });
+    }
+
+    test('the kept row pushes, and a hidden row does not', () async {
+      await _keepPlankOn(database);
+      _expectHiddenRow(await _exerciseRow(database, _sideBendExerciseId));
+
+      final changes =
+          await _pushExerciseChanges(database, deviceId: 'device-a');
+
+      // Only the kept image goes out: not the entries the row queued while it
+      // was a Platform row, not the hidden row, not the live Platform row.
+      expect(changes.map((change) => change['id']), <String>[_plankExerciseId]);
+      final payload = changes.single['payload']! as Map<String, Object?>;
+      expect(payload['library_origin'], ExerciseLibraryOrigin.user.name);
+      expect(payload['name'], 'Plank');
+      expect(payload['deleted_at'], isNull);
+      expect(
+        DateTime.parse(payload['updated_at']! as String).toUtc(),
+        _plankRetiredAt,
+      );
+
+      // The guard acknowledges the entries of every Platform row, so none is
+      // retried, and the accepted push acknowledges the kept row's.
+      final pendingExerciseEntries =
+          await (database.select(database.activityLog)
+                ..where(
+                  (row) =>
+                      row.entityTable.equals(AppDatabase.exercisesTable) &
+                      row.syncAcknowledgedAt.isNull(),
+                ))
+              .get();
+      expect(pendingExerciseEntries, isEmpty);
+      final hiddenEntries = await (database.select(database.activityLog)
+            ..where((row) => row.entityId.equals(_sideBendExerciseId)))
+          .get();
+      expect(hiddenEntries, isNotEmpty);
+    });
+  });
 }
 
 /// A Sync API that asks for a full resync and then serves [snapshot].
@@ -6512,4 +6851,194 @@ NutrientVector _offNutrientsPer100() {
       unit: NutrientUnit.gram,
     ),
   );
+}
+
+const _coreCategoryId = '01910000-0000-7000-8000-000000000002';
+const _fullPlankExerciseId = '01910000-0000-7000-8000-000000000102';
+const _plankExerciseId = '01910000-0000-7000-8000-000000000201';
+const _sideBendExerciseId = '01910000-0000-7000-8000-000000000202';
+
+final _libraryStamp = DateTime.utc(2026, 1, 1);
+
+/// Earlier than any clock a test runs under, so a user's edit stamps later.
+final _plankRetiredAt = DateTime.utc(2026, 1, 5);
+
+final _olderLibrary = PlatformExerciseSeed(
+  categories: _libraryCategories,
+  exercises: <SeedExercise>[
+    _fullPlankInLibrary,
+    SeedExercise(
+      id: _plankExerciseId,
+      name: 'Plank (old name)',
+      dimensions: const <DimensionId>[DimensionId.reps],
+      categoryId: _coreCategoryId,
+      notes: 'An older note.',
+      updatedAt: _libraryStamp,
+    ),
+    SeedExercise(
+      id: _sideBendExerciseId,
+      name: 'Side Bend',
+      dimensions: const <DimensionId>[DimensionId.reps],
+      categoryId: _coreCategoryId,
+      notes: null,
+      updatedAt: _libraryStamp,
+    ),
+  ],
+);
+
+/// The same library after it merged `Plank` and removed `Side Bend`.
+final _updatedLibrary = PlatformExerciseSeed(
+  categories: _libraryCategories,
+  exercises: <SeedExercise>[_fullPlankInLibrary],
+  retired: <SeedRetiredExercise>[
+    SeedRetiredExercise(
+      id: _plankExerciseId,
+      name: 'Plank',
+      dimensions: const <DimensionId>[DimensionId.reps],
+      categoryId: _coreCategoryId,
+      equipment: const <ExerciseEquipment>[ExerciseEquipment.gymMat],
+      notes: 'Hold it.',
+      updatedAt: _libraryStamp,
+      retiredAt: _plankRetiredAt,
+    ),
+    SeedRetiredExercise(
+      id: _sideBendExerciseId,
+      name: 'Side Bend',
+      dimensions: const <DimensionId>[DimensionId.reps],
+      categoryId: _coreCategoryId,
+      notes: null,
+      updatedAt: _libraryStamp,
+      retiredAt: _plankRetiredAt,
+    ),
+  ],
+);
+
+final _libraryCategories = <SeedExerciseCategory>[
+  SeedExerciseCategory(
+    id: _coreCategoryId,
+    name: 'Core',
+    sortOrder: 0,
+    colorHex: '#1F9D55',
+    updatedAt: _libraryStamp,
+  ),
+];
+
+final _fullPlankInLibrary = SeedExercise(
+  id: _fullPlankExerciseId,
+  name: 'Full Plank',
+  dimensions: const <DimensionId>[DimensionId.reps],
+  categoryId: _coreCategoryId,
+  notes: null,
+  updatedAt: _libraryStamp,
+);
+
+class _LibrarySource implements PlatformExerciseSeedSource {
+  const _LibrarySource(this.seed);
+
+  final PlatformExerciseSeed seed;
+
+  @override
+  Future<PlatformExerciseSeed> load() async => seed;
+}
+
+/// One launch: the pass is memoized per instance, so a rerun needs a new one.
+Future<TrainingRepositories> _launchLibrary(
+  AppDatabase database,
+  PlatformExerciseSeed seed,
+) async {
+  final repositories = TrainingRepositories(
+    database,
+    platformSeedSource: _LibrarySource(seed),
+  );
+  await repositories.catalog.ensurePlatformLibrarySeeded();
+  return repositories;
+}
+
+/// A device on the older library that logged a Set against `Plank`.
+Future<void> _logPlankOnOlderLibrary(AppDatabase database) async {
+  final repositories = await _launchLibrary(database, _olderLibrary);
+  final workoutId = await repositories.workoutSessions.create(
+    WorkoutSessionDraft(
+      startedAt: DateTime.utc(2026, 1, 2, 8),
+      timezone: 'UTC',
+    ),
+  );
+  await repositories.workoutExercises.create(
+    WorkoutExerciseDraft(workoutId: workoutId, exerciseId: _plankExerciseId),
+  );
+  await repositories.sets.create(
+    LoggedSetDraft(
+      workoutId: workoutId,
+      exerciseId: _plankExerciseId,
+      position: 0,
+      values: _repsSet('10'),
+      isCompleted: true,
+    ),
+  );
+}
+
+/// [_logPlankOnOlderLibrary], then the launch on the updated library.
+Future<TrainingRepositories> _keepPlankOn(AppDatabase database) async {
+  await _logPlankOnOlderLibrary(database);
+  final repositories = await _launchLibrary(database, _updatedLibrary);
+  _expectKeptPlank(await _exerciseRow(database, _plankExerciseId));
+  return repositories;
+}
+
+void _expectKeptPlank(ExerciseRow row) {
+  expect(row.libraryOrigin, ExerciseLibraryOrigin.user.name);
+  expect(row.deletedAt, isNull);
+  expect(row.name, 'Plank');
+  expect(row.categoryId, _coreCategoryId);
+  expect(row.equipmentIds, '["gymMat"]');
+  expect(row.notes, 'Hold it.');
+  expect(row.updatedAt.toUtc(), _plankRetiredAt);
+}
+
+void _expectHiddenPlank(ExerciseRow row) {
+  _expectHiddenRow(row);
+  expect(row.name, 'Plank');
+}
+
+void _expectHiddenRow(ExerciseRow row) {
+  expect(row.libraryOrigin, ExerciseLibraryOrigin.platform.name);
+  expect(row.deletedAt?.toUtc(), _plankRetiredAt);
+  expect(row.updatedAt.toUtc(), _libraryStamp);
+}
+
+Future<ExerciseRow> _exerciseRow(AppDatabase database, String id) {
+  return (database.select(database.exercises)
+        ..where((row) => row.id.equals(id)))
+      .getSingle();
+}
+
+/// Pushes everything pending on [database] to a server that accepts it, and
+/// returns the Exercise changes it sent.
+Future<List<Map<String, Object?>>> _pushExerciseChanges(
+  AppDatabase database, {
+  required String deviceId,
+}) async {
+  final pushes = <Map<String, Object?>>[];
+  await SyncRepository(
+    database: database,
+    apiClientFactory: _acceptingSyncApi(pushes: pushes),
+  ).pushPendingLoggedSets(session: _session(), deviceId: deviceId);
+  return _exerciseChangesIn(pushes);
+}
+
+List<Map<String, Object?>> _exerciseChangesIn(
+  List<Map<String, Object?>> pushes,
+) {
+  return <Map<String, Object?>>[
+    for (final body in pushes)
+      if (body['entity'] == AppDatabase.exercisesTable)
+        ...(body['changes']! as List<Object?>).cast<Map<String, Object?>>(),
+  ];
+}
+
+Map<String, Object?> _lastExerciseChange(
+  List<Map<String, Object?>> changes,
+  String id,
+) {
+  return changes.lastWhere((change) => change['id'] == id);
 }
