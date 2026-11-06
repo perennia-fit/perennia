@@ -36,19 +36,24 @@ final compoundOptionListProvider =
   return ref.watch(protocolsRepositoryProvider).watchCompoundOptions();
 });
 
-/// Active `Compound` schedule options for Protocol plan editors: identity for
-/// member chips plus default unit/route for optional Schedule seed values.
-final compoundScheduleOptionListProvider =
-    StreamProvider<List<CompoundScheduleOptionRecord>>((ref) {
-  return ref.watch(protocolsRepositoryProvider).watchCompoundScheduleOptions();
-});
-
 final protocolMemberCompoundNamesProvider =
     StreamProvider.family<Map<String, String>, CompoundNameLookupRequest>(
   (ref, request) {
     return ref
         .watch(protocolsRepositoryProvider)
         .watchCompoundNamesByIds(request.idSet);
+  },
+);
+
+/// The `Compound`s a Protocol editor's members name, archived ones included
+/// with `isArchived` set: a Protocol keeps a member whose Compound was archived,
+/// and the editor still names it (D4).
+final compoundsByIdsProvider = StreamProvider.autoDispose
+    .family<List<CompoundScheduleOptionRecord>, CompoundNameLookupRequest>(
+  (ref, request) {
+    return ref
+        .watch(protocolsRepositoryProvider)
+        .watchCompoundsByIds(request.idSet);
   },
 );
 
@@ -214,6 +219,31 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
     return ref.read(protocolsRepositoryProvider).createCompound(draft);
   }
 
+  /// Edits a `Compound` through the repository Activity Log write path.
+  /// Returns the Batch id, or null when the draft changes nothing, which
+  /// writes nothing.
+  Future<String?> editCompound(String compoundId, CompoundDraft draft) {
+    return ref
+        .read(protocolsRepositoryProvider)
+        .editCompound(compoundId, draft);
+  }
+
+  /// Archives a `Compound`. It cascades nothing: a Protocol keeps it as a
+  /// member, and its logged Doses stay. Returns the Batch id.
+  Future<String> archiveCompound(String compoundId) {
+    return ref.read(protocolsRepositoryProvider).archiveCompound(compoundId);
+  }
+
+  /// How many active Protocols hold [compoundId] as a live member, for the
+  /// archive confirmation (D4).
+  Future<int> countProtocolsWithCompound(String compoundId) async {
+    final summaries =
+        await ref.read(protocolsRepositoryProvider).listProtocolSummaries();
+    return summaries
+        .where((summary) => summary.compoundIds.contains(compoundId))
+        .length;
+  }
+
   /// Logs a `Dose` through the repository Activity Log write path. The Dose
   /// snapshots the Compound's name, captures its timezone, and freezes its
   /// local date at log time.
@@ -290,6 +320,21 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   /// falls back to its default unit/route.
   Future<DoseRecord?> lastDoseFor(String compoundId) {
     return ref.read(protocolsRepositoryProvider).lastDoseFor(compoundId);
+  }
+
+  /// Each of [compoundIds]' most recently logged amount and unit, DERIVED on
+  /// read from [lastDoseFor]. An id with no Dose has no entry.
+  Future<Map<String, ({double amount, DoseUnit unit})>> latestDoseAmounts(
+    Set<String> compoundIds,
+  ) async {
+    final amounts = <String, ({double amount, DoseUnit unit})>{};
+    for (final compoundId in compoundIds) {
+      final dose = await lastDoseFor(compoundId);
+      if (dose != null) {
+        amounts[compoundId] = (amount: dose.amountValue, unit: dose.unit);
+      }
+    }
+    return amounts;
   }
 }
 

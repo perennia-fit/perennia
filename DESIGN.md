@@ -267,6 +267,9 @@ rectangles with `md` corners, never FABs.
   (Add Exercise, Add To Group, Home).
 - **Inputs/forms (secondary screens):** filled fields on surface color with a 1px
   divider-color stroke, `md` corners, Signal Cyan focus stroke; no floating labels.
+- **Picker sheet:** nearly full height, search then list, with checkboxes in the
+  primary text color and a Done text button with a count, so that a selected filter
+  chip is the only cyan selection on screen.
 - **Calendar:** month grid, up to four category-colored 6px dots per day, today
   ringed in Signal Cyan.
 - **Summary card (Progress):** a flat card (surface color, `md` corners, no shadow)

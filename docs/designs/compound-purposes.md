@@ -579,7 +579,7 @@ for an added member change. The new order is:
         | :------- | :------ |
         | At set times | "Every day · 9:00 · 5 g", "Mon, Wed, Fri · 8:00, 20:00 · 2 capsules", "Every 3 days · 9:00 · 250 mcg" |
         | Any time | "Every day · 2 a day · 5 g", "Mon, Wed · 2 a day · 5 g" |
-        | As needed | "As needed · 5 g" |
+        | As needed | "As needed", which is what the form holds, because this rule carries no amount (D7 `amount_absent`); "As needed · 5 g" when the summary is given an amount |
         | No schedule | "No schedule" |
 
         Times use the device's time format, and weekday names come from
@@ -679,6 +679,13 @@ member order.
     *   new ones are appended in the order picked;
     *   unselected ones are removed, as deselecting a chip does today.
 *   **Dismissing changes nothing** in the form.
+*   **Protocols sheets close when the app locks.** `ProtocolsLockGate` swaps
+    only its own route, so a sheet above it would stay on screen, with Compound
+    names, after the app re-locks. The picker, the Compound editor sheet and its
+    archive dialog sit in `ProtocolsLockSheetGuard`
+    (`protocols_lock_screen.dart`), which renders nothing while the lock state
+    is locked or unavailable and removes its own route, so nested sheets each
+    remove themselves.
 *   **Selection color.** Cyan marks the selected filter chip only. Selected
     rows use a checkbox in the primary text color, and Done is a text button.
     This keeps DESIGN.md's rule of one cyan selection per screen.
@@ -1043,6 +1050,9 @@ this PR changes no golden vectors, contract or sync shape.
         *   `Future<Map<String, ({double amount, DoseUnit unit})>>
             latestDoseAmounts(Set<String> compoundIds)`, built from
             `lastDoseFor` for each id, skipping ids with no Dose.
+    *   **Removed:** `compoundScheduleOptionListProvider` and the repository's
+        `watchCompoundScheduleOptions`. The chip wall was their only reader;
+        the form now reads Compounds from `compoundsByIdsProvider` alone.
 
 #### 4. `apps/mobile/lib/features/protocols/widgets/compound_picker_sheet.dart` (Create)
 
@@ -1050,8 +1060,11 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Proposed Changes**: `Future<List<String>?> showCompoundPickerSheet(
     BuildContext context, {required List<String> selectedIds})`, laid out as
     D6 describes, without the Purpose filter row and with name-only search.
-    *   It reads active Compounds once from the existing Compound list
-        provider, with its Favorites and Recent.
+    *   It reads active Compounds once per open from the existing Compound list
+        provider, with its Favorites and Recent. It invalidates both providers
+        first: from the Protocol editor nothing listens to them between opens,
+        so Riverpod has paused them, and `.future` alone would answer with the
+        list from before any write made since.
     *   Keys for the search field, each row, the Create row and Done.
     *   The Create row opens `CompoundEditorSheet(initialName:)` and awaits
         the new id.
@@ -1081,21 +1094,25 @@ this PR changes no golden vectors, contract or sync shape.
         through `_toggleCompound`'s add and remove logic, and appends nothing
         for them.
     *   **Member names:** watch `compoundsByIdsProvider` for the member ids,
-        and show **Archived** when `isArchived`.
+        and show **Archived** when `isArchived`. This is the form's only source
+        of a Compound: a row's name is blank until the lookup answers.
     *   **Schedule editor:** show `_ScheduleEditor` in a modal bottom sheet
         through a `StatefulBuilder` that also calls the form's `setState`.
     *   **Summaries:** a public `ScheduleSummaryInput` value record (choice,
         weekdays or interval, times, count per day, amount, unit) built from
         `_ScheduleFieldState`, and `String protocolScheduleSummary(
         AppLocalizations l10n, ScheduleSummaryInput input, {required
-        MaterialLocalizations material, required String localeName})`,
-        following the D5 table.
+        MaterialLocalizations material, required String localeName, bool
+        alwaysUse24HourFormat = false})`, following the D5 table. Callers pass
+        `MediaQuery.alwaysUse24HourFormatOf(context)`, the device's time
+        format. The amount is nullable.
     *   **The When section:** a `_PeriodSection` that is collapsed to a
         summary and expands in place. It expands when `_showErrors` is set and
         a period issue exists.
     *   **Added-member default (D5):** a new factory
         `_ScheduleFieldState.forNewMember(CompoundScheduleOptionRecord
-        compound, ({double amount, DoseUnit unit})? lastDose)`. Only the
+        compound, ({double amount, DoseUnit unit})? lastDose, {required
+        ProtocolDayDate protocolStart})`, the start being the every-N anchor. Only the
         picker-result path calls it: before applying a result, the form awaits
         `latestDoseAmounts` for the ids being added, then builds their fields
         with `forNewMember`. `_fieldFor` stays synchronous and keeps calling
@@ -1104,6 +1121,11 @@ this PR changes no golden vectors, contract or sync shape.
         with `==`. It is taken at the end of `initState`. A `PopScope` with
         `canPop: _snapshot() == _initialSnapshot || _saved` shows the discard
         dialog.
+    *   **A failed Archive:** it fails the way Delete does. A `StateError` means
+        the Protocol was already archived on another device, so the editor
+        closes. Any other error re-enables the buttons and shows
+        `protocolEditorArchiveFailed` ("Could not archive the Protocol:
+        {error}"), so Back still reaches the discard dialog.
     *   **Key changes:** remove `compoundChipKey`, and add keys for member
         rows, Add Compounds, the period summary and the dialog buttons.
 

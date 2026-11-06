@@ -5828,8 +5828,12 @@ class ProtocolsRepository {
   /// Edits a `Compound`'s catalogue fields (name, default unit/route, strength)
   /// in place. This mutates the live `Compound` row ONLY — by design it never
   /// touches any previously logged `Dose`, whose snapshot is frozen (§1.1).
-  /// One reversible Activity Log batch.
-  Future<String> editCompound(
+  /// One reversible Activity Log batch, whose id is returned.
+  ///
+  /// A save that changes nothing writes no row and no Activity Log entry, and
+  /// returns null: the editor sheet saves whatever its fields hold, so an
+  /// unchanged Save must not leave an entry for the user to undo.
+  Future<String?> editCompound(
     String compoundId,
     CompoundDraft draft, {
     String actor = 'manual',
@@ -5841,8 +5845,8 @@ class ProtocolsRepository {
     );
 
     return _database.transaction(() async {
-      await _editCompound(compoundId, draft, context);
-      return context.batchId;
+      final changed = await _editCompound(compoundId, draft, context);
+      return changed ? context.batchId : null;
     });
   }
 
@@ -6091,7 +6095,8 @@ class ProtocolsRepository {
     return id;
   }
 
-  Future<void> _editCompound(
+  /// Returns whether anything was written.
+  Future<bool> _editCompound(
     String compoundId,
     CompoundDraft draft,
     WriteContext context,
@@ -6102,6 +6107,12 @@ class ProtocolsRepository {
       throw ArgumentError.value(draft.name, 'name', 'Compound name is empty.');
     }
     final strength = draft.strength?.storageValue;
+    if (before.name == name &&
+        before.defaultUnit == draft.defaultUnit.name &&
+        before.defaultRoute == draft.defaultRoute.name &&
+        before.strength == strength) {
+      return false;
+    }
 
     await (_database.update(_database.compounds)
           ..where((row) => row.id.equals(compoundId)))
@@ -6123,6 +6134,7 @@ class ProtocolsRepository {
       beforeImage: _compoundImage(before),
       afterImage: _compoundImage(after),
     );
+    return true;
   }
 
   Future<void> _setCompoundDeletedAt(
@@ -6463,11 +6475,26 @@ class ProtocolsRepository {
         .distinct(_sameCompoundOptionRecords);
   }
 
-  /// Reactive variant of [listCompoundScheduleOptions]. It emits when the
-  /// visible schedule seed data changes (id/name/default unit/default route),
-  /// while suppressing strength/favorite/detail-only Compound edits.
-  Stream<List<CompoundScheduleOptionRecord>> watchCompoundScheduleOptions() {
-    return _activeCompoundQuery()
+  /// The Compounds named by [ids], archived ones included with `isArchived`
+  /// set, for a Protocol editor naming its members: a Protocol keeps a member
+  /// whose Compound was archived. Re-emits when an archive changes, unlike
+  /// [watchCompoundNamesByIds], which reads active Compounds only.
+  Stream<List<CompoundScheduleOptionRecord>> watchCompoundsByIds(
+    Set<String> ids,
+  ) {
+    if (ids.isEmpty) {
+      return Stream<List<CompoundScheduleOptionRecord>>.value(
+        const <CompoundScheduleOptionRecord>[],
+      );
+    }
+
+    final query = _database.select(_database.compounds)
+      ..where((row) => row.id.isIn(ids))
+      ..orderBy([
+        (row) => OrderingTerm.asc(row.name),
+        (row) => OrderingTerm.asc(row.id),
+      ]);
+    return query
         .watch()
         .map(_compoundScheduleOptionsFromRows)
         .distinct(_sameCompoundScheduleOptionRecords);
@@ -6820,6 +6847,7 @@ class ProtocolsRepository {
       name: row.name,
       defaultUnit: doseUnitFromName(row.defaultUnit),
       defaultRoute: doseRouteFromName(row.defaultRoute),
+      isArchived: row.deletedAt != null,
     );
   }
 
@@ -7508,7 +7536,10 @@ class ProtocolsRepository {
     }
     final name = validateProtocolName(draft.name);
     final compoundIds = validateProtocolMembership(draft.compoundIds);
-    final compoundRows = await _requireActiveCompoundRows(compoundIds);
+    final compoundRows = await _requireEditedMemberCompoundRows(
+      protocolId,
+      compoundIds,
+    );
     final targetOutcomes = validateProtocolTargetOutcomes(
       draft.targetOutcomes,
     );
@@ -8159,6 +8190,44 @@ class ProtocolsRepository {
     return <CompoundRow>[for (final id in compoundIds) rowsById[id]!];
   }
 
+  /// The Compound rows for an edited Protocol's [compoundIds], in the given
+  /// order, which [_replaceProtocolMembers] takes member positions from.
+  ///
+  /// An id that is already a live member may name an archived Compound; an id
+  /// being added must name an active one. The planner keeps planning a member
+  /// whose Compound was archived, so demanding an active Compound of every
+  /// member would make such a Protocol impossible to save at all.
+  Future<List<CompoundRow>> _requireEditedMemberCompoundRows(
+    String protocolId,
+    List<String> compoundIds,
+  ) async {
+    final memberRows = await _activeProtocolCompoundQuery(
+      protocolId: protocolId,
+    ).get();
+    final liveMemberIds = <String>{
+      for (final row in memberRows) row.compoundId,
+    };
+    final addedRows = await _requireActiveCompoundRows(<String>[
+      for (final id in compoundIds)
+        if (!liveMemberIds.contains(id)) id,
+    ]);
+    final keptIds = compoundIds.where(liveMemberIds.contains);
+    final keptRows = await (_database.select(_database.compounds)
+          ..where((row) => row.id.isIn(keptIds)))
+        .get();
+    final rowsById = <String, CompoundRow>{
+      for (final row in <CompoundRow>[...addedRows, ...keptRows]) row.id: row,
+    };
+    if (!compoundIds.every(rowsById.containsKey)) {
+      throw ArgumentError.value(
+        compoundIds,
+        'compoundIds',
+        'A Protocol must reference active catalogue Compounds.',
+      );
+    }
+    return <CompoundRow>[for (final id in compoundIds) rowsById[id]!];
+  }
+
   /// The distinct [ProtocolOutcomeKind.metric] ids declared across [outcomes],
   /// in encounter order — the set [_requireActiveMetricRows] validates.
   List<String> _metricIdsOf(List<ProtocolTargetOutcomeDraft> outcomes) {
@@ -8470,7 +8539,8 @@ class ProtocolsRepository {
     return left.id == right.id &&
         left.name == right.name &&
         left.defaultUnit == right.defaultUnit &&
-        left.defaultRoute == right.defaultRoute;
+        left.defaultRoute == right.defaultRoute &&
+        left.isArchived == right.isArchived;
   }
 
   bool _sameProtocolOptionRecords(

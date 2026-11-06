@@ -2762,9 +2762,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get protocolEditorCompoundsHeading => 'Compounds';
 
   @override
-  String get protocolEditorSchedulesHeading => 'Schedules';
-
-  @override
   String protocolEditorScheduleTitle(String compound) {
     return '$compound Schedule';
   }
@@ -2884,6 +2881,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String protocolEditorDeleteFailed(String error) {
     return 'Could not delete the Protocol: $error';
+  }
+
+  @override
+  String protocolEditorArchiveFailed(String error) {
+    return 'Could not archive the Protocol: $error';
   }
 
   @override
@@ -3736,4 +3738,274 @@ class AppLocalizationsEn extends AppLocalizations {
   String mealRemoveEntry(String food) {
     return 'Remove $food';
   }
+
+  @override
+  String get compoundListViewByDay => 'View by day';
+
+  @override
+  String get compoundListSearchHint => 'Search compounds';
+
+  @override
+  String get compoundListEmpty => 'No compounds yet.';
+
+  @override
+  String get compoundListNoMatches => 'No compounds match your search.';
+
+  @override
+  String get compoundListFavorites => 'Favorites';
+
+  @override
+  String get compoundListRecent => 'Recent';
+
+  @override
+  String get compoundListAll => 'All compounds';
+
+  @override
+  String get compoundListAdd => 'Add a compound';
+
+  @override
+  String get compoundListRemoveFavorite => 'Remove favorite';
+
+  @override
+  String get compoundListAddFavorite => 'Add favorite';
+
+  @override
+  String get compoundListEditAction => 'Edit';
+
+  @override
+  String get compoundEditorNewTitle => 'New compound';
+
+  @override
+  String get compoundEditorEditTitle => 'Edit compound';
+
+  @override
+  String get compoundEditorName => 'Name';
+
+  @override
+  String get compoundEditorStrength => 'Strength (optional, e.g. 5 mg/capsule)';
+
+  @override
+  String get compoundEditorDefaultUnit => 'Default unit';
+
+  @override
+  String get compoundEditorDefaultRoute => 'Default route';
+
+  @override
+  String get compoundEditorSave => 'Save';
+
+  @override
+  String get compoundEditorArchive => 'Archive';
+
+  @override
+  String get compoundEditorNameRequired => 'Enter a name';
+
+  @override
+  String get compoundEditorStrengthInvalid => 'Use the form 5 mg/capsule';
+
+  @override
+  String compoundArchiveTitle(String name) {
+    return 'Archive $name?';
+  }
+
+  @override
+  String compoundArchiveInProtocols(int count, String name) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$name is in $count active Protocols. Archiving hides it from the list and the picker; the Protocols keep it.',
+      one:
+          '$name is in 1 active Protocol. Archiving hides it from the list and the picker; the Protocol keeps it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String compoundArchiveUnused(String name) {
+    return 'Archiving hides $name from the list and the picker. Its logged Doses stay.';
+  }
+
+  @override
+  String get compoundArchiveConfirm => 'Archive';
+
+  @override
+  String get compoundPickerTitle => 'Add Compounds';
+
+  @override
+  String get compoundPickerDone => 'Done';
+
+  @override
+  String compoundPickerDoneCount(int count) {
+    return 'Done · $count';
+  }
+
+  @override
+  String compoundPickerCreate(String name) {
+    return 'Create \"$name\"';
+  }
+
+  @override
+  String get protocolEditorAddCompounds => 'Add Compounds';
+
+  @override
+  String get protocolEditorMemberArchived => 'Archived';
+
+  @override
+  String protocolEditorRemoveMember(String compound) {
+    return 'Remove $compound';
+  }
+
+  @override
+  String get protocolEditorFixSchedule => 'Fix this Schedule';
+
+  @override
+  String get protocolScheduleSummaryAddAmount => 'Add an amount';
+
+  @override
+  String protocolScheduleSummaryEveryNDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Every $count days',
+      one: 'Every day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryPerDay(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count a day',
+      one: '1 a day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryTablets(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount tablets',
+      one: '$amount tablet',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryCapsules(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount capsules',
+      one: '$amount capsule',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryDrops(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount drops',
+      one: '$amount drop',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummarySprays(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount sprays',
+      one: '$amount spray',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryPuffs(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount puffs',
+      one: '$amount puff',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryPatches(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount patches',
+      one: '$amount patch',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryUnits(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount units',
+      one: '$amount unit',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get protocolEditorWhenHeading => 'When';
+
+  @override
+  String protocolEditorPeriodStarts(String date) {
+    return 'Starts $date';
+  }
+
+  @override
+  String get protocolEditorPeriodOngoing => 'Ongoing';
+
+  @override
+  String protocolEditorPeriodUntil(String date) {
+    return 'until $date';
+  }
+
+  @override
+  String protocolEditorPeriodEnded(String date) {
+    return 'Ended $date';
+  }
+
+  @override
+  String protocolEditorPeriodCycle(int onDays, int offDays) {
+    return '$onDays on, $offDays off';
+  }
+
+  @override
+  String protocolEditorPeriodPauses(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Pauses',
+      one: '1 Pause',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get protocolEditorDiscardNewTitle => 'Discard this Protocol?';
+
+  @override
+  String get protocolEditorDiscardChangesTitle => 'Discard changes?';
+
+  @override
+  String get protocolEditorKeepEditing => 'Keep editing';
+
+  @override
+  String get protocolEditorDiscard => 'Discard';
 }

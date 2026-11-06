@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -9,6 +10,7 @@ import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/activity/repositories/activity_feed_repository.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
+import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/sync/repositories/sync_repository.dart';
 
 void main() {
@@ -1730,67 +1732,6 @@ void main() {
       );
     });
 
-    test('watchCompoundScheduleOptions emits only for schedule seed data',
-        () async {
-      final created = await repositories.protocols.createCompound(
-        CompoundDraft(
-          name: 'Creatine',
-          defaultUnit: DoseUnit.gram,
-          defaultRoute: DoseRoute.oral,
-          strength: CompoundStrength.parse('5 g/capsule'),
-        ),
-      );
-
-      final emissions = <List<CompoundScheduleOptionRecord>>[];
-      final subscription = repositories.protocols
-          .watchCompoundScheduleOptions()
-          .listen(emissions.add);
-      addTearDown(subscription.cancel);
-
-      await _waitFor(() => emissions.isNotEmpty);
-      expect(emissions.last.single.id, created.compoundId);
-      expect(emissions.last.single.name, 'Creatine');
-      expect(emissions.last.single.defaultUnit, DoseUnit.gram);
-      expect(emissions.last.single.defaultRoute, DoseRoute.oral);
-
-      emissions.clear();
-      await repositories.protocols.setFavorite(
-        created.compoundId,
-        isFavorite: true,
-      );
-      await pumpEventQueue(times: 5);
-      expect(emissions, isEmpty);
-
-      await repositories.protocols.editCompound(
-        created.compoundId,
-        CompoundDraft(
-          name: 'Creatine',
-          defaultUnit: DoseUnit.gram,
-          defaultRoute: DoseRoute.oral,
-          strength: CompoundStrength.parse('10 g/capsule'),
-        ),
-      );
-      await pumpEventQueue(times: 5);
-      expect(emissions, isEmpty);
-
-      await repositories.protocols.editCompound(
-        created.compoundId,
-        CompoundDraft(
-          name: 'Creatine',
-          defaultUnit: DoseUnit.milligram,
-          defaultRoute: DoseRoute.sublingual,
-          strength: CompoundStrength.parse('10000 mg/capsule'),
-        ),
-      );
-      await _waitFor(
-        () => emissions.any(
-          (options) =>
-              options.single.defaultUnit == DoseUnit.milligram &&
-              options.single.defaultRoute == DoseRoute.sublingual,
-        ),
-      );
-    });
-
     test('watchCompoundNamesByIds ignores unrelated Compound changes',
         () async {
       final creatine = await repositories.protocols.createCompound(
@@ -1896,7 +1837,8 @@ void main() {
                           'payload': payload,
                           'updatedAt': wroteAt,
                           'deletedAt': null,
-                          'activityLogId': 'agent:$batchId:compound:$compoundId',
+                          'activityLogId':
+                              'agent:$batchId:compound:$compoundId',
                           'actor': 'agent',
                           'batchId': batchId,
                           'beforeImage': null,
@@ -6131,8 +6073,8 @@ void main() {
       expect(day.skips.single.id, row.id);
       expect(day.skips.single.plannedLocalTime, '21:00');
       expect(day.isEmpty, isTrue, reason: 'a Skip records no intake');
-      expect((await repositories.protocols.protocolDay(yesterday)).skips,
-          isEmpty);
+      expect(
+          (await repositories.protocols.protocolDay(yesterday)).skips, isEmpty);
     });
 
     test(
@@ -6221,7 +6163,8 @@ void main() {
 
       expect((await skipRow(first)).deletedAt, isNotNull);
       expect((await skipRow(sibling)).deletedAt, isNotNull);
-      expect((await skipRow(first)).updatedAt, (await skipRow(first)).deletedAt);
+      expect(
+          (await skipRow(first)).updatedAt, (await skipRow(first)).deletedAt);
       expect((await skipRow(otherTime)).deletedAt, equals(null));
       expect((await skipRow(otherDay)).deletedAt, equals(null));
       final entries = await batchEntries(batchId);
@@ -6303,8 +6246,7 @@ void main() {
       expect(day.skips, isEmpty);
     });
 
-    test(
-        'logDose(unskipId:) with an unknown Skip throws and writes no Dose',
+    test('logDose(unskipId:) with an unknown Skip throws and writes no Dose',
         () async {
       await expectLater(
         repositories.protocols.logDose(
@@ -6331,8 +6273,7 @@ void main() {
       // Undoing an unskip brings both timed Skips back.
       final first = await skip(draft(localDate: yesterday));
       final sibling = await skip(draft(localDate: yesterday));
-      final unskipBatch =
-          await repositories.protocols.unskipPlannedDose(first);
+      final unskipBatch = await repositories.protocols.unskipPlannedDose(first);
       final undoUnskip = await repositories.activityLog.undoBatch(unskipBatch);
       expect(undoUnskip.conflicts, isEmpty);
       expect((await skipRow(first)).deletedAt, equals(null));
@@ -6379,9 +6320,8 @@ void main() {
     test('watchProtocolDay re-emits when a Skip is written or removed',
         () async {
       final emissions = <ProtocolDayRecord>[];
-      final subscription = repositories.protocols
-          .watchProtocolDay(today)
-          .listen(emissions.add);
+      final subscription =
+          repositories.protocols.watchProtocolDay(today).listen(emissions.add);
       addTearDown(subscription.cancel);
       await _waitFor(() => emissions.isNotEmpty);
       expect(emissions.last.skips, isEmpty);
@@ -6392,6 +6332,384 @@ void main() {
 
       await repositories.protocols.unskipPlannedDose(skipId);
       await _waitFor(() => emissions.last.skips.isEmpty);
+    });
+  });
+
+  group('Compound editing and archived members (D4)', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    const start = ProtocolDayDate(year: 2026, month: 7, day: 1);
+
+    Future<String> createCompoundId(String name) async {
+      final result = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: name,
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      );
+      return result.compoundId;
+    }
+
+    Future<String> createProtocolId(List<String> compoundIds) async {
+      final result = await repositories.protocols.createProtocol(
+        ProtocolDraft(
+          name: 'Sleep',
+          startLocalDate: start,
+          compoundIds: compoundIds,
+        ),
+      );
+      return result.protocolId;
+    }
+
+    Future<void> editProtocol(
+      String protocolId,
+      List<String> compoundIds, {
+      String name = 'Sleep',
+    }) {
+      return repositories.protocols.editProtocol(
+        protocolId,
+        ProtocolDraft(
+          name: name,
+          startLocalDate: start,
+          compoundIds: compoundIds,
+        ),
+      );
+    }
+
+    Future<ProtocolSummaryRecord> summaryOf(String protocolId) async {
+      final summaries = await repositories.protocols.listProtocolSummaries();
+      return summaries.singleWhere((summary) => summary.id == protocolId);
+    }
+
+    test('saving a Protocol with a member whose Compound is archived succeeds',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final glycine = await createCompoundId('Glycine');
+      final protocolId = await createProtocolId(<String>[magnesium, glycine]);
+      await repositories.protocols.archiveCompound(magnesium);
+
+      await editProtocol(
+        protocolId,
+        <String>[magnesium, glycine],
+        name: 'Better sleep',
+      );
+
+      final summary = await summaryOf(protocolId);
+      expect(summary.name, 'Better sleep');
+      expect(summary.compoundIds, <String>[magnesium, glycine]);
+    });
+
+    test('adding an archived Compound is rejected, and nothing is written',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final glycine = await createCompoundId('Glycine');
+      final protocolId = await createProtocolId(<String>[magnesium]);
+      await repositories.protocols.archiveCompound(glycine);
+
+      await expectLater(
+        editProtocol(protocolId, <String>[magnesium, glycine]),
+        throwsArgumentError,
+      );
+
+      expect(
+        (await summaryOf(protocolId)).compoundIds,
+        <String>[magnesium],
+      );
+    });
+
+    test('a member removed earlier counts as added: it must be active',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final glycine = await createCompoundId('Glycine');
+      final protocolId = await createProtocolId(<String>[magnesium, glycine]);
+      await editProtocol(protocolId, <String>[magnesium]);
+      await repositories.protocols.archiveCompound(glycine);
+
+      await expectLater(
+        editProtocol(protocolId, <String>[magnesium, glycine]),
+        throwsArgumentError,
+      );
+    });
+
+    test('creating a Protocol with an archived Compound is still rejected',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      await repositories.protocols.archiveCompound(magnesium);
+
+      await expectLater(
+        createProtocolId(<String>[magnesium]),
+        throwsArgumentError,
+      );
+    });
+
+    test('a live member whose Compound row is gone is still rejected',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final protocolId = await createProtocolId(<String>[magnesium]);
+      // A foreign key normally prevents this; a guard still must not crash on
+      // a null row if the database ever disagrees.
+      await database.customStatement('PRAGMA foreign_keys = OFF');
+      await database.customStatement(
+        'DELETE FROM ${AppDatabase.compoundsTable} WHERE id = ?',
+        <Object>[magnesium],
+      );
+
+      await expectLater(
+        editProtocol(protocolId, <String>[magnesium]),
+        throwsArgumentError,
+      );
+    });
+
+    test('the draft\'s member order is kept across archived and added members',
+        () async {
+      final a = await createCompoundId('A');
+      final b = await createCompoundId('B');
+      final c = await createCompoundId('C');
+      final added = await createCompoundId('D');
+      final protocolId = await createProtocolId(<String>[a, b, c]);
+      await repositories.protocols.archiveCompound(b);
+
+      await editProtocol(protocolId, <String>[c, added, b, a]);
+
+      expect(
+        (await summaryOf(protocolId)).compoundIds,
+        <String>[c, added, b, a],
+      );
+    });
+
+    test('watchCompoundsByIds emits empty for an empty set', () async {
+      await createCompoundId('Magnesium');
+
+      expect(
+        await repositories.protocols.watchCompoundsByIds(<String>{}).first,
+        isEmpty,
+      );
+    });
+
+    test(
+        'watchCompoundsByIds returns archived Compounds with isArchived, '
+        're-emits on archive, and ignores fields it does not carry', () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final glycine = await createCompoundId('Glycine');
+      final unrelated = await createCompoundId('Zinc');
+      await repositories.protocols.archiveCompound(glycine);
+
+      final emissions = <List<CompoundScheduleOptionRecord>>[];
+      final subscription = repositories.protocols
+          .watchCompoundsByIds(<String>{magnesium, glycine}).listen(
+        emissions.add,
+      );
+      addTearDown(subscription.cancel);
+      await _waitFor(() => emissions.isNotEmpty);
+
+      expect(
+        emissions.single.map((option) => (option.id, option.isArchived)),
+        <(String, bool)>[(glycine, true), (magnesium, false)],
+      );
+
+      emissions.clear();
+      await repositories.protocols.setFavorite(magnesium, isFavorite: true);
+      await repositories.protocols.archiveCompound(unrelated);
+      await pumpEventQueue(times: 5);
+      expect(emissions, isEmpty);
+
+      await repositories.protocols.archiveCompound(magnesium);
+      await _waitFor(() => emissions.isNotEmpty);
+      expect(
+        emissions.last.every((option) => option.isArchived),
+        isTrue,
+      );
+    });
+
+    test('watchCompoundNamesByIds still leaves archived Compounds out',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      await repositories.protocols.archiveCompound(magnesium);
+
+      expect(
+        await repositories.protocols
+            .watchCompoundNamesByIds(<String>{magnesium}).first,
+        isEmpty,
+      );
+    });
+
+    test(
+        'an unchanged editCompound writes nothing and returns null, with the '
+        'name compared trimmed', () async {
+      final created = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: 'Magnesium',
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+      );
+      final updatedAt =
+          (await repositories.protocols.listCompounds()).single.updatedAt;
+      final entries = (await repositories.activityLog.listEntries()).length;
+
+      final batchId = await repositories.protocols.editCompound(
+        created.compoundId,
+        CompoundDraft(
+          name: '  Magnesium ',
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+      );
+
+      expect(batchId, isNull);
+      expect(
+        (await repositories.protocols.listCompounds()).single.updatedAt,
+        updatedAt,
+      );
+      expect(await repositories.activityLog.listEntries(), hasLength(entries));
+    });
+
+    test('an editCompound that changes any one field writes one Batch',
+        () async {
+      final created = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: 'Magnesium',
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+      );
+      final drafts = <CompoundDraft>[
+        CompoundDraft(
+          name: 'Magnesium glycinate',
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+        CompoundDraft(
+          name: 'Magnesium glycinate',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+        CompoundDraft(
+          name: 'Magnesium glycinate',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.sublingual,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+        const CompoundDraft(
+          name: 'Magnesium glycinate',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.sublingual,
+        ),
+      ];
+
+      for (final draft in drafts) {
+        final batchId = await repositories.protocols.editCompound(
+          created.compoundId,
+          draft,
+        );
+
+        expect(batchId, isNotNull);
+        final batch = (await repositories.activityLog.listEntries())
+            .where((entry) => entry.batchId == batchId);
+        expect(batch, hasLength(1));
+      }
+    });
+
+    test('a strength\'s storageValue parses back unchanged, for every unit',
+        () {
+      for (final massUnit in DoseUnit.values) {
+        for (final perUnit in DoseUnit.values) {
+          for (final amount in <String>['5', '0.5', '1000']) {
+            final strength = CompoundStrength(
+              amount: double.parse(amount),
+              amountEntered: amount,
+              massUnit: massUnit,
+              perUnit: perUnit,
+            );
+
+            final parsed = CompoundStrength.parse(strength.storageValue);
+
+            expect(parsed, strength);
+            expect(parsed.storageValue, strength.storageValue);
+          }
+        }
+      }
+    });
+
+    group('the Protocol Day controller', () {
+      late ProviderContainer container;
+
+      setUp(() {
+        container = ProviderContainer(
+          overrides: [
+            trainingRepositoriesProvider.overrideWith((ref) => repositories),
+          ],
+        );
+      });
+
+      tearDown(() {
+        container.dispose();
+      });
+
+      ProtocolDayController controller() =>
+          container.read(protocolDayControllerProvider.notifier);
+
+      test('countProtocolsWithCompound counts active Protocols that hold it',
+          () async {
+        final magnesium = await createCompoundId('Magnesium');
+        final glycine = await createCompoundId('Glycine');
+        final removed = await createProtocolId(<String>[magnesium, glycine]);
+        await createProtocolId(<String>[magnesium]);
+        final archived = await createProtocolId(<String>[magnesium]);
+        await repositories.protocols.archiveProtocol(archived);
+
+        expect(await controller().countProtocolsWithCompound(magnesium), 2);
+        expect(await controller().countProtocolsWithCompound(glycine), 1);
+
+        await editProtocol(removed, <String>[magnesium]);
+        expect(await controller().countProtocolsWithCompound(glycine), 0);
+      });
+
+      test('latestDoseAmounts takes each last Dose and skips ids with none',
+          () async {
+        final magnesium = await createCompoundId('Magnesium');
+        final glycine = await createCompoundId('Glycine');
+        for (final (amount, tookAt) in <(double, DateTime)>[
+          (200, DateTime.utc(2026, 6, 1, 8)),
+          (400, DateTime.utc(2026, 6, 2, 8)),
+        ]) {
+          await repositories.protocols.logDose(
+            DoseSnapshotDraft(
+              compoundId: magnesium,
+              compoundName: 'Magnesium',
+              amountValue: amount,
+              amountEntered: amount.toStringAsFixed(0),
+              unit: DoseUnit.milligram,
+              route: DoseRoute.oral,
+              tookAt: tookAt,
+            ),
+          );
+        }
+
+        final amounts = await controller().latestDoseAmounts(
+          <String>{magnesium, glycine},
+        );
+
+        expect(amounts.keys, <String>[magnesium]);
+        expect(amounts[magnesium]!.amount, 400);
+        expect(amounts[magnesium]!.unit, DoseUnit.milligram);
+      });
     });
   });
 }

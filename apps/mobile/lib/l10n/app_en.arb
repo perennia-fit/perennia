@@ -1603,7 +1603,6 @@
     }
   },
   "protocolEditorCompoundsHeading": "Compounds",
-  "protocolEditorSchedulesHeading": "Schedules",
   "protocolEditorScheduleTitle": "{compound} Schedule",
   "@protocolEditorScheduleTitle": {
     "placeholders": {
@@ -1681,6 +1680,14 @@
   },
   "protocolEditorDeleteFailed": "Could not delete the Protocol: {error}",
   "@protocolEditorDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorArchiveFailed": "Could not archive the Protocol: {error}",
+  "@protocolEditorArchiveFailed": {
     "placeholders": {
       "error": {
         "type": "String"
@@ -2467,5 +2474,294 @@
         "type": "String"
       }
     }
+  },
+  "compoundListViewByDay": "View by day",
+  "compoundListSearchHint": "Search compounds",
+  "compoundListEmpty": "No compounds yet.",
+  "compoundListNoMatches": "No compounds match your search.",
+  "compoundListFavorites": "Favorites",
+  "compoundListRecent": "Recent",
+  "compoundListAll": "All compounds",
+  "compoundListAdd": "Add a compound",
+  "compoundListRemoveFavorite": "Remove favorite",
+  "compoundListAddFavorite": "Add favorite",
+  "compoundListEditAction": "Edit",
+  "@compoundListEditAction": {
+    "description": "Accessibility action on a Compound row that opens the Compound editor, the same as a long-press."
+  },
+  "compoundEditorNewTitle": "New compound",
+  "compoundEditorEditTitle": "Edit compound",
+  "compoundEditorName": "Name",
+  "compoundEditorStrength": "Strength (optional, e.g. 5 mg/capsule)",
+  "compoundEditorDefaultUnit": "Default unit",
+  "compoundEditorDefaultRoute": "Default route",
+  "compoundEditorSave": "Save",
+  "compoundEditorArchive": "Archive",
+  "compoundEditorNameRequired": "Enter a name",
+  "@compoundEditorNameRequired": {
+    "description": "Inline error on the Compound editor's name field when it is empty."
+  },
+  "compoundEditorStrengthInvalid": "Use the form 5 mg/capsule",
+  "@compoundEditorStrengthInvalid": {
+    "description": "Inline error on the Compound editor's strength field when it doesn't parse."
+  },
+  "compoundArchiveTitle": "Archive {name}?",
+  "@compoundArchiveTitle": {
+    "description": "Title of the confirmation before archiving a Compound.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundArchiveInProtocols": "{count, plural, =1{{name} is in 1 active Protocol. Archiving hides it from the list and the picker; the Protocol keeps it.} other{{name} is in {count} active Protocols. Archiving hides it from the list and the picker; the Protocols keep it.}}",
+  "@compoundArchiveInProtocols": {
+    "description": "Body of the archive confirmation for a Compound that one or more active Protocols hold.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundArchiveUnused": "Archiving hides {name} from the list and the picker. Its logged Doses stay.",
+  "@compoundArchiveUnused": {
+    "description": "Body of the archive confirmation for a Compound no active Protocol holds.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundArchiveConfirm": "Archive",
+  "@compoundArchiveConfirm": {
+    "description": "Confirms archiving a Compound."
+  },
+  "compoundPickerTitle": "Add Compounds",
+  "@compoundPickerTitle": {
+    "description": "Title of the sheet that picks a Protocol's Compounds."
+  },
+  "compoundPickerDone": "Done",
+  "@compoundPickerDone": {
+    "description": "Closes the Compound picker with its selection, when none of the listed Compounds is selected."
+  },
+  "compoundPickerDoneCount": "Done · {count}",
+  "@compoundPickerDoneCount": {
+    "description": "Closes the Compound picker with its selection, with the number of listed Compounds selected.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "compoundPickerCreate": "Create \"{name}\"",
+  "@compoundPickerCreate": {
+    "description": "Last row of the Compound picker: creates a Compound with the name the user searched for.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorAddCompounds": "Add Compounds",
+  "@protocolEditorAddCompounds": {
+    "description": "Button under a Protocol's member rows that opens the Compound picker."
+  },
+  "protocolEditorMemberArchived": "Archived",
+  "@protocolEditorMemberArchived": {
+    "description": "Marks a Protocol member row whose Compound is archived."
+  },
+  "protocolEditorRemoveMember": "Remove {compound}",
+  "@protocolEditorRemoveMember": {
+    "description": "Tooltip of a Protocol member row's remove button.",
+    "placeholders": {
+      "compound": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorFixSchedule": "Fix this Schedule",
+  "@protocolEditorFixSchedule": {
+    "description": "Under a Protocol member row after a save attempt, when that member's Schedule has issues."
+  },
+  "protocolScheduleSummaryAddAmount": "Add an amount",
+  "@protocolScheduleSummaryAddAmount": {
+    "description": "In a Protocol member row's Schedule summary, where the planned amount goes when it is empty."
+  },
+  "protocolScheduleSummaryEveryNDays": "{count, plural, =1{Every day} other{Every {count} days}}",
+  "@protocolScheduleSummaryEveryNDays": {
+    "description": "In a Schedule summary: the days of a Schedule planned every N days.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolScheduleSummaryPerDay": "{count, plural, =1{1 a day} other{{count} a day}}",
+  "@protocolScheduleSummaryPerDay": {
+    "description": "In a Schedule summary: how many untimed doses an Any time Schedule plans each day.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolScheduleSummaryTablets": "{count, plural, =1{{amount} tablet} other{{amount} tablets}}",
+  "@protocolScheduleSummaryTablets": {
+    "description": "In a Schedule summary: a planned amount in tablets, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryCapsules": "{count, plural, =1{{amount} capsule} other{{amount} capsules}}",
+  "@protocolScheduleSummaryCapsules": {
+    "description": "In a Schedule summary: a planned amount in capsules, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryDrops": "{count, plural, =1{{amount} drop} other{{amount} drops}}",
+  "@protocolScheduleSummaryDrops": {
+    "description": "In a Schedule summary: a planned amount in drops, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummarySprays": "{count, plural, =1{{amount} spray} other{{amount} sprays}}",
+  "@protocolScheduleSummarySprays": {
+    "description": "In a Schedule summary: a planned amount in sprays, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryPuffs": "{count, plural, =1{{amount} puff} other{{amount} puffs}}",
+  "@protocolScheduleSummaryPuffs": {
+    "description": "In a Schedule summary: a planned amount in puffs, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryPatches": "{count, plural, =1{{amount} patch} other{{amount} patches}}",
+  "@protocolScheduleSummaryPatches": {
+    "description": "In a Schedule summary: a planned amount in patches, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryUnits": "{count, plural, =1{{amount} unit} other{{amount} units}}",
+  "@protocolScheduleSummaryUnits": {
+    "description": "In a Schedule summary: a planned amount in units, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorWhenHeading": "When",
+  "@protocolEditorWhenHeading": {
+    "description": "Heading of the Protocol editor's section for its start, end, cycle and Pauses."
+  },
+  "protocolEditorPeriodStarts": "Starts {date}",
+  "@protocolEditorPeriodStarts": {
+    "description": "In the When section's summary: the Protocol's start date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPeriodOngoing": "Ongoing",
+  "@protocolEditorPeriodOngoing": {
+    "description": "In the When section's summary: the Protocol has no end date."
+  },
+  "protocolEditorPeriodUntil": "until {date}",
+  "@protocolEditorPeriodUntil": {
+    "description": "In the When section's summary, after the start date: the Protocol's end date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPeriodEnded": "Ended {date}",
+  "@protocolEditorPeriodEnded": {
+    "description": "The When section's summary for a Protocol whose end date has passed.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPeriodCycle": "{onDays} on, {offDays} off",
+  "@protocolEditorPeriodCycle": {
+    "description": "In the When section's summary: the Protocol's cycle, in days.",
+    "placeholders": {
+      "onDays": {
+        "type": "int"
+      },
+      "offDays": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolEditorPeriodPauses": "{count, plural, =1{1 Pause} other{{count} Pauses}}",
+  "@protocolEditorPeriodPauses": {
+    "description": "In the When section's summary: how many Pauses the Protocol has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolEditorDiscardNewTitle": "Discard this Protocol?",
+  "@protocolEditorDiscardNewTitle": {
+    "description": "Dialog on leaving a new Protocol that has unsaved values."
+  },
+  "protocolEditorDiscardChangesTitle": "Discard changes?",
+  "@protocolEditorDiscardChangesTitle": {
+    "description": "Dialog on leaving a saved Protocol's editor with unsaved changes."
+  },
+  "protocolEditorKeepEditing": "Keep editing",
+  "@protocolEditorKeepEditing": {
+    "description": "Discard dialog button that returns to the Protocol editor as it was."
+  },
+  "protocolEditorDiscard": "Discard",
+  "@protocolEditorDiscard": {
+    "description": "Discard dialog button that closes the Protocol editor without saving."
   }
 }

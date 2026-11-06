@@ -706,12 +706,18 @@ class CompoundScheduleOptionRecord {
     required this.name,
     required this.defaultUnit,
     required this.defaultRoute,
+    this.isArchived = false,
   });
 
   final String id;
   final String name;
   final DoseUnit defaultUnit;
   final DoseRoute defaultRoute;
+
+  /// Whether the Compound is archived. Only a read by id
+  /// (`watchCompoundsByIds`) can return an archived Compound: a Protocol keeps
+  /// a member whose Compound was archived, and its editor still names it.
+  final bool isArchived;
 }
 
 /// A persisted `Dose` (self-describing logged event read model). Renders from

@@ -26,6 +26,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **The rest timer warns you before it ends.** The strip and a tone mark Get
   ready 10 seconds before the end of a longer rest, 3-2-1 plays in the app, and
   after 0:00 the strip shows Rest over with the time since.
+- **Edit and archive a Compound.**
+- **Create a Compound from the Protocol editor's picker.**
 
 ### Changed
 
@@ -71,6 +73,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **A meal's time is shown and can be changed,** and its meal type is
   proposed from the time.
 - **The Nutrition Day lists meals in time order.**
+- **The Protocol editor puts Compounds first,** picks them from a searchable
+  sheet, and asks before discarding unsaved changes. An added Compound starts
+  every day at 9:00.
 
 ### Fixed
 
@@ -104,6 +109,7 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **Backups keep restoring after the update.**
 - Rest timer sounds off now silences rest timer notifications on Android 8 and later.
 - The end of a rest now sounds on Android when the app is in the background.
+- **A Protocol whose Compound was archived can be saved again.**
 
 ## [0.2.0] - 2026-11-03
 
