@@ -185,7 +185,7 @@ export function buildRetiredExercises({
 
   if (
     newlyRetired.length > 0 &&
-    !(Date.parse(stamp) > Date.parse(String(reviewedAt ?? "")))
+    !(Date.parse(stamp) > Date.parse(reviewedAt))
   ) {
     throw new Error(
       `retiredAt ${stamp} must be later than reviewedAt ${reviewedAt} to retire ${newlyRetired[0].id}.`,

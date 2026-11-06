@@ -888,7 +888,9 @@ Accessibility, and the Manual check.
     apps.** Renames and corrections apply in place. An exercise the library
     merges or removes stays as your own if you logged it or have it in a Workout
     or Template, and disappears otherwise. Agents see a kept exercise as yours,
-    with its own Sets." Reword the existing lines so they stay true: remove "On
+    with its own Sets. If you sync more than one device, update them together: a
+    device on an older build can't update its exercise library once it pulls an
+    exercise you kept." Reword the existing lines so they stay true: remove "On
     new installs," from the 80-names entry and "on new installs" from the
     non-English entry, and replace "On a device that already has a removed
     exercise it is archived, so sets logged under it keep their history." with

@@ -11,6 +11,30 @@ import {
   platformFocuses,
 } from "../../../tools/platform-exercise-focus.mjs";
 
+function readBundledManifest() {
+  return JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../tools/data/platform-exercise-review-decisions.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+}
+
+function readBundledSeed() {
+  return JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../apps/mobile/assets/seeds/platform_exercises.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+}
+
 test("reviewed cleanup collapses duplicate chains and applies English primary names", () => {
   const exercises = [
     { id: "a", name: "Pull Up", updated_at: "2026-01-01T00:00:00Z" },
@@ -97,24 +121,8 @@ test("reviewed cleanup normalizes exercise and decision ids once", () => {
 // the repository is what makes the shipped seed auditable — this test fails if
 // the seed and the recorded decisions ever disagree.
 test("bundled Platform Library reflects every recorded cleanup outcome", () => {
-  const manifest = JSON.parse(
-    readFileSync(
-      new URL(
-        "../../../tools/data/platform-exercise-review-decisions.json",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-  );
-  const seed = JSON.parse(
-    readFileSync(
-      new URL(
-        "../../../apps/mobile/assets/seeds/platform_exercises.json",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-  );
+  const manifest = readBundledManifest();
+  const seed = readBundledSeed();
   const exercisesById = new Map(
     seed.exercises.map((exercise) => [exercise.id, exercise]),
   );
@@ -244,24 +252,8 @@ function buildRetired({
 // The retired list is what lets the app hide ids the live list has dropped, so
 // a seed that misses one, or lists one as both, would leave a stale row visible.
 test("bundled retired list covers every recorded retirement, and only those", () => {
-  const manifest = JSON.parse(
-    readFileSync(
-      new URL(
-        "../../../tools/data/platform-exercise-review-decisions.json",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-  );
-  const seed = JSON.parse(
-    readFileSync(
-      new URL(
-        "../../../apps/mobile/assets/seeds/platform_exercises.json",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-  );
+  const manifest = readBundledManifest();
+  const seed = readBundledSeed();
   const retired = seed.retired_exercises;
   const retiredIds = new Set(retired.map((record) => record.id));
 
@@ -477,6 +469,13 @@ test("retired list fails for an id in both new lists", () => {
         merged: ["both"],
       }),
     /Exercise both is both live and retired/,
+  );
+});
+
+test("retired list fails for a new id with no previous seed or source record", () => {
+  assert.throws(
+    () => buildRetired({ excluded: ["missing"] }),
+    /Newly retired exercise missing has no previous seed or source record/,
   );
 });
 

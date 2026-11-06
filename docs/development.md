@@ -149,34 +149,21 @@ from that seed. Never edit either by hand. The design is in
     git -C <path> checkout ea78447
     ```
 
-4.  Fetch every page of Workout.cool into one JSON array, in a file outside the
-    repository. Workout.cool is not pinned, so keep the file if you may need to
-    rebuild the same seed.
+4.  Run the generators from the repository root:
 
     ```bash
-    node --input-type=module -e '
-    import { writeFileSync } from "node:fs";
-    const records = [];
-    for (let page = 1, total = 1; page <= total; page += 1) {
-      const url = `https://workout.cool/api/exercises/all?page=${page}&limit=100`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`${response.status} for ${url}`);
-      const body = await response.json();
-      records.push(...body.data);
-      total = body.pagination.totalPages;
-    }
-    writeFileSync(process.argv[1], JSON.stringify(records));
-    ' <file>
-    ```
-
-5.  Run the generators from the repository root:
-
-    ```bash
-    WGER_REPO=<path> WORKOUT_COOL_EXERCISES_PATH=<file> node tools/generate-wger-platform-exercises.mjs
+    WGER_REPO=<path> node tools/generate-wger-platform-exercises.mjs
     node tools/generate-server-platform-exercise-seed.mjs
     ```
 
-6.  Read the diff. Everything outside what the manifest changed should be
+    The generator fetches every page of Workout.cool itself. Workout.cool is not
+    pinned, so to rebuild the same seed later, set
+    `WORKOUT_COOL_EXERCISES_PATH=<file>`, where the file is a JSON array of the
+    records from every page of
+    `https://workout.cool/api/exercises/all?page=N&limit=100` up to
+    `pagination.totalPages`, kept outside the repository.
+
+5.  Read the diff. Everything outside what the manifest changed should be
     unchanged except by key order, because Workout.cool can move between runs.
 
 Two rules keep existing logs and devices correct, and the generator enforces

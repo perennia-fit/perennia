@@ -723,8 +723,9 @@ async function readBeforeImage({
       payload: table.payload,
     })
     .from(table)
-    // Scoped by owner as well as id: `exercise_categories` is keyed
-    // (user_id, id) because Platform category ids are shared by every account.
+    // Scoped by owner as well as id: `exercises` and `exercise_categories` are
+    // keyed (user_id, id), because a Platform category id and a kept exercise's
+    // id are shared by every account.
     .where(and(eq(table.userId, userId), eq(table.id, id)))
     .limit(1);
   const existing = existingRows[0];
