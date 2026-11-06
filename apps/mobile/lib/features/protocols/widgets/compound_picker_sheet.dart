@@ -114,7 +114,22 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     super.dispose();
   }
 
+  /// Reads the library fresh on every open. Between opens nothing may listen to
+  /// these providers, so Riverpod has paused them with Drift's newer rows still
+  /// buffered, and `.future` would answer with the last value: a Compound created
+  /// here earlier would have no row, and one archived by sync would still have
+  /// one. Invalidating drops that value.
+  ///
+  /// Starts after this frame's build, which [initState] runs inside: invalidating
+  /// tells any other listener the provider is reloading.
   Future<void> _load() async {
+    await Future<void>.value();
+    if (!mounted) {
+      return;
+    }
+    ref
+      ..invalidate(compoundListProvider)
+      ..invalidate(recentCompoundIdsProvider);
     final compounds = await _readOnce(compoundListProvider.future);
     if (!mounted) {
       return;
@@ -236,9 +251,9 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     _showItemsForSearch();
   }
 
-  /// The Compound just created. The list read in [_load] doesn't hold it, and
-  /// `compoundListProvider.future` can still return the value from before the
-  /// write, so this reads it by id.
+  /// The Compound just created. The list read in [_load] predates it, and the
+  /// sheet keeps that one list (the class's docstring says why), so this reads
+  /// it by id.
   Future<_PickerRow?> _readCreated(String id) async {
     final List<CompoundScheduleOptionRecord> compounds;
     try {

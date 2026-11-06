@@ -2884,6 +2884,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String protocolEditorArchiveFailed(String error) {
+    return 'Could not archive the Protocol: $error';
+  }
+
+  @override
   String get protocolEditorCompoundFallback => 'Compound';
 
   @override

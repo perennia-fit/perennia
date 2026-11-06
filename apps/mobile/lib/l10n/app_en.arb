@@ -1686,6 +1686,14 @@
       }
     }
   },
+  "protocolEditorArchiveFailed": "Could not archive the Protocol: {error}",
+  "@protocolEditorArchiveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "protocolEditorCompoundFallback": "Compound",
   "protocolPlanIssueTimesFormat": "Each time must be HH:MM, from 00:00 to 23:59.",
   "protocolPlanIssueTimesCount": "Plan 1 to {max} times a day.",

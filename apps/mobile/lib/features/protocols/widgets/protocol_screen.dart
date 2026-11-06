@@ -878,9 +878,9 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
   final Map<String, _ScheduleFieldState> _scheduleFields =
       <String, _ScheduleFieldState>{};
 
-  /// Every member Compound resolved so far, archived ones included. Read before
-  /// the active list wherever this form names a member, and kept across the
-  /// lookup's key changes.
+  /// Every member Compound resolved so far, archived ones included, kept across
+  /// the lookup's key changes. The form's only source of a Compound; read it
+  /// through [_compoundOption].
   final Map<String, CompoundScheduleOptionRecord> _memberOptions =
       <String, CompoundScheduleOptionRecord>{};
 
@@ -986,7 +986,8 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     );
   }
 
-  /// Back on a dirty form (D5). A save or end still running blocks it instead:
+  /// Back on a dirty form (D5). A save, archive or delete still running blocks
+  /// it instead:
   /// its `Navigator.pop` would close this dialog and leave the form open, ready
   /// to save a second Protocol.
   void _onPopInvoked(bool didPop, Object? result) {
@@ -1043,10 +1044,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
   /// Opens the stored Protocol's Consistency view, with a tab per member in
   /// the Protocol's member order, behind the Protocols lock like the rest of
   /// the section. It reads the members as saved, not this form's edits.
-  Future<void> _openConsistency(
-    ProtocolRecord protocol,
-    List<CompoundScheduleOptionRecord> compounds,
-  ) {
+  Future<void> _openConsistency(ProtocolRecord protocol) {
     final members = List<ProtocolMemberRecord>.of(protocol.members)
       ..sort((a, b) => a.position.compareTo(b.position));
     return Navigator.of(context).push(
@@ -1058,7 +1056,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
               for (final member in members)
                 ConsistencyTab(
                   compoundId: member.compoundId,
-                  label: _compoundOption(member.compoundId, compounds).name,
+                  label: _compoundOption(member.compoundId).name,
                 ),
             ],
           ),
@@ -1082,8 +1080,6 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final l10n = context.l10n;
-    final compounds = ref.watch(compoundScheduleOptionListProvider).value ??
-        const <CompoundScheduleOptionRecord>[];
     final metrics = ref.watch(metricOptionListProvider).value ??
         const <MetricOptionRecord>[];
     final periodValidation = _validatePeriod();
@@ -1097,6 +1093,10 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
         in memberLookup.value ?? const <CompoundScheduleOptionRecord>[]) {
       _memberOptions[option.id] = option;
     }
+    // Until then a row has a blank name and no sheet: the sheet would open titled
+    // and seeded from a placeholder.
+    bool isResolved(String compoundId) =>
+        _memberOptions.containsKey(compoundId) || !memberLookup.isLoading;
 
     return PopScope<Object?>(
       canPop: _saved || _snapshot() == _initialSnapshot,
@@ -1121,8 +1121,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
                   foregroundColor: colors.textPrimary,
                   minimumSize: const Size(0, AppDimens.touchTarget),
                 ),
-                onPressed: () =>
-                    unawaited(_openConsistency(protocol, compounds)),
+                onPressed: () => unawaited(_openConsistency(protocol)),
                 icon: const Icon(Icons.timeline),
                 label: Text(l10n.consistencyButton),
               ),
@@ -1149,17 +1148,13 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
                 _MemberRow(
                   key: ProtocolFormScreen.memberRowKey(compoundId),
                   compoundId: compoundId,
-                  name: _memberOptions[compoundId]?.name ??
-                      (memberLookup.isLoading
-                          ? ''
-                          : l10n.protocolEditorCompoundFallback),
-                  isArchived: _isKnownArchived(compoundId),
-                  field: _fieldFor(compoundId, compounds),
+                  name: isResolved(compoundId)
+                      ? _compoundOption(compoundId).name
+                      : '',
+                  isArchived: _compoundOption(compoundId).isArchived,
+                  field: _fieldFor(compoundId),
                   showErrors: _showErrors,
-                  // Not before its defaults and name are known: the sheet would
-                  // open titled and seeded from a placeholder.
-                  onTap: _memberOptions.containsKey(compoundId) ||
-                          !memberLookup.isLoading
+                  onTap: isResolved(compoundId)
                       ? () => unawaited(_openScheduleSheet(compoundId))
                       : null,
                   onRemove: () => _toggleCompound(compoundId, selected: false),
@@ -1185,7 +1180,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
                 onToggle: () =>
                     setState(() => _periodExpanded = !_periodExpanded),
                 children: _periodExpanded
-                    ? _periodControls(compounds, periodValidation)
+                    ? _periodControls(periodValidation)
                     : const <Widget>[],
               ),
               const SizedBox(height: AppDimens.base),
@@ -1290,10 +1285,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
 
   /// The start date and Protocol Period controls: until, the "N doses" helper,
   /// cycle and Pauses, with the Period's issues under them.
-  List<Widget> _periodControls(
-    List<CompoundScheduleOptionRecord> compounds,
-    DoseValidationResult periodValidation,
-  ) {
+  List<Widget> _periodControls(DoseValidationResult periodValidation) {
     final colors = context.colors;
     final l10n = context.l10n;
     final dateFormat = DateFormat.yMMMd();
@@ -1342,7 +1334,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
           ),
           onPressed: _compoundIds.isEmpty
               ? null
-              : () => unawaited(_openDoseCountHelper(compounds)),
+              : () => unawaited(_openDoseCountHelper()),
           icon: const Icon(Icons.event_available_outlined),
           label: Text(l10n.protocolEditorDoseCountButton),
         ),
@@ -1455,35 +1447,20 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     ];
   }
 
-  CompoundScheduleOptionRecord _compoundOption(
-    String compoundId, [
-    List<CompoundScheduleOptionRecord>? compounds,
-  ]) {
-    final known = _memberOptions[compoundId];
-    if (known != null) {
-      return known;
-    }
-    final options = compounds ??
-        ref.read(compoundScheduleOptionListProvider).value ??
-        const <CompoundScheduleOptionRecord>[];
-    return options.firstWhere(
-      (compound) => compound.id == compoundId,
-      orElse: () => CompoundScheduleOptionRecord(
-        id: compoundId,
-        name: context.l10n.protocolEditorCompoundFallback,
-        defaultUnit: DoseUnit.milligram,
-        defaultRoute: DoseRoute.oral,
-      ),
-    );
+  CompoundScheduleOptionRecord _compoundOption(String compoundId) {
+    return _memberOptions[compoundId] ??
+        CompoundScheduleOptionRecord(
+          id: compoundId,
+          name: context.l10n.protocolEditorCompoundFallback,
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+        );
   }
 
   /// The member's editor state, seeding one for a member that has none yet.
-  _ScheduleFieldState _fieldFor(
-    String compoundId, [
-    List<CompoundScheduleOptionRecord>? compounds,
-  ]) {
+  _ScheduleFieldState _fieldFor(String compoundId) {
     return _scheduleFields.putIfAbsent(compoundId, () {
-      final compound = _compoundOption(compoundId, compounds);
+      final compound = _compoundOption(compoundId);
       return _ScheduleFieldState.fromVersion(
         _existingVersion(compoundId),
         protocolStart: _startDate,
@@ -1522,9 +1499,6 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
       }
     });
   }
-
-  bool _isKnownArchived(String compoundId) =>
-      _memberOptions[compoundId]?.isArchived ?? false;
 
   /// Opens one member's Schedule editor in a sheet, bound to the same
   /// [_ScheduleFieldState] as the row: closing it keeps every change, and
@@ -1587,7 +1561,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     final result = await showCompoundPickerSheet(
       context,
       selectedIds: _compoundIds
-          .where((compoundId) => !_isKnownArchived(compoundId))
+          .where((compoundId) => !_compoundOption(compoundId).isArchived)
           .toList(growable: false),
     );
     if (result == null || !mounted) {
@@ -1604,19 +1578,21 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     };
     final newIds =
         added.where((compoundId) => !storedIds.contains(compoundId)).toSet();
+    if (added.isNotEmpty) {
+      final options = await _readCompoundsByIds(added.toSet());
+      if (options == null || !mounted) {
+        return;
+      }
+      for (final option in options) {
+        _memberOptions[option.id] = option;
+      }
+    }
     if (newIds.isNotEmpty) {
       final lastDoses = await ref
           .read(protocolDayControllerProvider.notifier)
           .latestDoseAmounts(newIds);
       if (!mounted) {
         return;
-      }
-      final options = await _readCompoundsByIds(newIds);
-      if (options == null || !mounted) {
-        return;
-      }
-      for (final option in options) {
-        _memberOptions[option.id] = option;
       }
       // Seeded first, so _fieldFor's putIfAbsent keeps them.
       for (final compoundId in newIds) {
@@ -1630,7 +1606,8 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
 
     final kept = result.toSet();
     for (final compoundId in List<String>.of(_compoundIds)) {
-      if (!kept.contains(compoundId) && !_isKnownArchived(compoundId)) {
+      if (!kept.contains(compoundId) &&
+          !_compoundOption(compoundId).isArchived) {
         _toggleCompound(compoundId, selected: false);
       }
     }
@@ -1639,9 +1616,9 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     }
   }
 
-  /// [ids]' Compounds, read once by id, or null when the app locked first.
-  /// `compoundScheduleOptionListProvider` may not yet hold a Compound just
-  /// created in the picker.
+  /// [ids]' Compounds, read once by id, or null when the app locked first. The
+  /// picker's result can name a Compound the member lookup hasn't reached yet,
+  /// one just created in the picker among them.
   ///
   /// A subscription is held across the read: with no listener Riverpod pauses a
   /// stream provider and disposes an autoDispose one, and the read never
@@ -1782,9 +1759,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
   /// doses, and fills the end date from `endDateForDoseCount`, which counts
   /// from the start under the member's rule as it stands in the editor,
   /// skipping off-cycle and paused days. It sets only the end date.
-  Future<void> _openDoseCountHelper(
-    List<CompoundScheduleOptionRecord> compounds,
-  ) async {
+  Future<void> _openDoseCountHelper() async {
     final periodJson = _periodJson();
     final period = _decodedPeriod();
     final periodUsable =
@@ -1793,9 +1768,9 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
       for (final compoundId in _compoundIds)
         _DoseCountMember(
           compoundId: compoundId,
-          name: _compoundOption(compoundId, compounds).name,
-          rule: _fieldFor(compoundId, compounds).validate().accepted
-              ? _fieldFor(compoundId, compounds).decodedRule()
+          name: _compoundOption(compoundId).name,
+          rule: _fieldFor(compoundId).validate().accepted
+              ? _fieldFor(compoundId).decodedRule()
               : null,
         ),
     ];
@@ -1948,6 +1923,11 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
 
   /// Asks before archiving (D8), because archiving also closes today: its
   /// planned doses no Dose filled are no longer expected.
+  ///
+  /// Fails the way [_delete] does. A Protocol already archived on another device
+  /// makes the repository throw a [StateError], and the editor closes. Any other
+  /// failure re-enables the buttons and says why: [_saving] left set would also
+  /// keep Back from leaving a dirty form.
   Future<void> _archive(ProtocolRecord protocol) async {
     final l10n = context.l10n;
     final confirmed = await _confirm(
@@ -1961,9 +1941,21 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
       return;
     }
     setState(() => _saving = true);
-    await ref
-        .read(protocolListControllerProvider.notifier)
-        .archiveProtocol(protocol.id);
+    try {
+      await ref
+          .read(protocolListControllerProvider.notifier)
+          .archiveProtocol(protocol.id);
+    } on StateError {
+      // Already archived elsewhere: nothing left to do but close.
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _errorText = l10n.protocolEditorArchiveFailed('$error');
+        });
+      }
+      return;
+    }
     if (mounted) {
       Navigator.of(context).pop();
     }

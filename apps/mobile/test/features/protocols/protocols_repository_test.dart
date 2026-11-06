@@ -1732,67 +1732,6 @@ void main() {
       );
     });
 
-    test('watchCompoundScheduleOptions emits only for schedule seed data',
-        () async {
-      final created = await repositories.protocols.createCompound(
-        CompoundDraft(
-          name: 'Creatine',
-          defaultUnit: DoseUnit.gram,
-          defaultRoute: DoseRoute.oral,
-          strength: CompoundStrength.parse('5 g/capsule'),
-        ),
-      );
-
-      final emissions = <List<CompoundScheduleOptionRecord>>[];
-      final subscription = repositories.protocols
-          .watchCompoundScheduleOptions()
-          .listen(emissions.add);
-      addTearDown(subscription.cancel);
-
-      await _waitFor(() => emissions.isNotEmpty);
-      expect(emissions.last.single.id, created.compoundId);
-      expect(emissions.last.single.name, 'Creatine');
-      expect(emissions.last.single.defaultUnit, DoseUnit.gram);
-      expect(emissions.last.single.defaultRoute, DoseRoute.oral);
-
-      emissions.clear();
-      await repositories.protocols.setFavorite(
-        created.compoundId,
-        isFavorite: true,
-      );
-      await pumpEventQueue(times: 5);
-      expect(emissions, isEmpty);
-
-      await repositories.protocols.editCompound(
-        created.compoundId,
-        CompoundDraft(
-          name: 'Creatine',
-          defaultUnit: DoseUnit.gram,
-          defaultRoute: DoseRoute.oral,
-          strength: CompoundStrength.parse('10 g/capsule'),
-        ),
-      );
-      await pumpEventQueue(times: 5);
-      expect(emissions, isEmpty);
-
-      await repositories.protocols.editCompound(
-        created.compoundId,
-        CompoundDraft(
-          name: 'Creatine',
-          defaultUnit: DoseUnit.milligram,
-          defaultRoute: DoseRoute.sublingual,
-          strength: CompoundStrength.parse('10000 mg/capsule'),
-        ),
-      );
-      await _waitFor(
-        () => emissions.any(
-          (options) =>
-              options.single.defaultUnit == DoseUnit.milligram &&
-              options.single.defaultRoute == DoseRoute.sublingual,
-        ),
-      );
-    });
-
     test('watchCompoundNamesByIds ignores unrelated Compound changes',
         () async {
       final creatine = await repositories.protocols.createCompound(

@@ -6475,16 +6475,6 @@ class ProtocolsRepository {
         .distinct(_sameCompoundOptionRecords);
   }
 
-  /// Reactive variant of [listCompoundScheduleOptions]. It emits when the
-  /// visible schedule seed data changes (id/name/default unit/default route),
-  /// while suppressing strength/favorite/detail-only Compound edits.
-  Stream<List<CompoundScheduleOptionRecord>> watchCompoundScheduleOptions() {
-    return _activeCompoundQuery()
-        .watch()
-        .map(_compoundScheduleOptionsFromRows)
-        .distinct(_sameCompoundScheduleOptionRecords);
-  }
-
   /// The Compounds named by [ids], archived ones included with `isArchived`
   /// set, for a Protocol editor naming its members: a Protocol keeps a member
   /// whose Compound was archived. Re-emits when an archive changes, unlike

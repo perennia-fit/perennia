@@ -4720,6 +4720,12 @@ abstract class AppLocalizations {
   /// **'Could not delete the Protocol: {error}'**
   String protocolEditorDeleteFailed(String error);
 
+  /// No description provided for @protocolEditorArchiveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not archive the Protocol: {error}'**
+  String protocolEditorArchiveFailed(String error);
+
   /// No description provided for @protocolEditorCompoundFallback.
   ///
   /// In en, this message translates to:

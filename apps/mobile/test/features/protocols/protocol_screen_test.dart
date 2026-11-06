@@ -411,13 +411,6 @@ void main() {
             protocolHasHistoryProvider.overrideWith(
               (ref, protocolId) => Stream<bool>.value(false),
             ),
-            compoundScheduleOptionListProvider.overrideWith(
-              (ref) => Stream<List<CompoundScheduleOptionRecord>>.value(
-                _compounds()
-                    .map(_compoundScheduleOptionFromCompound)
-                    .toList(growable: false),
-              ),
-            ),
             compoundsByIdsProvider.overrideWith(
               (ref, request) =>
                   Stream<List<CompoundScheduleOptionRecord>>.value(
@@ -3039,6 +3032,70 @@ void main() {
       _expectFormClosed();
     });
 
+    testWidgets(
+        'a Protocol already archived on another device closes a dirty form',
+        (tester) async {
+      final controller = _FakeProtocolListController()
+        ..archiveError = StateError('Protocol is archived: protocol-1.');
+      await openSaved(tester, controller);
+      await tester.enterText(nameField, 'Renamed');
+      await tester.pump();
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.archiveButtonKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.archiveButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmArchiveButtonKey));
+      await tester.pumpAndSettle();
+
+      _expectFormClosed();
+    });
+
+    testWidgets(
+        'an archive that fails for another reason says why, and Back still '
+        'asks before discarding', (tester) async {
+      final controller = _FakeProtocolListController()
+        ..archiveError = Exception('disk full');
+      await openSaved(tester, controller);
+      await tester.enterText(nameField, 'Renamed');
+      await tester.pump();
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.archiveButtonKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.archiveButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmArchiveButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Could not archive the Protocol: Exception: disk full'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<ButtonStyleButton>(
+              find.byKey(ProtocolFormScreen.archiveButtonKey),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(
+        tester
+            .widget<ButtonStyleButton>(
+              find.byKey(ProtocolFormScreen.saveButtonKey),
+            )
+            .onPressed,
+        isNotNull,
+      );
+
+      await _pressBack(tester);
+      await tester.tap(find.byKey(ProtocolFormScreen.discardConfirmKey));
+      await tester.pumpAndSettle();
+      _expectFormClosed();
+    });
+
     testWidgets('Delete closes a dirty form without asking', (tester) async {
       final controller = _FakeProtocolListController();
       await openSaved(
@@ -3244,13 +3301,6 @@ Future<void> _pumpListScreen(
         compoundListProvider.overrideWith(
           (ref) => Stream<List<CompoundRecord>>.value(compounds),
         ),
-        compoundScheduleOptionListProvider.overrideWith(
-          (ref) => Stream<List<CompoundScheduleOptionRecord>>.value(
-            compounds
-                .map(_compoundScheduleOptionFromCompound)
-                .toList(growable: false),
-          ),
-        ),
         metricOptionListProvider.overrideWith(
           (ref) => Stream<List<MetricOptionRecord>>.value(
             const <MetricOptionRecord>[],
@@ -3310,13 +3360,6 @@ Future<void> _pumpFormScreen(
         // default, so the editor shows Archive as it did before D8.
         protocolHasHistoryProvider.overrideWith(
           (ref, protocolId) => hasHistory?.call() ?? Stream<bool>.value(true),
-        ),
-        compoundScheduleOptionListProvider.overrideWith(
-          (ref) => Stream<List<CompoundScheduleOptionRecord>>.value(
-            compounds
-                .map(_compoundScheduleOptionFromCompound)
-                .toList(growable: false),
-          ),
         ),
         metricOptionListProvider.overrideWith(
           (ref) => Stream<List<MetricOptionRecord>>.value(
@@ -3823,6 +3866,9 @@ class _FakeProtocolListController extends ProtocolListController {
   /// When set, [createProtocol] answers only after this completes.
   Future<void>? createGate;
 
+  /// Thrown by [archiveProtocol] instead of archiving, when set.
+  Object? archiveError;
+
   /// Thrown by [deleteProtocol] instead of deleting, when set: the refusal
   /// the repository gives when a Dose made the Protocol history (D8).
   Object? deleteError;
@@ -3853,6 +3899,10 @@ class _FakeProtocolListController extends ProtocolListController {
 
   @override
   Future<String> archiveProtocol(String protocolId) async {
+    final error = archiveError;
+    if (error != null) {
+      throw error;
+    }
     archivedProtocolIds.add(protocolId);
     return 'batch-archive-${archivedProtocolIds.length}';
   }

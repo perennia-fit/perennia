@@ -18,7 +18,8 @@ import '../../performance/performance_budget_thresholds.dart';
 
 // The sheet runs against fake providers: these tests cover its search,
 // selection and result. Reading a created Compound by id is covered by
-// protocols_repository_test.dart.
+// protocols_repository_test.dart, and a later open's fresh list by
+// compound_picker_real_database_test.dart.
 
 void main() {
   group('the list', () {
@@ -796,8 +797,8 @@ CompoundRecord _compound(
 }
 
 /// The library behind the sheet. A created Compound is readable by id and never
-/// reaches `compoundListProvider`, as with a stale `.future`: the sheet has to
-/// find it through the by-id read.
+/// reaches `compoundListProvider`, like the list the sheet read when it opened:
+/// the sheet has to find it through the by-id read.
 class _Harness {
   _Harness({
     required this.compounds,

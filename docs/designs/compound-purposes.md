@@ -1050,6 +1050,9 @@ this PR changes no golden vectors, contract or sync shape.
         *   `Future<Map<String, ({double amount, DoseUnit unit})>>
             latestDoseAmounts(Set<String> compoundIds)`, built from
             `lastDoseFor` for each id, skipping ids with no Dose.
+    *   **Removed:** `compoundScheduleOptionListProvider` and the repository's
+        `watchCompoundScheduleOptions`. The chip wall was their only reader;
+        the form now reads Compounds from `compoundsByIdsProvider` alone.
 
 #### 4. `apps/mobile/lib/features/protocols/widgets/compound_picker_sheet.dart` (Create)
 
@@ -1057,8 +1060,11 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Proposed Changes**: `Future<List<String>?> showCompoundPickerSheet(
     BuildContext context, {required List<String> selectedIds})`, laid out as
     D6 describes, without the Purpose filter row and with name-only search.
-    *   It reads active Compounds once from the existing Compound list
-        provider, with its Favorites and Recent.
+    *   It reads active Compounds once per open from the existing Compound list
+        provider, with its Favorites and Recent. It invalidates both providers
+        first: from the Protocol editor nothing listens to them between opens,
+        so Riverpod has paused them, and `.future` alone would answer with the
+        list from before any write made since.
     *   Keys for the search field, each row, the Create row and Done.
     *   The Create row opens `CompoundEditorSheet(initialName:)` and awaits
         the new id.
@@ -1088,7 +1094,8 @@ this PR changes no golden vectors, contract or sync shape.
         through `_toggleCompound`'s add and remove logic, and appends nothing
         for them.
     *   **Member names:** watch `compoundsByIdsProvider` for the member ids,
-        and show **Archived** when `isArchived`.
+        and show **Archived** when `isArchived`. This is the form's only source
+        of a Compound: a row's name is blank until the lookup answers.
     *   **Schedule editor:** show `_ScheduleEditor` in a modal bottom sheet
         through a `StatefulBuilder` that also calls the form's `setState`.
     *   **Summaries:** a public `ScheduleSummaryInput` value record (choice,
@@ -1114,6 +1121,11 @@ this PR changes no golden vectors, contract or sync shape.
         with `==`. It is taken at the end of `initState`. A `PopScope` with
         `canPop: _snapshot() == _initialSnapshot || _saved` shows the discard
         dialog.
+    *   **A failed Archive:** it fails the way Delete does. A `StateError` means
+        the Protocol was already archived on another device, so the editor
+        closes. Any other error re-enables the buttons and shows
+        `protocolEditorArchiveFailed` ("Could not archive the Protocol:
+        {error}"), so Back still reaches the discard dialog.
     *   **Key changes:** remove `compoundChipKey`, and add keys for member
         rows, Add Compounds, the period summary and the dialog buttons.
 
