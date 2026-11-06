@@ -1778,6 +1778,9 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
 *   **Changes**, declared as below:
 
     ```dart
+    const aisleInputPath = 'build/open_food_facts_aisle_input.ndjson';
+    const aisleLabelsPath = 'tool/open_food_facts_bundle/aisle_labels.ndjson';
+    const aisleReferencePath = 'tool/open_food_facts_bundle/aisle_reference.csv';
     const aisleConfidenceThreshold = 0.6;
     // aisleBrowseLimit is imported from food_aisle.dart, not redefined.
     const aisleModelTextLimit = 200; // Unicode code points (runes), so a cut never splits a character
@@ -1801,6 +1804,8 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
     String aisleInputHash(Map<String, Object?> state);
     String aisleQuestionHashOf({required String instructions, required Map<FoodAisle, String> descriptions});
     String aisleQuestionHash(); // aisleQuestionHashOf with the two constants
+    AisleLabel? aisleLabelFromResponse(Object? response, {required String inputHash}); // null when the response has no usable answer; confidence rounded as the file rounds it
+    ({String name, String digest})? matchOllamaModel(Object? tags, String option); // `--model` against a GET /api/tags response
     String aisleGuideText(); // the order of principles, then each Aisle's id, UI label and description, then the `none` and `unsure` answers
 
     final class AisleInputLine { final String code; final String name; final String? brand; final List<String> categories; final int scans; final String inputHash; }
@@ -1865,6 +1870,7 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
       required List<AisleReferenceRow> reference,
       required AisleLabels labels,
     });
+    List<String> aisleSetMeasuresLines(AisleSetMeasures measures); // one set's measures as report lines, for the builder and the labeller
     ```
 
     *   `aisleInputHash` and `aisleQuestionHashOf` use `DartSha256().hashSync`

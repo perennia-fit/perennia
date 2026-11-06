@@ -12,6 +12,12 @@ import 'package:cryptography/dart.dart';
 import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/features/nutrition/import/csv_parser.dart';
 
+/// Paths relative to apps/mobile. The two data files are committed; the aisle
+/// input is under the git-ignored build directory.
+const aisleInputPath = 'build/open_food_facts_aisle_input.ndjson';
+const aisleLabelsPath = 'tool/open_food_facts_bundle/aisle_labels.ndjson';
+const aisleReferencePath = 'tool/open_food_facts_bundle/aisle_reference.csv';
+
 /// A label decides a product's Aisle when its confidence is at least this.
 const aisleConfidenceThreshold = 0.6;
 
@@ -237,6 +243,65 @@ String _shortHash(Object? value) {
       .join();
 }
 
+/// The label in one `POST /v1/systemone` response, or `null` when it holds no
+/// usable answer: a `choice` that is an Aisle id or `other`, and a `confidence`
+/// from 0 to 1. Everything else in the response is ignored. The confidence is
+/// rounded here, as the file rounds it, so the threshold reads the same value
+/// in the run that made a label and in every run after it.
+AisleLabel? aisleLabelFromResponse(
+  Object? response, {
+  required String inputHash,
+}) {
+  final answers = response is Map ? response['answers'] : null;
+  final answer = answers is Map ? answers['aisle'] : null;
+  if (answer is! Map) {
+    return null;
+  }
+  final choice = answer['choice'];
+  final confidence = answer['confidence'];
+  if (choice is! String ||
+      confidence is! num ||
+      confidence < 0 ||
+      confidence > 1) {
+    return null;
+  }
+  final aisle = foodAisleById(choice);
+  if (aisle == null && choice != _otherChoice) {
+    return null;
+  }
+  return (
+    inputHash: inputHash,
+    aisle: aisle,
+    confidence: _roundConfidence(confidence.toDouble()),
+  );
+}
+
+double _roundConfidence(double confidence) {
+  return double.parse(confidence.toStringAsFixed(3));
+}
+
+/// The model `--model` names in a `GET /api/tags` response: one whose `name`
+/// equals [option], or, when [option] has no `:` tag, equals it followed by
+/// `:latest`. `null` when none does.
+({String name, String digest})? matchOllamaModel(
+  Object? tags,
+  String option,
+) {
+  final models = tags is Map ? tags['models'] : null;
+  if (models is! List) {
+    return null;
+  }
+  final names = {option, if (!option.contains(':')) '$option:latest'};
+  for (final model in models) {
+    final name = model is Map ? model['name'] : null;
+    final digest = model is Map ? model['digest'] : null;
+    if (name is String && digest is String && names.contains(name)) {
+      return (name: name, digest: digest);
+    }
+  }
+  return null;
+}
+
 /// What `label_aisles guide` prints: what a person follows when filling in the
 /// reference set, built from the same constants as the model's criteria.
 String aisleGuideText() {
@@ -458,7 +523,7 @@ String encodeAisleLabels(AisleLabels labels) {
           'code': code,
           'inputHash': label.inputHash,
           'choice': label.aisle?.name ?? _otherChoice,
-          'confidence': double.parse(label.confidence.toStringAsFixed(3)),
+          'confidence': _roundConfidence(label.confidence),
         }),
       )
       ..write('\n');
@@ -1152,6 +1217,28 @@ AisleSetMeasures _measureSet(
     unsureRows: unsureRows,
     unlabelledRows: unlabelledRows,
   );
+}
+
+/// One set's measures as report lines, which the builder and the labeller both
+/// print. A measure with no rows reads "not measured".
+List<String> aisleSetMeasuresLines(AisleSetMeasures measures) {
+  String share(AisleShare share) {
+    return share.rows == 0
+        ? 'not measured'
+        : '${_percentOf(share)} (${share.matched} of ${share.rows})';
+  }
+
+  return [
+    'agreement: ${share(measures.agreement)}',
+    'coverage:  ${share(measures.coverage)}',
+    'unsure rows: ${measures.unsureRows}, '
+        'not yet labelled: ${measures.unlabelledRows}',
+    for (final aisle in FoodAisle.values)
+      '${aisle.name.padRight(19)} '
+          'browse ${share(measures.browsePrecision[aisle]!)}; '
+          'outside browse ${share(measures.precision[aisle]!)}; '
+          'recall ${share(measures.recall[aisle]!)}',
+  ];
 }
 
 /// A part the Aisle has no products in is not measured, even in the odd case

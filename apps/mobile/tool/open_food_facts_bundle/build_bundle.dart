@@ -11,6 +11,13 @@
 // Last-Modified date. The output is
 // assets/seeds/open_food_facts_bundle.ndjson.gz, followed by a report.
 //
+// A refresh is three runs: this tool with --aisle-input-only, which writes
+// build/open_food_facts_aisle_input.ndjson and no bundle; label_aisles.dart
+// label; and this tool again, which refuses to write a bundle while any
+// product's label is missing or stale. --aisle-labels and --aisle-reference
+// name the two data files when they are not at their committed paths. See
+// docs/designs/food-aisles.md, "The builder".
+//
 // This file is also the "method" the bundle's ODbL notice names: the bundle is
 // a derived database, and anyone with the same day's dump can rebuild it.
 // Running it twice on the same dump writes the same product lines and the same
@@ -21,8 +28,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:perennia/domain/nutrition/food_aisle.dart';
 import 'package:perennia/domain/nutrition/nutrition.dart';
 import 'package:perennia/domain/nutrition/open_food_facts.dart';
+
+import 'aisle_pipeline.dart';
 
 /// Country tag in `countries_tags` → the code written in the header.
 const launchCountries = <String, String>{
@@ -63,7 +73,9 @@ Future<void> main(List<String> args) async {
     stderr.writeln(
       'Usage: dart run tool/open_food_facts_bundle/build_bundle.dart '
       '--input <openfoodfacts-products.jsonl.gz> '
-      '--dataset-version <YYYY-MM-DD>',
+      '--dataset-version <YYYY-MM-DD> '
+      '[--aisle-labels <path>] [--aisle-reference <path>] '
+      '[--aisle-input-only]',
     );
     exit(64);
   }
@@ -71,6 +83,25 @@ Future<void> main(List<String> args) async {
   if (!input.existsSync()) {
     stderr.writeln('Input not found: ${options.input}');
     exit(66);
+  }
+  // Read before the dump, so a broken data file costs seconds, not 30 minutes.
+  final AisleLabels labels;
+  final List<AisleReferenceRow> reference;
+  try {
+    labels = _readDataFile(
+      options.aisleLabels,
+      parse: parseAisleLabels,
+      ifMissing: const AisleLabels(header: null, byCode: {}),
+    );
+    reference = _readDataFile(
+      options.aisleReference,
+      parse: (text) => parseAisleReference(text, allowUnlabelled: true),
+      ifMissing: const [],
+    );
+  } on FormatException catch (error) {
+    stderr.writeln(error.message);
+    exitCode = 65;
+    return;
   }
 
   final stopwatch = Stopwatch()..start();
@@ -137,6 +168,51 @@ Future<void> main(List<String> args) async {
   }.values.toList()
     ..sort((a, b) => a.product.code.compareTo(b.product.code));
 
+  final keptByCountry = <String, int>{
+    for (final MapEntry(:key, :value) in byCountry.entries) key: value.length,
+  };
+
+  // The labeller's input, whichever kind of run this is: it is what a run that
+  // stops here tells the maintainer to label.
+  final aisleInput = [for (final candidate in merged) candidate.aisleInputLine];
+  File(aisleInputPath)
+    ..createSync(recursive: true)
+    ..writeAsStringSync(
+      aisleInput.map((line) => '${encodeAisleInputLine(line)}\n').join(),
+    );
+  final needLabels = aisleInput
+      .where(
+        (line) => !isCurrentLabel(
+          labels.byCode[line.code],
+          labels.header,
+          line.inputHash,
+        ),
+      )
+      .length;
+  if (options.aisleInputOnly || needLabels > 0) {
+    report.printAisleInput(
+      eligibleByCountry: eligibleByCountry,
+      keptByCountry: keptByCountry,
+      productCount: aisleInput.length,
+      needLabels: needLabels,
+    );
+    if (!options.aisleInputOnly) {
+      stdout.writeln(
+        '$needLabels products need labels: run label_aisles.dart label, '
+        'then build again.',
+      );
+      exitCode = 1;
+    }
+    return;
+  }
+
+  // Every label is current from here on.
+  final aisleBundle = resolveAisleBundle(
+    input: aisleInput,
+    labels: labels.byCode,
+    reference: reference,
+  );
+
   // Step 5: header, product lines, gzip.
   final productBytes = BytesBuilder(copy: false);
   for (final candidate in merged) {
@@ -174,10 +250,15 @@ Future<void> main(List<String> args) async {
   stopwatch.stop();
   report.print(
     eligibleByCountry: eligibleByCountry,
-    keptByCountry: {
-      for (final MapEntry(:key, :value) in byCountry.entries) key: value.length,
-    },
+    keptByCountry: keptByCountry,
     merged: merged,
+    aisleBundle: aisleBundle,
+    reference: reference,
+    measures: measureAisleLabels(
+      bundle: aisleBundle,
+      reference: reference,
+      labels: labels,
+    ),
     uncompressedProductBytes: productLines.length,
     compressedBytes: compressed.length,
     header: header,
@@ -189,7 +270,7 @@ Future<void> main(List<String> args) async {
       'The bundle is ${compressed.length} bytes, over the '
       '$sizeBudgetBytes-byte budget.',
     );
-    exit(1);
+    exitCode = 1;
   }
 }
 
@@ -247,6 +328,7 @@ void _consider(
     countryTags: tags,
     structure: openFoodFactsNutrientStructure(decoded),
     lineNumber: lineNumber,
+    categories: _englishCategories(decoded['categories_hierarchy']),
   );
   final existing = kept[product.code];
   if (existing != null) {
@@ -256,6 +338,16 @@ void _consider(
     }
   }
   kept[product.code] = candidate;
+}
+
+/// The `en:` entries of `categories_hierarchy`, in order, prefix kept. Anything
+/// but a list records no tags.
+List<String> _englishCategories(Object? hierarchy) {
+  return <String>[
+    if (hierarchy is List)
+      for (final tag in hierarchy)
+        if (tag is String && tag.startsWith('en:')) tag,
+  ];
 }
 
 /// A duplicate code keeps the later change date, then more scans, then the
@@ -286,12 +378,31 @@ class _Candidate {
     required this.countryTags,
     required this.structure,
     required this.lineNumber,
+    required this.categories,
   });
 
   final MappedOpenFoodFactsProduct product;
   final Set<String> countryTags;
   final OpenFoodFactsNutrientStructure structure;
   final int lineNumber;
+
+  /// The product's Open Food Facts tags, `en:` kept.
+  final List<String> categories;
+
+  AisleInputLine get aisleInputLine => AisleInputLine(
+        code: product.code,
+        name: product.name,
+        brand: product.brand,
+        categories: categories,
+        scans: product.scans!,
+        inputHash: aisleInputHash(
+          aisleModelState(
+            name: product.name,
+            brand: product.brand,
+            categories: categories,
+          ),
+        ),
+      );
 }
 
 class _Report {
@@ -311,6 +422,9 @@ class _Report {
     required Map<String, int> eligibleByCountry,
     required Map<String, int> keptByCountry,
     required List<_Candidate> merged,
+    required List<AisleBundleProduct> aisleBundle,
+    required List<AisleReferenceRow> reference,
+    required AisleMeasures measures,
     required int uncompressedProductBytes,
     required int compressedBytes,
     required BundleHeader header,
@@ -325,7 +439,58 @@ class _Report {
       ..writeln('Open Food Facts bundle report')
       ..writeln('  dataset version:         ${header.datasetVersion}')
       ..writeln('  content hash:            ${header.contentHash}')
-      ..writeln('  dump lines read:         $linesRead')
+      ..writeln('  dump lines read:         $linesRead');
+    _writeDumpSection(out, eligibleByCountry, keptByCountry);
+    out
+      ..writeln('  merged products:         ${merged.length}')
+      ..writeln('  nutrients read from:');
+    for (final structure in OpenFoodFactsNutrientStructure.values) {
+      out.writeln(
+        '    ${structure.name.padRight(21)} ${byStructure[structure] ?? 0}',
+      );
+    }
+    out.writeln('  labels missing or stale: 0');
+    _writeAisleSection(out, merged, aisleBundle, reference, measures);
+    out
+      ..writeln(
+        '  product lines:           $uncompressedProductBytes bytes '
+        'uncompressed',
+      )
+      ..writeln(
+        '  compressed bundle:       $compressedBytes bytes '
+        '(${(compressedBytes / 1024 / 1024).toStringAsFixed(2)} MB, '
+        'budget ${sizeBudgetBytes ~/ 1024 ~/ 1024} MB)',
+      )
+      ..writeln('  run time:                ${_duration(elapsed)}')
+      ..writeln('  wrote:                   $outputPath');
+    stdout.write(out);
+  }
+
+  /// The report of a run that stops after the aisle input: it has no header,
+  /// hash or size lines, because no bundle was built.
+  void printAisleInput({
+    required Map<String, int> eligibleByCountry,
+    required Map<String, int> keptByCountry,
+    required int productCount,
+    required int needLabels,
+  }) {
+    final out = StringBuffer()
+      ..writeln('Open Food Facts aisle input report')
+      ..writeln('  dump lines read:         $linesRead');
+    _writeDumpSection(out, eligibleByCountry, keptByCountry);
+    out
+      ..writeln('  aisle input:             $aisleInputPath')
+      ..writeln('  aisle input products:    $productCount')
+      ..writeln('  labels missing or stale: $needLabels');
+    stdout.write(out);
+  }
+
+  void _writeDumpSection(
+    StringBuffer out,
+    Map<String, int> eligibleByCountry,
+    Map<String, int> keptByCountry,
+  ) {
+    out
       ..writeln('  malformed lines:         $malformedLines')
       ..writeln('  failed lines:            ${failedLines.length}')
       ..writeAll(failedLines.take(10).map((line) => '    $line\n'))
@@ -346,40 +511,116 @@ class _Report {
         '${keptByCountry[tag]}',
       );
     }
-    out
-      ..writeln('  merged products:         ${merged.length}')
-      ..writeln('  nutrients read from:');
-    for (final structure in OpenFoodFactsNutrientStructure.values) {
-      out.writeln(
-        '    ${structure.name.padRight(21)} ${byStructure[structure] ?? 0}',
-      );
+  }
+
+  void _writeAisleSection(
+    StringBuffer out,
+    List<_Candidate> merged,
+    List<AisleBundleProduct> aisleBundle,
+    List<AisleReferenceRow> reference,
+    AisleMeasures measures,
+  ) {
+    final referenceByCode = {for (final row in reference) row.code: row};
+    final perAisle = <FoodAisle?, int>{};
+    var decidedByReference = 0;
+    var decidedByLabel = 0;
+    var decidedByNeither = 0;
+    for (final product in aisleBundle) {
+      perAisle[product.aisle] = (perAisle[product.aisle] ?? 0) + 1;
+      final answer = referenceByCode[product.code]?.answer;
+      if (answer == ReferenceAnswer.aisle || answer == ReferenceAnswer.none) {
+        decidedByReference++;
+      } else if (product.aisle != null) {
+        decidedByLabel++;
+      } else {
+        decidedByNeither++;
+      }
+    }
+    int rowsAnswering(ReferenceAnswer answer) =>
+        reference.where((row) => row.answer == answer).length;
+
+    out.writeln('  products per Aisle:');
+    for (final aisle in FoodAisle.values) {
+      out.writeln('    ${aisle.name.padRight(21)} ${perAisle[aisle] ?? 0}');
     }
     out
+      ..writeln('    ${'no Aisle'.padRight(21)} ${perAisle[null] ?? 0}')
+      ..writeln('  products per deciding step:')
+      ..writeln('    ${'reference'.padRight(21)} $decidedByReference')
+      ..writeln('    ${'label'.padRight(21)} $decidedByLabel')
+      ..writeln('    ${'none'.padRight(21)} $decidedByNeither')
       ..writeln(
-        '  product lines:           $uncompressedProductBytes bytes '
-        'uncompressed',
+        '  reference rows not yet labelled: '
+        '${rowsAnswering(ReferenceAnswer.unlabelled)}',
       )
       ..writeln(
-        '  compressed bundle:       $compressedBytes bytes '
-        '(${(compressedBytes / 1024 / 1024).toStringAsFixed(2)} MB, '
-        'budget ${sizeBudgetBytes ~/ 1024 ~/ 1024} MB)',
+        '  reference rows marked unsure:    '
+        '${rowsAnswering(ReferenceAnswer.unsure)}',
       )
-      ..writeln('  run time:                ${_duration(elapsed)}')
-      ..writeln('  wrote:                   $outputPath');
-    stdout.write(out);
+      ..writeln('  dev set measures:')
+      ..writeAll(
+        aisleSetMeasuresLines(measures.dev).map((line) => '    $line\n'),
+      )
+      ..writeln('  test set measures:')
+      ..writeAll(
+        aisleSetMeasuresLines(measures.test).map((line) => '    $line\n'),
+      )
+      ..writeln('  test set failures:       ${measures.failures.length}')
+      ..writeAll(measures.failures.map((failure) => '    $failure\n'))
+      ..writeln(
+        '  launch countries in each Aisle\'s $aisleBrowseLimit most scanned '
+        'products:',
+      );
+    final countryTagsByCode = {
+      for (final candidate in merged)
+        candidate.product.code: candidate.countryTags,
+    };
+    final ranking = buildAisleRanking(aisleBundle);
+    for (final aisle in FoodAisle.values) {
+      final top = ranking.listOf(aisle).take(aisleBrowseLimit).toList();
+      final counts = launchCountries.entries.map((country) {
+        final carrying = top.where(
+          (product) => countryTagsByCode[product.code]!.contains(country.key),
+        );
+        return '${country.value} ${carrying.length}';
+      });
+      out.writeln('    ${aisle.name.padRight(21)} ${counts.join('  ')}');
+    }
   }
 }
 
-({String input, String datasetVersion})? _parseArguments(List<String> args) {
+({
+  String input,
+  String datasetVersion,
+  String aisleLabels,
+  String aisleReference,
+  bool aisleInputOnly,
+})? _parseArguments(List<String> args) {
+  const flag = '--aisle-input-only';
+  const valued = {
+    '--input',
+    '--dataset-version',
+    '--aisle-labels',
+    '--aisle-reference',
+  };
   final values = <String, String>{};
+  var aisleInputOnly = false;
   for (var i = 0; i < args.length; i++) {
     final [name, ...inline] = args[i].split('=');
+    if (name == flag) {
+      if (inline.isNotEmpty) {
+        stderr.writeln('$flag takes no value.');
+        return null;
+      }
+      aisleInputOnly = true;
+      continue;
+    }
     final value = inline.isNotEmpty
         ? inline.join('=')
         : (i + 1 < args.length && !args[i + 1].startsWith('--')
             ? args[++i]
             : null);
-    if (name != '--input' && name != '--dataset-version') {
+    if (!valued.contains(name)) {
       stderr.writeln('Unknown argument: $name');
       return null;
     }
@@ -399,7 +640,32 @@ class _Report {
     stderr.writeln('--dataset-version must be a YYYY-MM-DD date.');
     return null;
   }
-  return (input: input, datasetVersion: datasetVersion);
+  return (
+    input: input,
+    datasetVersion: datasetVersion,
+    aisleLabels: values['--aisle-labels'] ?? aisleLabelsPath,
+    aisleReference: values['--aisle-reference'] ?? aisleReferencePath,
+    aisleInputOnly: aisleInputOnly,
+  );
+}
+
+/// [ifMissing] when the file does not exist. A file that does not parse, or
+/// is not UTF-8, throws a [FormatException] that names the path and keeps the
+/// parser's message.
+T _readDataFile<T>(
+  String path, {
+  required T Function(String text) parse,
+  required T ifMissing,
+}) {
+  final file = File(path);
+  if (!file.existsSync()) {
+    return ifMissing;
+  }
+  try {
+    return parse(utf8.decode(file.readAsBytesSync()));
+  } on FormatException catch (error) {
+    throw FormatException('$path: ${error.message}');
+  }
 }
 
 /// A dataset version is a `YYYY-MM-DD` date, the same form as a nutrition day.

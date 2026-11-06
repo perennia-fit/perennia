@@ -1856,6 +1856,178 @@ void main() {
     });
   });
 
+  group('aisleLabelFromResponse', () {
+    AisleLabel? label(Object? response) {
+      return aisleLabelFromResponse(response, inputHash: 'hash');
+    }
+
+    test('reads the choice and confidence, ignoring the rest', () {
+      final response = jsonDecode(
+        '{"answers":{"aisle":{"choice":"sweetsDesserts","confidence":0.9136,'
+        '"probabilities":{"alcohol":0.0019,"sweetsDesserts":0.9194}}}}',
+      );
+
+      expect(label(response), (
+        inputHash: 'hash',
+        aisle: FoodAisle.sweetsDesserts,
+        confidence: 0.914,
+      ));
+    });
+
+    test('other is a usable answer with no Aisle', () {
+      expect(
+        label({
+          'answers': {
+            'aisle': {'choice': 'other', 'confidence': 1},
+          },
+        }),
+        (inputHash: 'hash', aisle: null, confidence: 1.0),
+      );
+    });
+
+    test('rounds as the file does, so the threshold reads the same value', () {
+      final made = label({
+        'answers': {
+          'aisle': {'choice': 'snacks', 'confidence': 0.5996},
+        },
+      })!;
+
+      expect(made.confidence, 0.6);
+      expect(resolveFoodAisle(currentLabel: made), FoodAisle.snacks);
+    });
+
+    test('no usable answer gives null', () {
+      for (final response in <Object?>[
+        null,
+        'text',
+        <String, Object?>{},
+        {'answers': 'text'},
+        {
+          'answers': {'aisle': 'snacks'},
+        },
+        {
+          'answers': {
+            'aisle': {'choice': 'snacks'},
+          },
+        },
+        {
+          'answers': {
+            'aisle': {'confidence': 0.9},
+          },
+        },
+        {
+          'answers': {
+            'aisle': {'choice': 'frozen', 'confidence': 0.9},
+          },
+        },
+        {
+          'answers': {
+            'aisle': {'choice': 3, 'confidence': 0.9},
+          },
+        },
+        {
+          'answers': {
+            'aisle': {'choice': 'snacks', 'confidence': '0.9'},
+          },
+        },
+        {
+          'answers': {
+            'aisle': {'choice': 'snacks', 'confidence': 1.2},
+          },
+        },
+        {
+          'answers': {
+            'aisle': {'choice': 'snacks', 'confidence': -0.1},
+          },
+        },
+      ]) {
+        expect(label(response), isNull, reason: '$response');
+      }
+    });
+  });
+
+  group('matchOllamaModel', () {
+    const tags = {
+      'models': [
+        {'name': 'llama3:8b', 'digest': 'a'},
+        {'name': 'clef:latest', 'digest': 'b'},
+        {'name': 'clef:small', 'digest': 'c'},
+      ],
+    };
+
+    test('a name with no tag matches its :latest', () {
+      expect(
+          matchOllamaModel(tags, 'clef'), (name: 'clef:latest', digest: 'b'));
+    });
+
+    test('a name with a tag matches only that tag', () {
+      expect(matchOllamaModel(tags, 'clef:small'), (
+        name: 'clef:small',
+        digest: 'c',
+      ));
+      expect(matchOllamaModel(tags, 'clef:large'), isNull);
+      expect(matchOllamaModel(tags, 'llama3'), isNull);
+    });
+
+    test('a name matches itself when it has no tag in the list', () {
+      expect(
+        matchOllamaModel({
+          'models': [
+            {'name': 'clef', 'digest': 'd'},
+          ],
+        }, 'clef'),
+        (name: 'clef', digest: 'd'),
+      );
+    });
+
+    test('a response of another shape matches nothing', () {
+      for (final response in <Object?>[
+        null,
+        'text',
+        <String, Object?>{},
+        {'models': 'text'},
+        {
+          'models': ['clef:latest'],
+        },
+        {
+          'models': [
+            {'name': 'clef:latest'},
+          ],
+        },
+      ]) {
+        expect(matchOllamaModel(response, 'clef'), isNull, reason: '$response');
+      }
+    });
+  });
+
+  group('aisleSetMeasuresLines', () {
+    test('prints shares to one decimal place, and "not measured"', () {
+      final none = {
+        for (final aisle in FoodAisle.values) aisle: (matched: 0, rows: 0),
+      };
+      final lines = aisleSetMeasuresLines(
+        AisleSetMeasures(
+          agreement: (matched: 2, rows: 3),
+          coverage: (matched: 0, rows: 0),
+          browsePrecision: {...none, FoodAisle.snacks: (matched: 14, rows: 15)},
+          precision: none,
+          recall: none,
+          unsureRows: 1,
+          unlabelledRows: 2,
+        ),
+      );
+
+      expect(lines[0], 'agreement: 66.7% (2 of 3)');
+      expect(lines[1], 'coverage:  not measured');
+      expect(lines[2], 'unsure rows: 1, not yet labelled: 2');
+      expect(lines, hasLength(3 + FoodAisle.values.length));
+      expect(
+        lines.singleWhere((line) => line.startsWith('snacks ')),
+        contains('browse 93.3% (14 of 15); outside browse not measured'),
+      );
+    });
+  });
+
   group('descriptions', () {
     test('every FoodAisle has one', () {
       for (final aisle in FoodAisle.values) {
