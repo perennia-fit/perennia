@@ -45,16 +45,15 @@ class PlatformExerciseSeed {
     this.metadata = const PlatformExerciseSeedMetadata.empty(),
     required this.categories,
     this.focuses = const <SeedFocus>[],
-    this.redirects = const <SeedExerciseRedirect>[],
     required this.exercises,
+    this.retired = const <SeedRetiredExercise>[],
   });
 
   factory PlatformExerciseSeed.fromJson(Map<String, Object?> json) {
     final categories = json['categories'] as List<Object?>? ?? <Object?>[];
     final focuses = json['focuses'] as List<Object?>? ?? <Object?>[];
-    final redirects =
-        json['exercise_redirects'] as List<Object?>? ?? <Object?>[];
     final exercises = json['exercises'] as List<Object?>? ?? <Object?>[];
+    final retired = json['retired_exercises'] as List<Object?>? ?? <Object?>[];
 
     return PlatformExerciseSeed(
       metadata: PlatformExerciseSeedMetadata.fromJson(
@@ -68,13 +67,13 @@ class PlatformExerciseSeed {
           .cast<Map<String, Object?>>()
           .map(SeedFocus.fromJson)
           .toList(growable: false),
-      redirects: redirects
-          .cast<Map<String, Object?>>()
-          .map(SeedExerciseRedirect.fromJson)
-          .toList(growable: false),
       exercises: exercises
           .cast<Map<String, Object?>>()
           .map(SeedExercise.fromJson)
+          .toList(growable: false),
+      retired: retired
+          .cast<Map<String, Object?>>()
+          .map(SeedRetiredExercise.fromJson)
           .toList(growable: false),
     );
   }
@@ -82,25 +81,11 @@ class PlatformExerciseSeed {
   final PlatformExerciseSeedMetadata metadata;
   final List<SeedExerciseCategory> categories;
   final List<SeedFocus> focuses;
-  final List<SeedExerciseRedirect> redirects;
   final List<SeedExercise> exercises;
-}
 
-class SeedExerciseRedirect {
-  const SeedExerciseRedirect({
-    required this.fromExerciseId,
-    required this.toExerciseId,
-  });
-
-  factory SeedExerciseRedirect.fromJson(Map<String, Object?> json) {
-    return SeedExerciseRedirect(
-      fromExerciseId: json['from_exercise_id']! as String,
-      toExerciseId: json['to_exercise_id']! as String,
-    );
-  }
-
-  final String fromExerciseId;
-  final String toExerciseId;
+  /// Exercises the library no longer offers. Each one is kept or hidden by the
+  /// launch pass, depending on whether anything on the device uses it.
+  final List<SeedRetiredExercise> retired;
 }
 
 class PlatformExerciseSeedMetadata {
@@ -237,4 +222,45 @@ class SeedExercise {
   final List<String> focusIds;
   final String? notes;
   final DateTime updatedAt;
+}
+
+/// A Retired Exercise's frozen record, from `retired_exercises`: the fields of
+/// a [SeedExercise] plus the fixed [retiredAt] every device stamps it with.
+class SeedRetiredExercise {
+  const SeedRetiredExercise({
+    required this.id,
+    required this.name,
+    required this.dimensions,
+    required this.categoryId,
+    this.equipment = const <ExerciseEquipment>[],
+    this.focusIds = const <String>[],
+    required this.notes,
+    required this.updatedAt,
+    required this.retiredAt,
+  });
+
+  factory SeedRetiredExercise.fromJson(Map<String, Object?> json) {
+    final record = SeedExercise.fromJson(json);
+    return SeedRetiredExercise(
+      id: record.id,
+      name: record.name,
+      dimensions: record.dimensions,
+      categoryId: record.categoryId,
+      equipment: record.equipment,
+      focusIds: record.focusIds,
+      notes: record.notes,
+      updatedAt: record.updatedAt,
+      retiredAt: DateTime.parse(json['retired_at']! as String).toUtc(),
+    );
+  }
+
+  final String id;
+  final String name;
+  final List<DimensionId> dimensions;
+  final String? categoryId;
+  final List<ExerciseEquipment> equipment;
+  final List<String> focusIds;
+  final String? notes;
+  final DateTime updatedAt;
+  final DateTime retiredAt;
 }
