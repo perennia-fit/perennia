@@ -7,6 +7,7 @@ import {
   buildPlatformCatalogExercises,
   createApp,
   createDatabaseClient,
+  createDrizzleAgentCatalogStore,
   createDrizzleAgentProgressReadStore,
   createDrizzleAgentReadStore,
   createDrizzleAgentSettingsStore,
@@ -743,18 +744,18 @@ test(
           }
         });
       }
-      const readSets = async (userId, query) => {
+      const readSet = async (userId) => {
         const response = await getAgent(
           createAgentReadApp({
             agentReadStore: createDrizzleAgentReadStore(database.db),
             userId
           }),
-          `/agent/history/sets?${query}`
+          "/agent/history/sets?limit=1"
         );
         assert.equal(response.status, 200);
-        return (await response.json()).sets;
+        const [set] = (await response.json()).sets;
+        return set;
       };
-      const readSet = async (userId) => (await readSets(userId, "limit=1"))[0];
 
       const keptSet = await readSet(keeperId);
       assert.equal(keptSet.exerciseId, redirect.fromExerciseId);
@@ -768,30 +769,149 @@ test(
       assert.equal(redirectedSet.exerciseId, redirect.fromExerciseId);
       assert.equal(redirectedSet.exerciseName, target.name);
       assert.deepEqual(redirectedSet.category, target.category);
+    } finally {
+      await database.close();
+    }
+  }
+);
 
-      // A kept exercise reads only its own Sets, and its merge target does not
-      // include them.
-      await seedLoggedSet(database, {
-        userId: keeperId,
-        id: randomUUID(),
-        exerciseId: redirect.toExerciseId,
-        exerciseName: null,
-        exerciseCategoryId: null,
-        exerciseCategoryName: null,
-        performedAt: "2026-11-02T06:00:00.000Z",
-        position: 0,
-        values: {
-          load: { entered: "100", unit: "kilogram" },
-          reps: { entered: "5", unit: "repetition" }
-        }
-      });
-      for (const exerciseId of [redirect.fromExerciseId, redirect.toExerciseId]) {
-        const sets = await readSets(keeperId, `exerciseId=${exerciseId}`);
-        assert.deepEqual(
-          sets.map((set) => set.exerciseId),
-          [exerciseId]
+// Platform Library Updates: the analytics read resolves its id through the
+// caller's catalog and its progressSeries through the caller's kept rows, so
+// the same two ids read differently for an account that holds the source id.
+test(
+  "the analytics read of a kept id is the user's own exercise and Sets, and without a kept row follows the redirect",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const keeperId = `agent-read-kept-user-${randomUUID()}`;
+    const otherId = `agent-read-unkept-user-${randomUUID()}`;
+    // A load-and-reps target, so the Sets below reach its Progress Measure.
+    const catalog = buildPlatformCatalogExercises();
+    const targetOf = (candidate) =>
+      catalog.find((exercise) => exercise.id === candidate.toExerciseId);
+    const redirect = PLATFORM_EXERCISE_SEED_REDIRECTS.find(
+      (candidate) => targetOf(candidate).recordProfile === "repMax"
+    );
+    const target = targetOf(redirect);
+    const at = new Date("2026-11-05T00:00:00.000Z");
+    const row = (id, userId, payload) => ({
+      id,
+      userId,
+      deviceId: "device-agent-read-test",
+      updatedAt: at,
+      receivedAt: at,
+      deletedAt: null,
+      payload: { id, ...payload, updated_at: at.toISOString(), deleted_at: null }
+    });
+    // One Workout on the redirect's source and one on its target; the Set ids
+    // carry the account, so another account's Set cannot pass for this one's.
+    const setId = (userId, exerciseId) => `${userId}-set-${exerciseId}`;
+    const seedHistory = async (userId) => {
+      const days = [
+        [redirect.fromExerciseId, "2026-10-01", "100"],
+        [redirect.toExerciseId, "2026-10-02", "110"]
+      ];
+      await database.db.insert(schema.workoutSessions).values(
+        days.map(([exerciseId, localDate]) =>
+          row(`${userId}-w-${exerciseId}`, userId, {
+            local_date: localDate,
+            started_at: `${localDate}T06:00:00.000Z`,
+            ended_at: `${localDate}T07:00:00.000Z`
+          })
+        )
+      );
+      await database.db.insert(schema.loggedSets).values(
+        days.map(([exerciseId, localDate, load]) =>
+          row(setId(userId, exerciseId), userId, {
+            workout_id: `${userId}-w-${exerciseId}`,
+            performed_at: `${localDate}T06:00:00.000Z`,
+            exercise_id: exerciseId,
+            position: 0,
+            is_completed: true,
+            values: {
+              load: { entered: load, unit: "kilogram" },
+              reps: { entered: "5", unit: "repetition" }
+            }
+          })
+        )
+      );
+    };
+
+    try {
+      await seedUser(database, keeperId);
+      await seedUser(database, otherId);
+      await seedHistory(keeperId);
+      await seedHistory(otherId);
+      const categoryId = randomUUID();
+      await database.db
+        .insert(schema.exerciseCategories)
+        .values(row(categoryId, keeperId, { name: "Kept Category" }));
+      await database.db.insert(schema.exercises).values(
+        row(redirect.fromExerciseId, keeperId, {
+          library_origin: "user",
+          name: "My Kept Exercise",
+          category_id: categoryId,
+          dimension_ids: JSON.stringify(["load", "reps"])
+        })
+      );
+
+      const catalogStore = createDrizzleAgentCatalogStore(database.db);
+      const readAnalytics = async (userId, exerciseId) => {
+        const response = await getAgent(
+          createApp({
+            logger: { info() {}, error() {} },
+            agentApiKeyStore: createAgentKeyStore(userId, {}, "agent-read-key-1"),
+            agentCatalogStore: catalogStore,
+            agentReadStore: createDrizzleAgentReadStore(database.db),
+            agentProgressReadStore: createDrizzleAgentProgressReadStore({
+              db: database.db,
+              settingsStore: createDrizzleAgentSettingsStore(database.db),
+              catalogStore
+            })
+          }),
+          `/agent/analytics/exercises/${exerciseId}`
         );
-      }
+        assert.equal(response.status, 200);
+        return response.json();
+      };
+      const seriesSetIds = (body) =>
+        body.progressSeries.points.map((point) => point.setId);
+
+      // The keeper's source id is their own exercise, with only its own Set.
+      const kept = await readAnalytics(keeperId, redirect.fromExerciseId);
+      assert.equal(kept.exercise.id, redirect.fromExerciseId);
+      assert.equal(kept.exercise.name, "My Kept Exercise");
+      assert.equal(kept.exercise.library, "user");
+      assert.equal(kept.totalSetCount, 1);
+      assert.equal(kept.progressSeries.exerciseId, redirect.fromExerciseId);
+      assert.deepEqual(seriesSetIds(kept), [
+        setId(keeperId, redirect.fromExerciseId)
+      ]);
+
+      // Their merge target does not include the kept exercise's Set.
+      const keeperTarget = await readAnalytics(keeperId, redirect.toExerciseId);
+      assert.equal(keeperTarget.exercise.id, redirect.toExerciseId);
+      assert.equal(keeperTarget.totalSetCount, 1);
+      assert.deepEqual(seriesSetIds(keeperTarget), [
+        setId(keeperId, redirect.toExerciseId)
+      ]);
+
+      // With no kept row, the same source id is the merge target, and the
+      // target's series folds the account's own Sets from both ids.
+      const folded = [
+        setId(otherId, redirect.fromExerciseId),
+        setId(otherId, redirect.toExerciseId)
+      ];
+      const redirected = await readAnalytics(otherId, redirect.fromExerciseId);
+      assert.equal(redirected.exercise.id, redirect.toExerciseId);
+      assert.equal(redirected.exercise.name, target.name);
+      assert.equal(redirected.exercise.library, "platform");
+      assert.deepEqual(seriesSetIds(redirected), folded);
+      assert.deepEqual(
+        seriesSetIds(await readAnalytics(otherId, redirect.toExerciseId)),
+        folded
+      );
     } finally {
       await database.close();
     }
