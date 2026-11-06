@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show Variable, driftRuntimeOptions;
+import 'package:drift/drift.dart' show QueryRow, Variable, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
@@ -75,8 +75,15 @@ void main() {
         where: 'id != ?',
         variables: <Object>[seeded.userFocusId],
       );
+      final starterPurposeIds = await _liveIds(
+        database,
+        AppDatabase.purposesTable,
+        where: 'id != ?',
+        variables: <Object>[seeded.userPurposeId],
+      );
       expect(platformExerciseIds, isNotEmpty);
       expect(starterFocusIds, isNotEmpty);
+      expect(starterPurposeIds, hasLength(6));
       expect(otcCompoundIds, isNotEmpty);
       expect(defaultMealTypeIds, isNotEmpty);
       expect(platformCategoryIds, isNotEmpty);
@@ -101,6 +108,7 @@ void main() {
         AppDatabase.mealTypesTable: defaultMealTypeIds,
         AppDatabase.exerciseCategoriesTable: platformCategoryIds,
         AppDatabase.focusesTable: starterFocusIds,
+        AppDatabase.purposesTable: starterPurposeIds,
       };
       for (final table in TrainingRepositories.eraseTableNames) {
         expect(
@@ -112,6 +120,40 @@ void main() {
       expect(
           await database.select(database.userSettings).get(), settingsBefore);
       expect(await repositories.exercises.listActive(), isNotEmpty);
+    });
+
+    test(
+        'the starter Purposes and seed Compounds keep their names and tags '
+        '(compound-purposes.md, D1)', () async {
+      await _seedEveryDomain(repositories);
+      await repositories.protocols.purposes.rename(
+        starterPurposes.first.id,
+        name: 'Rest',
+      );
+      List<Map<String, Object?>> rowsOf(Iterable<QueryRow> rows) =>
+          rows.map((row) => row.data).toList(growable: false);
+      Future<List<Map<String, Object?>>> seedCompounds() async => rowsOf(
+            await database
+                .customSelect(
+                  'SELECT id, name, purpose_ids FROM compounds '
+                  "WHERE id LIKE '019200ff-%' ORDER BY id",
+                )
+                .get(),
+          );
+      final compoundsBefore = await seedCompounds();
+      expect(compoundsBefore, hasLength(6));
+      expect(
+        compoundsBefore.every((row) => row['purpose_ids'] != '[]'),
+        isTrue,
+      );
+
+      await repositories.eraseAllData();
+
+      expect(await seedCompounds(), compoundsBefore);
+      final purposes = await repositories.protocols.purposes.listActive();
+      expect(purposes, hasLength(6));
+      expect(purposes.first.name, 'Rest');
+      expect(purposes.every((purpose) => purpose.isStarter), isTrue);
     });
 
     test('records one Activity Log tombstone per erased row, in one batch',
@@ -205,6 +247,7 @@ typedef _SeededIds = ({
   String userMealTypeId,
   String userCategoryId,
   String userFocusId,
+  String userPurposeId,
 });
 
 /// One live row in every erasable table, next to the bundled seeds (Platform
@@ -220,6 +263,7 @@ Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
     const ExerciseCategoryDraft(name: 'Grip'),
   );
   final userFocusId = await repositories.focuses.create('Climbing');
+  final userPurposeId = await repositories.protocols.purposes.create('Joints');
   final exerciseId = await repositories.exercises.create(
     ExerciseDraft(
       name: 'Farmer Carry',
@@ -440,6 +484,7 @@ Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
     userMealTypeId: userMealTypeId,
     userCategoryId: userCategoryId,
     userFocusId: userFocusId,
+    userPurposeId: userPurposeId,
   );
 }
 

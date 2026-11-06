@@ -188,6 +188,10 @@ import {
   AgentCompoundBatchWriteResponseSchema,
   AgentCompoundListQuerySchema,
   AgentCompoundListResponseSchema,
+  AgentPurposeBatchWriteRequestSchema,
+  AgentPurposeBatchWriteResponseSchema,
+  AgentPurposeListQuerySchema,
+  AgentPurposeListResponseSchema,
   AgentDoseBatchWriteErrorResponseSchema,
   AgentDoseBatchWriteRequestSchema,
   AgentDoseBatchWriteResponseSchema,
@@ -220,6 +224,7 @@ import {
   finalizeAgentDoseBatchWriteResults,
   finalizeAgentProtocolsEntityBatchWriteResults,
   prepareAgentCompoundBatchWrite,
+  prepareAgentPurposeBatchWrite,
   prepareAgentDoseBatchWrite,
   prepareAgentProtocolBatchWrite,
   prepareAgentProtocolSkipBatchWrite,
@@ -529,6 +534,10 @@ export const AgentMcpCompoundListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentCompoundListQuerySchema.optional()
 }).openapi("AgentMcpCompoundListInput");
 
+export const AgentMcpPurposeListInputSchema = AgentMcpAuthFieldsSchema.extend({
+  query: AgentPurposeListQuerySchema.optional()
+}).openapi("AgentMcpPurposeListInput");
+
 export const AgentMcpProtocolListInputSchema = AgentMcpAuthFieldsSchema.extend({
   query: AgentProtocolListQuerySchema.optional()
 }).openapi("AgentMcpProtocolListInput");
@@ -557,6 +566,11 @@ export const AgentMcpCompoundBatchWriteInputSchema =
   AgentMcpAuthFieldsSchema.extend({
     request: AgentCompoundBatchWriteRequestSchema
   }).openapi("AgentMcpCompoundBatchWriteInput");
+
+export const AgentMcpPurposeBatchWriteInputSchema =
+  AgentMcpAuthFieldsSchema.extend({
+    request: AgentPurposeBatchWriteRequestSchema
+  }).openapi("AgentMcpPurposeBatchWriteInput");
 
 export const AgentMcpProtocolBatchWriteInputSchema =
   AgentMcpAuthFieldsSchema.extend({
@@ -2609,6 +2623,45 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_list_purposes",
+    {
+      title: "List Agent Purposes",
+      description:
+        "List the caller's Purposes through the same REST read path, sorted by sortOrder. A Purpose is a label for why the user takes a Compound. The six starter Purposes are merged in for an account that has never synced them; archived Purposes are left out unless includeArchived is true.",
+      inputSchema: AgentMcpPurposeListInputSchema,
+      outputSchema: AgentPurposeListResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      return successResult(
+        AgentPurposeListResponseSchema.parse(
+          await agentProtocolsStore.listPurposes({
+            userId: auth.agent.userId,
+            query: AgentPurposeListQuerySchema.parse(input.query ?? {})
+          })
+        )
+      );
+    }
+  );
+
+  server.registerTool(
     "agent_list_protocols",
     {
       title: "List Agent Protocols",
@@ -2905,6 +2958,44 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_batch_write_purposes",
+    {
+      title: "Batch Write Agent Purposes",
+      description:
+        "Apply an agent Purpose batch through the same name rules, Activity Log, and sync-nudge path as REST. Create, rename, reorder, or archive (deletedAt) Purposes, the labels for why the user takes a Compound. Archiving never touches a Compound's tags. Idempotent by idempotency key.",
+      inputSchema: AgentMcpPurposeBatchWriteInputSchema,
+      outputSchema: AgentPurposeBatchWriteResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: input.apiKey,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (agentProtocolsStore === undefined) {
+        return errorResult(
+          AgentProtocolsUnavailableResponseSchema.parse({
+            code: "agent_protocols_unavailable",
+            message: "Agent Protocols storage is not configured."
+          })
+        );
+      }
+      return writePurposeBatchToolResult({
+        agent: auth.agent,
+        agentProtocolsStore,
+        logger,
+        request: input.request,
+        syncNudgePublisher
+      });
+    }
+  );
+
+  server.registerTool(
     "agent_batch_write_protocols",
     {
       title: "Batch Write Agent Protocols",
@@ -3164,6 +3255,65 @@ async function writeCompoundBatchToolResult({
         accepted: writeResult.accepted,
         duplicate: writeResult.duplicate,
         results: prepared.responseCompounds
+      })
+    })
+  );
+}
+
+async function writePurposeBatchToolResult({
+  agent,
+  agentProtocolsStore,
+  logger,
+  request,
+  syncNudgePublisher
+}: {
+  agent: AuthenticatedAgent;
+  agentProtocolsStore: AgentProtocolsStore;
+  logger: RequestLogger;
+  request: z.infer<typeof AgentPurposeBatchWriteRequestSchema>;
+  syncNudgePublisher?: SyncNudgePublisher;
+}): Promise<CallToolResult> {
+  const prepared = prepareAgentPurposeBatchWrite({ request });
+  if (!prepared.accepted) {
+    return errorResult(
+      AgentProtocolsBatchWriteErrorResponseSchema.parse({
+        code: "agent_protocols_batch_write_failed",
+        message: "Batch contains one or more hard validation failures.",
+        errors: prepared.errors,
+        warnings: []
+      })
+    );
+  }
+  const writeResult = await agentProtocolsStore.writePurposeBatch({
+    userId: agent.userId,
+    batchId: request.idempotencyKey,
+    requestFingerprint: agentProtocolsBatchRequestFingerprint(request),
+    deviceId: `agent:${agent.keyId}`,
+    purposes: prepared.purposes
+  });
+  const writeFailure = agentProtocolsWriteFailure(writeResult, []);
+  if (writeFailure !== null) {
+    return errorResult(writeFailure.body);
+  }
+  await maybeNudgeAgentWrite({
+    syncNudgePublisher,
+    logger,
+    agent,
+    batchId: request.idempotencyKey,
+    applied: writeResult.applied.length
+  });
+  return successResult(
+    AgentPurposeBatchWriteResponseSchema.parse({
+      accepted: true,
+      duplicate: writeResult.duplicate,
+      idempotencyKey: request.idempotencyKey,
+      batchId: request.idempotencyKey,
+      serverClock: writeResult.serverClock,
+      purposes: finalizeAgentProtocolsEntityBatchWriteResults({
+        applied: writeResult.applied,
+        accepted: writeResult.accepted,
+        duplicate: writeResult.duplicate,
+        results: prepared.responsePurposes
       })
     })
   );

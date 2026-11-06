@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/features/focus/widgets/focus_visuals.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_lock_controller.dart';
@@ -13,6 +14,8 @@ import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
 import 'package:perennia/features/protocols/widgets/protocols_day_view.dart';
 import 'package:perennia/features/protocols/widgets/protocols_lock_screen.dart';
+import 'package:perennia/features/protocols/widgets/purpose_filter_row.dart';
+import 'package:perennia/features/protocols/widgets/purpose_manager_screen.dart';
 import 'package:perennia/l10n/app_localizations_en.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
@@ -491,6 +494,312 @@ void main() {
       }
     },
   );
+
+  group('Purposes', () {
+    Finder chip(String? id) => find.byKey(PurposeFilterRow.optionKey(id));
+    Finder editorChip(String id) =>
+        find.byKey(CompoundEditorSheet.purposeChipKey(id));
+
+    final purposes = <PurposeRecord>[
+      _purpose('p-sleep', 'Sleep'),
+      _purpose('p-recovery', 'Recovery'),
+      _purpose('p-skin', 'Skin'),
+    ];
+
+    testWidgets('the filter narrows every section, and All restores them', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final harness = _Harness(
+        purposes: purposes,
+        recentCompoundIds: <String>['c-1', 'c-2'],
+        compounds: <CompoundRecord>[
+          _compound(
+            'c-1',
+            'Melatonin',
+            isFavorite: true,
+            purposeIds: <String>['p-sleep'],
+          ),
+          _compound('c-2', 'Creatine', isFavorite: true),
+        ],
+      );
+      await _pumpCompoundList(tester, harness: harness);
+      await tester.pumpAndSettle();
+      expect(find.text('Melatonin'), findsNWidgets(3));
+      expect(find.text('Creatine'), findsNWidgets(3));
+
+      await tester.tap(chip('p-sleep'));
+      await tester.pumpAndSettle();
+      expect(find.text('Melatonin'), findsNWidgets(3));
+      expect(find.text('Creatine'), findsNothing);
+      // The list's section keeps its name; only the picker's reads the filter.
+      expect(
+        find.descendant(
+          of: find.byKey(CompoundListScreen.allSectionHeaderKey),
+          matching: find.text('All compounds'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(chip(null));
+      await tester.pumpAndSettle();
+      expect(find.text('Creatine'), findsNWidgets(3));
+    });
+
+    testWidgets('a filter with nothing tagged says so', (tester) async {
+      await _pumpCompoundList(
+        tester,
+        harness: _Harness(
+          purposes: purposes,
+          compounds: <CompoundRecord>[_compound('c-1', 'Zinc')],
+        ),
+      );
+      await _pumpUntilFound(tester, find.text('Zinc'));
+
+      await tester.tap(chip('p-skin'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CompoundListScreen.emptyStateKey), findsOneWidget);
+      expect(find.text('No compounds with this purpose.'), findsOneWidget);
+    });
+
+    testWidgets('with no active Purposes there is no filter row', (
+      tester,
+    ) async {
+      await _pumpCompoundList(
+        tester,
+        harness: _Harness(
+          compounds: <CompoundRecord>[_compound('c-1', 'Zinc')],
+        ),
+      );
+      await _pumpUntilFound(tester, find.text('Zinc'));
+
+      expect(find.byKey(PurposeFilterRow.rowKey), findsNothing);
+    });
+
+    testWidgets('search matches an active Purpose name, never an archived one',
+        (tester) async {
+      final harness = _Harness(
+        purposes: purposes,
+        compounds: <CompoundRecord>[
+          _compound('c-1', 'Melatonin', purposeIds: <String>['p-sleep']),
+          _compound('c-2', 'Zinc', purposeIds: <String>['p-archived']),
+        ],
+      );
+      await _pumpCompoundList(tester, harness: harness);
+      await _pumpUntilFound(tester, find.text('Zinc'));
+
+      await tester.enterText(
+        find.byKey(CompoundListScreen.searchFieldKey),
+        'SLEE',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Melatonin'), findsOneWidget);
+      expect(find.text('Zinc'), findsNothing);
+
+      await tester.enterText(
+        find.byKey(CompoundListScreen.searchFieldKey),
+        'archived',
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(CompoundListScreen.emptyStateKey), findsOneWidget);
+    });
+
+    testWidgets('a Purpose archived while it is the filter shows All', (
+      tester,
+    ) async {
+      final harness = _Harness(
+        purposes: purposes,
+        compounds: <CompoundRecord>[
+          _compound('c-1', 'Melatonin', purposeIds: <String>['p-sleep']),
+          _compound('c-2', 'Zinc'),
+        ],
+      );
+      await _pumpCompoundList(tester, harness: harness);
+      await _pumpUntilFound(tester, find.text('Zinc'));
+      await tester.tap(chip('p-sleep'));
+      await tester.pumpAndSettle();
+      expect(find.text('Zinc'), findsNothing);
+
+      harness.emitPurposes(purposes.sublist(1));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Zinc'), findsOneWidget);
+      expect(tester.widget<FocusChip>(chip(null)).selected, isTrue);
+    });
+
+    testWidgets(
+        'CUJ 5: long-press, tag in the order tapped, and the row files under '
+        'both filters', (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final ashwagandha = _compound('c-1', 'Ashwagandha');
+      final harness = _Harness(
+        purposes: purposes,
+        compounds: <CompoundRecord>[ashwagandha, _compound('c-2', 'Zinc')],
+      );
+      await _pumpCompoundList(tester, harness: harness);
+      await _pumpUntilFound(tester, find.text('Ashwagandha'));
+
+      await tester.longPress(
+        find.byKey(CompoundListScreen.compoundRowKey('c-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Edit compound'), findsOneWidget);
+
+      await tester.tap(editorChip('p-recovery'));
+      await tester.pump();
+      await tester.tap(editorChip('p-sleep'));
+      await tester.pump();
+      expect(tester.widget<FocusChip>(editorChip('p-sleep')).selected, isTrue);
+      await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+      await tester.pumpAndSettle();
+
+      final (id, draft) = harness.controller.editedCompounds.single;
+      expect(id, 'c-1');
+      expect(draft.purposeIds, <String>['p-recovery', 'p-sleep']);
+
+      harness.emitCompounds(<CompoundRecord>[
+        _compound('c-1', 'Ashwagandha', purposeIds: draft.purposeIds!),
+        _compound('c-2', 'Zinc'),
+      ]);
+      await tester.pumpAndSettle();
+      for (final filter in <String>['p-sleep', 'p-recovery']) {
+        await tester.tap(chip(filter));
+        await tester.pumpAndSettle();
+        expect(find.text('Ashwagandha'), findsOneWidget, reason: filter);
+        expect(find.text('Zinc'), findsNothing, reason: filter);
+      }
+
+      // A plain tap still opens the log sheet.
+      await tester.tap(find.byKey(CompoundListScreen.compoundRowKey('c-1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(LogDoseSheet.saveButtonKey), findsOneWidget);
+      expect(harness.controller.loggedDoses, isEmpty);
+    });
+
+    testWidgets(
+        'an id with no chip is kept in place on save, and a tap removes only '
+        "that chip's id", (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final harness = _Harness(
+        purposes: purposes,
+        compounds: <CompoundRecord>[
+          _compound(
+            'c-1',
+            'Melatonin',
+            purposeIds: <String>['p-archived', 'p-sleep', 'p-unsynced'],
+          ),
+        ],
+      );
+      await _pumpCompoundList(tester, harness: harness);
+      await _pumpUntilFound(tester, find.text('Melatonin'));
+      await tester.longPress(
+        find.byKey(CompoundListScreen.compoundRowKey('c-1')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(editorChip('p-archived'), findsNothing);
+      expect(tester.widget<FocusChip>(editorChip('p-sleep')).selected, isTrue);
+      await tester.tap(editorChip('p-sleep'));
+      await tester.pump();
+      await tester.tap(editorChip('p-recovery'));
+      await tester.pump();
+      await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.controller.editedCompounds.single.$2.purposeIds,
+        <String>['p-archived', 'p-unsynced', 'p-recovery'],
+      );
+    });
+
+    testWidgets('a save with no tag changes carries the stored list', (
+      tester,
+    ) async {
+      final harness = _Harness(
+        purposes: purposes,
+        compounds: <CompoundRecord>[
+          _compound('c-1', 'Melatonin', purposeIds: <String>['p-archived']),
+        ],
+      );
+      await _pumpCompoundList(tester, harness: harness);
+      await _pumpUntilFound(tester, find.text('Melatonin'));
+      await tester.longPress(
+        find.byKey(CompoundListScreen.compoundRowKey('c-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.controller.editedCompounds.single.$2.purposeIds,
+        <String>['p-archived'],
+      );
+    });
+
+    testWidgets('filter and editor chips read the name and nothing else', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final harness = _Harness(
+        purposes: purposes,
+        compounds: <CompoundRecord>[_compound('c-1', 'Melatonin')],
+      );
+      await _pumpCompoundList(tester, harness: harness);
+      await _pumpUntilFound(tester, find.text('Melatonin'));
+
+      for (final purpose in purposes) {
+        expect(
+          tester.widget<FocusChip>(chip(purpose.id)).label,
+          purpose.name,
+        );
+      }
+      await tester.longPress(
+        find.byKey(CompoundListScreen.compoundRowKey('c-1')),
+      );
+      await tester.pumpAndSettle();
+      for (final purpose in purposes) {
+        expect(
+          tester.widget<FocusChip>(editorChip(purpose.id)).label,
+          purpose.name,
+        );
+      }
+    });
+
+    testWidgets('the menu opens the Purpose manager behind the lock', (
+      tester,
+    ) async {
+      final harness = _Harness(
+        purposes: purposes,
+        compounds: <CompoundRecord>[_compound('c-1', 'Melatonin')],
+      );
+      await _pumpCompoundList(tester, harness: harness);
+      await _pumpUntilFound(tester, find.text('Melatonin'));
+
+      await tester.tap(find.byKey(CompoundListScreen.menuButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundListScreen.purposesMenuKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PurposeManagerScreen), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.byType(PurposeManagerScreen),
+          matching: find.byType(ProtocolsLockGate),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Press and hold to reorder.'), findsOneWidget);
+    });
+  });
 
   group('editing a Compound (D4)', () {
     testWidgets(
@@ -1203,6 +1512,8 @@ class _PrefixedLocalizations extends AppLocalizationsEn {
   @override
   String get cancelAction => _p(super.cancelAction);
   @override
+  String get compoundListMenuTooltip => _p(super.compoundListMenuTooltip);
+  @override
   String get compoundListViewByDay => _p(super.compoundListViewByDay);
   @override
   String get compoundListSearchHint => _p(super.compoundListSearchHint);
@@ -1352,6 +1663,7 @@ CompoundRecord _compound(
   String id,
   String name, {
   bool isFavorite = false,
+  List<String> purposeIds = const <String>[],
 }) {
   return CompoundRecord(
     id: id,
@@ -1359,6 +1671,16 @@ CompoundRecord _compound(
     defaultUnit: DoseUnit.milligram,
     defaultRoute: DoseRoute.oral,
     isFavorite: isFavorite,
+    purposeIds: purposeIds,
+    updatedAt: DateTime.utc(2026, 6, 30),
+  );
+}
+
+PurposeRecord _purpose(String id, String name) {
+  return PurposeRecord(
+    id: id,
+    name: name,
+    sortOrder: 0,
     updatedAt: DateTime.utc(2026, 6, 30),
   );
 }
@@ -1394,10 +1716,13 @@ class _Harness {
   _Harness({
     required List<CompoundRecord> compounds,
     List<String> recentCompoundIds = const <String>[],
+    List<PurposeRecord> purposes = const <PurposeRecord>[],
   })  : _compoundsController =
             StreamController<List<CompoundRecord>>.broadcast(),
         _recentCompoundIdsController =
-            StreamController<List<String>>.broadcast() {
+            StreamController<List<String>>.broadcast(),
+        _purposesController = StreamController<List<PurposeRecord>>.broadcast(),
+        _purposes = purposes {
     controller = _FakeProtocolDayController(this);
     _compounds = List<CompoundRecord>.of(compounds);
     _recentCompoundIds = List<String>.of(recentCompoundIds);
@@ -1406,6 +1731,8 @@ class _Harness {
   late final _FakeProtocolDayController controller;
   final StreamController<List<CompoundRecord>> _compoundsController;
   final StreamController<List<String>> _recentCompoundIdsController;
+  final StreamController<List<PurposeRecord>> _purposesController;
+  List<PurposeRecord> _purposes;
   late List<CompoundRecord> _compounds;
   late List<String> _recentCompoundIds;
 
@@ -1417,6 +1744,16 @@ class _Harness {
   Stream<List<String>> get recentCompoundIdsStream async* {
     yield List<String>.of(_recentCompoundIds);
     yield* _recentCompoundIdsController.stream;
+  }
+
+  Stream<List<PurposeRecord>> get purposesStream async* {
+    yield _purposes;
+    yield* _purposesController.stream;
+  }
+
+  void emitPurposes(List<PurposeRecord> purposes) {
+    _purposes = purposes;
+    _purposesController.add(purposes);
   }
 
   void emitCompounds(List<CompoundRecord> compounds) {
@@ -1573,6 +1910,7 @@ Future<void> _pumpCompoundList(
         recentCompoundIdsProvider.overrideWith(
           (ref) => harness.recentCompoundIdsStream,
         ),
+        activePurposesProvider.overrideWith((ref) => harness.purposesStream),
         // The "view day" push now wraps `ProtocolsDayView` in a
         // `ProtocolsLockGate`; a fake no-lock store keeps this
         // screen's tests off the real `flutter_secure_storage` platform

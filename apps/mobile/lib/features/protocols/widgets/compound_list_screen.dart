@@ -7,14 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/repositories/training_repositories.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
+import '../../focus/widgets/focus_visuals.dart';
 import '../controllers/protocols_day_controller.dart';
 import 'consistency_screen.dart';
 import 'protocols_day_view.dart';
 import 'protocols_lock_screen.dart';
+import 'purpose_filter_row.dart';
+import 'purpose_manager_screen.dart';
 
 /// The discreet "Supplements" surface's landing screen (PROTOCOLS.md
-/// §5): the `Compound` list — the User library + the neutral OTC seed
-/// (PROTOCOLS.md §3) — with a search field, a "+" to create a Compound, and a
+/// §5): the `Compound` list — the User library + the OTC seed, whose built-in
+/// Compounds alone arrive tagged with Purposes
+/// (docs/designs/compound-purposes.md, the neutral-instrument rule) — with a
+/// search field, a Purpose filter, a "+" to create a Compound, and a
 /// favourites/recents shortlist. A tap on a row logs a Dose; a long-press, or
 /// the row's **Edit** accessibility action, opens [CompoundEditorSheet] to edit
 /// the Compound. Reached from the Home overflow menu and
@@ -39,6 +44,8 @@ class CompoundListScreen extends ConsumerStatefulWidget {
   static const searchFieldKey = Key('protocols.compoundList.search');
   static const addCompoundButtonKey = Key('protocols.compoundList.add');
   static const viewDayButtonKey = Key('protocols.compoundList.viewDay');
+  static const menuButtonKey = Key('protocols.compoundList.menu');
+  static const purposesMenuKey = Key('protocols.compoundList.menu.purposes');
   static const emptyStateKey = Key('protocols.compoundList.empty');
   static const listKey = Key('protocols.compoundList.list');
   static const favoritesSectionHeaderKey = Key(
@@ -61,9 +68,15 @@ class CompoundListScreen extends ConsumerStatefulWidget {
   ConsumerState<CompoundListScreen> createState() => _CompoundListScreenState();
 }
 
+enum _CompoundListMenuAction { purposes }
+
 class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
   final _searchController = TextEditingController();
   String _query = '';
+
+  /// The Purpose filter as last tapped, or null for All. [build] reads it through
+  /// the active Purposes: one archived while selected shows All.
+  String? _purposeFilterId;
 
   @override
   void initState() {
@@ -103,13 +116,28 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
     final recentCompoundIds =
         ref.watch(recentCompoundIdsProvider).value ?? const <String>[];
 
-    // Search filters by name only (PROTOCOLS.md §5) — never by a substance
-    // type/legality field, which the model never carries.
-    final matches = _query.isEmpty
-        ? compounds
-        : compounds
-            .where((compound) => compound.name.toLowerCase().contains(_query))
-            .toList(growable: false);
+    final purposes =
+        ref.watch(activePurposesProvider).value ?? const <PurposeRecord>[];
+    final filterId = purposes.any((purpose) => purpose.id == _purposeFilterId)
+        ? _purposeFilterId
+        : null;
+    final lowerPurposeNames = <String, String>{
+      for (final purpose in purposes) purpose.id: purpose.name.toLowerCase(),
+    };
+
+    // Search matches the name or any active Purpose's name, and the filter one
+    // Purpose — never a substance type/legality field, which the model never
+    // carries.
+    final matches = compounds.where((compound) {
+      if (filterId != null && !compound.purposeIds.contains(filterId)) {
+        return false;
+      }
+      return _query.isEmpty ||
+          compound.name.toLowerCase().contains(_query) ||
+          compound.purposeIds.any(
+            (id) => lowerPurposeNames[id]?.contains(_query) ?? false,
+          );
+    }).toList(growable: false);
     final matchedIds = matches.map((compound) => compound.id).toSet();
     final compoundById = <String, CompoundRecord>{
       for (final compound in compounds) compound.id: compound,
@@ -155,6 +183,18 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
               );
             },
           ),
+          PopupMenuButton<_CompoundListMenuAction>(
+            key: CompoundListScreen.menuButtonKey,
+            tooltip: l10n.compoundListMenuTooltip,
+            onSelected: (_) => unawaited(_openPurposeManager()),
+            itemBuilder: (_) => [
+              PopupMenuItem<_CompoundListMenuAction>(
+                key: CompoundListScreen.purposesMenuKey,
+                value: _CompoundListMenuAction.purposes,
+                child: Text(l10n.purposeManagerTitle),
+              ),
+            ],
+          ),
         ],
       ),
       body: Padding(
@@ -177,14 +217,24 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
               ),
             ),
             const SizedBox(height: AppDimens.base),
+            if (purposes.isNotEmpty) ...[
+              PurposeFilterRow(
+                purposes: purposes,
+                selectedId: filterId,
+                onSelected: (id) => setState(() => _purposeFilterId = id),
+              ),
+              const SizedBox(height: AppDimens.dense),
+            ],
             Expanded(
               child: all.isEmpty
                   ? Center(
                       key: CompoundListScreen.emptyStateKey,
                       child: Text(
-                        _query.isEmpty
-                            ? l10n.compoundListEmpty
-                            : l10n.compoundListNoMatches,
+                        _query.isNotEmpty
+                            ? l10n.compoundListNoMatches
+                            : filterId != null
+                                ? l10n.purposeFilterEmpty
+                                : l10n.compoundListEmpty,
                         style: TextStyle(color: colors.textSecondary),
                       ),
                     )
@@ -239,16 +289,28 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
       ),
     );
   }
+
+  /// The Purpose manager, behind the same lock as this list: if the app locks
+  /// while it is on top, its own gate reacts, as the view-by-day button's does.
+  Future<void> _openPurposeManager() {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ProtocolsLockGate(child: PurposeManagerScreen()),
+      ),
+    );
+  }
 }
 
 /// Opens [CompoundEditorSheet]: edits [compound] when given, otherwise creates
-/// a Compound with the name field holding [initialName]. Completes with the
-/// saved Compound's id, even for an edit that changed nothing, or null when the
-/// sheet was dismissed or the Compound archived.
+/// a Compound with the name field holding [initialName] and the Purpose chips
+/// holding [initialPurposeIds]. Completes with the saved Compound's id, even for
+/// an edit that changed nothing, or null when the sheet was dismissed or the
+/// Compound archived.
 Future<String?> showCompoundEditorSheet(
   BuildContext context, {
   CompoundRecord? compound,
   String? initialName,
+  List<String>? initialPurposeIds,
 }) {
   return showModalBottomSheet<String>(
     context: context,
@@ -261,6 +323,7 @@ Future<String?> showCompoundEditorSheet(
         child: CompoundEditorSheet(
           compound: compound,
           initialName: initialName,
+          initialPurposeIds: initialPurposeIds,
         ),
       ),
     ),
@@ -432,22 +495,33 @@ class _CompoundRow extends ConsumerWidget {
   }
 }
 
-/// The Compound form: name, default unit/route from the curated registries, and
-/// an optional structured strength. NEVER carries a substance type/legality
-/// field. Open it with [showCompoundEditorSheet], which sits it behind
-/// [ProtocolsLockSheetGuard].
+/// The Compound form: name, default unit/route from the curated registries, an
+/// optional structured strength, and the Purposes the user tags it with. It
+/// NEVER classifies a Compound: there is no substance type or legality field, and
+/// a Purpose only says why this user takes it (docs/designs/compound-purposes.md,
+/// the neutral-instrument rule). Open it with [showCompoundEditorSheet], which
+/// sits it behind [ProtocolsLockSheetGuard].
 ///
 /// With [compound] it edits that Compound and offers **Archive**; without, it
-/// creates one, with the name field holding [initialName]. An empty name or a
-/// strength that doesn't parse shows inline and doesn't save.
+/// creates one, with the name field holding [initialName] and the chips holding
+/// [initialPurposeIds]. An empty name or a strength that doesn't parse shows
+/// inline and doesn't save.
 class CompoundEditorSheet extends ConsumerStatefulWidget {
-  const CompoundEditorSheet({super.key, this.compound, this.initialName});
+  const CompoundEditorSheet({
+    super.key,
+    this.compound,
+    this.initialName,
+    this.initialPurposeIds,
+  });
 
   /// The Compound to edit, or null to create one.
   final CompoundRecord? compound;
 
   /// The name a new Compound starts with. Ignored when editing.
   final String? initialName;
+
+  /// The Purposes a new Compound starts tagged with. Ignored when editing.
+  final List<String>? initialPurposeIds;
 
   static const nameFieldKey = Key('protocols.compoundEditor.name');
   static const unitFieldKey = Key('protocols.compoundEditor.unit');
@@ -459,6 +533,9 @@ class CompoundEditorSheet extends ConsumerStatefulWidget {
     'protocols.compoundEditor.archiveConfirm',
   );
 
+  static Key purposeChipKey(String id) =>
+      Key('protocols.compoundEditor.purpose.$id');
+
   @override
   ConsumerState<CompoundEditorSheet> createState() =>
       _CompoundEditorSheetState();
@@ -469,6 +546,12 @@ class _CompoundEditorSheetState extends ConsumerState<CompoundEditorSheet> {
   late final TextEditingController _strengthController;
   late DoseUnit _unit;
   late DoseRoute _route;
+
+  /// The tags in the order the user tapped them. It starts from the stored list
+  /// and a chip's tap removes or appends only that chip's id, so an id with no
+  /// chip here, an archived Purpose or one not synced yet, stays where it is and
+  /// is saved with the rest (D2).
+  late final List<String> _purposeIds;
   String? _nameError;
   String? _strengthError;
   bool _busy = false;
@@ -485,6 +568,17 @@ class _CompoundEditorSheetState extends ConsumerState<CompoundEditorSheet> {
     );
     _unit = compound?.defaultUnit ?? DoseUnit.milligram;
     _route = compound?.defaultRoute ?? DoseRoute.oral;
+    _purposeIds = List<String>.of(
+      compound?.purposeIds ?? widget.initialPurposeIds ?? const <String>[],
+    );
+  }
+
+  void _togglePurpose(String id) {
+    setState(() {
+      if (!_purposeIds.remove(id)) {
+        _purposeIds.add(id);
+      }
+    });
   }
 
   @override
@@ -498,6 +592,8 @@ class _CompoundEditorSheetState extends ConsumerState<CompoundEditorSheet> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final l10n = context.l10n;
+    final purposes =
+        ref.watch(activePurposesProvider).value ?? const <PurposeRecord>[];
 
     return SafeArea(
       // Scrolls so the sheet still fits with the keyboard up on a small phone
@@ -586,6 +682,28 @@ class _CompoundEditorSheetState extends ConsumerState<CompoundEditorSheet> {
                 }
               },
             ),
+            if (purposes.isNotEmpty) ...[
+              const SizedBox(height: AppDimens.base),
+              Text(
+                l10n.compoundEditorPurposes,
+                style: context.textStyles.label.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+              Wrap(
+                spacing: AppDimens.dense / 2,
+                children: [
+                  for (final purpose in purposes)
+                    FocusChip(
+                      key: CompoundEditorSheet.purposeChipKey(purpose.id),
+                      label: purpose.name,
+                      icon: null,
+                      selected: _purposeIds.contains(purpose.id),
+                      onSelected: (_) => _togglePurpose(purpose.id),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: AppDimens.base),
             SizedBox(
               height: AppDimens.touchTarget,
@@ -638,6 +756,7 @@ class _CompoundEditorSheetState extends ConsumerState<CompoundEditorSheet> {
       defaultUnit: _unit,
       defaultRoute: _route,
       strength: strength,
+      purposeIds: _purposeIds,
     );
     final controller = ref.read(protocolDayControllerProvider.notifier);
     final compound = widget.compound;

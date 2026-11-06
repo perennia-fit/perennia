@@ -1771,6 +1771,12 @@ abstract class AppLocalizations {
   /// **'Can\'t undo: foods were added to this meal afterwards.'**
   String get activityUndoDependentConflict;
 
+  /// Shown when undoing a change to a Purpose is refused because it would bring back a name another active Purpose now holds.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t undo: another purpose now has this name.'**
+  String get activityUndoDuplicatePurposeNameConflict;
+
   /// No description provided for @activityRelativeLessThanOneMinuteAgo.
   ///
   /// In en, this message translates to:
@@ -6081,6 +6087,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Archive'**
   String get compoundArchiveConfirm;
+
+  /// Tooltip of the Compound list's app bar overflow menu.
+  ///
+  /// In en, this message translates to:
+  /// **'More options'**
+  String get compoundListMenuTooltip;
+
+  /// Label above the Compound editor's Purpose chips.
+  ///
+  /// In en, this message translates to:
+  /// **'Purposes'**
+  String get compoundEditorPurposes;
+
+  /// Screen reader label of the row of Purpose filter chips on the Compound list and in the Compound picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter by purpose'**
+  String get purposeFilterLabel;
+
+  /// The filter chip that clears the Purpose filter.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get purposeFilterAll;
+
+  /// Shown when no Compound carries the selected Purpose. It never names the Purpose.
+  ///
+  /// In en, this message translates to:
+  /// **'No compounds with this purpose.'**
+  String get purposeFilterEmpty;
+
+  /// Title of the screen that manages Purposes, and the Compound list's menu item that opens it.
+  ///
+  /// In en, this message translates to:
+  /// **'Purposes'**
+  String get purposeManagerTitle;
+
+  /// No description provided for @purposeManagerAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a Purpose'**
+  String get purposeManagerAdd;
+
+  /// Tooltip of the menu on a row of the Purpose manager. It never names the Purpose.
+  ///
+  /// In en, this message translates to:
+  /// **'More options'**
+  String get purposeManagerRowMenuTooltip;
+
+  /// No description provided for @purposeManagerNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get purposeManagerNameLabel;
+
+  /// No description provided for @purposeManagerRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get purposeManagerRename;
+
+  /// No description provided for @purposeManagerArchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get purposeManagerArchive;
+
+  /// No description provided for @purposeManagerSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get purposeManagerSave;
+
+  /// No description provided for @purposeManagerReorderHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Press and hold to reorder.'**
+  String get purposeManagerReorderHint;
+
+  /// Body of the dialog confirming a Purpose's archive. Its title is the Purpose's name alone: a Purpose's name is never combined with a verb in one string.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive this purpose? Compounds keep the tag; it stops showing.'**
+  String get purposeManagerArchiveBody;
+
+  /// No description provided for @purposeManagerNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name.'**
+  String get purposeManagerNameRequired;
+
+  /// No description provided for @purposeManagerDuplicateName.
+  ///
+  /// In en, this message translates to:
+  /// **'A purpose with that name already exists.'**
+  String get purposeManagerDuplicateName;
+
+  /// No description provided for @purposeManagerSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the purpose. Try again.'**
+  String get purposeManagerSaveFailed;
+
+  /// No description provided for @purposeManagerEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No purposes. Add one to filter compounds by it.'**
+  String get purposeManagerEmpty;
 
   /// Title of the sheet that picks a Protocol's Compounds.
   ///

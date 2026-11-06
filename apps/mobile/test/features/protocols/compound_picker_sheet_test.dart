@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/features/focus/widgets/focus_visuals.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_lock_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
 import 'package:perennia/features/protocols/widgets/compound_picker_sheet.dart';
+import 'package:perennia/features/protocols/widgets/purpose_filter_row.dart';
 import 'package:perennia/l10n/app_localizations_en.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
@@ -112,7 +114,8 @@ void main() {
       expect(find.byKey(CompoundPickerSheet.createRowKey), findsNothing);
     });
 
-    testWidgets('search matches names only, trimmed and case-insensitive', (
+    testWidgets('search is trimmed, case-insensitive, and skips the unit line',
+        (
       tester,
     ) async {
       final harness = _Harness(
@@ -511,6 +514,295 @@ void main() {
     });
   });
 
+  group('the Purpose filter', () {
+    Finder chip(String? id) => find.byKey(PurposeFilterRow.optionKey(id));
+
+    final purposes = <PurposeRecord>[
+      _purpose('p-sleep', 'Sleep', 0),
+      _purpose('p-performance', 'Performance', 1),
+      _purpose('p-empty', 'Skin', 2),
+    ];
+
+    _Harness taggedHarness() => _Harness(
+          purposes: purposes,
+          compounds: <CompoundRecord>[
+            _compound('c-1', 'Melatonin', purposeIds: <String>['p-sleep']),
+            _compound(
+              'c-2',
+              'Creatine',
+              purposeIds: <String>['p-performance'],
+            ),
+            _compound('c-3', 'Zinc'),
+          ],
+        );
+
+    testWidgets(
+        'CUJ 4: at 200 Compounds the filter and each keystroke narrow '
+        'within one frame', (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      // 12 tagged Performance, 3 of them favorites, 2 of those named "Cr...".
+      final harness = _Harness(
+        purposes: purposes,
+        recentCompoundIds: <String>['c-3', 'c-100'],
+        compounds: <CompoundRecord>[
+          for (var index = 0; index < 200; index += 1)
+            _compound(
+              'c-$index',
+              index == 0
+                  ? 'Crea Alpha'
+                  : index == 3
+                      ? 'Crea Beta'
+                      : 'Compound ${index.toString().padLeft(3, '0')}',
+              isFavorite: index < 3,
+              purposeIds: index < 12
+                  ? const <String>['p-performance']
+                  : const <String>[],
+            ),
+        ],
+      );
+      final host = await _openPicker(tester, harness: harness);
+
+      await tester.tap(chip('p-performance'));
+      await tester.pump(setSaveConfirmationFrameBudget);
+      expect(
+        _rowOrder(tester).where((key) => key.startsWith('favorites/')),
+        <String>['favorites/c-1', 'favorites/c-2', 'favorites/c-0'],
+      );
+      expect(find.text('Compound 100'), findsNothing);
+      expect(find.text('Performance'), findsNWidgets(2));
+
+      await tester.tap(_row(CompoundPickerSection.favorites, 'c-1'));
+      await tester.pump(setSaveConfirmationFrameBudget);
+      expect(find.text('Done · 1'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(CompoundPickerSheet.searchFieldKey),
+        'c',
+      );
+      await tester.pump(setSaveConfirmationFrameBudget);
+      expect(find.text('Compound 100'), findsNothing);
+      expect(_row(CompoundPickerSection.recent, 'c-3'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(CompoundPickerSheet.searchFieldKey),
+        'cr',
+      );
+      await tester.pump(setSaveConfirmationFrameBudget);
+      expect(_rowOrder(tester), <String>[
+        'favorites/c-0',
+        'recent/c-3',
+        'all/c-0',
+        'all/c-3',
+      ]);
+      expect(find.byType(CheckboxListTile).evaluate().length, lessThan(20));
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(_row(CompoundPickerSection.all, 'c-3'));
+      await tester.pump(setSaveConfirmationFrameBudget);
+      expect(find.text('Done · 2'), findsOneWidget);
+
+      // Clearing the filter and the search keeps both.
+      await _search(tester, '');
+      await tester.tap(chip(null));
+      await tester.pumpAndSettle();
+      expect(find.text('Done · 2'), findsOneWidget);
+      expect(find.text('All compounds'), findsOneWidget);
+      await _done(tester);
+      expect(host.results.single, <String>['c-1', 'c-3']);
+    });
+
+    testWidgets(
+        'only the Compound the filter names is listed, in every section',
+        (tester) async {
+      final harness = _Harness(
+        purposes: purposes,
+        recentCompoundIds: <String>['c-1', 'c-2'],
+        compounds: <CompoundRecord>[
+          _compound(
+            'c-1',
+            'Melatonin',
+            isFavorite: true,
+            purposeIds: <String>['p-sleep'],
+          ),
+          _compound(
+            'c-2',
+            'Creatine',
+            isFavorite: true,
+            purposeIds: <String>['p-performance'],
+          ),
+        ],
+      );
+      await _openPicker(tester, harness: harness);
+
+      await tester.tap(chip('p-sleep'));
+      await tester.pumpAndSettle();
+
+      expect(_rowOrder(tester), <String>[
+        'favorites/c-1',
+        'recent/c-1',
+        'all/c-1',
+      ]);
+    });
+
+    testWidgets('the All compounds header reads the filter, All restores it', (
+      tester,
+    ) async {
+      await _openPicker(tester, harness: taggedHarness());
+      final header = find.byKey(
+        CompoundPickerSheet.sectionHeaderKey(CompoundPickerSection.all),
+      );
+      expect(
+        find.descendant(of: header, matching: find.text('All compounds')),
+        findsOneWidget,
+      );
+
+      await tester.tap(chip('p-sleep'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: header, matching: find.text('Sleep')),
+        findsOneWidget,
+      );
+
+      await tester.tap(chip(null));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: header, matching: find.text('All compounds')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('search matches an active Purpose name, never an archived one',
+        (tester) async {
+      final harness = _Harness(
+        purposes: purposes,
+        compounds: <CompoundRecord>[
+          _compound('c-1', 'Melatonin', purposeIds: <String>['p-sleep']),
+          _compound(
+            'c-2',
+            'Glycine',
+            purposeIds: <String>['p-archived', 'p-sleep'],
+          ),
+          _compound('c-3', 'Zinc', purposeIds: <String>['p-archived']),
+        ],
+      );
+      await _openPicker(tester, harness: harness);
+
+      await _search(tester, 'SLEE');
+      expect(_rowOrder(tester), <String>['all/c-2', 'all/c-1']);
+
+      // Harness has no Purpose "p-archived": it has no name to match.
+      await _search(tester, 'archived');
+      expect(_rowOrder(tester), isEmpty);
+    });
+
+    testWidgets('the Create row ignores the filter when it checks the name', (
+      tester,
+    ) async {
+      await _openPicker(tester, harness: taggedHarness());
+      await tester.tap(chip('p-sleep'));
+      await tester.pumpAndSettle();
+
+      // Creatine isn't listed under Sleep, but the name is taken.
+      await _search(tester, 'creatine');
+      expect(find.byKey(CompoundPickerSheet.createRowKey), findsNothing);
+      expect(find.byKey(CompoundPickerSheet.emptyStateKey), findsOneWidget);
+      expect(find.text('No compounds match your search.'), findsOneWidget);
+
+      await _search(tester, 'creat');
+      expect(find.byKey(CompoundPickerSheet.createRowKey), findsOneWidget);
+    });
+
+    testWidgets('Create pre-tags the active filter and lists the row under it',
+        (tester) async {
+      final harness = taggedHarness();
+      final host = await _openPicker(tester, harness: harness);
+      await tester.tap(chip('p-sleep'));
+      await tester.pumpAndSettle();
+      await _search(tester, 'Glycine');
+      await tester.tap(find.byKey(CompoundPickerSheet.createRowKey));
+      await tester.pumpAndSettle();
+
+      final sleep = find.byKey(CompoundEditorSheet.purposeChipKey('p-sleep'));
+      expect(tester.widget<FocusChip>(sleep).selected, isTrue);
+      expect(
+        tester
+            .widget<FocusChip>(
+              find.byKey(CompoundEditorSheet.purposeChipKey('p-performance')),
+            )
+            .selected,
+        isFalse,
+      );
+
+      await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.controller.createdCompounds.single.purposeIds,
+        <String>['p-sleep'],
+      );
+      expect(_isTicked(tester, CompoundPickerSection.all, 'created-1'), isTrue);
+      expect(_rowOrder(tester), <String>['all/created-1', 'all/c-1']);
+      await _done(tester);
+      expect(host.results.single, <String>['created-1']);
+    });
+
+    testWidgets('with no filter Create starts with no Purposes',
+        (tester) async {
+      final harness = taggedHarness();
+      await _openPicker(tester, harness: harness);
+      await _search(tester, 'Glycine');
+      await tester.tap(find.byKey(CompoundPickerSheet.createRowKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.controller.createdCompounds.single.purposeIds,
+        isEmpty,
+      );
+    });
+
+    testWidgets('a filter with nothing tagged says so', (tester) async {
+      await _openPicker(tester, harness: taggedHarness());
+
+      await tester.tap(chip('p-empty'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CompoundPickerSheet.emptyStateKey), findsOneWidget);
+      expect(find.text('No compounds with this purpose.'), findsOneWidget);
+      expect(chip(null), findsOneWidget);
+    });
+
+    testWidgets('with no active Purposes there is no filter row', (
+      tester,
+    ) async {
+      await _openPicker(
+        tester,
+        harness: _Harness(
+          compounds: <CompoundRecord>[_compound('c-1', 'Zinc')],
+        ),
+      );
+
+      expect(find.byKey(PurposeFilterRow.rowKey), findsNothing);
+      expect(chip(null), findsNothing);
+    });
+
+    testWidgets('a filter chip reads the Purpose name and nothing else', (
+      tester,
+    ) async {
+      await _openPicker(tester, harness: taggedHarness());
+
+      for (final purpose in purposes) {
+        expect(
+          tester.widget<FocusChip>(chip(purpose.id)).label,
+          purpose.name,
+        );
+      }
+    });
+  });
+
   group('the lock', () {
     testWidgets('locking closes the sheet and returns null', (tester) async {
       final lock = _SwitchableLockController();
@@ -785,6 +1077,7 @@ CompoundRecord _compound(
   bool isFavorite = false,
   DoseUnit unit = DoseUnit.milligram,
   DoseRoute route = DoseRoute.oral,
+  List<String> purposeIds = const <String>[],
 }) {
   return CompoundRecord(
     id: id,
@@ -792,6 +1085,16 @@ CompoundRecord _compound(
     defaultUnit: unit,
     defaultRoute: route,
     isFavorite: isFavorite,
+    purposeIds: purposeIds,
+    updatedAt: DateTime.utc(2026, 6, 30),
+  );
+}
+
+PurposeRecord _purpose(String id, String name, int sortOrder) {
+  return PurposeRecord(
+    id: id,
+    name: name,
+    sortOrder: sortOrder,
     updatedAt: DateTime.utc(2026, 6, 30),
   );
 }
@@ -803,12 +1106,14 @@ class _Harness {
   _Harness({
     required this.compounds,
     this.recentCompoundIds = const <String>[],
+    this.purposes = const <PurposeRecord>[],
   }) {
     controller = _FakeProtocolDayController(this);
   }
 
   final List<CompoundRecord> compounds;
   final List<String> recentCompoundIds;
+  final List<PurposeRecord> purposes;
   final created = <CompoundRecord>[];
   late final _FakeProtocolDayController controller;
 
@@ -836,6 +1141,7 @@ class _Harness {
             name: compound.name,
             defaultUnit: compound.defaultUnit,
             defaultRoute: compound.defaultRoute,
+            purposeIds: compound.purposeIds,
           ),
     ];
   }
@@ -869,6 +1175,7 @@ class _FakeProtocolDayController extends ProtocolDayController {
         name: draft.name,
         defaultUnit: draft.defaultUnit,
         defaultRoute: draft.defaultRoute,
+        purposeIds: draft.purposeIds ?? const <String>[],
         updatedAt: DateTime.utc(2026, 6, 30),
       ),
     );
@@ -960,6 +1267,9 @@ Future<_PickerHost> _openPicker(
         ),
         recentCompoundIdsProvider.overrideWith(
           (ref) => Stream<List<String>>.value(harness.recentCompoundIds),
+        ),
+        activePurposesProvider.overrideWith(
+          (ref) => Stream<List<PurposeRecord>>.value(harness.purposes),
         ),
         compoundsByIdsProvider.overrideWith((ref, request) {
           ref.onDispose(() => harness.byIdsDisposals += 1);

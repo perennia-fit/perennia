@@ -831,7 +831,9 @@ void main() {
         ]),
       );
       expect(syncState.id, syncStateId);
-      expect(syncState.pullCursor, 'cursor-v19');
+      // The schema 66 step clears it, so the next Sync Run is a full pull
+      // (docs/designs/compound-purposes.md, D1).
+      expect(syncState.pullCursor, isNull);
       expect(syncState.syncStatus, 'idle');
       expect(syncState.lastSuccessfulSyncAt, isNull);
       expect(syncState.firstFailureAt, isNull);

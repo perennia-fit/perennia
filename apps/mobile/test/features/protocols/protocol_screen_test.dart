@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/features/focus/widgets/focus_visuals.dart';
 import 'package:perennia/features/protocols/controllers/protocol_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/controllers/protocols_lock_controller.dart';
@@ -12,6 +13,7 @@ import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
 import 'package:perennia/features/protocols/widgets/compound_picker_sheet.dart';
 import 'package:perennia/features/protocols/widgets/protocol_screen.dart';
 import 'package:perennia/features/protocols/widgets/protocols_lock_screen.dart';
+import 'package:perennia/features/protocols/widgets/purpose_filter_row.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
@@ -1814,6 +1816,138 @@ void main() {
 
   group('Member rows (D5)', () {
     testWidgets(
+        'CUJ 1 with the filter: Melatonin picked under Sleep, Glycine created '
+        'tagged Sleep', (tester) async {
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      const sleepId = 'purpose-sleep';
+      final controller = _FakeProtocolListController();
+      final day = _FakeProtocolDayController(
+        lastDoses: <String, ({double amount, DoseUnit unit})>{
+          'compound-melatonin': (amount: 3, unit: DoseUnit.milligram),
+        },
+      );
+      await _pumpFormScreen(
+        tester,
+        controller,
+        purposes: <PurposeRecord>[
+          PurposeRecord(
+            id: sleepId,
+            name: 'Sleep',
+            sortOrder: 0,
+            updatedAt: DateTime.utc(2026, 6, 30),
+          ),
+          PurposeRecord(
+            id: 'purpose-recovery',
+            name: 'Recovery',
+            sortOrder: 1,
+            updatedAt: DateTime.utc(2026, 6, 30),
+          ),
+        ],
+        compounds: <CompoundRecord>[
+          _taggedCompound('compound-melatonin', 'Melatonin', sleepId),
+          _taggedCompound('compound-creatine', 'Creatine', 'purpose-recovery'),
+        ],
+        dayController: day,
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+      );
+
+      await tester.enterText(
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+        'Sleep stack',
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.addCompoundsKey));
+      await tester.tap(find.byKey(PurposeFilterRow.optionKey(sleepId)));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(
+          CompoundPickerSheet.rowKey(
+            CompoundPickerSection.all,
+            'compound-creatine',
+          ),
+        ),
+        findsNothing,
+      );
+      await tester.tap(
+        find.byKey(
+          CompoundPickerSheet.rowKey(
+            CompoundPickerSection.all,
+            'compound-melatonin',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(CompoundPickerSheet.searchFieldKey),
+        'Glyc',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundPickerSheet.createRowKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(CompoundEditorSheet.nameFieldKey),
+        'Glycine',
+      );
+      await tester.tap(find.byKey(CompoundEditorSheet.unitFieldKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('g').last);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FocusChip>(
+              find.byKey(CompoundEditorSheet.purposeChipKey(sleepId)),
+            )
+            .selected,
+        isTrue,
+      );
+      await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+      await tester.pumpAndSettle();
+
+      // The picker came back with Glycine selected next to Melatonin, under
+      // the same filter.
+      expect(find.text('Done · 2'), findsOneWidget);
+      for (final id in <String>['compound-melatonin', 'created-1']) {
+        expect(
+          tester
+              .widget<CheckboxListTile>(
+                find.byKey(
+                  CompoundPickerSheet.rowKey(CompoundPickerSection.all, id),
+                ),
+              )
+              .value,
+          isTrue,
+          reason: id,
+        );
+      }
+      await tester.tap(find.byKey(CompoundPickerSheet.doneButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<TextField>(find.byKey(ProtocolFormScreen.nameFieldKey))
+            .controller
+            ?.text,
+        'Sleep stack',
+      );
+      expect(_memberIds(tester), <String>['compound-melatonin', 'created-1']);
+      expect(
+        _rowText('compound-melatonin', 'Every day · 9:00 AM · 3 mg'),
+        findsOneWidget,
+      );
+      expect(_rowText('created-1', 'Glycine'), findsOneWidget);
+      expect(
+        _rowText('created-1', 'Every day · 9:00 AM · Add an amount'),
+        findsOneWidget,
+      );
+      expect(day.created.single.defaultUnit, DoseUnit.gram);
+      expect(day.created.single.purposeIds, <String>[sleepId]);
+    });
+
+    testWidgets(
         'CUJ 1: a Compound created in the picker joins the form, the name '
         'stays, and the rows summarize both', (tester) async {
       final controller = _FakeProtocolListController();
@@ -3339,6 +3473,7 @@ Future<void> _pumpFormScreen(
   ThemeData? theme,
   ProtocolRecord? protocol,
   List<CompoundRecord> compounds = const <CompoundRecord>[],
+  List<PurposeRecord> purposes = const <PurposeRecord>[],
   List<CompoundScheduleOptionRecord> archivedCompounds =
       const <CompoundScheduleOptionRecord>[],
   List<MetricRecord> metrics = const <MetricRecord>[],
@@ -3387,6 +3522,9 @@ Future<void> _pumpFormScreen(
         ),
         recentCompoundIdsProvider.overrideWith(
           (ref) => Stream<List<String>>.value(const <String>[]),
+        ),
+        activePurposesProvider.overrideWith(
+          (ref) => Stream<List<PurposeRecord>>.value(purposes),
         ),
         protocolDayControllerProvider.overrideWith(() => day),
         // The sheets sit behind `ProtocolsLockSheetGuard`; a store with no
@@ -3826,6 +3964,18 @@ CompoundScheduleOptionRecord _compoundScheduleOptionFromCompound(
     name: compound.name,
     defaultUnit: compound.defaultUnit,
     defaultRoute: compound.defaultRoute,
+    purposeIds: compound.purposeIds,
+  );
+}
+
+CompoundRecord _taggedCompound(String id, String name, String purposeId) {
+  return CompoundRecord(
+    id: id,
+    name: name,
+    defaultUnit: DoseUnit.milligram,
+    defaultRoute: DoseRoute.oral,
+    purposeIds: <String>[purposeId],
+    updatedAt: DateTime.utc(2026, 6, 30),
   );
 }
 
@@ -3987,6 +4137,7 @@ class _FakeProtocolDayController extends ProtocolDayController {
         name: draft.name,
         defaultUnit: draft.defaultUnit,
         defaultRoute: draft.defaultRoute,
+        purposeIds: draft.purposeIds ?? const <String>[],
         updatedAt: DateTime.utc(2026, 6, 30),
       ),
     );

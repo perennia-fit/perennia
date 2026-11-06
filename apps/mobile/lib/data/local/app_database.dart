@@ -705,11 +705,36 @@ class MetricReadings extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+// A Purpose (CONTEXT.md `Purpose`): a label for why the user takes a Compound.
+// Modelled on `Focuses` without a color: the starter Purposes are seeded with
+// fixed ids, users rename, reorder, archive, and add their own, and every
+// Purpose syncs as an ordinary LWW row. Protocols data, so it sits behind the
+// Protocols lock and stays out of the CSV export
+// (docs/designs/compound-purposes.md, D1).
+@DataClassName('PurposeRow')
+class Purposes extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  IntColumn get sortOrder => integer()();
+  TextColumn get syncDeviceId => text().nullable()();
+  BoolColumn get syncPreviouslySynced => boolean().withDefault(
+        const Constant(false),
+      )();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 // The Protocols catalogue entry (CONTEXT.md `Compound`): an item the user takes
-// and tracks. A user-owned template carrying a name + default unit/route and an
-// optional strength; NEVER categorized by substance type or legality
-// (the genericity is the legal posture). Mirrors `Foods`/`Exercises`:
-// archives via `deleted_at`, never cascades.
+// and tracks. A user-owned template carrying a name + default unit/route, an
+// optional strength, and any number of Purposes. NEVER classified by what it is
+// or whether it is legal: there is no type, class, schedule or legality column.
+// The app tags only its own OTC built-in Compounds with Purposes, and only with
+// the seeded names (docs/designs/compound-purposes.md, "The neutral-instrument
+// rule, narrowed"). Mirrors `Foods`/`Exercises`: archives via `deleted_at`,
+// never cascades.
 @DataClassName('CompoundRow')
 @TableIndex(name: 'compounds_name_index', columns: {#name})
 class Compounds extends Table {
@@ -730,10 +755,16 @@ class Compounds extends Table {
 
   // A UI-affordance flag only, mirroring `Exercises.isFavorite`: a
   // favourited Compound hoists into a virtual "Favorites" section atop the
-  // Compound list. Never categorizes the Compound itself.
+  // Compound list. Never classifies the Compound itself.
   BoolColumn get isFavorite => boolean().withDefault(
         const Constant(false),
       )();
+
+  // The Purposes this Compound is tagged with: a JSON-encoded array of Purpose
+  // ids, soft references like `Exercises.focusIds`, in the order the user
+  // tagged them. The stored list is the list; nothing computes a default, so an
+  // emptied list stays empty.
+  TextColumn get purposeIds => text().withDefault(const Constant('[]'))();
   TextColumn get syncDeviceId => text().nullable()();
   BoolColumn get syncPreviouslySynced => boolean().withDefault(
         const Constant(false),
@@ -1216,6 +1247,7 @@ class RoutineEntries extends Table {
     MeasurementEntries,
     Metrics,
     MetricReadings,
+    Purposes,
     Compounds,
     Doses,
     ProtocolSkips,
@@ -1286,6 +1318,7 @@ class AppDatabase extends _$AppDatabase {
   static const measurementEntriesTable = 'measurement_entries';
   static const metricsTable = 'metrics';
   static const metricReadingsTable = 'metric_readings';
+  static const purposesTable = 'purposes';
   static const compoundsTable = 'compounds';
   static const dosesTable = 'doses';
   static const protocolSkipsTable = 'protocol_skips';
@@ -1330,6 +1363,7 @@ class AppDatabase extends _$AppDatabase {
     measurementEntriesTable,
     metricsTable,
     metricReadingsTable,
+    purposesTable,
     compoundsTable,
     dosesTable,
     protocolSkipsTable,
@@ -1351,7 +1385,7 @@ class AppDatabase extends _$AppDatabase {
   ];
 
   @override
-  int get schemaVersion => 65;
+  int get schemaVersion => 66;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -2089,6 +2123,31 @@ class AppDatabase extends _$AppDatabase {
               )) {
                 await migrator.addColumn(meals, meals.timePrecision);
               }
+            }
+          }
+          if (from < 66) {
+            // Purposes: a new table and the Compound's list of them
+            // (docs/designs/compound-purposes.md, D1 and D2). Each only if
+            // missing, because an upgrade that creates compounds above already
+            // has the column in its current shape.
+            if (!await _tableExists(purposes.actualTableName)) {
+              await migrator.createTable(purposes);
+            }
+            if (await _tableExists(compounds.actualTableName) &&
+                !await _columnExists(
+                  compounds.actualTableName,
+                  compounds.purposeIds.name,
+                )) {
+              await migrator.addColumn(compounds, compounds.purposeIds);
+            }
+            // A build from before this change skips the unknown `purposes`
+            // entity but still advances its pull cursor past those changes, so
+            // the upgraded device would never pull them. Clearing the cursor
+            // makes its next Sync Run a full pull.
+            if (await _tableExists(syncStates.actualTableName)) {
+              await customStatement(
+                'UPDATE sync_states SET pull_cursor = NULL',
+              );
             }
           }
         },

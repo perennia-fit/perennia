@@ -51,6 +51,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `list-protocol-day-statuses` | GET | `/agent/protocols/day-statuses` |
 | `list-protocol-planned-days` | GET | `/agent/protocols/planned-days` |
 | `list-protocols` | GET | `/agent/protocols` |
+| `list-purposes` | GET | `/agent/protocols/purposes` |
 | `list-routines` | GET | `/agent/routines` |
 | `list-workout-templates` | GET | `/agent/workout-templates` |
 | `list-workouts` | GET | `/agent/workouts` |
@@ -65,6 +66,7 @@ This table is generated — see [Regenerating this file](#regenerating-this-file
 | `manage-foods` | POST | `/agent/foods/batch-write` |
 | `manage-plan-tree` | POST | `/agent/plan-tree/batch-write` |
 | `manage-protocols` | POST | `/agent/protocols/batch-write` |
+| `manage-purposes` | POST | `/agent/protocols/purposes/batch-write` |
 | `materialize-workout-template` | POST | `/agent/workout-templates/materialize` |
 | `monitoring-activity` | GET | `/agent/monitoring/activities/{externalActivityId}` |
 | `nutrition-totals` | GET | `/agent/nutrition/totals` |
@@ -718,6 +720,40 @@ capsule. Both units are Dose unit names from the curated registry (`milligram`,
 batch with `compound_strength`, as does a Dose's `compoundStrength`. The server
 stores the strength as the app's label (`"5 mg/capsule"`) and reads it back as
 this object; a stored strength it can't read comes back as `null`.
+
+`purposeIds` lists the Purposes to tag the Compound with, in order. Omit it to
+keep the stored list; `[]` clears it. An id that isn't an active Purpose refuses
+the batch with `purpose_not_found`, so drop an archived id read back from
+`list-compounds`, or omit `purposeIds`.
+
+## Purpose Write Shape
+
+A Purpose is a label for why the user takes a Compound. `list-purposes` returns
+the six starter Purposes merged with the account's rows; `includeArchived=true`
+adds the archived ones. `manage-purposes`
+(`POST /agent/protocols/purposes/batch-write`) creates, renames, reorders, or
+archives them:
+
+```json
+{
+  "idempotencyKey": "purposes-2026-11-06",
+  "purposes": [
+    { "id": "uuidv7", "name": "Skin", "sortOrder": 0 },
+    {
+      "id": "starter-purpose-id",
+      "name": "General health",
+      "sortOrder": 5,
+      "deletedAt": "2026-11-06T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+Names are stored trimmed. The rules are checked on the state the whole batch
+leaves: an empty name refuses the batch with `purpose_name_required`, and the
+name of another active Purpose, in any case, with `duplicate_purpose_name`. An
+archived Purpose's name is free to reuse. Archiving never touches a Compound: its
+tags keep the id. Undo through the Activity Log restores a Purpose.
 
 ```json
 {

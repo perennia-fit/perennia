@@ -134,6 +134,7 @@ export type AgentCompoundBatchWriteCompound = {
   "defaultUnit": "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
   "defaultRoute": "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "strength"?: AgentCompoundStrengthInput;
+  "purposeIds"?: Array<string>;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
 };
@@ -152,7 +153,7 @@ export type AgentCompoundBatchWriteResponse = {
   "compounds": Array<AgentProtocolsEntityBatchWriteResult>;
 };
 
-export type AgentCompoundField = "id" | "name" | "defaultUnit" | "defaultRoute" | "strength" | "updatedAt" | "deletedAt";
+export type AgentCompoundField = "id" | "name" | "defaultUnit" | "defaultRoute" | "strength" | "purposeIds" | "updatedAt" | "deletedAt";
 
 export type AgentCompoundListItem = {
   "id": string;
@@ -160,6 +161,7 @@ export type AgentCompoundListItem = {
   "defaultUnit"?: "milligram" | "microgram" | "gram" | "internationalUnit" | "milliliter" | "tablet" | "capsule" | "drop" | "spray" | "puff" | "patch" | "unit";
   "defaultRoute"?: "oral" | "sublingual" | "subcutaneous" | "intramuscular" | "transdermal" | "intranasal" | "inhaled" | "topical" | "other";
   "strength"?: AgentCompoundStrength;
+  "purposeIds"?: Array<string>;
   "updatedAt"?: string;
   "deletedAt"?: string | null;
 };
@@ -1838,6 +1840,39 @@ export type AgentProtocolsEntityBatchWriteResult = {
   "outcome": "applied" | "superseded" | "duplicate" | "refused";
 };
 
+export type AgentPurpose = {
+  "id": string;
+  "name": string;
+  "sortOrder": number;
+  "starter": boolean;
+  "deletedAt": string | null;
+};
+
+export type AgentPurposeBatchWritePurpose = {
+  "id": AgentProtocolsClientRowId & unknown;
+  "name": string;
+  "sortOrder": number;
+  "deletedAt"?: string | null;
+};
+
+export type AgentPurposeBatchWriteRequest = {
+  "idempotencyKey": string;
+  "purposes": Array<AgentPurposeBatchWritePurpose>;
+};
+
+export type AgentPurposeBatchWriteResponse = {
+  "accepted": true;
+  "duplicate": boolean;
+  "idempotencyKey": string;
+  "batchId": string;
+  "serverClock": string;
+  "purposes": Array<AgentProtocolsEntityBatchWriteResult>;
+};
+
+export type AgentPurposeListResponse = {
+  "purposes": Array<AgentPurpose>;
+};
+
 export type AgentReadDimensionId = "load" | "reps" | "duration" | "distance";
 
 export type AgentReadExerciseAnalyticsProfile = {
@@ -2347,6 +2382,7 @@ export type ListAgentActivityInput = {
 export type ListAgentCompoundsInput = {
   "search"?: string;
   "includeArchived"?: boolean | null;
+  "purpose"?: string;
   "limit"?: number;
   "cursor"?: string;
   "fields"?: string;
@@ -2465,6 +2501,10 @@ export type ListAgentProtocolsInput = {
   "cursor"?: string;
 };
 
+export type ListAgentPurposesInput = {
+  "includeArchived"?: "true" | "false";
+};
+
 export type ListAgentRoutinesInput = {
   "search"?: string;
   "includeArchived"?: boolean | null;
@@ -2531,6 +2571,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "batchWriteAgentPlanTree",
   "batchWriteAgentProtocolSkips",
   "batchWriteAgentProtocols",
+  "batchWriteAgentPurposes",
   "batchWriteAgentSettings",
   "batchWriteAgentWorkout",
   "captureAgentWorkoutTemplate",
@@ -2565,6 +2606,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentProtocolDayStatuses",
   "listAgentProtocolPlannedDays",
   "listAgentProtocols",
+  "listAgentPurposes",
   "listAgentRoutines",
   "listAgentTrainingDays",
   "listAgentWorkoutTemplates",
@@ -2713,6 +2755,16 @@ export class PerenniaAgentClient {
     return this.request<AgentProtocolSkipBatchWriteResponse>({
       method: "POST",
       path: "/agent/protocols/skips/batch-write",
+      expectedStatus: 200,
+      body: body,
+      signal: options.signal
+    });
+  }
+
+  async batchWriteAgentPurposes(body: AgentPurposeBatchWriteRequest, options: AgentClientRequestOptions = {}): Promise<AgentPurposeBatchWriteResponse> {
+    return this.request<AgentPurposeBatchWriteResponse>({
+      method: "POST",
+      path: "/agent/protocols/purposes/batch-write",
       expectedStatus: 200,
       body: body,
       signal: options.signal
@@ -2890,7 +2942,7 @@ export class PerenniaAgentClient {
       method: "GET",
       path: "/agent/protocols/compounds",
       expectedStatus: 200,
-      query: { "search": input.search, "includeArchived": input.includeArchived, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
+      query: { "search": input.search, "includeArchived": input.includeArchived, "purpose": input.purpose, "limit": input.limit, "cursor": input.cursor, "fields": input.fields },
       signal: options.signal
     });
   }
@@ -3048,6 +3100,16 @@ export class PerenniaAgentClient {
       path: "/agent/protocols",
       expectedStatus: 200,
       query: { "search": input.search, "includeArchived": input.includeArchived, "limit": input.limit, "cursor": input.cursor },
+      signal: options.signal
+    });
+  }
+
+  async listAgentPurposes(input: ListAgentPurposesInput = {}, options: AgentClientRequestOptions = {}): Promise<AgentPurposeListResponse> {
+    return this.request<AgentPurposeListResponse>({
+      method: "GET",
+      path: "/agent/protocols/purposes",
+      expectedStatus: 200,
+      query: { "includeArchived": input.includeArchived },
       signal: options.signal
     });
   }

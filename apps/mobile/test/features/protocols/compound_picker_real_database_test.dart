@@ -9,6 +9,7 @@ import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
 import 'package:perennia/features/protocols/widgets/compound_picker_sheet.dart';
 import 'package:perennia/features/protocols/widgets/protocol_screen.dart';
+import 'package:perennia/features/protocols/widgets/purpose_filter_row.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
 
@@ -180,6 +181,48 @@ void main() {
     expect(rowOf(CompoundPickerSection.all, added), findsOneWidget);
     expect(rowOf(CompoundPickerSection.all, archived), findsNothing);
     expect(rowOf(CompoundPickerSection.recent, kept), findsOneWidget);
+    await closePicker(tester);
+
+    await closeDatabase(tester);
+  });
+
+  testWidgets(
+      "each open reads the Purposes fresh, and a created Compound's tags list it "
+      'under the filter', (tester) async {
+    await pumpForm(tester);
+    await openPicker(tester);
+    await closePicker(tester);
+
+    // Nothing listens to the Purposes between opens, so this reaches the next
+    // open only if the sheet drops the provider's paused value.
+    final sleep = await onFakeTime(
+      tester,
+      () => repositories.protocols.purposes.create('Sleep'),
+    );
+    await tester.pumpAndSettle();
+
+    await openPicker(tester);
+    await tester.tap(find.byKey(PurposeFilterRow.optionKey(sleep)));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(CompoundPickerSheet.searchFieldKey),
+      'Glycine',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(CompoundPickerSheet.createRowKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+    await tester.pumpAndSettle();
+
+    final created = await onFakeTime(
+      tester,
+      repositories.protocols.listCompounds,
+    );
+    expect(created.single.purposeIds, <String>[sleep]);
+    expect(
+      rowOf(CompoundPickerSection.all, created.single.id),
+      findsOneWidget,
+    );
     await closePicker(tester);
 
     await closeDatabase(tester);

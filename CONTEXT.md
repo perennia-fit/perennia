@@ -393,8 +393,17 @@ Ordered by count, then recency. Computed, never stored. Shown as 'Your meals'.
 An item a user takes and tracks — a supplement, vitamin, hormone, peptide, medication,
 or the like. A user-owned catalogue entry carrying a name and a default unit and route,
 and an optional strength or concentration. The app ships only a few over-the-counter
-examples and never categorizes a Compound by what it is. The "what" of the Protocols
-domain — the analog of an Exercise or Food.
+examples, tagged with Purposes, and never classifies a Compound by what it is or whether
+it is legal. The "what" of the Protocols domain — the analog of an Exercise or Food.
+
+## Purpose
+A label for why the user takes a Compound, such as Sleep or Performance. Perennia seeds a
+starter set and tags its own built-in Compounds with them; users rename, reorder, archive
+and add their own, and tag any Compound with any number of them. Never a claim that a
+Compound works, never a classification of what a Compound is, and never read by analysis.
+Freely changeable: changing or archiving a Purpose never alters a Dose. Distinct from
+Focus, which is for exercises, and from a Protocol's target outcomes, which name what to
+correlate.
 
 ## Dose
 A single recorded administration of a Compound — an amount and unit, a route, and a

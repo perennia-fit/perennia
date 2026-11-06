@@ -219,6 +219,423 @@ test(
   }
 );
 
+// docs/designs/compound-purposes.md, D1, D2 and CUJ 6.
+const SEED_STAMP = "2026-10-24T00:00:00.000Z";
+const CREATINE = "019200ff-0000-7000-8000-000000000001";
+const COGNITION = "019200ff-0000-7000-8000-000000000105";
+const PERFORMANCE = "019200ff-0000-7000-8000-000000000103";
+
+test(
+  "a Purpose round-trips as an account-keyed LWW row, tombstone included",
+  { skip },
+  async () => {
+    const serverApp = await migratedApp();
+    try {
+      const user = await createSignedInUser(serverApp);
+      const id = randomUUID();
+      const updatedAt = "2025-06-30T08:00:00.000Z";
+      const push = await syncPush(serverApp.app, user.sessionToken, {
+        deviceId: "device-a",
+        entity: "purposes",
+        changes: [purposeChange(id, "Joints", 6, updatedAt)]
+      });
+      assert.equal(push.status, 200);
+      assert.deepEqual((await push.json()).accepted, [id]);
+
+      const pulled = (await pullAll(serverApp.app, user.sessionToken)).filter(
+        (change) => change.entity === "purposes"
+      );
+      assert.equal(pulled.length, 1);
+      assert.equal(pulled[0].id, id);
+      assert.equal(pulled[0].deviceId, "device-a");
+      assert.equal(pulled[0].payload.name, "Joints");
+      assert.equal(pulled[0].payload.sort_order, 6);
+
+      // An older write loses, a newer one wins.
+      const stale = await syncPush(serverApp.app, user.sessionToken, {
+        deviceId: "device-b",
+        entity: "purposes",
+        changes: [purposeChange(id, "Stale", 6, "2025-06-29T08:00:00.000Z")]
+      });
+      assert.deepEqual((await stale.json()).applied, []);
+
+      const archivedAt = "2025-07-01T08:00:00.000Z";
+      await syncPush(serverApp.app, user.sessionToken, {
+        deviceId: "device-a",
+        entity: "purposes",
+        changes: [
+          {
+            id,
+            payload: {
+              id,
+              name: "Joints",
+              sort_order: 6,
+              updated_at: archivedAt,
+              deleted_at: archivedAt
+            },
+            updatedAt: archivedAt,
+            deletedAt: archivedAt
+          }
+        ]
+      });
+      const [delta] = (await pullAll(serverApp.app, user.sessionToken)).filter(
+        (change) => change.entity === "purposes"
+      );
+      assert.equal(delta.payload.name, "Joints");
+      assert.notEqual(delta.deletedAt, null);
+      const snapshot = (
+        await pullAll(serverApp.app, user.sessionToken, "snapshot")
+      ).filter((change) => change.entity === "purposes");
+      assert.deepEqual(snapshot, []);
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
+test(
+  "a Purpose is pulled before a Compound that shares its receive timestamp",
+  { skip },
+  async () => {
+    const serverApp = await migratedApp();
+    try {
+      const user = await createSignedInUser(serverApp);
+      const updatedAt = "2025-06-30T08:00:00.000Z";
+      const receivedAt = new Date("2025-06-30T09:00:00.000Z");
+      await serverApp.database.db.insert(schema.compounds).values({
+        id: CREATINE,
+        userId: user.userId,
+        deviceId: "device-a",
+        payload: compoundPayload(CREATINE, updatedAt),
+        updatedAt: new Date(updatedAt),
+        receivedAt
+      });
+      await serverApp.database.db.insert(schema.purposes).values({
+        id: PERFORMANCE,
+        userId: user.userId,
+        deviceId: "device-a",
+        payload: purposeChange(PERFORMANCE, "Performance", 2, updatedAt).payload,
+        updatedAt: new Date(updatedAt),
+        receivedAt
+      });
+
+      const pulled = await pullAll(serverApp.app, user.sessionToken);
+
+      assert.deepEqual(
+        pulled.map((change) => change.entity),
+        ["purposes", "compounds"]
+      );
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
+test(
+  "a Compound push without purpose_ids keeps the stored list, and an " +
+    "explicit '[]' clears it",
+  { skip },
+  async () => {
+    const serverApp = await migratedApp();
+    try {
+      const user = await createSignedInUser(serverApp);
+      const tags = JSON.stringify([PERFORMANCE]);
+      const pushCreatine = async (updatedAt, keys) => {
+        const response = await syncPush(serverApp.app, user.sessionToken, {
+          deviceId: "device-a",
+          entity: "compounds",
+          changes: [
+            {
+              id: CREATINE,
+              payload: { ...compoundPayload(CREATINE, updatedAt), ...keys },
+              updatedAt,
+              deletedAt: null
+            }
+          ]
+        });
+        assert.equal(response.status, 200);
+        assert.deepEqual(
+          (await response.json()).applied.map((applied) => applied.id),
+          [CREATINE]
+        );
+      };
+      const storedPayload = async () => {
+        const [change] = (await pullAll(serverApp.app, user.sessionToken)).filter(
+          (pulled) => pulled.entity === "compounds"
+        );
+        return change.payload;
+      };
+
+      await pushCreatine("2025-06-30T08:00:00.000Z", { purpose_ids: tags });
+      assert.equal((await storedPayload()).purpose_ids, tags);
+
+      // An older app, or an Agent edit that omits the key.
+      await pushCreatine("2025-06-30T09:00:00.000Z", { name: "Creatine HCl" });
+      const carried = await storedPayload();
+      assert.equal(carried.name, "Creatine HCl");
+      assert.equal(carried.purpose_ids, tags);
+
+      await pushCreatine("2025-06-30T10:00:00.000Z", { purpose_ids: "[]" });
+      assert.equal((await storedPayload()).purpose_ids, "[]");
+
+      // Staying cleared is not the same as absent.
+      await pushCreatine("2025-06-30T11:00:00.000Z", { name: "Creatine" });
+      assert.equal((await storedPayload()).purpose_ids, "[]");
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
+test(
+  "a full pull returns the tags at the version an older build applied, so " +
+    "the upgraded build can restore the key it dropped",
+  { skip },
+  async () => {
+    const serverApp = await migratedApp();
+    try {
+      const user = await createSignedInUser(serverApp);
+      const tags = JSON.stringify([PERFORMANCE]);
+      const push = async (deviceId, updatedAt, keys) => {
+        const response = await syncPush(serverApp.app, user.sessionToken, {
+          deviceId,
+          entity: "compounds",
+          changes: [
+            {
+              id: CREATINE,
+              payload: { ...compoundPayload(CREATINE, updatedAt), ...keys },
+              updatedAt,
+              deletedAt: null
+            }
+          ]
+        });
+        assert.equal(response.status, 200);
+      };
+      const fullPull = async () => {
+        const [change] = (await pullAll(serverApp.app, user.sessionToken)).filter(
+          (pulled) => pulled.entity === "compounds"
+        );
+        return change;
+      };
+
+      // Device A's backfill: what device B applies with the key dropped.
+      const taggedAt = "2026-11-01T08:00:00.000Z";
+      await push("device-a", taggedAt, { purpose_ids: tags });
+      const applied = await fullPull();
+      assert.equal(applied.deviceId, "device-a");
+      assert.equal(applied.updatedAt, taggedAt);
+      assert.equal(applied.payload.purpose_ids, tags);
+
+      // Device B, still on the older build, edits the row. Its own version must
+      // come back with the tags too.
+      const editedAt = "2026-11-01T09:00:00.000Z";
+      await push("device-b", editedAt, {});
+      const edited = await fullPull();
+      assert.equal(edited.deviceId, "device-b");
+      assert.equal(edited.updatedAt, editedAt);
+      assert.equal(edited.payload.purpose_ids, tags);
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
+test(
+  "CUJ 6: a removed seed tag and a renamed starter survive a second " +
+    "device's first sync",
+  { skip },
+  async () => {
+    const serverApp = await migratedApp();
+    try {
+      const user = await createSignedInUser(serverApp);
+      const seedTags = JSON.stringify([PERFORMANCE]);
+      const seedCreatine = () => ({
+        id: CREATINE,
+        payload: {
+          ...compoundPayload(CREATINE, SEED_STAMP),
+          name: "Creatine",
+          purpose_ids: seedTags
+        },
+        updatedAt: SEED_STAMP,
+        deletedAt: null
+      });
+      const seedCognition = () =>
+        purposeChange(COGNITION, "Cognition", 4, SEED_STAMP);
+      const push = async (deviceId, entity, changes) => {
+        const response = await syncPush(serverApp.app, user.sessionToken, {
+          deviceId,
+          entity,
+          changes
+        });
+        assert.equal(response.status, 200);
+        return response.json();
+      };
+
+      // Device A seeds and syncs, then empties Creatine's list and renames
+      // Cognition, and syncs again.
+      await push("device-a", "purposes", [seedCognition()]);
+      await push("device-a", "compounds", [seedCreatine()]);
+      const editedAt = "2026-10-25T08:00:00.000Z";
+      await push("device-a", "purposes", [
+        purposeChange(COGNITION, "Memory", 4, editedAt)
+      ]);
+      const emptied = {
+        ...seedCreatine().payload,
+        purpose_ids: "[]",
+        updated_at: editedAt
+      };
+      await push("device-a", "compounds", [
+        {
+          id: CREATINE,
+          payload: emptied,
+          updatedAt: editedAt,
+          deletedAt: null,
+          activityLogId: randomUUID(),
+          actor: "manual",
+          batchId: randomUUID(),
+          beforeImage: seedCreatine().payload,
+          afterImage: emptied,
+          occurredAt: editedAt
+        }
+      ]);
+
+      // Device B seeds at the fixed stamp, so its first push loses to both
+      // edits instead of overwriting them.
+      const purposePush = await push("device-b", "purposes", [seedCognition()]);
+      assert.deepEqual(purposePush.applied, []);
+      const compoundPush = await push("device-b", "compounds", [seedCreatine()]);
+      assert.deepEqual(compoundPush.applied, []);
+
+      // Its full pull brings both edits. The pulled Creatine carries an entry
+      // that isn't otc_seed, so device B's backfill reads the row as touched
+      // and writes nothing: there is no third push to make.
+      const pulled = await pullAll(serverApp.app, user.sessionToken);
+      const creatine = pulled.find((change) => change.id === CREATINE);
+      assert.equal(creatine.payload.purpose_ids, "[]");
+      assert.equal(creatine.actor, "manual");
+      const purposes = pulled.filter((change) => change.entity === "purposes");
+      assert.equal(purposes.length, 1);
+      assert.equal(purposes[0].payload.name, "Memory");
+
+      // Both devices read the same rows, however they ask.
+      const snapshot = await pullAll(
+        serverApp.app,
+        user.sessionToken,
+        "snapshot"
+      );
+      assert.equal(
+        snapshot.find((change) => change.id === CREATINE).payload.purpose_ids,
+        "[]"
+      );
+      assert.equal(
+        snapshot.find((change) => change.id === COGNITION).payload.name,
+        "Memory"
+      );
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
+test(
+  "CUJ 6: a device that tagged its seed rows with no account, one second " +
+    "past their stamp, loses to an edit and still reaches an account without one",
+  { skip },
+  async () => {
+    const serverApp = await migratedApp();
+    try {
+      const user = await createSignedInUser(serverApp);
+      const seedTags = JSON.stringify([PERFORMANCE]);
+      const push = async (deviceId, changes) => {
+        const response = await syncPush(serverApp.app, user.sessionToken, {
+          deviceId,
+          entity: "compounds",
+          changes
+        });
+        assert.equal(response.status, 200);
+        return response.json();
+      };
+      // What a schema-65 device holds: its seed entry, stamped when it seeded
+      // and with no purpose_ids key, then the backfill's entry one second on.
+      const seededAt = "2026-10-24T12:00:00.000Z";
+      const backfilledAt = "2026-10-24T12:00:01.000Z";
+      const signedOutEntries = (id) => [
+        {
+          id,
+          payload: { ...compoundPayload(id, seededAt), name: "Creatine" },
+          updatedAt: seededAt,
+          deletedAt: null
+        },
+        {
+          id,
+          payload: {
+            ...compoundPayload(id, backfilledAt),
+            name: "Creatine",
+            purpose_ids: seedTags
+          },
+          updatedAt: backfilledAt,
+          deletedAt: null
+        }
+      ];
+
+      // Device A removed the tag and renamed Creatine after device B seeded.
+      const editedAt = "2026-10-25T08:00:00.000Z";
+      await push("device-a", [
+        {
+          id: CREATINE,
+          payload: {
+            ...compoundPayload(CREATINE, editedAt),
+            name: "Creatine monohydrate",
+            purpose_ids: "[]"
+          },
+          updatedAt: editedAt,
+          deletedAt: null
+        }
+      ]);
+
+      const lost = await push("device-b", signedOutEntries(CREATINE));
+      assert.deepEqual(lost.applied, []);
+
+      // A row nobody edited: device B's entries go up, and the tags land.
+      const untouched = randomUUID();
+      const landed = await push("device-b", signedOutEntries(untouched));
+      assert.equal(landed.applied.length, 2);
+
+      const pulled = await pullAll(serverApp.app, user.sessionToken);
+      const creatine = pulled.find((change) => change.id === CREATINE);
+      assert.equal(creatine.payload.purpose_ids, "[]");
+      assert.equal(creatine.payload.name, "Creatine monohydrate");
+      const other = pulled.find((change) => change.id === untouched);
+      assert.equal(other.payload.purpose_ids, seedTags);
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
+async function migratedApp() {
+  return createMigratedServerApp({
+    databaseUrl,
+    logger: { info() {}, error() {} },
+    auth: false
+  });
+}
+
+function purposeChange(id, name, sortOrder, updatedAt) {
+  return {
+    id,
+    payload: {
+      id,
+      name,
+      sort_order: sortOrder,
+      updated_at: updatedAt,
+      deleted_at: null
+    },
+    updatedAt,
+    deletedAt: null
+  };
+}
+
 function compoundPayload(id, updatedAt) {
   return {
     id,
@@ -262,7 +679,7 @@ async function syncPush(app, sessionToken, body) {
   });
 }
 
-async function pullAll(app, sessionToken) {
+async function pullAll(app, sessionToken, mode = "delta") {
   const changes = [];
   let cursor = null;
   for (let i = 0; i < 50; i += 1) {
@@ -272,7 +689,7 @@ async function pullAll(app, sessionToken) {
         authorization: `Bearer ${sessionToken}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit: 100 })
+      body: JSON.stringify({ protocolVersion: SYNC_PROTOCOL_VERSION, cursor, limit: 100, mode })
     });
     assert.equal(response.status, 200);
     const window = await response.json();

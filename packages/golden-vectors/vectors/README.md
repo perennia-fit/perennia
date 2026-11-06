@@ -190,3 +190,24 @@ ahead of or behind their UTC date. The file carries a `limits` block that both
 runners assert against their limits constants. It is governed by the adjacent
 `m39-meal-validation.schema.json`; its `schemaVersion`, the schema's constant
 and both runners' constants move together.
+
+## Compound Purposes
+
+`m40-compound-purposes.json` (domain `compound-purposes`) pins the Compound
+Purposes core in both languages: `starterPurposes`, the six starter Purposes;
+`validatePurposeName`, which trims a name and hard-rejects it with
+`purpose_name_required` or `duplicate_purpose_name`; and `normalizePurposeIds`,
+which collapses repeated ids keeping the first and the order. The app runs it in
+`apps/mobile/test/domain/compound_purposes_golden_test.dart` against
+`apps/mobile/lib/domain/protocols/compound_purposes.dart`; the server runs it in
+`apps/server/test/compound-purposes.golden.test.mjs` against
+`apps/server/src/compound-purposes.ts`. The behaviour is specified in
+[`docs/designs/compound-purposes.md`](../../../docs/designs/compound-purposes.md)
+(D3 and D8). The seed tag table is Dart only and isn't a vector.
+
+Each case names its `function`, gives that function's arguments by parameter
+name in `input`, and its full result in `expected`. A `validatePurposeName`
+case expects `{"accepted": <trimmed name>}` or `{"rejected": <code>}`. The file
+is governed by the adjacent `m40-compound-purposes.schema.json`; its
+`schemaVersion`, the schema's constant and both runners' constants move
+together.

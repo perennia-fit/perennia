@@ -5,8 +5,10 @@ import '../../l10n/l10n.dart';
 /// the Meal screen (meal-logging.md §7).
 ///
 /// A [ActivityLogUndoConflictReason.dependent] conflict means the undone Batch
-/// created a Meal that later gained foods, so it gets its own plain message;
-/// every other refusal names the first changed row.
+/// created a Meal that later gained foods, and a
+/// [ActivityLogUndoConflictReason.duplicatePurposeName] conflict means it would
+/// bring back a Purpose name another Purpose now holds. Each gets its own plain
+/// message; every other refusal names the first changed row.
 String undoConflictMessage(
   AppLocalizations l10n,
   ActivityLogUndoResult result,
@@ -19,6 +21,12 @@ String undoConflictMessage(
     (conflict) => conflict.reason == ActivityLogUndoConflictReason.dependent,
   )) {
     return l10n.activityUndoDependentConflict;
+  }
+  if (result.conflicts.any(
+    (conflict) =>
+        conflict.reason == ActivityLogUndoConflictReason.duplicatePurposeName,
+  )) {
+    return l10n.activityUndoDuplicatePurposeNameConflict;
   }
   final first = result.conflicts.first;
   return l10n.activityUndoConflict(count, first.entityTable, first.entityId);

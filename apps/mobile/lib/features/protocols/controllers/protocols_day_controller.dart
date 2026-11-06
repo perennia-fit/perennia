@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/protocols/protocol_plan_days.dart'
     show DueUnfilledDose, dueUnfilled;
+import '../../auth/repositories/auth_repository.dart';
 
 /// The Protocols repository provider, mirroring `nutritionRepositoryProvider`.
 /// Widgets -> this controller -> the repository (the only layer touching Drift).
@@ -26,6 +27,12 @@ final protocolsClockProvider = Provider<DateTime Function()>((ref) {
 /// picker. Archived Compounds drop out (PROTOCOLS.md §7).
 final compoundListProvider = StreamProvider<List<CompoundRecord>>((ref) {
   return ref.watch(protocolsRepositoryProvider).watchCompounds();
+});
+
+/// The active `Purpose`s in the user's order, for the filter rows, the editor
+/// sheet's chips and the Purpose manager.
+final activePurposesProvider = StreamProvider<List<PurposeRecord>>((ref) {
+  return ref.watch(protocolsRepositoryProvider).purposes.watchActive();
 });
 
 /// Lightweight active `Compound` options for read paths that only need an id
@@ -286,8 +293,54 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   /// Idempotently loads the tiny OTC seed `Compound` library (PROTOCOLS.md §3),
   /// so the picker has neutral starter rows on a first run. Safe to call
   /// repeatedly — the seed skips Compounds already present (stable ids).
-  Future<void> ensureOtcLibrarySeeded() {
-    return ref.read(protocolsRepositoryProvider).ensureOtcLibrarySeeded();
+  ///
+  /// It is also where a signed-out device runs the seed tag backfill
+  /// (docs/designs/compound-purposes.md, D3). A signed-in device must not run
+  /// it here: `SyncRepository` runs it at the end of each successful Sync Run,
+  /// so it sees the edits other devices made first. A signed-out device tags
+  /// only rows that never synced, one second past each row's own stamp, so the
+  /// write can't beat an edit made elsewhere: one that has signed out still
+  /// holds rows with a server copy, and those wait for a signed-in Sync Run.
+  /// [ProtocolsRepository] has no auth, so the rule lives in this controller. If
+  /// the auth read fails the backfill is skipped, because tagging before a pull
+  /// could overwrite an edit made elsewhere and the next open retries.
+  Future<void> ensureOtcLibrarySeeded() async {
+    final repository = ref.read(protocolsRepositoryProvider);
+    await repository.ensureOtcLibrarySeeded();
+    final bool isSignedIn;
+    try {
+      isSignedIn = (await ref.read(authControllerProvider.future)).isSignedIn;
+    } on Object {
+      return;
+    }
+    if (!isSignedIn) {
+      await repository.backfillSeedPurposes(onlyNeverSynced: true);
+    }
+  }
+
+  /// Creates a `Purpose` and returns its id. Throws [PurposeNameException] for
+  /// an empty or duplicate name.
+  Future<String> createPurpose(String name) {
+    return ref.read(protocolsRepositoryProvider).purposes.create(name);
+  }
+
+  /// Renames a `Purpose`. Throws [PurposeNameException] for an empty or
+  /// duplicate name. No Compound changes, because tags hold ids.
+  Future<void> renamePurpose(String id, String name) {
+    return ref
+        .read(protocolsRepositoryProvider)
+        .purposes
+        .rename(id, name: name);
+  }
+
+  /// Stores the user's order of the active `Purpose`s.
+  Future<void> reorderPurposes(List<String> purposeIds) {
+    return ref.read(protocolsRepositoryProvider).purposes.reorder(purposeIds);
+  }
+
+  /// Archives a `Purpose`. A Compound tagged with it keeps the id.
+  Future<void> archivePurpose(String id) {
+    return ref.read(protocolsRepositoryProvider).purposes.archive(id);
   }
 
   /// Sets a Compound's favourites UI-affordance flag, hoisting it

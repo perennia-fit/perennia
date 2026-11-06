@@ -200,6 +200,8 @@ const JOBS = {
       'apps/server/test/training-progress.golden.test.mjs',
       'apps/server/test/progress-measure.golden.test.mjs',
       'apps/server/test/metric-trend.golden.test.mjs',
+      'apps/server/src/compound-purposes.ts',
+      'apps/server/test/compound-purposes.golden.test.mjs',
       'apps/server/package.json', '.node-version',
       'apps/mobile/lib/domain/**', 'apps/mobile/lib/features/body_tracker/**',
       'apps/mobile/test/domain/**', 'apps/mobile/test/features/body_tracker/**',
