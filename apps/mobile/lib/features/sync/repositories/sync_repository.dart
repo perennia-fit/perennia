@@ -2156,7 +2156,11 @@ class SyncRepository implements SyncCycleRepository {
           existing.updatedAt.toUtc(),
           existingDeviceId,
         )) {
-      return false;
+      return _restorePurposeIdsDroppedByOlderBuild(
+        change,
+        existing: existing,
+        existingDeviceId: existingDeviceId,
+      );
     }
 
     await _repositories.protocols.applySyncImage(
@@ -2172,6 +2176,37 @@ class SyncRepository implements SyncCycleRepository {
           ? null
           : DateTime.parse(change.occurredAt!).toUtc(),
     );
+    return true;
+  }
+
+  /// A build from before schema 66 applied a pulled Compound but had no column
+  /// for `purpose_ids`, so it kept the row's `updated_at` and device id and lost
+  /// the tags. The upgrade's full pull then returns that same version, an exact
+  /// last-writer-wins tie that applies nothing. Left at `[]`, the row would count
+  /// as touched, skip the backfill, and push an explicit `[]` on its next edit,
+  /// erasing the tags everywhere (docs/designs/compound-purposes.md, D1).
+  ///
+  /// Only the tags move: same version means the rest of the row already matches,
+  /// and the entry for this version is already in the Activity Log, so this
+  /// writes no entry and pushes nothing. A row holding anything but the column
+  /// default is left alone, since a build that has the column kept its value.
+  Future<bool> _restorePurposeIdsDroppedByOlderBuild(
+    SyncPulledChange change, {
+    required CompoundRow existing,
+    required String existingDeviceId,
+  }) async {
+    final purposeIds = change.payload['purpose_ids'];
+    final isSameVersion = change.deviceId == existingDeviceId &&
+        DateTime.parse(change.updatedAt).isAtSameMomentAs(existing.updatedAt);
+    if (!isSameVersion ||
+        existing.purposeIds != '[]' ||
+        purposeIds is! String ||
+        purposeIds == '[]') {
+      return false;
+    }
+    await (_database.update(_database.compounds)
+          ..where((row) => row.id.equals(existing.id)))
+        .write(CompoundsCompanion(purposeIds: Value<String>(purposeIds)));
     return true;
   }
 

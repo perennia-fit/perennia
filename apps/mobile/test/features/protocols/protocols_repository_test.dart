@@ -1149,6 +1149,26 @@ void main() {
         expect(row.purposeIds, '["a"]');
       });
 
+      for (final stored in <String>['not json', '{"a":1}']) {
+        test('a stored list reading $stored reads as no tags, and stays stored',
+            () async {
+          // Sync and portable archives pass the string through unchecked.
+          final id = await create(<String>['a']);
+          await database.customStatement(
+            'UPDATE compounds SET purpose_ids = ? WHERE id = ?',
+            <Object?>[stored, id],
+          );
+
+          final compounds = await repositories.protocols.listCompounds();
+
+          expect(
+            compounds.singleWhere((compound) => compound.id == id).purposeIds,
+            isEmpty,
+          );
+          expect((await compoundRow(id)).purposeIds, stored);
+        });
+      }
+
       test('a pull with no purpose_ids key keeps the stored list', () async {
         final id = await create(<String>['a']);
         final row = await compoundRow(id);

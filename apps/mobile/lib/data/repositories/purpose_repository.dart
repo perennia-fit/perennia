@@ -282,11 +282,21 @@ String _encodePurposeIds(Iterable<String> purposeIds) {
 }
 
 // Most Compounds a user creates have no Purposes; skip the decode for them.
+//
+// The string comes from sync and portable archives as well as this app, and
+// nothing validates it on the way in. One bad value must not break every read of
+// the Compound library, so it reads as no tags, as the server's
+// `parseJsonStringArray` does. The stored string is left alone.
 List<String> _decodePurposeIds(String encoded) {
   if (encoded == '[]') {
     return const <String>[];
   }
-  final decoded = jsonDecode(encoded);
+  final Object? decoded;
+  try {
+    decoded = jsonDecode(encoded);
+  } on FormatException {
+    return const <String>[];
+  }
   return decoded is List
       ? List<String>.unmodifiable(decoded.whereType<String>())
       : const <String>[];

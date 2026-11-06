@@ -353,6 +353,157 @@ void main() {
       expect(await repository.hasPendingChanges(), isFalse);
     });
 
+    test(
+        'a full pull restores the tags an older build dropped from a row it '
+        'applied, and the next edit pushes them', () async {
+      // One account, upgraded a device at a time. Device A's backfill reached
+      // device B while B was still on the older build, which stored the version
+      // but had no column for the tags.
+      final repositories = TrainingRepositories(database);
+      await _seedAsSyncedUpgradedDevice(
+        repositories,
+        database,
+        deviceId: 'device-b',
+      );
+      final seeded = await _compoundRow(database, _creatineId);
+      final taggedAt = DateTime.utc(2026, 11, 1, 8);
+      final tags = jsonEncode(<String>[_performanceId]);
+      Map<String, Object?> backfill(Object? purposeIds) => _compoundPullChange(
+            seeded,
+            updatedAt: taggedAt.toIso8601String(),
+            deviceId: 'device-a',
+            actor: 'otc_purpose_seed',
+            changes: <String, Object?>{'purpose_ids': purposeIds},
+          );
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: backfill(_absent),
+      );
+      final dropped = await _compoundRow(database, _creatineId);
+      expect(dropped.purposeIds, '[]');
+      expect(dropped.syncDeviceId, 'device-a');
+      expect(dropped.updatedAt.isAtSameMomentAs(taggedAt), isTrue);
+
+      Future<List<ActivityLogRow>> creatineLog() =>
+          (database.select(database.activityLog)
+                ..where((entry) => entry.entityId.equals(_creatineId)))
+              .get();
+      final logBefore = await creatineLog();
+
+      // B upgrades: the `from < 66` step clears the cursor, so the first Sync
+      // Run pulls in full.
+      await database.customStatement(
+        'UPDATE sync_states SET pull_cursor = NULL',
+      );
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        trainingRepositories: repositories,
+        apiClientFactory: _acceptingSyncApi(
+          pushes: pushes,
+          pullChanges: <Map<String, Object?>>[backfill(tags)],
+        ),
+      );
+      final runner = RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: SyncStatusRepository(database),
+      );
+      List<Map<String, Object?>> pushedCreatine() => pushes
+          .where((body) => body['entity'] == AppDatabase.compoundsTable)
+          .expand((body) => body['changes']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .where((change) => change['id'] == _creatineId)
+          .toList();
+
+      await runner.run(session: _session(), deviceId: 'device-b');
+
+      // Only the tags moved: the version stands, nothing new is logged or
+      // pushed, and the backfill has nothing left to do for this row.
+      final restored = await _compoundRow(database, _creatineId);
+      expect(restored.purposeIds, tags);
+      expect(restored.syncDeviceId, 'device-a');
+      expect(restored.updatedAt.isAtSameMomentAs(taggedAt), isTrue);
+      expect(await creatineLog(), logBefore);
+      expect(pushedCreatine(), isEmpty);
+
+      await repositories.protocols.setFavorite(_creatineId, isFavorite: true);
+      await runner.run(session: _session(), deviceId: 'device-b');
+
+      final pushed = pushedCreatine().single;
+      expect(
+        (pushed['payload']! as Map<String, Object?>)['purpose_ids'],
+        tags,
+      );
+    });
+
+    group('a pull that loses last-writer-wins restores no tags', () {
+      final localAt = DateTime.utc(2026, 11, 1, 8);
+      final tags = jsonEncode(<String>[_performanceId]);
+
+      Future<CompoundRow> pullAgainst({
+        required String localPurposeIds,
+        required DateTime incomingAt,
+        required String incomingDeviceId,
+      }) async {
+        final repositories = TrainingRepositories(database);
+        await _seedAsSyncedUpgradedDevice(
+          repositories,
+          database,
+          deviceId: 'device-b',
+        );
+        await (database.update(database.compounds)
+              ..where((row) => row.id.equals(_creatineId)))
+            .write(
+          CompoundsCompanion(
+            purposeIds: Value<String>(localPurposeIds),
+            updatedAt: Value<DateTime>(localAt),
+          ),
+        );
+        final local = await _compoundRow(database, _creatineId);
+        await _pullChangeInto(
+          database,
+          localDeviceId: 'device-b',
+          change: _compoundPullChange(
+            local,
+            updatedAt: incomingAt.toIso8601String(),
+            deviceId: incomingDeviceId,
+            actor: 'manual',
+            changes: <String, Object?>{'purpose_ids': tags},
+          ),
+        );
+        return _compoundRow(database, _creatineId);
+      }
+
+      test('an older version', () async {
+        final row = await pullAgainst(
+          localPurposeIds: '[]',
+          incomingAt: localAt.subtract(const Duration(hours: 1)),
+          incomingDeviceId: 'device-a',
+        );
+        expect(row.purposeIds, '[]');
+      });
+
+      test('the same stamp from another device', () async {
+        final row = await pullAgainst(
+          localPurposeIds: '[]',
+          incomingAt: localAt,
+          incomingDeviceId: 'device-a',
+        );
+        expect(row.purposeIds, '[]');
+      });
+
+      test('the same version over a row that holds a list', () async {
+        final other = jsonEncode(<String>[_cognitionId]);
+        final row = await pullAgainst(
+          localPurposeIds: other,
+          incomingAt: localAt,
+          incomingDeviceId: 'device-b',
+        );
+        expect(row.purposeIds, other);
+      });
+    });
+
     for (final upgraded in <bool>[false, true]) {
       test(
           'CUJ 6: a removed seed tag stays removed on a '

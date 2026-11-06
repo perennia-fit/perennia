@@ -294,13 +294,15 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   /// so the picker has neutral starter rows on a first run. Safe to call
   /// repeatedly — the seed skips Compounds already present (stable ids).
   ///
-  /// It is also where a device with no sync account runs the seed tag backfill
+  /// It is also where a signed-out device runs the seed tag backfill
   /// (docs/designs/compound-purposes.md, D3). A signed-in device must not run
   /// it here: `SyncRepository` runs it at the end of each successful Sync Run,
-  /// so it sees the edits other devices made first. [ProtocolsRepository] has
-  /// no auth, so the rule lives in this controller. If the auth read fails the
-  /// backfill is skipped, because tagging before a pull could overwrite an edit
-  /// made elsewhere and the next open retries.
+  /// so it sees the edits other devices made first. A signed-out device tags
+  /// only rows that never synced: one that has signed out still holds rows with
+  /// a server copy, and those wait for a signed-in Sync Run for the same reason.
+  /// [ProtocolsRepository] has no auth, so the rule lives in this controller. If
+  /// the auth read fails the backfill is skipped, because tagging before a pull
+  /// could overwrite an edit made elsewhere and the next open retries.
   Future<void> ensureOtcLibrarySeeded() async {
     final repository = ref.read(protocolsRepositoryProvider);
     await repository.ensureOtcLibrarySeeded();
@@ -311,7 +313,7 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
       return;
     }
     if (!isSignedIn) {
-      await repository.backfillSeedPurposes();
+      await repository.backfillSeedPurposes(onlyNeverSynced: true);
     }
   }
 

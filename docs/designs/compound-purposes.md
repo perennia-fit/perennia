@@ -396,6 +396,18 @@ A Purpose is a row in a new table, modelled on `focuses` but without a color.
     skipped. The `from < 66` step clears the stored pull cursor, so the first
     Sync Run after the upgrade is a full pull. The sync protocol version stays
     2.
+
+    It also applied `compounds` rows but had no column for `purpose_ids`, so it
+    stored the row's `updated_at` and device id and lost the tags. The full pull
+    returns that same version, an exact last-writer-wins tie that applies
+    nothing, and the row would stay at the column default, count as touched
+    (D3), and push an explicit `[]` on its next edit. So when a pulled Compound
+    loses last-writer-wins but is the same version (equal `updated_at`, equal
+    device id), carries a `purpose_ids` other than `'[]'`, and the local column
+    still holds `'[]'`, the app writes only `purpose_ids`. It keeps `updated_at`
+    and writes no Activity Log entry, because the log already holds this
+    version's entry and nothing needs pushing. A local list that isn't `'[]'`
+    was stored by a build that has the column, so it is left alone.
 *   **The Protocols domain's privacy is unchanged.** Purposes are Protocols
     data:
     *   they sit behind the Protocols lock;
@@ -438,7 +450,16 @@ Exercise's Focuses are `focus_ids`. There is no join table:
     app or an Agent edit that omits it, keeps the stored list.
 *   **Undo:** an undo image written before this change has no `purpose_ids`
     key; `_activityLaterAddedKeyDefaults[compounds]` gains
-    `{'purpose_ids': '[]'}`, matching the column default.
+    `{'purpose_ids': '[]'}`, matching the column default. Such an image leaves
+    the list alone on undo, which is right for a write that never touched it.
+    A write that does set the list must record what the row read as: when an
+    Agent write sets `purpose_ids` and the stored row lacks the key, its before
+    image carries `purpose_ids: '[]'`. Otherwise undo would omit the key,
+    carry-forward would keep the tags, and the undo would still report success.
+*   **Reading a bad value:** `purpose_ids` reaches the app from sync and
+    portable archives unchecked. A string that isn't a JSON array reads as no
+    tags, as the server's `parseJsonStringArray` does, and stays stored as it
+    is, so one bad value can't break every read of the Compound library.
 
 ### D3. Seeds (PR 2)
 
@@ -502,11 +523,16 @@ Exercise's Focuses are `focus_ids`. There is no join table:
     *   **Erase all data** keeps the Activity Log and skips seed-owned rows, so
         it changes nothing here: a row the user touched stays touched after
         Erase, and an untouched row is still backfilled.
-    *   **When it runs.** On a device with no sync account,
-        `ProtocolDayController.ensureOtcLibrarySeeded` runs it after seeding.
+    *   **When it runs.** On a signed-out device,
+        `ProtocolDayController.ensureOtcLibrarySeeded` runs it after seeding,
+        for rows with `syncPreviouslySynced` false only.
         `ProtocolsRepository` has no auth, so the rule lives in the controller;
         if the auth read fails it skips the backfill, and the next open retries.
-        On a device with a sync account, `RepositorySyncCycleRunner` runs it
+        A device that signed out keeps its rows, and a row the server holds
+        must wait: an edit made elsewhere may be waiting there, a fresh stamp
+        would beat it, and a Sync Run pushes before it pulls. That row stays
+        untagged until the device signs in again.
+        On a signed-in device, `RepositorySyncCycleRunner` runs it
         instead, after the pull of each Sync Run that gets that far, before the
         run's final push. So it runs after the full pull that follows the
         upgrade (D1) and sees edits made on other devices first, a failed push
@@ -962,7 +988,8 @@ Let the Purpose filter alone narrow by Purpose.
     backfill runs only after a Sync Run's pull has drained, which after the
     upgrade is a full pull (D1), so only an edit made between that pull and the
     push can
-    lose; the loser is in the Activity Log.
+    lose; the loser is in the Activity Log. A signed-out device tags only rows
+    that never synced (D3), so it can't beat an edit to a row the server holds.
 *   **Concurrent tag edits on two devices.** The tags are one field, so one
     device's list wins. *Mitigation:* the Activity Log keeps the loser
     (Alternative B records why per-tag rows aren't worth it).
@@ -1335,17 +1362,20 @@ this PR changes no golden vectors, contract or sync shape.
         `_ensureOtcLibrarySeeded` inserts each absent row with
         `purposeIds` from `seedCompoundPurposeIds`, stamped with the fixed seed
         timestamp `2026-10-24T00:00:00Z` instead of `context.timestamp`.
-    *   **Backfill (D3):** a new `Future<void> backfillSeedPurposes()` with
+    *   **Backfill (D3):** a new
+        `Future<void> backfillSeedPurposes({bool onlyNeverSynced = false})` with
         actor `otc_purpose_seed`, applying the untouched test to each seed
         row in one transaction. `ProtocolDayController.ensureOtcLibrarySeeded`
-        calls it when the device has no sync account (file 20), and
+        calls it with `onlyNeverSynced: true` when the device is signed out,
+        which limits it to rows with `syncPreviouslySynced` false (file 20), and
         `RepositorySyncCycleRunner` when it has one (file 17).
     *   **Compound writes:**
         *   `_createCompound` stores `purposeIds`, as `'[]'` when the draft
             gives none.
         *   `_editCompound` writes `purposeIds` when the draft carries a list,
             and includes it in the no-op comparison (D4).
-    *   **Reading:** `_compoundFromRow` decodes `purposeIds`.
+    *   **Reading:** `_compoundFromRow` decodes `purposeIds`; a string that
+        isn't a JSON array decodes to no tags (D2).
     *   **Sync and undo:**
         *   `_compoundImage` adds `purpose_ids`, the stored JSON string.
         *   `_compoundCompanionFromImage` and `_compoundSyncCompanionFromImage`
@@ -1390,6 +1420,9 @@ this PR changes no golden vectors, contract or sync shape.
         first. Its writes count as pending on a pass with no progress, which
         the runner's limit of two no-progress passes tolerates, because the
         next pass pushes them.
+    *   **A dropped key (D1):** `_applyPulledCompoundChange`, when last-writer-
+        wins doesn't apply the change, restores `purpose_ids` on a row an older
+        build applied at that same version.
 
 #### 18. `apps/mobile/lib/features/activity/repositories/activity_feed_repository.dart` (Modify)
 
@@ -1422,8 +1455,9 @@ this PR changes no golden vectors, contract or sync shape.
         `reorderPurposes` and `archivePurpose`. `createCompound` and
         `editCompound` take the draft with `purposeIds`.
     *   **`ensureOtcLibrarySeeded`:** awaits the repository seed, reads
-        `authControllerProvider.future`, and calls `backfillSeedPurposes()` only
-        when the user isn't signed in. If the auth read throws, it skips the
+        `authControllerProvider.future`, and calls
+        `backfillSeedPurposes(onlyNeverSynced: true)` only when the user isn't
+        signed in. If the auth read throws, it skips the
         backfill, because tagging before a pull could beat an edit made
         elsewhere and the next open retries (D3).
 
@@ -1537,6 +1571,9 @@ this PR changes no golden vectors, contract or sync shape.
             `createActivePurposeCheck` with `purpose_not_found`, in `finalize`,
             so a replay of a recorded batch still returns its receipt after
             that Purpose is archived.
+        *   The Compound group's `laterAddedKeyDefaults` gives a before image
+            `purpose_ids: '[]'` when the write sets the key and the stored row
+            lacks it (D2).
     *   **The Protocol batch write** is unchanged (D4).
 
 #### 29. `apps/server/src/agent-mcp.ts` (Modify)
@@ -1683,8 +1720,10 @@ this PR changes no golden vectors, contract or sync shape.
     and `undo_conflict_message_test.dart`:** a Purpose change reads as `purpose`
     and can be undone; the duplicate-name refusal has its own message.
 *   **`apps/mobile/test/features/protocols/protocols_day_controller_seed_test.dart`
-    (Create):** a device with no account backfills; a signed-in device doesn't;
-    a failed auth read skips it and the next open retries.
+    (Create):** a device with no account backfills; a signed-out device leaves
+    rows it synced to the next signed-in Sync Run and still tags rows that never
+    synced; a signed-in device doesn't backfill; a failed auth read skips it and
+    the next open retries.
 *   **`apps/mobile/test/features/sync/sync_cycle_runner_test.dart`:** the
     backfill runs after the drained pull and not when a push or a pull throws,
     and pending backfill rows are pushed in the same run.
@@ -1692,7 +1731,11 @@ this PR changes no golden vectors, contract or sync shape.
     push before Compounds; a pull applies a Purpose; a Compound payload with no
     `purpose_ids` keeps the local list; a full pull of this device's own
     unchanged seed rows doesn't touch them, so the backfill still tags them (a
-    last-writer-wins tie, with no Activity Log entry).
+    last-writer-wins tie, with no Activity Log entry); a full pull restores the
+    tags an older build dropped from a row it applied, with no entry and no
+    push, and the next edit pushes them; an older version, the same stamp from
+    another device, and the same version over a row holding a list restore
+    nothing.
 *   **`apps/server/test/protocols-sync.test.mjs`:**
     *   `purposes` round-trips;
     *   a Compound push without `purpose_ids` keeps the stored list, and an
@@ -1708,6 +1751,7 @@ this PR changes no golden vectors, contract or sync shape.
     *   the batch-write name rules;
     *   `purposeIds` on read;
     *   the `purpose` filter (CUJ 9);
+    *   undoing a first tagging of a row with no key reads `[]`;
     *   `purposeIds` omitted keeps the list, and `[]` clears it;
     *   `purpose_not_found` for an unknown and an archived id;
     *   a Purpose write is undoable through the Activity Log.
@@ -1753,7 +1797,11 @@ the items each one must pass.
 *   **V3. Contract (PR 2):** `check:drift` is clean after regeneration. The
     diff shows exactly D9's additions.
 *   **V4. Sync simulation (PR 2):** CUJ 6 is covered by
-    `protocols-sync.test.mjs` (file 41).
+    `protocols-sync.test.mjs` (file 41). Upgrading one device at a time is
+    covered by its server half there (a full pull returns the tags at the
+    version an older build applied) and its app half in
+    `sync_repository_test.dart` (that pull restores them, and the next edit
+    pushes them).
 *   **V5. Tests:** the tests each PR adds pass inside its gate run: file 10 for
     PR 1, file 41 for PR 2. They include the repository tests against
     in-memory SQLite, the kill-and-reopen test and the accessibility checks.

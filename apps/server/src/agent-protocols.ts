@@ -3887,7 +3887,8 @@ export function createDrizzleAgentProtocolsStore(
             rows: compounds,
             tableKey: "compounds",
             table: schema.compounds,
-            push: pushCompoundsInTransaction
+            push: pushCompoundsInTransaction,
+            laterAddedKeyDefaults: { purpose_ids: "[]" }
           }
         ]
       });
@@ -4199,6 +4200,13 @@ type OpaqueBatchGroup = {
    * tombstone, the right answer for a create and the wrong one for these.
    */
   impliedBeforeImage?: (row: PreparedRow) => Record<string, unknown> | null;
+  /**
+   * What a payload key added after a table's first release reads as on a stored
+   * row that lacks it. A write that sets such a key records this value in its
+   * before image: undo restores the before image, and with the key absent,
+   * carry-forward would keep what the write set and still report it reverted.
+   */
+  laterAddedKeyDefaults?: Readonly<Record<string, unknown>>;
 };
 
 const OPAQUE_TABLES: Record<OpaqueTableKey, OpaqueTable> = {
@@ -4340,10 +4348,11 @@ async function writeOpaqueBatchInTransaction(
       }
       const changes: SyncPushChange[] = [];
       for (const row of group.rows) {
+        const storedImage = await readBeforeImage(transaction, group.table, userId, row.id);
         const beforeImage =
-          (await readBeforeImage(transaction, group.table, userId, row.id)) ??
-          group.impliedBeforeImage?.(row) ??
-          null;
+          storedImage === null
+            ? (group.impliedBeforeImage?.(row) ?? null)
+            : withWrittenKeyDefaults(storedImage, row.payload, group.laterAddedKeyDefaults);
         changes.push({
           id: row.id,
           payload: row.payload,
@@ -4377,6 +4386,20 @@ async function writeOpaqueBatchInTransaction(
       validationErrors: []
     };
   });
+}
+
+function withWrittenKeyDefaults(
+  before: Record<string, unknown>,
+  written: Record<string, unknown>,
+  defaults: Readonly<Record<string, unknown>> | undefined
+): Record<string, unknown> {
+  if (defaults === undefined) {
+    return before;
+  }
+  const implied = Object.entries(defaults).filter(
+    ([key]) => Object.hasOwn(written, key) && !Object.hasOwn(before, key)
+  );
+  return implied.length === 0 ? before : { ...Object.fromEntries(implied), ...before };
 }
 
 // ---------------------------------------------------------------------------

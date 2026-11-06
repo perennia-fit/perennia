@@ -6753,6 +6753,79 @@ withPurposesApp(
 );
 
 withPurposesApp(
+  "undoing an Agent's first tagging of a Compound clears the tags, and an edit that omits the list leaves them",
+  async ({ app, database, userId }) => {
+    const undo = async (batchId) => {
+      const response = await post(app, "/agent/activity/undo-batch", {
+        batchId,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(response.status, 200, await response.clone().text());
+      const body = await response.json();
+      assert.deepEqual(
+        body.entries.map((entry) => entry.outcome),
+        ["reverted"]
+      );
+    };
+    const beforeImage = async (batchId) => {
+      const [logged] = await database.sql`
+        select before_image from activity_log
+        where user_id = ${userId} and batch_id = ${batchId} and entity_table = 'compounds'
+      `;
+      return logged.before_image;
+    };
+
+    // The stored row has no `purpose_ids`: an Agent created it with no list, as
+    // a schema-65 app would have pushed it.
+    const id = createUuidV7();
+    assert.equal((await writeCompounds(app, [compoundItem(id, "Glycine")])).status, 200);
+    const tagKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [SLEEP_PURPOSE_ID] })], tagKey))
+        .status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [SLEEP_PURPOSE_ID]);
+    assert.equal((await beforeImage(tagKey)).purpose_ids, "[]");
+
+    await undo(tagKey);
+
+    assert.deepEqual(await compoundPurposeIds(app, id), []);
+    const filtered = await app.request(
+      `/agent/protocols/compounds?purpose=${SLEEP_PURPOSE_ID}`,
+      { headers: authHeaders() }
+    );
+    assert.deepEqual((await filtered.json()).compounds, []);
+
+    // A write that doesn't set the key records the row as stored, so its undo
+    // can't touch a list it never changed.
+    const untagged = createUuidV7();
+    assert.equal((await writeCompounds(app, [compoundItem(untagged, "Zinc")])).status, 200);
+    const renameKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(untagged, "Zinc citrate")], renameKey)).status,
+      200
+    );
+    assert.equal(Object.hasOwn(await beforeImage(renameKey), "purpose_ids"), false);
+
+    // Undoing a later tagging restores the list the row held, not an empty one.
+    const retagKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [PERFORMANCE_PURPOSE_ID] })]))
+        .status,
+      200
+    );
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [SLEEP_PURPOSE_ID] })], retagKey))
+        .status,
+      200
+    );
+    await undo(retagKey);
+    assert.deepEqual(await compoundPurposeIds(app, id), [PERFORMANCE_PURPOSE_ID]);
+  }
+);
+
+withPurposesApp(
   "a Purpose write is undoable through the Activity Log, a starter with no stored row included",
   async ({ app }) => {
     const undo = async (batchId) => {

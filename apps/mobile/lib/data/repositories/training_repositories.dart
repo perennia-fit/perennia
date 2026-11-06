@@ -5588,7 +5588,12 @@ class ProtocolsRepository {
   /// `otc_purpose_seed`, so the change syncs and can be undone. A fresh install
   /// inserts the rows tagged and this does nothing. It is cheap (six rows, one
   /// Activity Log query) and does nothing once every row is touched.
-  Future<void> backfillSeedPurposes() {
+  ///
+  /// With [onlyNeverSynced], a row the server already holds waits: a signed-out
+  /// device can't see edits made elsewhere, and its fresh stamp would beat them
+  /// when it signs in, because a Sync Run pushes before it pulls. The next
+  /// signed-in Sync Run backfills that row after its pull.
+  Future<void> backfillSeedPurposes({bool onlyNeverSynced = false}) {
     final context = _repositories._writeContexts.create(
       actor: 'otc_purpose_seed',
     );
@@ -5596,13 +5601,16 @@ class ProtocolsRepository {
       final seedNames = <String, String>{
         for (final seed in _otcSeedSource.load()) seed.id: seed.name,
       };
-      final candidates = await (_database.select(_database.compounds)
-            ..where(
-              (row) =>
-                  row.id.isIn(seedCompoundPurposeIds.keys) &
-                  row.purposeIds.equals('[]'),
-            ))
-          .get();
+      final candidateQuery = _database.select(_database.compounds)
+        ..where(
+          (row) =>
+              row.id.isIn(seedCompoundPurposeIds.keys) &
+              row.purposeIds.equals('[]'),
+        );
+      if (onlyNeverSynced) {
+        candidateQuery.where((row) => row.syncPreviouslySynced.equals(false));
+      }
+      final candidates = await candidateQuery.get();
       if (candidates.isEmpty) {
         return;
       }

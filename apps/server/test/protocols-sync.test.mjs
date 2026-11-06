@@ -388,6 +388,59 @@ test(
 );
 
 test(
+  "a full pull returns the tags at the version an older build applied, so " +
+    "the upgraded build can restore the key it dropped",
+  { skip },
+  async () => {
+    const serverApp = await migratedApp();
+    try {
+      const user = await createSignedInUser(serverApp);
+      const tags = JSON.stringify([PERFORMANCE]);
+      const push = async (deviceId, updatedAt, keys) => {
+        const response = await syncPush(serverApp.app, user.sessionToken, {
+          deviceId,
+          entity: "compounds",
+          changes: [
+            {
+              id: CREATINE,
+              payload: { ...compoundPayload(CREATINE, updatedAt), ...keys },
+              updatedAt,
+              deletedAt: null
+            }
+          ]
+        });
+        assert.equal(response.status, 200);
+      };
+      const fullPull = async () => {
+        const [change] = (await pullAll(serverApp.app, user.sessionToken)).filter(
+          (pulled) => pulled.entity === "compounds"
+        );
+        return change;
+      };
+
+      // Device A's backfill: what device B applies with the key dropped.
+      const taggedAt = "2026-11-01T08:00:00.000Z";
+      await push("device-a", taggedAt, { purpose_ids: tags });
+      const applied = await fullPull();
+      assert.equal(applied.deviceId, "device-a");
+      assert.equal(applied.updatedAt, taggedAt);
+      assert.equal(applied.payload.purpose_ids, tags);
+
+      // Device B, still on the older build, edits the row. Its own version must
+      // come back with the tags too.
+      const editedAt = "2026-11-01T09:00:00.000Z";
+      await push("device-b", editedAt, {});
+      const edited = await fullPull();
+      assert.equal(edited.deviceId, "device-b");
+      assert.equal(edited.updatedAt, editedAt);
+      assert.equal(edited.payload.purpose_ids, tags);
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
+test(
   "CUJ 6: a removed seed tag and a renamed starter survive a second " +
     "device's first sync",
   { skip },

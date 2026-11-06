@@ -71,6 +71,37 @@ void main() {
     expect(await creatinePurposeIds(), isNot('[]'));
   });
 
+  test(
+      'a signed-out device leaves rows it synced to the next signed-in Sync '
+      'Run, and still tags the rows that never synced', () async {
+    // It signed out, which keeps its rows, and an edit made elsewhere may be
+    // waiting on the server. A fresh stamp now would beat that edit on sign-in,
+    // because a Sync Run pushes before it pulls.
+    final repositories = TrainingRepositories(database);
+    await database.customStatement(
+      'UPDATE compounds SET sync_previously_synced = 1, '
+      "sync_device_id = 'device-a' WHERE id = '$_creatineId'",
+    );
+    final container = containerWith(
+      () => _FakeAuthController(() async => AuthState.defaults),
+    );
+
+    await container
+        .read(protocolDayControllerProvider.notifier)
+        .ensureOtcLibrarySeeded();
+
+    expect(await creatinePurposeIds(), '[]');
+    final untagged = await (database.select(database.compounds)
+          ..where((row) => row.purposeIds.equals('[]')))
+        .get();
+    expect(untagged.map((row) => row.id), <String>[_creatineId]);
+
+    // What the signed-in Sync Run calls, after its pull.
+    await repositories.protocols.backfillSeedPurposes();
+
+    expect(await creatinePurposeIds(), isNot('[]'));
+  });
+
   test('a signed-in device leaves the backfill to the Sync Run', () async {
     final container = containerWith(
       () => _FakeAuthController(
