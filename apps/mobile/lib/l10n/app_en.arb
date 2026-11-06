@@ -2467,5 +2467,69 @@
         "type": "String"
       }
     }
+  },
+  "compoundListViewByDay": "View by day",
+  "compoundListSearchHint": "Search compounds",
+  "compoundListEmpty": "No compounds yet.",
+  "compoundListNoMatches": "No compounds match your search.",
+  "compoundListFavorites": "Favorites",
+  "compoundListRecent": "Recent",
+  "compoundListAll": "All compounds",
+  "compoundListAdd": "Add a compound",
+  "compoundListRemoveFavorite": "Remove favorite",
+  "compoundListAddFavorite": "Add favorite",
+  "compoundListEditAction": "Edit",
+  "@compoundListEditAction": {
+    "description": "Accessibility action on a Compound row that opens the Compound editor, the same as a long-press."
+  },
+  "compoundEditorNewTitle": "New compound",
+  "compoundEditorEditTitle": "Edit compound",
+  "compoundEditorName": "Name",
+  "compoundEditorStrength": "Strength (optional, e.g. 5 mg/capsule)",
+  "compoundEditorDefaultUnit": "Default unit",
+  "compoundEditorDefaultRoute": "Default route",
+  "compoundEditorSave": "Save",
+  "compoundEditorArchive": "Archive",
+  "compoundEditorNameRequired": "Enter a name",
+  "@compoundEditorNameRequired": {
+    "description": "Inline error on the Compound editor's name field when it is empty."
+  },
+  "compoundEditorStrengthInvalid": "Use the form 5 mg/capsule",
+  "@compoundEditorStrengthInvalid": {
+    "description": "Inline error on the Compound editor's strength field when it doesn't parse."
+  },
+  "compoundArchiveTitle": "Archive {name}?",
+  "@compoundArchiveTitle": {
+    "description": "Title of the confirmation before archiving a Compound.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundArchiveInProtocols": "{count, plural, =1{{name} is in 1 active Protocol. Archiving hides it from the list and the picker; the Protocol keeps it.} other{{name} is in {count} active Protocols. Archiving hides it from the list and the picker; the Protocols keep it.}}",
+  "@compoundArchiveInProtocols": {
+    "description": "Body of the archive confirmation for a Compound that one or more active Protocols hold.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundArchiveUnused": "Archiving hides {name} from the list and the picker. Its logged Doses stay.",
+  "@compoundArchiveUnused": {
+    "description": "Body of the archive confirmation for a Compound no active Protocol holds.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "compoundArchiveConfirm": "Archive",
+  "@compoundArchiveConfirm": {
+    "description": "Confirms archiving a Compound."
   }
 }

@@ -48,6 +48,42 @@ class ProtocolsLockGate extends ConsumerWidget {
   }
 }
 
+/// Hides a modal route's Compound/Dose content when the app locks.
+/// [ProtocolsLockGate] swaps only its own route, so a sheet or dialog above it
+/// would stay on screen, names and all. Wrap the content of every Protocols
+/// sheet and dialog in this.
+///
+/// While the state is locked or unavailable it renders nothing and removes its
+/// own route after the frame. It uses `removeRoute`, not `pop`, because a
+/// `pop` removes whatever is on top: with nested sheets each guard must remove
+/// the route it sits in. The route's future completes with null, as a dismissal
+/// does.
+///
+/// While the lock state is still loading it renders [child], unlike the gate:
+/// a sheet is only reachable from a screen the gate has already let through.
+class ProtocolsLockSheetGuard extends ConsumerWidget {
+  const ProtocolsLockSheetGuard({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lockState = ref.watch(protocolsLockControllerProvider).value;
+    if (lockState == null || !(lockState.isLocked || lockState.isUnavailable)) {
+      return child;
+    }
+
+    final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (route != null && route.isActive) {
+        navigator.removeRoute(route);
+      }
+    });
+    return const SizedBox.shrink();
+  }
+}
+
 class _ProtocolsLockUnavailableScreen extends StatelessWidget {
   const _ProtocolsLockUnavailableScreen({super.key});
 

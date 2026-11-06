@@ -679,6 +679,13 @@ member order.
     *   new ones are appended in the order picked;
     *   unselected ones are removed, as deselecting a chip does today.
 *   **Dismissing changes nothing** in the form.
+*   **Protocols sheets close when the app locks.** `ProtocolsLockGate` swaps
+    only its own route, so a sheet above it would stay on screen, with Compound
+    names, after the app re-locks. The picker, the Compound editor sheet and its
+    archive dialog sit in `ProtocolsLockSheetGuard`
+    (`protocols_lock_screen.dart`), which renders nothing while the lock state
+    is locked or unavailable and removes its own route, so nested sheets each
+    remove themselves.
 *   **Selection color.** Cyan marks the selected filter chip only. Selected
     rows use a checkbox in the primary text color, and Done is a text button.
     This keeps DESIGN.md's rule of one cyan selection per screen.

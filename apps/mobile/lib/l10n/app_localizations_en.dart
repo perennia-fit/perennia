@@ -3736,4 +3736,93 @@ class AppLocalizationsEn extends AppLocalizations {
   String mealRemoveEntry(String food) {
     return 'Remove $food';
   }
+
+  @override
+  String get compoundListViewByDay => 'View by day';
+
+  @override
+  String get compoundListSearchHint => 'Search compounds';
+
+  @override
+  String get compoundListEmpty => 'No compounds yet.';
+
+  @override
+  String get compoundListNoMatches => 'No compounds match your search.';
+
+  @override
+  String get compoundListFavorites => 'Favorites';
+
+  @override
+  String get compoundListRecent => 'Recent';
+
+  @override
+  String get compoundListAll => 'All compounds';
+
+  @override
+  String get compoundListAdd => 'Add a compound';
+
+  @override
+  String get compoundListRemoveFavorite => 'Remove favorite';
+
+  @override
+  String get compoundListAddFavorite => 'Add favorite';
+
+  @override
+  String get compoundListEditAction => 'Edit';
+
+  @override
+  String get compoundEditorNewTitle => 'New compound';
+
+  @override
+  String get compoundEditorEditTitle => 'Edit compound';
+
+  @override
+  String get compoundEditorName => 'Name';
+
+  @override
+  String get compoundEditorStrength => 'Strength (optional, e.g. 5 mg/capsule)';
+
+  @override
+  String get compoundEditorDefaultUnit => 'Default unit';
+
+  @override
+  String get compoundEditorDefaultRoute => 'Default route';
+
+  @override
+  String get compoundEditorSave => 'Save';
+
+  @override
+  String get compoundEditorArchive => 'Archive';
+
+  @override
+  String get compoundEditorNameRequired => 'Enter a name';
+
+  @override
+  String get compoundEditorStrengthInvalid => 'Use the form 5 mg/capsule';
+
+  @override
+  String compoundArchiveTitle(String name) {
+    return 'Archive $name?';
+  }
+
+  @override
+  String compoundArchiveInProtocols(int count, String name) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$name is in $count active Protocols. Archiving hides it from the list and the picker; the Protocols keep it.',
+      one:
+          '$name is in 1 active Protocol. Archiving hides it from the list and the picker; the Protocol keeps it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String compoundArchiveUnused(String name) {
+    return 'Archiving hides $name from the list and the picker. Its logged Doses stay.';
+  }
+
+  @override
+  String get compoundArchiveConfirm => 'Archive';
 }

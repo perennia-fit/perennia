@@ -5931,6 +5931,156 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Remove {food}'**
   String mealRemoveEntry(String food);
+
+  /// No description provided for @compoundListViewByDay.
+  ///
+  /// In en, this message translates to:
+  /// **'View by day'**
+  String get compoundListViewByDay;
+
+  /// No description provided for @compoundListSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search compounds'**
+  String get compoundListSearchHint;
+
+  /// No description provided for @compoundListEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No compounds yet.'**
+  String get compoundListEmpty;
+
+  /// No description provided for @compoundListNoMatches.
+  ///
+  /// In en, this message translates to:
+  /// **'No compounds match your search.'**
+  String get compoundListNoMatches;
+
+  /// No description provided for @compoundListFavorites.
+  ///
+  /// In en, this message translates to:
+  /// **'Favorites'**
+  String get compoundListFavorites;
+
+  /// No description provided for @compoundListRecent.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent'**
+  String get compoundListRecent;
+
+  /// No description provided for @compoundListAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All compounds'**
+  String get compoundListAll;
+
+  /// No description provided for @compoundListAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a compound'**
+  String get compoundListAdd;
+
+  /// No description provided for @compoundListRemoveFavorite.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove favorite'**
+  String get compoundListRemoveFavorite;
+
+  /// No description provided for @compoundListAddFavorite.
+  ///
+  /// In en, this message translates to:
+  /// **'Add favorite'**
+  String get compoundListAddFavorite;
+
+  /// Accessibility action on a Compound row that opens the Compound editor, the same as a long-press.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get compoundListEditAction;
+
+  /// No description provided for @compoundEditorNewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New compound'**
+  String get compoundEditorNewTitle;
+
+  /// No description provided for @compoundEditorEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit compound'**
+  String get compoundEditorEditTitle;
+
+  /// No description provided for @compoundEditorName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get compoundEditorName;
+
+  /// No description provided for @compoundEditorStrength.
+  ///
+  /// In en, this message translates to:
+  /// **'Strength (optional, e.g. 5 mg/capsule)'**
+  String get compoundEditorStrength;
+
+  /// No description provided for @compoundEditorDefaultUnit.
+  ///
+  /// In en, this message translates to:
+  /// **'Default unit'**
+  String get compoundEditorDefaultUnit;
+
+  /// No description provided for @compoundEditorDefaultRoute.
+  ///
+  /// In en, this message translates to:
+  /// **'Default route'**
+  String get compoundEditorDefaultRoute;
+
+  /// No description provided for @compoundEditorSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get compoundEditorSave;
+
+  /// No description provided for @compoundEditorArchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get compoundEditorArchive;
+
+  /// Inline error on the Compound editor's name field when it is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name'**
+  String get compoundEditorNameRequired;
+
+  /// Inline error on the Compound editor's strength field when it doesn't parse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the form 5 mg/capsule'**
+  String get compoundEditorStrengthInvalid;
+
+  /// Title of the confirmation before archiving a Compound.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive {name}?'**
+  String compoundArchiveTitle(String name);
+
+  /// Body of the archive confirmation for a Compound that one or more active Protocols hold.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{name} is in 1 active Protocol. Archiving hides it from the list and the picker; the Protocol keeps it.} other{{name} is in {count} active Protocols. Archiving hides it from the list and the picker; the Protocols keep it.}}'**
+  String compoundArchiveInProtocols(int count, String name);
+
+  /// Body of the archive confirmation for a Compound no active Protocol holds.
+  ///
+  /// In en, this message translates to:
+  /// **'Archiving hides {name} from the list and the picker. Its logged Doses stay.'**
+  String compoundArchiveUnused(String name);
+
+  /// Confirms archiving a Compound.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get compoundArchiveConfirm;
 }
 
 class _AppLocalizationsDelegate
