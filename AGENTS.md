@@ -125,7 +125,7 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
   (Template Link recorded); Template editor (exercises, per-entry notes,
   Prescriptions, groups + rounds) and Routine editor (membership + Cadence slot
   layout) as separate surfaces; capture
-  ("save workout as template") and the Finish-time "update the template?" prompt.
+  ("save workout as template") and the Finish summary's Update row.
 - **Workout Tools (interval/rest timer, 1RM/set/plate calculators) and Settings** —
   secondary surfaces reached contextually or through **Account & app**, not extra
   root destinations.
@@ -275,8 +275,8 @@ takes the next one and corrects the spec line in the same pull request.
 - Build what the merged spec says. The Detailed Implementation Plan is the scope:
   don't add what it doesn't list, and don't skip what it does.
 - If implementation needs a decision the spec doesn't make, or shows the spec is
-  wrong, **stop and update the spec** (a small follow-up to the spec, or in the
-  implementation pull request with the change called out) instead of deciding
+  wrong, **take the option you would recommend and update the spec** in the
+  implementation pull request, with the change called out, instead of deciding
   silently in code. A spec that no longer matches the code is drift, and drift
   misleads the next agent.
 - Link the spec from the implementation pull request, and set its Status to
@@ -354,9 +354,23 @@ by hand follows the same ones.
 - **Spec gaps** are listed in the PR body as one of three kinds: a *detail* the
   spec is silent on (the most conservative choice that fits its intent), a
   *correction* where the spec is wrong about the code (fix the spec line in the
-  same PR), or a *substantive* change to a user journey, an invariant, a
-  validation rule, an analytics computation, or the agent surface. A
-  substantive gap stops the delivery until the spec is changed.
+  same PR), or a *decision*, where the spec contradicts itself or building it
+  would change a user journey, a validation rule, an analytics computation, or
+  the agent surface.
+- **A delivery does not wait for a decision.** Waiting costs more than changing
+  the code later, and merging is safe because only a release tag ships. Take the
+  option you would recommend and amend the spec in the same PR, so the two agree.
+  To choose: keep every [non-negotiable invariant](#non-negotiable-invariants);
+  then prefer the plan's explicit rule over a quoted example, and what already
+  ships over changing it; then the smallest change that is easiest to reverse.
+  The PR body opens with each decision: what the spec said, what was built
+  instead, the options passed over, and what changing it later would take.
+- **A delivery stops only** when the gate or `CI passed` stays red, when an open
+  review finding would lose or corrupt user data, open a security hole, or break
+  an invariant, or when the work needs something only a person can provide (a
+  credential, a paid account, a store or legal step). Any other review finding
+  still open after the fix attempts merges as a known issue, listed in the PR
+  body, for a follow-up to fix.
 
 ### Gotcha — Windows codegen churn
 

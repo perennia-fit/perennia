@@ -10,6 +10,7 @@ import {
   AgentApiKeyUnavailableResponseSchema,
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
+import { parseJsonStringArray } from "./agent-catalog.js";
 import { createUuidV7 } from "./agent-plan-materialize.js";
 import {
   AgentDoseValidationIssueSchema,
@@ -25,6 +26,12 @@ import {
   type DoseUnit,
   type AgentDoseValidationResult
 } from "./agent-validation.js";
+import {
+  PurposeNameError,
+  STARTER_PURPOSES,
+  normalizePurposeIds,
+  validatePurposeName
+} from "./compound-purposes.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
 import {
@@ -70,6 +77,7 @@ import {
   pushProtocolSkipsInTransaction,
   pushProtocolsInTransaction,
   pushProtocolTargetOutcomesInTransaction,
+  pushPurposesInTransaction,
   pushSchedulesInTransaction,
   type SyncPushChange,
   type SyncPushResult
@@ -83,6 +91,7 @@ export const AGENT_PROTOCOLS_MAX_PAGE_LIMIT = 200;
 // Batch-write item caps (mirror the meal/exercise catalogue caps).
 export const AGENT_DOSE_BATCH_WRITE_MAX_DOSES = 200;
 export const AGENT_COMPOUND_BATCH_WRITE_MAX_COMPOUNDS = 100;
+export const AGENT_PURPOSE_BATCH_WRITE_MAX_PURPOSES = 100;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_PROTOCOLS = 50;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_MEMBERS = 100;
 export const AGENT_PROTOCOL_BATCH_WRITE_MAX_SCHEDULES = 100;
@@ -147,6 +156,7 @@ const AGENT_COMPOUND_FIELDS = [
   "defaultUnit",
   "defaultRoute",
   "strength",
+  "purposeIds",
   "updatedAt",
   "deletedAt"
 ] as const;
@@ -305,6 +315,9 @@ const AgentCompoundStrengthSchema = z
   })
   .openapi("AgentCompoundStrength");
 
+const COMPOUND_PURPOSE_IDS_DESCRIPTION =
+  "The ids of the Purposes this Compound is tagged with, in the order they were tagged. A Purpose is a label for why the user takes a Compound. The list can name an archived Purpose.";
+
 export const AgentCompoundSchema = z
   .object({
     id: z.string().min(1),
@@ -312,6 +325,9 @@ export const AgentCompoundSchema = z
     defaultUnit: DoseUnitSchema,
     defaultRoute: DoseRouteSchema,
     strength: AgentCompoundStrengthSchema.nullable(),
+    purposeIds: z.array(z.string()).openapi({
+      description: COMPOUND_PURPOSE_IDS_DESCRIPTION
+    }),
     updatedAt: ISO8601StringSchema,
     deletedAt: ISO8601StringSchema.nullable()
   })
@@ -324,6 +340,9 @@ const AgentCompoundListItemSchema = z
     defaultUnit: DoseUnitSchema.optional(),
     defaultRoute: DoseRouteSchema.optional(),
     strength: AgentCompoundStrengthSchema.nullable().optional(),
+    purposeIds: z.array(z.string()).optional().openapi({
+      description: COMPOUND_PURPOSE_IDS_DESCRIPTION
+    }),
     updatedAt: ISO8601StringSchema.optional(),
     deletedAt: ISO8601StringSchema.nullable().optional()
   })
@@ -332,6 +351,27 @@ const AgentCompoundListItemSchema = z
 const AgentCompoundFieldSchema = z
   .enum(AGENT_COMPOUND_FIELDS)
   .openapi("AgentCompoundField");
+
+export const AgentPurposeSchema = z
+  .object({
+    id: z.string().min(1).openapi({
+      description:
+        "Stable Purpose id. Starter Purpose ids are fixed and identical on every device."
+    }),
+    name: z.string().min(1).openapi({
+      description: "User-visible Purpose name, after any rename by the user."
+    }),
+    sortOrder: z.number().int().openapi({
+      description: "User-defined display order; lower sorts first."
+    }),
+    starter: z.boolean().openapi({
+      description: "True for one of the six Purposes every account starts with."
+    }),
+    deletedAt: ISO8601StringSchema.nullable().openapi({
+      description: "When the Purpose was archived, or null while it is active."
+    })
+  })
+  .openapi("AgentPurpose");
 
 export const AgentDoseSchema = z
   .object({
@@ -495,6 +535,11 @@ export const AgentCompoundListQuerySchema = z
       param: { name: "includeArchived", in: "query" },
       description: "When true, archived Compounds are included."
     }),
+    purpose: z.string().trim().min(1).optional().openapi({
+      param: { name: "purpose", in: "query" },
+      description:
+        "Optional Purpose id: only Compounds whose stored list names it. An unknown id returns an empty page."
+    }),
     limit: limitQuery.openapi({
       param: { name: "limit", in: "query" },
       description: "Maximum Compound rows to return."
@@ -510,6 +555,20 @@ export const AgentCompoundListQuerySchema = z
     })
   })
   .openapi("AgentCompoundListQuery");
+
+export const AgentPurposeListQuerySchema = z
+  .object({
+    // Not z.coerce.boolean(): it reads "false" as true (D9 in
+    // docs/designs/progress-overview.md).
+    includeArchived: z
+      .enum(["true", "false"])
+      .default("false")
+      .openapi({
+        param: { name: "includeArchived", in: "query" },
+        description: "When true, archived Purposes are included."
+      })
+  })
+  .openapi("AgentPurposeListQuery");
 
 export const AgentProtocolListQuerySchema = z
   .object({
@@ -584,6 +643,12 @@ export const AgentCompoundListResponseSchema = z
   })
   .openapi("AgentCompoundListResponse");
 
+export const AgentPurposeListResponseSchema = z
+  .object({
+    purposes: z.array(AgentPurposeSchema)
+  })
+  .openapi("AgentPurposeListResponse");
+
 export const AgentProtocolListResponseSchema = z
   .object({
     protocols: z.array(AgentProtocolSchema),
@@ -626,6 +691,10 @@ export const AgentCompoundBatchWriteCompoundSchema = z
     defaultUnit: DoseUnitSchema,
     defaultRoute: DoseRouteSchema,
     strength: CompoundStrengthInputSchema.nullable().default(null),
+    purposeIds: z.array(z.string().trim().min(1)).optional().openapi({
+      description:
+        "The ids of the Purposes to tag this Compound with, in order; repeats are dropped. Omit to keep the stored list; [] clears it. Every id must be an active Purpose (purpose_not_found), so drop an archived id read back from the list or omit purposeIds."
+    }),
     updatedAt: ISO8601StringSchema.optional(),
     deletedAt: ISO8601StringSchema.nullable().default(null).openapi({
       description:
@@ -649,6 +718,44 @@ export const AgentCompoundBatchWriteRequestSchema = z
       })
   })
   .openapi("AgentCompoundBatchWriteRequest");
+
+export const AgentPurposeBatchWritePurposeSchema = z
+  .object({
+    id: ClientRowIdSchema.openapi({
+      description:
+        "UUIDv7 Purpose id for a new row, or the id of a starter or existing Purpose for an edit or archive."
+    }),
+    // Left unchecked here so an empty name reaches the name rules and comes
+    // back as purpose_name_required, in the batch's error shape.
+    name: z.string().openapi({
+      description:
+        "Stored trimmed. Empty after trimming is refused (purpose_name_required), and so is the name of another active Purpose, trimmed and case-insensitive (duplicate_purpose_name)."
+    }),
+    sortOrder: z.number().int().min(0).openapi({
+      description: "User-defined display order; lower sorts first."
+    }),
+    deletedAt: ISO8601StringSchema.nullable().default(null).openapi({
+      description:
+        "Set to archive the Purpose. Compounds tagged with it keep the tag."
+    })
+  })
+  .openapi("AgentPurposeBatchWritePurpose");
+
+export const AgentPurposeBatchWriteRequestSchema = z
+  .object({
+    idempotencyKey: z.string().min(1).max(200).openapi({
+      description:
+        "Stable key for this agent request. Replays with the same key do not append another Activity Log batch."
+    }),
+    purposes: z
+      .array(AgentPurposeBatchWritePurposeSchema)
+      .min(1)
+      .max(AGENT_PURPOSE_BATCH_WRITE_MAX_PURPOSES)
+      .openapi({
+        description: "Purposes to create, rename, reorder, or archive in one batch."
+      })
+  })
+  .openapi("AgentPurposeBatchWriteRequest");
 
 export const AgentDoseBatchWriteDoseSchema = z
   .object({
@@ -984,6 +1091,17 @@ export const AgentCompoundBatchWriteResponseSchema = z
     compounds: z.array(AgentEntityBatchWriteResultSchema)
   })
   .openapi("AgentCompoundBatchWriteResponse");
+
+export const AgentPurposeBatchWriteResponseSchema = z
+  .object({
+    accepted: z.literal(true),
+    duplicate: z.boolean(),
+    idempotencyKey: z.string().min(1),
+    batchId: z.string().min(1),
+    serverClock: z.string().min(1),
+    purposes: z.array(AgentEntityBatchWriteResultSchema)
+  })
+  .openapi("AgentPurposeBatchWriteResponse");
 
 export const AgentProtocolBatchWriteResponseSchema = z
   .object({
@@ -1481,6 +1599,27 @@ export const agentCompoundListRoute = createRoute({
   }
 });
 
+export const agentPurposeListRoute = createRoute({
+  method: "get",
+  path: "/agent/protocols/purposes",
+  operationId: "listAgentPurposes",
+  tags: ["Agent Reads"],
+  summary: "List the caller's Purposes.",
+  description:
+    "Returns the caller's Purposes, sorted by sortOrder. A Purpose is a label for why the user takes a Compound. The six starter Purposes are merged in for an account that has never synced them, and a stored row wins by id. Archived Purposes are left out unless includeArchived is true.",
+  security: [{ bearerAuth: [] }],
+  request: { query: AgentPurposeListQuerySchema },
+  responses: {
+    200: {
+      description: "The caller's Purposes.",
+      content: {
+        "application/json": { schema: AgentPurposeListResponseSchema }
+      }
+    },
+    ...readResponses401_503()
+  }
+});
+
 export const agentProtocolListRoute = createRoute({
   method: "get",
   path: "/agent/protocols",
@@ -1613,6 +1752,41 @@ export const agentCompoundBatchWriteRoute = createRoute({
     422: {
       description:
         "One or more Compounds failed hard validation, or the idempotency key conflicts with an earlier request; no rows were written.",
+      content: {
+        "application/json": { schema: AgentProtocolsBatchWriteErrorResponseSchema }
+      }
+    },
+    ...writeResponses401_429_503()
+  }
+});
+
+export const agentPurposeBatchWriteRoute = createRoute({
+  method: "post",
+  path: "/agent/protocols/purposes/batch-write",
+  operationId: "batchWriteAgentPurposes",
+  tags: ["Agent Writes"],
+  summary: "Batch-write Purposes as one Activity Log batch.",
+  description:
+    "Authenticated agent write path for Purposes, the labels for why the user takes a Compound. Creates, renames, reorders, and archives (deletedAt) Purposes in one idempotent batch. The name rules are checked after the whole batch is applied, against the active starter and stored Purposes, so a batch can swap two names. Archiving never touches a Compound: its tags keep the id.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "application/json": { schema: AgentPurposeBatchWriteRequestSchema }
+      }
+    }
+  },
+  responses: {
+    200: {
+      description: "The batch was accepted, or recognized as an idempotent replay.",
+      content: {
+        "application/json": { schema: AgentPurposeBatchWriteResponseSchema }
+      }
+    },
+    422: {
+      description:
+        "One or more Purposes failed hard validation, or the idempotency key conflicts with an earlier request; no rows were written.",
       content: {
         "application/json": { schema: AgentProtocolsBatchWriteErrorResponseSchema }
       }
@@ -1821,6 +1995,11 @@ export const agentProtocolDayStatusesRoute = createRoute({
 // ---------------------------------------------------------------------------
 
 export type AgentCompoundListQuery = z.infer<typeof AgentCompoundListQuerySchema>;
+export type AgentPurpose = z.infer<typeof AgentPurposeSchema>;
+export type AgentPurposeListQuery = z.infer<typeof AgentPurposeListQuerySchema>;
+export type AgentPurposeBatchWriteRequest = z.infer<
+  typeof AgentPurposeBatchWriteRequestSchema
+>;
 export type AgentProtocolListQuery = z.infer<typeof AgentProtocolListQuerySchema>;
 export type AgentDoseListQuery = z.infer<typeof AgentDoseListQuerySchema>;
 export type AgentEffectWindowQuery = z.infer<typeof AgentEffectWindowQuerySchema>;
@@ -1937,6 +2116,10 @@ export type AgentProtocolsStore = {
     userId: string;
     query: AgentCompoundListQuery;
   }): Promise<z.infer<typeof AgentCompoundListResponseSchema>>;
+  listPurposes(input: {
+    userId: string;
+    query: AgentPurposeListQuery;
+  }): Promise<z.infer<typeof AgentPurposeListResponseSchema>>;
   listProtocols(input: {
     userId: string;
     query: AgentProtocolListQuery;
@@ -1980,6 +2163,13 @@ export type AgentProtocolsStore = {
     requestFingerprint: string;
     deviceId: string;
     compounds: PreparedRow[];
+  }): Promise<AgentProtocolsStoreWriteResult>;
+  writePurposeBatch(input: {
+    userId: string;
+    batchId: string;
+    requestFingerprint: string;
+    deviceId: string;
+    purposes: PreparedRow[];
   }): Promise<AgentProtocolsStoreWriteResult>;
   writeProtocolBatch(input: {
     userId: string;
@@ -2201,6 +2391,11 @@ export function prepareAgentCompoundBatchWrite({
         default_unit: compound.defaultUnit,
         default_route: compound.defaultRoute,
         strength,
+        // Only when given: a payload without the key keeps the stored list
+        // through carry-forward, and "[]" clears it (D2).
+        ...(compound.purposeIds === undefined
+          ? {}
+          : { purpose_ids: JSON.stringify(normalizePurposeIds(compound.purposeIds)) }),
         updated_at: updatedAt,
         deleted_at: deletedAt
       }
@@ -2212,6 +2407,71 @@ export function prepareAgentCompoundBatchWrite({
     return { accepted: false, errors };
   }
   return { accepted: true, compounds, responseCompounds };
+}
+
+/**
+ * The Agent Purpose write's pure half. The name rules need stored data, so
+ * they run in the store's `writePurposeBatch`, which covers REST and MCP and
+ * which a replay skips.
+ */
+export function prepareAgentPurposeBatchWrite({
+  request,
+  now = new Date()
+}: {
+  request: AgentPurposeBatchWriteRequest;
+  now?: Date;
+}):
+  | {
+      accepted: true;
+      purposes: PreparedRow[];
+      responsePurposes: PreparedEntityResult[];
+    }
+  | {
+      accepted: false;
+      errors: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[];
+    } {
+  const errors: z.infer<typeof AgentProtocolsBatchWriteIssueSchema>[] = [];
+  const purposes: PreparedRow[] = [];
+  const responsePurposes: PreparedEntityResult[] = [];
+  const updatedAt = now.toISOString();
+  const seen = new Set<string>();
+
+  for (const [itemIndex, purpose] of request.purposes.entries()) {
+    if (seen.has(purpose.id)) {
+      errors.push(
+        entityIssue(itemIndex, purpose.id, {
+          field: `purposes[${itemIndex}].id`,
+          rule: "duplicate_purpose_id",
+          message: "A Purpose id may appear only once per batch."
+        })
+      );
+      continue;
+    }
+    seen.add(purpose.id);
+
+    const name = purpose.name.trim();
+    const deletedAt = purpose.deletedAt ?? null;
+    purposes.push({
+      id: purpose.id,
+      itemIndex,
+      field: `purposes[${itemIndex}].id`,
+      updatedAt,
+      deletedAt,
+      payload: {
+        id: purpose.id,
+        name,
+        sort_order: purpose.sortOrder,
+        updated_at: updatedAt,
+        deleted_at: deletedAt
+      }
+    });
+    responsePurposes.push({ id: purpose.id, name });
+  }
+
+  if (errors.length > 0) {
+    return { accepted: false, errors };
+  }
+  return { accepted: true, purposes, responsePurposes };
 }
 
 /**
@@ -3197,6 +3457,12 @@ export function createDrizzleAgentProtocolsStore(
             return false;
           }
         }
+        if (
+          query.purpose !== undefined &&
+          !parseJsonStringArray(row.payload.purpose_ids).includes(query.purpose)
+        ) {
+          return false;
+        }
         return true;
       });
       const start = cursorOffset(filtered, query.cursor);
@@ -3211,6 +3477,15 @@ export function createDrizzleAgentProtocolsStore(
         limit: query.limit,
         nextCursor: nextCursorFor(filtered, start, page),
         totalMatched: filtered.length
+      });
+    },
+
+    async listPurposes({ userId, query }) {
+      const includeArchived = query.includeArchived === "true";
+      return AgentPurposeListResponseSchema.parse({
+        purposes: (await selectMergedPurposes(db, userId)).filter(
+          (purpose) => includeArchived || purpose.deletedAt === null
+        )
       });
     },
 
@@ -3604,13 +3879,44 @@ export function createDrizzleAgentProtocolsStore(
         requestFingerprint,
         deviceId,
         operationKind: "compounds",
+        finalize: (transaction) =>
+          finalizeCompoundPurposeIds(transaction, { userId, compounds }),
         groups: [
           {
             keyPrefix: "compound",
             rows: compounds,
             tableKey: "compounds",
             table: schema.compounds,
-            push: pushCompoundsInTransaction
+            push: pushCompoundsInTransaction,
+            laterAddedKeyDefaults: { purpose_ids: "[]" }
+          }
+        ]
+      });
+    },
+
+    async writePurposeBatch({
+      userId,
+      batchId,
+      requestFingerprint,
+      deviceId,
+      purposes
+    }) {
+      return writeOpaqueBatch(db, {
+        userId,
+        batchId,
+        requestFingerprint,
+        deviceId,
+        operationKind: "purposes",
+        finalize: (transaction) =>
+          finalizePurposeNames(transaction, { userId, purposes }),
+        groups: [
+          {
+            keyPrefix: "purpose",
+            rows: purposes,
+            tableKey: "purposes",
+            table: schema.purposes,
+            push: pushPurposesInTransaction,
+            impliedBeforeImage: starterPurposeBeforeImage
           }
         ]
       });
@@ -3866,6 +4172,7 @@ type OpaqueTable =
   | typeof schema.doses
   | typeof schema.protocolSkips
   | typeof schema.compounds
+  | typeof schema.purposes
   | typeof schema.protocols
   | typeof schema.protocolCompounds
   | typeof schema.schedules
@@ -3875,6 +4182,7 @@ type OpaqueTableKey =
   | "doses"
   | "protocolSkips"
   | "compounds"
+  | "purposes"
   | "protocols"
   | "protocolCompounds"
   | "schedules"
@@ -3886,12 +4194,26 @@ type OpaqueBatchGroup = {
   tableKey: OpaqueTableKey;
   table: OpaqueTable;
   push: PushInTransaction;
+  /**
+   * What a row with no stored row already reads as, for a table whose rows
+   * exist before they are ever stored. Undo inverts a null before image to a
+   * tombstone, the right answer for a create and the wrong one for these.
+   */
+  impliedBeforeImage?: (row: PreparedRow) => Record<string, unknown> | null;
+  /**
+   * What a payload key added after a table's first release reads as on a stored
+   * row that lacks it. A write that sets such a key records this value in its
+   * before image: undo restores the before image, and with the key absent,
+   * carry-forward would keep what the write set and still report it reverted.
+   */
+  laterAddedKeyDefaults?: Readonly<Record<string, unknown>>;
 };
 
 const OPAQUE_TABLES: Record<OpaqueTableKey, OpaqueTable> = {
   doses: schema.doses,
   protocolSkips: schema.protocolSkips,
   compounds: schema.compounds,
+  purposes: schema.purposes,
   protocols: schema.protocols,
   protocolCompounds: schema.protocolCompounds,
   schedules: schema.schedules,
@@ -3916,6 +4238,7 @@ type OpaqueBatchOptions = {
   operationKind:
     | "doses"
     | "compounds"
+    | "purposes"
     | "protocols"
     | "protocol_deletes"
     | "protocol_skips";
@@ -4025,12 +4348,11 @@ async function writeOpaqueBatchInTransaction(
       }
       const changes: SyncPushChange[] = [];
       for (const row of group.rows) {
-        const beforeImage = await readBeforeImage(
-          transaction,
-          group.table,
-          userId,
-          row.id
-        );
+        const storedImage = await readBeforeImage(transaction, group.table, userId, row.id);
+        const beforeImage =
+          storedImage === null
+            ? (group.impliedBeforeImage?.(row) ?? null)
+            : withWrittenKeyDefaults(storedImage, row.payload, group.laterAddedKeyDefaults);
         changes.push({
           id: row.id,
           payload: row.payload,
@@ -4064,6 +4386,215 @@ async function writeOpaqueBatchInTransaction(
       validationErrors: []
     };
   });
+}
+
+function withWrittenKeyDefaults(
+  before: Record<string, unknown>,
+  written: Record<string, unknown>,
+  defaults: Readonly<Record<string, unknown>> | undefined
+): Record<string, unknown> {
+  if (defaults === undefined) {
+    return before;
+  }
+  const implied = Object.entries(defaults).filter(
+    ([key]) => Object.hasOwn(written, key) && !Object.hasOwn(before, key)
+  );
+  return implied.length === 0 ? before : { ...Object.fromEntries(implied), ...before };
+}
+
+// ---------------------------------------------------------------------------
+// Purposes (docs/designs/compound-purposes.md, D8 and D9). The checks that read
+// stored data run in `finalize`, after the idempotency receipt, so a replay
+// still returns its receipt once a Purpose it named is archived or renamed.
+// ---------------------------------------------------------------------------
+
+const STARTER_PURPOSES_BY_ID: ReadonlyMap<string, (typeof STARTER_PURPOSES)[number]> =
+  new Map(STARTER_PURPOSES.map((starter) => [starter.id, starter]));
+
+/**
+ * Merges the starter Purposes with a user's own rows as the app's seeded table
+ * behaves: a row with a starter id is that starter after the user's edits, so
+ * it overrides name and order and a tombstone archives it, and any other row is
+ * a user-created Purpose. Archived Purposes are kept; callers filter them.
+ */
+export function mergeAgentPurposes(
+  userRows: readonly {
+    id: string;
+    payload: Record<string, unknown> | null;
+    deletedAt: Date | null;
+  }[]
+): AgentPurpose[] {
+  const merged = new Map<string, AgentPurpose>();
+  for (const starter of STARTER_PURPOSES) {
+    merged.set(starter.id, {
+      id: starter.id,
+      name: starter.name,
+      sortOrder: starter.sortOrder,
+      starter: true,
+      deletedAt: null
+    });
+  }
+  for (const row of userRows) {
+    const starter = STARTER_PURPOSES_BY_ID.get(row.id);
+    const name = row.payload?.name;
+    const sortOrder = row.payload?.sort_order;
+    merged.set(row.id, {
+      id: row.id,
+      name:
+        typeof name === "string" && name.trim().length > 0
+          ? name
+          : (starter?.name ?? row.id),
+      sortOrder:
+        typeof sortOrder === "number" && Number.isInteger(sortOrder)
+          ? sortOrder
+          : (starter?.sortOrder ?? 0),
+      starter: starter !== undefined,
+      deletedAt: row.deletedAt?.toISOString() ?? null
+    });
+  }
+  return [...merged.values()].sort(
+    (left, right) =>
+      left.sortOrder - right.sortOrder ||
+      left.name.localeCompare(right.name) ||
+      left.id.localeCompare(right.id)
+  );
+}
+
+async function selectMergedPurposes(
+  db: Pick<ServerDatabase, "select">,
+  userId: string
+): Promise<AgentPurpose[]> {
+  return mergeAgentPurposes(
+    await db
+      .select({
+        id: schema.purposes.id,
+        payload: schema.purposes.payload,
+        deletedAt: schema.purposes.deletedAt
+      })
+      .from(schema.purposes)
+      .where(eq(schema.purposes.userId, userId))
+  );
+}
+
+/**
+ * The reference check behind `purpose_not_found`: the id must be one of the
+ * caller's active Purposes. A starter id resolves without any synced row; a
+ * Purpose the caller archived does not. The Purposes are loaded at most once
+ * per check (so per request), and only when a write names a Purpose.
+ */
+export function createActivePurposeCheck({
+  db,
+  userId
+}: {
+  db: Pick<ServerDatabase, "select">;
+  userId: string;
+}): (purposeId: string) => Promise<boolean> {
+  let activeIds: Promise<ReadonlySet<string>> | undefined;
+  return async (purposeId) => {
+    activeIds ??= selectMergedPurposes(db, userId).then(
+      (purposes) =>
+        new Set(
+          purposes
+            .filter((purpose) => purpose.deletedAt === null)
+            .map((purpose) => purpose.id)
+        )
+    );
+    return (await activeIds).has(purposeId);
+  };
+}
+
+async function finalizeCompoundPurposeIds(
+  transaction: OpaqueTransaction,
+  { userId, compounds }: { userId: string; compounds: readonly PreparedRow[] }
+): Promise<AgentProtocolsBatchWriteIssue[]> {
+  const isActivePurpose = createActivePurposeCheck({ db: transaction, userId });
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  for (const row of compounds) {
+    for (const purposeId of parseJsonStringArray(row.payload.purpose_ids)) {
+      if (!(await isActivePurpose(purposeId))) {
+        issues.push(
+          entityIssue(row.itemIndex, row.id, {
+            field: `compounds[${row.itemIndex}].purposeIds`,
+            rule: "purpose_not_found",
+            message:
+              "purposeIds must reference active Purposes of the authenticated account (see GET /agent/protocols/purposes). Drop an archived id, or omit purposeIds to keep the stored list."
+          })
+        );
+        break;
+      }
+    }
+  }
+  return issues;
+}
+
+const PURPOSE_NAME_MESSAGES: Record<PurposeNameError["code"], string> = {
+  purpose_name_required: "A Purpose name must not be empty after trimming.",
+  duplicate_purpose_name:
+    "Another active Purpose has this name, trimmed and case-insensitive."
+};
+
+/**
+ * The D8 name rules, judged on the state the whole batch leaves, so a batch can
+ * swap two names or archive one Purpose and give its name to another.
+ */
+async function finalizePurposeNames(
+  transaction: OpaqueTransaction,
+  { userId, purposes }: { userId: string; purposes: readonly PreparedRow[] }
+): Promise<AgentProtocolsBatchWriteIssue[]> {
+  const activeNames = new Map(
+    (await selectMergedPurposes(transaction, userId))
+      .filter((purpose) => purpose.deletedAt === null)
+      .map((purpose) => [purpose.id, purpose.name])
+  );
+  for (const row of purposes) {
+    if (row.deletedAt === null) {
+      activeNames.set(row.id, String(row.payload.name));
+    } else {
+      activeNames.delete(row.id);
+    }
+  }
+
+  const issues: AgentProtocolsBatchWriteIssue[] = [];
+  for (const row of purposes) {
+    // An archived row's name can't collide, but it is still stored.
+    const others =
+      row.deletedAt === null
+        ? [...activeNames].filter(([id]) => id !== row.id).map(([, name]) => name)
+        : [];
+    try {
+      validatePurposeName(String(row.payload.name), others);
+    } catch (error) {
+      if (!(error instanceof PurposeNameError)) {
+        throw error;
+      }
+      issues.push(
+        entityIssue(row.itemIndex, row.id, {
+          field: `purposes[${row.itemIndex}].name`,
+          rule: error.code,
+          message: PURPOSE_NAME_MESSAGES[error.code]
+        })
+      );
+    }
+  }
+  return issues;
+}
+
+/**
+ * A starter Purpose exists for every account before any row is stored, so a
+ * first write to one is an edit: undoing it restores the starter rather than
+ * tombstoning it.
+ */
+function starterPurposeBeforeImage(row: PreparedRow): Record<string, unknown> | null {
+  const starter = STARTER_PURPOSES_BY_ID.get(row.id);
+  return starter === undefined
+    ? null
+    : {
+        id: starter.id,
+        name: starter.name,
+        sort_order: starter.sortOrder,
+        updated_at: row.updatedAt,
+        deleted_at: null
+      };
 }
 
 // ---------------------------------------------------------------------------
@@ -5167,8 +5698,10 @@ async function validateOpaqueBatchRows(
 // `compounds` is keyed (user_id, id) because OTC seed Compound ids are shared
 // by every account: another account's row under the same id is that account's
 // own Compound, not an owner of this one, so only the caller's rows count.
+// `purposes` is keyed the same way, for its six starter ids.
 const ACCOUNT_KEYED_OPAQUE_TABLES: ReadonlySet<OpaqueTable> = new Set([
-  schema.compounds
+  schema.compounds,
+  schema.purposes
 ]);
 
 async function readOpaqueOwners(
@@ -5522,6 +6055,8 @@ function serializeCompound(row: OpaqueRow) {
     defaultUnit: String(row.payload.default_unit ?? ""),
     defaultRoute: String(row.payload.default_route ?? ""),
     strength: readStrength(row.payload.strength),
+    // A Compound written before Purposes, or by an Agent that omitted the list.
+    purposeIds: parseJsonStringArray(row.payload.purpose_ids),
     updatedAt: row.updatedAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null
   };

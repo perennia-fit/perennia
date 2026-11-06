@@ -247,7 +247,10 @@ rectangles with `md` corners, never FABs.
   runs it shows "Rest 1:12" in tabular figures, **−15 s** and **+15 s** text buttons
   and a Stop icon button; tapping the time opens a small "Alert volume" sheet. Idle,
   it shows **Start rest**, disabled when Rest after is Off. It is the only timer on
-  screen, so alerts have one owner.
+  screen, so alerts have one owner. Resting shows the elapsed bar; Get ready and
+  3-2-1 show a 2 dp `primary` border with no fill; Rest over uses `surface`. The
+  strip's elapsed bar and its Get-ready border count as one cyan element, separate
+  from the Current row's highlight; no other part of the strip is cyan.
 - **Exercise card (Home Screen):** `h2` exercise name, hairline divider, then set
   rows; tap anywhere → Training Screen.
 - **Root navigation:** three labelled destinations — Today, Progress, Library — with
@@ -264,6 +267,11 @@ rectangles with `md` corners, never FABs.
   (Add Exercise, Add To Group, Home).
 - **Inputs/forms (secondary screens):** filled fields on surface color with a 1px
   divider-color stroke, `md` corners, Signal Cyan focus stroke; no floating labels.
+- **Picker sheet:** nearly full height, search then list, with checkboxes in the
+  primary text color and a Done text button with a count, so that a selected filter
+  chip is the only cyan selection on screen.
+- **Filter row:** chips that scroll sideways, single-select, with All first and a cyan
+  edge on the selected chip only.
 - **Calendar:** month grid, up to four category-colored 6px dots per day, today
   ringed in Signal Cyan.
 - **Summary card (Progress):** a flat card (surface color, `md` corners, no shadow)

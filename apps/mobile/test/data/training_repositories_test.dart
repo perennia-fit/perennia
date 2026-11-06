@@ -4650,6 +4650,15 @@ void main() {
     test(
         'adjust extends, shortens, shortens past now and clears the prepare '
         'cue', () async {
+      Future<void> seedPrepareAlertFired(String id, DateTime firedAt) {
+        final database = repositories.database;
+        return (database.update(database.restTimers)
+              ..where((row) => row.id.equals(id)))
+            .write(
+          RestTimersCompanion(prepareAlertFiredAt: Value<DateTime?>(firedAt)),
+        );
+      }
+
       final timerId = await repositories.restTimers.start(
         RestTimerDraft(workoutId: workoutId, duration: ninety),
         now: startedAt,
@@ -4673,13 +4682,10 @@ void main() {
       expect(timer.deadlineAt, startedAt.add(ninety));
       expect(timer.duration, ninety);
 
-      // The prepare cue fired close to the deadline; +15 s leaves more than
-      // 3 s, so it plays again.
+      // A fired prepare cue close to the deadline; +15 s leaves more than 3 s,
+      // so it clears.
       final nearEnd = startedAt.add(const Duration(seconds: 88));
-      await repositories.restTimers.markPrepareAlertFired(
-        timerId,
-        now: nearEnd,
-      );
+      await seedPrepareAlertFired(timerId, nearEnd);
       await repositories.restTimers.adjust(
         timerId,
         const Duration(seconds: 15),
@@ -4690,10 +4696,7 @@ void main() {
 
       // With 3 s or less left after the adjust, a fired cue stays fired.
       final almostDone = startedAt.add(const Duration(seconds: 102));
-      await repositories.restTimers.markPrepareAlertFired(
-        timerId,
-        now: almostDone,
-      );
+      await seedPrepareAlertFired(timerId, almostDone);
       await repositories.restTimers.adjust(
         timerId,
         const Duration(seconds: -1),
@@ -4717,8 +4720,8 @@ void main() {
       final timerEntries = (await repositories.activityLog.listEntries())
           .where((entry) => entry.entityId == timerId)
           .toList(growable: false);
-      // The start, five adjusts and two prepare cues.
-      expect(timerEntries, hasLength(8));
+      // The start and five adjusts.
+      expect(timerEntries, hasLength(6));
 
       await repositories.restTimers.cancel(timerId);
       final canceled = (await repositories.restTimers.getById(timerId))!;

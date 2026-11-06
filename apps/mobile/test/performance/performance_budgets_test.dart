@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:clock/clock.dart';
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -450,18 +451,98 @@ void main() {
       );
       expect(sets, hasLength(1));
 
-      // The Training Screen holds live Drift streams for the whole Workout;
-      // tear the tree down and let their cancellation timers run.
-      await tester.pumpWidget(const SizedBox.shrink());
-      for (var frame = 0; frame < 10; frame += 1) {
-        await tester.pump(const Duration(milliseconds: 20));
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      await _tearDownTrainingScreen(tester);
+    });
+
+    testWidgets('Log set confirms within one frame while a rest is running', (
+      tester,
+    ) async {
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final repositories = TrainingRepositories(database);
+      final workoutExerciseId = await tester.runAsync(() async {
+        final id = await _createWorkoutExercise(repositories);
+        final workoutExercise = await repositories.workoutExercises.getById(id);
+        await repositories.restTimers.start(
+          RestTimerDraft(
+            workoutId: workoutExercise!.workoutId,
+            duration: const Duration(seconds: 60),
+          ),
+        );
+        return id;
+      });
+
+      await _pumpTrainingScreen(tester, repositories, workoutExerciseId!);
+      await _settleRepositoryWork(tester);
+      await _waitForFinder(tester, find.byKey(TrainingScreen.restStripStopKey));
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
       );
-      for (var frame = 0; frame < 10; frame += 1) {
-        await tester.pump(const Duration(milliseconds: 20));
-      }
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await tester.pump(setSaveConfirmationFrameBudget);
+
+      expect(
+        find.byKey(TrainingScreen.saveSetConfirmationKey),
+        findsOneWidget,
+      );
+
+      await _settleRepositoryWork(tester);
+      await _tearDownTrainingScreen(tester);
+    });
+
+    testWidgets('Log set confirms within one frame in the rest countdown', (
+      tester,
+    ) async {
+      final database = AppDatabase.inMemory();
+      addTearDown(database.close);
+      final repositories = TrainingRepositories(database);
+      // Inside `runAsync`, clock.now() is real time; the strip draws by the
+      // time `tester.pump` advances.
+      final now = clock.now();
+      final workoutExerciseId = await tester.runAsync(() async {
+        final id = await _createWorkoutExercise(repositories);
+        final workoutExercise = await repositories.workoutExercises.getById(id);
+        await repositories.restTimers.start(
+          RestTimerDraft(
+            workoutId: workoutExercise!.workoutId,
+            duration: const Duration(seconds: 2),
+          ),
+          now: now,
+        );
+        return id;
+      });
+
+      await _pumpTrainingScreen(tester, repositories, workoutExerciseId!);
+      await _settleRepositoryWork(tester);
+      await _waitForFinder(
+        tester,
+        find.textContaining('Get ready', findRichText: true),
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.load)),
+        '100',
+      );
+      await tester.enterText(
+        find.byKey(TrainingScreen.dimensionFieldKey(DimensionId.reps)),
+        '5',
+      );
+
+      await tester.tap(find.byKey(TrainingScreen.logSetButtonKey));
+      await tester.pump(setSaveConfirmationFrameBudget);
+
+      expect(
+        find.byKey(TrainingScreen.saveSetConfirmationKey),
+        findsOneWidget,
+      );
+
+      await _settleRepositoryWork(tester);
+      await _tearDownTrainingScreen(tester);
     });
 
     test('cold start Home data path stays under 2 s', () async {
@@ -554,6 +635,21 @@ Future<void> _pumpTrainingScreen(
     ),
   );
   await _waitForFinder(tester, find.byKey(TrainingScreen.logSetButtonKey));
+}
+
+/// The Training Screen holds live Drift streams for the whole Workout; tears
+/// the tree down and lets their cancellation timers run.
+Future<void> _tearDownTrainingScreen(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  for (var frame = 0; frame < 10; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 10)),
+  );
+  for (var frame = 0; frame < 10; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 20));
+  }
 }
 
 Future<void> _settleRepositoryWork(WidgetTester tester) async {

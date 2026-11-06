@@ -1,14 +1,17 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:perennia/api/perennia_api_client.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/data/seeds/otc_compound_seed.dart';
 import 'package:perennia/features/activity/repositories/activity_feed_repository.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
+import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/sync/repositories/sync_repository.dart';
 
 void main() {
@@ -729,6 +732,764 @@ void main() {
       final magnesiumRows = allRows.where((r) => r.id == magnesium.id).toList();
       expect(magnesiumRows, hasLength(1));
       expect(magnesiumRows.single.deletedAt, isNotNull);
+    });
+  });
+
+  // docs/designs/compound-purposes.md, D1, D2, D3 and D8.
+  group('Compound Purposes', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+
+    const creatineId = '019200ff-0000-7000-8000-000000000001';
+    const vitaminDId = '019200ff-0000-7000-8000-000000000002';
+    const sleepId = '019200ff-0000-7000-8000-000000000101';
+    const performanceId = '019200ff-0000-7000-8000-000000000103';
+    const generalHealthId = '019200ff-0000-7000-8000-000000000106';
+    final seedStamp = DateTime.utc(2026, 10, 24);
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<CompoundRow> compoundRow(String id) {
+      return (database.select(database.compounds)
+            ..where((row) => row.id.equals(id)))
+          .getSingle();
+    }
+
+    Future<PurposeRow> purposeRow(String id) {
+      return (database.select(database.purposes)
+            ..where((row) => row.id.equals(id)))
+          .getSingle();
+    }
+
+    Future<List<ActivityLogRow>> logFor(String table, String id) async {
+      final rows = await (database.select(database.activityLog)
+            ..where((row) => row.entityId.equals(id)))
+          .get();
+      return rows
+          .where((row) => row.entityTable == table)
+          .toList(growable: false);
+    }
+
+    /// A device on schema 65: the six rows exist, untagged, and each has only
+    /// its `otc_seed` Activity Log entry, which is what the 65 to 66 upgrade
+    /// leaves behind.
+    Future<void> seedAsUpgradedDevice() async {
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      await database.customStatement(
+        "UPDATE compounds SET purpose_ids = '[]', updated_at = 1000",
+      );
+    }
+
+    CompoundDraft draftOf(
+      CompoundRow row, {
+      String? name,
+      List<String>? purposeIds,
+    }) {
+      return CompoundDraft(
+        name: name ?? row.name,
+        defaultUnit: doseUnitFromName(row.defaultUnit),
+        defaultRoute: doseRouteFromName(row.defaultRoute),
+        strength: CompoundStrength.tryParse(row.strength),
+        purposeIds: purposeIds,
+      );
+    }
+
+    group('seeding', () {
+      test('the starter Purposes are seeded once, in order, at the fixed stamp',
+          () async {
+        await repositories.protocols.ensureOtcLibrarySeeded();
+        await TrainingRepositories(database)
+            .protocols
+            .ensureOtcLibrarySeeded();
+
+        final purposes = await repositories.protocols.purposes.listActive();
+        expect(
+          purposes.map((purpose) => purpose.name),
+          <String>[
+            'Sleep',
+            'Body composition',
+            'Performance',
+            'Recovery',
+            'Cognition',
+            'General health',
+          ],
+        );
+        expect(purposes.every((purpose) => purpose.isStarter), isTrue);
+        expect(
+          purposes.every((purpose) => purpose.updatedAt == seedStamp),
+          isTrue,
+        );
+        final log = await logFor(AppDatabase.purposesTable, sleepId);
+        expect(log.map((entry) => entry.actor), <String>['otc_seed']);
+      });
+
+      test('the starter Purposes are seeded even with an empty OTC source',
+          () async {
+        final empty = TrainingRepositories(
+          database,
+          otcCompoundSeedSource: const _EmptyOtcCompoundSeedSource(),
+        );
+
+        await empty.protocols.ensureOtcLibrarySeeded();
+
+        expect(await empty.protocols.purposes.listActive(), hasLength(6));
+        expect(await database.select(database.compounds).get(), isEmpty);
+      });
+
+      test('a renamed or archived starter Purpose is left alone', () async {
+        await repositories.protocols.ensureOtcLibrarySeeded();
+        await repositories.protocols.purposes.rename(sleepId, name: 'Rest');
+        await repositories.protocols.purposes.archive(performanceId);
+        final renamed = await purposeRow(sleepId);
+        final archived = await purposeRow(performanceId);
+
+        await TrainingRepositories(database)
+            .protocols
+            .ensureOtcLibrarySeeded();
+
+        expect(await purposeRow(sleepId), renamed);
+        expect(await purposeRow(performanceId), archived);
+      });
+
+      test('a fresh seed inserts the six rows tagged, at the fixed timestamp',
+          () async {
+        await repositories.protocols.ensureOtcLibrarySeeded();
+
+        final rows = await database.select(database.compounds).get();
+        expect(rows, hasLength(6));
+        expect(rows.every((row) => row.updatedAt.toUtc() == seedStamp), isTrue);
+        expect(
+          (await compoundRow(creatineId)).purposeIds,
+          jsonEncode(<String>[performanceId]),
+        );
+        final records = await repositories.protocols.listCompounds();
+        expect(
+          records.singleWhere((c) => c.id == vitaminDId).purposeIds,
+          <String>[generalHealthId],
+        );
+      });
+    });
+
+    group('backfill', () {
+      test('an untouched upgraded row is tagged once, with its own entry',
+          () async {
+        await seedAsUpgradedDevice();
+
+        await repositories.protocols.backfillSeedPurposes();
+
+        final tagged = await compoundRow(creatineId);
+        expect(tagged.purposeIds, jsonEncode(<String>[performanceId]));
+        expect(tagged.updatedAt.isAfter(seedStamp), isTrue);
+        final log = await logFor(AppDatabase.compoundsTable, creatineId);
+        expect(
+          log.map((entry) => entry.actor),
+          unorderedEquals(<String>['otc_seed', 'otc_purpose_seed']),
+        );
+        final entry = log.singleWhere((e) => e.actor == 'otc_purpose_seed');
+        expect(
+          (jsonDecode(entry.afterImage!) as Map)['purpose_ids'],
+          tagged.purposeIds,
+        );
+        expect(entry.syncAcknowledgedAt, isNull);
+
+        // A second run does nothing.
+        final logCount =
+            (await database.select(database.activityLog).get()).length;
+        await repositories.protocols.backfillSeedPurposes();
+        expect(await compoundRow(creatineId), tagged);
+        expect(
+          await database.select(database.activityLog).get(),
+          hasLength(logCount),
+        );
+      });
+
+      test('the batch can be undone, and the row then stays touched', () async {
+        await seedAsUpgradedDevice();
+        await repositories.protocols.backfillSeedPurposes();
+        final entry = (await logFor(AppDatabase.compoundsTable, creatineId))
+            .singleWhere((e) => e.actor == 'otc_purpose_seed');
+
+        final result = await repositories.activityLog.undoBatch(entry.batchId);
+
+        expect(result.conflicts, isEmpty);
+        expect((await compoundRow(creatineId)).purposeIds, '[]');
+        await repositories.protocols.backfillSeedPurposes();
+        expect((await compoundRow(creatineId)).purposeIds, '[]');
+      });
+
+      test(
+          'with onlyNeverSynced, the stamp is one second past the row, not the '
+          'current time, and the batch can still be undone', () async {
+        await seedAsUpgradedDevice();
+        final before = await compoundRow(creatineId);
+
+        await repositories.protocols.backfillSeedPurposes(
+          onlyNeverSynced: true,
+        );
+
+        final tagged = await compoundRow(creatineId);
+        expect(tagged.purposeIds, jsonEncode(<String>[performanceId]));
+        expect(
+          tagged.updatedAt.isAtSameMomentAs(
+            before.updatedAt.add(const Duration(seconds: 1)),
+          ),
+          isTrue,
+        );
+        final entry = (await logFor(AppDatabase.compoundsTable, creatineId))
+            .singleWhere((e) => e.actor == 'otc_purpose_seed');
+        final image = jsonDecode(entry.afterImage!) as Map<String, Object?>;
+        expect(
+          DateTime.parse(image['updated_at']! as String)
+              .isAtSameMomentAs(tagged.updatedAt),
+          isTrue,
+        );
+
+        final result = await repositories.activityLog.undoBatch(entry.batchId);
+
+        expect(result.conflicts, isEmpty);
+        expect((await compoundRow(creatineId)).purposeIds, '[]');
+      });
+
+      test('a fresh install has nothing to backfill', () async {
+        await repositories.protocols.ensureOtcLibrarySeeded();
+        final logCount =
+            (await database.select(database.activityLog).get()).length;
+
+        await repositories.protocols.backfillSeedPurposes();
+
+        expect(
+          await database.select(database.activityLog).get(),
+          hasLength(logCount),
+        );
+      });
+
+      test('a renamed row is left alone', () async {
+        await seedAsUpgradedDevice();
+        await repositories.protocols.editCompound(
+          creatineId,
+          draftOf(await compoundRow(creatineId), name: 'Creatine HCl'),
+        );
+
+        await repositories.protocols.backfillSeedPurposes();
+
+        expect((await compoundRow(creatineId)).purposeIds, '[]');
+        // The others are still untouched.
+        expect(
+          (await compoundRow(vitaminDId)).purposeIds,
+          jsonEncode(<String>[generalHealthId]),
+        );
+      });
+
+      test('a row whose name matches but has a user edit is left alone',
+          () async {
+        await seedAsUpgradedDevice();
+        await repositories.protocols.setFavorite(creatineId, isFavorite: true);
+
+        await repositories.protocols.backfillSeedPurposes();
+
+        expect((await compoundRow(creatineId)).purposeIds, '[]');
+      });
+
+      test('a row with no Activity Log entry is left alone', () async {
+        await seedAsUpgradedDevice();
+        await (database.delete(database.activityLog)
+              ..where((row) => row.entityId.equals(creatineId)))
+            .go();
+
+        await repositories.protocols.backfillSeedPurposes();
+
+        expect((await compoundRow(creatineId)).purposeIds, '[]');
+      });
+
+      Map<String, Object?> pulledSeedImage(CompoundRow row) {
+        // A schema-65 device's push: no `purpose_ids` key.
+        return <String, Object?>{
+          'id': row.id,
+          'name': row.name,
+          'default_unit': row.defaultUnit,
+          'default_route': row.defaultRoute,
+          'strength': row.strength,
+          'is_favorite': row.isFavorite,
+          'updated_at': DateTime.utc(2026, 11).toIso8601String(),
+          'deleted_at': null,
+        };
+      }
+
+      for (final actor in <String>['sync', 'agent:agent-key-1']) {
+        test('a row with a pulled $actor entry is left alone', () async {
+          await seedAsUpgradedDevice();
+          await repositories.protocols.applySyncImage(
+            entityTable: AppDatabase.compoundsTable,
+            image: pulledSeedImage(await compoundRow(creatineId)),
+            deviceId: 'device-b',
+            batchId: 'batch-pulled',
+            actor: actor,
+          );
+
+          await repositories.protocols.backfillSeedPurposes();
+
+          expect((await compoundRow(creatineId)).purposeIds, '[]');
+        });
+      }
+
+      test('an entry pulled with actor otc_seed leaves the row untouched',
+          () async {
+        await seedAsUpgradedDevice();
+        await repositories.protocols.applySyncImage(
+          entityTable: AppDatabase.compoundsTable,
+          image: pulledSeedImage(await compoundRow(creatineId)),
+          deviceId: 'device-b',
+          batchId: 'batch-pulled',
+          actor: 'otc_seed',
+        );
+
+        await repositories.protocols.backfillSeedPurposes();
+
+        expect(
+          (await compoundRow(creatineId)).purposeIds,
+          jsonEncode(<String>[performanceId]),
+        );
+      });
+
+      test('a list the user emptied stays empty', () async {
+        await repositories.protocols.ensureOtcLibrarySeeded();
+        await repositories.protocols.editCompound(
+          creatineId,
+          draftOf(
+            await compoundRow(creatineId),
+            purposeIds: const <String>[],
+          ),
+        );
+
+        await TrainingRepositories(database)
+            .protocols
+            .ensureOtcLibrarySeeded();
+        await repositories.protocols.backfillSeedPurposes();
+
+        expect((await compoundRow(creatineId)).purposeIds, '[]');
+      });
+
+      test('a row the user emptied stays empty after Erase, and an untouched '
+          'row is still backfilled', () async {
+        await repositories.protocols.ensureOtcLibrarySeeded();
+        await repositories.protocols.editCompound(
+          creatineId,
+          draftOf(
+            await compoundRow(creatineId),
+            purposeIds: const <String>[],
+          ),
+        );
+        await database.customStatement(
+          "UPDATE compounds SET purpose_ids = '[]' WHERE id = '$vitaminDId'",
+        );
+
+        await repositories.eraseAllData();
+        await repositories.protocols.backfillSeedPurposes();
+
+        expect((await compoundRow(creatineId)).purposeIds, '[]');
+        expect(
+          (await compoundRow(vitaminDId)).purposeIds,
+          jsonEncode(<String>[generalHealthId]),
+        );
+      });
+    });
+
+    group('Compound writes', () {
+      Future<String> create([List<String>? purposeIds]) async {
+        final created = await repositories.protocols.createCompound(
+          CompoundDraft(
+            name: 'Ashwagandha',
+            defaultUnit: DoseUnit.milligram,
+            defaultRoute: DoseRoute.oral,
+            purposeIds: purposeIds,
+          ),
+        );
+        return created.compoundId;
+      }
+
+      test('creating with no list stores an empty one', () async {
+        final id = await create();
+
+        expect((await compoundRow(id)).purposeIds, '[]');
+        final log = await logFor(AppDatabase.compoundsTable, id);
+        expect(
+          (jsonDecode(log.single.afterImage!) as Map)['purpose_ids'],
+          '[]',
+        );
+      });
+
+      test('creating keeps the order and collapses repeats', () async {
+        final id = await create(<String>['b', 'a', 'b', 'c']);
+
+        expect((await compoundRow(id)).purposeIds, '["b","a","c"]');
+        final record = (await repositories.protocols.listCompounds()).single;
+        expect(record.purposeIds, <String>['b', 'a', 'c']);
+      });
+
+      test('an unchanged edit including the list writes nothing', () async {
+        final id = await create(<String>['b', 'a']);
+        final before = await compoundRow(id);
+        final logCount = (await logFor(AppDatabase.compoundsTable, id)).length;
+
+        final batchId = await repositories.protocols.editCompound(
+          id,
+          draftOf(before, purposeIds: <String>['b', 'a', 'b']),
+        );
+
+        expect(batchId, isNull);
+        expect(await compoundRow(id), before);
+        expect(
+          await logFor(AppDatabase.compoundsTable, id),
+          hasLength(logCount),
+        );
+      });
+
+      test('a changed order is a change', () async {
+        final id = await create(<String>['b', 'a']);
+
+        final batchId = await repositories.protocols.editCompound(
+          id,
+          draftOf(await compoundRow(id), purposeIds: <String>['a', 'b']),
+        );
+
+        expect(batchId, isNotNull);
+        expect((await compoundRow(id)).purposeIds, '["a","b"]');
+      });
+
+      test('a draft with no list leaves the stored list alone', () async {
+        final id = await create(<String>['a']);
+
+        final unchanged = await repositories.protocols.editCompound(
+          id,
+          draftOf(await compoundRow(id)),
+        );
+        expect(unchanged, isNull);
+
+        final renamed = await repositories.protocols.editCompound(
+          id,
+          draftOf(await compoundRow(id), name: 'KSM-66'),
+        );
+        expect(renamed, isNotNull);
+        final row = await compoundRow(id);
+        expect(row.name, 'KSM-66');
+        expect(row.purposeIds, '["a"]');
+      });
+
+      for (final stored in <String>['not json', '{"a":1}']) {
+        test('a stored list reading $stored reads as no tags, and stays stored',
+            () async {
+          // Sync and portable archives pass the string through unchecked.
+          final id = await create(<String>['a']);
+          await database.customStatement(
+            'UPDATE compounds SET purpose_ids = ? WHERE id = ?',
+            <Object?>[stored, id],
+          );
+
+          final compounds = await repositories.protocols.listCompounds();
+
+          expect(
+            compounds.singleWhere((compound) => compound.id == id).purposeIds,
+            isEmpty,
+          );
+          expect((await compoundRow(id)).purposeIds, stored);
+        });
+      }
+
+      test('a pull with no purpose_ids key keeps the stored list', () async {
+        final id = await create(<String>['a']);
+        final row = await compoundRow(id);
+
+        await repositories.protocols.applySyncImage(
+          entityTable: AppDatabase.compoundsTable,
+          image: <String, Object?>{
+            'id': id,
+            'name': 'Renamed elsewhere',
+            'default_unit': row.defaultUnit,
+            'default_route': row.defaultRoute,
+            'strength': null,
+            'is_favorite': false,
+            'updated_at': DateTime.utc(2026, 12).toIso8601String(),
+            'deleted_at': null,
+          },
+          deviceId: 'device-b',
+          batchId: 'batch-pulled',
+        );
+
+        final pulled = await compoundRow(id);
+        expect(pulled.name, 'Renamed elsewhere');
+        expect(pulled.purposeIds, '["a"]');
+      });
+
+      test('a pull with no purpose_ids key inserts the column default',
+          () async {
+        await repositories.protocols.applySyncImage(
+          entityTable: AppDatabase.compoundsTable,
+          image: <String, Object?>{
+            'id': 'pulled-compound',
+            'name': 'Pulled',
+            'default_unit': DoseUnit.milligram.name,
+            'default_route': DoseRoute.oral.name,
+            'strength': null,
+            'is_favorite': false,
+            'updated_at': DateTime.utc(2026, 12).toIso8601String(),
+            'deleted_at': null,
+          },
+          deviceId: 'device-b',
+          batchId: 'batch-pulled',
+        );
+
+        expect((await compoundRow('pulled-compound')).purposeIds, '[]');
+      });
+
+      test('an undo image from before schema 66 still undoes', () async {
+        final id = await create();
+        final batchId = await repositories.protocols.editCompound(
+          id,
+          draftOf(await compoundRow(id), name: 'KSM-66'),
+        );
+        // Rewrite the entry as a schema-65 build wrote it.
+        final entry = (await (database.select(database.activityLog)
+                  ..where((row) => row.batchId.equals(batchId!)))
+                .get())
+            .single;
+        String withoutKey(String image) => jsonEncode(
+              (jsonDecode(image) as Map<String, Object?>)..remove('purpose_ids'),
+            );
+        await (database.update(database.activityLog)
+              ..where((row) => row.id.equals(entry.id)))
+            .write(
+          ActivityLogCompanion(
+            beforeImage: Value<String?>(withoutKey(entry.beforeImage!)),
+            afterImage: Value<String?>(withoutKey(entry.afterImage!)),
+          ),
+        );
+
+        final result = await repositories.activityLog.undoBatch(batchId!);
+
+        expect(result.conflicts, isEmpty);
+        expect((await compoundRow(id)).name, 'Ashwagandha');
+        expect((await compoundRow(id)).purposeIds, '[]');
+      });
+    });
+
+    group('Purpose writes', () {
+      test('create appends at the end, stores the name trimmed, actor manual',
+          () async {
+        await repositories.protocols.ensureOtcLibrarySeeded();
+
+        final id = await repositories.protocols.purposes.create('  Joints ');
+
+        final purposes = await repositories.protocols.purposes.listActive();
+        expect(purposes.last.id, id);
+        expect(purposes.last.name, 'Joints');
+        expect(purposes.last.sortOrder, 6);
+        expect(purposes.last.isStarter, isFalse);
+        final log = await logFor(AppDatabase.purposesTable, id);
+        expect(log.single.actor, 'manual');
+      });
+
+      test('an empty name is rejected', () async {
+        final id = await repositories.protocols.purposes.create('Joints');
+
+        await expectLater(
+          repositories.protocols.purposes.create('   '),
+          throwsA(
+            isA<PurposeNameException>()
+                .having((e) => e.code, 'code', 'purpose_name_required'),
+          ),
+        );
+        await expectLater(
+          repositories.protocols.purposes.rename(id, name: ''),
+          throwsA(
+            isA<PurposeNameException>()
+                .having((e) => e.code, 'code', 'purpose_name_required'),
+          ),
+        );
+      });
+
+      test('a duplicate name in another case is rejected', () async {
+        await repositories.protocols.purposes.create('Joints');
+        final other = await repositories.protocols.purposes.create('Skin');
+
+        await expectLater(
+          repositories.protocols.purposes.create(' jOINTS '),
+          throwsA(
+            isA<PurposeNameException>()
+                .having((e) => e.code, 'code', 'duplicate_purpose_name'),
+          ),
+        );
+        await expectLater(
+          repositories.protocols.purposes.rename(other, name: 'joints'),
+          throwsA(
+            isA<PurposeNameException>()
+                .having((e) => e.code, 'code', 'duplicate_purpose_name'),
+          ),
+        );
+      });
+
+      test('an archived name is free, and renaming in place is allowed',
+          () async {
+        final id = await repositories.protocols.purposes.create('Joints');
+        await repositories.protocols.purposes.archive(id);
+
+        final reused = await repositories.protocols.purposes.create('joints');
+        await repositories.protocols.purposes.rename(reused, name: 'JOINTS');
+
+        expect((await purposeRow(reused)).name, 'JOINTS');
+      });
+
+      test('an unchanged rename writes nothing', () async {
+        final id = await repositories.protocols.purposes.create('Joints');
+
+        await repositories.protocols.purposes.rename(id, name: ' Joints ');
+
+        expect(await logFor(AppDatabase.purposesTable, id), hasLength(1));
+      });
+
+      test('reorder stores the new order in one batch, and needs every active '
+          'id', () async {
+        final a = await repositories.protocols.purposes.create('A');
+        final b = await repositories.protocols.purposes.create('B');
+
+        await repositories.protocols.purposes.reorder(<String>[b, a]);
+
+        expect(
+          (await repositories.protocols.purposes.listActive())
+              .map((purpose) => purpose.id),
+          <String>[b, a],
+        );
+        await expectLater(
+          repositories.protocols.purposes.reorder(<String>[a]),
+          throwsArgumentError,
+        );
+      });
+
+      test('archiving keeps the id on a tagged Compound', () async {
+        final id = await repositories.protocols.purposes.create('Joints');
+        final created = await repositories.protocols.createCompound(
+          CompoundDraft(
+            name: 'Collagen',
+            defaultUnit: DoseUnit.gram,
+            defaultRoute: DoseRoute.oral,
+            purposeIds: <String>[id],
+          ),
+        );
+
+        await repositories.protocols.purposes.archive(id);
+
+        expect(await repositories.protocols.purposes.listActive(), isEmpty);
+        expect(
+          (await compoundRow(created.compoundId)).purposeIds,
+          jsonEncode(<String>[id]),
+        );
+        final byId =
+            await repositories.protocols.purposes.watchAllById().first;
+        expect(byId[id]!.isArchived, isTrue);
+      });
+
+      test('undoing an archive restores the Purpose', () async {
+        final id = await repositories.protocols.purposes.create('Joints');
+        await repositories.protocols.purposes.archive(id);
+        final entry = (await logFor(AppDatabase.purposesTable, id))
+            .singleWhere((e) => e.beforeImage != null);
+
+        final result = await repositories.activityLog.undoBatch(entry.batchId);
+
+        expect(result.conflicts, isEmpty);
+        expect((await purposeRow(id)).deletedAt, isNull);
+      });
+
+      test('undoing an archive into a duplicate name is not applied', () async {
+        final id = await repositories.protocols.purposes.create('Joints');
+        await repositories.protocols.purposes.archive(id);
+        final entry = (await logFor(AppDatabase.purposesTable, id))
+            .singleWhere((e) => e.beforeImage != null);
+        await repositories.protocols.purposes.create('JOINTS');
+
+        final result = await repositories.activityLog.undoBatch(entry.batchId);
+
+        expect(result.undoBatchId, isNull);
+        expect(
+          result.conflicts.map((conflict) => conflict.reason),
+          <ActivityLogUndoConflictReason>[
+            ActivityLogUndoConflictReason.duplicatePurposeName,
+          ],
+        );
+        expect((await purposeRow(id)).deletedAt, isNotNull);
+      });
+
+      test('undoing a rename into a duplicate name is not applied', () async {
+        final id = await repositories.protocols.purposes.create('Joints');
+        await repositories.protocols.purposes.rename(id, name: 'Skin');
+        final entry = (await logFor(AppDatabase.purposesTable, id))
+            .singleWhere((e) => e.beforeImage != null);
+        await repositories.protocols.purposes.create('Joints');
+
+        final result = await repositories.activityLog.undoBatch(entry.batchId);
+
+        expect(
+          result.conflicts.single.reason,
+          ActivityLogUndoConflictReason.duplicatePurposeName,
+        );
+        expect((await purposeRow(id)).name, 'Skin');
+      });
+
+      test('undoing a reorder ignores a name two rows already share', () async {
+        final a = await repositories.protocols.purposes.create('A');
+        final b = await repositories.protocols.purposes.create('B');
+        await repositories.protocols.purposes.reorder(<String>[b, a]);
+        final entry = (await logFor(AppDatabase.purposesTable, a))
+            .singleWhere((e) => e.beforeImage != null);
+        // Two devices can each name a Purpose the same through LWW sync.
+        await repositories.protocols.purposes.create('C');
+        await database.customStatement(
+          "UPDATE purposes SET name = 'A' WHERE name = 'C'",
+        );
+
+        final result = await repositories.activityLog.undoBatch(entry.batchId);
+
+        expect(result.conflicts, isEmpty);
+      });
+
+      test('a pulled Purpose applies last-writer-wins on the generic path',
+          () async {
+        Map<String, Object?> image(String name, DateTime at) {
+          return <String, Object?>{
+            'id': sleepId,
+            'name': name,
+            'sort_order': 0,
+            'updated_at': at.toIso8601String(),
+            'deleted_at': null,
+          };
+        }
+
+        Future<bool> apply(Map<String, Object?> pulled) {
+          return repositories.activityLog.applyPlanSyncImage(
+            entityTable: AppDatabase.purposesTable,
+            image: pulled,
+            deviceId: 'device-b',
+            localDeviceId: 'device-a',
+            batchId: 'batch-pulled',
+          );
+        }
+
+        await repositories.protocols.ensureOtcLibrarySeeded();
+        expect(await apply(image('Older', DateTime.utc(2026, 1))), isFalse);
+        expect((await purposeRow(sleepId)).name, 'Sleep');
+
+        expect(await apply(image('Rest', DateTime.utc(2026, 11))), isTrue);
+        final pulled = await purposeRow(sleepId);
+        expect(pulled.name, 'Rest');
+        expect(pulled.syncDeviceId, 'device-b');
+        expect(pulled.syncPreviouslySynced, isTrue);
+      });
     });
   });
 
@@ -1730,67 +2491,6 @@ void main() {
       );
     });
 
-    test('watchCompoundScheduleOptions emits only for schedule seed data',
-        () async {
-      final created = await repositories.protocols.createCompound(
-        CompoundDraft(
-          name: 'Creatine',
-          defaultUnit: DoseUnit.gram,
-          defaultRoute: DoseRoute.oral,
-          strength: CompoundStrength.parse('5 g/capsule'),
-        ),
-      );
-
-      final emissions = <List<CompoundScheduleOptionRecord>>[];
-      final subscription = repositories.protocols
-          .watchCompoundScheduleOptions()
-          .listen(emissions.add);
-      addTearDown(subscription.cancel);
-
-      await _waitFor(() => emissions.isNotEmpty);
-      expect(emissions.last.single.id, created.compoundId);
-      expect(emissions.last.single.name, 'Creatine');
-      expect(emissions.last.single.defaultUnit, DoseUnit.gram);
-      expect(emissions.last.single.defaultRoute, DoseRoute.oral);
-
-      emissions.clear();
-      await repositories.protocols.setFavorite(
-        created.compoundId,
-        isFavorite: true,
-      );
-      await pumpEventQueue(times: 5);
-      expect(emissions, isEmpty);
-
-      await repositories.protocols.editCompound(
-        created.compoundId,
-        CompoundDraft(
-          name: 'Creatine',
-          defaultUnit: DoseUnit.gram,
-          defaultRoute: DoseRoute.oral,
-          strength: CompoundStrength.parse('10 g/capsule'),
-        ),
-      );
-      await pumpEventQueue(times: 5);
-      expect(emissions, isEmpty);
-
-      await repositories.protocols.editCompound(
-        created.compoundId,
-        CompoundDraft(
-          name: 'Creatine',
-          defaultUnit: DoseUnit.milligram,
-          defaultRoute: DoseRoute.sublingual,
-          strength: CompoundStrength.parse('10000 mg/capsule'),
-        ),
-      );
-      await _waitFor(
-        () => emissions.any(
-          (options) =>
-              options.single.defaultUnit == DoseUnit.milligram &&
-              options.single.defaultRoute == DoseRoute.sublingual,
-        ),
-      );
-    });
-
     test('watchCompoundNamesByIds ignores unrelated Compound changes',
         () async {
       final creatine = await repositories.protocols.createCompound(
@@ -1896,7 +2596,8 @@ void main() {
                           'payload': payload,
                           'updatedAt': wroteAt,
                           'deletedAt': null,
-                          'activityLogId': 'agent:$batchId:compound:$compoundId',
+                          'activityLogId':
+                              'agent:$batchId:compound:$compoundId',
                           'actor': 'agent',
                           'batchId': batchId,
                           'beforeImage': null,
@@ -6131,8 +6832,8 @@ void main() {
       expect(day.skips.single.id, row.id);
       expect(day.skips.single.plannedLocalTime, '21:00');
       expect(day.isEmpty, isTrue, reason: 'a Skip records no intake');
-      expect((await repositories.protocols.protocolDay(yesterday)).skips,
-          isEmpty);
+      expect(
+          (await repositories.protocols.protocolDay(yesterday)).skips, isEmpty);
     });
 
     test(
@@ -6221,7 +6922,8 @@ void main() {
 
       expect((await skipRow(first)).deletedAt, isNotNull);
       expect((await skipRow(sibling)).deletedAt, isNotNull);
-      expect((await skipRow(first)).updatedAt, (await skipRow(first)).deletedAt);
+      expect(
+          (await skipRow(first)).updatedAt, (await skipRow(first)).deletedAt);
       expect((await skipRow(otherTime)).deletedAt, equals(null));
       expect((await skipRow(otherDay)).deletedAt, equals(null));
       final entries = await batchEntries(batchId);
@@ -6303,8 +7005,7 @@ void main() {
       expect(day.skips, isEmpty);
     });
 
-    test(
-        'logDose(unskipId:) with an unknown Skip throws and writes no Dose',
+    test('logDose(unskipId:) with an unknown Skip throws and writes no Dose',
         () async {
       await expectLater(
         repositories.protocols.logDose(
@@ -6331,8 +7032,7 @@ void main() {
       // Undoing an unskip brings both timed Skips back.
       final first = await skip(draft(localDate: yesterday));
       final sibling = await skip(draft(localDate: yesterday));
-      final unskipBatch =
-          await repositories.protocols.unskipPlannedDose(first);
+      final unskipBatch = await repositories.protocols.unskipPlannedDose(first);
       final undoUnskip = await repositories.activityLog.undoBatch(unskipBatch);
       expect(undoUnskip.conflicts, isEmpty);
       expect((await skipRow(first)).deletedAt, equals(null));
@@ -6379,9 +7079,8 @@ void main() {
     test('watchProtocolDay re-emits when a Skip is written or removed',
         () async {
       final emissions = <ProtocolDayRecord>[];
-      final subscription = repositories.protocols
-          .watchProtocolDay(today)
-          .listen(emissions.add);
+      final subscription =
+          repositories.protocols.watchProtocolDay(today).listen(emissions.add);
       addTearDown(subscription.cancel);
       await _waitFor(() => emissions.isNotEmpty);
       expect(emissions.last.skips, isEmpty);
@@ -6392,6 +7091,384 @@ void main() {
 
       await repositories.protocols.unskipPlannedDose(skipId);
       await _waitFor(() => emissions.last.skips.isEmpty);
+    });
+  });
+
+  group('Compound editing and archived members (D4)', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    const start = ProtocolDayDate(year: 2026, month: 7, day: 1);
+
+    Future<String> createCompoundId(String name) async {
+      final result = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: name,
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      );
+      return result.compoundId;
+    }
+
+    Future<String> createProtocolId(List<String> compoundIds) async {
+      final result = await repositories.protocols.createProtocol(
+        ProtocolDraft(
+          name: 'Sleep',
+          startLocalDate: start,
+          compoundIds: compoundIds,
+        ),
+      );
+      return result.protocolId;
+    }
+
+    Future<void> editProtocol(
+      String protocolId,
+      List<String> compoundIds, {
+      String name = 'Sleep',
+    }) {
+      return repositories.protocols.editProtocol(
+        protocolId,
+        ProtocolDraft(
+          name: name,
+          startLocalDate: start,
+          compoundIds: compoundIds,
+        ),
+      );
+    }
+
+    Future<ProtocolSummaryRecord> summaryOf(String protocolId) async {
+      final summaries = await repositories.protocols.listProtocolSummaries();
+      return summaries.singleWhere((summary) => summary.id == protocolId);
+    }
+
+    test('saving a Protocol with a member whose Compound is archived succeeds',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final glycine = await createCompoundId('Glycine');
+      final protocolId = await createProtocolId(<String>[magnesium, glycine]);
+      await repositories.protocols.archiveCompound(magnesium);
+
+      await editProtocol(
+        protocolId,
+        <String>[magnesium, glycine],
+        name: 'Better sleep',
+      );
+
+      final summary = await summaryOf(protocolId);
+      expect(summary.name, 'Better sleep');
+      expect(summary.compoundIds, <String>[magnesium, glycine]);
+    });
+
+    test('adding an archived Compound is rejected, and nothing is written',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final glycine = await createCompoundId('Glycine');
+      final protocolId = await createProtocolId(<String>[magnesium]);
+      await repositories.protocols.archiveCompound(glycine);
+
+      await expectLater(
+        editProtocol(protocolId, <String>[magnesium, glycine]),
+        throwsArgumentError,
+      );
+
+      expect(
+        (await summaryOf(protocolId)).compoundIds,
+        <String>[magnesium],
+      );
+    });
+
+    test('a member removed earlier counts as added: it must be active',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final glycine = await createCompoundId('Glycine');
+      final protocolId = await createProtocolId(<String>[magnesium, glycine]);
+      await editProtocol(protocolId, <String>[magnesium]);
+      await repositories.protocols.archiveCompound(glycine);
+
+      await expectLater(
+        editProtocol(protocolId, <String>[magnesium, glycine]),
+        throwsArgumentError,
+      );
+    });
+
+    test('creating a Protocol with an archived Compound is still rejected',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      await repositories.protocols.archiveCompound(magnesium);
+
+      await expectLater(
+        createProtocolId(<String>[magnesium]),
+        throwsArgumentError,
+      );
+    });
+
+    test('a live member whose Compound row is gone is still rejected',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final protocolId = await createProtocolId(<String>[magnesium]);
+      // A foreign key normally prevents this; a guard still must not crash on
+      // a null row if the database ever disagrees.
+      await database.customStatement('PRAGMA foreign_keys = OFF');
+      await database.customStatement(
+        'DELETE FROM ${AppDatabase.compoundsTable} WHERE id = ?',
+        <Object>[magnesium],
+      );
+
+      await expectLater(
+        editProtocol(protocolId, <String>[magnesium]),
+        throwsArgumentError,
+      );
+    });
+
+    test('the draft\'s member order is kept across archived and added members',
+        () async {
+      final a = await createCompoundId('A');
+      final b = await createCompoundId('B');
+      final c = await createCompoundId('C');
+      final added = await createCompoundId('D');
+      final protocolId = await createProtocolId(<String>[a, b, c]);
+      await repositories.protocols.archiveCompound(b);
+
+      await editProtocol(protocolId, <String>[c, added, b, a]);
+
+      expect(
+        (await summaryOf(protocolId)).compoundIds,
+        <String>[c, added, b, a],
+      );
+    });
+
+    test('watchCompoundsByIds emits empty for an empty set', () async {
+      await createCompoundId('Magnesium');
+
+      expect(
+        await repositories.protocols.watchCompoundsByIds(<String>{}).first,
+        isEmpty,
+      );
+    });
+
+    test(
+        'watchCompoundsByIds returns archived Compounds with isArchived, '
+        're-emits on archive, and ignores fields it does not carry', () async {
+      final magnesium = await createCompoundId('Magnesium');
+      final glycine = await createCompoundId('Glycine');
+      final unrelated = await createCompoundId('Zinc');
+      await repositories.protocols.archiveCompound(glycine);
+
+      final emissions = <List<CompoundScheduleOptionRecord>>[];
+      final subscription = repositories.protocols
+          .watchCompoundsByIds(<String>{magnesium, glycine}).listen(
+        emissions.add,
+      );
+      addTearDown(subscription.cancel);
+      await _waitFor(() => emissions.isNotEmpty);
+
+      expect(
+        emissions.single.map((option) => (option.id, option.isArchived)),
+        <(String, bool)>[(glycine, true), (magnesium, false)],
+      );
+
+      emissions.clear();
+      await repositories.protocols.setFavorite(magnesium, isFavorite: true);
+      await repositories.protocols.archiveCompound(unrelated);
+      await pumpEventQueue(times: 5);
+      expect(emissions, isEmpty);
+
+      await repositories.protocols.archiveCompound(magnesium);
+      await _waitFor(() => emissions.isNotEmpty);
+      expect(
+        emissions.last.every((option) => option.isArchived),
+        isTrue,
+      );
+    });
+
+    test('watchCompoundNamesByIds still leaves archived Compounds out',
+        () async {
+      final magnesium = await createCompoundId('Magnesium');
+      await repositories.protocols.archiveCompound(magnesium);
+
+      expect(
+        await repositories.protocols
+            .watchCompoundNamesByIds(<String>{magnesium}).first,
+        isEmpty,
+      );
+    });
+
+    test(
+        'an unchanged editCompound writes nothing and returns null, with the '
+        'name compared trimmed', () async {
+      final created = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: 'Magnesium',
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+      );
+      final updatedAt =
+          (await repositories.protocols.listCompounds()).single.updatedAt;
+      final entries = (await repositories.activityLog.listEntries()).length;
+
+      final batchId = await repositories.protocols.editCompound(
+        created.compoundId,
+        CompoundDraft(
+          name: '  Magnesium ',
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+      );
+
+      expect(batchId, isNull);
+      expect(
+        (await repositories.protocols.listCompounds()).single.updatedAt,
+        updatedAt,
+      );
+      expect(await repositories.activityLog.listEntries(), hasLength(entries));
+    });
+
+    test('an editCompound that changes any one field writes one Batch',
+        () async {
+      final created = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: 'Magnesium',
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+      );
+      final drafts = <CompoundDraft>[
+        CompoundDraft(
+          name: 'Magnesium glycinate',
+          defaultUnit: DoseUnit.milligram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+        CompoundDraft(
+          name: 'Magnesium glycinate',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+        CompoundDraft(
+          name: 'Magnesium glycinate',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.sublingual,
+          strength: CompoundStrength.parse('200 mg/capsule'),
+        ),
+        const CompoundDraft(
+          name: 'Magnesium glycinate',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.sublingual,
+        ),
+      ];
+
+      for (final draft in drafts) {
+        final batchId = await repositories.protocols.editCompound(
+          created.compoundId,
+          draft,
+        );
+
+        expect(batchId, isNotNull);
+        final batch = (await repositories.activityLog.listEntries())
+            .where((entry) => entry.batchId == batchId);
+        expect(batch, hasLength(1));
+      }
+    });
+
+    test('a strength\'s storageValue parses back unchanged, for every unit',
+        () {
+      for (final massUnit in DoseUnit.values) {
+        for (final perUnit in DoseUnit.values) {
+          for (final amount in <String>['5', '0.5', '1000']) {
+            final strength = CompoundStrength(
+              amount: double.parse(amount),
+              amountEntered: amount,
+              massUnit: massUnit,
+              perUnit: perUnit,
+            );
+
+            final parsed = CompoundStrength.parse(strength.storageValue);
+
+            expect(parsed, strength);
+            expect(parsed.storageValue, strength.storageValue);
+          }
+        }
+      }
+    });
+
+    group('the Protocol Day controller', () {
+      late ProviderContainer container;
+
+      setUp(() {
+        container = ProviderContainer(
+          overrides: [
+            trainingRepositoriesProvider.overrideWith((ref) => repositories),
+          ],
+        );
+      });
+
+      tearDown(() {
+        container.dispose();
+      });
+
+      ProtocolDayController controller() =>
+          container.read(protocolDayControllerProvider.notifier);
+
+      test('countProtocolsWithCompound counts active Protocols that hold it',
+          () async {
+        final magnesium = await createCompoundId('Magnesium');
+        final glycine = await createCompoundId('Glycine');
+        final removed = await createProtocolId(<String>[magnesium, glycine]);
+        await createProtocolId(<String>[magnesium]);
+        final archived = await createProtocolId(<String>[magnesium]);
+        await repositories.protocols.archiveProtocol(archived);
+
+        expect(await controller().countProtocolsWithCompound(magnesium), 2);
+        expect(await controller().countProtocolsWithCompound(glycine), 1);
+
+        await editProtocol(removed, <String>[magnesium]);
+        expect(await controller().countProtocolsWithCompound(glycine), 0);
+      });
+
+      test('latestDoseAmounts takes each last Dose and skips ids with none',
+          () async {
+        final magnesium = await createCompoundId('Magnesium');
+        final glycine = await createCompoundId('Glycine');
+        for (final (amount, tookAt) in <(double, DateTime)>[
+          (200, DateTime.utc(2026, 6, 1, 8)),
+          (400, DateTime.utc(2026, 6, 2, 8)),
+        ]) {
+          await repositories.protocols.logDose(
+            DoseSnapshotDraft(
+              compoundId: magnesium,
+              compoundName: 'Magnesium',
+              amountValue: amount,
+              amountEntered: amount.toStringAsFixed(0),
+              unit: DoseUnit.milligram,
+              route: DoseRoute.oral,
+              tookAt: tookAt,
+            ),
+          );
+        }
+
+        final amounts = await controller().latestDoseAmounts(
+          <String>{magnesium, glycine},
+        );
+
+        expect(amounts.keys, <String>[magnesium]);
+        expect(amounts[magnesium]!.amount, 400);
+        expect(amounts[magnesium]!.unit, DoseUnit.milligram);
+      });
     });
   });
 }
@@ -6437,3 +7514,10 @@ final _onceDaily = UntimedScheduleRule(
   days: const DailyScheduleDays(),
   count: 1,
 );
+
+class _EmptyOtcCompoundSeedSource implements OtcCompoundSeedSource {
+  const _EmptyOtcCompoundSeedSource();
+
+  @override
+  List<OtcCompoundSeedRow> load() => const <OtcCompoundSeedRow>[];
+}

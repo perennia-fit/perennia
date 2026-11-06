@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/repositories/training_repositories.dart';
 import '../../../domain/protocols/protocol_plan_days.dart'
     show DueUnfilledDose, dueUnfilled;
+import '../../auth/repositories/auth_repository.dart';
 
 /// The Protocols repository provider, mirroring `nutritionRepositoryProvider`.
 /// Widgets -> this controller -> the repository (the only layer touching Drift).
@@ -28,6 +29,12 @@ final compoundListProvider = StreamProvider<List<CompoundRecord>>((ref) {
   return ref.watch(protocolsRepositoryProvider).watchCompounds();
 });
 
+/// The active `Purpose`s in the user's order, for the filter rows, the editor
+/// sheet's chips and the Purpose manager.
+final activePurposesProvider = StreamProvider<List<PurposeRecord>>((ref) {
+  return ref.watch(protocolsRepositoryProvider).purposes.watchActive();
+});
+
 /// Lightweight active `Compound` options for read paths that only need an id
 /// and label. Dose logging still consumes [compoundListProvider] because it
 /// snapshots default/strength details.
@@ -36,19 +43,24 @@ final compoundOptionListProvider =
   return ref.watch(protocolsRepositoryProvider).watchCompoundOptions();
 });
 
-/// Active `Compound` schedule options for Protocol plan editors: identity for
-/// member chips plus default unit/route for optional Schedule seed values.
-final compoundScheduleOptionListProvider =
-    StreamProvider<List<CompoundScheduleOptionRecord>>((ref) {
-  return ref.watch(protocolsRepositoryProvider).watchCompoundScheduleOptions();
-});
-
 final protocolMemberCompoundNamesProvider =
     StreamProvider.family<Map<String, String>, CompoundNameLookupRequest>(
   (ref, request) {
     return ref
         .watch(protocolsRepositoryProvider)
         .watchCompoundNamesByIds(request.idSet);
+  },
+);
+
+/// The `Compound`s a Protocol editor's members name, archived ones included
+/// with `isArchived` set: a Protocol keeps a member whose Compound was archived,
+/// and the editor still names it (D4).
+final compoundsByIdsProvider = StreamProvider.autoDispose
+    .family<List<CompoundScheduleOptionRecord>, CompoundNameLookupRequest>(
+  (ref, request) {
+    return ref
+        .watch(protocolsRepositoryProvider)
+        .watchCompoundsByIds(request.idSet);
   },
 );
 
@@ -214,6 +226,31 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
     return ref.read(protocolsRepositoryProvider).createCompound(draft);
   }
 
+  /// Edits a `Compound` through the repository Activity Log write path.
+  /// Returns the Batch id, or null when the draft changes nothing, which
+  /// writes nothing.
+  Future<String?> editCompound(String compoundId, CompoundDraft draft) {
+    return ref
+        .read(protocolsRepositoryProvider)
+        .editCompound(compoundId, draft);
+  }
+
+  /// Archives a `Compound`. It cascades nothing: a Protocol keeps it as a
+  /// member, and its logged Doses stay. Returns the Batch id.
+  Future<String> archiveCompound(String compoundId) {
+    return ref.read(protocolsRepositoryProvider).archiveCompound(compoundId);
+  }
+
+  /// How many active Protocols hold [compoundId] as a live member, for the
+  /// archive confirmation (D4).
+  Future<int> countProtocolsWithCompound(String compoundId) async {
+    final summaries =
+        await ref.read(protocolsRepositoryProvider).listProtocolSummaries();
+    return summaries
+        .where((summary) => summary.compoundIds.contains(compoundId))
+        .length;
+  }
+
   /// Logs a `Dose` through the repository Activity Log write path. The Dose
   /// snapshots the Compound's name, captures its timezone, and freezes its
   /// local date at log time.
@@ -256,8 +293,54 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   /// Idempotently loads the tiny OTC seed `Compound` library (PROTOCOLS.md §3),
   /// so the picker has neutral starter rows on a first run. Safe to call
   /// repeatedly — the seed skips Compounds already present (stable ids).
-  Future<void> ensureOtcLibrarySeeded() {
-    return ref.read(protocolsRepositoryProvider).ensureOtcLibrarySeeded();
+  ///
+  /// It is also where a signed-out device runs the seed tag backfill
+  /// (docs/designs/compound-purposes.md, D3). A signed-in device must not run
+  /// it here: `SyncRepository` runs it at the end of each successful Sync Run,
+  /// so it sees the edits other devices made first. A signed-out device tags
+  /// only rows that never synced, one second past each row's own stamp, so the
+  /// write can't beat an edit made elsewhere: one that has signed out still
+  /// holds rows with a server copy, and those wait for a signed-in Sync Run.
+  /// [ProtocolsRepository] has no auth, so the rule lives in this controller. If
+  /// the auth read fails the backfill is skipped, because tagging before a pull
+  /// could overwrite an edit made elsewhere and the next open retries.
+  Future<void> ensureOtcLibrarySeeded() async {
+    final repository = ref.read(protocolsRepositoryProvider);
+    await repository.ensureOtcLibrarySeeded();
+    final bool isSignedIn;
+    try {
+      isSignedIn = (await ref.read(authControllerProvider.future)).isSignedIn;
+    } on Object {
+      return;
+    }
+    if (!isSignedIn) {
+      await repository.backfillSeedPurposes(onlyNeverSynced: true);
+    }
+  }
+
+  /// Creates a `Purpose` and returns its id. Throws [PurposeNameException] for
+  /// an empty or duplicate name.
+  Future<String> createPurpose(String name) {
+    return ref.read(protocolsRepositoryProvider).purposes.create(name);
+  }
+
+  /// Renames a `Purpose`. Throws [PurposeNameException] for an empty or
+  /// duplicate name. No Compound changes, because tags hold ids.
+  Future<void> renamePurpose(String id, String name) {
+    return ref
+        .read(protocolsRepositoryProvider)
+        .purposes
+        .rename(id, name: name);
+  }
+
+  /// Stores the user's order of the active `Purpose`s.
+  Future<void> reorderPurposes(List<String> purposeIds) {
+    return ref.read(protocolsRepositoryProvider).purposes.reorder(purposeIds);
+  }
+
+  /// Archives a `Purpose`. A Compound tagged with it keeps the id.
+  Future<void> archivePurpose(String id) {
+    return ref.read(protocolsRepositoryProvider).purposes.archive(id);
   }
 
   /// Sets a Compound's favourites UI-affordance flag, hoisting it
@@ -290,6 +373,21 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   /// falls back to its default unit/route.
   Future<DoseRecord?> lastDoseFor(String compoundId) {
     return ref.read(protocolsRepositoryProvider).lastDoseFor(compoundId);
+  }
+
+  /// Each of [compoundIds]' most recently logged amount and unit, DERIVED on
+  /// read from [lastDoseFor]. An id with no Dose has no entry.
+  Future<Map<String, ({double amount, DoseUnit unit})>> latestDoseAmounts(
+    Set<String> compoundIds,
+  ) async {
+    final amounts = <String, ({double amount, DoseUnit unit})>{};
+    for (final compoundId in compoundIds) {
+      final dose = await lastDoseFor(compoundId);
+      if (dose != null) {
+        amounts[compoundId] = (amount: dose.amountValue, unit: dose.unit);
+      }
+    }
+    return amounts;
   }
 }
 

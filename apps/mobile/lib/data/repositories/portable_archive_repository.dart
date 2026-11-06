@@ -1267,28 +1267,54 @@ class PortableArchiveRepository {
         // Protocols rides the same merge-only LWW backup rails. Kept in the
         // encrypted portable archive so a user keeps a complete sovereign
         // backup (PROTOCOLS.md §8) even though Protocols is excluded from CSV.
-        _TypedPortableArchiveEntity<CompoundRow>(
-          tableName: AppDatabase.compoundsTable,
+        _TypedPortableArchiveEntity<PurposeRow>(
+          tableName: AppDatabase.purposesTable,
           selectRows: () {
-            final query = _database.select(_database.compounds)
+            final query = _database.select(_database.purposes)
               ..orderBy([
                 (row) => OrderingTerm.asc(row.id),
               ]);
             return query.get();
           },
-          fromJson: CompoundRow.fromJson,
+          fromJson: PurposeRow.fromJson,
           toJson: (row) => row.toJson(),
           findById: (id) {
-            final query = _database.select(_database.compounds)
+            final query = _database.select(_database.purposes)
               ..where((row) => row.id.equals(id));
             return query.getSingleOrNull();
           },
           upsert: (row) => _database
-              .into(_database.compounds)
+              .into(_database.purposes)
               .insert(row, mode: InsertMode.insertOrReplace),
           idOf: (row) => row.id,
           updatedAtOf: (row) => row.updatedAt,
-          imageOf: _compoundImage,
+          imageOf: _purposeImage,
+        ),
+        _TypedPortableArchiveEntity<_PortableCompoundRow>(
+          tableName: AppDatabase.compoundsTable,
+          selectRows: () async {
+            final query = _database.select(_database.compounds)
+              ..orderBy([
+                (row) => OrderingTerm.asc(row.id),
+              ]);
+            return (await query.get())
+                .map(_PortableCompoundRow.stored)
+                .toList();
+          },
+          fromJson: _PortableCompoundRow.fromJson,
+          toJson: (compound) => compound.row.toJson(),
+          findById: (id) async {
+            final query = _database.select(_database.compounds)
+              ..where((row) => row.id.equals(id));
+            final row = await query.getSingleOrNull();
+            return row == null ? null : _PortableCompoundRow.stored(row);
+          },
+          upsert: (compound) => _database
+              .into(_database.compounds)
+              .insertOnConflictUpdate(compound.companion),
+          idOf: (compound) => compound.row.id,
+          updatedAtOf: (compound) => compound.row.updatedAt,
+          imageOf: (compound) => _compoundImage(compound.row),
         ),
         _TypedPortableArchiveEntity<DoseRow>(
           tableName: AppDatabase.dosesTable,
@@ -1682,6 +1708,10 @@ class PortableArchiveRepository {
     // Skips arrived at schema 64 (D8).
     if (archiveSchemaVersion < 64 &&
         tableName == AppDatabase.protocolSkipsTable) {
+      return true;
+    }
+    // Purposes arrived at schema 66 (compound-purposes.md, D1).
+    if (archiveSchemaVersion < 66 && tableName == AppDatabase.purposesTable) {
       return true;
     }
     return archiveSchemaVersion < 53 &&
@@ -2165,6 +2195,37 @@ class _PortableFocusRow {
     return hasColorHex
         ? companion
         : companion.copyWith(colorHex: const Value<String?>.absent());
+  }
+}
+
+/// A Compound row read from an archive, remembering whether the archive carried
+/// its Purposes. Archives from schema 65 or earlier have no `purposeIds` key,
+/// and `CompoundRow.fromJson` throws on a missing non-null key, so it reads as
+/// the column default. But reading that as `[]` on write would let an old
+/// archive's newer row erase tags made since (docs/designs/compound-purposes.md,
+/// D2). A missing key leaves the stored list as it is, the rule sync and undo
+/// follow too.
+class _PortableCompoundRow {
+  const _PortableCompoundRow(this.row, {required this.hasPurposeIds});
+
+  _PortableCompoundRow.stored(CompoundRow row)
+      : this(row, hasPurposeIds: true);
+
+  factory _PortableCompoundRow.fromJson(Map<String, dynamic> json) {
+    return _PortableCompoundRow(
+      CompoundRow.fromJson(<String, dynamic>{'purposeIds': '[]', ...json}),
+      hasPurposeIds: json.containsKey('purposeIds'),
+    );
+  }
+
+  final CompoundRow row;
+  final bool hasPurposeIds;
+
+  CompoundsCompanion get companion {
+    final companion = row.toCompanion(false);
+    return hasPurposeIds
+        ? companion
+        : companion.copyWith(purposeIds: const Value<String>.absent());
   }
 }
 

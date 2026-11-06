@@ -46,6 +46,23 @@ void main() {
     );
   });
 
+  test(
+      'a duplicate Purpose name gets its own message '
+      '(compound-purposes.md, D8)', () {
+    final result = refused(<ActivityLogUndoConflict>[
+      conflict(
+        ActivityLogUndoConflictReason.duplicatePurposeName,
+        entityTable: AppDatabase.purposesTable,
+        entityId: 'purpose-1',
+      ),
+    ]);
+
+    expect(
+      undoConflictMessage(l10n, result),
+      "Can't undo: another purpose now has this name.",
+    );
+  });
+
   test('other conflicts name the first changed row', () {
     final result = refused(<ActivityLogUndoConflict>[
       conflict(ActivityLogUndoConflictReason.stale),

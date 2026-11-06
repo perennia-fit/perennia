@@ -102,6 +102,15 @@ extension PlanSyncActivityLogRepository on ActivityLogRepository {
             updatedAt: syncUpdatedAt,
           ),
         ),
+      AppDatabase.purposesTable => (_database.update(_database.purposes)
+            ..where((row) => row.id.equals(id)))
+          .write(
+          PurposesCompanion(
+            syncDeviceId: syncDeviceId,
+            syncPreviouslySynced: const Value<bool>(true),
+            updatedAt: syncUpdatedAt,
+          ),
+        ),
       AppDatabase.workoutSessionsTable =>
         (_database.update(_database.workoutSessions)
               ..where((row) => row.id.equals(id)))
@@ -241,6 +250,10 @@ extension PlanSyncActivityLogRepository on ActivityLogRepository {
                 ..where((row) => row.id.equals(id)))
               .getSingleOrNull())
           ?._planSyncMetadata,
+      AppDatabase.purposesTable => (await (_database.select(_database.purposes)
+                ..where((row) => row.id.equals(id)))
+              .getSingleOrNull())
+          ?._planSyncMetadata,
       AppDatabase.workoutSessionsTable =>
         (await (_database.select(_database.workoutSessions)
                   ..where((row) => row.id.equals(id)))
@@ -318,6 +331,10 @@ extension PlanSyncActivityLogRepository on ActivityLogRepository {
       AppDatabase.focusesTable =>
         _database.into(_database.focuses).insertOnConflictUpdate(
               _focusSyncCompanionFromImage(image, syncDeviceId: deviceId),
+            ),
+      AppDatabase.purposesTable =>
+        _database.into(_database.purposes).insertOnConflictUpdate(
+              _purposeSyncCompanionFromImage(image, syncDeviceId: deviceId),
             ),
       AppDatabase.workoutSessionsTable => _database
           .into(_database.workoutSessions)
@@ -547,6 +564,15 @@ extension PlanSyncActivityLogRepository on ActivityLogRepository {
               ))
             .get();
         return rows.map((row) => row.id).toList(growable: false);
+      case AppDatabase.purposesTable:
+        final rows = await (_database.select(_database.purposes)
+              ..where(
+                (row) =>
+                    row.syncPreviouslySynced.equals(true) &
+                    row.deletedAt.isNull(),
+              ))
+            .get();
+        return rows.map((row) => row.id).toList(growable: false);
       case AppDatabase.workoutSessionsTable:
         final rows = await (_database.select(_database.workoutSessions)
               ..where(_previouslySyncedWorkoutSession))
@@ -628,6 +654,11 @@ extension PlanSyncActivityLogRepository on ActivityLogRepository {
             ..where((row) => row.id.equals(id)))
           .write(
           FocusesCompanion(updatedAt: updatedAt, deletedAt: deletedAt),
+        ),
+      AppDatabase.purposesTable => (_database.update(_database.purposes)
+            ..where((row) => row.id.equals(id)))
+          .write(
+          PurposesCompanion(updatedAt: updatedAt, deletedAt: deletedAt),
         ),
       AppDatabase.workoutSessionsTable =>
         (_database.update(_database.workoutSessions)
@@ -941,6 +972,11 @@ final class _PlanSyncMetadata {
 }
 
 extension on FocusRow {
+  _PlanSyncMetadata get _planSyncMetadata =>
+      _PlanSyncMetadata(updatedAt.toUtc(), syncDeviceId);
+}
+
+extension on PurposeRow {
   _PlanSyncMetadata get _planSyncMetadata =>
       _PlanSyncMetadata(updatedAt.toUtc(), syncDeviceId);
 }

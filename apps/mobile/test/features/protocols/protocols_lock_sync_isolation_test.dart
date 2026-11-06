@@ -144,6 +144,47 @@ void main() {
   );
 
   test(
+    'a Purpose and a Compound tag written WHILE the lock is enabled+locked '
+    'still write normal, sync-eligible Activity Log rows',
+    () async {
+      final controller =
+          lockContainer.read(protocolsLockControllerProvider.notifier);
+      await lockContainer.read(protocolsLockControllerProvider.future);
+      await controller.enableLock('1234');
+      expect(
+        lockContainer.read(protocolsLockControllerProvider).value!.status,
+        ProtocolsLockStatus.locked,
+      );
+
+      final purposeId = await repositories.protocols.purposes.create('Joints');
+      final compound = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: 'Collagen',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+          purposeIds: <String>[purposeId],
+        ),
+      );
+
+      final entries = await repositories.activityLog.listEntries();
+      final purposeEntry = entries.singleWhere(
+        (entry) => entry.entityId == purposeId,
+      );
+      expect(purposeEntry.entityTable, AppDatabase.purposesTable);
+      expect(
+        (await _rawRow(database, purposeEntry.id)).syncAcknowledgedAt,
+        isNull,
+      );
+      final compoundEntry = await _entryFor(repositories, compound.batchId);
+      expect(compoundEntry.afterImage!['purpose_ids'], '["$purposeId"]');
+      expect(
+        (await _rawRow(database, compoundEntry.id)).syncAcknowledgedAt,
+        isNull,
+      );
+    },
+  );
+
+  test(
     'disabling the Supplements lock does not touch the repository or '
     'Activity Log at all',
     () async {

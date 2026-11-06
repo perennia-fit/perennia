@@ -69,6 +69,7 @@ void main() {
       'default_route': 'oral',
       'strength': null,
       'is_favorite': 0,
+      'purpose_ids': '[]',
       'sync_device_id': 'device-a',
       'sync_previously_synced': 1,
       'updated_at': 1783731600,

@@ -131,7 +131,7 @@ final class ProgressRange {
 
 /// The settings Progress reads, or null while they load. A failed load
 /// reads as the defaults, as Home's does.
-final _progressSettingsProvider = Provider.autoDispose<AppSettings?>((ref) {
+final progressSettingsProvider = Provider.autoDispose<AppSettings?>((ref) {
   final settings = ref.watch(settingsControllerProvider);
   return settings.value ?? (settings.hasError ? AppSettings.defaults : null);
 });
@@ -140,7 +140,7 @@ final _progressSettingsProvider = Provider.autoDispose<AppSettings?>((ref) {
 /// start comes from them, and the Protocols card must not guess
 /// `showProtocolsOnToday`.
 final progressRangeProvider = Provider.autoDispose<ProgressRange?>((ref) {
-  final settings = ref.watch(_progressSettingsProvider);
+  final settings = ref.watch(progressSettingsProvider);
   if (settings == null) {
     return null;
   }
@@ -573,7 +573,7 @@ final progressKeyExercisesProvider =
     Provider.autoDispose<AsyncValue<ProgressKeyExercises>>((ref) {
   final range = ref.watch(progressRangeProvider);
   final unitSystem = ref.watch(
-    _progressSettingsProvider.select((settings) => settings?.unitSystem),
+    progressSettingsProvider.select((settings) => settings?.unitSystem),
   );
   if (range == null || unitSystem == null) {
     return const AsyncLoading<ProgressKeyExercises>();
@@ -639,7 +639,7 @@ final progressNewBestsProvider =
     Provider.autoDispose<AsyncValue<ProgressNewBests>>((ref) {
   final range = ref.watch(progressRangeProvider);
   final unitSystem = ref.watch(
-    _progressSettingsProvider.select((settings) => settings?.unitSystem),
+    progressSettingsProvider.select((settings) => settings?.unitSystem),
   );
   if (range == null || unitSystem == null) {
     return const AsyncLoading<ProgressNewBests>();
@@ -755,7 +755,7 @@ ProgressBodyRow? _bodyRow(
 final progressProtocolsProvider =
     Provider.autoDispose<AsyncValue<ProgressProtocols?>>((ref) {
   final range = ref.watch(progressRangeProvider);
-  final settings = ref.watch(_progressSettingsProvider);
+  final settings = ref.watch(progressSettingsProvider);
   if (range == null || settings == null) {
     return const AsyncLoading<ProgressProtocols?>();
   }

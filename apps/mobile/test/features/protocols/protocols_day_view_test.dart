@@ -1842,6 +1842,9 @@ Future<void> _pumpView(
         recentCompoundIdsProvider.overrideWith(
           (ref) => Stream<List<String>>.value(const <String>[]),
         ),
+        activePurposesProvider.overrideWith(
+          (ref) => Stream<List<PurposeRecord>>.value(const <PurposeRecord>[]),
+        ),
         // LogDoseSheet's OPTIONAL Protocol tag picker reads this;
         // no Protocols fixture here, so it renders "None (ad-hoc)" only.
         protocolOptionListProvider.overrideWith(
@@ -1923,6 +1926,9 @@ class _BannerPermissions implements TimerBackgroundScheduler {
 
   @override
   Future<void> cancel(String timerId) async {}
+
+  @override
+  Future<void> setInAppTimerCues(bool active) async {}
 }
 
 class _BannerPlatform implements ProtocolReminderPlatform {

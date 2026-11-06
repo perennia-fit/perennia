@@ -592,23 +592,65 @@ abstract class AppLocalizations {
   /// **'Resume Workout'**
   String get workoutResume;
 
-  /// No description provided for @workoutFinished.
-  ///
-  /// In en, this message translates to:
-  /// **'Workout finished'**
-  String get workoutFinished;
-
   /// No description provided for @workoutResumed.
   ///
   /// In en, this message translates to:
   /// **'Workout resumed'**
   String get workoutResumed;
 
-  /// No description provided for @workoutShareAction.
+  /// The Finish summary's facts line. sets is workoutPerformedSetsOfTotal.
   ///
   /// In en, this message translates to:
-  /// **'Share'**
-  String get workoutShareAction;
+  /// **'{duration} · {sets} · {exercises, plural, =1{1 exercise} other{{exercises} exercises}}'**
+  String finishSummaryFacts(String duration, String sets, int exercises);
+
+  /// No description provided for @finishSummaryNewBests.
+  ///
+  /// In en, this message translates to:
+  /// **'New bests'**
+  String get finishSummaryNewBests;
+
+  /// No description provided for @finishSummaryNoNewBests.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get finishSummaryNoNewBests;
+
+  /// No description provided for @finishSummaryUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Update \"{template}\"'**
+  String finishSummaryUpdate(String template);
+
+  /// No description provided for @finishSummaryUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{template}\" updated'**
+  String finishSummaryUpdated(String template);
+
+  /// No description provided for @finishSummaryUpdateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t update \"{template}\"'**
+  String finishSummaryUpdateFailed(String template);
+
+  /// No description provided for @finishSummaryCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy summary'**
+  String get finishSummaryCopy;
+
+  /// No description provided for @finishSummaryCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get finishSummaryCopied;
+
+  /// No description provided for @finishSummaryDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get finishSummaryDone;
 
   /// No description provided for @workoutEditStartTime.
   ///
@@ -1729,6 +1771,12 @@ abstract class AppLocalizations {
   /// **'Can\'t undo: foods were added to this meal afterwards.'**
   String get activityUndoDependentConflict;
 
+  /// Shown when undoing a change to a Purpose is refused because it would bring back a name another active Purpose now holds.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t undo: another purpose now has this name.'**
+  String get activityUndoDuplicatePurposeNameConflict;
+
   /// No description provided for @activityRelativeLessThanOneMinuteAgo.
   ///
   /// In en, this message translates to:
@@ -1926,6 +1974,55 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Alert volume'**
   String get trainingRestVolumeTitle;
+
+  /// The rest strip in the last 10 seconds of a rest longer than 15 seconds, with the remaining time as m:ss.
+  ///
+  /// In en, this message translates to:
+  /// **'Get ready · {time}'**
+  String trainingRestGetReady(String time);
+
+  /// No description provided for @trainingRestOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest over'**
+  String get trainingRestOver;
+
+  /// How long ago the rest ended, as m:ss, beside Rest over on the rest strip.
+  ///
+  /// In en, this message translates to:
+  /// **'+{time}'**
+  String trainingRestOverElapsed(String time);
+
+  /// No description provided for @trainingRestNotificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest timer'**
+  String get trainingRestNotificationTitle;
+
+  /// No description provided for @trainingRestNotificationCountdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest'**
+  String get trainingRestNotificationCountdown;
+
+  /// The notification 10 seconds before a rest ends, naming the Set that comes next.
+  ///
+  /// In en, this message translates to:
+  /// **'Get ready · {exercise} · Set {number}'**
+  String trainingRestNotificationGetReady(String exercise, int number);
+
+  /// The notification 3 seconds before a rest ends, naming the Set that comes next, with the time as m:ss.
+  ///
+  /// In en, this message translates to:
+  /// **'{exercise} · Set {number} in {time}'**
+  String trainingRestNotificationPrepare(
+      String exercise, int number, String time);
+
+  /// No description provided for @trainingRestNotificationOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest over'**
+  String get trainingRestNotificationOver;
 
   /// No description provided for @trainingPersonalRecordTooltip.
   ///
@@ -3585,6 +3682,24 @@ abstract class AppLocalizations {
   /// **'No changes to update'**
   String get templateUpdateNoChangesNote;
 
+  /// No description provided for @templateChangeAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add {exercise}'**
+  String templateChangeAdd(String exercise);
+
+  /// No description provided for @templateChangeRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {exercise}'**
+  String templateChangeRemove(String exercise);
+
+  /// No description provided for @templateChangeSets.
+  ///
+  /// In en, this message translates to:
+  /// **'{exercise}: sets changed'**
+  String templateChangeSets(String exercise);
+
   /// No description provided for @templateStartNoExercises.
   ///
   /// In en, this message translates to:
@@ -4407,12 +4522,6 @@ abstract class AppLocalizations {
   /// **'Compounds'**
   String get protocolEditorCompoundsHeading;
 
-  /// No description provided for @protocolEditorSchedulesHeading.
-  ///
-  /// In en, this message translates to:
-  /// **'Schedules'**
-  String get protocolEditorSchedulesHeading;
-
   /// No description provided for @protocolEditorScheduleTitle.
   ///
   /// In en, this message translates to:
@@ -4616,6 +4725,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not delete the Protocol: {error}'**
   String protocolEditorDeleteFailed(String error);
+
+  /// No description provided for @protocolEditorArchiveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not archive the Protocol: {error}'**
+  String protocolEditorArchiveFailed(String error);
 
   /// No description provided for @protocolEditorCompoundFallback.
   ///
@@ -5822,6 +5937,438 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Remove {food}'**
   String mealRemoveEntry(String food);
+
+  /// No description provided for @compoundListViewByDay.
+  ///
+  /// In en, this message translates to:
+  /// **'View by day'**
+  String get compoundListViewByDay;
+
+  /// No description provided for @compoundListSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search compounds'**
+  String get compoundListSearchHint;
+
+  /// No description provided for @compoundListEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No compounds yet.'**
+  String get compoundListEmpty;
+
+  /// No description provided for @compoundListNoMatches.
+  ///
+  /// In en, this message translates to:
+  /// **'No compounds match your search.'**
+  String get compoundListNoMatches;
+
+  /// No description provided for @compoundListFavorites.
+  ///
+  /// In en, this message translates to:
+  /// **'Favorites'**
+  String get compoundListFavorites;
+
+  /// No description provided for @compoundListRecent.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent'**
+  String get compoundListRecent;
+
+  /// No description provided for @compoundListAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All compounds'**
+  String get compoundListAll;
+
+  /// No description provided for @compoundListAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a compound'**
+  String get compoundListAdd;
+
+  /// No description provided for @compoundListRemoveFavorite.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove favorite'**
+  String get compoundListRemoveFavorite;
+
+  /// No description provided for @compoundListAddFavorite.
+  ///
+  /// In en, this message translates to:
+  /// **'Add favorite'**
+  String get compoundListAddFavorite;
+
+  /// Accessibility action on a Compound row that opens the Compound editor, the same as a long-press.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get compoundListEditAction;
+
+  /// No description provided for @compoundEditorNewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New compound'**
+  String get compoundEditorNewTitle;
+
+  /// No description provided for @compoundEditorEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit compound'**
+  String get compoundEditorEditTitle;
+
+  /// No description provided for @compoundEditorName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get compoundEditorName;
+
+  /// No description provided for @compoundEditorStrength.
+  ///
+  /// In en, this message translates to:
+  /// **'Strength (optional, e.g. 5 mg/capsule)'**
+  String get compoundEditorStrength;
+
+  /// No description provided for @compoundEditorDefaultUnit.
+  ///
+  /// In en, this message translates to:
+  /// **'Default unit'**
+  String get compoundEditorDefaultUnit;
+
+  /// No description provided for @compoundEditorDefaultRoute.
+  ///
+  /// In en, this message translates to:
+  /// **'Default route'**
+  String get compoundEditorDefaultRoute;
+
+  /// No description provided for @compoundEditorSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get compoundEditorSave;
+
+  /// No description provided for @compoundEditorArchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get compoundEditorArchive;
+
+  /// Inline error on the Compound editor's name field when it is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name'**
+  String get compoundEditorNameRequired;
+
+  /// Inline error on the Compound editor's strength field when it doesn't parse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the form 5 mg/capsule'**
+  String get compoundEditorStrengthInvalid;
+
+  /// Title of the confirmation before archiving a Compound.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive {name}?'**
+  String compoundArchiveTitle(String name);
+
+  /// Body of the archive confirmation for a Compound that one or more active Protocols hold.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{name} is in 1 active Protocol. Archiving hides it from the list and the picker; the Protocol keeps it.} other{{name} is in {count} active Protocols. Archiving hides it from the list and the picker; the Protocols keep it.}}'**
+  String compoundArchiveInProtocols(int count, String name);
+
+  /// Body of the archive confirmation for a Compound no active Protocol holds.
+  ///
+  /// In en, this message translates to:
+  /// **'Archiving hides {name} from the list and the picker. Its logged Doses stay.'**
+  String compoundArchiveUnused(String name);
+
+  /// Confirms archiving a Compound.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get compoundArchiveConfirm;
+
+  /// Tooltip of the Compound list's app bar overflow menu.
+  ///
+  /// In en, this message translates to:
+  /// **'More options'**
+  String get compoundListMenuTooltip;
+
+  /// Label above the Compound editor's Purpose chips.
+  ///
+  /// In en, this message translates to:
+  /// **'Purposes'**
+  String get compoundEditorPurposes;
+
+  /// Screen reader label of the row of Purpose filter chips on the Compound list and in the Compound picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter by purpose'**
+  String get purposeFilterLabel;
+
+  /// The filter chip that clears the Purpose filter.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get purposeFilterAll;
+
+  /// Shown when no Compound carries the selected Purpose. It never names the Purpose.
+  ///
+  /// In en, this message translates to:
+  /// **'No compounds with this purpose.'**
+  String get purposeFilterEmpty;
+
+  /// Title of the screen that manages Purposes, and the Compound list's menu item that opens it.
+  ///
+  /// In en, this message translates to:
+  /// **'Purposes'**
+  String get purposeManagerTitle;
+
+  /// No description provided for @purposeManagerAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a Purpose'**
+  String get purposeManagerAdd;
+
+  /// Tooltip of the menu on a row of the Purpose manager. It never names the Purpose.
+  ///
+  /// In en, this message translates to:
+  /// **'More options'**
+  String get purposeManagerRowMenuTooltip;
+
+  /// No description provided for @purposeManagerNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get purposeManagerNameLabel;
+
+  /// No description provided for @purposeManagerRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get purposeManagerRename;
+
+  /// No description provided for @purposeManagerArchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get purposeManagerArchive;
+
+  /// No description provided for @purposeManagerSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get purposeManagerSave;
+
+  /// No description provided for @purposeManagerReorderHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Press and hold to reorder.'**
+  String get purposeManagerReorderHint;
+
+  /// Body of the dialog confirming a Purpose's archive. Its title is the Purpose's name alone: a Purpose's name is never combined with a verb in one string.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive this purpose? Compounds keep the tag; it stops showing.'**
+  String get purposeManagerArchiveBody;
+
+  /// No description provided for @purposeManagerNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name.'**
+  String get purposeManagerNameRequired;
+
+  /// No description provided for @purposeManagerDuplicateName.
+  ///
+  /// In en, this message translates to:
+  /// **'A purpose with that name already exists.'**
+  String get purposeManagerDuplicateName;
+
+  /// No description provided for @purposeManagerSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the purpose. Try again.'**
+  String get purposeManagerSaveFailed;
+
+  /// No description provided for @purposeManagerEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No purposes. Add one to filter compounds by it.'**
+  String get purposeManagerEmpty;
+
+  /// Title of the sheet that picks a Protocol's Compounds.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Compounds'**
+  String get compoundPickerTitle;
+
+  /// Closes the Compound picker with its selection, when none of the listed Compounds is selected.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get compoundPickerDone;
+
+  /// Closes the Compound picker with its selection, with the number of listed Compounds selected.
+  ///
+  /// In en, this message translates to:
+  /// **'Done · {count}'**
+  String compoundPickerDoneCount(int count);
+
+  /// Last row of the Compound picker: creates a Compound with the name the user searched for.
+  ///
+  /// In en, this message translates to:
+  /// **'Create \"{name}\"'**
+  String compoundPickerCreate(String name);
+
+  /// Button under a Protocol's member rows that opens the Compound picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Compounds'**
+  String get protocolEditorAddCompounds;
+
+  /// Marks a Protocol member row whose Compound is archived.
+  ///
+  /// In en, this message translates to:
+  /// **'Archived'**
+  String get protocolEditorMemberArchived;
+
+  /// Tooltip of a Protocol member row's remove button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {compound}'**
+  String protocolEditorRemoveMember(String compound);
+
+  /// Under a Protocol member row after a save attempt, when that member's Schedule has issues.
+  ///
+  /// In en, this message translates to:
+  /// **'Fix this Schedule'**
+  String get protocolEditorFixSchedule;
+
+  /// In a Protocol member row's Schedule summary, where the planned amount goes when it is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Add an amount'**
+  String get protocolScheduleSummaryAddAmount;
+
+  /// In a Schedule summary: the days of a Schedule planned every N days.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Every day} other{Every {count} days}}'**
+  String protocolScheduleSummaryEveryNDays(int count);
+
+  /// In a Schedule summary: how many untimed doses an Any time Schedule plans each day.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 a day} other{{count} a day}}'**
+  String protocolScheduleSummaryPerDay(int count);
+
+  /// In a Schedule summary: a planned amount in tablets, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} tablet} other{{amount} tablets}}'**
+  String protocolScheduleSummaryTablets(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in capsules, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} capsule} other{{amount} capsules}}'**
+  String protocolScheduleSummaryCapsules(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in drops, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} drop} other{{amount} drops}}'**
+  String protocolScheduleSummaryDrops(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in sprays, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} spray} other{{amount} sprays}}'**
+  String protocolScheduleSummarySprays(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in puffs, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} puff} other{{amount} puffs}}'**
+  String protocolScheduleSummaryPuffs(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in patches, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} patch} other{{amount} patches}}'**
+  String protocolScheduleSummaryPatches(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in units, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} unit} other{{amount} units}}'**
+  String protocolScheduleSummaryUnits(num count, String amount);
+
+  /// Heading of the Protocol editor's section for its start, end, cycle and Pauses.
+  ///
+  /// In en, this message translates to:
+  /// **'When'**
+  String get protocolEditorWhenHeading;
+
+  /// In the When section's summary: the Protocol's start date.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts {date}'**
+  String protocolEditorPeriodStarts(String date);
+
+  /// In the When section's summary: the Protocol has no end date.
+  ///
+  /// In en, this message translates to:
+  /// **'Ongoing'**
+  String get protocolEditorPeriodOngoing;
+
+  /// In the When section's summary, after the start date: the Protocol's end date.
+  ///
+  /// In en, this message translates to:
+  /// **'until {date}'**
+  String protocolEditorPeriodUntil(String date);
+
+  /// The When section's summary for a Protocol whose end date has passed.
+  ///
+  /// In en, this message translates to:
+  /// **'Ended {date}'**
+  String protocolEditorPeriodEnded(String date);
+
+  /// In the When section's summary: the Protocol's cycle, in days.
+  ///
+  /// In en, this message translates to:
+  /// **'{onDays} on, {offDays} off'**
+  String protocolEditorPeriodCycle(int onDays, int offDays);
+
+  /// In the When section's summary: how many Pauses the Protocol has.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 Pause} other{{count} Pauses}}'**
+  String protocolEditorPeriodPauses(int count);
+
+  /// Dialog on leaving a new Protocol that has unsaved values.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard this Protocol?'**
+  String get protocolEditorDiscardNewTitle;
+
+  /// Dialog on leaving a saved Protocol's editor with unsaved changes.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard changes?'**
+  String get protocolEditorDiscardChangesTitle;
+
+  /// Discard dialog button that returns to the Protocol editor as it was.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep editing'**
+  String get protocolEditorKeepEditing;
+
+  /// Discard dialog button that closes the Protocol editor without saving.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get protocolEditorDiscard;
 }
 
 class _AppLocalizationsDelegate

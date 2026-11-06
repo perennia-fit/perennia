@@ -30,6 +30,7 @@ import 'package:perennia/features/exercise/widgets/exercise_page.dart';
 import 'package:perennia/features/focus/repositories/focus_feature_repository.dart';
 import 'package:perennia/features/home/controllers/home_controller.dart';
 import 'package:perennia/features/home/repositories/home_repository.dart';
+import 'package:perennia/features/home/widgets/finish_summary_sheet.dart';
 import 'package:perennia/features/home/widgets/home_screen.dart';
 import 'package:perennia/features/home/widgets/start_workout_sheet.dart';
 import 'package:perennia/features/home/widgets/workout_screen.dart';
@@ -46,6 +47,9 @@ import 'package:perennia/features/progress/widgets/progress_overview.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
+import 'package:perennia/features/protocols/widgets/compound_picker_sheet.dart';
+import 'package:perennia/features/protocols/widgets/purpose_filter_row.dart';
+import 'package:perennia/features/protocols/widgets/purpose_manager_screen.dart';
 import 'package:perennia/features/routine_plans/controllers/routine_plan_controller.dart';
 import 'package:perennia/features/routine_plans/repositories/routine_plan_feature_repository.dart';
 import 'package:perennia/features/routine_plans/widgets/routine_plan_list_screen.dart';
@@ -63,6 +67,8 @@ import 'package:perennia/features/training/widgets/plan_progress_labels.dart';
 import 'package:perennia/features/up_next/repositories/up_next_feature_repository.dart';
 import 'package:perennia/l10n/l10n.dart';
 import 'package:perennia/theme/theme.dart';
+
+import 'support/clipboard_capture.dart';
 
 void main() {
   testWidgets('launches home through the ProviderScope app root',
@@ -275,6 +281,115 @@ void main() {
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       }
+
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets(
+      'the Purpose filter rows and manager meet accessibility guidelines at '
+      '320 dp and 1.3x text', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final purposes = <PurposeRecord>[
+      for (final (index, name) in <String>[
+        'Sleep',
+        'Body composition',
+        'General health',
+      ].indexed)
+        PurposeRecord(
+          id: 'p-$index',
+          name: name,
+          sortOrder: index,
+          updatedAt: DateTime.utc(2026, 6, 30),
+        ),
+    ];
+    final compounds = <CompoundRecord>[
+      CompoundRecord(
+        id: 'c-1',
+        name: 'Melatonin',
+        defaultUnit: DoseUnit.milligram,
+        defaultRoute: DoseRoute.oral,
+        purposeIds: const <String>['p-0'],
+        updatedAt: DateTime.utc(2026, 6, 30),
+      ),
+    ];
+
+    Future<void> expectAccessible() async {
+      expect(tester.takeException(), isNull);
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    }
+
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ProviderScope(
+          // A new scope per theme, so each loop starts on the list.
+          key: UniqueKey(),
+          overrides: [
+            compoundListProvider.overrideWith(
+              (ref) => Stream<List<CompoundRecord>>.value(compounds),
+            ),
+            recentCompoundIdsProvider.overrideWith(
+              (ref) => Stream<List<String>>.value(const <String>[]),
+            ),
+            activePurposesProvider.overrideWith(
+              (ref) => Stream<List<PurposeRecord>>.value(purposes),
+            ),
+            protocolDayControllerProvider.overrideWith(
+              _StubProtocolDayController.new,
+            ),
+            protocolsLockStoreProvider.overrideWith((ref) => _NoLockStore()),
+          ],
+          child: MaterialApp(
+            theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: const TextScaler.linear(1.3),
+              ),
+              child: child!,
+            ),
+            home: const CompoundListScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The list's filter row, with a filter selected.
+      await tester.tap(find.byKey(PurposeFilterRow.optionKey('p-0')));
+      await tester.pumpAndSettle();
+      await expectAccessible();
+
+      // The picker's filter row, from a page that opens it.
+      final context = tester.element(find.byType(CompoundListScreen));
+      unawaited(
+        showCompoundPickerSheet(context, selectedIds: const <String>[]),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(CompoundPickerSheet.searchFieldKey), findsOneWidget);
+      await tester.tap(find.byKey(PurposeFilterRow.optionKey('p-0')).last);
+      await tester.pumpAndSettle();
+      await expectAccessible();
+      await tester.tap(find.byKey(CompoundPickerSheet.doneButtonKey));
+      await tester.pumpAndSettle();
+
+      // The manager, and its name dialog.
+      await tester.tap(find.byKey(CompoundListScreen.menuButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundListScreen.purposesMenuKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(PurposeManagerScreen), findsOneWidget);
+      await expectAccessible();
+      await tester.tap(find.byKey(PurposeManagerScreen.addButtonKey));
+      await tester.pumpAndSettle();
+      await expectAccessible();
 
       semantics.dispose();
       await tester.pumpWidget(const SizedBox.shrink());
@@ -864,6 +979,9 @@ void main() {
           recentCompoundIdsProvider.overrideWith(
             (ref) => Stream<List<String>>.value(const <String>[]),
           ),
+          activePurposesProvider.overrideWith(
+            (ref) => Stream<List<PurposeRecord>>.value(const <PurposeRecord>[]),
+          ),
           protocolDayControllerProvider.overrideWith(
             _StubProtocolDayController.new,
           ),
@@ -1020,6 +1138,9 @@ void main() {
             (ref) => Stream<List<String>>.value(
               const <String>[],
             ),
+          ),
+          activePurposesProvider.overrideWith(
+            (ref) => Stream<List<PurposeRecord>>.value(const <PurposeRecord>[]),
           ),
           protocolDayControllerProvider.overrideWith(
             _StubProtocolDayController.new,
@@ -2100,42 +2221,12 @@ void main() {
   });
 
   testWidgets(
-      'finishing a workout pops to Home and shows a Share action in the '
-      'snackbar', (tester) async {
+      'finishing a workout opens the summary over the Workout, and Done '
+      'returns to Home', (tester) async {
     final repository = _FinishableWorkoutHomeRepository();
-    final copiedSummaries = <String>[];
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          final arguments = call.arguments as Map<Object?, Object?>;
-          copiedSummaries.add(arguments['text']! as String);
-        }
-        return null;
-      },
-    );
-    addTearDown(() {
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      );
-    });
+    final copiedSummaries = captureClipboard(tester);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          upNextFeatureRepositoryProvider.overrideWith(
-            (ref) => const StubUpNextFeatureRepository(),
-          ),
-          _homeNutritionDayOverride(),
-          homeRepositoryProvider.overrideWith((ref) => repository),
-          templateDivergenceFeatureRepositoryProvider.overrideWith(
-            (ref) => const _NoDivergenceRepository(),
-          ),
-        ],
-        child: const PerenniaApp(),
-      ),
-    );
+    await tester.pumpWidget(_finishableWorkoutApp(repository));
     await tester.pump();
     await tester.pumpAndSettle();
 
@@ -2152,22 +2243,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.finishedWorkoutIds, <String>['workout-1']);
-    // Finish pops the WorkoutScreen back to Home.
-    expect(find.byType(WorkoutScreen), findsNothing);
-    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+    // The sheet opens over the Workout: nothing pops until it closes.
+    expect(find.byType(WorkoutScreen), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Workout finished'), findsNothing);
 
-    expect(find.text('Workout finished'), findsOneWidget);
-    final shareActionFinder = find.descendant(
-      of: find.byType(SnackBar),
-      matching: find.widgetWithText(SnackBarAction, 'Share'),
-    );
-    expect(shareActionFinder, findsOneWidget);
-
-    await tester.tap(shareActionFinder);
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(FinishSummarySheet.copySummaryKey));
+    await tester.pump();
+    await tester.pump();
 
     expect(copiedSummaries, <String>['Workout summary']);
-    expect(find.text('Workout summary copied'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(FinishSummarySheet.copySummaryKey),
+        matching: find.text('Copied'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsNothing);
+    expect(find.byType(WorkoutScreen), findsNothing);
+    expect(find.byType(HomeScreen), findsOneWidget);
   });
 
   testWidgets('finishing a zero-set workout pops to Home without error', (
@@ -2175,21 +2276,7 @@ void main() {
   ) async {
     final repository = _FinishableWorkoutHomeRepository();
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          upNextFeatureRepositoryProvider.overrideWith(
-            (ref) => const StubUpNextFeatureRepository(),
-          ),
-          _homeNutritionDayOverride(),
-          homeRepositoryProvider.overrideWith((ref) => repository),
-          templateDivergenceFeatureRepositoryProvider.overrideWith(
-            (ref) => const _NoDivergenceRepository(),
-          ),
-        ],
-        child: const PerenniaApp(),
-      ),
-    );
+    await tester.pumpWidget(_finishableWorkoutApp(repository));
     await tester.pump();
     await tester.pumpAndSettle();
 
@@ -2204,8 +2291,48 @@ void main() {
 
     expect(repository.finishedWorkoutIds, <String>['workout-1']);
     expect(tester.takeException(), isNull);
+    expect(find.byKey(FinishSummarySheet.sheetKey), findsOneWidget);
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
     expect(find.byType(WorkoutScreen), findsNothing);
     expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('the Workout menu\'s Share copies the text, and says so for 2 s',
+      (tester) async {
+    final repository = _FinishableWorkoutHomeRepository();
+    final copiedSummaries = captureClipboard(tester);
+
+    await tester.pumpWidget(_finishableWorkoutApp(repository));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(HomeScreen.openWorkoutButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(WorkoutScreen.optionsButtonKey('workout-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Share workout'));
+    await tester.pumpAndSettle();
+
+    expect(copiedSummaries, <String>['Workout summary']);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text('Workout summary copied'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pump(const Duration(milliseconds: 1900));
+    expect(find.byType(SnackBar), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('workout notes screen deletes existing notes', (
@@ -3379,8 +3506,29 @@ class _WorkoutActionsHomeRepository extends _HomeRepositoryTestDefaults {
   }
 }
 
-/// An open, zero-set workout used to exercise the Finish flow:
-/// popping to Home, the Share snackbar action, and the zero-set finish path.
+/// The app over [repository], with a Workout that has no divergence and no
+/// New Bests, for the Finish flow.
+Widget _finishableWorkoutApp(_FinishableWorkoutHomeRepository repository) {
+  return ProviderScope(
+    overrides: [
+      upNextFeatureRepositoryProvider.overrideWith(
+        (ref) => const StubUpNextFeatureRepository(),
+      ),
+      _homeNutritionDayOverride(),
+      homeRepositoryProvider.overrideWith((ref) => repository),
+      templateDivergenceFeatureRepositoryProvider.overrideWith(
+        (ref) => const _NoDivergenceRepository(),
+      ),
+      progressFeatureRepositoryProvider.overrideWith(
+        (ref) => const StubProgressFeatureRepository(),
+      ),
+    ],
+    child: const PerenniaApp(),
+  );
+}
+
+/// An open, zero-set workout used to exercise the Finish flow: the summary
+/// sheet, Copy summary, the return to Home, and the zero-set finish path.
 class _FinishableWorkoutHomeRepository extends _HomeRepositoryTestDefaults {
   final finishedWorkoutIds = <String>[];
 

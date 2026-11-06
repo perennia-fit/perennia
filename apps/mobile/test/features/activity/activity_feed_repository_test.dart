@@ -280,6 +280,24 @@ void main() {
       await database.close();
     });
 
+    test('a Purpose change reads as a purpose and can be undone', () async {
+      final id = await repositories.protocols.purposes.create('Joints');
+      await repositories.protocols.purposes.archive(id);
+
+      final batches = await feedRepository.listRecentBatches(now: DateTime.now());
+
+      expect(batches, hasLength(2));
+      for (final batch in batches) {
+        expect(batch.affectedEntitySummary, contains('purpose'));
+        expect(batch.affectedEntitySummary, isNot(contains('purposes')));
+      }
+      final result = await repositories.activityLog.undoBatch(
+        batches.first.batchId,
+      );
+      expect(result.conflicts, isEmpty);
+      expect(await repositories.protocols.purposes.listActive(), hasLength(1));
+    });
+
     test('an agent Meal batch surfaces as exactly one Recent Activity entry',
         () async {
       final batch = await _applyAgentMealBatch(repositories);

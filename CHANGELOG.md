@@ -23,6 +23,20 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   latest Meal that had them.
 - **Log a meal from one screen:** repeat a whole meal from Your meals, add
   foods, or save just the time and add foods later.
+- **The rest timer warns you before it ends.** The strip and a tone mark Get
+  ready 10 seconds before the end of a longer rest, 3-2-1 plays in the app, and
+  after 0:00 the strip shows Rest over with the time since.
+- **Edit and archive a Compound.**
+- **Create a Compound from the Protocol editor's picker.**
+- **Purposes:** tag a Compound with why you take it, such as Sleep or
+  Performance, filter the Compound list and the picker by Purpose, and rename,
+  reorder, archive or add Purposes from the Compound list's menu. The six
+  built-in Compounds arrive tagged, and any tag you remove stays removed.
+- **Agents can read and write Purposes** (`listAgentPurposes`,
+  `GET /agent/protocols/purposes`, `agent_list_purposes`;
+  `batchWriteAgentPurposes`, `POST /agent/protocols/purposes/batch-write`,
+  `agent_batch_write_purposes`), and read and write `purposeIds` on Compounds
+  and filter them by Purpose.
 
 ### Changed
 
@@ -30,6 +44,16 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   rounded corners, in both themes, floating above the screen's bottom bar and
   buttons. Its text and action pass WCAG AA; the Undo label was close to
   invisible in the light theme.
+- **Training Screen messages no longer cover the form.** "Set n logged" with
+  Undo and every other Training Screen message now show in the rest strip's
+  row, and the rest countdown comes back when the message ends. "Background
+  timer alerts are off" shows once per app run and never replaces an Undo.
+- **Finish ends on one summary.** Finish Workout opens a sheet with the
+  Workout's duration, sets, exercises and New Bests, an Update row that lists
+  template changes in plain words ("Remove Hip Thrust", "Deadlift: sets
+  changed"), Copy summary and Done, replacing the "Workout finished" message
+  and the update dialog. The Workout menu's Update template dialog uses the
+  same words.
 - **Cleaner Platform Exercise Library names.** On new installs, 80 names are
   corrected, including every `(male)` or `(female)` label and typos like
   `Shrimp Squad`. Twenty-three exercises merge into an equivalent, and 10
@@ -58,9 +82,13 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **A meal's time is shown and can be changed,** and its meal type is
   proposed from the time.
 - **The Nutrition Day lists meals in time order.**
+- **The Protocol editor puts Compounds first,** picks them from a searchable
+  sheet, and asks before discarding unsaved changes. An added Compound starts
+  every day at 9:00.
 
 ### Fixed
 
+- **A second device's seed no longer overrides a renamed built-in Compound.**
 - **An Agent write no longer un-archives a Meal, drops Food Entry import
   keys, or moves an entry to another Meal.**
 - **`batchWriteAgentMeal` rejects a malformed timestamp with a 400.**
@@ -89,6 +117,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **A Meal started on a past day is saved on that day, not today.**
 - **Re-importing a file no longer moves a food out of a meal you edited.**
 - **Backups keep restoring after the update.**
+- Rest timer sounds off now silences rest timer notifications on Android 8 and later.
+- The end of a rest now sounds on Android when the app is in the background.
+- **A Protocol whose Compound was archived can be saved again.**
 
 ## [0.2.0] - 2026-11-03
 
