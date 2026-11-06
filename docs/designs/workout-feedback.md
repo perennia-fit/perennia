@@ -770,7 +770,8 @@ screen. In "*Exercise* · Set *k*":
 Instead of popping to Today and showing a SnackBar and then a dialog, it opens
 `FinishSummarySheet` (a modal bottom sheet) over the Workout screen. It pops
 the Workout screen when the sheet closes, however it closes, which returns to
-the screen that opened the Workout.
+the screen that opened the Workout. It pops only while the Workout screen is
+the current route, so it can never pop the screen under it.
 
 *   **Layout.** The sheet is `isScrollControlled: true` with a maximum height
     of 90% of the screen and `showDragHandle: true`. Its body is a
@@ -779,9 +780,21 @@ the screen that opened the Workout.
     when a drag on the body moves the scroll view.
 
 *   **Closing.** Done, a swipe-down and Back close the sheet. A tap on the
-    scrim does not. The Finish button sits above the rising sheet, so the second
-    tap of a double tap on Finish lands on the scrim, and closing there would
+    scrim does not. The Finish button sits above the rising sheet, so a second
+    tap of a double tap on Finish can land on the scrim, and closing there would
     pop the Workout screen before the user saw the New Bests or the Update row.
+
+*   **A second tap before the sheet opens.** Finish ignores a tap while an
+    earlier one is still finishing, so a double tap writes the finish once and
+    opens one sheet. The button doesn't change while it waits: the wait is too
+    short to show. A failed attempt ends the wait, so Finish can be tapped again.
+
+*   **Back before the sheet opens.** Finish reads the divergence and writes the
+    finish before it opens the sheet. If Back pops the Workout screen during
+    that, the Workout still finishes, no sheet opens, and the user stays on the
+    screen they went back to. Back there was the user's choice to leave, so
+    the summary isn't brought back over a different screen. New Bests are
+    still in Progress, and Update template is still in the Workout menu.
 
 *   **Data.** The sheet watches `workoutSummaryProvider(workoutId)`, the
     provider the Workout screen reads its `HomeWorkoutSummary` from, so it sees
@@ -2061,6 +2074,11 @@ from Accessibility, `textScaler: 2.0` for the sheet; manual checks 8 and 9.
     *   Done and a swipe-down both pop the Workout screen;
     *   a tap on the scrim leaves the sheet open, both the second tap of a
         double tap on Finish while the sheet rises and a tap once it settles;
+    *   a second tap on Finish before the sheet opens reads and writes once
+        and opens one sheet, and Finish can be tapped again after a failed
+        attempt;
+    *   Back during Finish's read and write finishes the Workout, opens no
+        sheet and leaves the opener in place;
     *   an unlinked or undiverged Workout has no Update row;
     *   at `textScaler: 2.0` no text is clipped and the sheet scrolls.
     *   The New Bests read runs `compute`, so these tests wrap it in
