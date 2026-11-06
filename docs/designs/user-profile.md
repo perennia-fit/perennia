@@ -1497,6 +1497,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 14 | `docs/designs/user-profile.md` | Modify | Status to Current |
 | 15 | `docs/designs/SITEMAP.md` | Modify | Status to Current |
 | 16 | `apps/mobile/lib/features/profile/controllers/profile_controller.dart` | Modify | Make the section-values lookup public for File 3 |
+| 17 | `apps/mobile/lib/features/profile/widgets/profile_section_editors.dart` | Modify | Make the error lines public (`ProfileErrorLines`) so the flow shows errors the way the editor does |
+| 18 | `apps/mobile/lib/features/settings/widgets/general_settings_screen.dart` | Modify | Make `SegmentedPreference` public: it is the existing units and week start control that File 4 reuses |
 
 **Verifies:** Verification Plan items V8 and V10.
 
@@ -1530,8 +1532,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   `back()` is available on screens 2 and 3.
     *   `signIn(openSignIn)` runs a function the widget passes, which pushes the existing
         sign-in screen (`sign_in_screen.dart`) and completes when it is gone. That screen returns
-        no result and stays open on its Account view after a success, so the controller then
-        reads `authControllerProvider`. A session calls `setOnboardingDone()` and goes to `done`,
+        no result and stays open on its Account view after a success, so the flow closes it when
+        a session appears and treats a session on return as success: the controller then reads
+        `authControllerProvider`. A session calls `setOnboardingDone()` and goes to `done`,
         without waiting for a Sync Run. No session stays on `screen1`.
 *   **File 4.**
     *   The three screens, reusing the field widgets from PR 1's editors

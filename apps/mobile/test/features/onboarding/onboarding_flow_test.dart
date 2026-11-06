@@ -2,15 +2,24 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
+import 'package:perennia/features/auth/widgets/sign_in_screen.dart';
+import 'package:perennia/features/focus/controllers/focus_providers.dart';
 import 'package:perennia/features/onboarding/controllers/onboarding_controller.dart';
 import 'package:perennia/features/onboarding/repositories/onboarding_gate.dart';
+import 'package:perennia/features/onboarding/widgets/onboarding_flow.dart';
+import 'package:perennia/features/onboarding/widgets/onboarding_launcher.dart';
+import 'package:perennia/features/profile/widgets/profile_screen.dart';
+import 'package:perennia/features/profile/widgets/profile_section_editors.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
+import 'package:perennia/l10n/l10n.dart';
+import 'package:perennia/theme/theme.dart';
 
 void main() {
   setUpAll(() {
@@ -632,6 +641,677 @@ void main() {
 
         expect(step(container), OnboardingStep.screen1);
         expect((await settingsRepository.load()).onboardingDone, isFalse);
+      });
+    });
+  });
+
+  group('screens', () {
+    const localOnlyLine =
+        'Stored on this phone and in its backups. If you sign in, it syncs to '
+        "your account, where the server's operator and any agent you connect "
+        'can read it.';
+    const syncedLine =
+        "Synced to perennia.example.com. The server's operator and any agent "
+        'you connect can read it. Change history on the server is kept for up '
+        'to 180 days.';
+
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    late InMemorySettingsRepository settingsRepository;
+
+    final updatedAt = DateTime.utc(2026);
+    final focuses = <FocusRecord>[
+      FocusRecord(
+        id: 'focus-strength',
+        name: 'Strength',
+        sortOrder: 0,
+        updatedAt: updatedAt,
+      ),
+      FocusRecord(
+        id: 'focus-running',
+        name: 'Running',
+        sortOrder: 1,
+        updatedAt: updatedAt,
+      ),
+    ];
+
+    final flowFinder = find.byType(OnboardingFlow);
+    final todayFinder = find.text('Today');
+    final nextButton = find.byKey(OnboardingFlow.nextButtonKey);
+    final skipThisButton = find.byKey(OnboardingFlow.skipThisButtonKey);
+    final skipAllButton = find.byKey(OnboardingFlow.skipAllButtonKey);
+    final signInLink = find.byKey(OnboardingFlow.signInLinkKey);
+    final centimetres = find.byKey(AboutYouFields.heightCentimetresKey);
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+      settingsRepository = InMemorySettingsRepository(
+        AppSettings.defaults.copyWith(onboardingDone: false),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    /// Long enough for an action's Drift reads and writes, then a route's exit.
+    Future<void> settle(WidgetTester tester) async {
+      for (var attempt = 0; attempt < 24; attempt += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    Future<void> pumpApp(
+      WidgetTester tester, {
+      AuthRepository? authRepository,
+      TrainingRepositories? trainingRepositories,
+      ThemeData? theme,
+    }) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            trainingRepositoriesProvider.overrideWith(
+              (ref) => trainingRepositories ?? repositories,
+            ),
+            authRepositoryProvider.overrideWith(
+              (ref) => authRepository ?? InMemoryAuthRepository(),
+            ),
+            settingsRepositoryProvider.overrideWith(
+              (ref) => settingsRepository,
+            ),
+            activeFocusesProvider.overrideWith(
+              (ref) => Stream<List<FocusRecord>>.value(focuses),
+            ),
+          ],
+          child: MaterialApp(
+            theme: theme ?? AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const OnboardingLauncher(child: Text('Today')),
+          ),
+        ),
+      );
+      await settle(tester);
+    }
+
+    /// Disposes the tree, so Drift streams close inside the test's clock and a
+    /// later [pumpApp] starts with a new ProviderScope, as a reopened app does.
+    Future<void> disposeApp(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 1));
+    }
+
+    Future<void> tapControl(WidgetTester tester, Finder control) async {
+      await tester.ensureVisible(control);
+      await tester.pump();
+      await tester.tap(control);
+      await settle(tester);
+    }
+
+    Future<void> tapSegment(WidgetTester tester, Key control, String label) {
+      return tapControl(
+        tester,
+        find.descendant(of: find.byKey(control), matching: find.text(label)),
+      );
+    }
+
+    Future<void> pickBirthYear(WidgetTester tester, int year) async {
+      await tapControl(tester, find.byKey(AboutYouFields.birthYearKey));
+      final item = find.text('$year');
+      await tester.scrollUntilVisible(
+        item,
+        400,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pump();
+      await tester.tap(item);
+      await settle(tester);
+    }
+
+    Future<void> enterHeight(
+      WidgetTester tester,
+      Finder field,
+      String text,
+    ) async {
+      await tester.ensureVisible(field);
+      await tester.pump();
+      await tester.enterText(field, text);
+      await tester.pump();
+    }
+
+    Future<List<UserProfileSectionRow>> rows(WidgetTester tester) async {
+      return (await tester.runAsync(
+        () => database.select(database.userProfileSections).get(),
+      ))!;
+    }
+
+    Future<bool> onboardingDone(WidgetTester tester) async {
+      return (await tester.runAsync(settingsRepository.load))!.onboardingDone;
+    }
+
+    String textOf(WidgetTester tester, Finder field) {
+      return tester.widget<TextField>(field).controller!.text;
+    }
+
+    void expectScreen1() {
+      expect(flowFinder, findsOneWidget);
+      expect(find.text('About you'), findsOneWidget);
+      expect(find.byKey(OnboardingFlow.backButtonKey), findsNothing);
+    }
+
+    void expectScreen2() {
+      expect(flowFinder, findsOneWidget);
+      expect(find.text('Training Goals and Experience'), findsOneWidget);
+      expect(find.byKey(OnboardingFlow.backButtonKey), findsOneWidget);
+    }
+
+    void expectToday() {
+      expect(flowFinder, findsNothing);
+      expect(todayFinder, findsOneWidget);
+    }
+
+    group('launcher', () {
+      testWidgets('opens over Today when the gate is true', (tester) async {
+        await pumpApp(tester);
+
+        expectScreen1();
+        expect(todayFinder, findsNothing);
+        expect(find.text('Skip all'), findsOneWidget);
+        expect(find.text('Skip this'), findsOneWidget);
+        expect(find.text('Next'), findsOneWidget);
+        await disposeApp(tester);
+      });
+
+      testWidgets('stays closed when a section row exists', (tester) async {
+        await tester.runAsync(
+          () => repositories.userProfile.saveSection(
+            UserProfileSection.aboutYou,
+            <String, Object?>{'birth_year': 1990},
+          ),
+        );
+
+        await pumpApp(tester);
+
+        expectToday();
+        await disposeApp(tester);
+      });
+
+      testWidgets('stays closed when onboardingDone is true', (tester) async {
+        settingsRepository = InMemorySettingsRepository(AppSettings.defaults);
+
+        await pumpApp(tester);
+
+        expectToday();
+        await disposeApp(tester);
+      });
+
+      testWidgets('a gate that throws shows Today and no onboarding', (
+        tester,
+      ) async {
+        final userProfile = _ThrowingUserProfile();
+
+        await pumpApp(
+          tester,
+          trainingRepositories: _FakeRepositories(userProfile),
+        );
+
+        expect(userProfile.calls, 1);
+        expectToday();
+        expect(tester.takeException(), isNull);
+        await disposeApp(tester);
+      });
+    });
+
+    group('journeys', () {
+      testWidgets('CUJ 1: Skip all lands on Today and writes nothing', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+
+        await tapControl(tester, skipAllButton);
+
+        expectToday();
+        expect(await rows(tester), isEmpty);
+        expect(await onboardingDone(tester), isTrue);
+        await disposeApp(tester);
+
+        await pumpApp(tester);
+
+        expectToday();
+        await disposeApp(tester);
+      });
+
+      testWidgets('CUJ 2: fill About you in Imperial, skip the rest', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+
+        await tapSegment(tester, OnboardingFlow.unitSystemKey, 'Imperial');
+        await tapSegment(tester, AboutYouFields.sexKey, 'Female');
+        await pickBirthYear(tester, 1990);
+        await enterHeight(
+            tester, find.byKey(AboutYouFields.heightFeetKey), '5');
+        await enterHeight(
+            tester, find.byKey(AboutYouFields.heightInchesKey), '6');
+        await tapControl(tester, nextButton);
+
+        expectScreen2();
+        await tapControl(tester, skipThisButton);
+        expect(find.text('Training setup'), findsOneWidget);
+        expect(find.text('Done'), findsOneWidget);
+        await tapControl(tester, skipThisButton);
+
+        expectToday();
+        final settings = await tester.runAsync(settingsRepository.load);
+        expect(settings!.unitSystem, UnitSystem.imperial);
+        expect(settings.onboardingDone, isTrue);
+        final row = (await rows(tester)).single;
+        expect(row.section, UserProfileSection.aboutYou.wireName);
+        expect(jsonDecode(row.valuesJson), <String, Object?>{
+          'sex': 'female',
+          'birth_year': 1990,
+          'height': <String, Object?>{'value': 66, 'unit': 'in'},
+        });
+        await disposeApp(tester);
+      });
+
+      testWidgets('CUJ 3: killed on screen 1 before any tap, it shows again', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+        expectScreen1();
+        await disposeApp(tester);
+
+        await pumpApp(tester);
+
+        expectScreen1();
+        expect(await onboardingDone(tester), isFalse);
+        await disposeApp(tester);
+      });
+
+      testWidgets('CUJ 3: killed after leaving screen 1, it does not', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+        await enterHeight(tester, centimetres, '170');
+        await tapControl(tester, nextButton);
+        expectScreen2();
+        await disposeApp(tester);
+
+        await pumpApp(tester);
+
+        expectToday();
+        expect(
+          jsonDecode((await rows(tester)).single.valuesJson)['height'],
+          <String, Object?>{'value': 170, 'unit': 'cm'},
+        );
+        await disposeApp(tester);
+      });
+
+      testWidgets('CUJ 4: signing in closes the flow and writes no section', (
+        tester,
+      ) async {
+        final auth = InMemoryAuthRepository();
+        await pumpApp(tester, authRepository: auth);
+        await enterHeight(tester, centimetres, '170');
+
+        await tapControl(tester, signInLink);
+        expect(find.byType(SignInScreen), findsOneWidget);
+
+        await tester.enterText(
+          find.byKey(SignInScreen.serverUrlFieldKey),
+          'https://sync.example.test',
+        );
+        await tester.enterText(
+          find.byKey(SignInScreen.emailFieldKey),
+          'lifter@example.test',
+        );
+        await tester.enterText(
+          find.byKey(SignInScreen.passwordFieldKey),
+          'correct horse',
+        );
+        await tapControl(
+          tester,
+          find.byKey(SignInScreen.emailSignInButtonKey),
+        );
+
+        expect(auth.emailAttempts, hasLength(1));
+        expect(find.byType(SignInScreen), findsNothing);
+        expectToday();
+        expect(await onboardingDone(tester), isTrue);
+        expect(await rows(tester), isEmpty);
+        await disposeApp(tester);
+      });
+
+      testWidgets('back from sign-in returns to screen 1, fields kept', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+        await enterHeight(tester, centimetres, '170');
+
+        await tapControl(tester, signInLink);
+        await tester.binding.handlePopRoute();
+        await settle(tester);
+
+        expect(find.byType(SignInScreen), findsNothing);
+        expectScreen1();
+        expect(textOf(tester, centimetres), '170');
+        expect(await onboardingDone(tester), isFalse);
+        expect(await rows(tester), isEmpty);
+
+        await tapControl(tester, nextButton);
+
+        expectScreen2();
+        expect(
+          jsonDecode((await rows(tester)).single.valuesJson)['height'],
+          <String, Object?>{'value': 170, 'unit': 'cm'},
+        );
+        await disposeApp(tester);
+      });
+    });
+
+    group('saving', () {
+      testWidgets('a pick left behind by Skip this is not saved', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+
+        await tapSegment(tester, OnboardingFlow.unitSystemKey, 'Imperial');
+        await tapControl(tester, skipThisButton);
+        expectScreen2();
+        await tapControl(tester, find.byKey(OnboardingFlow.backButtonKey));
+        expectScreen1();
+
+        expect(centimetres, findsOneWidget);
+        await tapControl(tester, nextButton);
+
+        final settings = await tester.runAsync(settingsRepository.load);
+        expect(settings!.unitSystem, UnitSystem.metric);
+        await disposeApp(tester);
+      });
+
+      testWidgets('a soft warning asks first; Edit stays, Save anyway saves', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+        await pickBirthYear(tester, DateTime.now().year - 101);
+
+        await tapControl(tester, nextButton);
+
+        expect(find.byKey(ProfileEditorKeys.warningDialog), findsOneWidget);
+        expect(
+          find.text('That makes you 101. Check the birth year.'),
+          findsOneWidget,
+        );
+
+        await tapControl(
+            tester, find.byKey(ProfileEditorKeys.warningEditButton));
+
+        expect(find.byKey(ProfileEditorKeys.warningDialog), findsNothing);
+        expectScreen1();
+        expect(await rows(tester), isEmpty);
+        expect(await onboardingDone(tester), isFalse);
+
+        await tapControl(tester, nextButton);
+        await tapControl(
+          tester,
+          find.byKey(ProfileEditorKeys.warningSaveAnywayButton),
+        );
+
+        expectScreen2();
+        expect(
+          jsonDecode((await rows(tester)).single.valuesJson)['birth_year'],
+          DateTime.now().year - 101,
+        );
+        expect(await onboardingDone(tester), isTrue);
+        await disposeApp(tester);
+      });
+
+      testWidgets('a hard error shows and stays; editing clears it', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+        await enterHeight(tester, centimetres, '301');
+
+        await tapControl(tester, nextButton);
+
+        const message = 'Height must be 300 cm (118.1 in) or less.';
+        expect(find.text(message), findsOneWidget);
+        expect(find.text(message).hitTestable(), findsOneWidget);
+        expect(find.byKey(ProfileEditorKeys.warningDialog), findsNothing);
+        expectScreen1();
+        expect(await rows(tester), isEmpty);
+        expect(await onboardingDone(tester), isFalse);
+
+        await enterHeight(tester, centimetres, '170');
+
+        expect(find.text(message), findsNothing);
+        await disposeApp(tester);
+      });
+
+      testWidgets('a future birth year from a stored row is a hard error', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+        await tapControl(tester, skipThisButton);
+        // The year dropdown stops at this year, so only a pulled row can hold
+        // a later one. The repository rejects it, so it goes in through Drift.
+        await tester.runAsync(
+          () => database.into(database.userProfileSections).insert(
+                UserProfileSectionRow(
+                  id: 'pulled-about-you',
+                  section: UserProfileSection.aboutYou.wireName,
+                  valuesJson: jsonEncode(<String, Object?>{
+                    'birth_year': DateTime.now().year + 1,
+                  }),
+                  syncPreviouslySynced: false,
+                  updatedAt: updatedAt,
+                ),
+              ),
+        );
+        await tapControl(tester, find.byKey(OnboardingFlow.backButtonKey));
+        expectScreen1();
+        await tapSegment(tester, AboutYouFields.sexKey, 'Female');
+
+        await tapControl(tester, nextButton);
+
+        expect(find.text("Birth year can't be in the future."), findsOneWidget);
+        expectScreen1();
+        await disposeApp(tester);
+      });
+
+      testWidgets('a second tap on Next writes one Batch', (tester) async {
+        await pumpApp(tester);
+        await tapControl(tester, skipThisButton);
+        await tapControl(
+          tester,
+          find.byKey(TrainingGoalsFields.goalKey(TrainingGoalId.strength)),
+        );
+        await tester.ensureVisible(nextButton);
+        await tester.pump();
+
+        await tester.tap(nextButton);
+        await tester.pump();
+        await tester.tap(nextButton, warnIfMissed: false);
+        await settle(tester);
+
+        expect(find.text('Training setup'), findsOneWidget);
+        final entries = await tester.runAsync(
+          () => repositories.activityLog.listEntries(),
+        );
+        expect(entries, hasLength(1));
+        await disposeApp(tester);
+      });
+    });
+
+    group('system back', () {
+      testWidgets('does nothing on screen 1 and steps back on screen 2', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+
+        await tester.binding.handlePopRoute();
+        await settle(tester);
+        expectScreen1();
+
+        await tapControl(tester, skipThisButton);
+        expectScreen2();
+
+        await tester.binding.handlePopRoute();
+        await settle(tester);
+        expectScreen1();
+        await disposeApp(tester);
+      });
+    });
+
+    group('disclosure line', () {
+      testWidgets('shows the Local-only Mode line', (tester) async {
+        await pumpApp(tester);
+
+        expect(find.text(localOnlyLine), findsOneWidget);
+        expect(find.text(syncedLine), findsNothing);
+        await disposeApp(tester);
+      });
+
+      testWidgets('shows the Synced Mode line', (tester) async {
+        final serverUrl = Uri.parse('https://perennia.example.com');
+        await pumpApp(
+          tester,
+          authRepository: InMemoryAuthRepository(
+            AuthState(
+              serverUrl: serverUrl,
+              session: AuthSession(
+                provider: AuthSessionProvider.email,
+                serverUrl: serverUrl,
+                token: 'token-a',
+                userEmail: 'lifter@example.test',
+                userId: 'user-a',
+                userName: 'lifter',
+              ),
+            ),
+          ),
+        );
+
+        expect(find.text(syncedLine), findsOneWidget);
+        expect(find.text(localOnlyLine), findsNothing);
+        await disposeApp(tester);
+      });
+    });
+
+    group('accessibility', () {
+      testWidgets('every screen meets the guidelines in both themes', (
+        tester,
+      ) async {
+        for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+          settingsRepository = InMemorySettingsRepository(
+            AppSettings.defaults.copyWith(onboardingDone: false),
+          );
+          final semantics = tester.ensureSemantics();
+          await pumpApp(tester, theme: theme);
+
+          for (final screen in <int>[1, 2, 3]) {
+            final reason = 'screen $screen, ${theme.brightness.name}';
+            await expectLater(
+              tester,
+              meetsGuideline(textContrastGuideline),
+              reason: reason,
+            );
+            await expectLater(
+              tester,
+              meetsGuideline(androidTapTargetGuideline),
+              reason: reason,
+            );
+            await expectLater(
+              tester,
+              meetsGuideline(labeledTapTargetGuideline),
+              reason: reason,
+            );
+            if (screen < 3) {
+              await tapControl(tester, skipThisButton);
+            }
+          }
+
+          semantics.dispose();
+          await disposeApp(tester);
+        }
+      });
+
+      testWidgets(
+          'at 200% text on a phone nothing overflows and every control can be '
+          'reached', (tester) async {
+        tester.view.physicalSize = const Size(360, 720);
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        Future<void> expectReachable(List<Finder> controls) async {
+          for (final control in controls) {
+            await tester.ensureVisible(control);
+            await tester.pump();
+            expect(control.hitTestable(), findsOneWidget, reason: '$control');
+          }
+          expect(skipAllButton.hitTestable(), findsOneWidget);
+          expect(skipThisButton.hitTestable(), findsOneWidget);
+          expect(nextButton.hitTestable(), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        }
+
+        await pumpApp(tester);
+        expect(tester.takeException(), isNull);
+
+        await expectReachable([
+          find.byKey(OnboardingFlow.unitSystemKey),
+          find.byKey(OnboardingFlow.weekStartDayKey),
+          find.byKey(AboutYouFields.sexKey),
+          find.byKey(AboutYouFields.birthYearKey),
+          centimetres,
+          signInLink,
+          find.byType(ProfileDisclosureLine),
+        ]);
+
+        await tapSegment(tester, OnboardingFlow.unitSystemKey, 'Imperial');
+        await expectReachable([
+          find.byKey(AboutYouFields.heightFeetKey),
+          find.byKey(AboutYouFields.heightInchesKey),
+        ]);
+
+        await tapControl(tester, skipThisButton);
+        expect(tester.takeException(), isNull);
+        await expectReachable([
+          find.byKey(OnboardingFlow.backButtonKey),
+          for (final goal in TrainingGoalId.values)
+            find.byKey(TrainingGoalsFields.goalKey(goal)),
+          find.byKey(TrainingGoalsFields.noneKey),
+          for (final focus in focuses)
+            for (final level in <ExperienceLevel?>[
+              ...ExperienceLevel.values,
+              null,
+            ])
+              find.byKey(ExperienceFields.levelKey(focus.id, level)),
+          find.byKey(ExperienceFields.noneKey),
+          find.byType(ProfileDisclosureLine),
+        ]);
+
+        await tapControl(tester, skipThisButton);
+        expect(tester.takeException(), isNull);
+        await expectReachable([
+          find.byKey(OnboardingFlow.backButtonKey),
+          find.byKey(TrainingSetupFields.equipmentKey('skiErg')),
+          find.byKey(TrainingSetupFields.equipmentNoneKey),
+          find.byKey(TrainingSetupFields.daysDecreaseKey),
+          find.byKey(TrainingSetupFields.daysIncreaseKey),
+          find.byKey(TrainingSetupFields.sessionMinutesKey),
+          find.byType(ProfileDisclosureLine),
+        ]);
+
+        await tapControl(tester, nextButton);
+        expectToday();
+        await disposeApp(tester);
       });
     });
   });
