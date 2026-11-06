@@ -1,7 +1,7 @@
 # Platform Library Updates
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Draft
+*   **Status:** Current
 *   **Date:** 2026-11-05
 
 Project conventions: [AGENTS.md](../../AGENTS.md),
@@ -210,6 +210,11 @@ never written on an existing row. Platform rows are read-only to users, so a
 Platform row with `deletedAt` set can only come from an earlier pass or an
 imported archive, and the pass corrects it.
 
+Stamps compare in whole seconds, the precision a stored row keeps, and
+`dimensionIds` compares in its encoded form, so a row the pass wrote matches
+its record on the next launch. The Used query is skipped when no retired id
+has a Platform row, which includes a fresh install.
+
 Because the pass compares fields and not versions, it is idempotent: with
 nothing to change it writes nothing, and a new library needs no new migration
 code. It replaces `_applyPlatformExerciseRedirects`,
@@ -373,7 +378,7 @@ list:
 No live id has changed `dimension_ids` across all 5 committed seeds.
 
 The data license notice is built from both lists, because retired names ship in
-the bundle. The seed grows from about 1.4 MB by an estimated 280 KB.
+the bundle. The seed grew from about 1.9 MB by about 390 KB.
 
 `exercise_redirects` lists each merged id and its target, with no entry for a
 removed id. It stays for the server. The app stops reading it, because retiring
@@ -480,7 +485,7 @@ exercise's own Sets, which the server tests in the Verification Plan cover.
 *   **A mistaken retirement cannot be undone.** A user's kept row cannot be
     reclaimed, and the generator rejects a retired id that reappears. Recovery
     is to ship the exercise under a new id.
-*   **The retired list only grows.** Each record adds about 900 bytes to the
+*   **The retired list only grows.** Each record adds about 1.3 KB to the
     bundle and one hidden row per install. Retirements are rare, so this is
     acceptable for now.
 

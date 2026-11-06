@@ -108,12 +108,20 @@ still log any Exercise without Equipment.
 The curated catalog of exercises provided by the platform. Read-only to users.
 
 ## User Library
-A user's own created or customized exercises. Owned and editable by the user.
+A user's own exercises, whether created, customized or kept from the Platform Library.
+Owned and editable by the user.
 
 ## Shadowing
 When a User Library exercise bears the same name as a Platform Library exercise, the
 user's version takes precedence and the platform one is hidden for that user. Always
 visibly indicated and reversible.
+
+## Retired Exercise
+A Platform Library exercise the library no longer offers, because it was merged into
+another exercise or removed. Its id is never reused. If a live Set, Workout entry or
+Template entry names it, it is **kept**: it becomes a User Library exercise with the
+same id. Otherwise it is **hidden**: a Platform row with `deletedAt` set, shown nowhere.
+Hidden is not Archived, which is a state the user chooses and can reverse.
 
 ## Active / Archived
 Lifecycle states of exercises and categories. Archived items are hidden from pickers
