@@ -10,6 +10,10 @@ import { createSentryCrashReporterFromEnv } from "../src/observability.ts";
 // The real SDK, with only its transport stubbed, because the fake one in
 // observability.test.mjs has no request-data integration. Sentry.init is global,
 // so this lives in its own file and process.
+//
+// The release is pinned as production pins it. With one, the SDK also sends
+// session envelopes, and without one it takes a release from the environment
+// (GITHUB_SHA on hosted CI), so leaving it out made this test differ by machine.
 test("a crash on a User Profile write sends Sentry no request body", async () => {
   const preScrubRequests = [];
   const sentEnvelopes = [];
@@ -19,6 +23,7 @@ test("a crash on a User Profile write sends Sentry no request body", async () =>
       SERVER_CRASH_REPORTING_DSN: "https://public@example.com/1"
     },
     {
+      release: "0.0.0-test",
       sdk: {
         init(options) {
           return Sentry.init({
@@ -88,9 +93,14 @@ test("a crash on a User Profile write sends Sentry no request body", async () =>
   assert.match(preScrubRequests[0].url, /\/agent\/profile\/batch-write$/);
   assert.equal(preScrubRequests[0].data, undefined);
 
-  assert.equal(sentEnvelopes.length, 1);
-  const sent = JSON.stringify(sentEnvelopes[0]);
-  assert.match(sent, /forced store failure|\[Filtered\]/);
+  const eventEnvelopes = sentEnvelopes.filter(([, items]) =>
+    items.some(([header]) => header.type === "event")
+  );
+  assert.equal(eventEnvelopes.length, 1);
+  assert.match(JSON.stringify(eventEnvelopes[0]), /forced store failure|\[Filtered\]/);
+
+  // Every envelope, not only the event: a body must not leave by any of them.
+  const sent = JSON.stringify(sentEnvelopes);
   assert.doesNotMatch(sent, /HIVSECRET/);
   assert.doesNotMatch(sent, /healthLimitations/);
 });
