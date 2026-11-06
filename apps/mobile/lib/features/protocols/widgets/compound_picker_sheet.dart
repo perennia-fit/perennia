@@ -53,7 +53,7 @@ enum CompoundPickerSection { favorites, recent, all }
 /// sits it behind [ProtocolsLockSheetGuard].
 ///
 /// **Filtering stays within a frame at 200 Compounds.** The library and the
-/// active Purposes are read once when the sheet opens, and each row's names
+/// active Purposes are read once when the sheet opens, and their names
 /// lowercased once. A keystroke filters that in memory into a flat item list, and
 /// [ListView.builder] builds only the rows on screen. A stream or a
 /// `ListView(children:)` here would be a dropped frame per keystroke.
@@ -95,8 +95,11 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
   /// [_listedById]'s rows, A-Z the way the Compound list sorts them.
   var _sorted = <_PickerRow>[];
 
-  /// The active Purposes, for the filter row and for building rows.
+  /// The active Purposes, for the filter row.
   var _purposes = const <PurposeRecord>[];
+
+  /// Each of [_purposes]' ids to its lowercased name, for search.
+  var _lowerPurposeNames = const <String, String>{};
 
   /// The active filter, or null for All.
   String? _purposeFilterId;
@@ -152,8 +155,11 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
       return;
     }
     _purposes = purposes;
+    _lowerPurposeNames = <String, String>{
+      for (final purpose in purposes) purpose.id: purpose.name.toLowerCase(),
+    };
     for (final compound in compounds) {
-      _listedById[compound.id] = _rowFor(
+      _listedById[compound.id] = _PickerRow(
         id: compound.id,
         name: compound.name,
         unit: compound.defaultUnit,
@@ -168,31 +174,6 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
       _loaded = true;
       _items = _buildItems();
     });
-  }
-
-  /// A row with its active Purpose names lowercased once. An id that isn't an
-  /// active Purpose names nothing: it stays on the Compound but isn't searched.
-  _PickerRow _rowFor({
-    required String id,
-    required String name,
-    required DoseUnit unit,
-    required DoseRoute route,
-    required bool isFavorite,
-    required List<String> purposeIds,
-  }) {
-    final tags = purposeIds.toSet();
-    return _PickerRow(
-      id: id,
-      name: name,
-      unit: unit,
-      route: route,
-      isFavorite: isFavorite,
-      purposeIds: tags,
-      lowerPurposeNames: <String>[
-        for (final purpose in _purposes)
-          if (tags.contains(purpose.id)) purpose.name.toLowerCase(),
-      ],
-    );
   }
 
   void _sortListed() {
@@ -232,14 +213,13 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     }
     final query = _search.toLowerCase();
     final filterId = _purposeFilterId;
-    bool matches(_PickerRow row) {
-      if (filterId != null && !row.purposeIds.contains(filterId)) {
-        return false;
-      }
-      return query.isEmpty ||
-          row.lowerName.contains(query) ||
-          row.lowerPurposeNames.any((name) => name.contains(query));
-    }
+    bool matches(_PickerRow row) => compoundMatchesFilter(
+          lowerName: row.lowerName,
+          purposeIds: row.purposeIds,
+          lowerPurposeNames: _lowerPurposeNames,
+          lowerQuery: query,
+          filterId: filterId,
+        );
 
     final sections = <(CompoundPickerSection, Iterable<_PickerRow>)>[
       (CompoundPickerSection.favorites, _sorted.where((r) => r.isFavorite)),
@@ -334,7 +314,7 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     }
     for (final compound in compounds) {
       if (compound.id == id) {
-        return _rowFor(
+        return _PickerRow(
           id: compound.id,
           name: compound.name,
           unit: compound.defaultUnit,
@@ -449,11 +429,11 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
                   child: Padding(
                     padding: const EdgeInsets.all(AppDimens.base),
                     child: Text(
-                      _search.isNotEmpty
-                          ? l10n.compoundListNoMatches
-                          : _purposeFilterId != null
-                              ? l10n.purposeFilterEmpty
-                              : l10n.compoundListEmpty,
+                      compoundFilterEmptyMessage(
+                        l10n,
+                        hasQuery: _search.isNotEmpty,
+                        hasFilter: _purposeFilterId != null,
+                      ),
                       style: TextStyle(color: colors.textSecondary),
                     ),
                   ),
@@ -528,9 +508,8 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
   }
 }
 
-/// One listed Compound, with its names lowercased once so a keystroke doesn't
-/// lowercase 200 names, and its Purposes as a set so the filter doesn't scan a
-/// list per row.
+/// One listed Compound, with its name lowercased once so a keystroke doesn't
+/// lowercase 200 names.
 class _PickerRow {
   _PickerRow({
     required this.id,
@@ -539,7 +518,6 @@ class _PickerRow {
     required this.route,
     required this.isFavorite,
     required this.purposeIds,
-    required this.lowerPurposeNames,
   }) : lowerName = name.toLowerCase();
 
   final String id;
@@ -548,8 +526,7 @@ class _PickerRow {
   final DoseUnit unit;
   final DoseRoute route;
   final bool isFavorite;
-  final Set<String> purposeIds;
-  final List<String> lowerPurposeNames;
+  final List<String> purposeIds;
 }
 
 sealed class _PickerItem {

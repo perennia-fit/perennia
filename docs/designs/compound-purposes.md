@@ -1628,7 +1628,11 @@ this PR changes no golden vectors, contract or sync shape.
     *   **Its layout** copies the `_FocusChips` row from
         `exercise_catalog_picker.dart`: a `Semantics` label, then a sideways
         `SingleChildScrollView` holding All followed by one chip per Purpose.
-    *   It renders nothing when there are no active Purposes.
+    *   Callers omit it when there are no active Purposes, because they also
+        drop its spacing.
+    *   The file also holds `compoundMatchesFilter` and
+        `compoundFilterEmptyMessage`, the one search-and-filter rule and empty
+        message shared by the list and the picker.
 
 #### 33. `apps/mobile/lib/features/protocols/widgets/compound_picker_sheet.dart` (Modify)
 
@@ -1639,7 +1643,8 @@ this PR changes no golden vectors, contract or sync shape.
     here reads its tags from `CompoundScheduleOptionRecord.purposeIds` (files 12
     and 15), because the sheet keeps the list it read when it opened. A filter
     with nothing to show and no search says "No compounds with this purpose.",
-    in the list too.
+    in the list too. It filters with `compoundMatchesFilter` and picks its empty
+    message with `compoundFilterEmptyMessage`, both from file 32.
 
 #### 34. `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart` (Modify)
 
@@ -1647,7 +1652,9 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Proposed Changes**:
     *   **List:** add `PurposeFilterRow` under search, make search match active
         Purpose names, and add the app bar overflow menu with **Purposes**,
-        which pushes `PurposeManagerScreen`.
+        which pushes `PurposeManagerScreen`. It filters with
+        `compoundMatchesFilter` and picks its empty message with
+        `compoundFilterEmptyMessage`, both from file 32.
     *   **`CompoundEditorSheet`:** gains `initialPurposeIds` and a Purposes
         chip wrap (`FocusChip(icon: null)`), keeping any archived id attached.
     *   **Docstrings:** update the class docstrings to the narrowed rule.

@@ -5,9 +5,50 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../focus/widgets/focus_visuals.dart';
 
+/// Whether a Compound shows under the Compound list's and the Compound picker's
+/// search and Purpose filter. [lowerQuery] and [lowerName] are already
+/// lowercased, and [lowerPurposeNames] maps each active Purpose's id to its
+/// lowercased name.
+///
+/// Search matches the name or any active Purpose's name, and [filterId] picks
+/// one Purpose. An id that isn't an active Purpose names nothing: it stays on the
+/// Compound, so it still satisfies a filter on that id, but it isn't searched.
+/// This never matches a substance type or legality field, which the model never
+/// carries.
+bool compoundMatchesFilter({
+  required String lowerName,
+  required Iterable<String> purposeIds,
+  required Map<String, String> lowerPurposeNames,
+  required String lowerQuery,
+  required String? filterId,
+}) {
+  if (filterId != null && !purposeIds.contains(filterId)) {
+    return false;
+  }
+  return lowerQuery.isEmpty ||
+      lowerName.contains(lowerQuery) ||
+      purposeIds
+          .any((id) => lowerPurposeNames[id]?.contains(lowerQuery) ?? false);
+}
+
+/// What the Compound list and the Compound picker say when
+/// [compoundMatchesFilter] leaves nothing to show. A search says so first, then
+/// a filter, and with neither the library itself is empty.
+String compoundFilterEmptyMessage(
+  AppLocalizations l10n, {
+  required bool hasQuery,
+  required bool hasFilter,
+}) {
+  if (hasQuery) {
+    return l10n.compoundListNoMatches;
+  }
+  return hasFilter ? l10n.purposeFilterEmpty : l10n.compoundListEmpty;
+}
+
 /// The Compound list's and the Compound picker's Purpose filter: **All**, then
 /// each active Purpose in [purposes]' order, one active at a time, scrolling
-/// sideways. Renders nothing with no active Purposes.
+/// sideways. Callers omit the row when there are no active Purposes, because
+/// they also drop its spacing.
 ///
 /// A chip's label is the Purpose's name and nothing else. Reading "Sleep" next
 /// to a Compound says the user tagged it; a verb beside the name would read as
@@ -35,9 +76,6 @@ class PurposeFilterRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (purposes.isEmpty) {
-      return const SizedBox.shrink();
-    }
     final l10n = context.l10n;
     return Semantics(
       key: rowKey,
