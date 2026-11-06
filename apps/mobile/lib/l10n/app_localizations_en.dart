@@ -4312,4 +4312,37 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get profileValidationSexUnknown =>
       'Sex must be Female, Male or Not set.';
+
+  @override
+  String get onboardingTitleAboutYou => 'About you';
+
+  @override
+  String get onboardingTitleGoalsExperience => 'Training Goals and Experience';
+
+  @override
+  String get onboardingTitleTrainingSetup => 'Training setup';
+
+  @override
+  String get onboardingSkipAll => 'Skip all';
+
+  @override
+  String get onboardingSkipThis => 'Skip this';
+
+  @override
+  String get onboardingNext => 'Next';
+
+  @override
+  String get onboardingDone => 'Done';
+
+  @override
+  String get onboardingBack => 'Back';
+
+  @override
+  String get onboardingSignInLink => 'Already use Perennia? Sign in';
+
+  @override
+  String get onboardingUnitsLabel => 'Units';
+
+  @override
+  String get onboardingWeekStartLabel => 'Week starts';
 }

@@ -3147,5 +3147,49 @@
   "profileValidationSexUnknown": "Sex must be Female, Male or Not set.",
   "@profileValidationSexUnknown": {
     "description": "Validation rule sex.unknown."
+  },
+  "onboardingTitleAboutYou": "About you",
+  "@onboardingTitleAboutYou": {
+    "description": "Title of onboarding screen 1."
+  },
+  "onboardingTitleGoalsExperience": "Training Goals and Experience",
+  "@onboardingTitleGoalsExperience": {
+    "description": "Title of onboarding screen 2."
+  },
+  "onboardingTitleTrainingSetup": "Training setup",
+  "@onboardingTitleTrainingSetup": {
+    "description": "Title of onboarding screen 3."
+  },
+  "onboardingSkipAll": "Skip all",
+  "@onboardingSkipAll": {
+    "description": "App bar action that leaves onboarding from any screen and saves nothing on that screen."
+  },
+  "onboardingSkipThis": "Skip this",
+  "@onboardingSkipThis": {
+    "description": "Bottom action that moves to the next onboarding screen and saves nothing on this one."
+  },
+  "onboardingNext": "Next",
+  "@onboardingNext": {
+    "description": "Bottom action that saves what was entered on an onboarding screen and moves on."
+  },
+  "onboardingDone": "Done",
+  "@onboardingDone": {
+    "description": "The Next action on the last onboarding screen."
+  },
+  "onboardingBack": "Back",
+  "@onboardingBack": {
+    "description": "Tooltip of the back arrow on onboarding screens 2 and 3."
+  },
+  "onboardingSignInLink": "Already use Perennia? Sign in",
+  "@onboardingSignInLink": {
+    "description": "Link on onboarding screen 1 that opens the sign-in screen."
+  },
+  "onboardingUnitsLabel": "Units",
+  "@onboardingUnitsLabel": {
+    "description": "Label of the unit system control on onboarding screen 1."
+  },
+  "onboardingWeekStartLabel": "Week starts",
+  "@onboardingWeekStartLabel": {
+    "description": "Label of the week start day control on onboarding screen 1."
   }
 }

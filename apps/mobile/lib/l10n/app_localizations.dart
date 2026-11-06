@@ -6783,6 +6783,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sex must be Female, Male or Not set.'**
   String get profileValidationSexUnknown;
+
+  /// Title of onboarding screen 1.
+  ///
+  /// In en, this message translates to:
+  /// **'About you'**
+  String get onboardingTitleAboutYou;
+
+  /// Title of onboarding screen 2.
+  ///
+  /// In en, this message translates to:
+  /// **'Training Goals and Experience'**
+  String get onboardingTitleGoalsExperience;
+
+  /// Title of onboarding screen 3.
+  ///
+  /// In en, this message translates to:
+  /// **'Training setup'**
+  String get onboardingTitleTrainingSetup;
+
+  /// App bar action that leaves onboarding from any screen and saves nothing on that screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip all'**
+  String get onboardingSkipAll;
+
+  /// Bottom action that moves to the next onboarding screen and saves nothing on this one.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip this'**
+  String get onboardingSkipThis;
+
+  /// Bottom action that saves what was entered on an onboarding screen and moves on.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get onboardingNext;
+
+  /// The Next action on the last onboarding screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get onboardingDone;
+
+  /// Tooltip of the back arrow on onboarding screens 2 and 3.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get onboardingBack;
+
+  /// Link on onboarding screen 1 that opens the sign-in screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Already use Perennia? Sign in'**
+  String get onboardingSignInLink;
+
+  /// Label of the unit system control on onboarding screen 1.
+  ///
+  /// In en, this message translates to:
+  /// **'Units'**
+  String get onboardingUnitsLabel;
+
+  /// Label of the week start day control on onboarding screen 1.
+  ///
+  /// In en, this message translates to:
+  /// **'Week starts'**
+  String get onboardingWeekStartLabel;
 }
 
 class _AppLocalizationsDelegate

@@ -100,8 +100,8 @@ class ProfileController extends StreamNotifier<UserProfile> {
   ) async {
     final repository = ref.read(trainingRepositoriesProvider).userProfile;
     final profile = await repository.watch().first;
-    final current =
-        _sectionValues(profile, section)?.toJson() ?? const <String, Object?>{};
+    final current = profileSectionValues(profile, section)?.toJson() ??
+        const <String, Object?>{};
     final merged = mergeUserProfileSectionValues(section, current, changes);
     final unchanged = mergeUserProfileSectionValues(
       section,
@@ -136,7 +136,8 @@ class ProfileController extends StreamNotifier<UserProfile> {
   }
 }
 
-UserProfileSectionValues? _sectionValues(
+/// [section]'s typed values in [profile], or null when the section has no row.
+UserProfileSectionValues? profileSectionValues(
   UserProfile profile,
   UserProfileSection section,
 ) {
