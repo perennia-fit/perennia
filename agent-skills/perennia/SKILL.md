@@ -130,6 +130,7 @@ node scripts/prn-agent.mjs list-protocols --query limit=10
 node scripts/prn-agent.mjs list-doses --query from=2026-06-01 --query to=2026-06-30 --query compoundId=compound-id --query limit=50
 node scripts/prn-agent.mjs effect-window --query compoundId=compound-id --query metricKey=hrv --query from=2026-06-01 --query to=2026-06-30
 node scripts/prn-agent.mjs read-settings
+node scripts/prn-agent.mjs read-profile
 node scripts/prn-agent.mjs list-activity --query actor=agent --query limit=20
 ```
 
@@ -156,6 +157,7 @@ node scripts/prn-agent.mjs manage-protocols --file protocols.json
 node scripts/prn-agent.mjs delete-protocols --json '{"idempotencyKey":"delete-key","protocolIds":["protocol-id"]}'
 node scripts/prn-agent.mjs log-protocol-skips --json '{"idempotencyKey":"skip-key","today":"2026-11-02","skips":[{"id":"skip-uuidv7","protocolId":"protocol-id","compoundId":"compound-id","localDate":"2026-11-02","plannedLocalTime":"21:00"}]}'
 node scripts/prn-agent.mjs update-settings --file settings.json
+node scripts/prn-agent.mjs update-profile --json '{"idempotencyKey":"profile-key","sections":{"trainingGoals":{"goals":["strength","longevity"]},"trainingSetup":{"daysPerWeek":4}}}'
 node scripts/prn-agent.mjs undo-activity-batch --json '{"batchId":"batch-id","idempotencyKey":"undo-key"}'
 ```
 

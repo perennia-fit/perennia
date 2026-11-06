@@ -152,6 +152,7 @@ test(
         loggedSetTombstoneGcMarkers: 0,
         loggedSets: 0,
         sessions: 0,
+        userProfileSections: 0,
         users: 0
       });
       assert.deepEqual(
@@ -163,6 +164,7 @@ test(
           loggedSetTombstoneGcMarkers: 1,
           loggedSets: 1,
           sessions: 1,
+          userProfileSections: 1,
           users: 1
         }
       );
@@ -299,6 +301,22 @@ async function insertServerDataForUser(serverApp, userId, { setId } = {}) {
     deletedAt: null,
     receivedAt: updatedAt
   });
+  const profileSectionId = randomUUID();
+  await serverApp.database.db.insert(schema.userProfileSections).values({
+    id: profileSectionId,
+    userId,
+    deviceId: "device-a",
+    payload: {
+      id: profileSectionId,
+      section: "health_limitations",
+      values: { text: "Left knee", none: false },
+      updated_at: updatedAt.toISOString(),
+      deleted_at: null
+    },
+    updatedAt,
+    deletedAt: null,
+    receivedAt: updatedAt
+  });
   await serverApp.database.db.insert(schema.activityLog).values({
     id: `activity-${randomUUID()}`,
     userId,
@@ -329,6 +347,7 @@ async function countServerRowsForUser(serverApp, userId) {
     markerRows,
     loggedSetRows,
     sessionRows,
+    userProfileSectionRows,
     userRows
   ] = await Promise.all([
     serverApp.database.sql`
@@ -363,6 +382,11 @@ async function countServerRowsForUser(serverApp, userId) {
     `,
     serverApp.database.sql`
       select count(*)::int as count
+      from user_profile_sections
+      where user_id = ${userId}
+    `,
+    serverApp.database.sql`
+      select count(*)::int as count
       from "user"
       where id = ${userId}
     `
@@ -375,6 +399,7 @@ async function countServerRowsForUser(serverApp, userId) {
     loggedSetTombstoneGcMarkers: Number(markerRows[0].count),
     loggedSets: Number(loggedSetRows[0].count),
     sessions: Number(sessionRows[0].count),
+    userProfileSections: Number(userProfileSectionRows[0].count),
     users: Number(userRows[0].count)
   };
 }

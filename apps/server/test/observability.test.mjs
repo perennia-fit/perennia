@@ -310,6 +310,49 @@ test("privacy logger strips the Skips of a logged Skip write", () => {
   }
 });
 
+test("privacy logger strips the User Profile values of a logged agent write and read", () => {
+  const logEvents = [];
+  const logger = createPrivacyLogger({
+    info(payload, message) {
+      logEvents.push({ payload, message });
+    }
+  });
+
+  // A logged write body spread as it arrives, then a read section: none of these
+  // field names is denied on its own, so `sections` and `values` keep them out.
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/agent/profile/batch-write",
+      idempotencyKey: "profile-1",
+      sections: {
+        aboutYou: { birthYear: 1984 },
+        healthLimitations: { text: "Left knee surgery", none: false },
+        generalNotes: { text: "Private note" }
+      }
+    },
+    "synthetic User Profile write"
+  );
+  logger.info(
+    {
+      userId: "user-1",
+      path: "/agent/profile",
+      healthLimitations: { values: { text: "Right wrist" } }
+    },
+    "synthetic User Profile read"
+  );
+
+  assert.equal(logEvents.length, 2);
+  const serialized = JSON.stringify(logEvents.map((event) => event.payload));
+  assert.equal(logEvents[0].payload.userId, "user-1");
+  assert.equal(logEvents[0].payload.path, "/agent/profile/batch-write");
+  assert.doesNotMatch(serialized, /"sections":(?!"\[Filtered\]")/);
+  assert.doesNotMatch(serialized, /"values":(?!"\[Filtered\]")/);
+  for (const value of ["1984", "Left knee", "Private note", "Right wrist"]) {
+    assert.doesNotMatch(serialized, new RegExp(value), value);
+  }
+});
+
 test("Sentry crash reporting is opt-in and requires a DSN", () => {
   const sdk = createFakeSentrySdk();
 

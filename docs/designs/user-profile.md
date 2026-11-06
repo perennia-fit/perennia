@@ -533,7 +533,14 @@ section values above.
 *   **Validation** runs through the shared module on the merged values of each named section,
     with `referenceYear` set to the server's current UTC year.
     *   Any hard reject returns status 422 with `AgentProfileBatchWriteErrorResponseSchema`,
-        following `AgentSettingsBatchWriteErrorResponseSchema`, and nothing is written.
+        following `AgentSettingsBatchWriteErrorResponseSchema`, and nothing is written. Its
+        `code` is `agent_profile_batch_write_failed` and each error is `{ section, field, rule,
+        message }`.
+    *   A stored value the rules reject is part of the merged values, so it blocks a write of
+        its section, even one that doesn't name that field. The error names the field, and the
+        agent clears or corrects it in the same write. Only a push can store such a value. The
+        merge never drops it, because that would erase a value the write didn't name.
+    *   A section given with no fields names nothing: it is not merged, validated or written.
     *   Otherwise the write applies, and the 200 response is `{ accepted: true, duplicate,
         idempotencyKey, batchId, serverClock, profile, warnings }`. `profile` is the read shape
         after the write. Each warning is `{ section, field, rule, message }`.
@@ -1095,7 +1102,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 38 | `agent-skills/perennia/scripts/prn-agent.mjs` | Modify | CLI commands |
 | 39 | `packages/contract/openapi.json` | Modify (generated) | Contract |
 | 40 | `packages/contract/src/agent-client.ts` | Modify (generated) | TypeScript client |
-| 41 | `apps/mobile/lib/api/perennia_api_client.dart` | Modify (generated) | Dart client |
+| 41 | `apps/mobile/lib/api/perennia_api_client.dart` | Regenerate (no diff) | The Dart client carries no agent operations and types `entity` as a string, so the regeneration leaves it unchanged |
 | 42 | `agent-skills/perennia/references/api-operations.md` | Modify (generated) | Skill reference |
 | 43 | `apps/server/test/agent-profile.test.mjs` | Create | Agent route tests |
 | 44 | `apps/server/test/user-profile-sync.test.mjs` | Create | Push and pull tests |
@@ -1332,8 +1339,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         (strict), `AgentProfileBatchWriteResponseSchema`,
         `AgentProfileBatchWriteErrorResponseSchema` (422, following the settings error schema),
         and the 503 `agent_profile_unavailable` schema.
-    *   `AgentProfileStore`, with `read(userId)` and `batchWrite(userId, request)`, and
-        `createDrizzleAgentProfileStore(db)`.
+    *   `AgentProfileStore`, with `read({ userId })` and `batchWrite({ userId, deviceId,
+        request })`, and `createDrizzleAgentProfileStore(db)`. `deviceId` is `agent:<keyId>`,
+        which only the route knows.
     *   `read` takes the newest live row per section, ordered by `updated_at` and then `id`,
         maps it to camelCase, and returns `null` for a missing or all-unset row.
     *   `batchWrite`:

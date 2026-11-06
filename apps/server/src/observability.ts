@@ -404,5 +404,10 @@ const TRAINING_DATA_KEYS = new Set([
   "protocolids",
   // An Agent Skip write (same spec, D8) carries its Skips under a top-level
   // `skips` key; each item names a Protocol's planned dose.
-  "skips"
+  "skips",
+  // User Profile (docs/designs/user-profile.md, Lifecycle): an agent route body
+  // carries a person's health text and notes under `sections`, and a section's
+  // `values`. Sync payloads and Activity Log images are already covered above.
+  "sections",
+  "values"
 ]);

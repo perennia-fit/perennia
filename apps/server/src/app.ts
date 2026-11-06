@@ -173,6 +173,15 @@ import {
   type AgentSettingsBatchWriteStore
 } from "./agent-settings.js";
 import {
+  agentProfileReadRoute,
+  agentProfileBatchWriteRoute,
+  AgentProfileBatchWriteErrorResponseSchema,
+  AgentProfileBatchWriteResponseSchema,
+  AgentProfileSchema,
+  AgentProfileUnavailableResponseSchema,
+  type AgentProfileStore
+} from "./agent-profile.js";
+import {
   agentRoutineDetailRoute,
   agentRoutineListRoute,
   agentWorkoutTemplateDetailRoute,
@@ -427,6 +436,7 @@ import {
   METRIC_READINGS_SYNC_ENTITY,
   MEAL_TYPES_SYNC_ENTITY,
   NUTRITION_GOALS_SYNC_ENTITY,
+  USER_PROFILE_SECTIONS_SYNC_ENTITY,
   USER_SETTINGS_SYNC_ENTITY,
   PRESCRIPTIONS_SYNC_ENTITY,
   PROTOCOLS_SYNC_ENTITY,
@@ -508,6 +518,7 @@ export type CreateAppOptions = {
   agentProtocolsStore?: AgentProtocolsStore;
   agentNutritionGoalStore?: AgentNutritionGoalBatchWriteStore;
   agentSettingsStore?: AgentSettingsBatchWriteStore;
+  agentProfileStore?: AgentProfileStore;
   agentPlanReadStore?: AgentPlanReadStore;
   agentProgressReadStore?: AgentProgressReadStore;
   agentPlanTreeBatchWriteStore?: AgentPlanTreeBatchWriteStore;
@@ -673,6 +684,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const agentProtocolsStore = options.agentProtocolsStore;
   const agentNutritionGoalStore = options.agentNutritionGoalStore;
   const agentSettingsStore = options.agentSettingsStore;
+  const agentProfileStore = options.agentProfileStore;
   const agentPlanReadStore = options.agentPlanReadStore;
   const agentProgressReadStore = options.agentProgressReadStore;
   const agentPlanTreeBatchWriteStore = options.agentPlanTreeBatchWriteStore;
@@ -5411,6 +5423,143 @@ export function createApp(options: CreateAppOptions = {}) {
     );
   });
 
+  app.openapi(agentProfileReadRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProfileStore === undefined) {
+      return context.json(
+        AgentProfileUnavailableResponseSchema.parse({
+          code: "agent_profile_unavailable",
+          message: "Agent User Profile storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+
+    const profile = await agentProfileStore.read({
+      userId: agentAuth.agent.userId
+    });
+
+    return context.json(AgentProfileSchema.parse(profile), 200);
+  });
+
+  app.openapi(agentProfileBatchWriteRoute, async (context) => {
+    if (agentApiKeyStore === undefined) {
+      return context.json(
+        AgentApiKeyUnavailableResponseSchema.parse({
+          code: "agent_api_keys_unavailable",
+          message: "Agent API key storage is not configured."
+        }),
+        503
+      );
+    }
+    if (agentProfileStore === undefined) {
+      return context.json(
+        AgentProfileUnavailableResponseSchema.parse({
+          code: "agent_profile_unavailable",
+          message: "Agent User Profile storage is not configured."
+        }),
+        503
+      );
+    }
+
+    const agentAuth = await authenticateAgentBearer({
+      context,
+      agentApiKeyStore,
+      rateLimitBackend,
+      logger
+    });
+    if (agentAuth.status === "unauthorized") {
+      return context.json(
+        AgentUnauthorizedResponseSchema.parse({
+          code: "agent_unauthorized",
+          message: "A valid agent API key is required."
+        }),
+        401
+      );
+    }
+    if (agentAuth.status === "rate_limited") {
+      return agentAuth.response;
+    }
+    const agent = agentAuth.agent;
+
+    const requestBody = context.req.valid("json");
+    const writeResult = await agentProfileStore.batchWrite({
+      userId: agent.userId,
+      deviceId: `agent:${agent.keyId}`,
+      request: requestBody
+    });
+    if (!writeResult.accepted) {
+      return context.json(
+        AgentProfileBatchWriteErrorResponseSchema.parse({
+          code: "agent_profile_batch_write_failed",
+          message:
+            "User Profile write contains one or more hard validation failures.",
+          errors: writeResult.errors
+        }),
+        422
+      );
+    }
+    if (syncNudgePublisher !== undefined && writeResult.applied) {
+      try {
+        await syncNudgePublisher.enqueueSyncNudge({
+          userId: agent.userId,
+          sourceDeviceId: `agent:${agent.keyId}`,
+          reason: "agent_write"
+        });
+      } catch (error) {
+        logger.error?.(
+          {
+            error,
+            userId: agent.userId,
+            keyId: agent.keyId,
+            batchId: requestBody.idempotencyKey
+          },
+          "agent profile sync nudge enqueue failed"
+        );
+      }
+    }
+
+    return context.json(
+      AgentProfileBatchWriteResponseSchema.parse({
+        accepted: true,
+        duplicate: writeResult.duplicate,
+        idempotencyKey: requestBody.idempotencyKey,
+        batchId: requestBody.idempotencyKey,
+        serverClock: writeResult.serverClock,
+        profile: writeResult.profile,
+        warnings: writeResult.warnings
+      }),
+      200
+    );
+  });
+
   app.openapi(agentEnergyBalanceRoute, async (context) => {
     if (agentApiKeyStore === undefined) {
       return context.json(
@@ -5742,6 +5891,14 @@ export function createApp(options: CreateAppOptions = {}) {
         break;
       case NUTRITION_GOALS_SYNC_ENTITY:
         result = await syncStore.pushNutritionGoals({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
+      case USER_PROFILE_SECTIONS_SYNC_ENTITY:
+        result = await syncStore.pushUserProfileSections({
           userId: session.userId,
           correlationId: requestCorrelationId(context),
           deviceId: requestBody.deviceId,

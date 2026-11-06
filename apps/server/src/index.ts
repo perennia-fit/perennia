@@ -35,6 +35,7 @@ import { createDrizzleAgentActivityStore } from "./agent-activity.js";
 import { createDrizzleAgentProtocolsStore } from "./agent-protocols.js";
 import { createDrizzleAgentNutritionGoalStore } from "./agent-nutrition-goals.js";
 import { createDrizzleAgentSettingsStore } from "./agent-settings.js";
+import { createDrizzleAgentProfileStore } from "./agent-profile.js";
 import { createDrizzleAgentPlanReadStore } from "./agent-plan-reads.js";
 import { createDrizzleAgentProgressReadStore } from "./agent-progress-reads.js";
 import { createDrizzleAgentPlanTreeBatchWriteStore } from "./agent-plan-tree-batch-write.js";
@@ -735,6 +736,23 @@ export {
   type AgentSettingsReadResponse,
   type AgentSettingsReadStore
 } from "./agent-settings.js";
+export {
+  AgentProfileBatchWriteErrorResponseSchema,
+  AgentProfileBatchWriteRequestSchema,
+  AgentProfileBatchWriteResponseSchema,
+  AgentProfileBatchWriteSectionsSchema,
+  AgentProfileSchema,
+  AgentProfileUnavailableResponseSchema,
+  AgentProfileValidationIssueSchema,
+  agentProfileBatchWriteRoute,
+  agentProfileReadRoute,
+  createDrizzleAgentProfileStore,
+  type AgentProfile,
+  type AgentProfileBatchWriteRequest,
+  type AgentProfileBatchWriteResponse,
+  type AgentProfileStore,
+  type AgentProfileValidationIssue
+} from "./agent-profile.js";
 export {
   AGENT_PLAN_DEFAULT_COMPONENT_LIMIT,
   AGENT_PLAN_DEFAULT_PAGE_LIMIT,
@@ -1617,6 +1635,7 @@ export async function createMigratedServerApp({
     database.db
   );
   const agentSettingsStore = createDrizzleAgentSettingsStore(database.db);
+  const agentProfileStore = createDrizzleAgentProfileStore(database.db);
   const agentPlanReadStore = createDrizzleAgentPlanReadStore(database.db);
   const agentProgressReadStore = createDrizzleAgentProgressReadStore({
     db: database.db,
@@ -1670,6 +1689,7 @@ export async function createMigratedServerApp({
     agentMealTypesReadStore,
     agentNutritionGoalStore,
     agentSettingsStore,
+    profileStore: agentProfileStore,
     agentPlanReadStore,
     agentProgressReadStore,
     agentPlanTreeBatchWriteStore,
@@ -1702,6 +1722,7 @@ export async function createMigratedServerApp({
     agentProtocolsStore,
     agentNutritionGoalStore,
     agentSettingsStore,
+    agentProfileStore,
     agentPlanReadStore,
     agentProgressReadStore,
     agentPlanTreeBatchWriteStore,
