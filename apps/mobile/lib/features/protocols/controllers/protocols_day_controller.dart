@@ -298,8 +298,9 @@ class ProtocolDayController extends StreamNotifier<ProtocolDayState> {
   /// (docs/designs/compound-purposes.md, D3). A signed-in device must not run
   /// it here: `SyncRepository` runs it at the end of each successful Sync Run,
   /// so it sees the edits other devices made first. A signed-out device tags
-  /// only rows that never synced: one that has signed out still holds rows with
-  /// a server copy, and those wait for a signed-in Sync Run for the same reason.
+  /// only rows that never synced, one second past each row's own stamp, so the
+  /// write can't beat an edit made elsewhere: one that has signed out still
+  /// holds rows with a server copy, and those wait for a signed-in Sync Run.
   /// [ProtocolsRepository] has no auth, so the rule lives in this controller. If
   /// the auth read fails the backfill is skipped, because tagging before a pull
   /// could overwrite an edit made elsewhere and the next open retries.

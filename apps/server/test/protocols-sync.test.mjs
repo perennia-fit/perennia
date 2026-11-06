@@ -537,6 +537,82 @@ test(
   }
 );
 
+test(
+  "CUJ 6: a device that tagged its seed rows with no account, one second " +
+    "past their stamp, loses to an edit and still reaches an account without one",
+  { skip },
+  async () => {
+    const serverApp = await migratedApp();
+    try {
+      const user = await createSignedInUser(serverApp);
+      const seedTags = JSON.stringify([PERFORMANCE]);
+      const push = async (deviceId, changes) => {
+        const response = await syncPush(serverApp.app, user.sessionToken, {
+          deviceId,
+          entity: "compounds",
+          changes
+        });
+        assert.equal(response.status, 200);
+        return response.json();
+      };
+      // What a schema-65 device holds: its seed entry, stamped when it seeded
+      // and with no purpose_ids key, then the backfill's entry one second on.
+      const seededAt = "2026-10-24T12:00:00.000Z";
+      const backfilledAt = "2026-10-24T12:00:01.000Z";
+      const signedOutEntries = (id) => [
+        {
+          id,
+          payload: { ...compoundPayload(id, seededAt), name: "Creatine" },
+          updatedAt: seededAt,
+          deletedAt: null
+        },
+        {
+          id,
+          payload: {
+            ...compoundPayload(id, backfilledAt),
+            name: "Creatine",
+            purpose_ids: seedTags
+          },
+          updatedAt: backfilledAt,
+          deletedAt: null
+        }
+      ];
+
+      // Device A removed the tag and renamed Creatine after device B seeded.
+      const editedAt = "2026-10-25T08:00:00.000Z";
+      await push("device-a", [
+        {
+          id: CREATINE,
+          payload: {
+            ...compoundPayload(CREATINE, editedAt),
+            name: "Creatine monohydrate",
+            purpose_ids: "[]"
+          },
+          updatedAt: editedAt,
+          deletedAt: null
+        }
+      ]);
+
+      const lost = await push("device-b", signedOutEntries(CREATINE));
+      assert.deepEqual(lost.applied, []);
+
+      // A row nobody edited: device B's entries go up, and the tags land.
+      const untouched = randomUUID();
+      const landed = await push("device-b", signedOutEntries(untouched));
+      assert.equal(landed.applied.length, 2);
+
+      const pulled = await pullAll(serverApp.app, user.sessionToken);
+      const creatine = pulled.find((change) => change.id === CREATINE);
+      assert.equal(creatine.payload.purpose_ids, "[]");
+      assert.equal(creatine.payload.name, "Creatine monohydrate");
+      const other = pulled.find((change) => change.id === untouched);
+      assert.equal(other.payload.purpose_ids, seedTags);
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
 async function migratedApp() {
   return createMigratedServerApp({
     databaseUrl,

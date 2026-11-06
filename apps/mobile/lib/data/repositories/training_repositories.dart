@@ -5589,10 +5589,18 @@ class ProtocolsRepository {
   /// inserts the rows tagged and this does nothing. It is cheap (six rows, one
   /// Activity Log query) and does nothing once every row is touched.
   ///
-  /// With [onlyNeverSynced], a row the server already holds waits: a signed-out
-  /// device can't see edits made elsewhere, and its fresh stamp would beat them
-  /// when it signs in, because a Sync Run pushes before it pulls. The next
-  /// signed-in Sync Run backfills that row after its pull.
+  /// [onlyNeverSynced] is the signed-out call. A signed-out device can't see
+  /// edits made elsewhere, and a Sync Run pushes before it pulls, so a fresh
+  /// stamp would beat those edits when it signs in. Two things differ:
+  ///
+  ///  * A row the server already holds waits for the next signed-in Sync Run,
+  ///    which backfills it after its pull.
+  ///  * A row that never synced may still have a server copy, because seed ids
+  ///    are shared across an account's devices. It is stamped one second past
+  ///    its own `updatedAt`, not the current time. That beats only this device's
+  ///    pending `otc_seed` entry, which would drop an unchanged stamp as a tie,
+  ///    and loses to any edit made since this device seeded. One second, because
+  ///    Drift stores a DateTime as whole seconds.
   Future<void> backfillSeedPurposes({bool onlyNeverSynced = false}) {
     final context = _repositories._writeContexts.create(
       actor: 'otc_purpose_seed',
@@ -5639,7 +5647,11 @@ class ProtocolsRepository {
             purposeIds: Value<String>(
               _encodePurposeIds(seedCompoundPurposeIds[before.id]!),
             ),
-            updatedAt: Value<DateTime>(context.timestamp),
+            updatedAt: Value<DateTime>(
+              onlyNeverSynced
+                  ? before.updatedAt.add(const Duration(seconds: 1))
+                  : context.timestamp,
+            ),
           ),
         );
         final after = await _requireCompoundRow(before.id);

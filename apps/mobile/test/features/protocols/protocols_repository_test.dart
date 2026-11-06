@@ -924,6 +924,39 @@ void main() {
         expect((await compoundRow(creatineId)).purposeIds, '[]');
       });
 
+      test(
+          'with onlyNeverSynced, the stamp is one second past the row, not the '
+          'current time, and the batch can still be undone', () async {
+        await seedAsUpgradedDevice();
+        final before = await compoundRow(creatineId);
+
+        await repositories.protocols.backfillSeedPurposes(
+          onlyNeverSynced: true,
+        );
+
+        final tagged = await compoundRow(creatineId);
+        expect(tagged.purposeIds, jsonEncode(<String>[performanceId]));
+        expect(
+          tagged.updatedAt.isAtSameMomentAs(
+            before.updatedAt.add(const Duration(seconds: 1)),
+          ),
+          isTrue,
+        );
+        final entry = (await logFor(AppDatabase.compoundsTable, creatineId))
+            .singleWhere((e) => e.actor == 'otc_purpose_seed');
+        final image = jsonDecode(entry.afterImage!) as Map<String, Object?>;
+        expect(
+          DateTime.parse(image['updated_at']! as String)
+              .isAtSameMomentAs(tagged.updatedAt),
+          isTrue,
+        );
+
+        final result = await repositories.activityLog.undoBatch(entry.batchId);
+
+        expect(result.conflicts, isEmpty);
+        expect((await compoundRow(creatineId)).purposeIds, '[]');
+      });
+
       test('a fresh install has nothing to backfill', () async {
         await repositories.protocols.ensureOtcLibrarySeeded();
         final logCount =

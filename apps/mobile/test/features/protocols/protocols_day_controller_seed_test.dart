@@ -69,6 +69,12 @@ void main() {
         .ensureOtcLibrarySeeded();
 
     expect(await creatinePurposeIds(), isNot('[]'));
+    // Just past the row's own stamp: another device's edit may be waiting on
+    // the server, and this write must not beat it on first sign-in.
+    final creatine = await (database.select(database.compounds)
+          ..where((row) => row.id.equals(_creatineId)))
+        .getSingle();
+    expect(creatine.updatedAt.millisecondsSinceEpoch, 1001 * 1000);
   });
 
   test(

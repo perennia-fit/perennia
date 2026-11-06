@@ -510,11 +510,13 @@ Exercise's Focuses are `focus_ids`. There is no join table:
     *   it has at least one Activity Log entry, and every entry for it has
         actor `otc_seed`.
 
-    For each untouched row, it writes the seed tags with a fresh `updatedAt`
+    For each untouched row, it writes the seed tags with a new `updatedAt`
     and one Activity Log entry with actor `otc_purpose_seed`, so the change
     syncs and can be undone. This follows `_reconcilePlatformSeedFocuses` in
     `training_repositories.dart`, which writes a customization's Focuses with
-    a fresh stamp and an Activity Log entry.
+    a fresh stamp and an Activity Log entry. The stamp is the current time
+    after a pull, and one second past the row's own stamp on a signed-out
+    device (see **When it runs**).
     *   **It runs once per row.** After it runs, the row has an
         `otc_purpose_seed` entry, so it is no longer untouched. Any edit by the
         user, an Agent or another device (a pulled change logs an entry with
@@ -532,6 +534,14 @@ Exercise's Focuses are `focus_ids`. There is no join table:
         must wait: an edit made elsewhere may be waiting there, a fresh stamp
         would beat it, and a Sync Run pushes before it pulls. That row stays
         untagged until the device signs in again.
+        A row with `syncPreviouslySynced` false can have a server copy too,
+        because seed ids are shared across an account's devices. So this call
+        stamps each row one second past its own `updatedAt`, not the current
+        time. Storage keeps whole seconds, and the server drops a tie on
+        (stamp, device), so an unchanged stamp would lose to the device's own
+        pending `otc_seed` entry and the tags would never reach the server.
+        Any edit made elsewhere after this device seeded still wins on first
+        sign-in, and an account with no such edit receives the tags.
         On a signed-in device, `RepositorySyncCycleRunner` runs it
         instead, after the pull of each Sync Run that gets that far, before the
         run's final push. So it runs after the full pull that follows the
@@ -849,9 +859,10 @@ upgrade (D3).
 *   **Pros**: the stored list is all there is. Sync, the Agent surface and the
     app read one field with no special rule, and the server needs no copy of
     the seed table.
-*   **Cons**: the backfill writes a fresh timestamp on up to six existing rows
-    per upgrading device. It can beat an edit made on another device that this
-    device hasn't pulled yet (see [Risks](#risks-and-mitigations)).
+*   **Cons**: on a signed-in device, the backfill writes a fresh timestamp on
+    up to six existing rows per upgrading device. It can beat an edit made on
+    another device that this device hasn't pulled yet (see
+    [Risks](#risks-and-mitigations)).
 *   **Reason for choosing**: the race is confined to the one-time backfill,
     is narrowed by running after a full pull, and its loser is recoverable.
     Alternative H's cost lasts forever.
@@ -989,7 +1000,11 @@ Let the Purpose filter alone narrow by Purpose.
     upgrade is a full pull (D1), so only an edit made between that pull and the
     push can
     lose; the loser is in the Activity Log. A signed-out device tags only rows
-    that never synced (D3), so it can't beat an edit to a row the server holds.
+    that never synced, one second past each row's own stamp (D3), so it can't
+    beat an edit made after this device seeded. An edit older than this
+    device's seed already loses to the pending `otc_seed` entry a schema-65
+    device stamped with the current time; that needs a device seeding on the
+    old build after the edit, and its loser is in the Activity Log.
 *   **Concurrent tag edits on two devices.** The tags are one field, so one
     device's list wins. *Mitigation:* the Activity Log keeps the loser
     (Alternative B records why per-tag rows aren't worth it).
@@ -1367,8 +1382,10 @@ this PR changes no golden vectors, contract or sync shape.
         actor `otc_purpose_seed`, applying the untouched test to each seed
         row in one transaction. `ProtocolDayController.ensureOtcLibrarySeeded`
         calls it with `onlyNeverSynced: true` when the device is signed out,
-        which limits it to rows with `syncPreviouslySynced` false (file 20), and
-        `RepositorySyncCycleRunner` when it has one (file 17).
+        which limits it to rows with `syncPreviouslySynced` false and stamps
+        each one second past its own `updatedAt` (file 20), and
+        `RepositorySyncCycleRunner` calls it with the current time when it has
+        an account (file 17).
     *   **Compound writes:**
         *   `_createCompound` stores `purposeIds`, as `'[]'` when the draft
             gives none.
@@ -1695,7 +1712,8 @@ this PR changes no golden vectors, contract or sync shape.
         OTC source; a renamed or archived starter is left alone. A fresh seed
         inserts the six rows tagged, at the fixed timestamp.
     *   **Backfill:** an untouched upgraded row is tagged once, with an
-        `otc_purpose_seed` entry; a renamed row, a row with an Agent or pulled
+        `otc_purpose_seed` entry; with `onlyNeverSynced`, its stamp is one
+        second past the row's, and the batch can be undone; a renamed row, a row with an Agent or pulled
         entry, and a row with `[]` saved by the user are each left alone; a row
         the user emptied stays empty after Erase; a row whose only other entry
         was pulled with actor `otc_seed` is still untouched; a second run does
@@ -1742,7 +1760,10 @@ this PR changes no golden vectors, contract or sync shape.
         explicit `'[]'` clears it;
     *   CUJ 6: device A empties Creatine's list and renames Cognition and
         syncs; device B seeds, pulls in full, runs the backfill, and syncs;
-        both end with an empty list and the new name.
+        both end with an empty list and the new name;
+    *   CUJ 6 on a device that backfilled with no account: its seed entry and
+        its entry one second later lose to device A's edit, and are applied
+        to a row nobody edited.
 *   **`apps/server/test/seeded-row-tenancy-sync.test.mjs`:** two accounts can
     each hold starter Purpose ids.
 *   **`apps/server/test/agent-protocols.test.mjs`:**
@@ -1801,7 +1822,11 @@ the items each one must pass.
     covered by its server half there (a full pull returns the tags at the
     version an older build applied) and its app half in
     `sync_repository_test.dart` (that pull restores them, and the next edit
-    pushes them).
+    pushes them). A device that upgrades with no account, backfills, and then
+    signs in for the first time is covered in both too: against a server
+    holding another device's newer removal and rename, it ends untagged and
+    renamed and the server's row is unchanged, and an account with no edit
+    receives the tags.
 *   **V5. Tests:** the tests each PR adds pass inside its gate run: file 10 for
     PR 1, file 41 for PR 2. They include the repository tests against
     in-memory SQLite, the kill-and-reopen test and the accessibility checks.
