@@ -1603,7 +1603,6 @@
     }
   },
   "protocolEditorCompoundsHeading": "Compounds",
-  "protocolEditorSchedulesHeading": "Schedules",
   "protocolEditorScheduleTitle": "{compound} Schedule",
   "@protocolEditorScheduleTitle": {
     "placeholders": {
@@ -2554,6 +2553,133 @@
     "description": "Last row of the Compound picker: creates a Compound with the name the user searched for.",
     "placeholders": {
       "name": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorAddCompounds": "Add Compounds",
+  "@protocolEditorAddCompounds": {
+    "description": "Button under a Protocol's member rows that opens the Compound picker."
+  },
+  "protocolEditorMemberArchived": "Archived",
+  "@protocolEditorMemberArchived": {
+    "description": "Marks a Protocol member row whose Compound is archived."
+  },
+  "protocolEditorRemoveMember": "Remove {compound}",
+  "@protocolEditorRemoveMember": {
+    "description": "Tooltip of a Protocol member row's remove button.",
+    "placeholders": {
+      "compound": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorFixSchedule": "Fix this Schedule",
+  "@protocolEditorFixSchedule": {
+    "description": "Under a Protocol member row after a save attempt, when that member's Schedule has issues."
+  },
+  "protocolScheduleSummaryAddAmount": "Add an amount",
+  "@protocolScheduleSummaryAddAmount": {
+    "description": "In a Protocol member row's Schedule summary, where the planned amount goes when it is empty."
+  },
+  "protocolScheduleSummaryEveryNDays": "{count, plural, =1{Every day} other{Every {count} days}}",
+  "@protocolScheduleSummaryEveryNDays": {
+    "description": "In a Schedule summary: the days of a Schedule planned every N days.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolScheduleSummaryPerDay": "{count, plural, =1{1 a day} other{{count} a day}}",
+  "@protocolScheduleSummaryPerDay": {
+    "description": "In a Schedule summary: how many untimed doses an Any time Schedule plans each day.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolScheduleSummaryTablets": "{count, plural, =1{{amount} tablet} other{{amount} tablets}}",
+  "@protocolScheduleSummaryTablets": {
+    "description": "In a Schedule summary: a planned amount in tablets, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryCapsules": "{count, plural, =1{{amount} capsule} other{{amount} capsules}}",
+  "@protocolScheduleSummaryCapsules": {
+    "description": "In a Schedule summary: a planned amount in capsules, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryDrops": "{count, plural, =1{{amount} drop} other{{amount} drops}}",
+  "@protocolScheduleSummaryDrops": {
+    "description": "In a Schedule summary: a planned amount in drops, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummarySprays": "{count, plural, =1{{amount} spray} other{{amount} sprays}}",
+  "@protocolScheduleSummarySprays": {
+    "description": "In a Schedule summary: a planned amount in sprays, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryPuffs": "{count, plural, =1{{amount} puff} other{{amount} puffs}}",
+  "@protocolScheduleSummaryPuffs": {
+    "description": "In a Schedule summary: a planned amount in puffs, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryPatches": "{count, plural, =1{{amount} patch} other{{amount} patches}}",
+  "@protocolScheduleSummaryPatches": {
+    "description": "In a Schedule summary: a planned amount in patches, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolScheduleSummaryUnits": "{count, plural, =1{{amount} unit} other{{amount} units}}",
+  "@protocolScheduleSummaryUnits": {
+    "description": "In a Schedule summary: a planned amount in units, as the user entered it.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "amount": {
         "type": "String"
       }
     }

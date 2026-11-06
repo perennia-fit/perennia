@@ -2762,9 +2762,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get protocolEditorCompoundsHeading => 'Compounds';
 
   @override
-  String get protocolEditorSchedulesHeading => 'Schedules';
-
-  @override
   String protocolEditorScheduleTitle(String compound) {
     return '$compound Schedule';
   }
@@ -3840,5 +3837,121 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String compoundPickerCreate(String name) {
     return 'Create \"$name\"';
+  }
+
+  @override
+  String get protocolEditorAddCompounds => 'Add Compounds';
+
+  @override
+  String get protocolEditorMemberArchived => 'Archived';
+
+  @override
+  String protocolEditorRemoveMember(String compound) {
+    return 'Remove $compound';
+  }
+
+  @override
+  String get protocolEditorFixSchedule => 'Fix this Schedule';
+
+  @override
+  String get protocolScheduleSummaryAddAmount => 'Add an amount';
+
+  @override
+  String protocolScheduleSummaryEveryNDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Every $count days',
+      one: 'Every day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryPerDay(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count a day',
+      one: '1 a day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryTablets(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount tablets',
+      one: '$amount tablet',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryCapsules(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount capsules',
+      one: '$amount capsule',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryDrops(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount drops',
+      one: '$amount drop',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummarySprays(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount sprays',
+      one: '$amount spray',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryPuffs(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount puffs',
+      one: '$amount puff',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryPatches(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount patches',
+      one: '$amount patch',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String protocolScheduleSummaryUnits(num count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$amount units',
+      one: '$amount unit',
+    );
+    return '$_temp0';
   }
 }

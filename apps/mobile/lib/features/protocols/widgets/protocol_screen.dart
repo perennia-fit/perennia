@@ -20,6 +20,7 @@ import '../../training/services/timer_background_scheduler.dart';
 import '../controllers/protocol_controller.dart';
 import '../controllers/protocols_day_controller.dart';
 import '../services/protocol_reminder_scheduler.dart';
+import 'compound_picker_sheet.dart';
 import 'consistency_screen.dart';
 import 'effect_screen.dart';
 import 'plan_labels.dart';
@@ -317,7 +318,15 @@ class ProtocolFormScreen extends ConsumerStatefulWidget {
       Key('protocols.form.reminders.openSettings');
   static const remindersHorizonKey = Key('protocols.form.reminders.horizon');
 
-  static Key compoundChipKey(String id) => Key('protocols.form.compound-$id');
+  static const addCompoundsKey = Key('protocols.form.addCompounds');
+
+  static Key memberRowKey(String id) => Key('protocols.form.member-$id');
+
+  static Key removeMemberKey(String id) =>
+      Key('protocols.form.member.remove-$id');
+
+  /// The line under a member's row when its Schedule has hard rejects.
+  static Key memberFixKey(String id) => Key('protocols.form.member.fix-$id');
 
   static Key pauseRowKey(int index) => Key('protocols.form.pause-$index');
 
@@ -396,6 +405,127 @@ class ProtocolFormScreen extends ConsumerStatefulWidget {
 /// The time a new timed Schedule starts with, and the first suggestion when a
 /// time is added to an empty list. Only a starting point: the user edits it.
 const String _defaultPlannedTime = '09:00';
+
+/// A member's Schedule sheet stops short of full height, leaving a strip of the
+/// form to tap to close it.
+const double _scheduleSheetMaxHeightFactor = 0.92;
+
+/// What a Schedule summary reads (D5), detached from the editor's controllers.
+/// A value the editor can't parse yet is null, and the summary leaves it out or
+/// names the kind of days instead.
+class ScheduleSummaryInput {
+  const ScheduleSummaryInput({
+    required this.choice,
+    this.daysChoice = ProtocolScheduleDaysChoice.daily,
+    this.weekdays = const <int>[],
+    this.everyN,
+    this.times = const <String>[],
+    this.countPerDay,
+    this.amount,
+    this.unit,
+  });
+
+  final ProtocolScheduleRuleChoice choice;
+  final ProtocolScheduleDaysChoice daysChoice;
+
+  /// ISO weekdays, 1 = Monday, in the order to show them.
+  final List<int> weekdays;
+  final int? everyN;
+
+  /// Stored `HH:MM` local times.
+  final List<String> times;
+  final int? countPerDay;
+
+  /// The planned amount as entered, or null when there is none. The form never
+  /// holds one for "As needed" (D7 `amount_absent`).
+  final String? amount;
+  final DoseUnit? unit;
+}
+
+/// One member's Schedule as the single line its row shows (D5), such as "Every
+/// day · 9:00 AM · 5 g". An empty amount on a rule that plans one reads "Add an
+/// amount". Times use the device's format, so callers pass
+/// `MediaQuery.alwaysUse24HourFormatOf(context)`.
+String protocolScheduleSummary(
+  AppLocalizations l10n,
+  ScheduleSummaryInput input, {
+  required MaterialLocalizations material,
+  required String localeName,
+  bool alwaysUse24HourFormat = false,
+}) {
+  final amount = input.amount;
+  final amountText = amount == null || amount.isEmpty
+      ? null
+      : _plannedAmountText(l10n, amount, input.unit);
+  final daysText = switch (input.daysChoice) {
+    ProtocolScheduleDaysChoice.daily => l10n.protocolEditorDaysDaily,
+    ProtocolScheduleDaysChoice.weekdays => input.weekdays.isEmpty
+        ? l10n.protocolEditorDaysWeekdays
+        : input.weekdays
+            .map((weekday) => _shortWeekdayName(localeName, weekday))
+            .join(', '),
+    ProtocolScheduleDaysChoice.everyNDays => switch (input.everyN) {
+        final n? => l10n.protocolScheduleSummaryEveryNDays(n),
+        null => l10n.protocolEditorDaysEveryN,
+      },
+  };
+  final count = input.countPerDay;
+  final parts = switch (input.choice) {
+    ProtocolScheduleRuleChoice.none => <String>[l10n.protocolEditorRuleNone],
+    ProtocolScheduleRuleChoice.asNeeded => <String>[
+        l10n.protocolEditorRuleAsNeeded,
+        if (amountText != null) amountText,
+      ],
+    ProtocolScheduleRuleChoice.timed => <String>[
+        daysText,
+        if (input.times.isNotEmpty)
+          input.times
+              .map(
+                (time) => isPlanLocalTime(time)
+                    ? material.formatTimeOfDay(
+                        planTimeOfDay(time),
+                        alwaysUse24HourFormat: alwaysUse24HourFormat,
+                      )
+                    : time,
+              )
+              .join(', '),
+        amountText ?? l10n.protocolScheduleSummaryAddAmount,
+      ],
+    ProtocolScheduleRuleChoice.untimed => <String>[
+        daysText,
+        if (count != null) l10n.protocolScheduleSummaryPerDay(count),
+        amountText ?? l10n.protocolScheduleSummaryAddAmount,
+      ],
+  };
+  return parts.join(' · ');
+}
+
+/// A planned amount with its unit. [doseUnitLabel] is singular, so the countable
+/// units take their ICU plurals here; an amount that doesn't parse reads as
+/// plural. Mass and volume units don't change.
+String _plannedAmountText(
+  AppLocalizations l10n,
+  String amount,
+  DoseUnit? unit,
+) {
+  final count = double.tryParse(amount) ?? 0;
+  return switch (unit) {
+    null => amount,
+    DoseUnit.tablet => l10n.protocolScheduleSummaryTablets(count, amount),
+    DoseUnit.capsule => l10n.protocolScheduleSummaryCapsules(count, amount),
+    DoseUnit.drop => l10n.protocolScheduleSummaryDrops(count, amount),
+    DoseUnit.spray => l10n.protocolScheduleSummarySprays(count, amount),
+    DoseUnit.puff => l10n.protocolScheduleSummaryPuffs(count, amount),
+    DoseUnit.patch => l10n.protocolScheduleSummaryPatches(count, amount),
+    DoseUnit.unit => l10n.protocolScheduleSummaryUnits(count, amount),
+    DoseUnit.milligram ||
+    DoseUnit.microgram ||
+    DoseUnit.gram ||
+    DoseUnit.internationalUnit ||
+    DoseUnit.milliliter =>
+      '$amount ${doseUnitLabel(unit)}',
+  };
+}
 
 /// The mutable in-progress Schedule editor state for one Protocol Member.
 /// Purely a UI staging area: it becomes a [ScheduleDraft] on save, and
@@ -490,6 +620,32 @@ class _ScheduleFieldState {
     );
   }
 
+  /// Seeds the editor for a Compound added in this editor session (D5): At set
+  /// times, Every day, at the default time, in the Compound's default unit and
+  /// route. Its amount is the Compound's latest Dose's, when that Dose used the
+  /// default unit; otherwise it is empty, and the row asks for one.
+  factory _ScheduleFieldState.forNewMember(
+    CompoundScheduleOptionRecord compound,
+    ({double amount, DoseUnit unit})? lastDose, {
+    required ProtocolDayDate protocolStart,
+  }) {
+    return _ScheduleFieldState(
+      choice: ProtocolScheduleRuleChoice.timed,
+      daysChoice: ProtocolScheduleDaysChoice.daily,
+      weekdays: const <int>[],
+      everyN: '${ProtocolPlanValidationLimits.minEveryNDays}',
+      everyNAnchor: protocolStart,
+      everyNAnchorIsDefault: true,
+      times: const <String>[_defaultPlannedTime],
+      count: '1',
+      amountEntered: lastDose != null && lastDose.unit == compound.defaultUnit
+          ? '${lastDose.amount}'.replaceFirst(RegExp(r'\.0$'), '')
+          : '',
+      unit: compound.defaultUnit,
+      route: compound.defaultRoute,
+    );
+  }
+
   ProtocolScheduleRuleChoice choice;
   ProtocolScheduleDaysChoice daysChoice;
   final Set<int> weekdays;
@@ -521,6 +677,23 @@ class _ScheduleFieldState {
 
   double? get _amountValue =>
       plansAmount ? double.tryParse(amountController.text.trim()) : null;
+
+  /// A rule that plans an amount with none entered yet.
+  bool get needsAmount => plansAmount && _amountEntered == null;
+
+  /// This editor's values as its row's summary reads them.
+  ScheduleSummaryInput summaryInput() {
+    return ScheduleSummaryInput(
+      choice: choice,
+      daysChoice: daysChoice,
+      weekdays: weekdays.toList()..sort(),
+      everyN: int.tryParse(everyNController.text.trim()),
+      times: times,
+      countPerDay: int.tryParse(countController.text.trim()),
+      amount: _amountEntered,
+      unit: plansAmount ? unit : null,
+    );
+  }
 
   /// Switches the rule kind. "As needed" and "No schedule" clear the amount,
   /// unit and route (D7 `amount_absent`: those rules carry none); a timed or
@@ -665,6 +838,12 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
   final Map<String, _ScheduleFieldState> _scheduleFields =
       <String, _ScheduleFieldState>{};
 
+  /// Every member Compound resolved so far, archived ones included. Read before
+  /// the active list wherever this form names a member, and kept across the
+  /// lookup's key changes.
+  final Map<String, CompoundScheduleOptionRecord> _memberOptions =
+      <String, CompoundScheduleOptionRecord>{};
+
   /// The in-progress declared target outcomes: the selected `Metric` ids and
   /// whether `performance` is selected. A Protocol MAY declare them, never
   /// must.
@@ -738,9 +917,6 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     ProtocolRecord protocol,
     List<CompoundScheduleOptionRecord> compounds,
   ) {
-    final names = <String, String>{
-      for (final compound in compounds) compound.id: compound.name,
-    };
     final members = List<ProtocolMemberRecord>.of(protocol.members)
       ..sort((a, b) => a.position.compareTo(b.position));
     return Navigator.of(context).push(
@@ -752,8 +928,7 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
               for (final member in members)
                 ConsistencyTab(
                   compoundId: member.compoundId,
-                  label: names[member.compoundId] ??
-                      context.l10n.protocolEditorCompoundFallback,
+                  label: _compoundOption(member.compoundId, compounds).name,
                 ),
             ],
           ),
@@ -781,9 +956,17 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
         const <CompoundScheduleOptionRecord>[];
     final metrics = ref.watch(metricOptionListProvider).value ??
         const <MetricOptionRecord>[];
-    final dateFormat = DateFormat.yMMMd();
     final periodValidation = _validatePeriod();
     final headingStyle = TextStyle(color: colors.textPrimary);
+    // The key changes with the members and a new key starts loading, so every
+    // resolved value is kept: a row doesn't blink as members come and go.
+    final memberLookup = ref.watch(
+      compoundsByIdsProvider(CompoundNameLookupRequest(_compoundIds)),
+    );
+    for (final option
+        in memberLookup.value ?? const <CompoundScheduleOptionRecord>[]) {
+      _memberOptions[option.id] = option;
+    }
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -824,193 +1007,42 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
                   InputDecoration(labelText: l10n.protocolEditorNameLabel),
             ),
             const SizedBox(height: AppDimens.base),
-            _DateTile(
-              key: ProtocolFormScreen.startDateFieldKey,
-              label: l10n.protocolEditorStartDateLabel,
-              value: dateFormat.format(_startDate.toLocalDateTime()),
-              onTap: _pickStartDate,
-            ),
-            const SizedBox(height: AppDimens.base),
-            Text(l10n.protocolEditorPeriodHeading, style: headingStyle),
-            SwitchListTile(
-              key: ProtocolFormScreen.untilToggleKey,
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                l10n.protocolEditorUntilLabel,
-                style: TextStyle(color: colors.textPrimary),
-              ),
-              subtitle: _endDate == null
-                  ? Text(
-                      l10n.protocolEditorOngoing,
-                      style: TextStyle(color: colors.textSecondary),
-                    )
-                  : null,
-              value: _endDate != null,
-              onChanged: (until) {
-                setState(() => _endDate = until ? _startDate : null);
-              },
-            ),
-            if (_endDate != null)
-              _DateTile(
-                key: ProtocolFormScreen.endDateFieldKey,
-                label: l10n.protocolEditorEndDateLabel,
-                value: dateFormat.format(_endDate!.toLocalDateTime()),
-                onTap: _pickEndDate,
-              ),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
-                key: ProtocolFormScreen.doseCountHelperKey,
-                style: TextButton.styleFrom(
-                  foregroundColor: colors.textPrimary,
-                  minimumSize: const Size(0, AppDimens.touchTarget),
-                ),
-                onPressed: _compoundIds.isEmpty
-                    ? null
-                    : () => unawaited(_openDoseCountHelper(compounds)),
-                icon: const Icon(Icons.event_available_outlined),
-                label: Text(l10n.protocolEditorDoseCountButton),
-              ),
-            ),
-            SwitchListTile(
-              key: ProtocolFormScreen.cycleToggleKey,
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                l10n.protocolEditorCycleLabel,
-                style: TextStyle(color: colors.textPrimary),
-              ),
-              subtitle: Text(
-                l10n.protocolEditorCycleSubtitle,
-                style: TextStyle(color: colors.textSecondary),
-              ),
-              value: _cycleEnabled,
-              onChanged: (enabled) => setState(() => _cycleEnabled = enabled),
-            ),
-            if (_cycleEnabled) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      key: ProtocolFormScreen.cycleOnDaysFieldKey,
-                      controller: _cycleOnController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: l10n.protocolEditorCycleOnDaysLabel,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: AppDimens.dense),
-                  Expanded(
-                    child: TextField(
-                      key: ProtocolFormScreen.cycleOffDaysFieldKey,
-                      controller: _cycleOffController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: l10n.protocolEditorCycleOffDaysLabel,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                ],
-              ),
-              _DateTile(
-                key: ProtocolFormScreen.cycleAnchorFieldKey,
-                label: l10n.protocolEditorCycleAnchorLabel,
-                value: _anchorLabel(
-                  l10n,
-                  _cycleAnchor,
-                  isDefault: _cycleAnchorIsDefault,
-                ),
-                onTap: _pickCycleAnchor,
-              ),
-            ],
-            const SizedBox(height: AppDimens.dense),
-            Text(
-              l10n.protocolEditorPausesHeading,
-              style: context.textStyles.label
-                  .copyWith(color: colors.textSecondary),
-            ),
-            if (_pauses.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: AppDimens.dense / 3),
-                child: Text(
-                  l10n.protocolEditorPausesEmpty,
-                  style: TextStyle(color: colors.textSecondary),
-                ),
-              ),
-            for (final (index, pause) in _pauses.indexed)
-              ListTile(
-                key: ProtocolFormScreen.pauseRowKey(index),
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  l10n.protocolEditorDateRange(
-                    dateFormat.format(pause.from.toLocalDateTime()),
-                    dateFormat.format(pause.to.toLocalDateTime()),
-                  ),
-                  style: TextStyle(color: colors.textPrimary),
-                ),
-                onTap: () => unawaited(_pickPause(index: index)),
-                trailing: IconButton(
-                  key: ProtocolFormScreen.removePauseKey(index),
-                  tooltip: l10n.protocolEditorRemovePause,
-                  icon: const Icon(Icons.close),
-                  onPressed: () => setState(() => _pauses.removeAt(index)),
-                ),
-              ),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
-                key: ProtocolFormScreen.addPauseKey,
-                style: TextButton.styleFrom(
-                  foregroundColor: colors.textPrimary,
-                  minimumSize: const Size(0, AppDimens.touchTarget),
-                ),
-                onPressed: () => unawaited(_pickPause()),
-                icon: const Icon(Icons.add),
-                label: Text(l10n.protocolEditorAddPause),
-              ),
-            ),
-            _PlanIssueList(
-              issues: _showErrors
-                  ? periodValidation.errors
-                  : const <DoseValidationIssue>[],
-              warnings: periodValidation.warnings,
-              keyFor: ProtocolFormScreen.periodIssueKey,
-            ),
-            const SizedBox(height: AppDimens.base),
             Text(l10n.protocolEditorCompoundsHeading, style: headingStyle),
             const SizedBox(height: AppDimens.dense),
-            Wrap(
-              spacing: AppDimens.dense,
-              runSpacing: AppDimens.dense,
-              children: [
-                for (final compound in compounds)
-                  FilterChip(
-                    key: ProtocolFormScreen.compoundChipKey(compound.id),
-                    label: Text(compound.name),
-                    selected: _compoundIds.contains(compound.id),
-                    onSelected: (selected) => _toggleCompound(
-                      compound,
-                      selected: selected,
-                    ),
-                  ),
-              ],
-            ),
-            if (_compoundIds.isNotEmpty) ...[
-              const SizedBox(height: AppDimens.base),
-              Text(l10n.protocolEditorSchedulesHeading, style: headingStyle),
-              const SizedBox(height: AppDimens.dense),
-              for (final compoundId in _compoundIds)
-                _ScheduleEditor(
-                  key: ProtocolFormScreen.scheduleEditorKey(compoundId),
-                  compound: _compoundOption(compoundId, compounds),
-                  field: _fieldFor(compoundId, compounds),
-                  protocolStart: _startDate,
-                  showErrors: _showErrors,
-                  onChanged: () => setState(() {}),
+            for (final compoundId in _compoundIds)
+              _MemberRow(
+                key: ProtocolFormScreen.memberRowKey(compoundId),
+                compoundId: compoundId,
+                name: _memberOptions[compoundId]?.name ??
+                    (memberLookup.isLoading
+                        ? ''
+                        : l10n.protocolEditorCompoundFallback),
+                isArchived: _isKnownArchived(compoundId),
+                field: _fieldFor(compoundId, compounds),
+                showErrors: _showErrors,
+                // Not before its defaults and name are known: the sheet would
+                // open titled and seeded from a placeholder.
+                onTap: _memberOptions.containsKey(compoundId) ||
+                        !memberLookup.isLoading
+                    ? () => unawaited(_openScheduleSheet(compoundId))
+                    : null,
+                onRemove: () => _toggleCompound(compoundId, selected: false),
+              ),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                key: ProtocolFormScreen.addCompoundsKey,
+                style: TextButton.styleFrom(
+                  foregroundColor: colors.textPrimary,
+                  minimumSize: const Size(0, AppDimens.touchTarget),
                 ),
-            ],
+                onPressed: () => unawaited(_addCompounds()),
+                icon: const Icon(Icons.add),
+                label: Text(l10n.protocolEditorAddCompounds),
+              ),
+            ),
+            const SizedBox(height: AppDimens.base),
+            ..._periodControls(compounds, periodValidation),
             const SizedBox(height: AppDimens.base),
             _RemindersField(
               enabled: _remindersEnabled,
@@ -1079,10 +1111,181 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     );
   }
 
+  /// The start date and Protocol Period controls: until, the "N doses" helper,
+  /// cycle and Pauses, with the Period's issues under them.
+  List<Widget> _periodControls(
+    List<CompoundScheduleOptionRecord> compounds,
+    DoseValidationResult periodValidation,
+  ) {
+    final colors = context.colors;
+    final l10n = context.l10n;
+    final dateFormat = DateFormat.yMMMd();
+    final headingStyle = TextStyle(color: colors.textPrimary);
+    return <Widget>[
+      _DateTile(
+        key: ProtocolFormScreen.startDateFieldKey,
+        label: l10n.protocolEditorStartDateLabel,
+        value: dateFormat.format(_startDate.toLocalDateTime()),
+        onTap: _pickStartDate,
+      ),
+      const SizedBox(height: AppDimens.base),
+      Text(l10n.protocolEditorPeriodHeading, style: headingStyle),
+      SwitchListTile(
+        key: ProtocolFormScreen.untilToggleKey,
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          l10n.protocolEditorUntilLabel,
+          style: TextStyle(color: colors.textPrimary),
+        ),
+        subtitle: _endDate == null
+            ? Text(
+                l10n.protocolEditorOngoing,
+                style: TextStyle(color: colors.textSecondary),
+              )
+            : null,
+        value: _endDate != null,
+        onChanged: (until) {
+          setState(() => _endDate = until ? _startDate : null);
+        },
+      ),
+      if (_endDate != null)
+        _DateTile(
+          key: ProtocolFormScreen.endDateFieldKey,
+          label: l10n.protocolEditorEndDateLabel,
+          value: dateFormat.format(_endDate!.toLocalDateTime()),
+          onTap: _pickEndDate,
+        ),
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: TextButton.icon(
+          key: ProtocolFormScreen.doseCountHelperKey,
+          style: TextButton.styleFrom(
+            foregroundColor: colors.textPrimary,
+            minimumSize: const Size(0, AppDimens.touchTarget),
+          ),
+          onPressed: _compoundIds.isEmpty
+              ? null
+              : () => unawaited(_openDoseCountHelper(compounds)),
+          icon: const Icon(Icons.event_available_outlined),
+          label: Text(l10n.protocolEditorDoseCountButton),
+        ),
+      ),
+      SwitchListTile(
+        key: ProtocolFormScreen.cycleToggleKey,
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          l10n.protocolEditorCycleLabel,
+          style: TextStyle(color: colors.textPrimary),
+        ),
+        subtitle: Text(
+          l10n.protocolEditorCycleSubtitle,
+          style: TextStyle(color: colors.textSecondary),
+        ),
+        value: _cycleEnabled,
+        onChanged: (enabled) => setState(() => _cycleEnabled = enabled),
+      ),
+      if (_cycleEnabled) ...[
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: ProtocolFormScreen.cycleOnDaysFieldKey,
+                controller: _cycleOnController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: l10n.protocolEditorCycleOnDaysLabel,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: AppDimens.dense),
+            Expanded(
+              child: TextField(
+                key: ProtocolFormScreen.cycleOffDaysFieldKey,
+                controller: _cycleOffController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: l10n.protocolEditorCycleOffDaysLabel,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ],
+        ),
+        _DateTile(
+          key: ProtocolFormScreen.cycleAnchorFieldKey,
+          label: l10n.protocolEditorCycleAnchorLabel,
+          value: _anchorLabel(
+            l10n,
+            _cycleAnchor,
+            isDefault: _cycleAnchorIsDefault,
+          ),
+          onTap: _pickCycleAnchor,
+        ),
+      ],
+      const SizedBox(height: AppDimens.dense),
+      Text(
+        l10n.protocolEditorPausesHeading,
+        style: context.textStyles.label.copyWith(color: colors.textSecondary),
+      ),
+      if (_pauses.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: AppDimens.dense / 3),
+          child: Text(
+            l10n.protocolEditorPausesEmpty,
+            style: TextStyle(color: colors.textSecondary),
+          ),
+        ),
+      for (final (index, pause) in _pauses.indexed)
+        ListTile(
+          key: ProtocolFormScreen.pauseRowKey(index),
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            l10n.protocolEditorDateRange(
+              dateFormat.format(pause.from.toLocalDateTime()),
+              dateFormat.format(pause.to.toLocalDateTime()),
+            ),
+            style: TextStyle(color: colors.textPrimary),
+          ),
+          onTap: () => unawaited(_pickPause(index: index)),
+          trailing: IconButton(
+            key: ProtocolFormScreen.removePauseKey(index),
+            tooltip: l10n.protocolEditorRemovePause,
+            icon: const Icon(Icons.close),
+            onPressed: () => setState(() => _pauses.removeAt(index)),
+          ),
+        ),
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: TextButton.icon(
+          key: ProtocolFormScreen.addPauseKey,
+          style: TextButton.styleFrom(
+            foregroundColor: colors.textPrimary,
+            minimumSize: const Size(0, AppDimens.touchTarget),
+          ),
+          onPressed: () => unawaited(_pickPause()),
+          icon: const Icon(Icons.add),
+          label: Text(l10n.protocolEditorAddPause),
+        ),
+      ),
+      _PlanIssueList(
+        issues: _showErrors
+            ? periodValidation.errors
+            : const <DoseValidationIssue>[],
+        warnings: periodValidation.warnings,
+        keyFor: ProtocolFormScreen.periodIssueKey,
+      ),
+    ];
+  }
+
   CompoundScheduleOptionRecord _compoundOption(
     String compoundId, [
     List<CompoundScheduleOptionRecord>? compounds,
   ]) {
+    final known = _memberOptions[compoundId];
+    if (known != null) {
+      return known;
+    }
     final options = compounds ??
         ref.read(compoundScheduleOptionListProvider).value ??
         const <CompoundScheduleOptionRecord>[];
@@ -1125,25 +1328,166 @@ class _ProtocolFormScreenState extends ConsumerState<ProtocolFormScreen> {
     return null;
   }
 
-  void _toggleCompound(
-    CompoundScheduleOptionRecord compound, {
-    required bool selected,
-  }) {
+  void _toggleCompound(String compoundId, {required bool selected}) {
     setState(() {
       if (selected) {
-        if (!_compoundIds.contains(compound.id)) {
-          _compoundIds = <String>[..._compoundIds, compound.id];
+        if (!_compoundIds.contains(compoundId)) {
+          _compoundIds = <String>[..._compoundIds, compoundId];
         }
-        _fieldFor(compound.id);
+        _fieldFor(compoundId);
       } else {
-        _compoundIds = _compoundIds.where((id) => id != compound.id).toList(
+        _compoundIds = _compoundIds.where((id) => id != compoundId).toList(
               growable: true,
             );
         // Dropping the Compound drops its in-progress Schedule too: the
         // repository archives the member, which keeps its versions.
-        _scheduleFields.remove(compound.id)?.dispose();
+        _scheduleFields.remove(compoundId)?.dispose();
       }
     });
+  }
+
+  bool _isKnownArchived(String compoundId) =>
+      _memberOptions[compoundId]?.isArchived ?? false;
+
+  /// Opens one member's Schedule editor in a sheet, bound to the same
+  /// [_ScheduleFieldState] as the row: closing it keeps every change, and
+  /// nothing is saved inside it.
+  ///
+  /// The content must stay inside [ProtocolsLockSheetGuard]. On lock the gate
+  /// disposes this State and with it the field controllers the sheet is bound
+  /// to, so the sheet must not survive that frame.
+  Future<void> _openScheduleSheet(String compoundId) {
+    final compound = _compoundOption(compoundId);
+    final field = _fieldFor(compoundId);
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: ProtocolsLockSheetGuard(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height *
+                  _scheduleSheetMaxHeightFactor,
+            ),
+            child: StatefulBuilder(
+              builder: (_, setSheetState) => SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppDimens.base,
+                ),
+                child: _ScheduleEditor(
+                  key: ProtocolFormScreen.scheduleEditorKey(compoundId),
+                  compound: compound,
+                  field: field,
+                  protocolStart: _startDate,
+                  showErrors: _showErrors,
+                  onChanged: () {
+                    setState(() {});
+                    setSheetState(() {});
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Opens the picker and applies its result (D6): members still selected and
+  /// members whose Compounds are archived, which the picker never sees, keep
+  /// their places, and the rest follow in the order picked.
+  ///
+  /// Only a Compound new to this Protocol gets the added-member default (D5). A
+  /// stored member re-added goes through [_fieldFor], which restores its
+  /// version, so this tests membership: a member with no Schedule Version is
+  /// still one, and comes back to "No schedule".
+  Future<void> _addCompounds() async {
+    final result = await showCompoundPickerSheet(
+      context,
+      selectedIds: _compoundIds
+          .where((compoundId) => !_isKnownArchived(compoundId))
+          .toList(growable: false),
+    );
+    if (result == null || !mounted) {
+      return;
+    }
+
+    final added = result
+        .where((compoundId) => !_compoundIds.contains(compoundId))
+        .toList(growable: false);
+    final storedIds = <String>{
+      for (final member
+          in widget.protocol?.members ?? const <ProtocolMemberRecord>[])
+        member.compoundId,
+    };
+    final newIds =
+        added.where((compoundId) => !storedIds.contains(compoundId)).toSet();
+    if (newIds.isNotEmpty) {
+      final lastDoses = await ref
+          .read(protocolDayControllerProvider.notifier)
+          .latestDoseAmounts(newIds);
+      if (!mounted) {
+        return;
+      }
+      final options = await _readCompoundsByIds(newIds);
+      if (options == null || !mounted) {
+        return;
+      }
+      for (final option in options) {
+        _memberOptions[option.id] = option;
+      }
+      // Seeded first, so _fieldFor's putIfAbsent keeps them.
+      for (final compoundId in newIds) {
+        _scheduleFields[compoundId] = _ScheduleFieldState.forNewMember(
+          _compoundOption(compoundId),
+          lastDoses[compoundId],
+          protocolStart: _startDate,
+        );
+      }
+    }
+
+    final kept = result.toSet();
+    for (final compoundId in List<String>.of(_compoundIds)) {
+      if (!kept.contains(compoundId) && !_isKnownArchived(compoundId)) {
+        _toggleCompound(compoundId, selected: false);
+      }
+    }
+    for (final compoundId in added) {
+      _toggleCompound(compoundId, selected: true);
+    }
+  }
+
+  /// [ids]' Compounds, read once by id, or null when the app locked first.
+  /// `compoundScheduleOptionListProvider` may not yet hold a Compound just
+  /// created in the picker.
+  ///
+  /// A subscription is held across the read: with no listener Riverpod pauses a
+  /// stream provider and disposes an autoDispose one, and the read never
+  /// completes.
+  Future<List<CompoundScheduleOptionRecord>?> _readCompoundsByIds(
+    Set<String> ids,
+  ) async {
+    final subscription = ref.listenManual(
+      compoundsByIdsProvider(CompoundNameLookupRequest(ids)).future,
+      (_, __) {},
+    );
+    try {
+      return await subscription.read();
+    } on StateError {
+      // Leaving the tree closes the subscription, which fails a read of this
+      // autoDispose provider while it is loading. Nobody is waiting for this.
+      if (mounted) {
+        rethrow;
+      }
+      return null;
+    } finally {
+      subscription.close();
+    }
   }
 
   /// The Protocol Period JSON as it would be stored: null when there is no
@@ -1606,6 +1950,122 @@ class _RemindersField extends ConsumerWidget {
   }
 }
 
+/// One Protocol Member in the editor: its name, **Archived** when its Compound
+/// is, its one-line Schedule summary and a remove button; tapping the row opens
+/// its Schedule editor. Once a save has been tried, a missing amount shows in
+/// the error color and a Schedule with hard rejects says so under the row, each
+/// as text, so color is never the only signal.
+class _MemberRow extends StatelessWidget {
+  const _MemberRow({
+    super.key,
+    required this.compoundId,
+    required this.name,
+    required this.isArchived,
+    required this.field,
+    required this.showErrors,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  final String compoundId;
+  final String name;
+  final bool isArchived;
+  final _ScheduleFieldState field;
+  final bool showErrors;
+  final VoidCallback? onTap;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final l10n = context.l10n;
+    final errorColor = Theme.of(context).colorScheme.error;
+    final summary = protocolScheduleSummary(
+      l10n,
+      field.summaryInput(),
+      material: MaterialLocalizations.of(context),
+      localeName: Localizations.localeOf(context).toLanguageTag(),
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+    final addAmount = l10n.protocolScheduleSummaryAddAmount;
+    final amountMarked =
+        showErrors && field.needsAmount && summary.endsWith(addAmount);
+
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: AppDimens.touchTarget),
+        child: Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppDimens.dense / 2,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: AppDimens.dense,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          name,
+                          style: TextStyle(
+                            color: colors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (isArchived)
+                          Text(
+                            l10n.protocolEditorMemberArchived,
+                            style: context.textStyles.label
+                                .copyWith(color: colors.textSecondary),
+                          ),
+                      ],
+                    ),
+                    Text.rich(
+                      amountMarked
+                          ? TextSpan(
+                              children: <InlineSpan>[
+                                TextSpan(
+                                  text: summary.substring(
+                                    0,
+                                    summary.length - addAmount.length,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: addAmount,
+                                  style: TextStyle(color: errorColor),
+                                ),
+                              ],
+                            )
+                          : TextSpan(text: summary),
+                      style: TextStyle(color: colors.textSecondary),
+                    ),
+                    if (showErrors && !field.validate().accepted)
+                      Text(
+                        l10n.protocolEditorFixSchedule,
+                        key: ProtocolFormScreen.memberFixKey(compoundId),
+                        style: TextStyle(color: errorColor),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            IconButton(
+              key: ProtocolFormScreen.removeMemberKey(compoundId),
+              tooltip: l10n.protocolEditorRemoveMember(name),
+              icon: const Icon(Icons.close),
+              onPressed: onRemove,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// A labelled date row that opens a date picker; at least 48 dp tall.
 class _DateTile extends StatelessWidget {
   const _DateTile({
@@ -1977,8 +2437,14 @@ String _formatTime(BuildContext context, String localTime) {
 /// The locale's short weekday name for ISO [weekday] (1 = Monday).
 /// 2024-01-01 was a Monday.
 String _weekdayLabel(BuildContext context, int weekday) {
-  final locale = Localizations.localeOf(context).toLanguageTag();
-  return DateFormat.E(locale).format(DateTime.utc(2024, 1, weekday));
+  return _shortWeekdayName(
+    Localizations.localeOf(context).toLanguageTag(),
+    weekday,
+  );
+}
+
+String _shortWeekdayName(String localeName, int weekday) {
+  return DateFormat.E(localeName).format(DateTime.utc(2024, 1, weekday));
 }
 
 String _ruleChoiceLabel(

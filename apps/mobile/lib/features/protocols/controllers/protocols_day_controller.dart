@@ -36,8 +36,8 @@ final compoundOptionListProvider =
   return ref.watch(protocolsRepositoryProvider).watchCompoundOptions();
 });
 
-/// Active `Compound` schedule options for Protocol plan editors: identity for
-/// member chips plus default unit/route for optional Schedule seed values.
+/// Active `Compound` schedule options for Protocol plan editors: identity plus
+/// default unit/route for optional Schedule seed values.
 final compoundScheduleOptionListProvider =
     StreamProvider<List<CompoundScheduleOptionRecord>>((ref) {
   return ref.watch(protocolsRepositoryProvider).watchCompoundScheduleOptions();

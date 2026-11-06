@@ -579,7 +579,7 @@ for an added member change. The new order is:
         | :------- | :------ |
         | At set times | "Every day · 9:00 · 5 g", "Mon, Wed, Fri · 8:00, 20:00 · 2 capsules", "Every 3 days · 9:00 · 250 mcg" |
         | Any time | "Every day · 2 a day · 5 g", "Mon, Wed · 2 a day · 5 g" |
-        | As needed | "As needed · 5 g" |
+        | As needed | "As needed", which is what the form holds, because this rule carries no amount (D7 `amount_absent`); "As needed · 5 g" when the summary is given an amount |
         | No schedule | "No schedule" |
 
         Times use the device's time format, and weekday names come from
@@ -1095,14 +1095,17 @@ this PR changes no golden vectors, contract or sync shape.
         weekdays or interval, times, count per day, amount, unit) built from
         `_ScheduleFieldState`, and `String protocolScheduleSummary(
         AppLocalizations l10n, ScheduleSummaryInput input, {required
-        MaterialLocalizations material, required String localeName})`,
-        following the D5 table.
+        MaterialLocalizations material, required String localeName, bool
+        alwaysUse24HourFormat = false})`, following the D5 table. Callers pass
+        `MediaQuery.alwaysUse24HourFormatOf(context)`, the device's time
+        format. The amount is nullable.
     *   **The When section:** a `_PeriodSection` that is collapsed to a
         summary and expands in place. It expands when `_showErrors` is set and
         a period issue exists.
     *   **Added-member default (D5):** a new factory
         `_ScheduleFieldState.forNewMember(CompoundScheduleOptionRecord
-        compound, ({double amount, DoseUnit unit})? lastDose)`. Only the
+        compound, ({double amount, DoseUnit unit})? lastDose, {required
+        ProtocolDayDate protocolStart})`, the start being the every-N anchor. Only the
         picker-result path calls it: before applying a result, the form awaits
         `latestDoseAmounts` for the ids being added, then builds their fields
         with `forNewMember`. `_fieldFor` stays synchronous and keeps calling

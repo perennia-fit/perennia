@@ -4516,12 +4516,6 @@ abstract class AppLocalizations {
   /// **'Compounds'**
   String get protocolEditorCompoundsHeading;
 
-  /// No description provided for @protocolEditorSchedulesHeading.
-  ///
-  /// In en, this message translates to:
-  /// **'Schedules'**
-  String get protocolEditorSchedulesHeading;
-
   /// No description provided for @protocolEditorScheduleTitle.
   ///
   /// In en, this message translates to:
@@ -6105,6 +6099,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create \"{name}\"'**
   String compoundPickerCreate(String name);
+
+  /// Button under a Protocol's member rows that opens the Compound picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Compounds'**
+  String get protocolEditorAddCompounds;
+
+  /// Marks a Protocol member row whose Compound is archived.
+  ///
+  /// In en, this message translates to:
+  /// **'Archived'**
+  String get protocolEditorMemberArchived;
+
+  /// Tooltip of a Protocol member row's remove button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {compound}'**
+  String protocolEditorRemoveMember(String compound);
+
+  /// Under a Protocol member row after a save attempt, when that member's Schedule has issues.
+  ///
+  /// In en, this message translates to:
+  /// **'Fix this Schedule'**
+  String get protocolEditorFixSchedule;
+
+  /// In a Protocol member row's Schedule summary, where the planned amount goes when it is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Add an amount'**
+  String get protocolScheduleSummaryAddAmount;
+
+  /// In a Schedule summary: the days of a Schedule planned every N days.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Every day} other{Every {count} days}}'**
+  String protocolScheduleSummaryEveryNDays(int count);
+
+  /// In a Schedule summary: how many untimed doses an Any time Schedule plans each day.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 a day} other{{count} a day}}'**
+  String protocolScheduleSummaryPerDay(int count);
+
+  /// In a Schedule summary: a planned amount in tablets, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} tablet} other{{amount} tablets}}'**
+  String protocolScheduleSummaryTablets(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in capsules, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} capsule} other{{amount} capsules}}'**
+  String protocolScheduleSummaryCapsules(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in drops, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} drop} other{{amount} drops}}'**
+  String protocolScheduleSummaryDrops(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in sprays, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} spray} other{{amount} sprays}}'**
+  String protocolScheduleSummarySprays(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in puffs, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} puff} other{{amount} puffs}}'**
+  String protocolScheduleSummaryPuffs(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in patches, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} patch} other{{amount} patches}}'**
+  String protocolScheduleSummaryPatches(num count, String amount);
+
+  /// In a Schedule summary: a planned amount in units, as the user entered it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{amount} unit} other{{amount} units}}'**
+  String protocolScheduleSummaryUnits(num count, String amount);
 }
 
 class _AppLocalizationsDelegate
