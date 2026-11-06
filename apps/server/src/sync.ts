@@ -30,6 +30,7 @@ export const NUTRITION_GOALS_SYNC_ENTITY = "nutrition_goals";
 export const USER_SETTINGS_SYNC_ENTITY = "user_settings";
 export const EXERCISE_CATEGORIES_SYNC_ENTITY = "exercise_categories";
 export const FOCUSES_SYNC_ENTITY = "focuses";
+export const PURPOSES_SYNC_ENTITY = "purposes";
 export const EXERCISES_SYNC_ENTITY = "exercises";
 export const WORKOUT_SESSIONS_SYNC_ENTITY = "workout_sessions";
 export const WORKOUT_EXERCISES_SYNC_ENTITY = "workout_exercises";
@@ -59,6 +60,7 @@ export const TEMPLATE_LINKS_SYNC_ENTITY = "template_links";
 const SYNC_PULL_ENTITIES = [
   EXERCISE_CATEGORIES_SYNC_ENTITY,
   FOCUSES_SYNC_ENTITY,
+  PURPOSES_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
   WORKOUT_SESSIONS_SYNC_ENTITY,
   WORKOUT_EXERCISES_SYNC_ENTITY,
@@ -93,6 +95,7 @@ const SYNC_PULL_ENTITIES = [
 const SYNC_PUSH_ENTITIES = [
   EXERCISE_CATEGORIES_SYNC_ENTITY,
   FOCUSES_SYNC_ENTITY,
+  PURPOSES_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
   WORKOUT_SESSIONS_SYNC_ENTITY,
   WORKOUT_EXERCISES_SYNC_ENTITY,
@@ -484,6 +487,12 @@ export type SyncStore = {
     deviceId: string;
     changes: SyncPushChange[];
   }): Promise<SyncPushResult>;
+  pushPurposes(input: {
+    userId: string;
+    correlationId?: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+  }): Promise<SyncPushResult>;
   pushExercises(input: {
     userId: string;
     correlationId?: string;
@@ -688,6 +697,7 @@ type LoggedSetMutationDatabase = Pick<ServerDatabase, "select" | "insert" | "upd
 type AccountKeyedSyncTable =
   | typeof schema.exerciseCategories
   | typeof schema.focuses
+  | typeof schema.purposes
   | typeof schema.mealTypes
   | typeof schema.compounds;
 
@@ -766,6 +776,26 @@ export async function pushFocusesInTransaction(
     ...input,
     table: schema.focuses,
     entityTable: FOCUSES_SYNC_ENTITY
+  });
+}
+
+// A `Purpose` (CONTEXT.md) on the same opaque LWW rails as a Focus. Compounds
+// name it softly in `purpose_ids`, and the six starter ids are shared by every
+// account, so it goes through the account-keyed path
+// (docs/designs/compound-purposes.md, D1).
+export async function pushPurposesInTransaction(
+  transaction: LoggedSetMutationDatabase,
+  input: {
+    userId: string;
+    deviceId: string;
+    changes: SyncPushChange[];
+    serverClock: Date;
+  }
+): Promise<SyncPushResult> {
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
+    ...input,
+    table: schema.purposes,
+    entityTable: PURPOSES_SYNC_ENTITY
   });
 }
 
@@ -2083,7 +2113,10 @@ const SYNC_CARRY_FORWARD_PAYLOAD_KEYS: Partial<
   [FOCUSES_SYNC_ENTITY]: ["color_hex"],
   // A Compound's favourite. The Agent Compound write has no favourite field
   // and omits the key, so an Agent edit keeps the user's star.
-  [COMPOUNDS_SYNC_ENTITY]: ["is_favorite"],
+  // Its Purpose tags: a JSON-encoded string array, like `focus_ids`. An older
+  // app's push has no key and keeps the stored list; an explicit "[]" clears it
+  // (compound-purposes.md, D2).
+  [COMPOUNDS_SYNC_ENTITY]: ["is_favorite", "purpose_ids"],
   // A Meal's frozen offset and Time Precision, added by meal-logging.md §1.
   [MEALS_SYNC_ENTITY]: ["timezone_offset_minutes", "time_precision"],
   // A Food Entry's import identity. Agent payloads never carry these keys, so
@@ -3746,6 +3779,19 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
 
       return result;
     },
+    async pushPurposes({ userId, deviceId, changes }) {
+      const serverClock = new Date();
+      const result = await db.transaction((transaction) =>
+        pushPurposesInTransaction(transaction, {
+          userId,
+          deviceId,
+          changes,
+          serverClock
+        })
+      );
+
+      return result;
+    },
     async pushExercises({ userId, deviceId, changes }) {
       const serverClock = new Date();
       const result = await db.transaction((transaction) =>
@@ -4154,6 +4200,12 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         schema.focuses.id,
         cursorPosition
       );
+      const purposeCursorFilter = pullCursorFilter(
+        PURPOSES_SYNC_ENTITY,
+        schema.purposes.receivedAt,
+        schema.purposes.id,
+        cursorPosition
+      );
       const exerciseCursorFilter = pullCursorFilter(
         EXERCISES_SYNC_ENTITY,
         schema.exercises.receivedAt,
@@ -4342,6 +4394,10 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         mode === SYNC_PULL_MODE_SNAPSHOT
           ? isNull(schema.focuses.deletedAt)
           : undefined;
+      const livePurposeSnapshotFilter =
+        mode === SYNC_PULL_MODE_SNAPSHOT
+          ? isNull(schema.purposes.deletedAt)
+          : undefined;
       const liveExerciseSnapshotFilter =
         mode === SYNC_PULL_MODE_SNAPSHOT
           ? isNull(schema.exercises.deletedAt)
@@ -4496,6 +4552,25 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
           )
         )
         .orderBy(asc(schema.focuses.receivedAt), asc(schema.focuses.id))
+        .limit(limit);
+      const purposeRows = await db
+        .select({
+          id: schema.purposes.id,
+          deviceId: schema.purposes.deviceId,
+          payload: schema.purposes.payload,
+          updatedAt: schema.purposes.updatedAt,
+          deletedAt: schema.purposes.deletedAt,
+          receivedAt: schema.purposes.receivedAt
+        })
+        .from(schema.purposes)
+        .where(
+          and(
+            eq(schema.purposes.userId, userId),
+            livePurposeSnapshotFilter,
+            purposeCursorFilter
+          )
+        )
+        .orderBy(asc(schema.purposes.receivedAt), asc(schema.purposes.id))
         .limit(limit);
       const exerciseRows = await db
         .select({
@@ -5139,6 +5214,15 @@ export function createDrizzleSyncStore(db: ServerDatabase): SyncStore {
         })),
         ...focusRows.map((row): PullRow => ({
           entity: FOCUSES_SYNC_ENTITY,
+          id: row.id,
+          deviceId: row.deviceId,
+          payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
+          updatedAt: row.updatedAt,
+          deletedAt: row.deletedAt,
+          receivedAt: row.receivedAt
+        })),
+        ...purposeRows.map((row): PullRow => ({
+          entity: PURPOSES_SYNC_ENTITY,
           id: row.id,
           deviceId: row.deviceId,
           payload: syncPayloadClock(row.payload, row.updatedAt, row.deletedAt),
@@ -5883,6 +5967,7 @@ function pullCursorFilter(
   receivedAtColumn:
     | typeof schema.exerciseCategories.receivedAt
     | typeof schema.focuses.receivedAt
+    | typeof schema.purposes.receivedAt
     | typeof schema.exercises.receivedAt
     | typeof schema.workoutSessions.receivedAt
     | typeof schema.workoutExercises.receivedAt
@@ -5916,6 +6001,7 @@ function pullCursorFilter(
   idColumn:
     | typeof schema.exerciseCategories.id
     | typeof schema.focuses.id
+    | typeof schema.purposes.id
     | typeof schema.exercises.id
     | typeof schema.workoutSessions.id
     | typeof schema.workoutExercises.id
@@ -6007,6 +6093,10 @@ function syncEntitySortRank(entity: SyncPullEntity) {
       return 1.3;
     case EXERCISE_GROUP_MEMBERS_SYNC_ENTITY:
       return 1.4;
+    // A Purpose before the Compounds that name it. `purpose_ids` is a soft
+    // reference, so this ordering is cosmetic, as it is for a Focus.
+    case PURPOSES_SYNC_ENTITY:
+      return 1.5;
     case COMPOUNDS_SYNC_ENTITY:
       return 2;
     case DOSES_SYNC_ENTITY:

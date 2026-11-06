@@ -26,6 +26,17 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **The rest timer warns you before it ends.** The strip and a tone mark Get
   ready 10 seconds before the end of a longer rest, 3-2-1 plays in the app, and
   after 0:00 the strip shows Rest over with the time since.
+- **Edit and archive a Compound.**
+- **Create a Compound from the Protocol editor's picker.**
+- **Purposes:** tag a Compound with why you take it, such as Sleep or
+  Performance, filter the Compound list and the picker by Purpose, and rename,
+  reorder, archive or add Purposes from the Compound list's menu. The six
+  built-in Compounds arrive tagged, and any tag you remove stays removed.
+- **Agents can read and write Purposes** (`listAgentPurposes`,
+  `GET /agent/protocols/purposes`, `agent_list_purposes`;
+  `batchWriteAgentPurposes`, `POST /agent/protocols/purposes/batch-write`,
+  `agent_batch_write_purposes`), and read and write `purposeIds` on Compounds
+  and filter them by Purpose.
 
 ### Changed
 
@@ -71,9 +82,16 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **A meal's time is shown and can be changed,** and its meal type is
   proposed from the time.
 - **The Nutrition Day lists meals in time order.**
+- **The Protocol editor puts Compounds first,** picks them from a searchable
+  sheet, and asks before discarding unsaved changes. An added Compound starts
+  every day at 9:00.
 
 ### Fixed
 
+- **A malformed id list in a synced row no longer fails Agent reads.** A raw array
+  holding an entry that can't be turned into a string now reads as an empty list.
+- **A second device's seed no longer overrides a built-in Compound renamed after
+  24 October 2026.**
 - **An Agent write no longer un-archives a Meal, drops Food Entry import
   keys, or moves an entry to another Meal.**
 - **`batchWriteAgentMeal` rejects a malformed timestamp with a 400.**
@@ -105,6 +123,7 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - Rest timer sounds off now silences rest timer notifications on Android 8 and later.
 - The end of a rest now sounds on Android when the app is in the background.
 - A double tap on Finish Workout now finishes it once.
+- **A Protocol whose Compound was archived can be saved again.**
 
 ## [0.2.0] - 2026-11-03
 

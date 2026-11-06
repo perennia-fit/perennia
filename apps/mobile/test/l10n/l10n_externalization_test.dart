@@ -1,8 +1,33 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  // A Purpose shown next to a verb reads as a claim that a Compound does
+  // something (docs/designs/compound-purposes.md, the neutral-instrument rule).
+  // A string with no placeholder for one can't say that.
+  test('no message takes a Purpose name as a placeholder', () {
+    final arb = jsonDecode(File('lib/l10n/app_en.arb').readAsStringSync())
+        as Map<String, Object?>;
+
+    final failures = <String>[
+      for (final entry in arb.entries)
+        if (entry.key.startsWith('@') &&
+            entry.value is Map<String, Object?> &&
+            (entry.value! as Map<String, Object?>).containsKey('placeholders'))
+          for (final placeholder
+              in ((entry.value! as Map<String, Object?>)['placeholders']!
+                      as Map<String, Object?>)
+                  .keys)
+            if (entry.key.toLowerCase().contains('purpose') ||
+                placeholder.toLowerCase().contains('purpose'))
+              '${entry.key}: $placeholder',
+    ];
+
+    expect(failures, isEmpty);
+  });
+
   test('primary logging surfaces do not inline user-facing widget strings', () {
     final surfaceFiles = <String>[
       'lib/features/home/widgets/home_screen.dart',
@@ -28,6 +53,10 @@ void main() {
       'lib/features/workout_templates/widgets/prescription_summary.dart',
       'lib/features/nutrition/widgets/meal_screen.dart',
       'lib/features/nutrition/widgets/meal_time_sheet.dart',
+      'lib/features/protocols/widgets/compound_list_screen.dart',
+      'lib/features/protocols/widgets/compound_picker_sheet.dart',
+      'lib/features/protocols/widgets/purpose_filter_row.dart',
+      'lib/features/protocols/widgets/purpose_manager_screen.dart',
     ];
     final forbiddenPatterns = <String, RegExp>{
       'Text literal': RegExp(r'\bText\(\s*[' '"]'),

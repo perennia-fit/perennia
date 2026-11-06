@@ -1196,19 +1196,16 @@ export function buildPlatformCatalogExercises(): readonly AgentCatalogExercise[]
   return cachedPlatformCatalog;
 }
 
+// Reads a list from a synced payload, which sync stores unchecked. Anything that
+// can't be read as a list of strings reads as empty, including a raw array holding
+// an entry String() throws on, so one bad value can't fail every read of a library.
 export function parseJsonStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((entry) => String(entry));
+  try {
+    const parsed: unknown = typeof value === "string" ? JSON.parse(value) : value;
+    return Array.isArray(parsed) ? parsed.map((entry) => String(entry)) : [];
+  } catch {
+    return [];
   }
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value) as unknown;
-      return Array.isArray(parsed) ? parsed.map((entry) => String(entry)) : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
 }
 
 // Maps a synced Exercise row (opaque `payload` written by the app's

@@ -355,6 +355,12 @@ const TRAINING_DATA_KEYS = new Set([
   "compoundid",
   "compoundname",
   "compoundstrength",
+  // A Purpose names why someone takes a Compound (compound-purposes.md, D1).
+  "purpose",
+  "purposes",
+  "purposeid",
+  "purposeids",
+  "purposename",
   "dose",
   "doses",
   "doseid",

@@ -1143,6 +1143,143 @@ void main() {
       expect(restored.colorHex, '#5FB05C');
     });
 
+    test('Purposes and Compound tags round-trip (compound-purposes.md, D1)',
+        () async {
+      final purposeId = await repositories.protocols.purposes.create('Joints');
+      await repositories.protocols.purposes.create('Archived');
+      await repositories.protocols.purposes.archive(
+        (await repositories.protocols.purposes.listActive()).last.id,
+      );
+      final compound = await repositories.protocols.createCompound(
+        CompoundDraft(
+          name: 'Collagen',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+          purposeIds: <String>[purposeId],
+        ),
+      );
+      final archive =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      await TrainingRepositories(restoredDatabase)
+          .portableArchives
+          .importPortableArchive(archive);
+
+      expect(
+        await restoredDatabase.select(restoredDatabase.purposes).get(),
+        await database.select(database.purposes).get(),
+      );
+      final restored = await (restoredDatabase.select(restoredDatabase.compounds)
+            ..where((row) => row.id.equals(compound.compoundId)))
+          .getSingle();
+      expect(restored.purposeIds, '["$purposeId"]');
+    });
+
+    test('a schema-65 archive imports with no Purposes and empty lists',
+        () async {
+      final compound = await repositories.protocols.createCompound(
+        const CompoundDraft(
+          name: 'Collagen',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      );
+      final schema65Archive = _asSchema65Archive(
+        await repositories.portableArchives.exportPortableArchive(),
+      );
+
+      final restoredDatabase = AppDatabase.inMemory();
+      addTearDown(restoredDatabase.close);
+      await TrainingRepositories(restoredDatabase)
+          .portableArchives
+          .importPortableArchive(schema65Archive);
+
+      expect(
+        await restoredDatabase.select(restoredDatabase.purposes).get(),
+        isEmpty,
+      );
+      final restored = await (restoredDatabase.select(restoredDatabase.compounds)
+            ..where((row) => row.id.equals(compound.compoundId)))
+          .getSingle();
+      expect(restored.name, 'Collagen');
+      expect(restored.purposeIds, '[]');
+    });
+
+    test('a newer row in a schema-65 archive keeps the local tags', () async {
+      final compound = await repositories.protocols.createCompound(
+        const CompoundDraft(
+          name: 'Renamed on the old device',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+        ),
+      );
+      final schema65Archive = _asSchema65Archive(
+        await repositories.portableArchives.exportPortableArchive(),
+      );
+
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      final localRepositories = TrainingRepositories(local);
+      await (local.into(local.compounds)).insert(
+        CompoundsCompanion.insert(
+          id: compound.compoundId,
+          name: 'Collagen',
+          defaultUnit: DoseUnit.gram.name,
+          defaultRoute: DoseRoute.oral.name,
+          purposeIds: const Value<String>('["purpose-1"]'),
+          // The archive's row is newer.
+          updatedAt: DateTime.utc(2000),
+        ),
+      );
+
+      await localRepositories.portableArchives.importPortableArchive(
+        schema65Archive,
+      );
+
+      final merged = await (local.select(local.compounds)
+            ..where((row) => row.id.equals(compound.compoundId)))
+          .getSingle();
+      expect(merged.name, 'Renamed on the old device');
+      expect(merged.purposeIds, '["purpose-1"]');
+    });
+
+    test('a newer row in a current archive carries its own tags', () async {
+      final compound = await repositories.protocols.createCompound(
+        const CompoundDraft(
+          name: 'Collagen',
+          defaultUnit: DoseUnit.gram,
+          defaultRoute: DoseRoute.oral,
+          purposeIds: <String>[],
+        ),
+      );
+      final archive =
+          await repositories.portableArchives.exportPortableArchive();
+
+      final local = AppDatabase.inMemory();
+      addTearDown(local.close);
+      await local.into(local.compounds).insert(
+            CompoundsCompanion.insert(
+              id: compound.compoundId,
+              name: 'Collagen',
+              defaultUnit: DoseUnit.gram.name,
+              defaultRoute: DoseRoute.oral.name,
+              purposeIds: const Value<String>('["purpose-1"]'),
+              updatedAt: DateTime.utc(2000),
+            ),
+          );
+
+      await TrainingRepositories(local)
+          .portableArchives
+          .importPortableArchive(archive);
+
+      final merged = await (local.select(local.compounds)
+            ..where((row) => row.id.equals(compound.compoundId)))
+          .getSingle();
+      expect(merged.purposeIds, '[]');
+    });
+
     test(
         'restores a schema-64 archive Meal with no time precision as instant '
         'with a null offset', () async {
@@ -3443,6 +3580,49 @@ List<int> _asSchema62Archive(List<int> bytes) {
         return old..remove('colorHex');
       }).toList(growable: false);
       expect(rows, isNotEmpty);
+      archive.addFile(
+        ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
+      );
+      continue;
+    }
+    archive.addFile(ArchiveFile.bytes(file.name, file.content));
+  }
+  return ZipEncoder().encode(archive);
+}
+
+/// An archive as a schema-65 build wrote it: no `purposes` entity, and
+/// Compounds carry no `purposeIds` (docs/designs/compound-purposes.md, D2).
+List<int> _asSchema65Archive(List<int> bytes) {
+  final source = _decodeArchive(bytes);
+  final manifest = _manifestFrom(source);
+  manifest['schemaVersion'] = 65;
+  manifest['entities'] =
+      (manifest['entities']! as List<Object?>).where((entry) {
+    final entity = entry! as Map<String, Object?>;
+    return entity['table'] != AppDatabase.purposesTable;
+  }).toList(growable: false);
+  final purposesFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.purposesTable);
+  final compoundsFileName =
+      PortableArchiveRepository.entityFileName(AppDatabase.compoundsTable);
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        PortableArchiveRepository.manifestFileName,
+        jsonEncode(manifest),
+      ),
+    );
+  for (final file in source.files) {
+    if (file.name == PortableArchiveRepository.manifestFileName ||
+        file.name == purposesFileName) {
+      continue;
+    }
+    if (file.name == compoundsFileName) {
+      final rows = _jsonLinesFrom(file).map((row) {
+        final old = Map<String, Object?>.from(row);
+        expect(old.containsKey('purposeIds'), isTrue);
+        return old..remove('purposeIds');
+      }).toList(growable: false);
       archive.addFile(
         ArchiveFile.string(file.name, rows.map(jsonEncode).join('\n')),
       );

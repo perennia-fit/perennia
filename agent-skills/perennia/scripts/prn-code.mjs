@@ -204,6 +204,16 @@ export class PortableOwlAgentClient {
     });
   }
 
+  async batchWriteAgentPurposes(body, options = {}) {
+    return this.request({
+      method: "POST",
+      path: "/agent/protocols/purposes/batch-write",
+      expectedStatus: 200,
+      body,
+      signal: options.signal
+    });
+  }
+
   async batchWriteAgentDoses(body, options = {}) {
     return this.request({
       method: "POST",
@@ -489,7 +499,17 @@ export class PortableOwlAgentClient {
       method: "GET",
       path: "/agent/protocols/compounds",
       expectedStatus: 200,
-      query: pick(input, ["search", "includeArchived", "limit", "cursor", "fields"]),
+      query: pick(input, ["search", "includeArchived", "purpose", "limit", "cursor", "fields"]),
+      signal: options.signal
+    });
+  }
+
+  async listAgentPurposes(input = {}, options = {}) {
+    return this.request({
+      method: "GET",
+      path: "/agent/protocols/purposes",
+      expectedStatus: 200,
+      query: pick(input, ["includeArchived"]),
       signal: options.signal
     });
   }

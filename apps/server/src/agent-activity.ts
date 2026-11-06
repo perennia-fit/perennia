@@ -26,6 +26,7 @@ import {
   PROTOCOL_SKIPS_SYNC_ENTITY,
   EXERCISE_CATEGORIES_SYNC_ENTITY,
   FOCUSES_SYNC_ENTITY,
+  PURPOSES_SYNC_ENTITY,
   EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
   EXERCISE_GROUPS_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
@@ -54,6 +55,7 @@ import {
   pushProtocolSkipsInTransaction,
   pushExerciseCategoriesInTransaction,
   pushFocusesInTransaction,
+  pushPurposesInTransaction,
   pushExerciseGroupMembersInTransaction,
   pushExerciseGroupsInTransaction,
   pushExercisesInTransaction,
@@ -395,6 +397,7 @@ export type AgentActivityStore = {
 type OpaqueTable =
   | typeof schema.exerciseCategories
   | typeof schema.focuses
+  | typeof schema.purposes
   | typeof schema.exercises
   | typeof schema.workoutSessions
   | typeof schema.workoutExercises
@@ -452,6 +455,10 @@ const UNDOABLE_ENTITY_REGISTRY: Record<
   [FOCUSES_SYNC_ENTITY]: {
     table: schema.focuses,
     push: pushFocusesInTransaction
+  },
+  [PURPOSES_SYNC_ENTITY]: {
+    table: schema.purposes,
+    push: pushPurposesInTransaction
   },
   [EXERCISES_SYNC_ENTITY]: {
     table: schema.exercises,

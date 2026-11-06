@@ -15,6 +15,7 @@ import 'package:perennia/features/activity/repositories/activity_feed_repository
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/sync/models/sync_status.dart';
 import 'package:perennia/features/sync/repositories/sync_repository.dart';
+import 'package:perennia/features/sync/services/sync_cycle_runner.dart';
 
 void main() {
   // Erase loads the bundled Platform Library seed from assets.
@@ -39,6 +40,714 @@ void main() {
 
   tearDown(() async {
     await database.close();
+  });
+
+  // docs/designs/compound-purposes.md, D1 to D3 and CUJ 6.
+  group('Compound Purposes sync', () {
+    test('a seeded device pushes its Purposes before its Compounds', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: _acceptingSyncApi(pushes: pushes),
+      );
+
+      final result = await repository.pushPendingLoggedSets(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      final entities = pushes.map((body) => body['entity']).toList();
+      expect(
+        entities.indexOf(AppDatabase.purposesTable),
+        lessThan(entities.indexOf(AppDatabase.compoundsTable)),
+      );
+      final purposes = pushes
+          .firstWhere((body) => body['entity'] == AppDatabase.purposesTable);
+      final pushed =
+          (purposes['changes']! as List<Object?>).cast<Map<String, Object?>>();
+      expect(pushed, hasLength(starterPurposes.length));
+      expect(
+        (pushed.first['payload']! as Map<String, Object?>).keys,
+        unorderedEquals(<String>[
+          'id',
+          'name',
+          'sort_order',
+          'updated_at',
+          'deleted_at',
+        ]),
+      );
+      expect(result.pushedCount, 12);
+      final synced = await _purposeRow(database, _cognitionId);
+      expect(synced.syncPreviouslySynced, isTrue);
+      expect(synced.syncDeviceId, 'device-a');
+      expect(await repository.hasPendingChanges(), isFalse);
+    });
+
+    test('a full resync pushes Purposes before Compounds too', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final entities = <Object?>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            if (request.url.path == '/sync/push') {
+              entities.add(body['entity']);
+              final changes = (body['changes']! as List<Object?>)
+                  .cast<Map<String, Object?>>();
+              return http.Response(
+                jsonEncode(<String, Object?>{
+                  'protocolVersion': syncProtocolVersion,
+                  'accepted': changes
+                      .map((change) => change['id']! as String)
+                      .toList(growable: false),
+                  'serverClock': '2026-11-01T00:00:01.000Z',
+                  'applied': const <Object?>[],
+                }),
+                200,
+                headers: const {'content-type': 'application/json'},
+              );
+            }
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': body['mode'] != 'snapshot',
+                'nextCursor': 'snapshot-cursor',
+                'serverClock': '2026-11-01T00:00:02.000Z',
+                'changes': const <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }),
+        ),
+      );
+
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(result.fullResyncRequired, isTrue);
+      expect(
+        entities.indexOf(AppDatabase.purposesTable),
+        lessThan(entities.indexOf(AppDatabase.compoundsTable)),
+      );
+    });
+
+    test('a pull applies a Purpose, with its Activity Log entry', () async {
+      final updatedAt = DateTime.utc(2026, 11, 1, 8).toIso8601String();
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _purposePullChange(
+          id: 'purpose-user-1',
+          name: 'Joints',
+          sortOrder: 6,
+          updatedAt: updatedAt,
+          deviceId: 'device-a',
+        ),
+      );
+
+      final row = await _purposeRow(database, 'purpose-user-1');
+      expect(row.name, 'Joints');
+      expect(row.sortOrder, 6);
+      expect(row.syncDeviceId, 'device-a');
+      expect(row.syncPreviouslySynced, isTrue);
+      final log = await (database.select(database.activityLog)
+            ..where((entry) => entry.entityId.equals('purpose-user-1')))
+          .getSingle();
+      expect(log.entityTable, AppDatabase.purposesTable);
+      expect(log.actor, 'manual');
+    });
+
+    test('an older Purpose from a pull loses to the local rename', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      await repositories.protocols.purposes
+          .rename(_cognitionId, name: 'Memory');
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _purposePullChange(
+          id: _cognitionId,
+          name: 'Cognition',
+          sortOrder: 4,
+          updatedAt: compoundSeedTimestamp.toIso8601String(),
+          deviceId: 'device-a',
+          actor: 'otc_seed',
+        ),
+      );
+
+      expect((await _purposeRow(database, _cognitionId)).name, 'Memory');
+    });
+
+    test('a Compound payload with no purpose_ids keeps the local list',
+        () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final before = await _compoundRow(database, _creatineId);
+      expect(before.purposeIds, jsonEncode(<String>[_performanceId]));
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _compoundPullChange(
+          before,
+          updatedAt: DateTime.utc(2026, 11, 1, 8).toIso8601String(),
+          deviceId: 'device-a',
+          actor: 'manual',
+          changes: const <String, Object?>{
+            'name': 'Creatine monohydrate',
+            'purpose_ids': _absent,
+          },
+        ),
+      );
+
+      final after = await _compoundRow(database, _creatineId);
+      expect(after.name, 'Creatine monohydrate');
+      expect(after.purposeIds, before.purposeIds);
+    });
+
+    test('a new Compound whose payload has no purpose_ids starts with none',
+        () async {
+      // An Agent-created Compound with no `purposeIds` has no such key.
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final row = await _compoundRow(database, _creatineId);
+      await database.customStatement(
+        'DELETE FROM compounds WHERE id = ?',
+        <Object?>[_creatineId],
+      );
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _compoundPullChange(
+          row,
+          updatedAt: DateTime.utc(2026, 11, 1, 8).toIso8601String(),
+          deviceId: 'device-a',
+          actor: 'agent',
+          changes: const <String, Object?>{'purpose_ids': _absent},
+        ),
+      );
+
+      expect((await _compoundRow(database, _creatineId)).purposeIds, '[]');
+    });
+
+    test('a Compound payload with an explicit empty list clears the local one',
+        () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final before = await _compoundRow(database, _creatineId);
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _compoundPullChange(
+          before,
+          updatedAt: DateTime.utc(2026, 11, 1, 8).toIso8601String(),
+          deviceId: 'device-a',
+          actor: 'manual',
+          changes: const <String, Object?>{'purpose_ids': '[]'},
+        ),
+      );
+
+      expect((await _compoundRow(database, _creatineId)).purposeIds, '[]');
+    });
+
+    test(
+        "a full pull of this device's own unchanged seed rows doesn't touch "
+        'them, so the backfill still tags them', () async {
+      final repositories = TrainingRepositories(database);
+      await _seedAsSyncedUpgradedDevice(
+        repositories,
+        database,
+        deviceId: 'device-a',
+      );
+      final rowsBefore = await database.select(database.compounds).get();
+      final logBefore = await database.select(database.activityLog).get();
+      expect(rowsBefore, isNotEmpty);
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        trainingRepositories: repositories,
+        apiClientFactory: _acceptingSyncApi(
+          pushes: pushes,
+          pullChanges: <Map<String, Object?>>[
+            for (final row in rowsBefore)
+              _compoundPullChange(
+                row,
+                updatedAt: row.updatedAt.toUtc().toIso8601String(),
+                deviceId: 'device-a',
+                actor: 'otc_seed',
+                changes: const <String, Object?>{'purpose_ids': _absent},
+              ),
+          ],
+        ),
+      );
+
+      final pull = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      // A last-writer-wins tie against this device's own write: nothing moves,
+      // and the row gets no entry that would make it read as touched.
+      expect(pull.appliedCount, 0);
+      expect(await database.select(database.compounds).get(), rowsBefore);
+      expect(await database.select(database.activityLog).get(), logBefore);
+
+      await repository.backfillSeedPurposes();
+
+      final tagged = await _compoundRow(database, _creatineId);
+      expect(tagged.purposeIds, jsonEncode(<String>[_performanceId]));
+      final entries = await (database.select(database.activityLog)
+            ..where((entry) => entry.entityId.equals(_creatineId)))
+          .get();
+      expect(
+        entries.map((entry) => entry.actor),
+        unorderedEquals(<String>['otc_seed', 'otc_purpose_seed']),
+      );
+    });
+
+    test('a Sync Run with nothing else to do pushes the backfill it wrote',
+        () async {
+      final repositories = TrainingRepositories(database);
+      await _seedAsSyncedUpgradedDevice(
+        repositories,
+        database,
+        deviceId: 'device-a',
+      );
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        trainingRepositories: repositories,
+        apiClientFactory: _acceptingSyncApi(pushes: pushes),
+      );
+      expect(await repository.hasPendingChanges(), isFalse);
+
+      final result = await RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: SyncStatusRepository(database),
+      ).run(session: _session(), deviceId: 'device-a');
+
+      expect(result.pushedCount, seedCompoundPurposeIds.length);
+      final pushedCompounds = pushes
+          .where((body) => body['entity'] == AppDatabase.compoundsTable)
+          .expand((body) => body['changes']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .toList();
+      final creatine =
+          pushedCompounds.singleWhere((change) => change['id'] == _creatineId);
+      expect(
+        (creatine['payload']! as Map<String, Object?>)['purpose_ids'],
+        jsonEncode(<String>[_performanceId]),
+      );
+      expect(creatine['actor'], 'otc_purpose_seed');
+      expect(await repository.hasPendingChanges(), isFalse);
+    });
+
+    test(
+        'a full pull restores the tags an older build dropped from a row it '
+        'applied, and the next edit pushes them', () async {
+      // One account, upgraded a device at a time. Device A's backfill reached
+      // device B while B was still on the older build, which stored the version
+      // but had no column for the tags.
+      final repositories = TrainingRepositories(database);
+      await _seedAsSyncedUpgradedDevice(
+        repositories,
+        database,
+        deviceId: 'device-b',
+      );
+      final seeded = await _compoundRow(database, _creatineId);
+      final taggedAt = DateTime.utc(2026, 11, 1, 8);
+      final tags = jsonEncode(<String>[_performanceId]);
+      Map<String, Object?> backfill(Object? purposeIds) => _compoundPullChange(
+            seeded,
+            updatedAt: taggedAt.toIso8601String(),
+            deviceId: 'device-a',
+            actor: 'otc_purpose_seed',
+            changes: <String, Object?>{'purpose_ids': purposeIds},
+          );
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: backfill(_absent),
+      );
+      final dropped = await _compoundRow(database, _creatineId);
+      expect(dropped.purposeIds, '[]');
+      expect(dropped.syncDeviceId, 'device-a');
+      expect(dropped.updatedAt.isAtSameMomentAs(taggedAt), isTrue);
+
+      Future<List<ActivityLogRow>> creatineLog() =>
+          (database.select(database.activityLog)
+                ..where((entry) => entry.entityId.equals(_creatineId)))
+              .get();
+      final logBefore = await creatineLog();
+
+      // B upgrades: the `from < 66` step clears the cursor, so the first Sync
+      // Run pulls in full.
+      await database.customStatement(
+        'UPDATE sync_states SET pull_cursor = NULL',
+      );
+      final pushes = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        trainingRepositories: repositories,
+        apiClientFactory: _acceptingSyncApi(
+          pushes: pushes,
+          pullChanges: <Map<String, Object?>>[backfill(tags)],
+        ),
+      );
+      final runner = RepositorySyncCycleRunner(
+        repository: repository,
+        statusRepository: SyncStatusRepository(database),
+      );
+      List<Map<String, Object?>> pushedCreatine() => pushes
+          .where((body) => body['entity'] == AppDatabase.compoundsTable)
+          .expand((body) => body['changes']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .where((change) => change['id'] == _creatineId)
+          .toList();
+
+      await runner.run(session: _session(), deviceId: 'device-b');
+
+      // Only the tags moved: the version stands, nothing new is logged or
+      // pushed, and the backfill has nothing left to do for this row.
+      final restored = await _compoundRow(database, _creatineId);
+      expect(restored.purposeIds, tags);
+      expect(restored.syncDeviceId, 'device-a');
+      expect(restored.updatedAt.isAtSameMomentAs(taggedAt), isTrue);
+      expect(await creatineLog(), logBefore);
+      expect(pushedCreatine(), isEmpty);
+
+      await repositories.protocols.setFavorite(_creatineId, isFavorite: true);
+      await runner.run(session: _session(), deviceId: 'device-b');
+
+      final pushed = pushedCreatine().single;
+      expect(
+        (pushed['payload']! as Map<String, Object?>)['purpose_ids'],
+        tags,
+      );
+    });
+
+    group('a pull that loses last-writer-wins restores no tags', () {
+      final localAt = DateTime.utc(2026, 11, 1, 8);
+      final tags = jsonEncode(<String>[_performanceId]);
+
+      Future<CompoundRow> pullAgainst({
+        required String localPurposeIds,
+        required DateTime incomingAt,
+        required String incomingDeviceId,
+      }) async {
+        final repositories = TrainingRepositories(database);
+        await _seedAsSyncedUpgradedDevice(
+          repositories,
+          database,
+          deviceId: 'device-b',
+        );
+        await (database.update(database.compounds)
+              ..where((row) => row.id.equals(_creatineId)))
+            .write(
+          CompoundsCompanion(
+            purposeIds: Value<String>(localPurposeIds),
+            updatedAt: Value<DateTime>(localAt),
+          ),
+        );
+        final local = await _compoundRow(database, _creatineId);
+        await _pullChangeInto(
+          database,
+          localDeviceId: 'device-b',
+          change: _compoundPullChange(
+            local,
+            updatedAt: incomingAt.toIso8601String(),
+            deviceId: incomingDeviceId,
+            actor: 'manual',
+            changes: <String, Object?>{'purpose_ids': tags},
+          ),
+        );
+        return _compoundRow(database, _creatineId);
+      }
+
+      test('an older version', () async {
+        final row = await pullAgainst(
+          localPurposeIds: '[]',
+          incomingAt: localAt.subtract(const Duration(hours: 1)),
+          incomingDeviceId: 'device-a',
+        );
+        expect(row.purposeIds, '[]');
+      });
+
+      test('the same stamp from another device', () async {
+        final row = await pullAgainst(
+          localPurposeIds: '[]',
+          incomingAt: localAt,
+          incomingDeviceId: 'device-a',
+        );
+        expect(row.purposeIds, '[]');
+      });
+
+      test('the same version over a row that holds a list', () async {
+        final other = jsonEncode(<String>[_cognitionId]);
+        final row = await pullAgainst(
+          localPurposeIds: other,
+          incomingAt: localAt,
+          incomingDeviceId: 'device-b',
+        );
+        expect(row.purposeIds, other);
+      });
+    });
+
+    for (final upgraded in <bool>[false, true]) {
+      test(
+          'CUJ 6: a removed seed tag stays removed on a '
+          "${upgraded ? 'device upgrading from 65' : 'fresh device'}",
+          () async {
+        final repositories = TrainingRepositories(database);
+        if (upgraded) {
+          await _seedAsSyncedUpgradedDevice(
+            repositories,
+            database,
+            deviceId: 'device-b',
+          );
+        } else {
+          await repositories.protocols.ensureOtcLibrarySeeded();
+        }
+        final local = await _compoundRow(database, _creatineId);
+        final editedAt = DateTime.utc(2026, 11, 1, 8).toIso8601String();
+        final repository = SyncRepository(
+          database: database,
+          trainingRepositories: repositories,
+          // The server holds device A's newer rows, so it applies nothing
+          // pushed by this device.
+          apiClientFactory: _acceptingSyncApi(
+            pushes: <Map<String, Object?>>[],
+            applyPushes: false,
+            pullChanges: <Map<String, Object?>>[
+              _purposePullChange(
+                id: _cognitionId,
+                name: 'Memory',
+                sortOrder: 4,
+                updatedAt: editedAt,
+                deviceId: 'device-a',
+              ),
+              _compoundPullChange(
+                local,
+                updatedAt: editedAt,
+                deviceId: 'device-a',
+                actor: 'manual',
+                changes: const <String, Object?>{'purpose_ids': '[]'},
+              ),
+            ],
+          ),
+        );
+
+        await RepositorySyncCycleRunner(
+          repository: repository,
+          statusRepository: SyncStatusRepository(database),
+        ).run(session: _session(), deviceId: 'device-b');
+
+        expect((await _compoundRow(database, _creatineId)).purposeIds, '[]');
+        final purposes = await repositories.protocols.purposes.listActive();
+        expect(purposes.map((purpose) => purpose.name), contains('Memory'));
+        expect(
+          purposes.map((purpose) => purpose.name),
+          isNot(contains('Cognition')),
+        );
+      });
+    }
+
+    group('a device that backfilled with no account, then signs in', () {
+      // Before any edit below, as a schema-65 device stamped its seed.
+      final seededAt = DateTime.now().toUtc().subtract(const Duration(days: 30));
+
+      Future<TrainingRepositories> backfilledSignedOut() async {
+        final repositories = TrainingRepositories(database);
+        await _seedAsNeverSyncedUpgradedDevice(
+          repositories,
+          database,
+          seededAt: seededAt,
+        );
+        await repositories.protocols.backfillSeedPurposes(
+          onlyNeverSynced: true,
+        );
+        return repositories;
+      }
+
+      test(
+          "CUJ 6: loses to another device's removal and rename, on both "
+          'devices', () async {
+        final repositories = await backfilledSignedOut();
+        final local = await _compoundRow(database, _creatineId);
+        expect(local.purposeIds, jsonEncode(<String>[_performanceId]));
+        final editedAt = DateTime.now()
+            .toUtc()
+            .subtract(const Duration(hours: 1))
+            .toIso8601String();
+        final server = <String, Map<String, Object?>>{
+          _creatineId: _compoundPullChange(
+            local,
+            updatedAt: editedAt,
+            deviceId: 'device-a',
+            actor: 'manual',
+            changes: const <String, Object?>{
+              'name': 'Creatine monohydrate',
+              'purpose_ids': '[]',
+            },
+          ),
+        };
+        final repository = SyncRepository(
+          database: database,
+          trainingRepositories: repositories,
+          apiClientFactory: _lwwCompoundServer(
+            server,
+            otherPullChanges: <Map<String, Object?>>[
+              _purposePullChange(
+                id: _cognitionId,
+                name: 'Memory',
+                sortOrder: 4,
+                updatedAt: editedAt,
+                deviceId: 'device-a',
+              ),
+            ],
+          ),
+        );
+
+        await RepositorySyncCycleRunner(
+          repository: repository,
+          statusRepository: SyncStatusRepository(database),
+        ).run(session: _session(), deviceId: 'device-b');
+
+        // Device A's next pull reads this row, so its edit stands there too.
+        final held = server[_creatineId]!;
+        expect(held['deviceId'], 'device-a');
+        expect(held['updatedAt'], editedAt);
+        final payload = held['payload']! as Map<String, Object?>;
+        expect(payload['purpose_ids'], '[]');
+        expect(payload['name'], 'Creatine monohydrate');
+
+        final after = await _compoundRow(database, _creatineId);
+        expect(after.purposeIds, '[]');
+        expect(after.name, 'Creatine monohydrate');
+        expect(after.syncDeviceId, 'device-a');
+        final purposes = await repositories.protocols.purposes.listActive();
+        expect(purposes.map((purpose) => purpose.name), contains('Memory'));
+      });
+
+      test('an account with no edit to the row still receives the tags',
+          () async {
+        final repositories = await backfilledSignedOut();
+        final server = <String, Map<String, Object?>>{};
+        final repository = SyncRepository(
+          database: database,
+          trainingRepositories: repositories,
+          apiClientFactory: _lwwCompoundServer(server),
+        );
+
+        await RepositorySyncCycleRunner(
+          repository: repository,
+          statusRepository: SyncStatusRepository(database),
+        ).run(session: _session(), deviceId: 'device-b');
+
+        expect(server.keys, unorderedEquals(seedCompoundPurposeIds.keys));
+        final held = server[_creatineId]!['payload']! as Map<String, Object?>;
+        expect(held['purpose_ids'], jsonEncode(<String>[_performanceId]));
+        final after = await _compoundRow(database, _creatineId);
+        expect(after.purposeIds, jsonEncode(<String>[_performanceId]));
+        expect(after.syncDeviceId, 'device-b');
+      });
+
+      test('the tags go up one second after the seed entry they amend',
+          () async {
+        // The server drops a tie on (stamp, device), so a stamp left unchanged
+        // would lose to this device's pending `otc_seed` entry.
+        final repositories = await backfilledSignedOut();
+        final pushes = <Map<String, Object?>>[];
+        final repository = SyncRepository(
+          database: database,
+          trainingRepositories: repositories,
+          apiClientFactory: _acceptingSyncApi(pushes: pushes),
+        );
+
+        await RepositorySyncCycleRunner(
+          repository: repository,
+          statusRepository: SyncStatusRepository(database),
+        ).run(session: _session(), deviceId: 'device-b');
+
+        final creatine = pushes
+            .where((body) => body['entity'] == AppDatabase.compoundsTable)
+            .expand((body) => body['changes']! as List<Object?>)
+            .cast<Map<String, Object?>>()
+            .where((change) => change['id'] == _creatineId)
+            .toList();
+        expect(
+          creatine.map((change) => change['actor']),
+          <String>['otc_seed', 'otc_purpose_seed'],
+        );
+        final seed = DateTime.parse(creatine.first['updatedAt']! as String);
+        final tags = DateTime.parse(creatine.last['updatedAt']! as String);
+        expect(tags.difference(seed), const Duration(seconds: 1));
+      });
+    });
+
+    test('a snapshot leaves never-synced seeded Purposes alone', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      // Nothing to push first, so the rows reach the snapshot never synced.
+      await database.customStatement(
+        'UPDATE activity_log SET sync_acknowledged_at = 1000',
+      );
+      final before = await database.select(database.purposes).get();
+      final repository = _snapshotRepository(database, const <Object?>[]);
+
+      await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(await database.select(database.purposes).get(), before);
+    });
+
+    test(
+        'a snapshot tombstones a synced Purpose it no longer holds, and keeps '
+        'one it does', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      await database.customStatement(
+        "UPDATE purposes SET sync_device_id = 'device-a', "
+        'sync_previously_synced = 1',
+      );
+      await database.customStatement(
+        'UPDATE activity_log SET sync_acknowledged_at = 1000',
+      );
+      final stamp = compoundSeedTimestamp.toIso8601String();
+      final repository = _snapshotRepository(database, <Object?>[
+        for (final starter in starterPurposes)
+          if (starter.id != _cognitionId)
+            _purposePullChange(
+              id: starter.id,
+              name: starter.name,
+              sortOrder: starter.sortOrder,
+              updatedAt: stamp,
+              deviceId: 'device-a',
+              actor: 'otc_seed',
+            ),
+      ]);
+
+      await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect((await _purposeRow(database, _cognitionId)).deletedAt, isNotNull);
+      expect((await _purposeRow(database, _performanceId)).deletedAt, isNull);
+    });
   });
 
   test('pending-change watch ignores local-only Activity Log entities',
@@ -2548,9 +3257,8 @@ void main() {
       ),
       today: localDate,
     );
-    final skipId = (await database.select(database.protocolSkips).get())
-        .single
-        .id;
+    final skipId =
+        (await database.select(database.protocolSkips).get()).single.id;
 
     final pushRequests = <http.Request>[];
     final pushRepository = SyncRepository(
@@ -2599,8 +3307,8 @@ void main() {
       entities.indexOf(AppDatabase.protocolSkipsTable),
       greaterThan(entities.indexOf(AppDatabase.compoundsTable)),
     );
-    final skipBody = bodies()
-        .singleWhere((body) => body['entity'] == AppDatabase.protocolSkipsTable);
+    final skipBody = bodies().singleWhere(
+        (body) => body['entity'] == AppDatabase.protocolSkipsTable);
     final pushedSkip = (skipBody['changes']! as List<Object?>)
         .cast<Map<String, Object?>>()
         .single;
@@ -4982,6 +5690,309 @@ void main() {
       );
     });
   });
+}
+
+/// A Sync API that asks for a full resync and then serves [snapshot].
+SyncRepository _snapshotRepository(
+  AppDatabase database,
+  List<Object?> snapshot,
+) {
+  return SyncRepository(
+    database: database,
+    apiClientFactory: (baseUrl) => PerenniaApiClient(
+      baseUrl: baseUrl,
+      httpClient: MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'protocolVersion': syncProtocolVersion,
+            'fullResyncRequired': body['mode'] != 'snapshot',
+            'nextCursor': 'snapshot-cursor',
+            'serverClock': '2026-11-01T00:00:02.000Z',
+            'changes': body['mode'] == 'snapshot' && body['cursor'] == null
+                ? snapshot
+                : const <Object?>[],
+          }),
+          200,
+          headers: const {'content-type': 'application/json'},
+        );
+      }),
+    ),
+  );
+}
+
+const _creatineId = '019200ff-0000-7000-8000-000000000001';
+const _cognitionId = '019200ff-0000-7000-8000-000000000105';
+const _performanceId = '019200ff-0000-7000-8000-000000000103';
+
+/// A device on schema 65 that has already synced: the six seed Compounds are
+/// untagged, last written and pushed by this device, and each has only its
+/// `otc_seed` Activity Log entry, acknowledged.
+Future<void> _seedAsSyncedUpgradedDevice(
+  TrainingRepositories repositories,
+  AppDatabase database, {
+  required String deviceId,
+}) async {
+  await repositories.protocols.ensureOtcLibrarySeeded();
+  await database.customStatement(
+    "UPDATE compounds SET purpose_ids = '[]', updated_at = 1000, "
+    "sync_device_id = '$deviceId', sync_previously_synced = 1",
+  );
+  await database.customStatement(
+    "UPDATE purposes SET sync_device_id = '$deviceId', "
+    'sync_previously_synced = 1',
+  );
+  await database.customStatement(
+    'UPDATE activity_log SET sync_acknowledged_at = 1000',
+  );
+}
+
+/// A device on schema 65 with no account: the six seed Compounds are untagged,
+/// stamped when it seeded, never synced, and each has only its pending
+/// `otc_seed` entry, whose image has no `purpose_ids` key.
+Future<void> _seedAsNeverSyncedUpgradedDevice(
+  TrainingRepositories repositories,
+  AppDatabase database, {
+  required DateTime seededAt,
+}) async {
+  await repositories.protocols.ensureOtcLibrarySeeded();
+  // Drift stores a DateTime as whole seconds.
+  final seconds = seededAt.millisecondsSinceEpoch ~/ 1000;
+  final image = DateTime.fromMillisecondsSinceEpoch(
+    seconds * 1000,
+    isUtc: true,
+  ).toIso8601String();
+  await database.customStatement(
+    "UPDATE compounds SET purpose_ids = '[]', updated_at = $seconds",
+  );
+  await database.customStatement(
+    'UPDATE activity_log SET occurred_at = $seconds, after_image = '
+    "json_set(json_remove(after_image, '\$.purpose_ids'), "
+    "'\$.updated_at', '$image') "
+    "WHERE entity_table = '${AppDatabase.compoundsTable}'",
+  );
+}
+
+/// A Sync API that holds Compound rows in [rows] and applies the server's rule
+/// to each pushed one: it wins only on (stamp, device), and a payload with no
+/// `purpose_ids` key keeps the stored list. A pull serves [rows] and
+/// [otherPullChanges] once. Pushes of every other entity are accepted and not
+/// applied.
+PerenniaApiClient Function(Uri) _lwwCompoundServer(
+  Map<String, Map<String, Object?>> rows, {
+  List<Map<String, Object?>> otherPullChanges = const <Map<String, Object?>>[],
+}) {
+  bool wins(Map<String, Object?> incoming, Map<String, Object?> held) {
+    final byStamp = DateTime.parse(incoming['updatedAt']! as String)
+        .compareTo(DateTime.parse(held['updatedAt']! as String));
+    if (byStamp != 0) {
+      return byStamp > 0;
+    }
+    return (incoming['deviceId']! as String)
+            .compareTo(held['deviceId']! as String) >
+        0;
+  }
+
+  return (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          if (request.url.path == '/sync/push') {
+            final changes = (body['changes']! as List<Object?>)
+                .cast<Map<String, Object?>>();
+            final applied = <Map<String, Object?>>[];
+            if (body['entity'] == AppDatabase.compoundsTable) {
+              for (final change in changes) {
+                final id = change['id']! as String;
+                final incoming = <String, Object?>{
+                  ...change,
+                  'entity': AppDatabase.compoundsTable,
+                  'deviceId': body['deviceId'],
+                };
+                final held = rows[id];
+                if (held != null && !wins(incoming, held)) {
+                  continue;
+                }
+                final payload = <String, Object?>{
+                  ...change['payload']! as Map<String, Object?>,
+                };
+                final heldPayload = held?['payload'] as Map<String, Object?>?;
+                if (!payload.containsKey('purpose_ids') &&
+                    heldPayload != null &&
+                    heldPayload.containsKey('purpose_ids')) {
+                  payload['purpose_ids'] = heldPayload['purpose_ids'];
+                }
+                rows[id] = <String, Object?>{...incoming, 'payload': payload};
+                applied.add(<String, Object?>{
+                  'id': id,
+                  'updatedAt': change['updatedAt'],
+                  'deviceId': body['deviceId'],
+                });
+              }
+            }
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'accepted': changes
+                    .map((change) => change['id']! as String)
+                    .toList(growable: false),
+                'serverClock': DateTime.now().toUtc().toIso8601String(),
+                'applied': applied,
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-1',
+              'serverClock': DateTime.now().toUtc().toIso8601String(),
+              'changes': body['cursor'] == null
+                  ? <Object?>[...otherPullChanges, ...rows.values]
+                  : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      );
+}
+
+/// A Sync API that accepts every push and serves [pullChanges] once. Bodies of
+/// the pushes land in [pushes].
+PerenniaApiClient Function(Uri) _acceptingSyncApi({
+  required List<Map<String, Object?>> pushes,
+  List<Map<String, Object?>> pullChanges = const <Map<String, Object?>>[],
+  bool applyPushes = true,
+}) {
+  return (baseUrl) => PerenniaApiClient(
+        baseUrl: baseUrl,
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          if (request.url.path == '/sync/push') {
+            pushes.add(body);
+            final changes = (body['changes']! as List<Object?>)
+                .cast<Map<String, Object?>>();
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'accepted': changes
+                    .map((change) => change['id']! as String)
+                    .toList(growable: false),
+                'serverClock': '2026-11-01T00:00:01.000Z',
+                'applied': applyPushes
+                    ? changes
+                        .map(
+                          (change) => <String, Object?>{
+                            'id': change['id'],
+                            'updatedAt': change['updatedAt'],
+                            'deviceId': body['deviceId'],
+                          },
+                        )
+                        .toList(growable: false)
+                    : const <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'protocolVersion': syncProtocolVersion,
+              'nextCursor': 'cursor-1',
+              'serverClock': '2026-11-01T00:00:02.000Z',
+              'changes': body['cursor'] == null ? pullChanges : <Object?>[],
+            }),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      );
+}
+
+Map<String, Object?> _purposePullChange({
+  required String id,
+  required String name,
+  required int sortOrder,
+  required String updatedAt,
+  required String deviceId,
+  String actor = 'manual',
+}) {
+  final payload = <String, Object?>{
+    'id': id,
+    'name': name,
+    'sort_order': sortOrder,
+    'updated_at': updatedAt,
+    'deleted_at': null,
+  };
+  return <String, Object?>{
+    'entity': AppDatabase.purposesTable,
+    'id': id,
+    'deviceId': deviceId,
+    'payload': payload,
+    'updatedAt': updatedAt,
+    'deletedAt': null,
+    'activityLogId': 'activity-$id-$updatedAt',
+    'actor': actor,
+    'batchId': 'batch-$id-$updatedAt',
+    'beforeImage': null,
+    'afterImage': payload,
+    'occurredAt': updatedAt,
+  };
+}
+
+/// [row] as another device's pull would carry it, with [changes] over its
+/// image. A key mapped to [_absent] is left out, as an older app's push does.
+Map<String, Object?> _compoundPullChange(
+  CompoundRow row, {
+  required String updatedAt,
+  required String deviceId,
+  required String actor,
+  String activityLogId = '',
+  Map<String, Object?> changes = const <String, Object?>{},
+}) {
+  final payload = <String, Object?>{
+    'id': row.id,
+    'name': row.name,
+    'default_unit': row.defaultUnit,
+    'default_route': row.defaultRoute,
+    'strength': row.strength,
+    'is_favorite': row.isFavorite,
+    'purpose_ids': row.purposeIds,
+    'updated_at': updatedAt,
+    'deleted_at': null,
+    ...changes,
+  }..removeWhere((_, value) => identical(value, _absent));
+  final logId =
+      activityLogId.isEmpty ? 'activity-${row.id}-$actor' : activityLogId;
+  return <String, Object?>{
+    'entity': AppDatabase.compoundsTable,
+    'id': row.id,
+    'deviceId': deviceId,
+    'payload': payload,
+    'updatedAt': updatedAt,
+    'deletedAt': null,
+    'activityLogId': logId,
+    'actor': actor,
+    'batchId': 'batch-${row.id}-$actor',
+    'beforeImage': null,
+    'afterImage': payload,
+    'occurredAt': updatedAt,
+  };
+}
+
+const Object _absent = Object();
+
+Future<CompoundRow> _compoundRow(AppDatabase database, String id) {
+  return (database.select(database.compounds)
+        ..where((row) => row.id.equals(id)))
+      .getSingle();
+}
+
+Future<PurposeRow> _purposeRow(AppDatabase database, String id) {
+  return (database.select(database.purposes)..where((row) => row.id.equals(id)))
+      .getSingle();
 }
 
 Future<void> _insertActivityLogEntry(

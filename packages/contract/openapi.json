@@ -7417,6 +7417,13 @@
           "strength": {
             "$ref": "#/components/schemas/AgentCompoundStrength"
           },
+          "purposeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The ids of the Purposes this Compound is tagged with, in the order they were tagged. A Purpose is a label for why the user takes a Compound. The list can name an archived Purpose."
+          },
           "updatedAt": {
             "type": "string",
             "minLength": 1,
@@ -7471,6 +7478,7 @@
           "defaultUnit",
           "defaultRoute",
           "strength",
+          "purposeIds",
           "updatedAt",
           "deletedAt"
         ]
@@ -7492,6 +7500,58 @@
         "required": [
           "code",
           "message"
+        ]
+      },
+      "AgentPurposeListResponse": {
+        "type": "object",
+        "properties": {
+          "purposes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentPurpose"
+            }
+          }
+        },
+        "required": [
+          "purposes"
+        ]
+      },
+      "AgentPurpose": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable Purpose id. Starter Purpose ids are fixed and identical on every device."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "User-visible Purpose name, after any rename by the user."
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "User-defined display order; lower sorts first."
+          },
+          "starter": {
+            "type": "boolean",
+            "description": "True for one of the six Purposes every account starts with."
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "When the Purpose was archived, or null while it is active."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sortOrder",
+          "starter",
+          "deletedAt"
         ]
       },
       "AgentProtocolListResponse": {
@@ -9442,6 +9502,14 @@
           "strength": {
             "$ref": "#/components/schemas/AgentCompoundStrengthInput"
           },
+          "purposeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The ids of the Purposes to tag this Compound with, in order; repeats are dropped. Omit to keep the stored list; [] clears it. Every id must be an active Purpose (purpose_not_found), so drop an archived id read back from the list or omit purposeIds."
+          },
           "updatedAt": {
             "type": "string",
             "minLength": 1,
@@ -9462,6 +9530,108 @@
           "name",
           "defaultUnit",
           "defaultRoute"
+        ]
+      },
+      "AgentPurposeBatchWriteResponse": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "duplicate": {
+            "type": "boolean"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "batchId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "serverClock": {
+            "type": "string",
+            "minLength": 1
+          },
+          "purposes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProtocolsEntityBatchWriteResult"
+            }
+          }
+        },
+        "required": [
+          "accepted",
+          "duplicate",
+          "idempotencyKey",
+          "batchId",
+          "serverClock",
+          "purposes"
+        ]
+      },
+      "AgentPurposeBatchWriteRequest": {
+        "type": "object",
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Stable key for this agent request. Replays with the same key do not append another Activity Log batch."
+          },
+          "purposes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentPurposeBatchWritePurpose"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Purposes to create, rename, reorder, or archive in one batch."
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "purposes"
+        ]
+      },
+      "AgentPurposeBatchWritePurpose": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentProtocolsClientRowId"
+              },
+              {
+                "description": "UUIDv7 Purpose id for a new row, or the id of a starter or existing Purpose for an edit or archive."
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Stored trimmed. Empty after trimming is refused (purpose_name_required), and so is the name of another active Purpose, trimmed and case-insensitive (duplicate_purpose_name)."
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "User-defined display order; lower sorts first."
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "default": null,
+            "description": "Set to archive the Purpose. Compounds tagged with it keep the tag."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sortOrder"
         ]
       },
       "AgentProtocolBatchWriteResponse": {
@@ -16246,6 +16416,7 @@
             "enum": [
               "exercise_categories",
               "focuses",
+              "purposes",
               "exercises",
               "workout_sessions",
               "workout_exercises",
@@ -16994,6 +17165,7 @@
             "enum": [
               "exercise_categories",
               "focuses",
+              "purposes",
               "exercises",
               "workout_sessions",
               "workout_exercises",
@@ -21265,6 +21437,17 @@
           },
           {
             "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional Purpose id: only Compounds whose stored list names it. An unknown id returns an empty page."
+            },
+            "required": false,
+            "description": "Optional Purpose id: only Compounds whose stored list names it. An unknown id returns an empty page.",
+            "name": "purpose",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "integer",
               "minimum": 1,
               "maximum": 200,
@@ -21306,6 +21489,121 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentCompoundListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or Protocols storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProtocolsUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/protocols/purposes": {
+      "get": {
+        "operationId": "listAgentPurposes",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "List the caller's Purposes.",
+        "description": "Returns the caller's Purposes, sorted by sortOrder. A Purpose is a label for why the user takes a Compound. The six starter Purposes are merged in for an account that has never synced them, and a stored row wins by id. Archived Purposes are left out unless includeArchived is true.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false",
+              "description": "When true, archived Purposes are included."
+            },
+            "required": false,
+            "description": "When true, archived Purposes are included.",
+            "name": "includeArchived",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's Purposes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPurposeListResponse"
                 }
               }
             }
@@ -22434,6 +22732,124 @@
           },
           "422": {
             "description": "One or more Compounds failed hard validation, or the idempotency key conflicts with an earlier request; no rows were written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProtocolsBatchWriteErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or Protocols write storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProtocolsUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/protocols/purposes/batch-write": {
+      "post": {
+        "operationId": "batchWriteAgentPurposes",
+        "tags": [
+          "Agent Writes"
+        ],
+        "summary": "Batch-write Purposes as one Activity Log batch.",
+        "description": "Authenticated agent write path for Purposes, the labels for why the user takes a Compound. Creates, renames, reorders, and archives (deletedAt) Purposes in one idempotent batch. The name rules are checked after the whole batch is applied, against the active starter and stored Purposes, so a batch can swap two names. Archiving never touches a Compound: its tags keep the id.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPurposeBatchWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The batch was accepted, or recognized as an idempotent replay.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPurposeBatchWriteResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "One or more Purposes failed hard validation, or the idempotency key conflicts with an earlier request; no rows were written.",
             "content": {
               "application/json": {
                 "schema": {

@@ -75,6 +75,12 @@ const _focusSyncEntity = _PlanSyncEntity(
   localEntityTable: AppDatabase.focusesTable,
   remoteEntity: AppDatabase.focusesTable,
 );
+// A Purpose syncs the same way. Compounds name it softly in `purpose_ids`
+// (docs/designs/compound-purposes.md, D1 and D2).
+const _purposeSyncEntity = _PlanSyncEntity(
+  localEntityTable: AppDatabase.purposesTable,
+  remoteEntity: AppDatabase.purposesTable,
+);
 const _templateLinksSyncEntity = _PlanSyncEntity(
   localEntityTable: AppDatabase.templateLinksTable,
   remoteEntity: AppDatabase.templateLinksTable,
@@ -82,6 +88,7 @@ const _templateLinksSyncEntity = _PlanSyncEntity(
 const _outboundSyncActivityTables = <String>[
   AppDatabase.exerciseCategoriesTable,
   AppDatabase.focusesTable,
+  AppDatabase.purposesTable,
   AppDatabase.exercisesTable,
   AppDatabase.workoutSessionsTable,
   AppDatabase.workoutExercisesTable,
@@ -299,6 +306,12 @@ abstract interface class SyncCycleRepository {
   });
 
   Future<bool> hasPendingChanges();
+
+  /// Tags the untouched seed Compounds of a device that upgraded while signed
+  /// in (docs/designs/compound-purposes.md, D3). The Sync Run's runner calls it
+  /// once the pull has drained, so it sees every other device's edits first and
+  /// the same Sync Run pushes what it wrote.
+  Future<void> backfillSeedPurposes();
 }
 
 class SyncRepository implements SyncCycleRepository {
@@ -336,6 +349,10 @@ class SyncRepository implements SyncCycleRepository {
       ..limit(1);
     return query.watch().map((rows) => rows.isEmpty ? 0 : 1).distinct();
   }
+
+  @override
+  Future<void> backfillSeedPurposes() =>
+      _repositories.protocols.backfillSeedPurposes();
 
   @override
   Future<bool> hasPendingChanges() async {
@@ -398,6 +415,12 @@ class SyncRepository implements SyncCycleRepository {
         session: session,
         deviceId: deviceId,
         entity: _focusSyncEntity,
+      );
+      final purposesResult = await _pushPendingPlanEntityWithClient(
+        client: client,
+        session: session,
+        deviceId: deviceId,
+        entity: _purposeSyncEntity,
       );
       final exercisesResult = await _pushPendingExercisesWithClient(
         client: client,
@@ -521,6 +544,7 @@ class SyncRepository implements SyncCycleRepository {
       final result = _mergePushResults(<SyncPushResult>[
         exerciseCategoriesResult,
         focusesResult,
+        purposesResult,
         exercisesResult,
         ...workoutStructureResults,
         ...planTreeResults,
@@ -1061,6 +1085,12 @@ class SyncRepository implements SyncCycleRepository {
           deviceId: deviceId,
           entity: _focusSyncEntity,
         );
+        await _pushPendingPlanEntityWithClient(
+          client: client,
+          session: session,
+          deviceId: deviceId,
+          entity: _purposeSyncEntity,
+        );
         await _pushPendingExercisesWithClient(
           client: client,
           session: session,
@@ -1244,6 +1274,7 @@ class SyncRepository implements SyncCycleRepository {
     final livePlanSnapshotIds = <String, Set<String>>{
       for (final entity in <_PlanSyncEntity>[
         _focusSyncEntity,
+        _purposeSyncEntity,
         ..._workoutStructureSyncEntities,
         ..._planTreeSyncEntities,
         _templateLinksSyncEntity,
@@ -1449,6 +1480,7 @@ class SyncRepository implements SyncCycleRepository {
           _templateLinksSyncEntity,
           ..._planTreeSyncEntities.reversed,
           ..._workoutStructureSyncEntities.reversed,
+          _purposeSyncEntity,
           _focusSyncEntity,
         ]) {
           await _repositories.activityLog.markPlanRowsAbsentFromSnapshotDeleted(
@@ -2124,7 +2156,11 @@ class SyncRepository implements SyncCycleRepository {
           existing.updatedAt.toUtc(),
           existingDeviceId,
         )) {
-      return false;
+      return _restorePurposeIdsDroppedByOlderBuild(
+        change,
+        existing: existing,
+        existingDeviceId: existingDeviceId,
+      );
     }
 
     await _repositories.protocols.applySyncImage(
@@ -2140,6 +2176,37 @@ class SyncRepository implements SyncCycleRepository {
           ? null
           : DateTime.parse(change.occurredAt!).toUtc(),
     );
+    return true;
+  }
+
+  /// A build from before schema 66 applied a pulled Compound but had no column
+  /// for `purpose_ids`, so it kept the row's `updated_at` and device id and lost
+  /// the tags. The upgrade's full pull then returns that same version, an exact
+  /// last-writer-wins tie that applies nothing. Left at `[]`, the row would count
+  /// as touched, skip the backfill, and push an explicit `[]` on its next edit,
+  /// erasing the tags everywhere (docs/designs/compound-purposes.md, D1).
+  ///
+  /// Only the tags move: same version means the rest of the row already matches,
+  /// and the entry for this version is already in the Activity Log, so this
+  /// writes no entry and pushes nothing. A row holding anything but the column
+  /// default is left alone, since a build that has the column kept its value.
+  Future<bool> _restorePurposeIdsDroppedByOlderBuild(
+    SyncPulledChange change, {
+    required CompoundRow existing,
+    required String existingDeviceId,
+  }) async {
+    final purposeIds = change.payload['purpose_ids'];
+    final isSameVersion = change.deviceId == existingDeviceId &&
+        DateTime.parse(change.updatedAt).isAtSameMomentAs(existing.updatedAt);
+    if (!isSameVersion ||
+        existing.purposeIds != '[]' ||
+        purposeIds is! String ||
+        purposeIds == '[]') {
+      return false;
+    }
+    await (_database.update(_database.compounds)
+          ..where((row) => row.id.equals(existing.id)))
+        .write(CompoundsCompanion(purposeIds: Value<String>(purposeIds)));
     return true;
   }
 
@@ -4900,6 +4967,9 @@ _PlanSyncEntity? _planSyncEntityForRemote(String remoteEntity) {
   if (remoteEntity == _focusSyncEntity.remoteEntity) {
     return _focusSyncEntity;
   }
+  if (remoteEntity == _purposeSyncEntity.remoteEntity) {
+    return _purposeSyncEntity;
+  }
   for (final entity in <_PlanSyncEntity>[
     ..._workoutStructureSyncEntities,
     ..._planTreeSyncEntities,
@@ -5133,9 +5203,11 @@ int _comparePulledChangesForApply(
 int _syncApplyOrder(String entity) {
   return switch (entity) {
     // An ExerciseCategory before its Exercises (a Drift FK, `categoryId`,
-    //). A Focus is only a soft reference, so its slot is tidy ordering.
+    //). A Focus or a Purpose is only a soft reference, so its slot is tidy
+    // ordering.
     AppDatabase.exerciseCategoriesTable => 0,
     AppDatabase.focusesTable => 0,
+    AppDatabase.purposesTable => 0,
     AppDatabase.exercisesTable => 1,
     AppDatabase.workoutSessionsTable => 2,
     AppDatabase.workoutExercisesTable => 3,

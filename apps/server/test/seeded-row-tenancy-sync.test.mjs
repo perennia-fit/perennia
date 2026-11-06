@@ -23,6 +23,7 @@ const skip = databaseUrl ? false : "DATABASE_URL is not set.";
 // - the Platform "Chest" Exercise Category (assets/seeds/platform_exercises.json)
 // - the default "Breakfast" Meal Type (NutritionRepository._defaultMealTypes)
 // - the OTC "Creatine" Compound (lib/data/seeds/otc_compound_seed.dart)
+// - the starter "Sleep" Purpose (lib/domain/protocols/compound_purposes.dart)
 const SEEDED_ROWS = [
   {
     entity: "exercise_categories",
@@ -41,6 +42,12 @@ const SEEDED_ROWS = [
     id: "019200ff-0000-7000-8000-000000000001",
     seededName: "Creatine",
     extra: { default_unit: "gram", default_route: "oral", strength: null }
+  },
+  {
+    entity: "purposes",
+    id: "019200ff-0000-7000-8000-000000000101",
+    seededName: "Sleep",
+    extra: { sort_order: 0 }
   }
 ];
 

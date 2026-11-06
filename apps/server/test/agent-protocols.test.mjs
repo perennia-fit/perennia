@@ -6045,6 +6045,7 @@ function stubStore(overrides) {
   };
   return {
     listCompounds: notImplemented("listCompounds"),
+    listPurposes: notImplemented("listPurposes"),
     listProtocols: notImplemented("listProtocols"),
     listDoses: notImplemented("listDoses"),
     readEffectWindow: notImplemented("readEffectWindow"),
@@ -6052,6 +6053,7 @@ function stubStore(overrides) {
     listProtocolDayStatuses: notImplemented("listProtocolDayStatuses"),
     writeDoseBatch: notImplemented("writeDoseBatch"),
     writeCompoundBatch: notImplemented("writeCompoundBatch"),
+    writePurposeBatch: notImplemented("writePurposeBatch"),
     writeProtocolBatch: notImplemented("writeProtocolBatch"),
     deleteProtocols: notImplemented("deleteProtocols"),
     writeProtocolSkipBatch: notImplemented("writeProtocolSkipBatch"),
@@ -6132,3 +6134,833 @@ function insertOpaqueFixture(database, table, rows) {
     )
   );
 }
+
+// ---------------------------------------------------------------------------
+// Purposes (docs/designs/compound-purposes.md, D8, D9 and CUJ 9)
+// ---------------------------------------------------------------------------
+
+const SLEEP_PURPOSE_ID = "019200ff-0000-7000-8000-000000000101";
+const PERFORMANCE_PURPOSE_ID = "019200ff-0000-7000-8000-000000000103";
+const GENERAL_HEALTH_PURPOSE_ID = "019200ff-0000-7000-8000-000000000106";
+const STARTER_PURPOSE_NAMES = [
+  "Sleep",
+  "Body composition",
+  "Performance",
+  "Recovery",
+  "Cognition",
+  "General health"
+];
+
+async function listPurposes(app, query = "") {
+  const response = await app.request(`/agent/protocols/purposes${query}`, {
+    headers: authHeaders()
+  });
+  assert.equal(response.status, 200, await response.clone().text());
+  return (await response.json()).purposes;
+}
+
+function writePurposes(app, purposes, idempotencyKey = `purposes-${randomUUID()}`) {
+  return post(app, "/agent/protocols/purposes/batch-write", { idempotencyKey, purposes });
+}
+
+async function refusedRules(response) {
+  assert.equal(response.status, 422, await response.clone().text());
+  return (await response.json()).errors.map((issue) => [issue.field, issue.rule]);
+}
+
+function compoundItem(id, name, extra = {}) {
+  return { id, name, defaultUnit: "milligram", defaultRoute: "oral", ...extra };
+}
+
+function writeCompounds(app, compounds, idempotencyKey = `compounds-${randomUUID()}`) {
+  return post(app, "/agent/protocols/compounds/batch-write", { idempotencyKey, compounds });
+}
+
+async function compoundPurposeIds(app, id) {
+  const response = await app.request("/agent/protocols/compounds?includeArchived=true", {
+    headers: authHeaders()
+  });
+  assert.equal(response.status, 200);
+  return (await response.json()).compounds.find((compound) => compound.id === id).purposeIds;
+}
+
+/** Runs a test with a fresh account on the Protocols and Activity Log stores. */
+function withPurposesApp(name, body) {
+  test(name, { skip }, async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-purposes-${randomUUID()}`;
+    try {
+      await insertUser(database, userId);
+      await body({ app: createDeleteApp(database, userId), database, userId });
+    } finally {
+      await database.close();
+    }
+  });
+}
+
+withPurposesApp(
+  "listAgentPurposes merges the starters with the account's rows and hides archived ones unless asked",
+  async ({ app, database, userId }) => {
+    // With no stored row, the six starters.
+    const starters = await listPurposes(app);
+    assert.deepEqual(
+      starters.map((purpose) => purpose.name),
+      STARTER_PURPOSE_NAMES
+    );
+    assert.ok(
+      starters.every((purpose) => purpose.starter === true && purpose.deletedAt === null)
+    );
+    assert.equal(starters[0].id, SLEEP_PURPOSE_ID);
+    assert.equal(starters[5].sortOrder, 5);
+
+    // Another account's rows under the starter ids are that account's own.
+    const otherUserId = `agent-purposes-other-${randomUUID()}`;
+    await insertUser(database, otherUserId);
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    await insertOpaqueFixture(database, schema.purposes, {
+      id: SLEEP_PURPOSE_ID,
+      userId: otherUserId,
+      updatedAt,
+      payload: { id: SLEEP_PURPOSE_ID, name: "Their sleep", sort_order: 0 },
+      deletedAt: updatedAt
+    });
+
+    // A stored row wins by id; a row with any other id is a user Purpose.
+    const skinId = createUuidV7();
+    await insertOpaqueFixture(database, schema.purposes, [
+      {
+        id: SLEEP_PURPOSE_ID,
+        userId,
+        updatedAt,
+        payload: { id: SLEEP_PURPOSE_ID, name: "Rest", sort_order: 9 }
+      },
+      {
+        id: GENERAL_HEALTH_PURPOSE_ID,
+        userId,
+        updatedAt,
+        payload: { id: GENERAL_HEALTH_PURPOSE_ID, name: "General health", sort_order: 5 },
+        deletedAt: updatedAt
+      },
+      {
+        id: skinId,
+        userId,
+        updatedAt,
+        payload: { id: skinId, name: "Skin", sort_order: 0 }
+      }
+    ]);
+
+    const active = await listPurposes(app);
+    assert.deepEqual(
+      active.map((purpose) => purpose.name),
+      ["Skin", "Body composition", "Performance", "Recovery", "Cognition", "Rest"]
+    );
+    assert.deepEqual(active[0], {
+      id: skinId,
+      name: "Skin",
+      sortOrder: 0,
+      starter: false,
+      deletedAt: null
+    });
+    assert.deepEqual(active[5], {
+      id: SLEEP_PURPOSE_ID,
+      name: "Rest",
+      sortOrder: 9,
+      starter: true,
+      deletedAt: null
+    });
+    assert.deepEqual(await listPurposes(app, "?includeArchived=false"), active);
+
+    const all = await listPurposes(app, "?includeArchived=true");
+    assert.equal(all.length, 7);
+    const archived = all.find((purpose) => purpose.id === GENERAL_HEALTH_PURPOSE_ID);
+    assert.equal(archived.starter, true);
+    assert.equal(archived.deletedAt, updatedAt.toISOString());
+  }
+);
+
+withPurposesApp(
+  "batchWriteAgentPurposes creates, renames, reorders and archives, judging names on the state the batch leaves",
+  async ({ app, database, userId }) => {
+    const skinId = createUuidV7();
+    const created = await writePurposes(app, [
+      { id: skinId, name: "  Skin ", sortOrder: 0 },
+      { id: SLEEP_PURPOSE_ID, name: "sleep", sortOrder: 9 }
+    ]);
+    assert.equal(created.status, 200, await created.clone().text());
+    assert.deepEqual((await created.json()).purposes, [
+      { id: skinId, name: "Skin", outcome: "applied" },
+      { id: SLEEP_PURPOSE_ID, name: "sleep", outcome: "applied" }
+    ]);
+    const [stored] = await database.sql`
+      select payload from purposes where id = ${skinId} and user_id = ${userId}
+    `;
+    assert.equal(stored.payload.name, "Skin", "stored trimmed");
+    assert.equal(stored.payload.sort_order, 0);
+    assert.equal(stored.payload.deleted_at, null);
+    assert.deepEqual(
+      (await listPurposes(app)).map((purpose) => purpose.name),
+      ["Skin", "Body composition", "Performance", "Recovery", "Cognition", "General health", "sleep"]
+    );
+
+    // Empty after trimming, whichever way it is written.
+    for (const name of ["", "   "]) {
+      assert.deepEqual(
+        await refusedRules(
+          await writePurposes(app, [{ id: createUuidV7(), name, sortOrder: 7 }])
+        ),
+        [["purposes[0].name", "purpose_name_required"]]
+      );
+    }
+    // A duplicate of a starter's name, in another case and with padding.
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [{ id: createUuidV7(), name: "  RECOVERY ", sortOrder: 7 }])
+      ),
+      [["purposes[0].name", "duplicate_purpose_name"]]
+    );
+    // A duplicate of a user Purpose, and a pair inside one batch.
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [{ id: createUuidV7(), name: "skin", sortOrder: 7 }])
+      ),
+      [["purposes[0].name", "duplicate_purpose_name"]]
+    );
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [
+          { id: createUuidV7(), name: "Focus", sortOrder: 7 },
+          { id: createUuidV7(), name: "focus", sortOrder: 8 }
+        ])
+      ),
+      [
+        ["purposes[0].name", "duplicate_purpose_name"],
+        ["purposes[1].name", "duplicate_purpose_name"]
+      ]
+    );
+    assert.equal((await listPurposes(app)).length, 7, "a refused batch writes nothing");
+
+    // A repeated id, and a new row whose id isn't a UUIDv7.
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [
+          { id: skinId, name: "Skin", sortOrder: 0 },
+          { id: skinId, name: "Skin", sortOrder: 1 }
+        ])
+      ),
+      [["purposes[1].id", "duplicate_purpose_id"]]
+    );
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [{ id: "not-a-uuid", name: "Mood", sortOrder: 7 }])
+      ),
+      [["purposes[0].id", "new_row_id_must_be_uuidv7"]]
+    );
+
+    // The bounds.
+    const tooMany = Array.from({ length: 101 }, (_, index) => ({
+      id: createUuidV7(),
+      name: `Purpose ${index}`,
+      sortOrder: index
+    }));
+    assert.equal((await writePurposes(app, tooMany)).status, 400);
+    assert.equal((await writePurposes(app, [])).status, 400);
+
+    // Renaming itself in another case is no duplicate.
+    assert.equal(
+      (await writePurposes(app, [{ id: skinId, name: "SKIN", sortOrder: 0 }])).status,
+      200
+    );
+
+    // Two names swapped in one batch collide only if judged item by item.
+    assert.equal(
+      (
+        await writePurposes(app, [
+          { id: PERFORMANCE_PURPOSE_ID, name: "Cognition", sortOrder: 2 },
+          {
+            id: "019200ff-0000-7000-8000-000000000105",
+            name: "Performance",
+            sortOrder: 4
+          }
+        ])
+      ).status,
+      200
+    );
+
+    // An archived name is free to reuse, in a later batch or in the same one.
+    const archivedAt = "2026-06-01T00:00:00.000Z";
+    assert.equal(
+      (
+        await writePurposes(app, [
+          {
+            id: GENERAL_HEALTH_PURPOSE_ID,
+            name: "General health",
+            sortOrder: 5,
+            deletedAt: archivedAt
+          }
+        ])
+      ).status,
+      200
+    );
+    assert.ok(
+      !(await listPurposes(app)).some((purpose) => purpose.id === GENERAL_HEALTH_PURPOSE_ID)
+    );
+    const healthId = createUuidV7();
+    assert.equal(
+      (await writePurposes(app, [{ id: healthId, name: "GENERAL HEALTH", sortOrder: 5 }]))
+        .status,
+      200
+    );
+    const moodId = createUuidV7();
+    assert.equal(
+      (
+        await writePurposes(app, [
+          { id: healthId, name: "GENERAL HEALTH", sortOrder: 5, deletedAt: archivedAt },
+          { id: moodId, name: "General health", sortOrder: 6 }
+        ])
+      ).status,
+      200
+    );
+    // But an archive item still needs a name.
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [
+          { id: moodId, name: " ", sortOrder: 6, deletedAt: archivedAt }
+        ])
+      ),
+      [["purposes[0].name", "purpose_name_required"]]
+    );
+  }
+);
+
+withPurposesApp(
+  "a Purpose batch replays by key and conflicts with a different body, and a starter id is no other account's row",
+  async ({ app, database, userId }) => {
+    // Another account already holds a row under the same starter id.
+    const otherUserId = `agent-purposes-other-${randomUUID()}`;
+    await insertUser(database, otherUserId);
+    const otherApp = createDeleteApp(database, otherUserId);
+    assert.equal(
+      (await writePurposes(otherApp, [{ id: SLEEP_PURPOSE_ID, name: "Theirs", sortOrder: 0 }]))
+        .status,
+      200
+    );
+
+    const key = `purposes-replay-${randomUUID()}`;
+    const items = [{ id: SLEEP_PURPOSE_ID, name: "Rest", sortOrder: 0 }];
+    assert.equal((await writePurposes(app, items, key)).status, 200);
+
+    // Archive the renamed Purpose and reuse a name the replay would now fail on:
+    // the replay must not judge the names again.
+    const restId = createUuidV7();
+    assert.equal(
+      (
+        await writePurposes(app, [
+          { id: SLEEP_PURPOSE_ID, name: "Rest", sortOrder: 0, deletedAt: "2026-06-01T00:00:00.000Z" },
+          { id: restId, name: "Rest", sortOrder: 7 }
+        ])
+      ).status,
+      200
+    );
+    const replay = await writePurposes(app, items, key);
+    assert.equal(replay.status, 200, await replay.clone().text());
+    const replayBody = await replay.json();
+    assert.equal(replayBody.duplicate, true);
+    assert.deepEqual(replayBody.purposes, [
+      { id: SLEEP_PURPOSE_ID, name: "Rest", outcome: "duplicate" }
+    ]);
+
+    assert.deepEqual(
+      await refusedRules(
+        await writePurposes(app, [{ id: restId, name: "Rest again", sortOrder: 7 }], key)
+      ),
+      [["idempotencyKey", "idempotency_key_conflict"]]
+    );
+
+    // Each account's starter is its own.
+    const [theirs] = await database.sql`
+      select payload from purposes where id = ${SLEEP_PURPOSE_ID} and user_id = ${otherUserId}
+    `;
+    assert.equal(theirs.payload.name, "Theirs");
+  }
+);
+
+withPurposesApp(
+  "CUJ 9: an Agent lists the Purposes, creates a tagged Compound and filters Compounds by Purpose",
+  async ({ app, database, userId }) => {
+    const sleep = (await listPurposes(app)).find((purpose) => purpose.name === "Sleep");
+    const [magnesiumId, melatoninId, creatineId, glycineId] = [
+      createUuidV7(),
+      createUuidV7(),
+      createUuidV7(),
+      createUuidV7()
+    ];
+    // Stored by the app, tagged by the seed.
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    await insertOpaqueFixture(database, schema.compounds, [
+      {
+        id: magnesiumId,
+        userId,
+        updatedAt,
+        payload: {
+          id: magnesiumId,
+          name: "Magnesium",
+          default_unit: "milligram",
+          default_route: "oral",
+          purpose_ids: JSON.stringify([sleep.id, "019200ff-0000-7000-8000-000000000104"])
+        }
+      },
+      {
+        id: melatoninId,
+        userId,
+        updatedAt,
+        payload: {
+          id: melatoninId,
+          name: "Melatonin",
+          default_unit: "milligram",
+          default_route: "oral",
+          purpose_ids: JSON.stringify([sleep.id])
+        }
+      },
+      {
+        id: creatineId,
+        userId,
+        updatedAt,
+        payload: {
+          id: creatineId,
+          name: "Creatine",
+          default_unit: "gram",
+          default_route: "oral",
+          purpose_ids: JSON.stringify([PERFORMANCE_PURPOSE_ID])
+        }
+      }
+    ]);
+
+    const glycine = await writeCompounds(app, [
+      compoundItem(glycineId, "Glycine", { purposeIds: [sleep.id] })
+    ]);
+    assert.equal(glycine.status, 200, await glycine.clone().text());
+
+    const filtered = await app.request(
+      `/agent/protocols/compounds?purpose=${sleep.id}&fields=purposeIds`,
+      { headers: authHeaders() }
+    );
+    assert.equal(filtered.status, 200);
+    const filteredBody = await filtered.json();
+    assert.deepEqual(
+      filteredBody.compounds.map((compound) => compound.name).sort(),
+      ["Glycine", "Magnesium", "Melatonin"]
+    );
+    assert.equal(filteredBody.totalMatched, 3);
+    assert.deepEqual(filteredBody.fields, ["id", "name", "purposeIds"]);
+    assert.deepEqual(Object.keys(filteredBody.compounds[0]).sort(), ["id", "name", "purposeIds"]);
+    assert.deepEqual(
+      filteredBody.compounds.find((compound) => compound.id === magnesiumId).purposeIds,
+      [sleep.id, "019200ff-0000-7000-8000-000000000104"],
+      "the stored list, in the order tagged"
+    );
+
+    // The filter runs before paging.
+    const page = await app.request(
+      `/agent/protocols/compounds?purpose=${sleep.id}&limit=2`,
+      { headers: authHeaders() }
+    );
+    const pageBody = await page.json();
+    assert.equal(pageBody.compounds.length, 2);
+    assert.equal(pageBody.totalMatched, 3);
+    assert.ok(pageBody.nextCursor);
+
+    const unknown = await app.request(
+      `/agent/protocols/compounds?purpose=${createUuidV7()}`,
+      { headers: authHeaders() }
+    );
+    assert.equal((await unknown.json()).totalMatched, 0);
+
+    // What the app pulls is the JSON-encoded list.
+    const [stored] = await database.sql`
+      select payload from compounds where id = ${glycineId} and user_id = ${userId}
+    `;
+    assert.equal(stored.payload.purpose_ids, JSON.stringify([sleep.id]));
+  }
+);
+
+withPurposesApp(
+  "purposeIds on a Compound write: repeats collapse, omitting keeps the list, [] clears it, and a row with no key reads []",
+  async ({ app, database, userId }) => {
+    const id = createUuidV7();
+    assert.equal(
+      (
+        await writeCompounds(app, [
+          compoundItem(id, "Magnesium", {
+            purposeIds: [PERFORMANCE_PURPOSE_ID, SLEEP_PURPOSE_ID, PERFORMANCE_PURPOSE_ID]
+          })
+        ])
+      ).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [
+      PERFORMANCE_PURPOSE_ID,
+      SLEEP_PURPOSE_ID
+    ]);
+
+    // An Agent edit that omits the list keeps it, and logs the row as stored.
+    const omitKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Magnesium glycinate")], omitKey)).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [
+      PERFORMANCE_PURPOSE_ID,
+      SLEEP_PURPOSE_ID
+    ]);
+    const [logged] = await database.sql`
+      select after_image from activity_log
+      where user_id = ${userId} and batch_id = ${omitKey} and entity_table = 'compounds'
+    `;
+    assert.equal(
+      logged.after_image.purpose_ids,
+      JSON.stringify([PERFORMANCE_PURPOSE_ID, SLEEP_PURPOSE_ID])
+    );
+
+    // An explicit empty list clears it, and stays cleared.
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Magnesium", { purposeIds: [] })])).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), []);
+    const [stored] = await database.sql`
+      select payload from compounds where id = ${id} and user_id = ${userId}
+    `;
+    assert.equal(stored.payload.purpose_ids, "[]");
+    assert.equal((await writeCompounds(app, [compoundItem(id, "Magnesium")])).status, 200);
+    assert.deepEqual(await compoundPurposeIds(app, id), []);
+
+    // A Compound created without the list has no key, and reads as none.
+    const untagged = createUuidV7();
+    assert.equal((await writeCompounds(app, [compoundItem(untagged, "Zinc")])).status, 200);
+    assert.deepEqual(await compoundPurposeIds(app, untagged), []);
+  }
+);
+
+withPurposesApp(
+  "a stored purpose_ids that can't be read as strings reads as no tags, and doesn't break the Compound list",
+  async ({ app, database, userId }) => {
+    const [badId, goodId] = [createUuidV7(), createUuidV7()];
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    await insertOpaqueFixture(database, schema.compounds, [
+      {
+        id: badId,
+        userId,
+        updatedAt,
+        payload: {
+          id: badId,
+          name: "Bad",
+          default_unit: "gram",
+          default_route: "oral",
+          // Sync stores the payload unchecked, so a push can leave a raw array
+          // whose entry String() throws on.
+          purpose_ids: [{ toString: 1 }]
+        }
+      },
+      {
+        id: goodId,
+        userId,
+        updatedAt,
+        payload: {
+          id: goodId,
+          name: "Good",
+          default_unit: "gram",
+          default_route: "oral",
+          purpose_ids: JSON.stringify([SLEEP_PURPOSE_ID])
+        }
+      }
+    ]);
+
+    assert.deepEqual(await compoundPurposeIds(app, badId), []);
+    assert.deepEqual(await compoundPurposeIds(app, goodId), [SLEEP_PURPOSE_ID]);
+
+    const filtered = await app.request(
+      `/agent/protocols/compounds?purpose=${SLEEP_PURPOSE_ID}`,
+      { headers: authHeaders() }
+    );
+    assert.equal(filtered.status, 200);
+    assert.deepEqual(
+      (await filtered.json()).compounds.map((compound) => compound.id),
+      [goodId]
+    );
+  }
+);
+
+withPurposesApp(
+  "purpose_not_found refuses an unknown or archived id, and a replay of a recorded batch still returns its receipt",
+  async ({ app, userId, database }) => {
+    const id = createUuidV7();
+    const skinId = createUuidV7();
+    assert.equal(
+      (await writePurposes(app, [{ id: skinId, name: "Skin", sortOrder: 6 }])).status,
+      200
+    );
+
+    const key = `compounds-${randomUUID()}`;
+    const items = [compoundItem(id, "Glycine", { purposeIds: [skinId, SLEEP_PURPOSE_ID] })];
+    assert.equal((await writeCompounds(app, items, key)).status, 200);
+
+    // An unknown id, reported per item at the list's field; nothing is written.
+    const otherId = createUuidV7();
+    assert.deepEqual(
+      await refusedRules(
+        await writeCompounds(app, [
+          compoundItem(otherId, "Fine", { purposeIds: [SLEEP_PURPOSE_ID] }),
+          compoundItem(createUuidV7(), "Bad", {
+            purposeIds: [createUuidV7(), createUuidV7()]
+          })
+        ])
+      ),
+      [["compounds[1].purposeIds", "purpose_not_found"]]
+    );
+    const [{ count }] = await database.sql`
+      select count(*)::int as count from compounds where id = ${otherId} and user_id = ${userId}
+    `;
+    assert.equal(count, 0);
+
+    // Another account's user Purpose is unknown here.
+    const otherUserId = `agent-purposes-other-${randomUUID()}`;
+    await insertUser(database, otherUserId);
+    const theirsId = createUuidV7();
+    assert.equal(
+      (
+        await writePurposes(createDeleteApp(database, otherUserId), [
+          { id: theirsId, name: "Theirs", sortOrder: 6 }
+        ])
+      ).status,
+      200
+    );
+    assert.deepEqual(
+      await refusedRules(
+        await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [theirsId] })])
+      ),
+      [["compounds[0].purposeIds", "purpose_not_found"]]
+    );
+
+    // An archived Purpose stays on the Compound, and can't be written again.
+    assert.equal(
+      (
+        await writePurposes(app, [
+          { id: skinId, name: "Skin", sortOrder: 6, deletedAt: "2026-06-01T00:00:00.000Z" }
+        ])
+      ).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [skinId, SLEEP_PURPOSE_ID]);
+    assert.deepEqual(
+      await refusedRules(
+        await writeCompounds(app, [
+          compoundItem(id, "Glycine", { purposeIds: [skinId, SLEEP_PURPOSE_ID] })
+        ])
+      ),
+      [["compounds[0].purposeIds", "purpose_not_found"]]
+    );
+    // An archived starter too.
+    assert.equal(
+      (
+        await writePurposes(app, [
+          {
+            id: GENERAL_HEALTH_PURPOSE_ID,
+            name: "General health",
+            sortOrder: 5,
+            deletedAt: "2026-06-01T00:00:00.000Z"
+          }
+        ])
+      ).status,
+      200
+    );
+    assert.deepEqual(
+      await refusedRules(
+        await writeCompounds(app, [
+          compoundItem(id, "Glycine", { purposeIds: [GENERAL_HEALTH_PURPOSE_ID] })
+        ])
+      ),
+      [["compounds[0].purposeIds", "purpose_not_found"]]
+    );
+
+    // The recorded batch replays, though it names the archived Purpose now.
+    const replay = await writeCompounds(app, items, key);
+    assert.equal(replay.status, 200, await replay.clone().text());
+    const replayBody = await replay.json();
+    assert.equal(replayBody.duplicate, true);
+    assert.deepEqual(replayBody.compounds, [
+      { id, name: "Glycine", outcome: "duplicate" }
+    ]);
+
+    // Omitting the list still edits a Compound carrying the archived id.
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine powder")])).status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [skinId, SLEEP_PURPOSE_ID]);
+  }
+);
+
+withPurposesApp(
+  "undoing an Agent's first tagging of a Compound clears the tags, and an edit that omits the list leaves them",
+  async ({ app, database, userId }) => {
+    const undo = async (batchId) => {
+      const response = await post(app, "/agent/activity/undo-batch", {
+        batchId,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(response.status, 200, await response.clone().text());
+      const body = await response.json();
+      assert.deepEqual(
+        body.entries.map((entry) => entry.outcome),
+        ["reverted"]
+      );
+    };
+    const beforeImage = async (batchId) => {
+      const [logged] = await database.sql`
+        select before_image from activity_log
+        where user_id = ${userId} and batch_id = ${batchId} and entity_table = 'compounds'
+      `;
+      return logged.before_image;
+    };
+
+    // The stored row has no `purpose_ids`: an Agent created it with no list, as
+    // a schema-65 app would have pushed it.
+    const id = createUuidV7();
+    assert.equal((await writeCompounds(app, [compoundItem(id, "Glycine")])).status, 200);
+    const tagKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [SLEEP_PURPOSE_ID] })], tagKey))
+        .status,
+      200
+    );
+    assert.deepEqual(await compoundPurposeIds(app, id), [SLEEP_PURPOSE_ID]);
+    assert.equal((await beforeImage(tagKey)).purpose_ids, "[]");
+
+    await undo(tagKey);
+
+    assert.deepEqual(await compoundPurposeIds(app, id), []);
+    const filtered = await app.request(
+      `/agent/protocols/compounds?purpose=${SLEEP_PURPOSE_ID}`,
+      { headers: authHeaders() }
+    );
+    assert.deepEqual((await filtered.json()).compounds, []);
+
+    // A write that doesn't set the key records the row as stored, so its undo
+    // can't touch a list it never changed.
+    const untagged = createUuidV7();
+    assert.equal((await writeCompounds(app, [compoundItem(untagged, "Zinc")])).status, 200);
+    const renameKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(untagged, "Zinc citrate")], renameKey)).status,
+      200
+    );
+    assert.equal(Object.hasOwn(await beforeImage(renameKey), "purpose_ids"), false);
+
+    // Undoing a later tagging restores the list the row held, not an empty one.
+    const retagKey = `compounds-${randomUUID()}`;
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [PERFORMANCE_PURPOSE_ID] })]))
+        .status,
+      200
+    );
+    assert.equal(
+      (await writeCompounds(app, [compoundItem(id, "Glycine", { purposeIds: [SLEEP_PURPOSE_ID] })], retagKey))
+        .status,
+      200
+    );
+    await undo(retagKey);
+    assert.deepEqual(await compoundPurposeIds(app, id), [PERFORMANCE_PURPOSE_ID]);
+  }
+);
+
+withPurposesApp(
+  "a Purpose write is undoable through the Activity Log, a starter with no stored row included",
+  async ({ app }) => {
+    const undo = async (batchId) => {
+      const response = await post(app, "/agent/activity/undo-batch", {
+        batchId,
+        idempotencyKey: `undo-${randomUUID()}`
+      });
+      assert.equal(response.status, 200, await response.clone().text());
+      const body = await response.json();
+      assert.equal(body.applied, true);
+      assert.deepEqual(
+        body.entries.map((entry) => entry.outcome),
+        ["reverted"]
+      );
+    };
+    const byId = async (id) =>
+      (await listPurposes(app, "?includeArchived=true")).find((purpose) => purpose.id === id);
+
+    // Archiving a starter this account has never synced: undo brings it back.
+    const archiveKey = `purposes-${randomUUID()}`;
+    assert.equal(
+      (
+        await writePurposes(
+          app,
+          [
+            {
+              id: GENERAL_HEALTH_PURPOSE_ID,
+              name: "General health",
+              sortOrder: 5,
+              deletedAt: "2026-06-01T00:00:00.000Z"
+            }
+          ],
+          archiveKey
+        )
+      ).status,
+      200
+    );
+    assert.ok((await byId(GENERAL_HEALTH_PURPOSE_ID)).deletedAt !== null);
+    await undo(archiveKey);
+    assert.deepEqual(await byId(GENERAL_HEALTH_PURPOSE_ID), {
+      id: GENERAL_HEALTH_PURPOSE_ID,
+      name: "General health",
+      sortOrder: 5,
+      starter: true,
+      deletedAt: null
+    });
+
+    // Renaming a starter with no stored row: undo restores its own name.
+    const renameKey = `purposes-${randomUUID()}`;
+    assert.equal(
+      (await writePurposes(app, [{ id: SLEEP_PURPOSE_ID, name: "Rest", sortOrder: 9 }], renameKey))
+        .status,
+      200
+    );
+    await undo(renameKey);
+    assert.deepEqual(await byId(SLEEP_PURPOSE_ID), {
+      id: SLEEP_PURPOSE_ID,
+      name: "Sleep",
+      sortOrder: 0,
+      starter: true,
+      deletedAt: null
+    });
+
+    // Creating one: undo archives it, as for any created row.
+    const skinId = createUuidV7();
+    const createKey = `purposes-${randomUUID()}`;
+    assert.equal(
+      (await writePurposes(app, [{ id: skinId, name: "Skin", sortOrder: 6 }], createKey)).status,
+      200
+    );
+    await undo(createKey);
+    assert.ok((await byId(skinId)).deletedAt !== null);
+    assert.ok(!(await listPurposes(app)).some((purpose) => purpose.id === skinId));
+
+    // Renaming a stored one: undo restores the stored name.
+    const moodId = createUuidV7();
+    assert.equal(
+      (await writePurposes(app, [{ id: moodId, name: "Mood", sortOrder: 7 }])).status,
+      200
+    );
+    const editKey = `purposes-${randomUUID()}`;
+    assert.equal(
+      (await writePurposes(app, [{ id: moodId, name: "Calm", sortOrder: 7 }], editKey)).status,
+      200
+    );
+    await undo(editKey);
+    assert.equal((await byId(moodId)).name, "Mood");
+  }
+);
