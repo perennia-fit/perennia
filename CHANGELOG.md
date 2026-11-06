@@ -59,8 +59,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   you logged it or have it in a Workout or Template, and disappears otherwise.
   Agents see a kept exercise as yours, with its own Sets.
 - **Cleaner Platform Exercise Library names.** Eighty names are corrected,
-  including every `(male)` or `(female)` label and typos like
-  `Shrimp Squad`. Twenty-three exercises merge into an equivalent, and 10
+  including every `(male)` or `(female)` label and typos like `Shrimp Squad`.
+  Twenty-three exercises merge into an equivalent, and 10
   entries that were not real exercises, such as `bicep` and
   `Rest (for timed workouts)`, are removed.
 - **The Platform Exercise Library loses its remaining non-English names.**
@@ -69,9 +69,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **The Platform Exercise Library drops 162 near-duplicates** (1,745 to 1,583
   exercises), such as "Benchpress Dumbbells" alongside "Dumbbell Bench Press".
   A removed exercise you used stays as your own, with its history. The
-  Endurance, Weights and
-  Calisthenics staples now offer Running, Skipping - Standard, Overhead
-  Barbell Press and Full Plank.
+  Endurance, Weights and Calisthenics staples now offer Running, Skipping -
+  Standard, Overhead Barbell Press and Full Plank.
 - **`batchWriteAgentMeal` writes only the Meal fields a request sends.** An
   absent field keeps its stored value, `null` clears `endedAt` or
   `deletedAt`, a request with only entries leaves the Meal untouched, and

@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:perennia/api/perennia_api_client.dart';
 import 'package:perennia/data/local/app_database.dart';
+import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/data/seeds/platform_exercise_seed.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/settings/widgets/settings_providers.dart';
 import 'package:perennia/features/sync/repositories/sync_repository.dart';
@@ -95,6 +97,12 @@ void main() {
       final container = ProviderContainer(
         overrides: <Override>[
           syncRepositoryProvider.overrideWith((ref) => repository),
+          trainingRepositoriesProvider.overrideWith(
+            (ref) => TrainingRepositories(
+              database,
+              platformSeedSource: const _EmptySeedSource(),
+            ),
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -115,6 +123,18 @@ void main() {
       );
     },
   );
+}
+
+class _EmptySeedSource implements PlatformExerciseSeedSource {
+  const _EmptySeedSource();
+
+  @override
+  Future<PlatformExerciseSeed> load() async {
+    return const PlatformExerciseSeed(
+      categories: <SeedExerciseCategory>[],
+      exercises: <SeedExercise>[],
+    );
+  }
 }
 
 Future<void> _insertSyncedDependencies(
