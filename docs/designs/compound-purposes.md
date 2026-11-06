@@ -469,7 +469,9 @@ Exercise's Focuses are `focus_ids`. There is no join table:
 *   **Reading a bad value:** `purpose_ids` reaches the app from sync and
     portable archives unchecked. A string that isn't a JSON array reads as no
     tags, as the server's `parseJsonStringArray` does, and stays stored as it
-    is, so one bad value can't break every read of the Compound library.
+    is, so one bad value can't break every read of the Compound library. The
+    server also reads a raw array holding an entry it can't turn into a string
+    as no tags.
 
 ### D3. Seeds (PR 2)
 

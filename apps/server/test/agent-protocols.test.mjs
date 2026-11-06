@@ -6643,6 +6643,55 @@ withPurposesApp(
 );
 
 withPurposesApp(
+  "a stored purpose_ids that can't be read as strings reads as no tags, and doesn't break the Compound list",
+  async ({ app, database, userId }) => {
+    const [badId, goodId] = [createUuidV7(), createUuidV7()];
+    const updatedAt = new Date("2026-06-01T00:00:00.000Z");
+    await insertOpaqueFixture(database, schema.compounds, [
+      {
+        id: badId,
+        userId,
+        updatedAt,
+        payload: {
+          id: badId,
+          name: "Bad",
+          default_unit: "gram",
+          default_route: "oral",
+          // Sync stores the payload unchecked, so a push can leave a raw array
+          // whose entry String() throws on.
+          purpose_ids: [{ toString: 1 }]
+        }
+      },
+      {
+        id: goodId,
+        userId,
+        updatedAt,
+        payload: {
+          id: goodId,
+          name: "Good",
+          default_unit: "gram",
+          default_route: "oral",
+          purpose_ids: JSON.stringify([SLEEP_PURPOSE_ID])
+        }
+      }
+    ]);
+
+    assert.deepEqual(await compoundPurposeIds(app, badId), []);
+    assert.deepEqual(await compoundPurposeIds(app, goodId), [SLEEP_PURPOSE_ID]);
+
+    const filtered = await app.request(
+      `/agent/protocols/compounds?purpose=${SLEEP_PURPOSE_ID}`,
+      { headers: authHeaders() }
+    );
+    assert.equal(filtered.status, 200);
+    assert.deepEqual(
+      (await filtered.json()).compounds.map((compound) => compound.id),
+      [goodId]
+    );
+  }
+);
+
+withPurposesApp(
   "purpose_not_found refuses an unknown or archived id, and a replay of a recorded batch still returns its receipt",
   async ({ app, userId, database }) => {
     const id = createUuidV7();

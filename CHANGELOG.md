@@ -88,6 +88,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Fixed
 
+- **A malformed id list in a synced row no longer fails Agent reads.** A raw array
+  holding an entry that can't be turned into a string now reads as an empty list.
 - **A second device's seed no longer overrides a built-in Compound renamed after
   24 October 2026.**
 - **An Agent write no longer un-archives a Meal, drops Food Entry import
