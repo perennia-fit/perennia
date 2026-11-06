@@ -3954,4 +3954,53 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get protocolEditorWhenHeading => 'When';
+
+  @override
+  String protocolEditorPeriodStarts(String date) {
+    return 'Starts $date';
+  }
+
+  @override
+  String get protocolEditorPeriodOngoing => 'Ongoing';
+
+  @override
+  String protocolEditorPeriodUntil(String date) {
+    return 'until $date';
+  }
+
+  @override
+  String protocolEditorPeriodEnded(String date) {
+    return 'Ended $date';
+  }
+
+  @override
+  String protocolEditorPeriodCycle(int onDays, int offDays) {
+    return '$onDays on, $offDays off';
+  }
+
+  @override
+  String protocolEditorPeriodPauses(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Pauses',
+      one: '1 Pause',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get protocolEditorDiscardNewTitle => 'Discard this Protocol?';
+
+  @override
+  String get protocolEditorDiscardChangesTitle => 'Discard changes?';
+
+  @override
+  String get protocolEditorKeepEditing => 'Keep editing';
+
+  @override
+  String get protocolEditorDiscard => 'Discard';
 }

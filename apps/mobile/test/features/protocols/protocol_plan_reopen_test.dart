@@ -2,11 +2,18 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/material.dart' hide Column, Table;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
+import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
+import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
+import 'package:perennia/features/protocols/widgets/compound_picker_sheet.dart';
+import 'package:perennia/features/protocols/widgets/protocol_screen.dart';
+import 'package:perennia/l10n/l10n.dart';
+import 'package:perennia/theme/theme.dart';
 
 import '../../support/kill_point_snapshot_interceptor.dart';
 
@@ -23,6 +30,93 @@ import '../../support/kill_point_snapshot_interceptor.dart';
 /// more than one transaction, the first Dose would already be committed in
 /// both copies.
 void main() {
+  group('the Protocol editor across a kill and reopen', () {
+    late Directory directory;
+    late File file;
+
+    setUp(() async {
+      directory = await Directory.systemTemp.createTemp(
+        'prn_protocol_editor_reopen_',
+      );
+      file = File('${directory.path}/plan.sqlite');
+    });
+
+    tearDown(() async {
+      if (directory.existsSync()) {
+        await directory.delete(recursive: true);
+      }
+    });
+
+    // The form holds a Protocol in memory until Save, so a kill mid-edit is the
+    // form going away with nothing written for it. The Compound was written the
+    // moment the picker's sheet saved it, and stays.
+    testWidgets(
+        'an unsaved Protocol is not persisted, and a Compound created inline '
+        'is', (tester) async {
+      final database = AppDatabase.openFile(file);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            trainingRepositoriesProvider.overrideWith(
+              (ref) => TrainingRepositories(database),
+            ),
+            protocolsClockProvider.overrideWithValue(() => _now),
+            protocolsLockStoreProvider.overrideWith((ref) => _NoLockStore()),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const ProtocolFormScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+        'Sleep stack',
+      );
+      await tester.tap(find.byKey(ProtocolFormScreen.addCompoundsKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(CompoundPickerSheet.searchFieldKey),
+        'Glycine',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundPickerSheet.createRowKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundPickerSheet.doneButtonKey));
+      await tester.pumpAndSettle();
+      // Mid-edit: the member is on the form, and nothing has been saved.
+      expect(find.text('Glycine'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+      await tester.runAsync(database.close);
+
+      final reopened = AppDatabase.openFile(file);
+      await tester.runAsync(() async {
+        try {
+          expect(await reopened.select(reopened.protocols).get(), isEmpty);
+          expect(
+            await reopened.select(reopened.protocolCompounds).get(),
+            isEmpty,
+          );
+          final compounds = await reopened.select(reopened.compounds).get();
+          expect(
+            compounds.map((compound) => compound.name),
+            contains('Glycine'),
+          );
+        } finally {
+          await reopened.close();
+        }
+      });
+    });
+  });
+
   group('Log all planned across a kill and reopen', () {
     late Directory directory;
     late File file;
@@ -175,8 +269,8 @@ void main() {
       await _seedDailyStack(file);
       var database = AppDatabase.openFile(file);
       var repositories = TrainingRepositories(database);
-      final before = await repositories.protocolPlan
-          .plannedDay(_today, today: _today);
+      final before =
+          await repositories.protocolPlan.plannedDay(_today, today: _today);
       final creatineRow = before.groups.single.rows.singleWhere(
         (row) => before.compounds[row.compoundId]!.name == 'Creatine',
       );
@@ -334,4 +428,21 @@ class _KillPointInterceptor extends KillPointSnapshotInterceptor {
     }
     return super.commitTransaction(inner);
   }
+}
+
+class _NoLockStore implements ProtocolsLockStore {
+  @override
+  Future<bool> isEnabled() async => false;
+
+  @override
+  Future<void> setEnabled(bool enabled) async {}
+
+  @override
+  Future<String?> readPinHash() async => null;
+
+  @override
+  Future<void> writePinHash(String hash) async {}
+
+  @override
+  Future<void> clearPin() async {}
 }

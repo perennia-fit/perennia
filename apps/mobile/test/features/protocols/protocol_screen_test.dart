@@ -467,6 +467,10 @@ void main() {
     testWidgets(
         'Delete and Archive are 48 dp targets with text in both themes, so '
         'the destructive color is never the only signal', (tester) async {
+      // Tall enough not to scroll: a row half under the app bar reads as a
+      // small tap target.
+      tester.view.physicalSize = const Size(2400, 4800);
+      addTearDown(tester.view.resetPhysicalSize);
       for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
         for (final hasHistory in <bool>[false, true]) {
           final semantics = tester.ensureSemantics();
@@ -782,6 +786,7 @@ void main() {
       expect(find.text('Jul 1, 2026 (the start date)'), findsOneWidget);
       await _closeSheet(tester);
 
+      await _expandPeriod(tester);
       await _tap(tester, find.byKey(ProtocolFormScreen.startDateFieldKey));
       await _tap(tester, find.text('15'));
       await _tap(tester, find.text('OK'));
@@ -1217,6 +1222,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       await _tap(tester, find.byKey(ProtocolFormScreen.cycleToggleKey));
       await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
 
@@ -1251,6 +1257,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       await _tap(tester, find.byKey(ProtocolFormScreen.cycleToggleKey));
       await _enterText(
         tester,
@@ -1296,6 +1303,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       await _tap(tester, find.byKey(ProtocolFormScreen.cycleAnchorFieldKey));
       await _tap(tester, find.text('10'));
       await _tap(tester, find.text('OK'));
@@ -1364,6 +1372,7 @@ void main() {
         tester,
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
+      await _expandPeriod(tester);
       await _openSchedule(tester, 'compound-creatine');
 
       expect(
@@ -1404,6 +1413,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       expect(find.byKey(ProtocolFormScreen.endDateFieldKey), findsNothing);
       await _tap(tester, find.byKey(ProtocolFormScreen.doseCountHelperKey));
       expect(
@@ -1458,6 +1468,7 @@ void main() {
         ),
       );
       await _closeSheet(tester);
+      await _expandPeriod(tester);
       await _tap(tester, find.byKey(ProtocolFormScreen.doseCountHelperKey));
       await _enterText(
         tester,
@@ -1507,6 +1518,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       await _tap(tester, find.byKey(ProtocolFormScreen.doseCountHelperKey));
       await _enterText(
         tester,
@@ -1540,6 +1552,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       expect(find.text('Oct 10, 2026 – Oct 16, 2026'), findsOneWidget);
       await _tap(tester, find.byKey(ProtocolFormScreen.removePauseKey(0)));
       expect(find.byKey(ProtocolFormScreen.pauseRowKey(0)), findsNothing);
@@ -1593,6 +1606,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       await _tap(tester, find.byKey(ProtocolFormScreen.pauseRowKey(0)));
       await _tap(tester, find.byTooltip('Switch to input'));
       final rangeFields = find.descendant(
@@ -1632,6 +1646,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       await _tap(tester, find.byKey(ProtocolFormScreen.removePauseKey(0)));
       await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
 
@@ -1653,6 +1668,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       expect(find.text('Ongoing, with no end date'), findsOneWidget);
       await _tap(tester, find.byKey(ProtocolFormScreen.untilToggleKey));
       expect(find.byKey(ProtocolFormScreen.endDateFieldKey), findsOneWidget);
@@ -2166,6 +2182,7 @@ void main() {
         find.byKey(ProtocolFormScreen.nameFieldKey),
       );
 
+      await _expandPeriod(tester);
       await _tap(tester, find.byKey(ProtocolFormScreen.doseCountHelperKey));
 
       expect(
@@ -2557,6 +2574,548 @@ void main() {
     });
   });
 
+  group('the When section (D5)', () {
+    final now = DateTime(2026, 11, 6);
+    const nov4 = ProtocolDayDate(year: 2026, month: 11, day: 4);
+    const dec31 = ProtocolDayDate(year: 2026, month: 12, day: 31);
+    final summary = find.byKey(ProtocolFormScreen.periodSummaryKey);
+
+    Future<void> openWith(WidgetTester tester, ProtocolRecord protocol) async {
+      await _pumpFormScreen(
+        tester,
+        _FakeProtocolListController(),
+        protocol: protocol,
+        compounds: _compounds(),
+        now: now,
+      );
+      await _pumpUntilFound(tester, summary);
+    }
+
+    Finder summaryText(String text) =>
+        find.descendant(of: summary, matching: find.text(text));
+
+    const twoPauses = <ProtocolPause>[
+      ProtocolPause(
+        from: ProtocolDayDate(year: 2026, month: 11, day: 10),
+        to: ProtocolDayDate(year: 2026, month: 11, day: 12),
+      ),
+      ProtocolPause(
+        from: ProtocolDayDate(year: 2026, month: 12, day: 1),
+        to: ProtocolDayDate(year: 2026, month: 12, day: 2),
+      ),
+    ];
+
+    testWidgets('an ongoing Protocol reads its start and Ongoing', (
+      tester,
+    ) async {
+      await openWith(tester, _protocol(start: nov4));
+      expect(summaryText('Starts Nov 4 · Ongoing'), findsOneWidget);
+    });
+
+    testWidgets('a full period reads its end, cycle and Pauses', (
+      tester,
+    ) async {
+      await openWith(
+        tester,
+        _protocol(
+          start: nov4,
+          end: dec31,
+          period: ProtocolPeriod(
+            cycle: ProtocolCycle(
+              onDays: 5,
+              offDays: 2,
+              anchor: nov4,
+              anchorIsDefault: true,
+            ),
+            pauses: twoPauses,
+          ),
+        ),
+      );
+      expect(
+        summaryText('Starts Nov 4 · until Dec 31 · 5 on, 2 off · 2 Pauses'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('one Pause is singular', (tester) async {
+      await openWith(
+        tester,
+        _protocol(
+          start: nov4,
+          period: ProtocolPeriod(pauses: twoPauses.sublist(0, 1)),
+        ),
+      );
+      expect(summaryText('Starts Nov 4 · Ongoing · 1 Pause'), findsOneWidget);
+    });
+
+    testWidgets('an end date before the clock\'s today reads Ended', (
+      tester,
+    ) async {
+      await openWith(
+        tester,
+        _protocol(
+          start: const ProtocolDayDate(year: 2026, month: 1, day: 1),
+          end: const ProtocolDayDate(year: 2026, month: 11, day: 5),
+          period: ProtocolPeriod(pauses: twoPauses),
+        ),
+      );
+      expect(summaryText('Ended Nov 5'), findsOneWidget);
+    });
+
+    testWidgets('an end date of today has not ended yet', (tester) async {
+      await openWith(
+        tester,
+        _protocol(
+          start: nov4,
+          end: const ProtocolDayDate(year: 2026, month: 11, day: 6),
+        ),
+      );
+      expect(summaryText('Starts Nov 4 · until Nov 6'), findsOneWidget);
+    });
+
+    testWidgets(
+        'it opens collapsed, is a 48 dp button with an expanded state, and '
+        'shows the controls in place when tapped', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openWith(tester, _protocol(start: nov4));
+
+      expect(find.byKey(ProtocolFormScreen.startDateFieldKey), findsNothing);
+      expect(
+        tester.getSize(summary).height,
+        greaterThanOrEqualTo(AppDimens.touchTarget),
+      );
+      expect(
+        tester.getSemantics(summary),
+        isSemantics(
+          label: 'Starts Nov 4 · Ongoing',
+          isButton: true,
+          hasTapAction: true,
+          hasExpandedState: true,
+          isExpanded: false,
+        ),
+      );
+
+      await _tap(tester, summary);
+
+      for (final key in <Key>[
+        ProtocolFormScreen.startDateFieldKey,
+        ProtocolFormScreen.untilToggleKey,
+        ProtocolFormScreen.doseCountHelperKey,
+        ProtocolFormScreen.cycleToggleKey,
+        ProtocolFormScreen.addPauseKey,
+      ]) {
+        expect(find.byKey(key), findsOneWidget);
+      }
+      expect(
+        tester.getSemantics(summary),
+        isSemantics(hasExpandedState: true, isExpanded: true),
+      );
+
+      // The row follows the controls, and folds them away again.
+      await _tap(tester, find.byKey(ProtocolFormScreen.untilToggleKey));
+      expect(summaryText('Ended Nov 4'), findsOneWidget);
+      await _tap(tester, summary);
+      expect(find.byKey(ProtocolFormScreen.startDateFieldKey), findsNothing);
+      semantics.dispose();
+    });
+
+    testWidgets('a save attempt that finds a period issue expands it', (
+      tester,
+    ) async {
+      final controller = _FakeProtocolListController();
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: _protocol(
+          start: const ProtocolDayDate(year: 2026, month: 9, day: 1),
+          end: const ProtocolDayDate(year: 2026, month: 8, day: 31),
+        ),
+        compounds: _compounds(),
+        now: now,
+      );
+      await _pumpUntilFound(tester, summary);
+      final issue =
+          find.byKey(ProtocolFormScreen.periodIssueKey('bounds_order'));
+      expect(issue, findsNothing);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      expect(controller.editedDrafts, isEmpty);
+      expect(find.byKey(ProtocolFormScreen.startDateFieldKey), findsOneWidget);
+      expect(issue, findsOneWidget);
+    });
+
+    testWidgets('a save rejected only for a Schedule leaves it collapsed', (
+      tester,
+    ) async {
+      await _pumpFormScreen(
+        tester,
+        _FakeProtocolListController(),
+        compounds: _compounds(),
+        now: now,
+      );
+      await _pumpUntilFound(tester, summary);
+      await tester.enterText(
+        find.byKey(ProtocolFormScreen.nameFieldKey),
+        'Stack',
+      );
+      // An added member starts with no amount, which a save rejects.
+      await _addMembers(tester, <String>['compound-creatine']);
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      expect(
+        find.byKey(ProtocolFormScreen.memberFixKey('compound-creatine')),
+        findsOneWidget,
+      );
+      expect(find.byKey(ProtocolFormScreen.startDateFieldKey), findsNothing);
+    });
+  });
+
+  group('unsaved changes (CUJ 3)', () {
+    final dialog = find.byType(AlertDialog);
+    final nameField = find.byKey(ProtocolFormScreen.nameFieldKey);
+
+    Future<void> openNew(
+      WidgetTester tester,
+      _FakeProtocolListController controller, {
+      _FakeProtocolDayController? dayController,
+    }) async {
+      await _pumpFormScreen(
+        tester,
+        controller,
+        compounds: _compounds(),
+        dayController: dayController,
+        pushed: true,
+      );
+      await _pumpUntilFound(tester, nameField);
+    }
+
+    Future<void> openSaved(
+      WidgetTester tester,
+      _FakeProtocolListController controller, {
+      ProtocolRecord? protocol,
+      Stream<bool> Function()? hasHistory,
+    }) async {
+      await _pumpFormScreen(
+        tester,
+        controller,
+        protocol: protocol ?? _leanBulkStackWithSchedule(),
+        compounds: _compounds(),
+        metrics: _metrics(),
+        hasHistory: hasHistory,
+        pushed: true,
+      );
+      await _pumpUntilFound(tester, nameField);
+    }
+
+    testWidgets(
+        'a new Protocol with a name and a member asks, Keep editing returns '
+        'to the form as it was, and Discard closes it', (tester) async {
+      final controller = _FakeProtocolListController();
+      await openNew(tester, controller);
+      await tester.enterText(nameField, 'Sleep stack');
+      await _addMembers(tester, <String>['compound-creatine']);
+
+      await _pressBack(tester);
+
+      expect(dialog, findsOneWidget);
+      expect(find.text('Discard this Protocol?'), findsOneWidget);
+      expect(find.text('Keep editing'), findsOneWidget);
+      expect(find.text('Discard'), findsOneWidget);
+      expect(find.byType(ProtocolFormScreen), findsOneWidget);
+
+      await tester.tap(find.byKey(ProtocolFormScreen.discardKeepEditingKey));
+      await tester.pumpAndSettle();
+
+      expect(dialog, findsNothing);
+      expect(
+        tester.widget<TextField>(nameField).controller?.text,
+        'Sleep stack',
+      );
+      expect(_memberIds(tester), <String>['compound-creatine']);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ProtocolFormScreen.discardConfirmKey));
+      await tester.pumpAndSettle();
+
+      _expectFormClosed();
+      expect(controller.createdDrafts, isEmpty);
+    });
+
+    testWidgets('a name alone is a change', (tester) async {
+      await openNew(tester, _FakeProtocolListController());
+      await tester.enterText(nameField, 'Sleep stack');
+      await tester.pump();
+
+      await _pressBack(tester);
+
+      expect(find.text('Discard this Protocol?'), findsOneWidget);
+    });
+
+    testWidgets('editing a saved Protocol asks with its own title', (
+      tester,
+    ) async {
+      await openSaved(tester, _FakeProtocolListController());
+      await tester.enterText(nameField, 'Renamed');
+      await tester.pump();
+
+      await _pressBack(tester);
+
+      expect(find.text('Discard changes?'), findsOneWidget);
+      expect(find.text('Discard this Protocol?'), findsNothing);
+    });
+
+    testWidgets('every other input counts as a change', (tester) async {
+      final edits = <String, Future<void> Function()>{
+        'a Schedule amount': () async {
+          await _openSchedule(tester, 'compound-creatine');
+          await _enterText(
+            tester,
+            find.byKey(
+              ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
+            ),
+            '6',
+          );
+          await _closeSheet(tester);
+        },
+        'the period': () async {
+          await _expandPeriod(tester);
+          await _tap(tester, find.byKey(ProtocolFormScreen.untilToggleKey));
+        },
+        'a cycle': () async {
+          await _expandPeriod(tester);
+          await _tap(tester, find.byKey(ProtocolFormScreen.cycleToggleKey));
+        },
+        'a target outcome': () async {
+          await _tap(
+            tester,
+            find.byKey(ProtocolFormScreen.targetOutcomePerformanceChipKey),
+          );
+        },
+        'removing a member': () async {
+          await _tap(
+            tester,
+            find.byKey(
+                ProtocolFormScreen.removeMemberKey('compound-vitamin-d')),
+          );
+        },
+      };
+      for (final MapEntry(key: label, value: edit) in edits.entries) {
+        await openSaved(tester, _FakeProtocolListController());
+        await edit();
+        await _pressBack(tester);
+        expect(find.text('Discard changes?'), findsOneWidget, reason: label);
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
+    testWidgets('a form with no changes closes without asking', (
+      tester,
+    ) async {
+      await openNew(tester, _FakeProtocolListController());
+      await _pressBack(tester);
+      _expectFormClosed();
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      // A Schedule, a default anchor and a stored unit all compare equal to
+      // what the form opened with.
+      await openSaved(tester, _FakeProtocolListController());
+      await _pressBack(tester);
+      _expectFormClosed();
+    });
+
+    testWidgets('adding a member and removing it again is no change', (
+      tester,
+    ) async {
+      await openNew(tester, _FakeProtocolListController());
+      await _addMembers(tester, <String>['compound-creatine']);
+      await _tap(
+        tester,
+        find.byKey(ProtocolFormScreen.removeMemberKey('compound-creatine')),
+      );
+
+      await _pressBack(tester);
+
+      _expectFormClosed();
+    });
+
+    testWidgets(
+        'removing and re-adding a stored member with no Schedule is no change',
+        (tester) async {
+      await openSaved(
+        tester,
+        _FakeProtocolListController(),
+        protocol: _leanBulkStack(),
+      );
+      await _tap(
+        tester,
+        find.byKey(ProtocolFormScreen.removeMemberKey('compound-vitamin-d')),
+      );
+      await _addMembers(tester, <String>['compound-vitamin-d']);
+
+      await _pressBack(tester);
+
+      _expectFormClosed();
+    });
+
+    testWidgets('turning a cycle on and off again is no change', (
+      tester,
+    ) async {
+      await openNew(tester, _FakeProtocolListController());
+      await _expandPeriod(tester);
+      await _tap(tester, find.byKey(ProtocolFormScreen.cycleToggleKey));
+      await _enterText(
+        tester,
+        find.byKey(ProtocolFormScreen.cycleOnDaysFieldKey),
+        '5',
+      );
+      await _tap(tester, find.byKey(ProtocolFormScreen.cycleToggleKey));
+
+      await _pressBack(tester);
+
+      _expectFormClosed();
+    });
+
+    testWidgets('saving closes without asking', (tester) async {
+      final controller = _FakeProtocolListController();
+      await openSaved(tester, controller);
+      await tester.enterText(nameField, 'Renamed');
+      await tester.pump();
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      expect(controller.editedDrafts.single.name, 'Renamed');
+      _expectFormClosed();
+    });
+
+    testWidgets(
+        'Back while a save runs does nothing, so the save closes the form and '
+        'not a dialog', (tester) async {
+      final controller = _FakeProtocolListController();
+      final gate = Completer<void>();
+      controller.createGate = gate.future;
+      await openNew(tester, controller);
+      await tester.enterText(nameField, 'Sleep stack');
+      await _addMembers(tester, <String>['compound-creatine']);
+      await _openSchedule(tester, 'compound-creatine');
+      await _enterText(
+        tester,
+        find.byKey(
+          ProtocolFormScreen.scheduleAmountFieldKey('compound-creatine'),
+        ),
+        '5',
+      );
+      await _closeSheet(tester);
+      await _tap(tester, find.byKey(ProtocolFormScreen.saveButtonKey));
+
+      await _pressBack(tester);
+      expect(dialog, findsNothing);
+      expect(find.byType(ProtocolFormScreen), findsOneWidget);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(controller.createdDrafts, hasLength(1));
+      _expectFormClosed();
+    });
+
+    testWidgets('Archive closes a dirty form without asking', (tester) async {
+      final controller = _FakeProtocolListController();
+      await openSaved(tester, controller);
+      await tester.enterText(nameField, 'Renamed');
+      await tester.pump();
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.archiveButtonKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.archiveButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmArchiveButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(controller.archivedProtocolIds, <String>['protocol-1']);
+      _expectFormClosed();
+    });
+
+    testWidgets('Delete closes a dirty form without asking', (tester) async {
+      final controller = _FakeProtocolListController();
+      await openSaved(
+        tester,
+        controller,
+        hasHistory: () => Stream<bool>.value(false),
+      );
+      await tester.enterText(nameField, 'Renamed');
+      await tester.pump();
+      await _pumpUntilFound(
+        tester,
+        find.byKey(ProtocolFormScreen.deleteButtonKey),
+      );
+
+      await _tap(tester, find.byKey(ProtocolFormScreen.deleteButtonKey));
+      await tester.tap(find.byKey(ProtocolFormScreen.confirmDeleteButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(controller.deletedProtocolIds, <String>['protocol-1']);
+      _expectFormClosed();
+    });
+
+    testWidgets('a Compound created in the picker survives Discard', (
+      tester,
+    ) async {
+      final day = _FakeProtocolDayController();
+      await openNew(tester, _FakeProtocolListController(), dayController: day);
+      await _tap(tester, find.byKey(ProtocolFormScreen.addCompoundsKey));
+      await tester.enterText(
+        find.byKey(CompoundPickerSheet.searchFieldKey),
+        'Glycine',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundPickerSheet.createRowKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundEditorSheet.saveButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundPickerSheet.doneButtonKey));
+      await tester.pumpAndSettle();
+      expect(_memberIds(tester), <String>['created-1']);
+
+      await _pressBack(tester);
+      await tester.tap(find.byKey(ProtocolFormScreen.discardConfirmKey));
+      await tester.pumpAndSettle();
+
+      _expectFormClosed();
+      expect(day.created.single.name, 'Glycine');
+    });
+
+    testWidgets('the dialog closes with the form when the app locks', (
+      tester,
+    ) async {
+      final lock = _SwitchableLockController();
+      await _pumpFormScreen(
+        tester,
+        _FakeProtocolListController(),
+        compounds: _compounds(),
+        lock: lock,
+        pushed: true,
+      );
+      await _pumpUntilFound(tester, nameField);
+      await tester.enterText(nameField, 'Sleep stack');
+      await tester.pump();
+      await _pressBack(tester);
+      expect(dialog, findsOneWidget);
+
+      lock.set(ProtocolsLockStatus.locked);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(tester.takeException(), isNull);
+      expect(dialog, findsNothing);
+      expect(find.byType(ProtocolFormScreen), findsNothing);
+    });
+  });
+
   testWidgets('Protocol list meets accessibility guidelines in both themes',
       (tester) async {
     for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
@@ -2580,40 +3139,86 @@ void main() {
     }
   });
 
-  testWidgets('Protocol form meets accessibility guidelines in both themes',
-      (tester) async {
-    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
-      final semantics = tester.ensureSemantics();
-
-      await _pumpFormScreen(
-        tester,
-        _FakeProtocolListController(),
-        theme: theme,
-        // A member WITH a timed Schedule, a cycle and a Pause, so the rule,
-        // time, Period and Pause controls are exercised by the guideline
-        // checks too, plus a selected target outcome so its chip is
-        // exercised too.
-        protocol: _accessibilityFixture(),
-        compounds: _compounds(),
-        metrics: _metrics(),
-      );
-      await _pumpUntilFound(
-        tester,
-        find.byKey(ProtocolFormScreen.saveButtonKey),
-      );
-
+  testWidgets(
+      'Protocol form, its sheets and its dialog meet accessibility guidelines '
+      'in both themes, at 320 dp and 1.3x text', (tester) async {
+    Future<void> checkGuidelines() async {
       await expectLater(tester, meetsGuideline(textContrastGuideline));
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    }
 
-      // The rule and time controls live in the member's Schedule sheet.
-      await _openSchedule(tester, 'compound-creatine');
-      await expectLater(tester, meetsGuideline(textContrastGuideline));
-      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    // Tall enough not to scroll: a row half under the app bar reads as a small
+    // tap target. A layout overflow at either size fails the test by itself.
+    tester.view.devicePixelRatio = 1;
+    for (final (width, textScale) in <(double, double)>[
+      (800, 1),
+      (320, 1.3),
+    ]) {
+      tester.view.physicalSize = Size(width, 2400);
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+        final semantics = tester.ensureSemantics();
 
-      semantics.dispose();
-      await tester.pumpWidget(const SizedBox.shrink());
+        await _pumpFormScreen(
+          tester,
+          _FakeProtocolListController(),
+          theme: theme,
+          // A member WITH a timed Schedule, a cycle and a Pause, so the rule,
+          // time, Period and Pause controls are exercised by the guideline
+          // checks too, plus a selected target outcome so its chip is
+          // exercised too.
+          protocol: _accessibilityFixture(),
+          compounds: _compounds(),
+          metrics: _metrics(),
+          pushed: true,
+        );
+        await _pumpUntilFound(
+          tester,
+          find.byKey(ProtocolFormScreen.saveButtonKey),
+        );
+
+        await checkGuidelines();
+
+        // The period controls live behind the When row.
+        await _expandPeriod(tester);
+        await checkGuidelines();
+
+        // The rule and time controls live in the member's Schedule sheet.
+        await _openSchedule(tester, 'compound-creatine');
+        await checkGuidelines();
+        await _closeSheet(tester);
+
+        // The picker, and the Compound editor sheet it opens.
+        await _tap(tester, find.byKey(ProtocolFormScreen.addCompoundsKey));
+        await checkGuidelines();
+        await tester.enterText(
+          find.byKey(CompoundPickerSheet.searchFieldKey),
+          'Glycine',
+        );
+        await tester.pumpAndSettle();
+        await checkGuidelines();
+        await tester.tap(find.byKey(CompoundPickerSheet.createRowKey));
+        await tester.pumpAndSettle();
+        await checkGuidelines();
+        await _closeSheet(tester);
+        await _closeSheet(tester);
+
+        // The discard dialog.
+        await tester.enterText(
+          find.byKey(ProtocolFormScreen.nameFieldKey),
+          'Renamed',
+        );
+        await tester.pump();
+        await _pressBack(tester);
+        expect(find.text('Discard changes?'), findsOneWidget);
+        await checkGuidelines();
+
+        semantics.dispose();
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
     }
   });
 }
@@ -2691,9 +3296,12 @@ Future<void> _pumpFormScreen(
   _FakeProtocolDayController? dayController,
   Stream<List<CompoundScheduleOptionRecord>>? compoundsByIds,
   ProtocolsLockController? lock,
+  DateTime? now,
+  bool pushed = false,
 }) async {
   final day = dayController ?? _FakeProtocolDayController();
   final form = ProtocolFormScreen(protocol: protocol);
+  final screen = lock == null ? form : ProtocolsLockGate(child: form);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -2743,15 +3351,50 @@ Future<void> _pumpFormScreen(
         protocolsLockStoreProvider.overrideWith((ref) => _NoLockStore()),
         if (lock != null)
           protocolsLockControllerProvider.overrideWith(() => lock),
+        if (now != null) protocolsClockProvider.overrideWithValue(() => now),
       ],
       child: MaterialApp(
         theme: theme ?? AppTheme.light(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: lock == null ? form : ProtocolsLockGate(child: form),
+        home: pushed
+            ? Builder(
+                builder: (context) => Scaffold(
+                  body: Center(
+                    child: TextButton(
+                      key: _openFormKey,
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => screen),
+                      ),
+                      child: const Text('Open'),
+                    ),
+                  ),
+                ),
+              )
+            : screen,
       ),
     ),
   );
+  if (pushed) {
+    await tester.tap(find.byKey(_openFormKey));
+    await tester.pumpAndSettle();
+  }
+}
+
+/// On the route under a form pumped with `pushed: true`.
+const _openFormKey = Key('test.form.open');
+
+/// Presses the system Back button and settles.
+Future<void> _pressBack(WidgetTester tester) async {
+  await tester.binding.handlePopRoute();
+  await tester.pumpAndSettle();
+}
+
+/// The form was closed, with no discard dialog left in its place.
+void _expectFormClosed() {
+  expect(find.byType(ProtocolFormScreen), findsNothing);
+  expect(find.byType(AlertDialog), findsNothing);
+  expect(find.byKey(_openFormKey), findsOneWidget);
 }
 
 Future<void> _pumpUntilFound(
@@ -2789,6 +3432,13 @@ Future<void> _enterText(WidgetTester tester, Finder finder, String text) async {
   await _reveal(tester, finder);
   await tester.enterText(finder, text);
   await tester.pumpAndSettle();
+}
+
+/// Opens the When section: the period's controls are collapsed when the form
+/// opens.
+Future<void> _expandPeriod(WidgetTester tester) async {
+  await _tap(tester, find.byKey(ProtocolFormScreen.periodSummaryKey));
+  expect(find.byKey(ProtocolFormScreen.startDateFieldKey), findsOneWidget);
 }
 
 /// Adds [compoundIds] through the picker, as the only way a form gains a member.
@@ -3170,6 +3820,9 @@ class _FakeProtocolListController extends ProtocolListController {
   final archivedProtocolIds = <String>[];
   final deletedProtocolIds = <String>[];
 
+  /// When set, [createProtocol] answers only after this completes.
+  Future<void>? createGate;
+
   /// Thrown by [deleteProtocol] instead of deleting, when set: the refusal
   /// the repository gives when a Dose made the Protocol history (D8).
   Object? deleteError;
@@ -3183,6 +3836,7 @@ class _FakeProtocolListController extends ProtocolListController {
 
   @override
   Future<CreateProtocolResult> createProtocol(ProtocolDraft draft) async {
+    await createGate;
     createdDrafts.add(draft);
     return CreateProtocolResult(
       batchId: 'batch-${createdDrafts.length}',

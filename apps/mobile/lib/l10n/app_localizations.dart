@@ -6183,6 +6183,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{{amount} unit} other{{amount} units}}'**
   String protocolScheduleSummaryUnits(num count, String amount);
+
+  /// Heading of the Protocol editor's section for its start, end, cycle and Pauses.
+  ///
+  /// In en, this message translates to:
+  /// **'When'**
+  String get protocolEditorWhenHeading;
+
+  /// In the When section's summary: the Protocol's start date.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts {date}'**
+  String protocolEditorPeriodStarts(String date);
+
+  /// In the When section's summary: the Protocol has no end date.
+  ///
+  /// In en, this message translates to:
+  /// **'Ongoing'**
+  String get protocolEditorPeriodOngoing;
+
+  /// In the When section's summary, after the start date: the Protocol's end date.
+  ///
+  /// In en, this message translates to:
+  /// **'until {date}'**
+  String protocolEditorPeriodUntil(String date);
+
+  /// The When section's summary for a Protocol whose end date has passed.
+  ///
+  /// In en, this message translates to:
+  /// **'Ended {date}'**
+  String protocolEditorPeriodEnded(String date);
+
+  /// In the When section's summary: the Protocol's cycle, in days.
+  ///
+  /// In en, this message translates to:
+  /// **'{onDays} on, {offDays} off'**
+  String protocolEditorPeriodCycle(int onDays, int offDays);
+
+  /// In the When section's summary: how many Pauses the Protocol has.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 Pause} other{{count} Pauses}}'**
+  String protocolEditorPeriodPauses(int count);
+
+  /// Dialog on leaving a new Protocol that has unsaved values.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard this Protocol?'**
+  String get protocolEditorDiscardNewTitle;
+
+  /// Dialog on leaving a saved Protocol's editor with unsaved changes.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard changes?'**
+  String get protocolEditorDiscardChangesTitle;
+
+  /// Discard dialog button that returns to the Protocol editor as it was.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep editing'**
+  String get protocolEditorKeepEditing;
+
+  /// Discard dialog button that closes the Protocol editor without saving.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get protocolEditorDiscard;
 }
 
 class _AppLocalizationsDelegate

@@ -2683,5 +2683,77 @@
         "type": "String"
       }
     }
+  },
+  "protocolEditorWhenHeading": "When",
+  "@protocolEditorWhenHeading": {
+    "description": "Heading of the Protocol editor's section for its start, end, cycle and Pauses."
+  },
+  "protocolEditorPeriodStarts": "Starts {date}",
+  "@protocolEditorPeriodStarts": {
+    "description": "In the When section's summary: the Protocol's start date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPeriodOngoing": "Ongoing",
+  "@protocolEditorPeriodOngoing": {
+    "description": "In the When section's summary: the Protocol has no end date."
+  },
+  "protocolEditorPeriodUntil": "until {date}",
+  "@protocolEditorPeriodUntil": {
+    "description": "In the When section's summary, after the start date: the Protocol's end date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPeriodEnded": "Ended {date}",
+  "@protocolEditorPeriodEnded": {
+    "description": "The When section's summary for a Protocol whose end date has passed.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "protocolEditorPeriodCycle": "{onDays} on, {offDays} off",
+  "@protocolEditorPeriodCycle": {
+    "description": "In the When section's summary: the Protocol's cycle, in days.",
+    "placeholders": {
+      "onDays": {
+        "type": "int"
+      },
+      "offDays": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolEditorPeriodPauses": "{count, plural, =1{1 Pause} other{{count} Pauses}}",
+  "@protocolEditorPeriodPauses": {
+    "description": "In the When section's summary: how many Pauses the Protocol has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "protocolEditorDiscardNewTitle": "Discard this Protocol?",
+  "@protocolEditorDiscardNewTitle": {
+    "description": "Dialog on leaving a new Protocol that has unsaved values."
+  },
+  "protocolEditorDiscardChangesTitle": "Discard changes?",
+  "@protocolEditorDiscardChangesTitle": {
+    "description": "Dialog on leaving a saved Protocol's editor with unsaved changes."
+  },
+  "protocolEditorKeepEditing": "Keep editing",
+  "@protocolEditorKeepEditing": {
+    "description": "Discard dialog button that returns to the Protocol editor as it was."
+  },
+  "protocolEditorDiscard": "Discard",
+  "@protocolEditorDiscard": {
+    "description": "Discard dialog button that closes the Protocol editor without saving."
   }
 }
