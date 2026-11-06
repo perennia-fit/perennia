@@ -11,11 +11,11 @@ import {
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
 import {
-  exerciseIdsResolvingTo,
+  loadExerciseIdResolver,
   payloadFocusId,
-  resolvePlatformExerciseId,
   type AgentCatalogStore,
-  type AgentExercise
+  type AgentExercise,
+  type ExerciseIdResolver
 } from "./agent-catalog.js";
 import { cadenceFromRow, routineEntryFromRow } from "./agent-plan-reads.js";
 import {
@@ -399,12 +399,13 @@ export function createDrizzleAgentProgressReadStore({
       // Only an exercise with a Performed Set in the range can have a New
       // Best in it, so only those exercises' histories are loaded, resolved
       // and computed.
-      const exerciseIds = await loadExerciseIdsPerformedBetween(db, userId, from, to);
+      const resolver = await loadExerciseIdResolver(db, userId);
+      const exerciseIds = await loadExerciseIdsPerformedBetween(db, userId, resolver, from, to);
       if (exerciseIds.length === 0) {
         return AgentNewBestsResponseSchema.parse({ newBests: [] });
       }
       const [workoutsByExercise, exercises] = await Promise.all([
-        loadPerformedWorkoutSets(db, userId, exerciseIds),
+        loadPerformedWorkoutSets(db, userId, resolver, exerciseIds),
         // A shadowed Platform exercise is still active in the app (D4).
         catalogStore.getExercisesByIds({ userId, exerciseIds, includeShadowed: true })
       ]);
@@ -438,8 +439,9 @@ export function createDrizzleAgentProgressReadStore({
     },
 
     async readExerciseProgressSets({ userId, exerciseId }) {
-      const resolved = resolvePlatformExerciseId(exerciseId);
-      return (await loadPerformedWorkoutSets(db, userId, [resolved])).get(resolved) ?? [];
+      const resolver = await loadExerciseIdResolver(db, userId);
+      const resolved = resolver.resolve(exerciseId);
+      return (await loadPerformedWorkoutSets(db, userId, resolver, [resolved])).get(resolved) ?? [];
     }
   };
 }
@@ -466,20 +468,24 @@ export async function readAgentExerciseProgressSeries(
 
 /**
  * The user's Performed Sets in live Workouts (D0, D9), grouped by exercise id
- * through `resolvePlatformExerciseId` and then by Workout. Each Set is joined
- * to its Workout by the payload's `workout_id`, so a Set whose Workout is
- * deleted, or was never synced, is dropped: there are no cascading deletes.
+ * through `resolver` and then by Workout. A seed redirect folds a Set logged
+ * under its source into its target, unless the user holds a row under that
+ * source, archived or not: that kept exercise reads only its own Sets, and its
+ * former target does not include them. Each Set is joined to its Workout by the
+ * payload's `workout_id`, so a Set whose Workout is deleted, or was never
+ * synced, is dropped: there are no cascading deletes.
  * Only Sets whose payload `is_completed` is true are read; a missing key is
  * not Performed, unlike the analytics read's `is_completed ?? true`, which is
  * why `readLiveLoggedSets` is not reused. Only the Sets of `exerciseIds`
  * (resolved ids) are read: the SQL filter takes each id with the seed
- * redirect sources that resolve to it, so a read never scans the user's whole
- * history for a few exercises. Instants are read to the whole second, as in
- * `loadProgressWorkouts`.
+ * redirect sources that resolve to it for this user, so a read never scans the
+ * user's whole history for a few exercises. Instants are read to the whole
+ * second, as in `loadProgressWorkouts`.
  */
 async function loadPerformedWorkoutSets(
   db: ServerDatabase,
   userId: string,
+  resolver: ExerciseIdResolver,
   exerciseIds: readonly string[]
 ): Promise<Map<string, ProgressWorkoutSets[]>> {
   const wanted = new Set(exerciseIds);
@@ -508,7 +514,7 @@ async function loadPerformedWorkoutSets(
         sql`${schema.loggedSets.payload} -> 'is_completed' = 'true'::jsonb`,
         inArray(
           sql`${schema.loggedSets.payload} ->> 'exercise_id'`,
-          exerciseIds.flatMap(exerciseIdsResolvingTo)
+          exerciseIds.flatMap((id) => resolver.idsResolvingTo(id))
         )
       )
     );
@@ -526,7 +532,7 @@ async function loadPerformedWorkoutSets(
     ) {
       continue;
     }
-    const exerciseId = resolvePlatformExerciseId(rawExerciseId);
+    const exerciseId = resolver.resolve(rawExerciseId);
     if (!wanted.has(exerciseId)) {
       continue;
     }
@@ -562,6 +568,7 @@ async function loadPerformedWorkoutSets(
 async function loadExerciseIdsPerformedBetween(
   db: ServerDatabase,
   userId: string,
+  resolver: ExerciseIdResolver,
   from: string,
   to: string
 ): Promise<string[]> {
@@ -591,7 +598,7 @@ async function loadExerciseIdsPerformedBetween(
       rows
         .map((row) => row.exerciseId)
         .filter((id): id is string => typeof id === "string" && id.length > 0)
-        .map(resolvePlatformExerciseId)
+        .map((id) => resolver.resolve(id))
     )
   ];
 }

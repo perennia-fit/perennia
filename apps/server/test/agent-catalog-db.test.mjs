@@ -3,10 +3,12 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 
 import {
+  createDrizzleAgentCatalogStore,
   createMigratedServerApp,
   schema,
   SYNC_PROTOCOL_VERSION
 } from "../src/index.ts";
+import { PLATFORM_EXERCISE_SEED_REDIRECTS } from "../src/data/platform-exercise-seed.generated.ts";
 import { CANONICAL_ACTIVITY_PLATFORM_EXERCISE_IDS } from "../src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -524,6 +526,140 @@ function categoryPayload(id, name, updatedAt) {
   };
 }
 
+test(
+  "a kept exercise reads as the user's own row, archived or not, and as its " +
+    "merge target for an account without it",
+  { skip },
+  async () => {
+    const serverApp = await createMigratedServerApp({
+      databaseUrl,
+      logger: { info() {}, error() {} },
+      auth: {
+        baseUrl: "http://localhost",
+        secret: "test-secret-at-least-thirty-two-characters",
+        emailSender: null
+      },
+      rateLimit: false
+    });
+
+    try {
+      const keeper = await createSignedInUser(serverApp);
+      const other = await createSignedInUser(serverApp);
+      const [kept, archived] = PLATFORM_EXERCISE_SEED_REDIRECTS;
+      const updatedAt = "2026-11-05T00:00:00.000Z";
+      await syncPushOk(serverApp.app, keeper.sessionToken, {
+        deviceId: "device-a",
+        entity: "exercises",
+        changes: [
+          {
+            id: kept.fromExerciseId,
+            payload: exercisePayload({
+              id: kept.fromExerciseId,
+              name: "My Kept Exercise",
+              categoryId: null,
+              updatedAt
+            }),
+            updatedAt,
+            deletedAt: null
+          },
+          {
+            id: archived.fromExerciseId,
+            payload: exercisePayload({
+              id: archived.fromExerciseId,
+              name: "My Archived Kept Exercise",
+              categoryId: null,
+              updatedAt,
+              deletedAt: updatedAt
+            }),
+            updatedAt,
+            deletedAt: updatedAt
+          }
+        ]
+      });
+
+      const store = createDrizzleAgentCatalogStore(serverApp.database.db);
+
+      const keptRow = await store.getExerciseById({
+        userId: keeper.userId,
+        exerciseId: kept.fromExerciseId
+      });
+      assert.equal(keptRow.id, kept.fromExerciseId);
+      assert.equal(keptRow.library, "user");
+      assert.equal(keptRow.name, "My Kept Exercise");
+      assert.equal(keptRow.active, true);
+
+      const archivedRow = await store.getExerciseById({
+        userId: keeper.userId,
+        exerciseId: archived.fromExerciseId
+      });
+      assert.equal(archivedRow.id, archived.fromExerciseId);
+      assert.equal(archivedRow.library, "user");
+      assert.equal(archivedRow.active, false);
+
+      const keeperRows = await store.getExercisesByIds({
+        userId: keeper.userId,
+        exerciseIds: [kept.fromExerciseId, archived.fromExerciseId]
+      });
+      assert.deepEqual(
+        keeperRows.map((row) => row.id).sort(),
+        [kept.fromExerciseId, archived.fromExerciseId].sort()
+      );
+      assert.ok(keeperRows.every((row) => row.library === "user"));
+
+      // The keeper's rows must not mask the redirect for another account.
+      const otherRow = await store.getExerciseById({
+        userId: other.userId,
+        exerciseId: kept.fromExerciseId
+      });
+      assert.equal(otherRow.id, kept.toExerciseId);
+      assert.equal(otherRow.library, "platform");
+      const otherRows = await store.getExercisesByIds({
+        userId: other.userId,
+        exerciseIds: [kept.fromExerciseId]
+      });
+      assert.deepEqual(
+        otherRows.map((row) => row.id),
+        [kept.toExerciseId]
+      );
+
+      const agentSecret = await createAgentKey(serverApp, keeper.sessionToken);
+      const customize = await postExerciseCatalogBatch(
+        serverApp.app,
+        agentSecret,
+        {
+          idempotencyKey: `customize-kept-${randomUUID()}`,
+          categories: [],
+          exercises: [
+            {
+              id: randomUUID(),
+              name: "Customizing a kept exercise",
+              categoryId: null,
+              dimensions: ["load", "reps"],
+              defaultLoadUnit: "kilogram",
+              loadMode: "added",
+              isUnilateral: false,
+              usesRpe: false,
+              isFavorite: false,
+              equipment: [],
+              notes: null,
+              customizesExerciseId: kept.fromExerciseId,
+              deletedAt: null
+            }
+          ]
+        }
+      );
+      assert.equal(customize.status, 422);
+      const customizeBody = await customize.json();
+      assert.equal(
+        customizeBody.errors[0].rule,
+        "customized_exercise_not_platform"
+      );
+    } finally {
+      await serverApp.database.close();
+    }
+  }
+);
+
 function exercisePayload({
   id,
   name,
@@ -568,6 +704,17 @@ async function createAgentKey(serverApp, sessionToken) {
 function getAgent(app, agentSecret, path) {
   return app.request(path, {
     headers: { authorization: `Bearer ${agentSecret}` }
+  });
+}
+
+function postExerciseCatalogBatch(app, agentSecret, body) {
+  return app.request("/agent/exercises/batch-write", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${agentSecret}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(body)
   });
 }
 

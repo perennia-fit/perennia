@@ -1607,8 +1607,12 @@ async function readLiveLoggedSets(
   );
 
   return mappedSets.map((set) => {
+    // The raw id first: a kept exercise is returned under its own id, and only
+    // an id the catalog redirected is found under its target.
     const exercise =
-      exercisesById.get(resolvePlatformExerciseId(set.exerciseId)) ?? null;
+      exercisesById.get(set.exerciseId) ??
+      exercisesById.get(resolvePlatformExerciseId(set.exerciseId)) ??
+      null;
     return {
       ...set,
       exerciseName: set.exerciseName ?? exercise?.name ?? null,

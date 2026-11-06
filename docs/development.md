@@ -127,6 +127,67 @@ once a quarter, with an app release, each in its own pull request.
     `apps/mobile`, then open the pull request. Record the dataset version and
     paste the builder's report in its description.
 
+## Updating the Platform Library
+
+The Platform Library is the seed
+`apps/mobile/assets/seeds/platform_exercises.json`, generated from wger and
+Workout.cool and filtered by a reviewed manifest. The server's copy is generated
+from that seed. Never edit either by hand. The design is in
+[platform-library-updates.md](designs/platform-library-updates.md).
+
+1.  Edit the manifest, `tools/data/platform-exercise-review-decisions.json`.
+
+2.  When the change retires an exercise, raise the manifest's top-level
+    `retiredAt`. It must be later than `reviewedAt`, and it becomes the new
+    records' `retired_at`, so the generator fails otherwise. A rename-only run
+    leaves it alone.
+
+3.  Check out wger at the pinned commit:
+
+    ```bash
+    git clone https://github.com/wger-project/wger.git <path>
+    git -C <path> checkout ea78447
+    ```
+
+4.  Fetch every page of Workout.cool into one JSON array, in a file outside the
+    repository. Workout.cool is not pinned, so keep the file if you may need to
+    rebuild the same seed.
+
+    ```bash
+    node --input-type=module -e '
+    import { writeFileSync } from "node:fs";
+    const records = [];
+    for (let page = 1, total = 1; page <= total; page += 1) {
+      const url = `https://workout.cool/api/exercises/all?page=${page}&limit=100`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${response.status} for ${url}`);
+      const body = await response.json();
+      records.push(...body.data);
+      total = body.pagination.totalPages;
+    }
+    writeFileSync(process.argv[1], JSON.stringify(records));
+    ' <file>
+    ```
+
+5.  Run the generators from the repository root:
+
+    ```bash
+    WGER_REPO=<path> WORKOUT_COOL_EXERCISES_PATH=<file> node tools/generate-wger-platform-exercises.mjs
+    node tools/generate-server-platform-exercise-seed.mjs
+    ```
+
+6.  Read the diff. Everything outside what the manifest changed should be
+    unchanged except by key order, because Workout.cool can move between runs.
+
+Two rules keep existing logs and devices correct, and the generator enforces
+both against the previous seed:
+
+*   **Keep an Exercise Type fixed for a live id.** A live id's `dimension_ids`
+    must not change. For different dimensions, retire the id and add a new one.
+*   **Never reuse a retired id.** The retired list is append-only, and an id
+    cannot be both retired and live. A device that kept the retired exercise
+    still holds that id as the user's own.
+
 ## Running the server
 
 ```bash
