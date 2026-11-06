@@ -445,6 +445,49 @@ void main() {
       );
     });
 
+    test('a duplicate goal is dropped, and the first kept', () {
+      expect(
+        TrainingGoalsValues.fromJson(<String, Object?>{
+          'goals': <Object?>['strength', 'mobility', 'strength'],
+        }).goals,
+        <TrainingGoalId>[TrainingGoalId.strength, TrainingGoalId.mobility],
+      );
+    });
+
+    test('an Experience entry with an empty focus_id is dropped', () {
+      expect(
+        ExperienceValues.fromJson(<String, Object?>{
+          'levels': <Object?>[
+            <String, Object?>{'focus_id': '', 'level': 'advanced'},
+            <String, Object?>{'focus_id': 'a', 'level': 'beginner'},
+          ],
+        }).levels,
+        <ExperienceEntry>[
+          const ExperienceEntry(
+            focusId: 'a',
+            level: ExperienceLevel.beginner,
+          ),
+        ],
+      );
+    });
+
+    test('a second Experience entry for one Focus is dropped', () {
+      expect(
+        ExperienceValues.fromJson(<String, Object?>{
+          'levels': <Object?>[
+            <String, Object?>{'focus_id': 'a', 'level': 'beginner'},
+            <String, Object?>{'focus_id': 'a', 'level': 'advanced'},
+          ],
+        }).levels,
+        <ExperienceEntry>[
+          const ExperienceEntry(
+            focusId: 'a',
+            level: ExperienceLevel.beginner,
+          ),
+        ],
+      );
+    });
+
     test('an empty list reads as none, not unset', () {
       expect(
         TrainingGoalsValues.fromJson(<String, Object?>{'goals': <Object?>[]})

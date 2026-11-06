@@ -102,11 +102,10 @@ String formatProfileHeight(
 
 /// The one place a validation issue becomes copy. Each string equals the shared
 /// module's `message` for the rule; the ARB holds it so it can be translated.
-/// The age and height placeholders come from the values that were checked.
+/// The age and height placeholders come from the issue's `placeholder`.
 String profileValidationMessage(
   AppLocalizations l10n,
   UserProfileValidationIssue issue,
-  ProfileSaveCheck check,
 ) {
   switch (issue.rule) {
     case 'birth_year.future':
@@ -114,12 +113,9 @@ String profileValidationMessage(
     case 'birth_year.too_old':
       return l10n.profileValidationBirthYearTooOld;
     case 'birth_year.improbable_age':
-      final birthYear = check.values['birth_year'];
-      return birthYear is num
-          ? l10n.profileValidationBirthYearImprobable(
-              check.referenceYear - birthYear.toInt(),
-            )
-          : issue.message;
+      return l10n.profileValidationBirthYearImprobable(
+        issue.placeholder! as int,
+      );
     case 'height.non_positive':
       return l10n.profileValidationHeightNonPositive;
     case 'height.too_tall':
@@ -127,12 +123,9 @@ String profileValidationMessage(
     case 'height.unit':
       return l10n.profileValidationHeightUnit;
     case 'height.improbable':
-      final height = ProfileHeight.fromJson(check.values['height']);
-      return height == null
-          ? issue.message
-          : l10n.profileValidationHeightImprobable(
-              '${height.toJson()['value']} ${height.unit.wireName}',
-            );
+      return l10n.profileValidationHeightImprobable(
+        issue.placeholder! as String,
+      );
     case 'days_per_week.range':
       return l10n.profileValidationDaysPerWeekRange;
     case 'session_minutes.range':
@@ -262,7 +255,7 @@ class _ProfileEditorSheetState extends ConsumerState<_ProfileEditorSheet> {
       return false;
     }
     String message(UserProfileValidationIssue issue) =>
-        profileValidationMessage(l10n, issue, check);
+        profileValidationMessage(l10n, issue);
     if (check.errors.isNotEmpty) {
       setState(() => _errors = check.errors.map(message).toList());
       return false;
@@ -284,7 +277,6 @@ class _ProfileEditorSheetState extends ConsumerState<_ProfileEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final colorScheme = Theme.of(context).colorScheme;
     final textStyles = context.textStyles;
     final profile = widget.profile;
     final unitSystem =
@@ -354,14 +346,7 @@ class _ProfileEditorSheetState extends ConsumerState<_ProfileEditorSheet> {
             padding: const EdgeInsets.all(AppDimens.base),
             child: FilledButton(
               key: ProfileEditorKeys.saveButton,
-              style: FilledButton.styleFrom(
-                backgroundColor: colorScheme.secondary,
-                foregroundColor: colorScheme.onSecondary,
-                minimumSize: const Size.fromHeight(AppDimens.rowHeight),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: AppRadii.cardMd,
-                ),
-              ),
+              style: saveFormButtonStyle(context),
               onPressed: _saving ? null : _save,
               child: Text(l10n.profileSave),
             ),
@@ -729,21 +714,13 @@ class _ExperienceFieldsState extends ConsumerState<ExperienceFields> {
   late bool _none = widget.initial?.levels?.isEmpty ?? false;
 
   void _report() {
-    final current = _selectionValue(_none, _levels.entries.toList());
-    final initial = widget.initial?.levels;
-    final unchanged = current?.length == initial?.length &&
-        (initial ?? const <ExperienceEntry>[])
-            .every((entry) => _levels[entry.focusId] == entry.level);
+    final entries = _levels.entries.map(
+      (entry) => ExperienceEntry(focusId: entry.key, level: entry.value),
+    );
+    final current = _selectionValue(_none, entries);
     widget.onChanged(<String, Object?>{
-      if (!unchanged)
-        'levels': current
-            ?.map(
-              (entry) => ExperienceEntry(
-                focusId: entry.key,
-                level: entry.value,
-              ).toJson(),
-            )
-            .toList(),
+      if (!_sameSelection(current, widget.initial?.levels))
+        'levels': current?.map((entry) => entry.toJson()).toList(),
     });
   }
 

@@ -9,7 +9,6 @@ import '../../../l10n/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../auth/repositories/auth_repository.dart';
 import '../../auth/widgets/sign_in_screen.dart';
-import '../../profile/controllers/profile_controller.dart';
 import '../../profile/widgets/profile_screen.dart';
 import '../../profile/widgets/profile_section_editors.dart';
 import '../../settings/repositories/settings_repository.dart';
@@ -50,8 +49,8 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   List<String> _errors = const <String>[];
 
   /// True from the first tap of an action to its end, including [_next]'s check
-  /// and dialog, which the controller's own guard doesn't cover. A second tap
-  /// could otherwise open two dialogs or write two Batches.
+  /// and dialog. A second tap could otherwise open two dialogs, write two Batches
+  /// or act on a step the first tap is still leaving.
   bool _busy = false;
 
   MaterialPageRoute<void>? _signInRoute;
@@ -91,12 +90,13 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       return;
     }
     List<String> messages(
-      List<UserProfileValidationIssue> Function(ProfileSaveCheck) issues,
+      List<UserProfileValidationIssue> Function(UserProfileValidationResult)
+          issues,
     ) {
       return [
         for (final check in checks)
           for (final issue in issues(check))
-            profileValidationMessage(l10n, issue, check),
+            profileValidationMessage(l10n, issue),
       ];
     }
 
@@ -139,7 +139,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   }
 
   void _onPopInvoked(bool didPop, Object? _) {
-    if (!didPop && !_busy) {
+    if (!didPop) {
       unawaited(_run(_controller.back));
     }
   }
@@ -150,10 +150,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     final colors = context.colors;
     final state = ref.watch(onboardingControllerProvider);
     final step = state.step;
-    ref.listen(onboardingControllerProvider, (previous, next) {
-      if (previous?.step == next.step) {
-        return;
-      }
+    ref.listen(onboardingControllerProvider, (_, next) {
       setState(() {
         _changes.clear();
         _pickedUnitSystem = null;
@@ -404,7 +401,6 @@ class _Subheading extends StatelessWidget {
   }
 }
 
-/// Styled like the Profile editor's Save.
 class _ActionButton extends StatelessWidget {
   const _ActionButton({
     super.key,
@@ -417,14 +413,8 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return FilledButton(
-      style: FilledButton.styleFrom(
-        backgroundColor: colorScheme.secondary,
-        foregroundColor: colorScheme.onSecondary,
-        minimumSize: const Size.fromHeight(AppDimens.rowHeight),
-        shape: const RoundedRectangleBorder(borderRadius: AppRadii.cardMd),
-      ),
+      style: saveFormButtonStyle(context),
       onPressed: onPressed,
       child: Text(label),
     );

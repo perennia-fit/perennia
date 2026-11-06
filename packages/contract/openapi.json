@@ -16296,7 +16296,7 @@
           "batchId": {
             "type": "string",
             "minLength": 1,
-            "description": "Activity Log batch id. Equal to the idempotency key."
+            "description": "Activity Log batch id. Equal to the idempotency key. A write that changed nothing appends no Batch, so this id then names none and can't be undone."
           },
           "serverClock": {
             "type": "string",
@@ -16394,7 +16394,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "description": "Stable key for this agent request. Replays with the same key return the original result without appending another Activity Log batch."
+            "description": "Stable key for this agent request. A replay with the same key appends no Batch and returns the current User Profile, with warnings recomputed from what the Batch wrote. A write that changed nothing reserves no key."
           },
           "updatedAt": {
             "type": "string",
@@ -27506,7 +27506,7 @@
           "Agent Writes"
         ],
         "summary": "Change User Profile fields as one Activity Log batch.",
-        "description": "Merges the given fields into each named section of the caller's User Profile, following the same Save semantics as the app: a field left out is unchanged, null clears a field, and a list replaces the whole list. Each merged section goes through the same shared two-tier validator the app uses. A hard reject writes nothing; improbable values are saved and returned as warnings. The write is one Activity Log batch, with a best-effort sync nudge.",
+        "description": "Merges the given fields into each named section of the caller's User Profile, following the same Save semantics as the app: a field left out is unchanged, null clears a field, and a list replaces the whole list. Each merged section goes through the same shared two-tier validator the app uses. A hard reject writes nothing; improbable values are saved and returned as warnings. The write is one Activity Log batch, with a best-effort sync nudge; a write that changes nothing appends none.",
         "security": [
           {
             "bearerAuth": []

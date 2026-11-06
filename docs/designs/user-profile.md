@@ -366,9 +366,11 @@ Rules for the values:
     both apply this before validating, so `none: true` with text cannot be stored.
 *   **Tolerant reads.** Push does no domain validation, so a stored row can hold anything.
     *   On the device, a field of the wrong JSON type reads as unset, and an unknown enum entry
-        is dropped from the typed getters. So is an Equipment id the rules reject (empty, over
-        64 characters, or a duplicate), because the user couldn't see or fix what blocked their
-        Save of Days per week. An unknown Equipment id within the rules is kept.
+        is dropped from the typed getters. So is any list entry the rules reject, because the
+        user couldn't see or fix what blocked their Save: an Equipment id (empty, over 64
+        characters, or a duplicate), a duplicate goal, an Experience entry with an empty
+        `focus_id`, and a second entry for one Focus. An unknown Equipment id within the rules is
+        kept.
     *   In the agent read, a field of the wrong JSON type reads as `null`, a non-string list
         entry is dropped, and every string id is kept, including one the rules reject, so the
         agent sees it and the merge keeps it (see Agent surface, Validation).
@@ -457,7 +459,7 @@ is true. Nothing waits on the network and no spinner is shown. The gate runs onc
     semantics. If nothing was entered, it writes nothing, like **Skip this**. Screens 2 and 3
     each save as one Activity Log Batch.
 *   **Back.** Screens 2 and 3 have a back arrow. Going back to a saved screen and saving again
-    writes another Batch.
+    with changed values writes another Batch.
 *   **Sign in from screen 1** opens the existing sign-in flow. When it succeeds, onboarding sets
     `onboardingDone`, writes no section, and opens Today. The first Sync Run then runs in the
     background as for any sign-in. When the user cancels, they return to screen 1, and every
@@ -537,9 +539,10 @@ section values above.
     unknown sections or fields, wrong JSON types and non-integer counts return the route's 400
     validation response. At least one field is required.
 *   **Merge.** The server merges the given fields into the current values of each named section,
-    following Save semantics and the Health & limitations normalisation, and writes the whole
-    section row. That is one Activity Log Batch with `batchId` equal to `idempotencyKey`, as the
-    settings write does.
+    following Save semantics and the Health & limitations normalisation, and, for each section
+    whose values changed, writes the whole section row. That is one Activity Log Batch with
+    `batchId` equal to `idempotencyKey`, as the settings write does. The Batch exists only if a
+    section changed.
 *   **Validation** runs through the shared module on the merged values of each named section,
     with `referenceYear` set to the server's current UTC year.
     *   Any hard reject returns status 422 with `AgentProfileBatchWriteErrorResponseSchema`,
@@ -556,7 +559,8 @@ section values above.
         no Batch, so sending the same key again runs as a new write, not a replay.
     *   Otherwise the write applies, and the 200 response is `{ accepted: true, duplicate,
         idempotencyKey, batchId, serverClock, profile, warnings }`. `profile` is the read shape
-        after the write. Each warning is `{ section, field, rule, message }`.
+        after the write. `batchId` names no Batch when nothing changed. Each warning is
+        `{ section, field, rule, message }`.
     *   A replay of the same `idempotencyKey` returns the same envelope with `duplicate: true`.
         On a replay, `profile` is the current read shape and `warnings` are recomputed by
         validating the after-images of the Batch's Activity Log entries. Nothing stores the
@@ -585,6 +589,9 @@ section values above.
         you send change, null clears a field, and a list replaces the whole list. Improbable
         values are saved and returned as warnings to confirm with the user. Each call is one
         Activity Log Batch the user can undo."
+    *   That last sentence of `agent_batch_write_profile` describes the ordinary write: a write
+        that changes nothing appends no Batch (see the Validation bullet above). This
+        imprecision is accepted, because the text is fixed verbatim.
 
 ### Validation
 
@@ -1124,7 +1131,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 33 | `apps/server/src/index.ts` | Modify | Store wiring and re-exports |
 | 34 | `apps/server/src/agent-mcp.ts` | Modify | MCP tools |
 | 35 | `apps/server/src/agent-activity.ts` | Modify | Undo registry and redaction |
-| 36 | `apps/server/src/observability.ts` | Modify | Log scrubbing |
+| 36 | `apps/server/src/observability.ts` | Modify | Log and crash report scrubbing |
 | 37 | `packages/contract/src/agent-skill-reference.ts` | Modify | Command and tool names |
 | 38 | `agent-skills/perennia/scripts/prn-agent.mjs` | Modify | CLI commands |
 | 39 | `packages/contract/openapi.json` | Modify (generated) | Contract |
@@ -1149,6 +1156,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 58 | `CHANGELOG.md` | Modify | Release note |
 | 59 | `agent-skills/perennia/scripts/prn-code.mjs` | Modify | Portable client keeps identical method names |
 | 60 | `agent-skills/perennia/SKILL.md` | Modify | `read-profile` and `update-profile` examples |
+| 61 | `apps/mobile/test/app_shell_test.dart` | Modify | Profile tile position and route |
+| 62 | `apps/mobile/test/features/activity/activity_feed_repository_test.dart` | Modify | Feed labels |
+| 63 | `apps/mobile/lib/data/local/app_database.g.dart` | Modify (generated) | Generated Drift code |
 
 **Verifies:** Verification Plan items V1 to V7 and V9.
 
@@ -1200,8 +1210,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   `UserProfileValidationResult validateUserProfileSection(UserProfileSection section,
         Map<String, Object?> values, {required int referenceYear})`.
     *   It reuses the shape of `settings_validation.dart`: a `UserProfileValidationIssue` with
-        `field`, `rule`, `message` and optional `limit`, and a result with `errors`,
-        `warnings`, `accepted` and `throwIfRejected()`.
+        `field`, `rule`, `message` and optional `limit` and `placeholder` (Dart only: the value
+        the message names, for translated copy), and a result with `errors`, `warnings`,
+        `accepted` and `throwIfRejected()`.
     *   Limits live in a `UserProfileValidationLimits` class, following
         `SettingsValidationLimits`. Messages are the strings in the Validation table.
     *   Equipment ids are checked for length and duplicates only.
@@ -1212,6 +1223,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   A field of the wrong JSON type is skipped as unset, because the schema or the tolerant
         read has already handled it. Each rule is reported at most once per field. Issues appear
         in the order of the Data model's fields and, within a field, of the Validation table.
+    *   A bad height unit stops the other height checks, because a value in an unknown unit
+        can't be compared to the limits.
 *   **File 6.** Runs every case in file 1 and asserts `accepted`, `errorRules` and
     `warningRules`, that `limits` equal `UserProfileValidationLimits`, and the exact message text
     of `birth_year.improbable_age`, `height.improbable` and `text.too_long`. It also unit-tests
@@ -1244,16 +1257,21 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     touches this table; this one owns section reads and writes.
     *   `Stream<UserProfile> watch()` reads the newest live row per section.
     *   `Future<bool> hasAnySection()` is an existence query for any live row.
+    *   `Future<Map<String, Object?>?> mergedIfChanged(UserProfileSection section,
+        Map<String, Object?> changes)` returns the merged values, or null when saving would
+        change nothing, which includes empty `changes`. The caller validates them; nothing is
+        written.
     *   `Future<void> saveSection(UserProfileSection section, Map<String, Object?> changes,
         {String? batchId})`:
         1.  merges `changes` into the newest row's values, following Save semantics and the
             Health & limitations normalisation;
-        2.  validates the merged values through file 5 with the local calendar year, and throws
+        2.  returns without writing if the merged values equal the current ones;
+        3.  validates the merged values through file 5 with the local calendar year, and throws
             `UserProfileValidationException` on a hard error. Warnings are not checked here; the
             controller asks first (file 20);
-        3.  returns without writing if no row exists and every merged field is unset;
-        4.  updates the newest row in place, or creates one with a UUIDv7;
-        5.  appends the change to one Activity Log Batch, with actor `user`.
+        4.  returns without writing if no row exists and every merged field is unset;
+        5.  updates the newest row in place, or creates one with a UUIDv7;
+        6.  appends the change to one Activity Log Batch, with actor `user`.
     *   A clear is a `saveSection` call with `null` for the field.
 *   **File 16.**
     *   Add the `part` directive and expose `userProfile`.
@@ -1289,9 +1307,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   Watches `userProfile.watch()`, the current mode (Local-only Mode or Synced Mode) and the
         signed-in server URL from the auth state.
     *   Exposes `ProfileDisclosureMode { localOnly, synced }` and `host`, the URL's host name.
-    *   `save(section, changes)` validates first. If there are soft warnings, it returns them, and
-        the screen shows the confirm dialog from the Validation section. **Save anyway** calls
-        `saveSection`.
+    *   `save(section, changes)` asks the repository whether anything changes
+        (`mergedIfChanged`), and does nothing more if not. Otherwise it validates the merged
+        values first. If there are soft warnings, it returns them, and the screen shows the
+        confirm dialog from the Validation section. **Save anyway** calls `saveSection`.
 *   **File 21.** `ProfileScreen.routeName = '/profile'`.
     *   The disclosure line for the current mode sits under the title.
     *   Six section cards follow, each showing its values or "Not set". Unknown equipment ids
@@ -1399,8 +1418,14 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         no image gives a readable section, replace the before and after `values` with
         `{ "redacted": true }`. A null image stays null. The MCP tool `agent_list_activity` uses
         the same read, so it is redacted too.
-*   **File 36.** Add `sections` and `values` to `TRAINING_DATA_KEYS`, in a commented block like
-    the Protocols one, saying they carry User Profile values in agent route bodies.
+*   **File 36.** The changes are the ones under Lifecycle:
+    *   Add `sections` and `values` to `TRAINING_DATA_KEYS`, in a commented block like the
+        Protocols one, saying they carry User Profile values in agent route bodies.
+    *   `sdk.init` sets `httpIntegration({ maxIncomingRequestBodySize: "none" })`.
+    *   `beforeSend` removes `request.data` and exempts `exception.values` from the `values`
+        filter.
+    *   `serializeErrorForObservability` reduces a query error to its type, a fixed message,
+        and the `code` and constraint name of the error and its `cause`.
 *   **File 37.** Add `readAgentProfile: "read-profile"` and `batchWriteAgentProfile:
     "update-profile"` to `AGENT_SKILL_COMMAND_NAMES`, and the two tool names to
     `AGENT_MCP_TOOL_NAMES`.
@@ -1414,7 +1439,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 *   **File 60.** Add `read-profile` and `update-profile` examples next to the `read-settings` and
     `update-settings` examples.
 
-#### Tests (files 43 to 53)
+#### Tests (files 43 to 53, 61 and 62)
 
 *   **File 43** (`js` job, against Postgres):
     *   read when empty, and `null` for an all-unset row;
@@ -1467,6 +1492,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   every control meets the 48 dp target and has a semantics label;
     *   at 200% text scale nothing overflows and every control can be reached;
     *   a soft warning shows the confirm dialog, and **Save anyway** saves.
+*   **Files 61 and 62:** the Profile tile sits between the status tile and Settings under
+    Account & app and opens the Profile screen; the Activity feed labels a User Profile Batch
+    by its sections, and uses the generic summary for a mixed Batch.
 
 #### Docs (files 54 to 58)
 
@@ -1500,9 +1528,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 13 | `CHANGELOG.md` | Modify | Release note |
 | 14 | `docs/designs/user-profile.md` | Modify | Status to Current |
 | 15 | `docs/designs/SITEMAP.md` | Modify | Status to Current |
-| 16 | `apps/mobile/lib/features/profile/controllers/profile_controller.dart` | Modify | Make the section-values lookup public for File 3 |
-| 17 | `apps/mobile/lib/features/profile/widgets/profile_section_editors.dart` | Modify | Make the error lines public (`ProfileErrorLines`) so the flow shows errors the way the editor does |
-| 18 | `apps/mobile/lib/features/settings/widgets/general_settings_screen.dart` | Modify | Make `SegmentedPreference` public: it is the existing units and week start control that File 4 reuses |
+| 16 | `apps/mobile/lib/features/profile/widgets/profile_section_editors.dart` | Modify | Make the error lines public (`ProfileErrorLines`) so the flow shows errors the way the editor does |
+| 17 | `apps/mobile/lib/features/settings/widgets/general_settings_screen.dart` | Modify | Make `SegmentedPreference` public: it is the existing units and week start control that File 4 reuses |
 
 **Verifies:** Verification Plan items V8 and V10.
 
@@ -1526,8 +1553,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         `userProfile.saveSection(aboutYou)`; screens 2 and 3 call `saveSection` once each, with
         one `batchId`). On screen 1 it then calls `setOnboardingDone()`.
     *   **Next** passes only the fields the user entered. A screen with nothing entered saves
-        nothing. A section whose save would change nothing is skipped, because `saveSection` does
-        not skip a no-op write on an existing row and Save semantics requires no write.
+        nothing. A section whose save would change nothing writes nothing, because `saveSection`
+        itself returns without writing for it.
     *   `check()` validates every section with changes before any is saved, and writes nothing.
         A section whose save would change nothing has no check, as under `ProfileController.save`.
     *   Soft warnings use the same confirm dialog as the Profile screen before saving.

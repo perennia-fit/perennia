@@ -15,6 +15,8 @@ import { createSentryCrashReporterFromEnv } from "../src/observability.ts";
 // session envelopes, and without one it takes a release from the environment
 // (GITHUB_SHA on hosted CI), so leaving it out made this test differ by machine.
 test("a crash on a User Profile write sends Sentry no request body", async () => {
+  // Built at runtime, so source context lines copied into an event can't match.
+  const secret = ["HIV", "SECRET"].join("");
   const preScrubRequests = [];
   const sentEnvelopes = [];
   const crashReporter = createSentryCrashReporterFromEnv(
@@ -76,7 +78,7 @@ test("a crash on a User Profile write sends Sentry no request body", async () =>
         },
         body: JSON.stringify({
           idempotencyKey: "profile-crash",
-          sections: { healthLimitations: { text: "HIVSECRET meds" } }
+          sections: { healthLimitations: { text: `${secret} meds` } }
         })
       }
     );
@@ -101,6 +103,6 @@ test("a crash on a User Profile write sends Sentry no request body", async () =>
 
   // Every envelope, not only the event: a body must not leave by any of them.
   const sent = JSON.stringify(sentEnvelopes);
-  assert.doesNotMatch(sent, /HIVSECRET/);
+  assert.ok(!sent.includes(secret));
   assert.doesNotMatch(sent, /healthLimitations/);
 });

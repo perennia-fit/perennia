@@ -3,6 +3,7 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { and, asc, eq, gt, gte, inArray, isNull, or } from "drizzle-orm";
 
 import { ACCOUNT_DELETION_LOCAL_ONLY_MESSAGE } from "./account-deletion.js";
+import { USER_PROFILE_SECTION_NAMES } from "./agent-validation.js";
 import { CanonicalImportConsentDataClassSchema } from "./canonical-import.js";
 import type { ServerDatabase } from "./db/client.js";
 import * as schema from "./db/schema.js";
@@ -925,14 +926,7 @@ export async function pushNutritionGoalsInTransaction(
 // stall every later Sync Run (docs/designs/user-profile.md, Sync). The stored
 // payload stays exactly what was pushed.
 const UserProfileSectionSyncPayloadSchema = z.looseObject({
-  section: z.enum([
-    "about_you",
-    "training_goals",
-    "experience",
-    "training_setup",
-    "health_limitations",
-    "general_notes"
-  ]),
+  section: z.enum(USER_PROFILE_SECTION_NAMES),
   values: z.record(z.string(), z.unknown())
 });
 

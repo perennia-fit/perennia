@@ -95,6 +95,9 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Fixed
 
+- The User Profile agent API descriptions now say a write that changes nothing
+  appends no Activity Log Batch, and its MCP tools are titled Read User Profile
+  and Batch Write User Profile.
 - **Server crash reports no longer carry request bodies.** With crash reporting
   on, a server error could send what was being written to Sentry.
 - **A malformed id list in a synced row no longer fails Agent reads.** A raw array

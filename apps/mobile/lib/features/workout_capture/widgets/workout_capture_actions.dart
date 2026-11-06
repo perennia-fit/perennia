@@ -41,7 +41,7 @@ class WorkoutCaptureActions extends StatelessWidget {
             liveRegion: isSubmitting,
             child: FilledButton.icon(
               key: saveButtonKey,
-              style: workoutCaptureSaveButtonStyle(context),
+              style: saveFormButtonStyle(context),
               onPressed: canSave ? onSave : null,
               icon: Icon(
                 isSubmitting ? Icons.hourglass_top : Icons.save_outlined,

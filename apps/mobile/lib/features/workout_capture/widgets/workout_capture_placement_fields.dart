@@ -371,7 +371,7 @@ class _CadenceSlotPickerState extends State<_CadenceSlotPicker> {
                       const SizedBox(height: AppDimens.dense),
                       FilledButton(
                         key: WorkoutCapturePlacementFields.slotApplyButtonKey,
-                        style: workoutCaptureSaveButtonStyle(context),
+                        style: saveFormButtonStyle(context),
                         onPressed: _applyNumber,
                         child:
                             Text(context.l10n.workoutCaptureChooseSlotAction),

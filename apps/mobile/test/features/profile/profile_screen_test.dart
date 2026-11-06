@@ -7,9 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/domain/profile/user_profile.dart';
+import 'package:perennia/domain/profile/user_profile_validation.dart';
 import 'package:perennia/features/auth/repositories/auth_repository.dart';
 import 'package:perennia/features/focus/controllers/focus_providers.dart';
-import 'package:perennia/features/profile/controllers/profile_controller.dart';
 import 'package:perennia/features/profile/widgets/profile_screen.dart';
 import 'package:perennia/features/profile/widgets/profile_section_editors.dart';
 import 'package:perennia/features/settings/repositories/settings_repository.dart';
@@ -613,7 +613,7 @@ void main() {
 
       final rules = <String>{};
       for (final (section, values) in cases) {
-        final check = ProfileSaveCheck.validate(
+        final check = validateUserProfileSection(
           section,
           values,
           referenceYear: referenceYear,
@@ -621,7 +621,7 @@ void main() {
         for (final issue in [...check.errors, ...check.warnings]) {
           rules.add(issue.rule);
           expect(
-            profileValidationMessage(l10n, issue, check),
+            profileValidationMessage(l10n, issue),
             issue.message,
             reason: issue.rule,
           );

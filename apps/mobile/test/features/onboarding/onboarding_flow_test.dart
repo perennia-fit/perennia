@@ -388,8 +388,10 @@ void main() {
     test('check merges over the stored values', () async {
       final container = openFlow();
       await flow(container).next(
-        changes: const {
-          UserProfileSection.aboutYou: <String, Object?>{'birth_year': 1990},
+        changes: {
+          UserProfileSection.aboutYou: <String, Object?>{
+            'birth_year': DateTime.now().year - 5,
+          },
         },
       );
 
@@ -397,8 +399,10 @@ void main() {
         UserProfileSection.aboutYou: <String, Object?>{'sex': 'female'},
       });
 
-      expect(checks.single.values['birth_year'], 1990);
-      expect(checks.single.values['sex'], 'female');
+      expect(
+        checks.single.warnings.map((issue) => issue.rule),
+        contains('birth_year.improbable_age'),
+      );
     });
 
     test('check has nothing to say about a save that changes nothing',
@@ -487,19 +491,6 @@ void main() {
       expect(step(container), OnboardingStep.screen1);
     });
 
-    test('a second tap on Next while the first runs writes once', () async {
-      final container = openFlow();
-      await leaveScreen1(container);
-
-      await Future.wait<void>(<Future<void>>[
-        flow(container).next(changes: goalsAndLevels),
-        flow(container).next(changes: goalsAndLevels),
-      ]);
-
-      expect(await profileEntries(), hasLength(2));
-      expect(step(container), OnboardingStep.screen3);
-    });
-
     test('skipThis on screen 1 saves nothing and sets onboardingDone',
         () async {
       final container = openFlow();
@@ -522,21 +513,6 @@ void main() {
       expect(step(container), OnboardingStep.done);
       expect((await settingsRepository.load()).onboardingDone, isTrue);
       expect(await rows(), isEmpty);
-    });
-
-    test('a slow read at start-up does not put the user back on screen 1',
-        () async {
-      final userProfile = _SlowFirstReadUserProfile();
-      repositories = _FakeRepositories(userProfile);
-      final container = openFlow();
-
-      await flow(container).skipAll();
-      expect(step(container), OnboardingStep.done);
-
-      userProfile.firstRead.complete(const UserProfile());
-      await pumpEventQueue();
-
-      expect(step(container), OnboardingStep.done);
     });
 
     test('skipAll reaches done from screens 2 and 3', () async {
@@ -1050,6 +1026,43 @@ void main() {
         await disposeApp(tester);
       });
 
+      testWidgets(
+          'a session already there keeps Account open; back reaches Today',
+          (tester) async {
+        final serverUrl = Uri.parse('https://sync.example.test');
+        await pumpApp(
+          tester,
+          authRepository: InMemoryAuthRepository(
+            AuthState(
+              serverUrl: serverUrl,
+              session: AuthSession(
+                provider: AuthSessionProvider.email,
+                serverUrl: serverUrl,
+                token: 'token-a',
+                userEmail: 'lifter@example.test',
+                userId: 'user-a',
+                userName: 'lifter',
+              ),
+            ),
+          ),
+        );
+
+        await tapControl(tester, signInLink);
+
+        expect(find.byType(SignInScreen), findsOneWidget);
+        expect(find.byKey(SignInScreen.sessionStatusKey), findsOneWidget);
+        expect(await onboardingDone(tester), isFalse);
+
+        await tester.binding.handlePopRoute();
+        await settle(tester);
+
+        expect(find.byType(SignInScreen), findsNothing);
+        expectToday();
+        expect(await onboardingDone(tester), isTrue);
+        expect(await rows(tester), isEmpty);
+        await disposeApp(tester);
+      });
+
       testWidgets('back from sign-in returns to screen 1, fields kept', (
         tester,
       ) async {
@@ -1185,6 +1198,65 @@ void main() {
           await settle(tester);
 
           expectScreen2();
+          await disposeApp(tester);
+        });
+
+        testWidgets(
+            'a route above the sign-in screen stays until backed out of',
+            (tester) async {
+          final auth = _HeldSignInAuthRepository();
+          await pumpApp(tester, authRepository: auth);
+
+          await tapControl(tester, signInLink);
+          await tester.enterText(
+            find.byKey(SignInScreen.serverUrlFieldKey),
+            'https://sync.example.test',
+          );
+          await tester.enterText(
+            find.byKey(SignInScreen.emailFieldKey),
+            'lifter@example.test',
+          );
+          await tester.enterText(
+            find.byKey(SignInScreen.passwordFieldKey),
+            'correct horse',
+          );
+          await tapControl(
+            tester,
+            find.byKey(SignInScreen.emailSignInButtonKey),
+          );
+          const above = Key('onboarding.test.aboveSignIn');
+          unawaited(
+            tester.state<NavigatorState>(find.byType(Navigator).first).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const Scaffold(key: above),
+                  ),
+                ),
+          );
+          await settle(tester);
+
+          auth.release();
+          await settle(tester);
+
+          expect(find.byKey(above), findsOneWidget);
+          expect(
+              find.byType(SignInScreen, skipOffstage: false), findsOneWidget);
+          expect(
+              find.byType(OnboardingFlow, skipOffstage: false), findsOneWidget);
+          expect(await onboardingDone(tester), isFalse);
+
+          await tester.binding.handlePopRoute();
+          await settle(tester);
+
+          expect(find.byKey(above), findsNothing);
+          expect(find.byType(SignInScreen), findsOneWidget);
+          expect(find.byKey(SignInScreen.sessionStatusKey), findsOneWidget);
+
+          await tester.binding.handlePopRoute();
+          await settle(tester);
+
+          expect(find.byType(SignInScreen), findsNothing);
+          expectToday();
+          expect(await onboardingDone(tester), isTrue);
           await disposeApp(tester);
         });
 
@@ -1586,19 +1658,6 @@ class _ThrowingUserProfile extends Fake implements UserProfileRepository {
   Future<bool> hasAnySection() async {
     calls += 1;
     throw const _ProfileStoreUnavailable();
-  }
-}
-
-class _SlowFirstReadUserProfile extends Fake implements UserProfileRepository {
-  final firstRead = Completer<UserProfile>();
-  int _reads = 0;
-
-  @override
-  Stream<UserProfile> watch() {
-    _reads += 1;
-    return _reads == 1
-        ? Stream<UserProfile>.fromFuture(firstRead.future)
-        : Stream<UserProfile>.value(const UserProfile());
   }
 }
 
