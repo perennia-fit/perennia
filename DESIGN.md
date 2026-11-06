@@ -267,10 +267,18 @@ rectangles with `md` corners, never FABs.
   (Add Exercise, Add To Group, Home).
 - **Inputs/forms (secondary screens):** filled fields on surface color with a 1px
   divider-color stroke, `md` corners, Signal Cyan focus stroke; no floating labels.
-- **Disclosure line:** one or two sentences directly under a screen's title saying
-  who can read what the screen holds, in the `caption` type with the
-  `text-secondary-light` / `text-secondary-dark` color tokens. It is plain text: no
-  icon, no card, no action, and it can't be dismissed.
+- **Disclosure line:** one or two sentences directly under a screen's title (on
+  onboarding it sits in the footer rather than under the title) saying who can read
+  what the screen holds, in the `caption` type with the `text-secondary-light` /
+  `text-secondary-dark` color tokens. It is plain text: no icon, no card, no action,
+  and it can't be dismissed.
+- **Onboarding screen:** **Skip all** as a text button in the primary text color at
+  the end of the app bar, and a back arrow at its start after the first screen. The
+  screen title in the `h2` type at the top of the scrolling body. A bottom action row
+  outside the scroll, always in thumb reach: **Skip this** and **Next** side by side
+  at equal width, both in `button-save`, with **Next** reading **Done** on the last
+  screen. The footer disclosure line closes the scrolling content; pinned, it would
+  squeeze the fields at 200% text.
 - **Picker sheet:** nearly full height, search then list, with checkboxes in the
   primary text color and a Done text button with a count, so that a selected filter
   chip is the only cyan selection on screen.

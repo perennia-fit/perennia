@@ -27,7 +27,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
       children: [
         SettingsSection(
           children: [
-            _SegmentedPreference<AppThemePreference>(
+            SegmentedPreference<AppThemePreference>(
               key: themePreferenceKey,
               label: 'Theme',
               selected: settings.themePreference,
@@ -35,7 +35,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
               labelFor: (value) => value.label,
               onChanged: controller.setThemePreference,
             ),
-            _SegmentedPreference<UnitSystem>(
+            SegmentedPreference<UnitSystem>(
               key: unitSystemKey,
               label: 'Units',
               selected: settings.unitSystem,
@@ -43,7 +43,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
               labelFor: (value) => value.label,
               onChanged: controller.setUnitSystem,
             ),
-            _SegmentedPreference<WeekStartDay>(
+            SegmentedPreference<WeekStartDay>(
               key: weekStartDayKey,
               label: 'Week starts',
               selected: settings.weekStartDay,
@@ -51,7 +51,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
               labelFor: (value) => value.label,
               onChanged: controller.setWeekStartDay,
             ),
-            _SegmentedPreference<HomeScreenDisplay>(
+            SegmentedPreference<HomeScreenDisplay>(
               key: homeScreenDisplayKey,
               label: 'Home display',
               selected: settings.homeScreenDisplay,
@@ -66,8 +66,8 @@ class GeneralSettingsScreen extends ConsumerWidget {
   }
 }
 
-class _SegmentedPreference<T> extends StatelessWidget {
-  const _SegmentedPreference({
+class SegmentedPreference<T> extends StatelessWidget {
+  const SegmentedPreference({
     super.key,
     required this.label,
     required this.selected,

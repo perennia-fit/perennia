@@ -347,7 +347,8 @@ class _ProfileEditorSheetState extends ConsumerState<_ProfileEditorSheet> {
                 AppDimens.base,
                 0,
               ),
-              child: _ErrorLines(key: ProfileEditorKeys.errors, lines: _errors),
+              child: ProfileErrorLines(
+                  key: ProfileEditorKeys.errors, lines: _errors),
             ),
           Padding(
             padding: const EdgeInsets.all(AppDimens.base),
@@ -373,8 +374,8 @@ class _ProfileEditorSheetState extends ConsumerState<_ProfileEditorSheet> {
 
 /// Bar Red is for destruction only, so a rejected value reads from the icon and
 /// the words.
-class _ErrorLines extends StatelessWidget {
-  const _ErrorLines({super.key, required this.lines});
+class ProfileErrorLines extends StatelessWidget {
+  const ProfileErrorLines({super.key, required this.lines});
 
   final List<String> lines;
 

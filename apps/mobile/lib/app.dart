@@ -15,6 +15,7 @@ import 'features/home/services/workout_auto_finish_service.dart';
 import 'features/home/widgets/home_screen.dart';
 import 'features/metrics/widgets/metrics_screen.dart';
 import 'features/nutrition/widgets/nutrition_day_view.dart';
+import 'features/onboarding/widgets/onboarding_launcher.dart';
 import 'features/progress/repositories/progress_feature_repository.dart';
 import 'features/protocols/controllers/protocols_day_controller.dart';
 import 'features/protocols/services/protocol_reminder_scheduler.dart';
@@ -327,7 +328,8 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
           return null;
         },
         routes: <String, WidgetBuilder>{
-          HomeScreen.routeName: (_) => const HomeScreen(),
+          HomeScreen.routeName: (_) =>
+              const OnboardingLauncher(child: HomeScreen()),
           ActivityFeedScreen.routeName: (_) => const ActivityFeedScreen(),
           BodyTrackerScreen.routeName: (_) => const BodyTrackerScreen(),
           MetricsScreen.routeName: (_) => const MetricsScreen(),

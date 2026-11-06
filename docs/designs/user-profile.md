@@ -1,7 +1,7 @@
 # User Profile and First-Open Onboarding
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** In Review
+*   **Status:** Current
 *   **Date:** 2026-11-04
 
 Read with: [AGENTS.md](../../AGENTS.md) (invariants and conventions),
@@ -460,7 +460,11 @@ is true. Nothing waits on the network and no spinner is shown. The gate runs onc
     writes another Batch.
 *   **Sign in from screen 1** opens the existing sign-in flow. When it succeeds, onboarding sets
     `onboardingDone`, writes no section, and opens Today. The first Sync Run then runs in the
-    background as for any sign-in. When the user cancels, they return to screen 1.
+    background as for any sign-in. When the user cancels, they return to screen 1, and every
+    control there works at once, even if a sign-in request is still running. If that request
+    later succeeds, the session is real, so onboarding finishes the same way, but only when the
+    user is still on screen 1 with no action running and nothing open over it. Otherwise they
+    carry on in onboarding, signed in. Past screen 1 `onboardingDone` is already set.
 *   **Screen 1 save order.**
     1.  Save each changed setting (unit system, week start day) through the existing
         `SettingsController` setters. Each setter saves on its own, so this is one Activity Log
@@ -1496,6 +1500,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 13 | `CHANGELOG.md` | Modify | Release note |
 | 14 | `docs/designs/user-profile.md` | Modify | Status to Current |
 | 15 | `docs/designs/SITEMAP.md` | Modify | Status to Current |
+| 16 | `apps/mobile/lib/features/profile/controllers/profile_controller.dart` | Modify | Make the section-values lookup public for File 3 |
+| 17 | `apps/mobile/lib/features/profile/widgets/profile_section_editors.dart` | Modify | Make the error lines public (`ProfileErrorLines`) so the flow shows errors the way the editor does |
+| 18 | `apps/mobile/lib/features/settings/widgets/general_settings_screen.dart` | Modify | Make `SegmentedPreference` public: it is the existing units and week start control that File 4 reuses |
 
 **Verifies:** Verification Plan items V8 and V10.
 
@@ -1519,21 +1526,36 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         `userProfile.saveSection(aboutYou)`; screens 2 and 3 call `saveSection` once each, with
         one `batchId`). On screen 1 it then calls `setOnboardingDone()`.
     *   **Next** passes only the fields the user entered. A screen with nothing entered saves
-        nothing.
+        nothing. A section whose save would change nothing is skipped, because `saveSection` does
+        not skip a no-op write on an existing row and Save semantics requires no write.
+    *   `check()` validates every section with changes before any is saved, and writes nothing.
+        A section whose save would change nothing has no check, as under `ProfileController.save`.
     *   Soft warnings use the same confirm dialog as the Profile screen before saving.
     *   `skipThis()` saves nothing for the screen. On screen 1 it calls `setOnboardingDone()`.
     *   `skipAll()` calls `setOnboardingDone()` if it is not set, then goes to `done`.
     *   `back()` is available on screens 2 and 3.
-    *   `signIn()` opens the existing sign-in screen (`sign_in_screen.dart`) and awaits its
-        result. On success it calls `setOnboardingDone()` and goes to `done`, without waiting
-        for a Sync Run. On cancel it stays on `screen1`.
+    *   `signIn(openSignIn)` runs a function the widget passes, which pushes the existing
+        sign-in screen (`sign_in_screen.dart`) and completes when it is gone. That screen returns
+        no result and stays open on its Account view after a success, so the flow closes it when
+        a session appears and treats a session on return as success: the controller then reads
+        `authControllerProvider`. A session calls `setOnboardingDone()` and goes to `done`,
+        without waiting for a Sync Run. No session stays on `screen1`, and so does an attempt
+        still running on return: its future stays pending until the request ends, and no HTTP
+        timeout bounds that, so the controller does not wait for it. It waits only for the first
+        load, which has no previous value or error.
+    *   `finishLateSignIn()` does what a session on return does, for a session from an attempt
+        the user backed out of. It does nothing past `screen1`. The flow's auth listener calls it
+        when the sign-in route is gone, no action is running and the flow's route is in front.
 *   **File 4.**
     *   The three screens, reusing the field widgets from PR 1's editors
         (`profile_section_editors.dart`), plus the existing units and week start controls.
     *   Every screen has **Skip all** in the app bar, and **Skip this** and **Next** at the
         bottom. Screen 3's **Next** reads **Done**.
     *   Screen 1 has the **Already use Perennia? Sign in** link.
-    *   The disclosure line for the current mode sits in the footer.
+    *   The screen title sits at the top of the scrolling body, and the back arrow (screens 2
+        and 3) in the app bar.
+    *   The disclosure line for the current mode sits in the footer, at the end of the scrolling
+        content: pinned, it would squeeze the fields at 200% text.
     *   Nothing asks for an OS permission.
 *   **File 5.** `OnboardingLauncher` wraps `HomeScreen`. On its first frame it reads
     `onboardingGateProvider.future`. If the result is true, it pushes `OnboardingFlow` as a
@@ -1544,8 +1566,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 *   **Files 7 and 8.** The onboarding strings, verbatim:
     *   screen titles: "About you", "Training Goals and Experience", "Training setup";
     *   buttons: "Skip all", "Skip this", "Next", "Done", "Back";
-    *   the sign-in link: "Already use Perennia? Sign in".
+    *   the sign-in link: "Already use Perennia? Sign in";
+    *   the control labels on screen 1, matching General settings: "Units", "Week starts".
 
+    Screen 2's subsection headings reuse the Profile screen's "Training Goals" and "Experience".
     Then run `flutter gen-l10n`.
 *   **File 9** (against in-memory SQLite, with `onboardingDone` false):
     *   CUJ 1, CUJ 2 and CUJ 4;
@@ -1562,8 +1586,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     false`; `AppSettings.defaults` is `true`; the value round-trips.
 *   **File 11.** Replace the "No onboarding wizards" bullet with the text given under Repository
     doc changes.
-*   **File 12.** Add the onboarding screen component: **Skip all** in the app bar, the bottom
-    action row (**Skip this**, **Next**), and the footer disclosure line.
+*   **File 12.** Add the onboarding screen component: **Skip all** in the app bar, the screen
+    title at the top of the scrolling body, the bottom action row (**Skip this**, **Next**, which
+    reads **Done** on the last screen), and the footer disclosure line at the end of the scrolling
+    content. Extend the disclosure line component with the footer placement on onboarding.
 *   **File 13.** Added: "Optional first-open onboarding, skippable from its first screen."
 *   **Files 14 and 15.** Set this spec's Status, and its SITEMAP row, to Current.
 
