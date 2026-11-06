@@ -241,6 +241,77 @@ function buildRetired({
   });
 }
 
+// The retired list is what lets the app hide ids the live list has dropped, so
+// a seed that misses one, or lists one as both, would leave a stale row visible.
+test("bundled retired list covers every recorded retirement, and only those", () => {
+  const manifest = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../tools/data/platform-exercise-review-decisions.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const seed = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../apps/mobile/assets/seeds/platform_exercises.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const retired = seed.retired_exercises;
+  const retiredIds = new Set(retired.map((record) => record.id));
+
+  const expectedIds = [
+    ...seed.exercise_redirects.map((redirect) => redirect.from_exercise_id),
+    ...manifest.excludedExerciseIds,
+  ];
+  assert.deepEqual(
+    expectedIds.filter((id) => !retiredIds.has(id)),
+    [],
+    "every redirect source and excluded id is retired",
+  );
+
+  assert.deepEqual(
+    seed.exercises
+      .map((exercise) => exercise.id)
+      .filter((id) => retiredIds.has(id)),
+    [],
+    "no id is both live and retired",
+  );
+
+  // By instant, not by string: the seed has both ...Z and ....000Z forms.
+  assert.deepEqual(
+    retired
+      .filter(
+        (record) =>
+          !(Date.parse(record.retired_at) > Date.parse(record.updated_at)),
+      )
+      .map((record) => record.id),
+    [],
+    "every retired_at is later than its updated_at",
+  );
+
+  const ids = retired.map((record) => record.id);
+  assert.deepEqual(
+    ids,
+    [...ids].sort((left, right) => left.localeCompare(right, "en-US")),
+    "the list is sorted by id",
+  );
+
+  const categoryIds = new Set(seed.categories.map((category) => category.id));
+  assert.deepEqual(
+    retired
+      .filter((record) => !categoryIds.has(record.category_id))
+      .map((record) => record.id),
+    [],
+    "every category_id is a seed category",
+  );
+});
+
 test("reviewed cleanup returns the excluded ids", () => {
   const result = applyPlatformExerciseCleanup(
     [
