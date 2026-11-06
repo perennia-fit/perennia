@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show QueryRow, Variable, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/data/seeds/platform_exercise_seed.dart';
 import 'package:perennia/domain/settings/account_settings.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
@@ -213,7 +214,146 @@ void main() {
             reason: table);
       }
     });
+
+    // docs/designs/platform-library-updates.md: "Hide, do not delete".
+    group('Retired Exercises', () {
+      Future<TrainingRepositories> launch(PlatformExerciseSeed seed) async {
+        final launched = TrainingRepositories(
+          database,
+          platformSeedSource: _SeedSource(seed),
+        );
+        await launched.catalog.ensurePlatformLibrarySeeded();
+        return launched;
+      }
+
+      Future<ExerciseRow> rowOf(String id) {
+        return (database.select(database.exercises)
+              ..where((row) => row.id.equals(id)))
+            .getSingle();
+      }
+
+      Future<List<ActivityLogRow>> entriesFor(String id) {
+        return (database.select(database.activityLog)
+              ..where((row) => row.entityId.equals(id)))
+            .get();
+      }
+
+      test('a hidden row stays a Platform row, with no tombstone', () async {
+        final launched = await launch(_retiringSeed);
+        final hidden = await rowOf(_retiredExerciseId);
+        expect(hidden.libraryOrigin, ExerciseLibraryOrigin.platform.name);
+        expect(hidden.deletedAt?.toUtc(), _retiredAt);
+        final entriesBefore = await entriesFor(_retiredExerciseId);
+
+        await launched.eraseAllData();
+
+        expect(await rowOf(_retiredExerciseId), hidden);
+        expect(await entriesFor(_retiredExerciseId), entriesBefore);
+      });
+
+      test('a kept row is erased, and a later pass leaves it alone', () async {
+        final installed = await launch(_offeringSeed);
+        final workoutId = await installed.workoutSessions.create(
+          WorkoutSessionDraft(
+            startedAt: DateTime.utc(2026, 1, 2, 8),
+            timezone: 'UTC',
+          ),
+        );
+        await installed.workoutExercises.create(
+          WorkoutExerciseDraft(
+            workoutId: workoutId,
+            exerciseId: _retiredExerciseId,
+          ),
+        );
+        final updated = await launch(_retiringSeed);
+        final kept = await rowOf(_retiredExerciseId);
+        expect(kept.libraryOrigin, ExerciseLibraryOrigin.user.name);
+        expect(kept.deletedAt, isNull);
+
+        await updated.eraseAllData();
+
+        final erased = await rowOf(_retiredExerciseId);
+        expect(erased.libraryOrigin, ExerciseLibraryOrigin.user.name);
+        expect(erased.deletedAt, isNotNull);
+        final eraseEntries = (await entriesFor(_retiredExerciseId))
+            .where((entry) => entry.actor == 'settings');
+        expect(eraseEntries, hasLength(1));
+        final entriesAfterErase = await entriesFor(_retiredExerciseId);
+
+        final nextLaunch = await launch(_retiringSeed);
+
+        expect(await rowOf(_retiredExerciseId), erased);
+        expect(await entriesFor(_retiredExerciseId), entriesAfterErase);
+        expect(
+          (await nextLaunch.exercises.listActive()).map((row) => row.id),
+          isNot(contains(_retiredExerciseId)),
+        );
+      });
+    });
   });
+}
+
+const _retiringCategoryId = '01910000-0000-7000-8000-000000000002';
+const _liveExerciseId = '01910000-0000-7000-8000-000000000102';
+const _retiredExerciseId = '01910000-0000-7000-8000-000000000201';
+
+final _retiringStamp = DateTime.utc(2026, 1, 1);
+final _retiredAt = DateTime.utc(2026, 1, 5);
+
+final _retiringCategories = <SeedExerciseCategory>[
+  SeedExerciseCategory(
+    id: _retiringCategoryId,
+    name: 'Core',
+    sortOrder: 0,
+    colorHex: '#1F9D55',
+    updatedAt: _retiringStamp,
+  ),
+];
+
+SeedExercise _seedExercise(String id, String name) {
+  return SeedExercise(
+    id: id,
+    name: name,
+    dimensions: const <DimensionId>[DimensionId.reps],
+    categoryId: _retiringCategoryId,
+    notes: null,
+    updatedAt: _retiringStamp,
+  );
+}
+
+/// A library that still offers `Plank`.
+final _offeringSeed = PlatformExerciseSeed(
+  categories: _retiringCategories,
+  exercises: <SeedExercise>[
+    _seedExercise(_liveExerciseId, 'Full Plank'),
+    _seedExercise(_retiredExerciseId, 'Plank'),
+  ],
+);
+
+/// The same library after it retired `Plank`.
+final _retiringSeed = PlatformExerciseSeed(
+  categories: _retiringCategories,
+  exercises: <SeedExercise>[_seedExercise(_liveExerciseId, 'Full Plank')],
+  retired: <SeedRetiredExercise>[
+    SeedRetiredExercise(
+      id: _retiredExerciseId,
+      name: 'Plank',
+      dimensions: const <DimensionId>[DimensionId.reps],
+      categoryId: _retiringCategoryId,
+      notes: null,
+      updatedAt: _retiringStamp,
+      retiredAt: _retiredAt,
+    ),
+  ],
+);
+
+class _SeedSource implements PlatformExerciseSeedSource {
+  const _SeedSource(this.seed);
+
+  final PlatformExerciseSeed seed;
+
+  @override
+  Future<PlatformExerciseSeed> load() async => seed;
 }
 
 /// Tables erase leaves alone: Settings and integration consents stay, the
