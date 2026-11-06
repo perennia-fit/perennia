@@ -18,6 +18,7 @@ import '../../domain/nutrition/meal_validation.dart';
 import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/nutrition_day_assembly.dart';
 import '../../domain/nutrition/nutrition_import.dart';
+import '../../domain/protocols/compound_purposes.dart';
 import '../../domain/protocols/dose_validation.dart';
 import '../../domain/protocols/protocol_plan.dart';
 import '../../domain/protocols/protocol_plan_days.dart'
@@ -70,6 +71,7 @@ export '../../domain/nutrition/meal_validation.dart'
         validateMealTime;
 export '../../domain/nutrition/nutrition.dart';
 export '../../domain/nutrition/nutrition_import.dart';
+export '../../domain/protocols/compound_purposes.dart';
 export '../../domain/protocols/dose_validation.dart'
     show
         DoseValidationException,
@@ -112,6 +114,7 @@ export '../../domain/training/set_validation.dart'
 
 part 'csv_export_repository.dart';
 part 'focus_repository.dart';
+part 'purpose_repository.dart';
 part 'portable_archive_repository.dart';
 part 'plan_sync_repository.dart';
 part 'protocol_plan_repository.dart';
@@ -250,6 +253,7 @@ class TrainingRepositories {
     AppDatabase.protocolCompoundsTable,
     AppDatabase.protocolsTable,
     AppDatabase.compoundsTable,
+    AppDatabase.purposesTable,
   ];
 
   /// Erases every authored domain (the [eraseTableNames] tables) on this
@@ -260,9 +264,9 @@ class TrainingRepositories {
   /// stay on the server and on other devices; the batch also keeps the erase
   /// recoverable with an undo. Settings and integration consents are not
   /// authored log data and stay. So do rows the bundled seeds own (the
-  /// Platform Library, the OTC Compounds, the default Meal Types): every seed
-  /// skips ids it has already written, so an erased seed row would never
-  /// return.
+  /// Platform Library, the OTC Compounds and starter Purposes, the default Meal
+  /// Types): every seed skips ids it has already written, so an erased seed row
+  /// would never return.
   Future<void> eraseAllData() async {
     final seedOwnedIds = await _seedOwnedIdsForErase();
     final context = _writeContexts.create(actor: 'settings');
@@ -297,6 +301,8 @@ class TrainingRepositories {
           .toSet(),
       AppDatabase.compoundsTable:
           protocols._otcSeedSource.load().map((seed) => seed.id).toSet(),
+      AppDatabase.purposesTable:
+          starterPurposes.map((purpose) => purpose.id).toSet(),
     };
   }
 
@@ -5457,9 +5463,10 @@ class AccountSettingsRepository {
 /// from a controller), local-first with no network (set save confirms without
 /// blocking).
 ///
-/// Subtle by construction: the model never names or categorizes a
-/// `Compound` by substance type or legality. A `Dose` is authored intake, never
-/// a `Metric`; the `Protocol Day` is derived on read, nothing stored.
+/// Subtle by construction: the model never classifies a `Compound` by what it
+/// is or whether it is legal; only the OTC built-ins come tagged with `Purpose`s
+/// (`compound_purposes.dart`). A `Dose` is authored intake, never a `Metric`; the
+/// `Protocol Day` is derived on read, nothing stored.
 ///
 class ProtocolsRepository {
   ProtocolsRepository._(this._repositories, this._otcSeedSource);
@@ -5474,16 +5481,23 @@ class ProtocolsRepository {
 
   AppDatabase get _database => _repositories.database;
 
+  /// The user's `Purpose` labels for Compounds.
+  late final PurposeRepository purposes = PurposeRepository._(_repositories);
+
   /// Idempotently loads the tiny OTC seed `Compound` library (PROTOCOLS.md §3,
   ///). Mirrors the platform-exercise / usda-food seed precedent: each
   /// seed row carries a STABLE id, so a row already present is skipped — running
   /// the seed twice never duplicates a `Compound`. Each new row is inserted with
-  /// its default unit/route (and optional strength) and recorded in the Activity
-  /// Log like any other write.
+  /// its default unit/route (and optional strength) and its Purpose tags, and
+  /// recorded in the Activity Log like any other write. The starter Purposes are
+  /// seeded the same way, even when the OTC source is empty.
   ///
-  /// Neutral by construction: the seed carries no substance
-  /// type/legality field — it is a handful of generic starter rows, not a typed
-  /// catalogue.
+  /// Every row is stamped with [compoundSeedTimestamp], not the current time, so
+  /// a device that seeds before its first pull can't win last-writer-wins over a
+  /// rename made on another device (docs/designs/compound-purposes.md, D3).
+  ///
+  /// Neutral by construction: the seed carries no substance type/legality field.
+  /// It is a handful of generic starter rows, not a typed catalogue.
   Future<void> ensureOtcLibrarySeeded({
     String actor = 'otc_seed',
   }) {
@@ -5508,14 +5522,16 @@ class ProtocolsRepository {
   Future<void> _ensureOtcLibrarySeeded({
     required String actor,
   }) async {
-    final rows = _otcSeedSource.load();
-    if (rows.isEmpty) {
-      return;
-    }
-
     final context = _repositories._writeContexts.create(actor: actor);
 
     await _database.transaction(() async {
+      await purposes._seedStarterPurposes(context);
+
+      final rows = _otcSeedSource.load();
+      if (rows.isEmpty) {
+        return;
+      }
+
       // Idempotency is by the seed's STABLE id: a Compound already present
       // (including one the user has since archived) is left untouched. The seed
       // never resurrects an archived row or overwrites user edits.
@@ -5535,7 +5551,12 @@ class ProtocolsRepository {
                 defaultUnit: seed.defaultUnit.name,
                 defaultRoute: seed.defaultRoute.name,
                 strength: Value<String?>(seed.strength?.storageValue),
-                updatedAt: context.timestamp,
+                purposeIds: Value<String>(
+                  _encodePurposeIds(
+                    seedCompoundPurposeIds[seed.id] ?? const <String>[],
+                  ),
+                ),
+                updatedAt: compoundSeedTimestamp,
               ),
             );
         final after = await _requireCompoundRow(seed.id);
@@ -5544,6 +5565,81 @@ class ProtocolsRepository {
           entityTable: AppDatabase.compoundsTable,
           entityId: seed.id,
           beforeImage: null,
+          afterImage: _compoundImage(after),
+        );
+      }
+    });
+  }
+
+  /// Tags the seed Compounds an upgrading device already holds untagged
+  /// (docs/designs/compound-purposes.md, D3). A row is tagged only while it is
+  /// **untouched**: its name equals the seed name, its `purpose_ids` is `[]`, it
+  /// has at least one Activity Log entry, and every entry has actor `otc_seed`.
+  ///
+  /// The Activity Log is the "already ran" record, so no device setting is
+  /// needed. The entry this writes makes the row touched, and so does any edit
+  /// by the user, an Agent or another device, since a pulled change logs an entry
+  /// with its origin actor. An entry pulled with actor `otc_seed` is another
+  /// device's seed, which leaves the row untouched. A list the user emptied has
+  /// a `manual` entry, so it stays empty, and Erase all data keeps the Activity
+  /// Log, so that survives an Erase too.
+  ///
+  /// Each row gets a fresh `updatedAt` and an entry with actor
+  /// `otc_purpose_seed`, so the change syncs and can be undone. A fresh install
+  /// inserts the rows tagged and this does nothing. It is cheap (six rows, one
+  /// Activity Log query) and does nothing once every row is touched.
+  Future<void> backfillSeedPurposes() {
+    final context = _repositories._writeContexts.create(
+      actor: 'otc_purpose_seed',
+    );
+    return _database.transaction(() async {
+      final seedNames = <String, String>{
+        for (final seed in _otcSeedSource.load()) seed.id: seed.name,
+      };
+      final candidates = await (_database.select(_database.compounds)
+            ..where(
+              (row) =>
+                  row.id.isIn(seedCompoundPurposeIds.keys) &
+                  row.purposeIds.equals('[]'),
+            ))
+          .get();
+      if (candidates.isEmpty) {
+        return;
+      }
+      final entries = await (_database.select(_database.activityLog)
+            ..where(
+              (row) =>
+                  row.entityTable.equals(AppDatabase.compoundsTable) &
+                  row.entityId.isIn(candidates.map((row) => row.id)),
+            ))
+          .get();
+      final actorsByCompoundId = <String, Set<String>>{};
+      for (final entry in entries) {
+        (actorsByCompoundId[entry.entityId] ??= <String>{}).add(entry.actor);
+      }
+      for (final before in candidates) {
+        final actors = actorsByCompoundId[before.id];
+        if (before.name != seedNames[before.id] ||
+            actors == null ||
+            actors.any((actor) => actor != 'otc_seed')) {
+          continue;
+        }
+        await (_database.update(_database.compounds)
+              ..where((row) => row.id.equals(before.id)))
+            .write(
+          CompoundsCompanion(
+            purposeIds: Value<String>(
+              _encodePurposeIds(seedCompoundPurposeIds[before.id]!),
+            ),
+            updatedAt: Value<DateTime>(context.timestamp),
+          ),
+        );
+        final after = await _requireCompoundRow(before.id);
+        await _repositories._activityLogWriter.append(
+          context,
+          entityTable: AppDatabase.compoundsTable,
+          entityId: before.id,
+          beforeImage: _compoundImage(before),
           afterImage: _compoundImage(after),
         );
       }
@@ -6079,6 +6175,9 @@ class ProtocolsRepository {
             defaultUnit: draft.defaultUnit.name,
             defaultRoute: draft.defaultRoute.name,
             strength: Value<String?>(strength),
+            purposeIds: Value<String>(
+              _encodePurposeIds(draft.purposeIds ?? const <String>[]),
+            ),
             updatedAt: context.timestamp,
           ),
         );
@@ -6107,10 +6206,16 @@ class ProtocolsRepository {
       throw ArgumentError.value(draft.name, 'name', 'Compound name is empty.');
     }
     final strength = draft.strength?.storageValue;
+    // Null leaves the stored list alone: an editor that doesn't show Purposes
+    // must not clear them.
+    final draftPurposeIds = draft.purposeIds;
+    final purposeIds =
+        draftPurposeIds == null ? null : _encodePurposeIds(draftPurposeIds);
     if (before.name == name &&
         before.defaultUnit == draft.defaultUnit.name &&
         before.defaultRoute == draft.defaultRoute.name &&
-        before.strength == strength) {
+        before.strength == strength &&
+        (purposeIds == null || before.purposeIds == purposeIds)) {
       return false;
     }
 
@@ -6122,6 +6227,9 @@ class ProtocolsRepository {
         defaultUnit: Value<String>(draft.defaultUnit.name),
         defaultRoute: Value<String>(draft.defaultRoute.name),
         strength: Value<String?>(strength),
+        purposeIds: purposeIds == null
+            ? const Value<String>.absent()
+            : Value<String>(purposeIds),
         updatedAt: Value<DateTime>(context.timestamp),
       ),
     );
@@ -6818,6 +6926,7 @@ class ProtocolsRepository {
       defaultRoute: doseRouteFromName(row.defaultRoute),
       strength: CompoundStrength.tryParse(row.strength),
       isFavorite: row.isFavorite,
+      purposeIds: _decodePurposeIds(row.purposeIds),
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,
     );
@@ -14624,6 +14733,7 @@ class ActivityLogRepository {
           await _templateGroupMemberUndoConflicts(entries),
         );
         conflicts.addAll(await _mealDependentUndoConflicts(entries));
+        conflicts.addAll(await _purposeUndoConflicts(entries));
       }
 
       if (conflicts.isNotEmpty) {
@@ -14831,6 +14941,63 @@ class ActivityLogRepository {
     return List<ActivityLogUndoConflict>.unmodifiable(conflicts);
   }
 
+  /// Refuses an undo that would bring back a Purpose name another active
+  /// Purpose now holds: two active Purposes never share a name, trimmed and
+  /// case-insensitive (docs/designs/compound-purposes.md, D8). That covers
+  /// undoing an archive and undoing a rename. An entry that leaves the name as
+  /// it is (a reorder) brings nothing back, so it can't conflict, and undoing a
+  /// create only tombstones the row. Undo stays all-or-nothing, so one conflict
+  /// refuses the whole Batch.
+  Future<List<ActivityLogUndoConflict>> _purposeUndoConflicts(
+    List<ActivityLogEntry> entries,
+  ) async {
+    final purposeEntries = entries
+        .where((entry) => entry.entityTable == AppDatabase.purposesTable)
+        .toList(growable: false);
+    if (purposeEntries.isEmpty) {
+      return const <ActivityLogUndoConflict>[];
+    }
+    final batchIds = purposeEntries.map((entry) => entry.entityId).toSet();
+    final otherActive = await (_database.select(_database.purposes)
+          ..where((row) => row.deletedAt.isNull()))
+        .get();
+    final otherNameKeys = <String>{
+      for (final row in otherActive)
+        if (!batchIds.contains(row.id)) purposeNameKey(row.name),
+    };
+
+    final conflicts = <ActivityLogUndoConflict>[];
+    for (final entry in purposeEntries) {
+      final before = entry.beforeImage;
+      if (before == null ||
+          _activityNullableDateTime(before, 'deleted_at') != null) {
+        continue;
+      }
+      final restoredKey = purposeNameKey(_activityRequiredString(before, 'name'));
+      final after = entry.afterImage;
+      final bringsNameBack = after == null ||
+          _activityNullableDateTime(after, 'deleted_at') != null ||
+          purposeNameKey(_activityRequiredString(after, 'name')) != restoredKey;
+      if (!bringsNameBack || !otherNameKeys.contains(restoredKey)) {
+        continue;
+      }
+      conflicts.add(
+        ActivityLogUndoConflict(
+          entryId: entry.id,
+          entityTable: entry.entityTable,
+          entityId: entry.entityId,
+          reason: ActivityLogUndoConflictReason.duplicatePurposeName,
+          expectedImage: after,
+          currentImage: await _currentImageFor(
+            entityTable: entry.entityTable,
+            entityId: entry.entityId,
+          ),
+        ),
+      );
+    }
+    return List<ActivityLogUndoConflict>.unmodifiable(conflicts);
+  }
+
   _RoutineUndoScope _routineUndoScope(List<ActivityLogEntry> entries) {
     final routineIds = <String>{};
     final cadenceChangedRoutineIds = <String>{};
@@ -14975,6 +15142,8 @@ class ActivityLogRepository {
         return row == null ? null : _exerciseCategoryImage(row);
       case AppDatabase.focusesTable:
         return _repositories.focuses._imageFor(entityId);
+      case AppDatabase.purposesTable:
+        return _repositories.protocols.purposes._imageFor(entityId);
       case AppDatabase.exercisesTable:
         final row = await (_database.select(_database.exercises)
               ..where((row) => row.id.equals(entityId)))
@@ -15164,6 +15333,9 @@ class ActivityLogRepository {
       AppDatabase.focusesTable => (_database.update(_database.focuses)
             ..where((row) => row.id.equals(entityId)))
           .write(_focusCompanionFromImage(image)),
+      AppDatabase.purposesTable => (_database.update(_database.purposes)
+            ..where((row) => row.id.equals(entityId)))
+          .write(_purposeCompanionFromImage(image)),
       AppDatabase.exercisesTable => (_database.update(_database.exercises)
             ..where((row) => row.id.equals(entityId)))
           .write(_exerciseCompanionFromImage(image)),
@@ -16191,6 +16363,10 @@ enum ActivityLogUndoConflictReason {
   /// all-or-nothing, so it is refused rather than orphaning that entry
   /// (meal-logging.md §7, Alternative G).
   dependent,
+
+  /// Undoing the Batch would bring back a Purpose name another active Purpose
+  /// now holds (compound-purposes.md, D8).
+  duplicatePurposeName,
 }
 
 class LogWorkoutResult {
@@ -17040,6 +17216,7 @@ Map<String, Object?> _compoundImage(CompoundRow row) {
     'default_route': row.defaultRoute,
     'strength': row.strength,
     'is_favorite': row.isFavorite,
+    'purpose_ids': row.purposeIds,
     'updated_at': _iso(row.updatedAt),
     'deleted_at': row.deletedAt == null ? null : _iso(row.deletedAt!),
   };
@@ -17510,9 +17687,15 @@ const _templateLinkWorkoutSnapshotFields = <String>{
 /// 65 (docs/designs/meal-logging.md §10). A Meal written before then has a
 /// null offset and `instant` precision, so an image without the keys means
 /// exactly those values.
+///
+/// A Compound's `purpose_ids` arrived with schema 66
+/// (docs/designs/compound-purposes.md, D2), and its column default is `[]`.
 const _activityLaterAddedKeyDefaults = <String, Map<String, Object?>>{
   AppDatabase.focusesTable: <String, Object?>{'color_hex': null},
-  AppDatabase.compoundsTable: <String, Object?>{'is_favorite': false},
+  AppDatabase.compoundsTable: <String, Object?>{
+    'is_favorite': false,
+    'purpose_ids': '[]',
+  },
   AppDatabase.mealsTable: <String, Object?>{
     'timezone_offset_minutes': null,
     'time_precision': 'instant',
@@ -17854,6 +18037,9 @@ CompoundsCompanion _compoundCompanionFromImage(Map<String, Object?> image) {
     // no `is_favorite` key, and replaying/undoing them must not throw.
     isFavorite:
         Value<bool>(_activityNullableBool(image, 'is_favorite') ?? false),
+    // An image from before schema 66, or a push that omits the key, leaves the
+    // stored list alone, so an older device or an Agent edit can't erase tags.
+    purposeIds: _imageNonNullStringIfPresent(image, 'purpose_ids'),
     updatedAt: Value<DateTime>(_activityRequiredDateTime(image, 'updated_at')),
     deletedAt: Value<DateTime?>(_activityNullableDateTime(image, 'deleted_at')),
   );

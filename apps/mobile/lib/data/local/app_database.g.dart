@@ -13782,6 +13782,411 @@ class MetricReadingsCompanion extends UpdateCompanion<MetricReadingRow> {
   }
 }
 
+class $PurposesTable extends Purposes
+    with TableInfo<$PurposesTable, PurposeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PurposesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _sortOrderMeta =
+      const VerificationMeta('sortOrder');
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+      'sort_order', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _syncDeviceIdMeta =
+      const VerificationMeta('syncDeviceId');
+  @override
+  late final GeneratedColumn<String> syncDeviceId = GeneratedColumn<String>(
+      'sync_device_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _syncPreviouslySyncedMeta =
+      const VerificationMeta('syncPreviouslySynced');
+  @override
+  late final GeneratedColumn<bool> syncPreviouslySynced = GeneratedColumn<bool>(
+      'sync_previously_synced', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("sync_previously_synced" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        name,
+        sortOrder,
+        syncDeviceId,
+        syncPreviouslySynced,
+        updatedAt,
+        deletedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'purposes';
+  @override
+  VerificationContext validateIntegrity(Insertable<PurposeRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(_sortOrderMeta,
+          sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
+    } else if (isInserting) {
+      context.missing(_sortOrderMeta);
+    }
+    if (data.containsKey('sync_device_id')) {
+      context.handle(
+          _syncDeviceIdMeta,
+          syncDeviceId.isAcceptableOrUnknown(
+              data['sync_device_id']!, _syncDeviceIdMeta));
+    }
+    if (data.containsKey('sync_previously_synced')) {
+      context.handle(
+          _syncPreviouslySyncedMeta,
+          syncPreviouslySynced.isAcceptableOrUnknown(
+              data['sync_previously_synced']!, _syncPreviouslySyncedMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PurposeRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PurposeRow(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      sortOrder: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      syncDeviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
+      syncPreviouslySynced: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool, data['${effectivePrefix}sync_previously_synced'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
+    );
+  }
+
+  @override
+  $PurposesTable createAlias(String alias) {
+    return $PurposesTable(attachedDatabase, alias);
+  }
+}
+
+class PurposeRow extends DataClass implements Insertable<PurposeRow> {
+  final String id;
+  final String name;
+  final int sortOrder;
+  final String? syncDeviceId;
+  final bool syncPreviouslySynced;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+  const PurposeRow(
+      {required this.id,
+      required this.name,
+      required this.sortOrder,
+      this.syncDeviceId,
+      required this.syncPreviouslySynced,
+      required this.updatedAt,
+      this.deletedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || syncDeviceId != null) {
+      map['sync_device_id'] = Variable<String>(syncDeviceId);
+    }
+    map['sync_previously_synced'] = Variable<bool>(syncPreviouslySynced);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  PurposesCompanion toCompanion(bool nullToAbsent) {
+    return PurposesCompanion(
+      id: Value(id),
+      name: Value(name),
+      sortOrder: Value(sortOrder),
+      syncDeviceId: syncDeviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncDeviceId),
+      syncPreviouslySynced: Value(syncPreviouslySynced),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+    );
+  }
+
+  factory PurposeRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PurposeRow(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
+      syncPreviouslySynced:
+          serializer.fromJson<bool>(json['syncPreviouslySynced']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
+      'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  PurposeRow copyWith(
+          {String? id,
+          String? name,
+          int? sortOrder,
+          Value<String?> syncDeviceId = const Value.absent(),
+          bool? syncPreviouslySynced,
+          DateTime? updatedAt,
+          Value<DateTime?> deletedAt = const Value.absent()}) =>
+      PurposeRow(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        sortOrder: sortOrder ?? this.sortOrder,
+        syncDeviceId:
+            syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
+        syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
+        updatedAt: updatedAt ?? this.updatedAt,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+      );
+  PurposeRow copyWithCompanion(PurposesCompanion data) {
+    return PurposeRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      syncDeviceId: data.syncDeviceId.present
+          ? data.syncDeviceId.value
+          : this.syncDeviceId,
+      syncPreviouslySynced: data.syncPreviouslySynced.present
+          ? data.syncPreviouslySynced.value
+          : this.syncPreviouslySynced,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PurposeRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('syncDeviceId: $syncDeviceId, ')
+          ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, sortOrder, syncDeviceId,
+      syncPreviouslySynced, updatedAt, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PurposeRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.sortOrder == this.sortOrder &&
+          other.syncDeviceId == this.syncDeviceId &&
+          other.syncPreviouslySynced == this.syncPreviouslySynced &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class PurposesCompanion extends UpdateCompanion<PurposeRow> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<int> sortOrder;
+  final Value<String?> syncDeviceId;
+  final Value<bool> syncPreviouslySynced;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<int> rowid;
+  const PurposesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.syncDeviceId = const Value.absent(),
+    this.syncPreviouslySynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PurposesCompanion.insert({
+    required String id,
+    required String name,
+    required int sortOrder,
+    this.syncDeviceId = const Value.absent(),
+    this.syncPreviouslySynced = const Value.absent(),
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        name = Value(name),
+        sortOrder = Value(sortOrder),
+        updatedAt = Value(updatedAt);
+  static Insertable<PurposeRow> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<int>? sortOrder,
+    Expression<String>? syncDeviceId,
+    Expression<bool>? syncPreviouslySynced,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
+      if (syncPreviouslySynced != null)
+        'sync_previously_synced': syncPreviouslySynced,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PurposesCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? name,
+      Value<int>? sortOrder,
+      Value<String?>? syncDeviceId,
+      Value<bool>? syncPreviouslySynced,
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? deletedAt,
+      Value<int>? rowid}) {
+    return PurposesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      sortOrder: sortOrder ?? this.sortOrder,
+      syncDeviceId: syncDeviceId ?? this.syncDeviceId,
+      syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (syncDeviceId.present) {
+      map['sync_device_id'] = Variable<String>(syncDeviceId.value);
+    }
+    if (syncPreviouslySynced.present) {
+      map['sync_previously_synced'] =
+          Variable<bool>(syncPreviouslySynced.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PurposesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('syncDeviceId: $syncDeviceId, ')
+          ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $CompoundsTable extends Compounds
     with TableInfo<$CompoundsTable, CompoundRow> {
   @override
@@ -13826,6 +14231,14 @@ class $CompoundsTable extends Compounds
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_favorite" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _purposeIdsMeta =
+      const VerificationMeta('purposeIds');
+  @override
+  late final GeneratedColumn<String> purposeIds = GeneratedColumn<String>(
+      'purpose_ids', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('[]'));
   static const VerificationMeta _syncDeviceIdMeta =
       const VerificationMeta('syncDeviceId');
   @override
@@ -13862,6 +14275,7 @@ class $CompoundsTable extends Compounds
         defaultRoute,
         strength,
         isFavorite,
+        purposeIds,
         syncDeviceId,
         syncPreviouslySynced,
         updatedAt,
@@ -13914,6 +14328,12 @@ class $CompoundsTable extends Compounds
           isFavorite.isAcceptableOrUnknown(
               data['is_favorite']!, _isFavoriteMeta));
     }
+    if (data.containsKey('purpose_ids')) {
+      context.handle(
+          _purposeIdsMeta,
+          purposeIds.isAcceptableOrUnknown(
+              data['purpose_ids']!, _purposeIdsMeta));
+    }
     if (data.containsKey('sync_device_id')) {
       context.handle(
           _syncDeviceIdMeta,
@@ -13957,6 +14377,8 @@ class $CompoundsTable extends Compounds
           .read(DriftSqlType.string, data['${effectivePrefix}strength']),
       isFavorite: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_favorite'])!,
+      purposeIds: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}purpose_ids'])!,
       syncDeviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sync_device_id']),
       syncPreviouslySynced: attachedDatabase.typeMapping.read(
@@ -13981,6 +14403,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
   final String defaultRoute;
   final String? strength;
   final bool isFavorite;
+  final String purposeIds;
   final String? syncDeviceId;
   final bool syncPreviouslySynced;
   final DateTime updatedAt;
@@ -13992,6 +14415,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
       required this.defaultRoute,
       this.strength,
       required this.isFavorite,
+      required this.purposeIds,
       this.syncDeviceId,
       required this.syncPreviouslySynced,
       required this.updatedAt,
@@ -14007,6 +14431,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
       map['strength'] = Variable<String>(strength);
     }
     map['is_favorite'] = Variable<bool>(isFavorite);
+    map['purpose_ids'] = Variable<String>(purposeIds);
     if (!nullToAbsent || syncDeviceId != null) {
       map['sync_device_id'] = Variable<String>(syncDeviceId);
     }
@@ -14028,6 +14453,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
           ? const Value.absent()
           : Value(strength),
       isFavorite: Value(isFavorite),
+      purposeIds: Value(purposeIds),
       syncDeviceId: syncDeviceId == null && nullToAbsent
           ? const Value.absent()
           : Value(syncDeviceId),
@@ -14049,6 +14475,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
       defaultRoute: serializer.fromJson<String>(json['defaultRoute']),
       strength: serializer.fromJson<String?>(json['strength']),
       isFavorite: serializer.fromJson<bool>(json['isFavorite']),
+      purposeIds: serializer.fromJson<String>(json['purposeIds']),
       syncDeviceId: serializer.fromJson<String?>(json['syncDeviceId']),
       syncPreviouslySynced:
           serializer.fromJson<bool>(json['syncPreviouslySynced']),
@@ -14066,6 +14493,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
       'defaultRoute': serializer.toJson<String>(defaultRoute),
       'strength': serializer.toJson<String?>(strength),
       'isFavorite': serializer.toJson<bool>(isFavorite),
+      'purposeIds': serializer.toJson<String>(purposeIds),
       'syncDeviceId': serializer.toJson<String?>(syncDeviceId),
       'syncPreviouslySynced': serializer.toJson<bool>(syncPreviouslySynced),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -14080,6 +14508,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
           String? defaultRoute,
           Value<String?> strength = const Value.absent(),
           bool? isFavorite,
+          String? purposeIds,
           Value<String?> syncDeviceId = const Value.absent(),
           bool? syncPreviouslySynced,
           DateTime? updatedAt,
@@ -14091,6 +14520,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
         defaultRoute: defaultRoute ?? this.defaultRoute,
         strength: strength.present ? strength.value : this.strength,
         isFavorite: isFavorite ?? this.isFavorite,
+        purposeIds: purposeIds ?? this.purposeIds,
         syncDeviceId:
             syncDeviceId.present ? syncDeviceId.value : this.syncDeviceId,
         syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
@@ -14109,6 +14539,8 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
       strength: data.strength.present ? data.strength.value : this.strength,
       isFavorite:
           data.isFavorite.present ? data.isFavorite.value : this.isFavorite,
+      purposeIds:
+          data.purposeIds.present ? data.purposeIds.value : this.purposeIds,
       syncDeviceId: data.syncDeviceId.present
           ? data.syncDeviceId.value
           : this.syncDeviceId,
@@ -14129,6 +14561,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
           ..write('defaultRoute: $defaultRoute, ')
           ..write('strength: $strength, ')
           ..write('isFavorite: $isFavorite, ')
+          ..write('purposeIds: $purposeIds, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -14138,8 +14571,18 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
   }
 
   @override
-  int get hashCode => Object.hash(id, name, defaultUnit, defaultRoute, strength,
-      isFavorite, syncDeviceId, syncPreviouslySynced, updatedAt, deletedAt);
+  int get hashCode => Object.hash(
+      id,
+      name,
+      defaultUnit,
+      defaultRoute,
+      strength,
+      isFavorite,
+      purposeIds,
+      syncDeviceId,
+      syncPreviouslySynced,
+      updatedAt,
+      deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -14150,6 +14593,7 @@ class CompoundRow extends DataClass implements Insertable<CompoundRow> {
           other.defaultRoute == this.defaultRoute &&
           other.strength == this.strength &&
           other.isFavorite == this.isFavorite &&
+          other.purposeIds == this.purposeIds &&
           other.syncDeviceId == this.syncDeviceId &&
           other.syncPreviouslySynced == this.syncPreviouslySynced &&
           other.updatedAt == this.updatedAt &&
@@ -14163,6 +14607,7 @@ class CompoundsCompanion extends UpdateCompanion<CompoundRow> {
   final Value<String> defaultRoute;
   final Value<String?> strength;
   final Value<bool> isFavorite;
+  final Value<String> purposeIds;
   final Value<String?> syncDeviceId;
   final Value<bool> syncPreviouslySynced;
   final Value<DateTime> updatedAt;
@@ -14175,6 +14620,7 @@ class CompoundsCompanion extends UpdateCompanion<CompoundRow> {
     this.defaultRoute = const Value.absent(),
     this.strength = const Value.absent(),
     this.isFavorite = const Value.absent(),
+    this.purposeIds = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -14188,6 +14634,7 @@ class CompoundsCompanion extends UpdateCompanion<CompoundRow> {
     required String defaultRoute,
     this.strength = const Value.absent(),
     this.isFavorite = const Value.absent(),
+    this.purposeIds = const Value.absent(),
     this.syncDeviceId = const Value.absent(),
     this.syncPreviouslySynced = const Value.absent(),
     required DateTime updatedAt,
@@ -14205,6 +14652,7 @@ class CompoundsCompanion extends UpdateCompanion<CompoundRow> {
     Expression<String>? defaultRoute,
     Expression<String>? strength,
     Expression<bool>? isFavorite,
+    Expression<String>? purposeIds,
     Expression<String>? syncDeviceId,
     Expression<bool>? syncPreviouslySynced,
     Expression<DateTime>? updatedAt,
@@ -14218,6 +14666,7 @@ class CompoundsCompanion extends UpdateCompanion<CompoundRow> {
       if (defaultRoute != null) 'default_route': defaultRoute,
       if (strength != null) 'strength': strength,
       if (isFavorite != null) 'is_favorite': isFavorite,
+      if (purposeIds != null) 'purpose_ids': purposeIds,
       if (syncDeviceId != null) 'sync_device_id': syncDeviceId,
       if (syncPreviouslySynced != null)
         'sync_previously_synced': syncPreviouslySynced,
@@ -14234,6 +14683,7 @@ class CompoundsCompanion extends UpdateCompanion<CompoundRow> {
       Value<String>? defaultRoute,
       Value<String?>? strength,
       Value<bool>? isFavorite,
+      Value<String>? purposeIds,
       Value<String?>? syncDeviceId,
       Value<bool>? syncPreviouslySynced,
       Value<DateTime>? updatedAt,
@@ -14246,6 +14696,7 @@ class CompoundsCompanion extends UpdateCompanion<CompoundRow> {
       defaultRoute: defaultRoute ?? this.defaultRoute,
       strength: strength ?? this.strength,
       isFavorite: isFavorite ?? this.isFavorite,
+      purposeIds: purposeIds ?? this.purposeIds,
       syncDeviceId: syncDeviceId ?? this.syncDeviceId,
       syncPreviouslySynced: syncPreviouslySynced ?? this.syncPreviouslySynced,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -14275,6 +14726,9 @@ class CompoundsCompanion extends UpdateCompanion<CompoundRow> {
     if (isFavorite.present) {
       map['is_favorite'] = Variable<bool>(isFavorite.value);
     }
+    if (purposeIds.present) {
+      map['purpose_ids'] = Variable<String>(purposeIds.value);
+    }
     if (syncDeviceId.present) {
       map['sync_device_id'] = Variable<String>(syncDeviceId.value);
     }
@@ -14303,6 +14757,7 @@ class CompoundsCompanion extends UpdateCompanion<CompoundRow> {
           ..write('defaultRoute: $defaultRoute, ')
           ..write('strength: $strength, ')
           ..write('isFavorite: $isFavorite, ')
+          ..write('purposeIds: $purposeIds, ')
           ..write('syncDeviceId: $syncDeviceId, ')
           ..write('syncPreviouslySynced: $syncPreviouslySynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -24129,6 +24584,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $MeasurementEntriesTable(this);
   late final $MetricsTable metrics = $MetricsTable(this);
   late final $MetricReadingsTable metricReadings = $MetricReadingsTable(this);
+  late final $PurposesTable purposes = $PurposesTable(this);
   late final $CompoundsTable compounds = $CompoundsTable(this);
   late final $DosesTable doses = $DosesTable(this);
   late final $ProtocolSkipsTable protocolSkips = $ProtocolSkipsTable(this);
@@ -24327,6 +24783,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         measurementEntries,
         metrics,
         metricReadings,
+        purposes,
         compounds,
         doses,
         protocolSkips,
@@ -33384,6 +33841,204 @@ typedef $$MetricReadingsTableProcessedTableManager = ProcessedTableManager<
     (MetricReadingRow, $$MetricReadingsTableReferences),
     MetricReadingRow,
     PrefetchHooks Function({bool metricId})>;
+typedef $$PurposesTableCreateCompanionBuilder = PurposesCompanion Function({
+  required String id,
+  required String name,
+  required int sortOrder,
+  Value<String?> syncDeviceId,
+  Value<bool> syncPreviouslySynced,
+  required DateTime updatedAt,
+  Value<DateTime?> deletedAt,
+  Value<int> rowid,
+});
+typedef $$PurposesTableUpdateCompanionBuilder = PurposesCompanion Function({
+  Value<String> id,
+  Value<String> name,
+  Value<int> sortOrder,
+  Value<String?> syncDeviceId,
+  Value<bool> syncPreviouslySynced,
+  Value<DateTime> updatedAt,
+  Value<DateTime?> deletedAt,
+  Value<int> rowid,
+});
+
+class $$PurposesTableFilterComposer
+    extends Composer<_$AppDatabase, $PurposesTable> {
+  $$PurposesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$PurposesTableOrderingComposer
+    extends Composer<_$AppDatabase, $PurposesTable> {
+  $$PurposesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$PurposesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PurposesTable> {
+  $$PurposesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get syncDeviceId => $composableBuilder(
+      column: $table.syncDeviceId, builder: (column) => column);
+
+  GeneratedColumn<bool> get syncPreviouslySynced => $composableBuilder(
+      column: $table.syncPreviouslySynced, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$PurposesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $PurposesTable,
+    PurposeRow,
+    $$PurposesTableFilterComposer,
+    $$PurposesTableOrderingComposer,
+    $$PurposesTableAnnotationComposer,
+    $$PurposesTableCreateCompanionBuilder,
+    $$PurposesTableUpdateCompanionBuilder,
+    (PurposeRow, BaseReferences<_$AppDatabase, $PurposesTable, PurposeRow>),
+    PurposeRow,
+    PrefetchHooks Function()> {
+  $$PurposesTableTableManager(_$AppDatabase db, $PurposesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PurposesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PurposesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PurposesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            Value<String?> syncDeviceId = const Value.absent(),
+            Value<bool> syncPreviouslySynced = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              PurposesCompanion(
+            id: id,
+            name: name,
+            sortOrder: sortOrder,
+            syncDeviceId: syncDeviceId,
+            syncPreviouslySynced: syncPreviouslySynced,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String name,
+            required int sortOrder,
+            Value<String?> syncDeviceId = const Value.absent(),
+            Value<bool> syncPreviouslySynced = const Value.absent(),
+            required DateTime updatedAt,
+            Value<DateTime?> deletedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              PurposesCompanion.insert(
+            id: id,
+            name: name,
+            sortOrder: sortOrder,
+            syncDeviceId: syncDeviceId,
+            syncPreviouslySynced: syncPreviouslySynced,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$PurposesTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $PurposesTable,
+    PurposeRow,
+    $$PurposesTableFilterComposer,
+    $$PurposesTableOrderingComposer,
+    $$PurposesTableAnnotationComposer,
+    $$PurposesTableCreateCompanionBuilder,
+    $$PurposesTableUpdateCompanionBuilder,
+    (PurposeRow, BaseReferences<_$AppDatabase, $PurposesTable, PurposeRow>),
+    PurposeRow,
+    PrefetchHooks Function()>;
 typedef $$CompoundsTableCreateCompanionBuilder = CompoundsCompanion Function({
   required String id,
   required String name,
@@ -33391,6 +34046,7 @@ typedef $$CompoundsTableCreateCompanionBuilder = CompoundsCompanion Function({
   required String defaultRoute,
   Value<String?> strength,
   Value<bool> isFavorite,
+  Value<String> purposeIds,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   required DateTime updatedAt,
@@ -33404,6 +34060,7 @@ typedef $$CompoundsTableUpdateCompanionBuilder = CompoundsCompanion Function({
   Value<String> defaultRoute,
   Value<String?> strength,
   Value<bool> isFavorite,
+  Value<String> purposeIds,
   Value<String?> syncDeviceId,
   Value<bool> syncPreviouslySynced,
   Value<DateTime> updatedAt,
@@ -33458,6 +34115,9 @@ class $$CompoundsTableFilterComposer
 
   ColumnFilters<bool> get isFavorite => $composableBuilder(
       column: $table.isFavorite, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get purposeIds => $composableBuilder(
+      column: $table.purposeIds, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => ColumnFilters(column));
@@ -33522,6 +34182,9 @@ class $$CompoundsTableOrderingComposer
   ColumnOrderings<bool> get isFavorite => $composableBuilder(
       column: $table.isFavorite, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get purposeIds => $composableBuilder(
+      column: $table.purposeIds, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId,
       builder: (column) => ColumnOrderings(column));
@@ -33563,6 +34226,9 @@ class $$CompoundsTableAnnotationComposer
 
   GeneratedColumn<bool> get isFavorite => $composableBuilder(
       column: $table.isFavorite, builder: (column) => column);
+
+  GeneratedColumn<String> get purposeIds => $composableBuilder(
+      column: $table.purposeIds, builder: (column) => column);
 
   GeneratedColumn<String> get syncDeviceId => $composableBuilder(
       column: $table.syncDeviceId, builder: (column) => column);
@@ -33628,6 +34294,7 @@ class $$CompoundsTableTableManager extends RootTableManager<
             Value<String> defaultRoute = const Value.absent(),
             Value<String?> strength = const Value.absent(),
             Value<bool> isFavorite = const Value.absent(),
+            Value<String> purposeIds = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -33641,6 +34308,7 @@ class $$CompoundsTableTableManager extends RootTableManager<
             defaultRoute: defaultRoute,
             strength: strength,
             isFavorite: isFavorite,
+            purposeIds: purposeIds,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -33654,6 +34322,7 @@ class $$CompoundsTableTableManager extends RootTableManager<
             required String defaultRoute,
             Value<String?> strength = const Value.absent(),
             Value<bool> isFavorite = const Value.absent(),
+            Value<String> purposeIds = const Value.absent(),
             Value<String?> syncDeviceId = const Value.absent(),
             Value<bool> syncPreviouslySynced = const Value.absent(),
             required DateTime updatedAt,
@@ -33667,6 +34336,7 @@ class $$CompoundsTableTableManager extends RootTableManager<
             defaultRoute: defaultRoute,
             strength: strength,
             isFavorite: isFavorite,
+            purposeIds: purposeIds,
             syncDeviceId: syncDeviceId,
             syncPreviouslySynced: syncPreviouslySynced,
             updatedAt: updatedAt,
@@ -40749,6 +41419,8 @@ class $AppDatabaseManager {
       $$MetricsTableTableManager(_db, _db.metrics);
   $$MetricReadingsTableTableManager get metricReadings =>
       $$MetricReadingsTableTableManager(_db, _db.metricReadings);
+  $$PurposesTableTableManager get purposes =>
+      $$PurposesTableTableManager(_db, _db.purposes);
   $$CompoundsTableTableManager get compounds =>
       $$CompoundsTableTableManager(_db, _db.compounds);
   $$DosesTableTableManager get doses =>

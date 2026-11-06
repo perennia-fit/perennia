@@ -991,6 +991,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Can\'t undo: foods were added to this meal afterwards.';
 
   @override
+  String get activityUndoDuplicatePurposeNameConflict =>
+      'Can\'t undo: another purpose now has this name.';
+
+  @override
   String get activityRelativeLessThanOneMinuteAgo => 'less than 1 min ago';
 
   @override

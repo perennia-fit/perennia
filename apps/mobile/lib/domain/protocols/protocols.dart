@@ -3,9 +3,9 @@
 /// A `Compound` is the catalogue/template (the analog of an `Exercise`/`Food`);
 /// a `Dose` is the self-describing, standalone, timestamped logged event (the
 /// analog of a `Set`/`Food Entry`). A `Dose` is authored intake, **never a
-/// `Metric`**, and the model **never categorizes a `Compound` by
-/// substance type or legality** (a neutral logbook, not a
-/// facilitator). Doses are grouped into a derived `Protocol Day` day-view
+/// `Metric`**, and the model **never classifies a `Compound` by what it is or
+/// whether it is legal** (a neutral logbook, not a facilitator); only the OTC
+/// built-ins come tagged with `Purpose`s (`compound_purposes.dart`). Doses are grouped into a derived `Protocol Day` day-view
 /// (nothing stored), with each Dose's local date frozen at log time
 /// via its captured timezone.
 ///
@@ -16,6 +16,7 @@
 library;
 
 import '../common/local_clock.dart';
+import 'compound_purposes.dart';
 import 'protocol_plan.dart';
 
 /// A frozen `Protocol Day` local date (YYYY-MM-DD). Mirrors `TrainingDayDate` /
@@ -534,6 +535,7 @@ class CompoundDraft {
     required this.defaultUnit,
     required this.defaultRoute,
     this.strength,
+    this.purposeIds,
   });
 
   final String name;
@@ -543,6 +545,11 @@ class CompoundDraft {
   /// The optional structured strength/concentration (curated units, never
   /// free-text). Null for a Compound with no recorded strength.
   final CompoundStrength? strength;
+
+  /// The Purposes to tag the Compound with. Null leaves the stored list as it
+  /// is, so an editor that doesn't show Purposes cannot clear them; a list is
+  /// stored as given after `normalizePurposeIds`.
+  final List<String>? purposeIds;
 }
 
 /// The input for logging a `Dose` — a self-describing snapshot of the
@@ -660,6 +667,7 @@ class CompoundRecord {
     required this.updatedAt,
     this.strength,
     this.isFavorite = false,
+    this.purposeIds = const <String>[],
     this.deletedAt,
   });
 
@@ -674,12 +682,43 @@ class CompoundRecord {
 
   /// A UI-affordance flag only, mirroring `ExerciseRecord.isFavorite`:
   /// hoists this Compound into the Compound list's virtual "Favorites" section.
-  /// Never categorizes the Compound.
+  /// Never classifies the Compound.
   final bool isFavorite;
+
+  /// The Purposes this Compound is tagged with: the stored list, in the order
+  /// the user tagged them. It can name an archived Purpose, which the UI
+  /// doesn't show but keeps attached.
+  final List<String> purposeIds;
   final DateTime updatedAt;
   final DateTime? deletedAt;
 
   bool get isArchived => deletedAt != null;
+}
+
+/// A `Purpose`: a label for why the user takes a `Compound`. Never a claim that
+/// a Compound works, never a classification of what it is, and never read by
+/// analysis (CONTEXT.md). Renaming or archiving one changes no Compound, because
+/// a Compound's tags hold ids.
+class PurposeRecord {
+  const PurposeRecord({
+    required this.id,
+    required this.name,
+    required this.sortOrder,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  final String id;
+  final String name;
+  final int sortOrder;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+
+  bool get isArchived => deletedAt != null;
+
+  /// Whether this is one of the seeded [starterPurposes], which the user may
+  /// still rename or archive.
+  bool get isStarter => starterPurposes.any((starter) => starter.id == id);
 }
 
 /// A lightweight active `Compound` picker/read option. This intentionally

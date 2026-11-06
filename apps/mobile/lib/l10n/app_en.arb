@@ -609,6 +609,10 @@
   "@activityUndoDependentConflict": {
     "description": "Shown when undoing the change that created a Meal is refused because foods were added to that Meal later."
   },
+  "activityUndoDuplicatePurposeNameConflict": "Can't undo: another purpose now has this name.",
+  "@activityUndoDuplicatePurposeNameConflict": {
+    "description": "Shown when undoing a change to a Purpose is refused because it would bring back a name another active Purpose now holds."
+  },
   "activityRelativeLessThanOneMinuteAgo": "less than 1 min ago",
   "activityRelativeMinutesAgo": "{count} min ago",
   "@activityRelativeMinutesAgo": {

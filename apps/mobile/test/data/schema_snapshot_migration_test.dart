@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show OrderingTerm, driftRuntimeOptions;
 import 'package:drift_dev/api/migrations_native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
@@ -190,6 +190,50 @@ void main() {
         .map((row) => row.data)
         .toList();
     expect(foodEntriesAfter, foodEntriesBefore);
+  });
+
+  test(
+      'v65 to v66 adds Purposes and the Compound list, keeps every Compound '
+      'and clears the pull cursor', () async {
+    final schema = await verifier.schemaAt(65);
+    addTearDown(schema.close);
+    const updatedAt = 1_767_254_400;
+    for (final (sql, parameters) in <(String, List<Object?>)>[
+      (
+        'INSERT INTO compounds '
+            '(id, name, default_unit, default_route, updated_at) '
+            'VALUES (?, ?, ?, ?, ?)',
+        ['compound-1', 'Creatine', 'gram', 'oral', updatedAt],
+      ),
+      (
+        'INSERT INTO compounds '
+            '(id, name, default_unit, default_route, updated_at, deleted_at) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+        ['compound-2', 'Archived', 'milligram', 'oral', updatedAt, updatedAt],
+      ),
+      (
+        'INSERT INTO sync_states (id, pull_cursor, updated_at) '
+            'VALUES (?, ?, ?)',
+        ['sync-state', 'cursor-1', updatedAt],
+      ),
+    ]) {
+      schema.rawDatabase.execute(sql, parameters);
+    }
+
+    final database = AppDatabase(schema.newConnection());
+    addTearDown(database.close);
+    await verifier.migrateAndValidate(database, currentVersion);
+
+    expect(await database.select(database.purposes).get(), isEmpty);
+    final compounds = await (database.select(database.compounds)
+          ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+        .get();
+    expect(compounds.map((row) => row.id), ['compound-1', 'compound-2']);
+    expect(compounds.map((row) => row.name), ['Creatine', 'Archived']);
+    expect(compounds.map((row) => row.purposeIds), ['[]', '[]']);
+    expect(compounds.last.deletedAt, isNotNull);
+    final syncState = await database.select(database.syncStates).getSingle();
+    expect(syncState.pullCursor, isNull);
   });
 
   test('rows written at the first release survive to the current version',

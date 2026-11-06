@@ -1771,6 +1771,12 @@ abstract class AppLocalizations {
   /// **'Can\'t undo: foods were added to this meal afterwards.'**
   String get activityUndoDependentConflict;
 
+  /// Shown when undoing a change to a Purpose is refused because it would bring back a name another active Purpose now holds.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t undo: another purpose now has this name.'**
+  String get activityUndoDuplicatePurposeNameConflict;
+
   /// No description provided for @activityRelativeLessThanOneMinuteAgo.
   ///
   /// In en, this message translates to:
