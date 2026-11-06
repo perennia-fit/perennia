@@ -267,6 +267,10 @@ rectangles with `md` corners, never FABs.
   (Add Exercise, Add To Group, Home).
 - **Inputs/forms (secondary screens):** filled fields on surface color with a 1px
   divider-color stroke, `md` corners, Signal Cyan focus stroke; no floating labels.
+- **Disclosure line:** one or two sentences directly under a screen's title saying
+  who can read what the screen holds, in the `caption` type with the
+  `text-secondary-light` / `text-secondary-dark` color tokens. It is plain text: no
+  icon, no card, no action, and it can't be dismissed.
 - **Picker sheet:** nearly full height, search then list, with checkboxes in the
   primary text color and a Done text button with a count, so that a selected filter
   chip is the only cyan selection on screen.

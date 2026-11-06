@@ -28,6 +28,18 @@ A user-operated instance of the open-source server. Fully capable for core track
 and agent access; the app connects to it by explicit user choice, and no data flows
 from it to the maintainers.
 
+## User Profile
+The optional, synced record of who the user is and what they train for. It has six
+sections: About you, Training Goals, Experience, Training setup, Health & limitations,
+and General Notes. It is distinct from Record Profile (a per-exercise headline-record
+choice). Every field may be unset. The app itself reads only About you; the rest exists
+for agents.
+
+## Training Goal
+One outcome the user trains for, chosen from a fixed list (for example longevity or
+strength). Distinct from Nutrition Goal, from a Metric's goal direction, and from Focus,
+which is the discipline a Workout is performed under.
+
 ## Agent
 A third-party AI acting on behalf of a user with the user's authorization — e.g.
 logging a workout the user dictated to an assistant. Agents interact with the service,
@@ -64,7 +76,7 @@ assisted load, less is progress.
 ## Record Profile
 Per-exercise choice of which metric is the headline record and which direction is
 better. Defaulted from the Exercise Type's dimensions; user-overridable. Selects the
-headline only — all applicable records are always tracked.
+headline only — all applicable records are always tracked. Not the User Profile.
 
 ## Annotation
 An optional per-set qualifier describing how the set was performed (comment, side,
@@ -98,11 +110,9 @@ Category (what an exercise works, usually a body part) and from Exercise Type (w
 it measures).
 
 ## Equipment
-A structured, optional descriptor of the tool or apparatus normally used for an
-Exercise, such as Barbell, Dumbbell, Bench, or Bodyweight. Equipment helps filtering
-and defaults, but never constrains logged history. Perennia ships a curated registry for
-common values and may preserve imported unknown ids as labels when needed; users can
-still log any Exercise without Equipment.
+The tool or setup normally used for an Exercise, or that the user has access to, as
+listed in the User Profile's Training setup. Both use the same registry ids, and both
+may hold unknown ids, shown as labels.
 
 ## Platform Library
 The curated catalog of exercises provided by the platform. Read-only to users.

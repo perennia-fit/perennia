@@ -11,6 +11,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Added
 
+- Profile under Account & app, with agent read and write (`read-profile`,
+  `update-profile`). Upgrade a Self-Hosted Deployment before the app.
 - **Agents can list Meal Types** (`listAgentMealTypes`,
   `GET /agent/meal-types`, `agent_list_meal_types`): the user's active Meal
   Types in the order the app shows them, to choose a `mealType` from.

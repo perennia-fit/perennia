@@ -29,6 +29,7 @@ import 'features/up_next/repositories/up_next_feature_repository.dart';
 import 'app_navigation.dart';
 import 'data/repositories/open_food_facts_repository.dart';
 import 'data/repositories/training_repositories.dart';
+import 'features/profile/widgets/profile_screen.dart';
 import 'features/settings/repositories/settings_repository.dart';
 import 'features/settings/services/client_crash_reporting.dart';
 import 'features/settings/services/keep_screen_awake.dart';
@@ -335,6 +336,7 @@ class _PerenniaAppState extends ConsumerState<PerenniaApp>
           RoutinePlanListScreen.routeName: (_) => const RoutinePlanListScreen(),
           WorkoutTemplateListScreen.routeName: (_) =>
               const WorkoutTemplateListScreen(),
+          ProfileScreen.routeName: (_) => const ProfileScreen(),
           SettingsScreen.routeName: (_) => const SettingsScreen(),
           CompoundListScreen.routeName: (_) => const ProtocolsLockGate(
                 child: CompoundListScreen(),

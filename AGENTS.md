@@ -126,9 +126,9 @@ reference for screen layout and flow. Adopt the *ergonomics*; restyle per DESIGN
   Prescriptions, groups + rounds) and Routine editor (membership + Cadence slot
   layout) as separate surfaces; capture
   ("save workout as template") and the Finish summary's Update row.
-- **Workout Tools (interval/rest timer, 1RM/set/plate calculators) and Settings** —
-  secondary surfaces reached contextually or through **Account & app**, not extra
-  root destinations.
+- **Workout Tools (interval/rest timer, 1RM/set/plate calculators), Profile and
+  Settings** — secondary surfaces reached contextually or through **Account & app**,
+  not extra root destinations.
 
 ### UX rules of thumb
 
