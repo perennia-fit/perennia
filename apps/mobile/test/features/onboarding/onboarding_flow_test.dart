@@ -626,6 +626,69 @@ void main() {
         expect((await settingsRepository.load()).onboardingDone, isFalse);
       });
 
+      test('an attempt still running on return is not waited for', () async {
+        final auth = _HeldSignInAuthRepository();
+        final container = openFlow(authRepository: auth);
+        await container.read(authControllerProvider.future);
+        late Future<void> attempt;
+
+        await flow(container).signIn(() async {
+          attempt =
+              container.read(authControllerProvider.notifier).signInWithEmail(
+                    rawServerUrl: 'https://sync.example.test',
+                    email: 'lifter@example.test',
+                    password: 'correct horse',
+                  );
+        }).timeout(const Duration(seconds: 5));
+
+        expect(container.read(authControllerProvider).isLoading, isTrue);
+        expect(step(container), OnboardingStep.screen1);
+        expect((await settingsRepository.load()).onboardingDone, isFalse);
+
+        await flow(container).skipAll().timeout(const Duration(seconds: 5));
+        expect(step(container), OnboardingStep.done);
+
+        auth.release();
+        await attempt;
+      });
+
+      test('an auth state still retrying its load is not waited for', () async {
+        final container = openFlow(
+          authRepository: _HeldSignInAuthRepository(failLoad: true),
+        );
+        container.listen(authControllerProvider, (_, __) {});
+        await pumpEventQueue();
+        final auth = container.read(authControllerProvider);
+        expect(auth.isLoading && auth.hasError, isTrue);
+
+        await flow(container)
+            .signIn(() async {})
+            .timeout(const Duration(seconds: 5));
+
+        expect(step(container), OnboardingStep.screen1);
+        expect((await settingsRepository.load()).onboardingDone, isFalse);
+      });
+
+      test('finishLateSignIn finishes on screen 1 and writes no section',
+          () async {
+        final container = openFlow();
+
+        await flow(container).finishLateSignIn();
+
+        expect((await settingsRepository.load()).onboardingDone, isTrue);
+        expect(step(container), OnboardingStep.done);
+        expect(await rows(), isEmpty);
+      });
+
+      test('finishLateSignIn does nothing past screen 1', () async {
+        final container = openFlow();
+        await flow(container).skipThis();
+
+        await flow(container).finishLateSignIn();
+
+        expect(step(container), OnboardingStep.screen2);
+      });
+
       test('a failed attempt stays on screen 1', () async {
         final container = openFlow();
 
@@ -1012,6 +1075,147 @@ void main() {
         );
         await disposeApp(tester);
       });
+
+      group('backing out of a running sign-in', () {
+        Future<void> backOutOfRunningSignIn(WidgetTester tester) async {
+          await tapControl(tester, signInLink);
+          await tester.enterText(
+            find.byKey(SignInScreen.serverUrlFieldKey),
+            'https://sync.example.test',
+          );
+          await tester.enterText(
+            find.byKey(SignInScreen.emailFieldKey),
+            'lifter@example.test',
+          );
+          await tester.enterText(
+            find.byKey(SignInScreen.passwordFieldKey),
+            'correct horse',
+          );
+          await tapControl(
+            tester,
+            find.byKey(SignInScreen.emailSignInButtonKey),
+          );
+          expect(find.byType(SignInScreen), findsOneWidget);
+          await tester.binding.handlePopRoute();
+          await settle(tester);
+          expect(find.byType(SignInScreen), findsNothing);
+        }
+
+        testWidgets('leaves screen 1 working, and Skip all leaves it', (
+          tester,
+        ) async {
+          final auth = _HeldSignInAuthRepository();
+          await pumpApp(tester, authRepository: auth);
+          await enterHeight(tester, centimetres, '170');
+
+          await backOutOfRunningSignIn(tester);
+
+          expectScreen1();
+          expect(textOf(tester, centimetres), '170');
+          for (final control in [skipAllButton, skipThisButton, nextButton]) {
+            final button = find.descendant(
+              of: control,
+              matching: find.bySubtype<ButtonStyleButton>(),
+              matchRoot: true,
+            );
+            expect(
+              tester.widget<ButtonStyleButton>(button).onPressed,
+              isNotNull,
+            );
+          }
+          expect(tester.widget<TextButton>(signInLink).onPressed, isNotNull);
+
+          await tapControl(tester, skipAllButton);
+
+          expectToday();
+          expect(await onboardingDone(tester), isTrue);
+
+          auth.release();
+          await settle(tester);
+          expectToday();
+          await disposeApp(tester);
+        });
+
+        testWidgets('a later success on screen 1 opens Today', (tester) async {
+          final auth = _HeldSignInAuthRepository();
+          await pumpApp(tester, authRepository: auth);
+
+          await backOutOfRunningSignIn(tester);
+          expectScreen1();
+
+          auth.release();
+          await settle(tester);
+
+          expectToday();
+          expect(await onboardingDone(tester), isTrue);
+          expect(await rows(tester), isEmpty);
+          await disposeApp(tester);
+        });
+
+        testWidgets('a later failure stays on screen 1, still working', (
+          tester,
+        ) async {
+          final auth = _HeldSignInAuthRepository(failSignIn: true);
+          await pumpApp(tester, authRepository: auth);
+
+          await backOutOfRunningSignIn(tester);
+
+          auth.release();
+          await settle(tester);
+
+          expectScreen1();
+          expect(await onboardingDone(tester), isFalse);
+
+          await tapControl(tester, nextButton);
+          expectScreen2();
+          await disposeApp(tester);
+        });
+
+        testWidgets('a later success on screen 2 leaves the user there', (
+          tester,
+        ) async {
+          final auth = _HeldSignInAuthRepository();
+          await pumpApp(tester, authRepository: auth);
+
+          await backOutOfRunningSignIn(tester);
+          await tapControl(tester, nextButton);
+          expectScreen2();
+
+          auth.release();
+          await settle(tester);
+
+          expectScreen2();
+          await disposeApp(tester);
+        });
+
+        testWidgets('a later success does not pop a picker open over the flow',
+            (tester) async {
+          final auth = _HeldSignInAuthRepository();
+          await pumpApp(tester, authRepository: auth);
+
+          await backOutOfRunningSignIn(tester);
+          await tapControl(tester, find.byKey(AboutYouFields.birthYearKey));
+          final year = find.text('1988');
+          await tester.scrollUntilVisible(
+            year,
+            400,
+            scrollable: find.byType(Scrollable).last,
+          );
+          await tester.pump();
+
+          auth.release();
+          await settle(tester);
+
+          expect(year, findsOneWidget);
+          await tester.tap(year);
+          await settle(tester);
+
+          expectScreen1();
+          await tapControl(tester, skipAllButton);
+          expectToday();
+          await disposeApp(tester);
+        });
+      });
     });
 
     group('saving', () {
@@ -1315,6 +1519,45 @@ void main() {
       });
     });
   });
+}
+
+/// Holds each email sign-in open until [release], like a slow or hung server.
+class _HeldSignInAuthRepository extends InMemoryAuthRepository {
+  _HeldSignInAuthRepository({this.failLoad = false, this.failSignIn = false});
+
+  final bool failLoad;
+  final bool failSignIn;
+  final _held = Completer<void>();
+
+  void release() => _held.complete();
+
+  @override
+  Future<AuthState> load() {
+    return failLoad
+        ? Future.error(const _AuthStoreUnavailable())
+        : super.load();
+  }
+
+  @override
+  Future<AuthSession> signInWithEmail({
+    required Uri serverUrl,
+    required String email,
+    required String password,
+  }) async {
+    await _held.future;
+    if (failSignIn) {
+      throw const _AuthStoreUnavailable();
+    }
+    return super.signInWithEmail(
+      serverUrl: serverUrl,
+      email: email,
+      password: password,
+    );
+  }
+}
+
+class _AuthStoreUnavailable implements Exception {
+  const _AuthStoreUnavailable();
 }
 
 class _ObservingSettingsRepository extends InMemorySettingsRepository {

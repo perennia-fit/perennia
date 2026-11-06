@@ -164,16 +164,25 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         widget.onDone();
       }
     });
+    final flowRoute = ModalRoute.of(context);
     // SignInScreen stays open on its Account view after a success, so the flow
     // closes it, and the user lands on Today. A loading state can still carry
     // the old session, which is what signing out of that view looks like.
+    //
+    // An attempt can also succeed after the user backed out of its route. That
+    // session is real, so it finishes like any sign-in, but only from a flow that
+    // is idle and in front: `onDone` pops the top route, which could be a dialog
+    // or a picker, and an action already running decides where the user goes.
+    // Otherwise the user carries on here, signed in, and leaves by Next or Skip.
     ref.listen(authControllerProvider, (_, next) {
       final route = _signInRoute;
-      if (!next.isLoading &&
-          next.value?.session != null &&
-          route != null &&
-          route.isCurrent) {
+      if (next.isLoading || next.value?.session == null || route == null) {
+        return;
+      }
+      if (route.isCurrent) {
         route.navigator?.pop();
+      } else if (!route.isActive && !_busy && (flowRoute?.isCurrent ?? false)) {
+        unawaited(_run(_controller.finishLateSignIn));
       }
     });
 

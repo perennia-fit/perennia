@@ -179,6 +179,14 @@ class OnboardingController extends Notifier<OnboardingState> {
   /// reinstall) counts too once the user returns. No session, whether from a
   /// cancel, a failed attempt or an auth state that failed to load, stays on
   /// screen 1.
+  ///
+  /// So does an attempt the user backed out of while it runs. Nothing can cancel
+  /// it and no HTTP timeout bounds it, and the provider's future stays pending
+  /// until it ends, so waiting here would hold every control disabled for that
+  /// long. A previous value or error next to loading is how to tell it from the
+  /// first load, which is local and is worth waiting for. A failed load retrying
+  /// looks the same, and is not worth waiting for either. If either later brings
+  /// a session, [finishLateSignIn] takes over.
   Future<void> signIn(Future<void> Function() openSignIn) {
     return _act(() async {
       if (state.step != OnboardingStep.screen1) {
@@ -188,6 +196,10 @@ class OnboardingController extends Notifier<OnboardingState> {
       if (!ref.mounted) {
         return;
       }
+      final auth = ref.read(authControllerProvider);
+      if (auth.isLoading && (auth.hasValue || auth.hasError)) {
+        return;
+      }
       final AuthSession? session;
       try {
         session = (await ref.read(authControllerProvider.future)).session;
@@ -195,6 +207,19 @@ class OnboardingController extends Notifier<OnboardingState> {
         return;
       }
       if (session == null || !ref.mounted) {
+        return;
+      }
+      await _setOnboardingDone();
+      await _goTo(OnboardingStep.done);
+    });
+  }
+
+  /// Finishes on a session from an attempt the user backed out of, as [signIn]
+  /// would have. Past screen 1 it does nothing: `onboardingDone` is already set,
+  /// and leaving now would throw away what the user is typing.
+  Future<void> finishLateSignIn() {
+    return _act(() async {
+      if (state.step != OnboardingStep.screen1) {
         return;
       }
       await _setOnboardingDone();

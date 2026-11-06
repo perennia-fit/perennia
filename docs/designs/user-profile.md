@@ -460,7 +460,11 @@ is true. Nothing waits on the network and no spinner is shown. The gate runs onc
     writes another Batch.
 *   **Sign in from screen 1** opens the existing sign-in flow. When it succeeds, onboarding sets
     `onboardingDone`, writes no section, and opens Today. The first Sync Run then runs in the
-    background as for any sign-in. When the user cancels, they return to screen 1.
+    background as for any sign-in. When the user cancels, they return to screen 1, and every
+    control there works at once, even if a sign-in request is still running. If that request
+    later succeeds, the session is real, so onboarding finishes the same way, but only when the
+    user is still on screen 1 with no action running and nothing open over it. Otherwise they
+    carry on in onboarding, signed in. Past screen 1 `onboardingDone` is already set.
 *   **Screen 1 save order.**
     1.  Save each changed setting (unit system, week start day) through the existing
         `SettingsController` setters. Each setter saves on its own, so this is one Activity Log
@@ -1535,7 +1539,13 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         no result and stays open on its Account view after a success, so the flow closes it when
         a session appears and treats a session on return as success: the controller then reads
         `authControllerProvider`. A session calls `setOnboardingDone()` and goes to `done`,
-        without waiting for a Sync Run. No session stays on `screen1`.
+        without waiting for a Sync Run. No session stays on `screen1`, and so does an attempt
+        still running on return: its future stays pending until the request ends, and no HTTP
+        timeout bounds that, so the controller does not wait for it. It waits only for the first
+        load, which has no previous value or error.
+    *   `finishLateSignIn()` does what a session on return does, for a session from an attempt
+        the user backed out of. It does nothing past `screen1`. The flow's auth listener calls it
+        when the sign-in route is gone, no action is running and the flow's route is in front.
 *   **File 4.**
     *   The three screens, reusing the field widgets from PR 1's editors
         (`profile_section_editors.dart`), plus the existing units and week start controls.
