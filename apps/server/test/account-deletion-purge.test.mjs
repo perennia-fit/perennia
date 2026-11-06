@@ -227,6 +227,7 @@ test(
         loggedSetTombstoneGcMarkers: 0,
         loggedSets: 0,
         sessions: 0,
+        userProfileSections: 0,
         users: 0
       });
       assert.deepEqual(localReplica.get(setId), {
