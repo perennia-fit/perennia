@@ -539,11 +539,13 @@ export const purposes = pgTable(
 // A user's `Exercise` (CONTEXT.md) on the opaque-payload sync rails,
 // mirroring `exercise_categories` exactly. Covers both User Library exercises
 // and a user's customization of a Platform exercise (a shadowing copy per
-//); the Platform Library itself never syncs.
+//); the Platform Library itself never syncs. A retired id is fixed and shared
+// by every install, so an exercise kept for its history exists under the same
+// id in many accounts: the key is (user_id, id), exactly like `meal_types`.
 export const exercises = pgTable(
   "exercises",
   {
-    id: text("id").primaryKey(),
+    id: text("id").notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -556,6 +558,10 @@ export const exercises = pgTable(
       .defaultNow()
   },
   (table) => ({
+    pk: primaryKey({
+      name: "exercises_user_id_id_pk",
+      columns: [table.userId, table.id]
+    }),
     userUpdatedAtIndex: index("exercises_user_updated_at_index").on(
       table.userId,
       table.updatedAt

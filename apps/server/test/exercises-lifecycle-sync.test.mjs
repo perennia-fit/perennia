@@ -72,9 +72,8 @@ test(
       assert.equal(pushExercise.status, 200);
       assert.deepEqual((await pushExercise.json()).accepted, [exerciseId]);
 
-      // TENANT ISOLATION: user B cannot overwrite user A's Exercise keyed by
-      // the same client PK. The push reports accepted (idempotent no-op) but
-      // the stored row keeps user A's payload + ownership.
+      // TENANT ISOLATION: the table is keyed (user_id, id), so user B's push
+      // under the same client id is B's own row and never touches A's.
       const crossUserUpdatedAt = "2025-06-30T10:00:00.000Z";
       const crossPush = await syncPush(serverApp.app, userB.sessionToken, {
         deviceId: "device-b",
@@ -97,9 +96,10 @@ test(
         .select()
         .from(schema.exercises)
         .where(eq(schema.exercises.id, exerciseId));
-      assert.equal(storedExercise.length, 1);
-      assert.equal(storedExercise[0].userId, userA.userId);
-      assert.equal(storedExercise[0].payload.name, "Barbell Row");
+      assert.deepEqual(
+        Object.fromEntries(storedExercise.map((row) => [row.userId, row.payload.name])),
+        { [userA.userId]: "Barbell Row", [userB.userId]: "Hijacked" }
+      );
 
       // TENANT ISOLATION on the category too.
       const crossCategoryPush = await syncPush(
@@ -151,13 +151,15 @@ test(
       assert.equal(pulledExercise.deletedAt, null);
 
       // User B pulls none of A's rows — strict per-user scoping on read —
-      // only its own copy under the shared Category id.
+      // only its own copies under the shared Category and Exercise ids.
       const userBPulled = await pullAll(serverApp.app, userB.sessionToken);
       assert.deepEqual(
-        userBPulled
-          .filter((change) => change.id === exerciseId || change.id === categoryId)
-          .map((change) => change.payload.name),
-        ["Hijacked"]
+        Object.fromEntries(
+          userBPulled
+            .filter((change) => change.id === exerciseId || change.id === categoryId)
+            .map((change) => [change.entity, change.payload.name])
+        ),
+        { exercise_categories: "Hijacked", exercises: "Hijacked" }
       );
 
       // A newer Exercise edit wins LWW; an older replay loses.
@@ -201,7 +203,12 @@ test(
       const afterLww = await serverApp.database.db
         .select()
         .from(schema.exercises)
-        .where(eq(schema.exercises.id, exerciseId));
+        .where(
+          and(
+            eq(schema.exercises.userId, userA.userId),
+            eq(schema.exercises.id, exerciseId)
+          )
+        );
       assert.equal(afterLww[0].payload.name, "Pendlay Row");
 
       // Archiving the Exercise (a tombstone via deleted_at) propagates without
@@ -227,7 +234,12 @@ test(
       const archivedExercise = await serverApp.database.db
         .select()
         .from(schema.exercises)
-        .where(eq(schema.exercises.id, exerciseId));
+        .where(
+          and(
+            eq(schema.exercises.userId, userA.userId),
+            eq(schema.exercises.id, exerciseId)
+          )
+        );
       assert.notEqual(archivedExercise[0].deletedAt, null);
       const categoryStillLive = await serverApp.database.db
         .select()

@@ -24,6 +24,8 @@ const skip = databaseUrl ? false : "DATABASE_URL is not set.";
 // - the default "Breakfast" Meal Type (NutritionRepository._defaultMealTypes)
 // - the OTC "Creatine" Compound (lib/data/seeds/otc_compound_seed.dart)
 // - the starter "Sleep" Purpose (lib/domain/protocols/compound_purposes.dart)
+// - the retired "Plank" Exercise, kept as a User Library row once the Platform
+//   Library retires it (retired_exercises in assets/seeds/platform_exercises.json)
 const SEEDED_ROWS = [
   {
     entity: "exercise_categories",
@@ -48,6 +50,24 @@ const SEEDED_ROWS = [
     id: "019200ff-0000-7000-8000-000000000101",
     seededName: "Sleep",
     extra: { sort_order: 0 }
+  },
+  {
+    entity: "exercises",
+    id: "01910000-0000-7000-8000-000000000105",
+    seededName: "Plank",
+    extra: {
+      library_origin: "user",
+      dimension_ids: JSON.stringify(["duration"]),
+      default_load_unit: "kilogram",
+      load_mode: "added",
+      record_profile: "maxDuration",
+      is_favorite: false,
+      is_unilateral: false,
+      uses_rpe: false,
+      category_id: "01910000-0000-7000-8000-000000000012",
+      equipment_ids: JSON.stringify(["bodyweight"]),
+      notes: null
+    }
   }
 ];
 
