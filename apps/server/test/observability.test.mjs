@@ -519,6 +519,10 @@ test("Sentry crash reporting is opt-in and requires a DSN", () => {
   assert.equal(sdk.initCalls[0].environment, "test");
   assert.equal(sdk.initCalls[0].release, "0.0.0-test");
   assert.equal(sdk.initCalls[0].sendDefaultPii, false);
+  assert.deepEqual(
+    sdk.initCalls[0].integrations.map((integration) => integration.name),
+    ["Http"]
+  );
 });
 
 test("Sentry beforeSend scrubs event payloads structurally", () => {
@@ -550,9 +554,11 @@ test("Sentry beforeSend scrubs event payloads structurally", () => {
         authorization: "Bearer secret-token",
         cookie: "session=secret"
       },
-      data: {
-        comment: "private request note"
-      }
+      // The SDK sends the raw body as a string, which filtering by key can't reach.
+      data: JSON.stringify({
+        sections: { healthLimitations: { text: "HIVSECRET meds" } },
+        note: "private request note"
+      })
     }
   });
 
@@ -565,6 +571,8 @@ test("Sentry beforeSend scrubs event payloads structurally", () => {
   assert.doesNotMatch(serialized, /90 kg/);
   assert.doesNotMatch(serialized, /secret-token/);
   assert.doesNotMatch(serialized, /private request note/);
+  assert.doesNotMatch(serialized, /HIVSECRET/);
+  assert.equal("data" in event.request, false);
 });
 
 test("Sentry beforeSend removes automatic request query strings", () => {

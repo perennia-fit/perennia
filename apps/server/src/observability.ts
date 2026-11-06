@@ -83,6 +83,9 @@ export function createSentryCrashReporterFromEnv(
     environment: env.NODE_ENV,
     release,
     sendDefaultPii: false,
+    // A request body holds whatever was being written, a User Profile's health text
+    // or a Dose. The SDK captures it by default, whatever `sendDefaultPii` says.
+    integrations: [Sentry.httpIntegration({ maxIncomingRequestBodySize: "none" })],
     beforeSend(event: unknown) {
       return scrubSentryEvent(event);
     }
@@ -144,26 +147,33 @@ export function scrubObservabilityData(value: unknown): unknown {
  * `values` is a filtered key (User Profile), and Sentry keeps an event's exceptions
  * under `exception.values`. The list itself is safe to keep, so only its items are
  * scrubbed: `value`, the message, is still filtered, and the type and stack stay.
+ *
+ * `request.data` is the raw request body as a string, so filtering by key can't
+ * reach the values in it. It always goes, in case an integration captures it again.
  */
 function scrubSentryEvent(event: unknown): unknown {
   const scrubbed = scrubObservabilityData(event);
-  if (
-    !isRecord(event) ||
-    !isRecord(scrubbed) ||
-    !isRecord(event.exception) ||
-    !isRecord(scrubbed.exception) ||
-    !Array.isArray(event.exception.values)
-  ) {
+  if (!isRecord(event) || !isRecord(scrubbed)) {
     return scrubbed;
   }
 
-  return {
-    ...scrubbed,
-    exception: {
+  const result = { ...scrubbed };
+  if (isRecord(scrubbed.request)) {
+    const { data: _body, ...request } = scrubbed.request;
+    result.request = request;
+  }
+  if (
+    isRecord(event.exception) &&
+    isRecord(scrubbed.exception) &&
+    Array.isArray(event.exception.values)
+  ) {
+    result.exception = {
       ...scrubbed.exception,
       values: scrubObservabilityData(event.exception.values)
-    }
-  };
+    };
+  }
+
+  return result;
 }
 
 function readCrashReportingConfig(env: CrashReportingEnv) {

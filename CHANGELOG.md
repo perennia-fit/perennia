@@ -94,6 +94,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Fixed
 
+- **Server crash reports no longer carry request bodies.** With crash reporting
+  on, a server error could send what was being written to Sentry.
 - **A malformed id list in a synced row no longer fails Agent reads.** A raw array
   holding an entry that can't be turned into a string now reads as an empty list.
 - **A second device's seed no longer overrides a built-in Compound renamed after

@@ -653,12 +653,17 @@ is approved: if it needs a change, the change is made in this spec, in the same 
         `shouldFilterKey` replaces the whole subtree under a filtered key, and `payload`,
         `changes`, `beforeimage` and `afterimage` are already filtered, so sync payloads and
         Activity Log images are covered today.
-    *   The agent route bodies are one new carrier. A failed query is the other: Drizzle's
+    *   The agent route bodies are one new carrier. A failed query is another: Drizzle's
         `DrizzleQueryError` puts the bound params, and so the section values, into `message` and
         `stack`, and the scrubber filters by key only. `serializeErrorForObservability`, which
         the logger and Sentry both use, therefore reduces any error with `query`, `params` or
         `parameters` to its type, a fixed message, and the `code` and constraint name of the
         error and its `cause`.
+    *   The raw request body is the third, on any route, `/sync/push` included: by default the
+        Sentry SDK attaches it to an event as the string `request.data`, whatever
+        `sendDefaultPii` says, and the key filter can't read a string. So `sdk.init` sets
+        `httpIntegration({ maxIncomingRequestBodySize: "none" })`, and `beforeSend` always
+        removes `request.data` as the backstop.
     *   Sentry keeps an event's exceptions under `exception.values`, so `beforeSend` exempts that
         one path from the `values` filter and scrubs its items. An item's `value`, the message,
         stays filtered.
@@ -1126,7 +1131,7 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 44 | `apps/server/test/user-profile-sync.test.mjs` | Create | Push and pull tests |
 | 45 | `apps/server/test/sync-convergence.test.mjs` | Modify | Two-device convergence |
 | 46 | `apps/server/test/agent-mcp.test.mjs` | Modify | Tool list and redaction through MCP |
-| 47 | `apps/server/test/observability.test.mjs` | Modify | Scrubbed keys |
+| 47 | `apps/server/test/observability.test.mjs`, `apps/server/test/observability-sentry-sdk.test.mjs` | Modify, Create | Scrubbed keys; the real SDK sends no request body |
 | 48 | `apps/server/test/account-deletion-purge.test.mjs` | Modify | Purge removes rows |
 | 49 | `apps/mobile/test/data/user_profile_repository_test.dart` | Create | Repository tests |
 | 50 | `apps/mobile/test/features/sync/sync_repository_test.dart` | Modify | Device push and pull |
@@ -1434,7 +1439,9 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     `agent_list_activity` returns redacted values for a Health & limitations change.
 *   **File 47:** assert that `sections` and `values` are scrubbed, that a real
     `DrizzleQueryError` holding a profile payload reaches the logger and Sentry with no query
-    text or params, and that `beforeSend` keeps `exception.values` with each message filtered.
+    text or params, that `beforeSend` keeps `exception.values` with each message filtered and
+    removes `request.data`, and, on the real SDK with a stubbed transport and a real HTTP
+    request, that a 500 on `/agent/profile/batch-write` sends no request body.
 *   **File 48:** assert that `user_profile_sections` is empty for the user after purge.
 *   **File 49** (in-memory SQLite):
     *   save and watch; unset versus none; clear a field;
