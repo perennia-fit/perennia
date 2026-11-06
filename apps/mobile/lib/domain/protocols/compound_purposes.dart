@@ -51,9 +51,9 @@ const Map<String, List<String>> seedCompoundPurposeIds = <String, List<String>>{
 };
 
 /// The instant every seeded Purpose and OTC Compound row is stamped with, the
-/// one the Focus seed uses. It is fixed so a real edit on any device is always
-/// newer: a device that seeds before its first pull cannot win
-/// last-writer-wins over a rename made elsewhere (D3).
+/// one the Focus seed uses. It is fixed so an edit made after that date on any
+/// device is newer, and a device that seeds before its first pull cannot win
+/// last-writer-wins over such an edit; an older edit can still lose (D3).
 final DateTime compoundSeedTimestamp = DateTime.utc(2026, 10, 24);
 
 /// Refusal codes of [validatePurposeName], shared with the agent API.

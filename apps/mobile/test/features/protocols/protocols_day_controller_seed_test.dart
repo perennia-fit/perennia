@@ -9,9 +9,9 @@ import 'package:perennia/features/protocols/controllers/protocols_day_controller
 const _creatineId = '019200ff-0000-7000-8000-000000000001';
 
 /// Who runs the seed tag backfill (docs/designs/compound-purposes.md, D3): the
-/// controller on a device with no sync account, and `SyncRepository` on one
-/// with an account. [ProtocolsRepository] has no auth, so this rule lives in
-/// the controller.
+/// controller on a signed-out device, and `RepositorySyncCycleRunner` on a
+/// signed-in one. [ProtocolsRepository] has no auth, so this rule lives in the
+/// controller.
 void main() {
   final warnAboutMultipleDatabases =
       driftRuntimeOptions.dontWarnAboutMultipleDatabases;

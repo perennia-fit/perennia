@@ -125,19 +125,17 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
       for (final purpose in purposes) purpose.id: purpose.name.toLowerCase(),
     };
 
-    // Search matches the name or any active Purpose's name, and the filter one
-    // Purpose — never a substance type/legality field, which the model never
-    // carries.
-    final matches = compounds.where((compound) {
-      if (filterId != null && !compound.purposeIds.contains(filterId)) {
-        return false;
-      }
-      return _query.isEmpty ||
-          compound.name.toLowerCase().contains(_query) ||
-          compound.purposeIds.any(
-            (id) => lowerPurposeNames[id]?.contains(_query) ?? false,
-          );
-    }).toList(growable: false);
+    final matches = compounds
+        .where(
+          (compound) => compoundMatchesFilter(
+            lowerName: compound.name.toLowerCase(),
+            purposeIds: compound.purposeIds,
+            lowerPurposeNames: lowerPurposeNames,
+            lowerQuery: _query,
+            filterId: filterId,
+          ),
+        )
+        .toList(growable: false);
     final matchedIds = matches.map((compound) => compound.id).toSet();
     final compoundById = <String, CompoundRecord>{
       for (final compound in compounds) compound.id: compound,
@@ -230,11 +228,11 @@ class _CompoundListScreenState extends ConsumerState<CompoundListScreen> {
                   ? Center(
                       key: CompoundListScreen.emptyStateKey,
                       child: Text(
-                        _query.isNotEmpty
-                            ? l10n.compoundListNoMatches
-                            : filterId != null
-                                ? l10n.purposeFilterEmpty
-                                : l10n.compoundListEmpty,
+                        compoundFilterEmptyMessage(
+                          l10n,
+                          hasQuery: _query.isNotEmpty,
+                          hasFilter: filterId != null,
+                        ),
                         style: TextStyle(color: colors.textSecondary),
                       ),
                     )

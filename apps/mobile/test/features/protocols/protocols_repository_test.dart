@@ -821,7 +821,10 @@ void main() {
             'General health',
           ],
         );
-        expect(purposes.every((purpose) => purpose.isStarter), isTrue);
+        expect(
+          purposes.map((p) => p.id).toSet(),
+          starterPurposes.map((s) => s.id).toSet(),
+        );
         expect(
           purposes.every((purpose) => purpose.updatedAt == seedStamp),
           isTrue,
@@ -1290,7 +1293,7 @@ void main() {
         expect(purposes.last.id, id);
         expect(purposes.last.name, 'Joints');
         expect(purposes.last.sortOrder, 6);
-        expect(purposes.last.isStarter, isFalse);
+        expect(starterPurposes.map((s) => s.id), isNot(contains(id)));
         final log = await logFor(AppDatabase.purposesTable, id);
         expect(log.single.actor, 'manual');
       });
@@ -1389,9 +1392,7 @@ void main() {
           (await compoundRow(created.compoundId)).purposeIds,
           jsonEncode(<String>[id]),
         );
-        final byId =
-            await repositories.protocols.purposes.watchAllById().first;
-        expect(byId[id]!.isArchived, isTrue);
+        expect((await purposeRow(id)).deletedAt, isNotNull);
       });
 
       test('undoing an archive restores the Purpose', () async {

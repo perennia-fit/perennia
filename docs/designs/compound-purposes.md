@@ -290,7 +290,8 @@ spec that grows the library (see [Risks](#risks-and-mitigations)).
     longer show General health. Compounds tagged General health keep the tag.
     Undoing the archive from the Activity Log restores the Purpose, and the tag
     shows again. If an active Purpose named "General health" exists by then,
-    the undo is reported as not applied (`duplicatePurposeName`).
+    the undo is reported as not applied (`duplicatePurposeName`) in the app; D8
+    says why an Agent undo differs.
 
 ### CUJ 9: An Agent does the same
 
@@ -407,7 +408,16 @@ A Purpose is a row in a new table, modelled on `focuses` but without a color.
     still holds `'[]'`, the app writes only `purpose_ids`. It keeps `updated_at`
     and writes no Activity Log entry, because the log already holds this
     version's entry and nothing needs pushing. A local list that isn't `'[]'`
-    was stored by a build that has the column, so it is left alone.
+    was stored by a build that has the column, so it is left alone. The restore
+    has two limits. First, it covers an edit made after the upgrade's full pull.
+    A Sync Run pushes before it pulls, so an edit made between the upgrade and
+    that pull logs an explicit `purpose_ids: '[]'` and pushes it, which clears
+    the tags by whole-row last-writer-wins, and the earlier list survives only
+    as an Activity Log loser. This is accepted because the window needs an
+    offline edit on the first run after the upgrade. Second, the restore doesn't
+    change the Activity Log. An entry a schema-65 build wrote has no
+    `purpose_ids` key, so undo reads it as `'[]'` and refuses to undo that older
+    edit as a conflict. This is accepted because the refusal overwrites nothing.
 *   **The Protocols domain's privacy is unchanged.** Purposes are Protocols
     data:
     *   they sit behind the Protocols lock;
@@ -501,7 +511,8 @@ Exercise's Focuses are `focus_ids`. There is no join table:
         pushes six Compound rows newer than a rename made on the first device,
         and last-writer-wins keeps the seed's name.
     *   **The fix:** the insert stamps the fixed seed timestamp, as the Focus
-        seed does. A real edit on any device is always newer than it.
+        seed does. An edit made after that date on any device is newer than
+        it. An older edit can lose (see Risks).
 *   **Backfill on upgrade.** A device upgrading from schema 65 already holds
     the six rows, untagged. `backfillSeedPurposes` tags each seed row that is
     **untouched**, which means all of:
@@ -541,7 +552,8 @@ Exercise's Focuses are `focus_ids`. There is no join table:
         (stamp, device), so an unchanged stamp would lose to the device's own
         pending `otc_seed` entry and the tags would never reach the server.
         Any edit made elsewhere after this device seeded still wins on first
-        sign-in, and an account with no such edit receives the tags.
+        sign-in, and an account whose row is older than this device's seed
+        receives the tags.
         On a signed-in device, `RepositorySyncCycleRunner` runs it
         instead, after the pull of each Sync Run that gets that far, before the
         run's final push. So it runs after the full pull that follows the
@@ -774,6 +786,16 @@ member order.
     *   **Duplicate:** a name equal to another active Purpose's name, trimmed
         and case-insensitive, is rejected, `duplicate_purpose_name`.
     *   **Stored trimmed.** Archived Purposes don't count as duplicates.
+    *   **No maximum length:** names are unbounded, as Compound and Protocol
+        names are, because the effect stays in the caller's own account and the
+        sync path treats payloads as opaque. A limit would be a new
+        golden-vectored rule and needs a change to this spec.
+    *   **Agent undo isn't checked:** the duplicate rule applies to writes and
+        the app's undo. `POST /agent/activity/undo-batch` runs no name check, so
+        it can leave two active Purposes with one name. This is accepted because
+        sync can already reach that state through two devices, reads and filter
+        rows tolerate it, a rename or archive resolves it, and a refusal would
+        need a new undo outcome outside D9's contract diff.
 *   **Purpose ids on a Compound write:**
     *   **Duplicates:** repeated ids are collapsed, keeping the first.
     *   **Agent writes:** an id that isn't an active Purpose is rejected,
@@ -1005,6 +1027,18 @@ Let the Purpose filter alone narrow by Purpose.
     device's seed already loses to the pending `otc_seed` entry a schema-65
     device stamped with the current time; that needs a device seeding on the
     old build after the edit, and its loser is in the Activity Log.
+*   **A fresh device's seed can beat an old edit.** The seed stamp is
+    2026-10-24, so an edit made before that date on another device loses to a
+    fresh device's seed on its first push, and a portable-archive row older than
+    the stamp is skipped on a freshly seeded device. *Mitigation:* the loser is
+    in the Activity Log; moving the stamp earlier would be a change to D3.
+*   **Seed tags that don't reach the server.** A tagged seed entry loses to a
+    newer untagged row from a device still on schema 65. The pull has no
+    `purpose_ids` key, so the local tags stay, and the row counts as touched, so
+    the backfill skips it. The app shows the tags while Agent reads return none.
+    *Mitigation:* nothing is lost on the device, and it heals when this device
+    next edits that Compound or another device with only `otc_seed` entries
+    backfills the row.
 *   **Concurrent tag edits on two devices.** The tags are one field, so one
     device's list wins. *Mitigation:* the Activity Log keeps the loser
     (Alternative B records why per-tag rows aren't worth it).
@@ -1317,8 +1351,7 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Type / Scope**: domain records.
 *   **Proposed Changes**:
     *   **`PurposeRecord`:** `id`, `name`, `sortOrder`, `updatedAt`,
-        `deletedAt`, getter `isArchived`, and `isStarter` (its id is in
-        `starterPurposes`).
+        `deletedAt`.
     *   **`CompoundRecord`:** gains `purposeIds`, the stored list.
     *   **`CompoundScheduleOptionRecord`:** gains `purposeIds`, for the picker's
         row of a Compound it just created (file 33).
@@ -1348,8 +1381,8 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Type / Scope**: a repository, a `part of training_repositories.dart`,
     modelled on `focus_repository.dart`.
 *   **Proposed Changes**:
-    *   **Reads:** `watchActive()`, `listActive()` (ordered by `sortOrder`,
-        then name) and `watchAllById()`.
+    *   **Reads:** `watchActive()` and `listActive()` (ordered by `sortOrder`,
+        then name).
     *   **Writes:**
         *   `create(name)` appends at the end of the order;
         *   `rename(id, name)`, `reorder(List<String> ids)` and `archive(id)`.
@@ -1365,7 +1398,8 @@ this PR changes no golden vectors, contract or sync shape.
         gains `duplicatePurposeName`, reported by `_purposeUndoConflicts(entries)`
         next to `_mealDependentUndoConflicts` in `training_repositories.dart`.
         `undoConflictMessage` gets a branch for it, with its own ARB string
-        (file 36).
+        (file 36). This refusal is the app's; an Agent undo has no such check
+        (D8).
 
 #### 15. `apps/mobile/lib/data/repositories/training_repositories.dart` and `plan_sync_repository.dart` (Modify)
 
@@ -1628,7 +1662,11 @@ this PR changes no golden vectors, contract or sync shape.
     *   **Its layout** copies the `_FocusChips` row from
         `exercise_catalog_picker.dart`: a `Semantics` label, then a sideways
         `SingleChildScrollView` holding All followed by one chip per Purpose.
-    *   It renders nothing when there are no active Purposes.
+    *   Callers omit it when there are no active Purposes, because they also
+        drop its spacing.
+    *   The file also holds `compoundMatchesFilter` and
+        `compoundFilterEmptyMessage`, the one search-and-filter rule and empty
+        message shared by the list and the picker.
 
 #### 33. `apps/mobile/lib/features/protocols/widgets/compound_picker_sheet.dart` (Modify)
 
@@ -1639,7 +1677,8 @@ this PR changes no golden vectors, contract or sync shape.
     here reads its tags from `CompoundScheduleOptionRecord.purposeIds` (files 12
     and 15), because the sheet keeps the list it read when it opened. A filter
     with nothing to show and no search says "No compounds with this purpose.",
-    in the list too.
+    in the list too. It filters with `compoundMatchesFilter` and picks its empty
+    message with `compoundFilterEmptyMessage`, both from file 32.
 
 #### 34. `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart` (Modify)
 
@@ -1647,7 +1686,9 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Proposed Changes**:
     *   **List:** add `PurposeFilterRow` under search, make search match active
         Purpose names, and add the app bar overflow menu with **Purposes**,
-        which pushes `PurposeManagerScreen`.
+        which pushes `PurposeManagerScreen`. It filters with
+        `compoundMatchesFilter` and picks its empty message with
+        `compoundFilterEmptyMessage`, both from file 32.
     *   **`CompoundEditorSheet`:** gains `initialPurposeIds` and a Purposes
         chip wrap (`FocusChip(icon: null)`), keeping any archived id attached.
     *   **Docstrings:** update the class docstrings to the narrowed rule.
@@ -1740,8 +1781,9 @@ this PR changes no golden vectors, contract or sync shape.
 *   **`apps/mobile/test/features/protocols/protocols_day_controller_seed_test.dart`
     (Create):** a device with no account backfills; a signed-out device leaves
     rows it synced to the next signed-in Sync Run and still tags rows that never
-    synced; a signed-in device doesn't backfill; a failed auth read skips it and
-    the next open retries.
+    synced; the no-account backfill stamps one second past the row; a signed-in
+    device doesn't backfill; a failed auth read skips it and the next open
+    retries.
 *   **`apps/mobile/test/features/sync/sync_cycle_runner_test.dart`:** the
     backfill runs after the drained pull and not when a push or a pull throws,
     and pending backfill rows are pushed in the same run.
@@ -1753,7 +1795,9 @@ this PR changes no golden vectors, contract or sync shape.
     tags an older build dropped from a row it applied, with no entry and no
     push, and the next edit pushes them; an older version, the same stamp from
     another device, and the same version over a row holding a list restore
-    nothing.
+    nothing; a device that backfilled with no account loses to another device's
+    newer removal and rename on both devices, an account with no edit receives
+    the tags, and the tags go up after the seed entry they amend.
 *   **`apps/server/test/protocols-sync.test.mjs`:**
     *   `purposes` round-trips;
     *   a Compound push without `purpose_ids` keeps the stored list, and an
@@ -1825,8 +1869,8 @@ the items each one must pass.
     pushes them). A device that upgrades with no account, backfills, and then
     signs in for the first time is covered in both too: against a server
     holding another device's newer removal and rename, it ends untagged and
-    renamed and the server's row is unchanged, and an account with no edit
-    receives the tags.
+    renamed and the server's row is unchanged, and an account whose row is
+    older than this device's seed receives the tags.
 *   **V5. Tests:** the tests each PR adds pass inside its gate run: file 10 for
     PR 1, file 41 for PR 2. They include the repository tests against
     in-memory SQLite, the kill-and-reopen test and the accessibility checks.
