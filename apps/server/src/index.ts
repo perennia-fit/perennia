@@ -1324,6 +1324,8 @@ export {
   INTEGRATION_DATA_CLASS_CONSENTS_SYNC_ENTITY,
   LOGGED_SETS_SYNC_ENTITY,
   MEALS_SYNC_ENTITY,
+  PURPOSES_SYNC_ENTITY,
+  pushPurposesInTransaction,
   SYNC_PROTOCOL_VERSION,
   SyncPulledChangeSchema,
   SyncPullRequestSchema,

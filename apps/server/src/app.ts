@@ -410,6 +410,7 @@ import {
   PROTOCOL_SKIPS_SYNC_ENTITY,
   EXERCISE_CATEGORIES_SYNC_ENTITY,
   FOCUSES_SYNC_ENTITY,
+  PURPOSES_SYNC_ENTITY,
   EXERCISE_GROUP_MEMBERS_SYNC_ENTITY,
   EXERCISE_GROUPS_SYNC_ENTITY,
   EXERCISES_SYNC_ENTITY,
@@ -5483,6 +5484,14 @@ export function createApp(options: CreateAppOptions = {}) {
         break;
       case FOCUSES_SYNC_ENTITY:
         result = await syncStore.pushFocuses({
+          userId: session.userId,
+          correlationId: requestCorrelationId(context),
+          deviceId: requestBody.deviceId,
+          changes: requestBody.changes
+        });
+        break;
+      case PURPOSES_SYNC_ENTITY:
+        result = await syncStore.pushPurposes({
           userId: session.userId,
           correlationId: requestCorrelationId(context),
           deviceId: requestBody.deviceId,

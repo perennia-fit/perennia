@@ -80,6 +80,14 @@ final class RepositorySyncCycleRunner {
           previousCursor = pull.nextCursor;
         }
 
+        // After the drained pull, so it sees what other devices did to a seed
+        // Compound, and before the pending check, so this run pushes what it
+        // wrote. A failed push or pull never reaches it. A no-op after its
+        // first pass: its rows count as pending on a pass that had no progress,
+        // which the no-progress limit tolerates because the next push clears
+        // them (docs/designs/compound-purposes.md, D3).
+        await _repository.backfillSeedPurposes();
+
         final hasPendingChanges = await _repository.hasPendingChanges();
         if (!hasPendingChanges) {
           break;

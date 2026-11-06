@@ -433,8 +433,8 @@ Exercise's Focuses are `focus_ids`. There is no join table:
 
 *   **App decode:** a payload with no `purpose_ids` key keeps the local value
     (`_imageNonNullStringIfPresent`, because the column is NOT NULL).
-*   **Server:** `SYNC_CARRY_FORWARD_PAYLOAD_KEYS` gains an entry for
-    `compounds` with `["purpose_ids"]`, so a push without it, from an older
+*   **Server:** `SYNC_CARRY_FORWARD_PAYLOAD_KEYS`'s `compounds` entry gains
+    `purpose_ids`, next to `is_favorite`, so a push without it, from an older
     app or an Agent edit that omits it, keeps the stored list.
 *   **Undo:** an undo image written before this change has no `purpose_ids`
     key; `_activityLaterAddedKeyDefaults[compounds]` gains
@@ -506,11 +506,13 @@ Exercise's Focuses are `focus_ids`. There is no join table:
         `ProtocolDayController.ensureOtcLibrarySeeded` runs it after seeding.
         `ProtocolsRepository` has no auth, so the rule lives in the controller;
         if the auth read fails it skips the backfill, and the next open retries.
-        On a device with a sync
-        account, `SyncRepository` runs it at the end of each successful Sync
-        Run instead, so it runs after the full pull that follows the upgrade
-        (D1) and sees edits made on other devices first. It is cheap (six rows,
-        one Activity Log query) and does nothing once every row is touched.
+        On a device with a sync account, `RepositorySyncCycleRunner` runs it
+        instead, after the pull of each Sync Run that gets that far, before the
+        run's final push. So it runs after the full pull that follows the
+        upgrade (D1) and sees edits made on other devices first, a failed push
+        or pull never reaches it, and the same run pushes what it wrote. It is
+        cheap (six rows, one Activity Log query) and does nothing once every
+        row is touched.
     *   **A fresh install** inserts the rows already tagged, so the backfill
         finds no row with `'[]'` and does nothing.
 
@@ -775,7 +777,9 @@ The contract diff shows:
 *   the two new operations;
 *   `AgentPurpose`, `AgentPurposeListResponse` and the batch-write schemas;
 *   `purposeIds` on `AgentCompound` and its batch-write item;
-*   the `purpose` query parameter.
+*   the `purpose` query parameter;
+*   `purposes` in the two sync entity enums, those of `SyncPushRequest` and
+    `SyncPulledChange` (D1).
 
 `agent-client.ts`, the Dart API client and `api-operations.md` are
 regenerated. The agent skill reference gains `list-purposes` and
@@ -953,8 +957,9 @@ Let the Purpose filter alone narrow by Purpose.
 *   **The backfill can beat an unpulled edit.** On a device with a sync
     account, the backfill writes a fresh stamp. An edit to the same seed row on
     another device that this device hasn't pulled yet loses. *Mitigation:* the
-    backfill runs only after a successful Sync Run, which after the upgrade is
-    a full pull (D1), so only an edit made between that pull and the push can
+    backfill runs only after a Sync Run's pull has drained, which after the
+    upgrade is a full pull (D1), so only an edit made between that pull and the
+    push can
     lose; the loser is in the Activity Log.
 *   **Concurrent tag edits on two devices.** The tags are one field, so one
     device's list wins. *Mitigation:* the Activity Log keeps the loser
@@ -1213,7 +1218,7 @@ this PR changes no golden vectors, contract or sync shape.
 | 14 | `apps/mobile/lib/data/repositories/purpose_repository.dart`; `apps/mobile/lib/features/activity/undo_conflict_message.dart` | Create; Modify |
 | 15 | `apps/mobile/lib/data/repositories/training_repositories.dart` and `plan_sync_repository.dart` | Modify |
 | 16 | `apps/mobile/lib/data/seeds/otc_compound_seed.dart` | Modify |
-| 17 | `apps/mobile/lib/features/sync/repositories/sync_repository.dart` | Modify |
+| 17 | `apps/mobile/lib/features/sync/repositories/sync_repository.dart` and `services/sync_cycle_runner.dart` | Modify |
 | 18 | `apps/mobile/lib/features/activity/repositories/activity_feed_repository.dart` | Modify |
 | 19 | `apps/mobile/lib/data/repositories/portable_archive_repository.dart` | Modify |
 | 20 | `apps/mobile/lib/features/protocols/controllers/protocols_day_controller.dart` | Modify |
@@ -1330,7 +1335,7 @@ this PR changes no golden vectors, contract or sync shape.
         actor `otc_purpose_seed`, applying the untouched test to each seed
         row in one transaction. `ProtocolDayController.ensureOtcLibrarySeeded`
         calls it when the device has no sync account (file 20), and
-        `SyncRepository` when it has one (file 17).
+        `RepositorySyncCycleRunner` when it has one (file 17).
     *   **Compound writes:**
         *   `_createCompound` stores `purposeIds`, as `'[]'` when the draft
             gives none.
@@ -1360,7 +1365,7 @@ this PR changes no golden vectors, contract or sync shape.
     must say that the seed still has no type or legality field, and that its
     Purpose tags live in `compound_purposes.dart`. The rows don't change.
 
-#### 17. `apps/mobile/lib/features/sync/repositories/sync_repository.dart` (Modify)
+#### 17. `apps/mobile/lib/features/sync/repositories/sync_repository.dart` and `services/sync_cycle_runner.dart` (Modify)
 
 *   **Type / Scope**: sync client.
 *   **Proposed Changes**:
@@ -1372,8 +1377,15 @@ this PR changes no golden vectors, contract or sync shape.
         `_pushPendingPlanEntityWithClient`.
     *   **Apply order:** `_syncApplyOrder` gives `purposesTable` 0, next to
         Focus.
-    *   **Backfill:** at the end of each successful Sync Run, call
-        `ProtocolsRepository.backfillSeedPurposes()` (D3).
+    *   **Backfill (D3):** add `Future<void> backfillSeedPurposes()` to
+        `SyncCycleRepository`, with `SyncRepository` forwarding to
+        `ProtocolsRepository.backfillSeedPurposes()`.
+        `RepositorySyncCycleRunner.run` decides a Sync Run's success, so it
+        makes the call: after the inner pull loop has drained and before
+        `hasPendingChanges()`, once per drain pass. It is a no-op after the
+        first. Its writes count as pending on a pass with no progress, which
+        the runner's limit of two no-progress passes tolerates, because the
+        next pass pushes them.
 
 #### 18. `apps/mobile/lib/features/activity/repositories/activity_feed_repository.dart` (Modify)
 
@@ -1473,8 +1485,8 @@ this PR changes no golden vectors, contract or sync shape.
     *   **Pull:** add the table to the pull cursor query and `baseRows`, with
         sort rank 1.5. The entity has no pull parent references.
     *   **Carry-forward:** `SYNC_CARRY_FORWARD_PAYLOAD_KEYS` gains
-        `[COMPOUNDS_SYNC_ENTITY]: ["purpose_ids"]`, with a comment that it is a
-        JSON-encoded string array like `focus_ids`.
+        `[COMPOUNDS_SYNC_ENTITY]: ["is_favorite", "purpose_ids"]`, with a
+        comment that it is a JSON-encoded string array like `focus_ids`.
 
 #### 27. `apps/server/src/app.ts`, `agent-activity.ts`, `index.ts` and `observability.ts` (Modify)
 
@@ -1486,8 +1498,9 @@ this PR changes no golden vectors, contract or sync shape.
     *   **`agent-activity.ts`:** a `PURPOSES_SYNC_ENTITY` entry pushing through
         `pushPurposesInTransaction`, so Agent Purpose writes are undoable.
     *   **`index.ts`:** re-export the new entity constant and push function.
-    *   **`observability.ts`:** add `purposes` to the known entity names, so
-        logs and metrics record it by name and count only.
+    *   **`observability.ts`:** add `purpose`, `purposes`, `purposeid`,
+        `purposeids` and `purposename` to the scrubber's denylist of normalized
+        key names, in the Protocols block, so a Purpose name is never logged.
 
 #### 28. `apps/server/src/agent-protocols.ts` (Modify)
 
@@ -1657,11 +1670,18 @@ this PR changes no golden vectors, contract or sync shape.
 *   **`apps/mobile/test/features/protocols/protocols_day_controller_seed_test.dart`
     (Create):** a device with no account backfills; a signed-in device doesn't;
     a failed auth read skips it and the next open retries.
-*   **`apps/mobile/test/features/sync/sync_repository_test.dart`:** the
-    backfill runs after a successful Sync Run and not after a failed one.
+*   **`apps/mobile/test/features/sync/sync_cycle_runner_test.dart`:** the
+    backfill runs after the drained pull and not when a push or a pull throws,
+    and pending backfill rows are pushed in the same run.
+*   **`apps/mobile/test/features/sync/sync_repository_test.dart`:** Purposes
+    push before Compounds; a pull applies a Purpose; a Compound payload with no
+    `purpose_ids` keeps the local list; a full pull of this device's own
+    unchanged seed rows doesn't touch them, so the backfill still tags them (a
+    last-writer-wins tie, with no Activity Log entry).
 *   **`apps/server/test/protocols-sync.test.mjs`:**
     *   `purposes` round-trips;
-    *   a Compound push without `purpose_ids` keeps the stored list;
+    *   a Compound push without `purpose_ids` keeps the stored list, and an
+        explicit `'[]'` clears it;
     *   CUJ 6: device A empties Creatine's list and renames Cognition and
         syncs; device B seeds, pulls in full, runs the backfill, and syncs;
         both end with an empty list and the new name.

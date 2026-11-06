@@ -503,6 +503,39 @@ export const focuses = pgTable(
   })
 );
 
+// A `Purpose` (CONTEXT.md) on the opaque-payload sync rails, shaped like
+// `focuses` without a color (docs/designs/compound-purposes.md, D1). The six
+// starter Purposes carry FIXED ids on every device, so the key is
+// (user_id, id): with a global id key the first account to edit "Sleep" would
+// own that row. Compounds reference a Purpose softly by id inside their
+// `purpose_ids` payload, so nothing references this table by FK.
+export const purposes = pgTable(
+  "purposes",
+  {
+    id: text("id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: "purposes_user_id_id_pk",
+      columns: [table.userId, table.id]
+    }),
+    userUpdatedAtIndex: index("purposes_user_updated_at_index").on(
+      table.userId,
+      table.updatedAt
+    )
+  })
+);
+
 // A user's `Exercise` (CONTEXT.md) on the opaque-payload sync rails,
 // mirroring `exercise_categories` exactly. Covers both User Library exercises
 // and a user's customization of a Platform exercise (a shadowing copy per

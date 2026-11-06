@@ -16246,6 +16246,7 @@
             "enum": [
               "exercise_categories",
               "focuses",
+              "purposes",
               "exercises",
               "workout_sessions",
               "workout_exercises",
@@ -16994,6 +16995,7 @@
             "enum": [
               "exercise_categories",
               "focuses",
+              "purposes",
               "exercises",
               "workout_sessions",
               "workout_exercises",
