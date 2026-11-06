@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { applyPlatformExerciseCleanup } from "./platform-exercise-cleanup.mjs";
 import {
+  applyPlatformExerciseCleanup,
+  buildRetiredExercises,
+} from "./platform-exercise-cleanup.mjs";
+import {
+  focusIdsForRetired,
   readPlatformExerciseFocusOverrides,
   withSeedFocuses,
 } from "./platform-exercise-focus.mjs";
@@ -253,6 +257,11 @@ const canonicalNames = new Set(
 await main();
 
 async function main() {
+  // Read before anything is written: the retired list is append-only against
+  // the seed this run replaces.
+  const previousSeed = existsSync(outputPath)
+    ? JSON.parse(readFileSync(outputPath, "utf8"))
+    : null;
   const wgerExercises = buildWgerExercises();
   const workoutCoolComparison = await compareAndMergeWorkoutCool(
     canonicalExercises.concat(wgerExercises),
@@ -278,6 +287,19 @@ async function main() {
     .sort((left, right) =>
       left.from_exercise_id.localeCompare(right.from_exercise_id, "en-US"),
     );
+  const categoryNameById = new Map(
+    categories.map((entry) => [entry.id, entry.name]),
+  );
+  const retiredExercises = buildRetiredExercises({
+    previousSeed,
+    sourceRecords: workoutCoolComparison.exercises,
+    cleanup: reviewedCleanup,
+    retiredAt: reviewDecisions.retiredAt,
+    reviewedAt: reviewDecisions.reviewedAt,
+    categories,
+    focusIdsFor: (record) =>
+      focusIdsForRetired(record, categoryNameById.get(record.category_id)),
+  });
 
   const seed = withSeedFocuses({
     metadata: {
@@ -333,6 +355,7 @@ async function main() {
     categories,
     exercise_redirects: exerciseRedirects,
     exercises: allExercises,
+    retired_exercises: retiredExercises,
   }, readPlatformExerciseFocusOverrides());
 
   writeFileSync(outputPath, `${JSON.stringify(seed, null, 2)}\n`);
@@ -700,7 +723,7 @@ function mapWorkoutCoolCategory(record) {
 }
 
 function buildDataLicenseNotice(seed, workoutCoolComparison) {
-  const wgerAttributions = seed.exercises
+  const wgerAttributions = [...seed.exercises, ...seed.retired_exercises]
     .map((entry) => entry.source_attribution)
     .filter((entry) => entry?.source === "wger");
   const authorBuckets = buildWgerAuthorBuckets(wgerAttributions);

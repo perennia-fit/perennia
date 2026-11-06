@@ -118,12 +118,143 @@ export function applyPlatformExerciseCleanup(exercises, manifest) {
 
   return {
     exercises: cleanedExercises,
+    excludedIds,
     redirects,
     stats: {
       excludedExercises: excludedIds.size,
       mergedExercises: redirects.size,
       renamedExercises: replacements.size,
     },
+  };
+}
+
+/**
+ * Builds the seed's `retired_exercises` list from the previous seed and this
+ * run's cleanup.
+ *
+ * The list is append-only: a device may hold any id that ever shipped, and the
+ * `retired_at` stamp is what lets devices that update at different times agree,
+ * so a record once listed never changes. A newly retired id prefers its previous
+ * seed record over the source record, so a corrected name survives.
+ *
+ * `sourceRecords` is the input given to `applyPlatformExerciseCleanup`, so its
+ * ids are not normalized yet. `reviewedAt` is the manifest's top-level timestamp.
+ */
+export function buildRetiredExercises({
+  previousSeed,
+  sourceRecords,
+  cleanup,
+  retiredAt,
+  reviewedAt,
+  categories,
+  focusIdsFor,
+}) {
+  const stamp = String(retiredAt ?? "").trim();
+  if (!stamp || !Number.isFinite(Date.parse(stamp))) {
+    throw new Error("Retired exercises require a valid retiredAt timestamp.");
+  }
+
+  const previousRetired = previousSeed?.retired_exercises ?? [];
+  const previousLive = previousSeed?.exercises ?? [];
+  const previousLiveById = new Map(
+    previousLive.map((exercise) => [exercise.id, exercise]),
+  );
+  const carriedIds = new Set(previousRetired.map((record) => record.id));
+  const sourceById = new Map(
+    sourceRecords.map((record) => [
+      normalizeId(record?.id, "Platform exercise"),
+      record,
+    ]),
+  );
+
+  const newlyRetired = [
+    ...new Set([...cleanup.excludedIds, ...cleanup.redirects.keys()]),
+  ]
+    .filter((id) => !carriedIds.has(id))
+    .map((id) => {
+      const previous = previousLiveById.get(id);
+      if (previous) return retiredRecord(id, previous, previous.focus_ids, stamp);
+      const source = sourceById.get(id);
+      if (!source) {
+        throw new Error(
+          `Newly retired exercise ${id} has no previous seed or source record.`,
+        );
+      }
+      return retiredRecord(id, source, focusIdsFor(source), stamp);
+    });
+
+  if (
+    newlyRetired.length > 0 &&
+    !(Date.parse(stamp) > Date.parse(String(reviewedAt ?? "")))
+  ) {
+    throw new Error(
+      `retiredAt ${stamp} must be later than reviewedAt ${reviewedAt} to retire ${newlyRetired[0].id}.`,
+    );
+  }
+
+  const retired = [...previousRetired, ...newlyRetired].sort((left, right) =>
+    left.id.localeCompare(right.id, "en-US"),
+  );
+  const categoryIds = new Set(categories.map((category) => category.id));
+  for (const record of retired) {
+    if (!categoryIds.has(record.category_id)) {
+      throw new Error(
+        `Retired exercise ${record.id} names unknown category ${record.category_id}.`,
+      );
+    }
+    // By instant, not by string: the seed has both ...Z and ....000Z forms.
+    if (!(Date.parse(record.retired_at) > Date.parse(record.updated_at))) {
+      throw new Error(
+        `Retired exercise ${record.id} has retired_at ${record.retired_at} not later than updated_at ${record.updated_at}.`,
+      );
+    }
+  }
+
+  const retiredIds = new Set(retired.map((record) => record.id));
+  const liveIds = new Set();
+  for (const exercise of cleanup.exercises) {
+    liveIds.add(exercise.id);
+    if (retiredIds.has(exercise.id)) {
+      throw new Error(`Exercise ${exercise.id} is both live and retired.`);
+    }
+    const previous = previousLiveById.get(exercise.id);
+    if (
+      previous &&
+      JSON.stringify(previous.dimension_ids) !==
+        JSON.stringify(exercise.dimension_ids)
+    ) {
+      throw new Error(
+        `Live exercise ${exercise.id} changed dimension_ids from the previous seed.`,
+      );
+    }
+  }
+  for (const { id } of [...previousLive, ...previousRetired]) {
+    if (!liveIds.has(id) && !retiredIds.has(id)) {
+      throw new Error(
+        `Exercise ${id} from the previous seed is neither live nor retired.`,
+      );
+    }
+  }
+
+  return retired;
+}
+
+// The seed format's exact keys and order; other source keys are not copied.
+function retiredRecord(id, record, focusIds, retiredAt) {
+  const sourceAttribution = record.source_attribution;
+  return {
+    id,
+    name: record.name,
+    dimension_ids: record.dimension_ids,
+    category_id: record.category_id,
+    equipment_ids: record.equipment_ids,
+    focus_ids: focusIds,
+    notes: record.notes ?? null,
+    updated_at: record.updated_at,
+    retired_at: retiredAt,
+    ...(sourceAttribution == null
+      ? {}
+      : { source_attribution: sourceAttribution }),
   };
 }
 

@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import {
   AgentApiKeyUnavailableResponseSchema,
@@ -733,7 +733,8 @@ export function createInMemoryAgentCatalogStore(
 
   return {
     async getExerciseById(input) {
-      const resolvedExerciseId = resolvePlatformExerciseId(input.exerciseId);
+      const resolve = callerExerciseIdResolver(exercises, input.userId);
+      const resolvedExerciseId = resolve(input.exerciseId);
       const exercise = filterVisibleExercises(exercises, input.userId).find(
         (candidate) => candidate.id === resolvedExerciseId,
       );
@@ -742,7 +743,7 @@ export function createInMemoryAgentCatalogStore(
     },
     async getExercisesByIds(input) {
       const exerciseIds = new Set(
-        input.exerciseIds.map(resolvePlatformExerciseId),
+        input.exerciseIds.map(callerExerciseIdResolver(exercises, input.userId)),
       );
       const candidates =
         input.includeShadowed === true
@@ -905,6 +906,24 @@ function callerCatalogExercises(
       exercise.library === "platform" ||
       (exercise.library === "user" && exercise.ownerUserId === userId),
   );
+}
+
+/**
+ * An exact id among the caller's exercises wins over a seed redirect, so a
+ * kept exercise reads as itself. It looks only at the caller's rows because
+ * another account's row under a redirect source must not mask the redirect.
+ */
+function callerExerciseIdResolver(
+  exercises: readonly AgentCatalogExercise[],
+  userId: string,
+): (exerciseId: string) => string {
+  const callerIds = new Set(
+    callerCatalogExercises(exercises, userId).map((exercise) => exercise.id),
+  );
+  return (exerciseId) =>
+    callerIds.has(exerciseId)
+      ? exerciseId
+      : resolvePlatformExerciseId(exerciseId);
 }
 
 function filterVisibleExercises(
@@ -1149,6 +1168,10 @@ const platformExerciseRedirects = new Map(
   ]),
 );
 
+/**
+ * The seed redirect's target for `exerciseId`, or the id itself. It does not
+ * know about kept rows: a read for one account uses `loadExerciseIdResolver`.
+ */
 export function resolvePlatformExerciseId(exerciseId: string): string {
   return platformExerciseRedirects.get(exerciseId) ?? exerciseId;
 }
@@ -1156,7 +1179,9 @@ export function resolvePlatformExerciseId(exerciseId: string): string {
 /**
  * Every stored exercise id that `resolvePlatformExerciseId` maps to
  * `exerciseId`: the id itself and each seed redirect's source, so a SQL
- * filter on a Set's `exercise_id` misses none of the exercise's Sets.
+ * filter on a Set's `exercise_id` misses none of the exercise's Sets. It does
+ * not know about kept rows: a read for one account uses
+ * `loadExerciseIdResolver`.
  */
 export function exerciseIdsResolvingTo(exerciseId: string): string[] {
   return [
@@ -1165,6 +1190,43 @@ export function exerciseIdsResolvingTo(exerciseId: string): string[] {
       (redirect) => redirect.toExerciseId === exerciseId,
     ).map((redirect) => redirect.fromExerciseId),
   ];
+}
+
+/** Seed redirects as one account reads them, with its kept exercises applied. */
+export type ExerciseIdResolver = {
+  resolve(id: string): string;
+  idsResolvingTo(id: string): string[];
+};
+
+/**
+ * Loads `userId`'s kept exercises: their rows whose ids are seed redirect
+ * sources. A kept id resolves to itself and is left out of its former target's
+ * ids, so its Sets are not folded into that target. There is no `deletedAt`
+ * filter because an archived row is still the user's own exercise and counts
+ * as kept; its Sets must not start folding into the target when it is archived.
+ */
+export async function loadExerciseIdResolver(
+  db: ServerDatabase,
+  userId: string,
+): Promise<ExerciseIdResolver> {
+  const rows = await db
+    .select({ id: schema.exercises.id })
+    .from(schema.exercises)
+    .where(
+      and(
+        eq(schema.exercises.userId, userId),
+        inArray(schema.exercises.id, [...platformExerciseRedirects.keys()]),
+      ),
+    );
+  const keptIds = new Set(rows.map((row) => row.id));
+
+  return {
+    resolve: (id) => (keptIds.has(id) ? id : resolvePlatformExerciseId(id)),
+    idsResolvingTo: (id) =>
+      exerciseIdsResolvingTo(id).filter(
+        (source) => source === id || !keptIds.has(source),
+      ),
+  };
 }
 
 // Builds the Platform Library slice of the catalog from the bundled wger seed,
@@ -1348,10 +1410,7 @@ export function createDrizzleAgentCatalogStore(
       const store = createInMemoryAgentCatalogStore(
         await loadCatalogForUser(input.userId),
       );
-      return store.getExerciseById({
-        ...input,
-        exerciseId: resolvePlatformExerciseId(input.exerciseId),
-      });
+      return store.getExerciseById(input);
     },
     async getExercisesByIds(input) {
       const store = createInMemoryAgentCatalogStore(

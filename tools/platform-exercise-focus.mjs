@@ -300,6 +300,18 @@ export function applyPlatformExerciseFocuses(exercises, categories, overrides = 
   };
 }
 
+/**
+ * The Focus ids for an exercise retired before it ever had a seed record, in
+ * starter-Focus order. No override or starter lookup: both are keyed to live
+ * exercises, and a retired record is frozen once written.
+ */
+export function focusIdsForRetired(record, categoryName) {
+  const keys = focusKeysFor(record, categoryName);
+  return platformFocuses
+    .filter((entry) => keys.has(entry.key))
+    .map((entry) => entry.id);
+}
+
 // Keeps `focus_ids` beside `equipment_ids` so a seed diff reads per exercise.
 function withFocusIdsAfterEquipment(exercise, focusIds) {
   const next = {};

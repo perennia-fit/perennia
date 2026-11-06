@@ -686,7 +686,9 @@ type LoggedSetMutationDatabase = Pick<ServerDatabase, "select" | "insert" | "upd
 
 // The opaque sync tables a device seeds under FIXED ids shared by every
 // account: the Platform exercise categories and starter Focuses (bundled
-// platform_exercises.json), the default Meal Types and the OTC seed Compounds.
+// platform_exercises.json), the default Meal Types, the OTC seed Compounds, and
+// the exercises a device keeps when the library retires an id they have history
+// under (bundled `retired_exercises`, docs/designs/platform-library-updates.md).
 // The app pushes those seeded rows, and a user's rename/reorder/archive of
 // them, as ordinary LWW rows, so these tables are keyed (user_id, id) and every
 // read and write here is scoped by both columns. TENANT ISOLATION comes from
@@ -699,7 +701,8 @@ type AccountKeyedSyncTable =
   | typeof schema.focuses
   | typeof schema.purposes
   | typeof schema.mealTypes
-  | typeof schema.compounds;
+  | typeof schema.compounds
+  | typeof schema.exercises;
 
 async function pushAccountKeyedSyncRowsInTransaction(
   transaction: LoggedSetMutationDatabase,
@@ -1026,32 +1029,10 @@ export async function pushExercisesInTransaction(
     serverClock: Date;
   }
 ): Promise<SyncPushResult> {
-  return pushOpaqueSyncRowsInTransaction(transaction, {
+  return pushAccountKeyedSyncRowsInTransaction(transaction, {
     ...input,
-    entityTable: EXERCISES_SYNC_ENTITY,
-    async readExisting(id) {
-      const rows = await transaction
-        .select({
-          userId: schema.exercises.userId,
-          updatedAt: schema.exercises.updatedAt,
-          deviceId: schema.exercises.deviceId,
-          payload: schema.exercises.payload
-        })
-        .from(schema.exercises)
-        .where(eq(schema.exercises.id, id))
-        .limit(1);
-      return rows[0];
-    },
-    async writeRow(existing, row) {
-      if (existing === undefined) {
-        await transaction.insert(schema.exercises).values(row);
-      } else {
-        await transaction
-          .update(schema.exercises)
-          .set(row)
-          .where(eq(schema.exercises.id, row.id));
-      }
-    }
+    table: schema.exercises,
+    entityTable: EXERCISES_SYNC_ENTITY
   });
 }
 

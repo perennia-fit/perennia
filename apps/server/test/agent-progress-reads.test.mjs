@@ -609,6 +609,118 @@ test(
   }
 );
 
+// Platform Library Updates: a user's row under a redirect source is a kept
+// exercise, so its Sets stop folding into the merge target, archived or not.
+for (const { label, archived } of [
+  { label: "a kept exercise", archived: false },
+  { label: "an archived kept exercise", archived: true }
+]) {
+  test(
+    `${label} reads only its own Sets, and its merge target does not include them`,
+    { skip },
+    async () => {
+      await applyMigrations(databaseUrl);
+      const database = createDatabaseClient(databaseUrl);
+      const userId = `agent-progress-${randomUUID()}`;
+      const [redirect] = PLATFORM_EXERCISE_SEED_REDIRECTS;
+      try {
+        await seedUser(database, userId);
+        await seedKeptAndTargetHistory(database, userId, redirect);
+        await database.db.insert(schema.exercises).values(
+          opaqueRow({
+            id: redirect.fromExerciseId,
+            userId,
+            deleted: archived,
+            payload: { library_origin: "user", name: "Kept" }
+          })
+        );
+        const store = progressStore(database, [
+          { ...catalogExercise(null, redirect.toExerciseId, "Target"), library: "platform" },
+          catalogExercise(userId, redirect.fromExerciseId, "Kept", { active: !archived })
+        ]);
+
+        assert.deepEqual(
+          await workoutIdsRead(store, userId, redirect.fromExerciseId),
+          [`${userId}-w-oct28`, `${userId}-w-oct3`]
+        );
+        assert.deepEqual(
+          await workoutIdsRead(store, userId, redirect.toExerciseId),
+          [`${userId}-w-oct29`, `${userId}-w-oct4`]
+        );
+
+        const { newBests } = await store.readNewBests({
+          userId,
+          from: "2026-10-05",
+          to: "2026-10-31"
+        });
+        const target = [redirect.toExerciseId, "Target", `${userId}-w-oct29`];
+        assert.deepEqual(
+          newBests.map((best) => [best.exerciseId, best.exerciseName, best.workoutId]),
+          // Newest first. An archived exercise leaves New bests, and its Sets
+          // do not move to the target.
+          archived
+            ? [target]
+            : [target, [redirect.fromExerciseId, "Kept", `${userId}-w-oct28`]]
+        );
+      } finally {
+        await database.close();
+      }
+    }
+  );
+}
+
+test(
+  "a user with no kept row still folds a redirect source's Sets into its target, whoever else kept it",
+  { skip },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-progress-${randomUUID()}`;
+    const keeperId = `agent-progress-${randomUUID()}`;
+    const [redirect] = PLATFORM_EXERCISE_SEED_REDIRECTS;
+    try {
+      await seedUser(database, userId);
+      await seedUser(database, keeperId);
+      await seedKeptAndTargetHistory(database, userId, redirect);
+      await database.db.insert(schema.exercises).values(
+        opaqueRow({
+          id: redirect.fromExerciseId,
+          userId: keeperId,
+          payload: { library_origin: "user", name: "Kept" }
+        })
+      );
+      const store = progressStore(database, [
+        { ...catalogExercise(null, redirect.toExerciseId, "Target"), library: "platform" }
+      ]);
+
+      assert.deepEqual(await workoutIdsRead(store, userId, redirect.toExerciseId), [
+        `${userId}-w-oct28`,
+        `${userId}-w-oct29`,
+        `${userId}-w-oct3`,
+        `${userId}-w-oct4`
+      ]);
+      assert.deepEqual(await workoutIdsRead(store, userId, redirect.fromExerciseId), [
+        `${userId}-w-oct28`,
+        `${userId}-w-oct29`,
+        `${userId}-w-oct3`,
+        `${userId}-w-oct4`
+      ]);
+
+      const { newBests } = await store.readNewBests({
+        userId,
+        from: "2026-10-05",
+        to: "2026-10-31"
+      });
+      assert.deepEqual(
+        newBests.map((best) => [best.exerciseId, best.exerciseName, best.workoutId]),
+        [[redirect.toExerciseId, "Target", `${userId}-w-oct29`]]
+      );
+    } finally {
+      await database.close();
+    }
+  }
+);
+
 test("the New Bests read refuses a bad range with 400 before the store, as REST and MCP", async () => {
   const { app, calls } = progressApp();
   const today = utcToday();
@@ -831,6 +943,33 @@ function catalogExercise(
     active,
     shadowedPlatformExerciseId: null
   };
+}
+
+/**
+ * Two Workouts on a redirect's source and two heavier ones on its target, one
+ * of each before the New Bests range and one inside it: folded together, the
+ * source's Sets can never be a best.
+ */
+function seedKeptAndTargetHistory(database, userId, redirect) {
+  return seedWorkouts(database, userId, [
+    workout("w-oct3", "2026-10-03", "06:00", "07:00", null, null, {
+      sets: [squatSet(redirect.fromExerciseId, 100, 5)]
+    }),
+    workout("w-oct28", "2026-10-28", "06:00", "07:00", null, null, {
+      sets: [squatSet(redirect.fromExerciseId, 110, 5)]
+    }),
+    workout("w-oct4", "2026-10-04", "06:00", "07:00", null, null, {
+      sets: [squatSet(redirect.toExerciseId, 200, 5)]
+    }),
+    workout("w-oct29", "2026-10-29", "06:00", "07:00", null, null, {
+      sets: [squatSet(redirect.toExerciseId, 210, 5)]
+    })
+  ]);
+}
+
+async function workoutIdsRead(store, userId, exerciseId) {
+  const workouts = await store.readExerciseProgressSets({ userId, exerciseId });
+  return workouts.map((one) => one.workoutId).sort();
 }
 
 function runSet(exerciseId, seconds, fields = {}) {

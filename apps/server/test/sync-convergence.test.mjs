@@ -1186,6 +1186,116 @@ for (const scenario of [
   );
 }
 
+test(
+  "a kept exercise converges across one account's devices: the same retired id at the same stamp by device id, then a later rename with the loser in the Activity Log",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+    assert.notEqual(server.database, null);
+
+    try {
+      const replicas = ["a", "b", "c"].map(
+        (suffix) =>
+          new PlanTreeReplica({
+            name: `Kept Exercise Replica ${suffix}`,
+            deviceId: `device-${suffix}`,
+            server,
+            entityOrder: ["exercises"]
+          })
+      );
+      const [replicaA, replicaB, replicaC] = replicas;
+      const keptId = "01910000-0000-7000-8000-000000000105";
+      const stageKept = (replica, { updatedAt, fields, activityLogId }) => {
+        const before = replica.row("exercises", keptId)?.payload;
+        const payload = {
+          ...(before ?? keptExercisePayload(keptId)),
+          ...fields,
+          updated_at: updatedAt,
+          deleted_at: null
+        };
+        const change = { id: keptId, payload, updatedAt, deletedAt: null };
+        if (activityLogId !== undefined) {
+          Object.assign(change, {
+            activityLogId,
+            actor: "app",
+            batchId: `kept-exercise-${activityLogId}`,
+            beforeImage: before,
+            afterImage: payload,
+            occurredAt: updatedAt
+          });
+        }
+        replica.stageChange("exercises", change);
+      };
+      const assertConverged = ({ deviceId, updatedAt, fields }) => {
+        for (const replica of replicas) {
+          const kept = replica.row("exercises", keptId);
+          assert.equal(kept.deviceId, deviceId, replica.name);
+          assert.equal(kept.updatedAt, updatedAt, replica.name);
+          assert.equal(kept.deletedAt, null, replica.name);
+          for (const [field, value] of Object.entries(fields)) {
+            assert.equal(kept.payload[field], value, `${replica.name} ${field}`);
+          }
+        }
+        assert.equal(replicaA.stateSignature(), replicaC.stateSignature());
+        assert.equal(replicaB.stateSignature(), replicaC.stateSignature());
+      };
+
+      // Each device keeps the retired id on its own, stamped with the record's
+      // retired_at: same id, same stamp. Only the favorite flag differs, so the
+      // winner is visible. Device A pushes first, and the device-id tie-break
+      // still settles every replica on device B's row.
+      const retiredAt = "2026-11-05T00:00:00.000Z";
+      stageKept(replicaA, { updatedAt: retiredAt, fields: { is_favorite: true } });
+      stageKept(replicaB, { updatedAt: retiredAt, fields: { is_favorite: false } });
+      await settlePlanReplicas(replicas);
+      assertConverged({
+        deviceId: "device-b",
+        updatedAt: retiredAt,
+        fields: { name: "Plank", is_favorite: false }
+      });
+
+      // Both devices rename it before seeing each other's edit, A later than B.
+      // B's rename loses to A's and stays recoverable from the Activity Log.
+      const winningAt = "2026-11-05T12:00:00.000Z";
+      const losingAt = "2026-11-05T11:00:00.000Z";
+      const loserActivityId = randomUUID();
+      stageKept(replicaA, { updatedAt: winningAt, fields: { name: "Front Plank" } });
+      stageKept(replicaB, {
+        updatedAt: losingAt,
+        fields: { name: "Hollow Hold" },
+        activityLogId: loserActivityId
+      });
+      await settlePlanReplicas(replicas);
+      assertConverged({
+        deviceId: "device-a",
+        updatedAt: winningAt,
+        fields: { name: "Front Plank" }
+      });
+
+      const [loserEntry] = await server.database.db
+        .select()
+        .from(schema.activityLog)
+        .where(inArray(schema.activityLog.id, [loserActivityId]));
+      assert.equal(loserEntry.entityTable, "exercises");
+      assert.equal(loserEntry.entityId, keptId);
+      assert.equal(loserEntry.beforeImage.name, "Plank");
+      assert.equal(loserEntry.afterImage.name, "Hollow Hold");
+
+      // One account, so one stored row however many devices kept the id.
+      const stored = await server.database.db
+        .select()
+        .from(schema.exercises)
+        .where(inArray(schema.exercises.userId, [server.userId]));
+      assert.deepEqual(
+        stored.map((row) => [row.id, row.payload.name]),
+        [[keptId, "Front Plank"]]
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
 async function createConvergenceServer() {
   if (databaseUrl) {
     const serverApp = await createMigratedServerApp({
@@ -2568,6 +2678,24 @@ function planChange({ row, updatedAt, revision, deletedAt = null }) {
     },
     updatedAt,
     deletedAt
+  };
+}
+
+function keptExercisePayload(id) {
+  return {
+    id,
+    library_origin: "user",
+    name: "Plank",
+    dimension_ids: JSON.stringify(["duration"]),
+    default_load_unit: "kilogram",
+    load_mode: "added",
+    record_profile: "maxDuration",
+    is_favorite: false,
+    is_unilateral: false,
+    uses_rpe: false,
+    category_id: "01910000-0000-7000-8000-000000000012",
+    equipment_ids: JSON.stringify(["bodyweight"]),
+    notes: null
   };
 }
 

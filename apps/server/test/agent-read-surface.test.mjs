@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   applyMigrations,
+  buildPlatformCatalogExercises,
   createApp,
   createDatabaseClient,
   createDrizzleAgentProgressReadStore,
@@ -14,6 +15,7 @@ import {
   encodeCanonicalSeriesBlob,
   schema
 } from "../src/index.ts";
+import { PLATFORM_EXERCISE_SEED_REDIRECTS } from "../src/data/platform-exercise-seed.generated.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -686,6 +688,92 @@ test(
   }
 );
 
+test(
+  "a Set on a kept id joins the user's own row, and without a kept row joins through the redirect",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const keeperId = `agent-read-kept-user-${randomUUID()}`;
+    const otherId = `agent-read-unkept-user-${randomUUID()}`;
+    const [redirect] = PLATFORM_EXERCISE_SEED_REDIRECTS;
+    const target = buildPlatformCatalogExercises().find(
+      (exercise) => exercise.id === redirect.toExerciseId
+    );
+    const categoryId = randomUUID();
+    const at = new Date("2026-11-05T00:00:00.000Z");
+    const row = (id, userId, payload) => ({
+      id,
+      userId,
+      deviceId: "device-agent-read-test",
+      updatedAt: at,
+      receivedAt: at,
+      deletedAt: null,
+      payload: { id, ...payload, updated_at: at.toISOString(), deleted_at: null }
+    });
+
+    try {
+      await seedUser(database, keeperId);
+      await seedUser(database, otherId);
+      await database.db
+        .insert(schema.exerciseCategories)
+        .values(row(categoryId, keeperId, { name: "Kept Category" }));
+      await database.db.insert(schema.exercises).values(
+        row(redirect.fromExerciseId, keeperId, {
+          library_origin: "user",
+          name: "My Kept Exercise",
+          category_id: categoryId,
+          dimension_ids: JSON.stringify(["load", "reps"])
+        })
+      );
+      for (const userId of [keeperId, otherId]) {
+        await seedLoggedSet(database, {
+          userId,
+          id: randomUUID(),
+          exerciseId: redirect.fromExerciseId,
+          // Blank in the Set, so the name and category come from the join.
+          exerciseName: null,
+          exerciseCategoryId: null,
+          exerciseCategoryName: null,
+          performedAt: "2026-11-01T06:00:00.000Z",
+          position: 0,
+          values: {
+            load: { entered: "100", unit: "kilogram" },
+            reps: { entered: "5", unit: "repetition" }
+          }
+        });
+      }
+      const readSet = async (userId) => {
+        const response = await getAgent(
+          createAgentReadApp({
+            agentReadStore: createDrizzleAgentReadStore(database.db),
+            userId
+          }),
+          "/agent/history/sets?limit=1"
+        );
+        assert.equal(response.status, 200);
+        const [set] = (await response.json()).sets;
+        return set;
+      };
+
+      const keptSet = await readSet(keeperId);
+      assert.equal(keptSet.exerciseId, redirect.fromExerciseId);
+      assert.equal(keptSet.exerciseName, "My Kept Exercise");
+      assert.deepEqual(keptSet.category, {
+        id: categoryId,
+        name: "Kept Category"
+      });
+
+      const redirectedSet = await readSet(otherId);
+      assert.equal(redirectedSet.exerciseId, redirect.fromExerciseId);
+      assert.equal(redirectedSet.exerciseName, target.name);
+      assert.deepEqual(redirectedSet.category, target.category);
+    } finally {
+      await database.close();
+    }
+  }
+);
+
 function createAgentReadApp({
   agentRateLimit,
   agentKeyId = "agent-read-key-1",
@@ -756,6 +844,8 @@ async function seedLoggedSet({
   id,
   exerciseId,
   exerciseName,
+  exerciseCategoryId = "cat-strength",
+  exerciseCategoryName = "Strength",
   performedAt,
   position,
   values
@@ -775,8 +865,8 @@ async function seedLoggedSet({
       workout_timezone: "Australia/Brisbane",
       exercise_id: exerciseId,
       exercise_name: exerciseName,
-      exercise_category_id: "cat-strength",
-      exercise_category_name: "Strength",
+      exercise_category_id: exerciseCategoryId,
+      exercise_category_name: exerciseCategoryName,
       position,
       values,
       comment: null,

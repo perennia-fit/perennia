@@ -676,7 +676,7 @@ Data, and Server and generator tests.
 *   **Proposed Changes**:
     *   `applyPlatformExerciseCleanup` also returns `excludedIds`.
     *   Export pure
-        `buildRetiredExercises({ previousSeed, sourceRecords, cleanup, retiredAt, categories, focusIdsFor })`,
+        `buildRetiredExercises({ previousSeed, sourceRecords, cleanup, retiredAt, reviewedAt, categories, focusIdsFor })`,
         returning the sorted `retired_exercises` list. `sourceRecords` is the
         input given to `applyPlatformExerciseCleanup`. `previousSeed` is null on
         a first run, and a seed with no `retired_exercises` counts as an empty
@@ -728,8 +728,9 @@ Data, and Server and generator tests.
 *   **Type / Scope**: Postgres schema.
 *   **Proposed Changes**: Remove `.primaryKey()` from `exercises.id` and add a
     composite `primaryKey` on `userId` and `id`, as `mealTypes` has. Generate
-    the migration with `pnpm db:generate`, taking the next free number (0035 at
-    the time of writing). It drops `exercises_pkey` and adds the composite key.
+    the migration with `pnpm db:generate`, taking the next free number (0036,
+    because `0035_purposes` landed first). It drops `exercises_pkey` and adds
+    the composite key.
     Add a header comment as `0032_chemical_may_parker.sql` has.
 
 #### `apps/server/src/sync.ts` (Modify)
