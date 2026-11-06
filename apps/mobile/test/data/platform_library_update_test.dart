@@ -586,6 +586,27 @@ void main() {
         template?.exercises.single.exerciseId,
         _plankId,
       );
+
+      final storedTemplate = await (database.select(database.workoutTemplates)
+            ..where((row) => row.id.equals(templateId)))
+          .getSingle();
+      final result = await updated.templateMaterialize.materialize(
+        TemplateMaterializeRequest(workoutTemplateId: templateId),
+        now: DateTime.utc(2026, 11, 6, 8),
+        timezone: 'UTC',
+      );
+
+      final entries = await (database.select(database.workoutExercises)
+            ..where((row) => row.workoutId.equals(result.workoutId)))
+          .get();
+      expect(entries, hasLength(1));
+      expect(entries.single.exerciseId, _plankId);
+      expect(
+        await (database.select(database.workoutTemplates)
+              ..where((row) => row.id.equals(templateId)))
+            .getSingle(),
+        storedTemplate,
+      );
     });
 
     test('by a live entry in an archived Template, whose editor then saves',

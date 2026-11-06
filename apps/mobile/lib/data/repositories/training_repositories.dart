@@ -551,14 +551,7 @@ class CatalogRepository {
       final row = rowsById[exercise.id];
       if (row == null) {
         await _insertPlatformExercise(
-          id: exercise.id,
-          name: exercise.name,
-          dimensions: exercise.dimensions,
-          categoryId: exercise.categoryId,
-          equipment: exercise.equipment,
-          focusIds: exercise.focusIds,
-          notes: exercise.notes,
-          updatedAt: exercise.updatedAt,
+          exercise,
           deletedAt: null,
           context: context,
         );
@@ -567,25 +560,12 @@ class CatalogRepository {
       if (row.libraryOrigin != ExerciseLibraryOrigin.platform.name) {
         continue;
       }
-      if (row.deletedAt == null &&
-          _platformFieldsMatch(
-            row,
-            name: exercise.name,
-            categoryId: exercise.categoryId,
-            equipment: exercise.equipment,
-            focusIds: exercise.focusIds,
-            notes: exercise.notes,
-          )) {
+      if (row.deletedAt == null && _platformFieldsMatch(row, exercise)) {
         continue;
       }
       await _writeReconciledExercise(
         row,
-        ExercisesCompanion(
-          name: Value<String>(exercise.name),
-          categoryId: Value<String?>(exercise.categoryId),
-          equipmentIds: Value<String>(_encodeEquipment(exercise.equipment)),
-          focusIds: Value<String>(_encodeFocusIds(exercise.focusIds)),
-          notes: Value<String?>(exercise.notes),
+        _seedFieldsCompanion(exercise).copyWith(
           updatedAt: Value<DateTime>(exercise.updatedAt),
           deletedAt: const Value<DateTime?>(null),
         ),
@@ -602,14 +582,7 @@ class CatalogRepository {
         // template_exercises all have foreign keys to exercises, and a Set for
         // this id can still arrive from another device or an old backup.
         await _insertPlatformExercise(
-          id: retired.id,
-          name: retired.name,
-          dimensions: retired.dimensions,
-          categoryId: retired.categoryId,
-          equipment: retired.equipment,
-          focusIds: retired.focusIds,
-          notes: retired.notes,
-          updatedAt: retired.updatedAt,
+          retired,
           deletedAt: retired.retiredAt,
           context: context,
         );
@@ -657,27 +630,20 @@ class CatalogRepository {
     return rows.map((row) => row.read<String>('exercise_id')).toSet();
   }
 
-  Future<void> _insertPlatformExercise({
-    required String id,
-    required String name,
-    required List<DimensionId> dimensions,
-    required String? categoryId,
-    required List<ExerciseEquipment> equipment,
-    required List<String> focusIds,
-    required String? notes,
-    required DateTime updatedAt,
+  Future<void> _insertPlatformExercise(
+    SeedExercise record, {
     required DateTime? deletedAt,
     required WriteContext context,
   }) async {
-    final exerciseType = ExerciseType(dimensions);
+    final exerciseType = ExerciseType(record.dimensions);
     const loadMode = ExerciseLoadMode.added;
     await _database.into(_database.exercises).insert(
           ExercisesCompanion.insert(
-            id: id,
+            id: record.id,
             libraryOrigin: Value<String>(
               ExerciseLibraryOrigin.platform.name,
             ),
-            name: name,
+            name: record.name,
             dimensionIds: _encodeDimensions(exerciseType),
             loadMode: Value<String>(loadMode.name),
             recordProfile: Value<String>(
@@ -691,19 +657,19 @@ class CatalogRepository {
             ),
             isUnilateral: const Value<bool>(false),
             usesRpe: const Value<bool>(false),
-            categoryId: Value<String?>(categoryId),
-            equipmentIds: Value<String>(_encodeEquipment(equipment)),
-            focusIds: Value<String>(_encodeFocusIds(focusIds)),
-            notes: Value<String?>(notes),
-            updatedAt: updatedAt,
+            categoryId: Value<String?>(record.categoryId),
+            equipmentIds: Value<String>(_encodeEquipment(record.equipment)),
+            focusIds: Value<String>(_encodeFocusIds(record.focusIds)),
+            notes: Value<String?>(record.notes),
+            updatedAt: record.updatedAt,
             deletedAt: Value<DateTime?>(deletedAt),
           ),
         );
-    final after = await _requireExerciseRow(id);
+    final after = await _requireExerciseRow(record.id);
     await _repositories._activityLogWriter.append(
       context,
       entityTable: AppDatabase.exercisesTable,
-      entityId: id,
+      entityId: record.id,
       beforeImage: null,
       afterImage: _exerciseImage(after),
     );
@@ -725,14 +691,7 @@ class CatalogRepository {
         _sameStoredInstant(row.updatedAt, retired.updatedAt) &&
         row.dimensionIds ==
             _encodeDimensions(ExerciseType(retired.dimensions)) &&
-        _platformFieldsMatch(
-          row,
-          name: retired.name,
-          categoryId: retired.categoryId,
-          equipment: retired.equipment,
-          focusIds: retired.focusIds,
-          notes: retired.notes,
-        )) {
+        _platformFieldsMatch(row, retired)) {
       return;
     }
     await _writeReconciledExercise(
@@ -792,8 +751,7 @@ class CatalogRepository {
   ) {
     final type = ExerciseType(retired.dimensions);
     final dimensionIds = _encodeDimensions(type);
-    return ExercisesCompanion(
-      name: Value<String>(retired.name),
+    return _seedFieldsCompanion(retired).copyWith(
       dimensionIds: Value<String>(dimensionIds),
       recordProfile: dimensionIds == row.dimensionIds
           ? const Value<String>.absent()
@@ -803,33 +761,33 @@ class CatalogRepository {
                 loadMode: ExerciseLoadMode.values.byName(row.loadMode),
               ).name,
             ),
-      categoryId: Value<String?>(retired.categoryId),
-      equipmentIds: Value<String>(_encodeEquipment(retired.equipment)),
-      focusIds: Value<String>(_encodeFocusIds(retired.focusIds)),
-      notes: Value<String?>(retired.notes),
+    );
+  }
+
+  /// The fields a seed record sets on an existing row, from either list.
+  ExercisesCompanion _seedFieldsCompanion(SeedExercise record) {
+    return ExercisesCompanion(
+      name: Value<String>(record.name),
+      categoryId: Value<String?>(record.categoryId),
+      equipmentIds: Value<String>(_encodeEquipment(record.equipment)),
+      focusIds: Value<String>(_encodeFocusIds(record.focusIds)),
+      notes: Value<String?>(record.notes),
     );
   }
 
   /// The fields shared by both lists of the seed. Equipment and Focuses compare
   /// as sets, so a stored order alone never causes a write.
-  bool _platformFieldsMatch(
-    ExerciseRow row, {
-    required String name,
-    required String? categoryId,
-    required List<ExerciseEquipment> equipment,
-    required List<String> focusIds,
-    required String? notes,
-  }) {
-    return row.name == name &&
-        row.categoryId == categoryId &&
-        row.notes == notes &&
+  bool _platformFieldsMatch(ExerciseRow row, SeedExercise record) {
+    return row.name == record.name &&
+        row.categoryId == record.categoryId &&
+        row.notes == record.notes &&
         _sameStringSet(
           _normalizedEquipmentIds(_decodeEquipment(row.equipmentIds)).toSet(),
-          _normalizedEquipmentIds(equipment).toSet(),
+          _normalizedEquipmentIds(record.equipment).toSet(),
         ) &&
         _sameStringSet(
           _decodeFocusIds(row.focusIds).toSet(),
-          focusIds.toSet(),
+          record.focusIds.toSet(),
         );
   }
 
@@ -853,7 +811,6 @@ class CatalogRepository {
       afterImage: _exerciseImage(after),
     );
   }
-
 
   Future<List<ExerciseCatalogSectionRecord>> listMergedCatalog() async {
     final categories = await _activeCategoryQuery().get();

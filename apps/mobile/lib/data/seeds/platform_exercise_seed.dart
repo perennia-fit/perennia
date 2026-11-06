@@ -226,16 +226,16 @@ class SeedExercise {
 
 /// A Retired Exercise's frozen record, from `retired_exercises`: the fields of
 /// a [SeedExercise] plus the fixed [retiredAt] every device stamps it with.
-class SeedRetiredExercise {
+class SeedRetiredExercise extends SeedExercise {
   const SeedRetiredExercise({
-    required this.id,
-    required this.name,
-    required this.dimensions,
-    required this.categoryId,
-    this.equipment = const <ExerciseEquipment>[],
-    this.focusIds = const <String>[],
-    required this.notes,
-    required this.updatedAt,
+    required super.id,
+    required super.name,
+    required super.dimensions,
+    required super.categoryId,
+    super.equipment,
+    super.focusIds,
+    required super.notes,
+    required super.updatedAt,
     required this.retiredAt,
   });
 
@@ -254,13 +254,5 @@ class SeedRetiredExercise {
     );
   }
 
-  final String id;
-  final String name;
-  final List<DimensionId> dimensions;
-  final String? categoryId;
-  final List<ExerciseEquipment> equipment;
-  final List<String> focusIds;
-  final String? notes;
-  final DateTime updatedAt;
   final DateTime retiredAt;
 }
