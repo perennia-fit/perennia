@@ -2531,5 +2531,31 @@
   "compoundArchiveConfirm": "Archive",
   "@compoundArchiveConfirm": {
     "description": "Confirms archiving a Compound."
+  },
+  "compoundPickerTitle": "Add Compounds",
+  "@compoundPickerTitle": {
+    "description": "Title of the sheet that picks a Protocol's Compounds."
+  },
+  "compoundPickerDone": "Done",
+  "@compoundPickerDone": {
+    "description": "Closes the Compound picker with its selection, when none of the listed Compounds is selected."
+  },
+  "compoundPickerDoneCount": "Done · {count}",
+  "@compoundPickerDoneCount": {
+    "description": "Closes the Compound picker with its selection, with the number of listed Compounds selected.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "compoundPickerCreate": "Create \"{name}\"",
+  "@compoundPickerCreate": {
+    "description": "Last row of the Compound picker: creates a Compound with the name the user searched for.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }

@@ -3825,4 +3825,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get compoundArchiveConfirm => 'Archive';
+
+  @override
+  String get compoundPickerTitle => 'Add Compounds';
+
+  @override
+  String get compoundPickerDone => 'Done';
+
+  @override
+  String compoundPickerDoneCount(int count) {
+    return 'Done · $count';
+  }
+
+  @override
+  String compoundPickerCreate(String name) {
+    return 'Create \"$name\"';
+  }
 }

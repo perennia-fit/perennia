@@ -29,6 +29,7 @@ void main() {
       'lib/features/nutrition/widgets/meal_screen.dart',
       'lib/features/nutrition/widgets/meal_time_sheet.dart',
       'lib/features/protocols/widgets/compound_list_screen.dart',
+      'lib/features/protocols/widgets/compound_picker_sheet.dart',
     ];
     final forbiddenPatterns = <String, RegExp>{
       'Text literal': RegExp(r'\bText\(\s*[' '"]'),

@@ -6081,6 +6081,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Archive'**
   String get compoundArchiveConfirm;
+
+  /// Title of the sheet that picks a Protocol's Compounds.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Compounds'**
+  String get compoundPickerTitle;
+
+  /// Closes the Compound picker with its selection, when none of the listed Compounds is selected.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get compoundPickerDone;
+
+  /// Closes the Compound picker with its selection, with the number of listed Compounds selected.
+  ///
+  /// In en, this message translates to:
+  /// **'Done · {count}'**
+  String compoundPickerDoneCount(int count);
+
+  /// Last row of the Compound picker: creates a Compound with the name the user searched for.
+  ///
+  /// In en, this message translates to:
+  /// **'Create \"{name}\"'**
+  String compoundPickerCreate(String name);
 }
 
 class _AppLocalizationsDelegate
