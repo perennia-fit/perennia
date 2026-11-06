@@ -630,6 +630,114 @@ void main() {
     await _expectBackAtOpener(tester);
   });
 
+  _testSheet('a second tap on Finish before the sheet opens finishes once', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    final release = Completer<void>();
+    final divergence = _HeldDivergenceRepository(() => release.future);
+    await _openWorkoutScreen(
+      tester,
+      repositories,
+      fixture.workoutId,
+      divergence: divergence,
+    );
+
+    final finish = find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId));
+    await tester.tap(finish);
+    await tester.pump();
+    await tester.tap(finish);
+    await tester.pump();
+    expect(divergence.reads, 1);
+
+    release.complete();
+    await _waitFor(
+        tester, () => _isShown(find.byKey(FinishSummarySheet.doneKey)));
+    await _settle(tester);
+
+    expect(divergence.reads, 1);
+    expect(find.byType(BottomSheet), findsOneWidget);
+
+    await tester.tap(find.byKey(FinishSummarySheet.doneKey));
+    await _expectBackAtOpener(tester);
+  });
+
+  _testSheet('Finish can be tapped again after a failed attempt', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    var failNextRead = true;
+    final divergence = _HeldDivergenceRepository(() async {
+      if (failNextRead) {
+        failNextRead = false;
+        throw StateError('read failed');
+      }
+    });
+    await _openWorkoutScreen(
+      tester,
+      repositories,
+      fixture.workoutId,
+      divergence: divergence,
+    );
+
+    final finish = find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId));
+    // Finish runs unawaited, so its failure goes to the tap's zone.
+    Object? failure;
+    await runZonedGuarded(
+      () => tester.tap(finish),
+      (error, _) => failure = error,
+    );
+    await _settle(tester);
+    expect(failure, isStateError);
+    expect(find.byType(BottomSheet), findsNothing);
+
+    await tester.tap(finish);
+    await _waitFor(
+        tester, () => _isShown(find.byKey(FinishSummarySheet.doneKey)));
+
+    expect(divergence.reads, 2);
+  });
+
+  _testSheet(
+      'Back during Finish finishes the Workout, opens no sheet and leaves the '
+      'opener in place', (tester) async {
+    final fixture = (await tester.runAsync(
+      () => _createLowerB(repositories, finish: false),
+    ))!;
+    final release = Completer<void>();
+    await _openWorkoutScreen(
+      tester,
+      repositories,
+      fixture.workoutId,
+      divergence: _HeldDivergenceRepository(() => release.future),
+    );
+
+    await tester
+        .tap(find.byKey(WorkoutScreen.finishButtonKey(fixture.workoutId)));
+    await tester.pump();
+
+    // The Workout route is animating out, so its context is still mounted.
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.byType(WorkoutScreen), findsOneWidget);
+
+    release.complete();
+    await _settle(tester);
+    await _settle(tester);
+
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.byType(WorkoutScreen), findsNothing);
+    expect(find.byKey(_pushWorkoutKey), findsOneWidget);
+    final workout = await tester.runAsync(
+      () => repositories.workoutSessions.getById(fixture.workoutId),
+    );
+    expect(workout!.endedAt, isNotNull);
+  });
+
   _testSheet('a tap above the settled sheet leaves it open', (tester) async {
     final fixture = (await tester.runAsync(
       () => _createLowerB(repositories, finish: false),
@@ -1060,8 +1168,9 @@ Future<void> _openSheet(
 Future<void> _openWorkoutScreen(
   WidgetTester tester,
   TrainingRepositories repositories,
-  String workoutId,
-) async {
+  String workoutId, {
+  TemplateDivergenceFeatureRepository? divergence,
+}) async {
   await _pumpHost(
     tester,
     repositories,
@@ -1074,6 +1183,7 @@ Future<void> _openWorkoutScreen(
         ),
       ),
     ),
+    divergence: divergence,
   );
   await tester.tap(find.byKey(_pushWorkoutKey));
   await tester.pump();
@@ -1186,5 +1296,21 @@ class _FakeDivergenceRepository implements TemplateDivergenceFeatureRepository {
   ) {
     calls += 1;
     return _update();
+  }
+}
+
+/// Runs [_onRead] inside Finish's divergence read, so a test can act while
+/// Finish is in flight or make the read fail.
+class _HeldDivergenceRepository extends _FakeDivergenceRepository {
+  _HeldDivergenceRepository(this._onRead) : super(() async => null);
+
+  final Future<void> Function() _onRead;
+  int reads = 0;
+
+  @override
+  Future<TemplateDivergenceSummary?> summaryForWorkout(String workoutId) async {
+    reads += 1;
+    await _onRead();
+    return null;
   }
 }

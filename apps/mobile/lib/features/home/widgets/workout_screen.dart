@@ -694,6 +694,11 @@ class _WorkoutContent extends ConsumerWidget {
     WidgetRef ref,
   ) async {
     final navigator = Navigator.of(context);
+    // Back can pop this route during the awaits below. context.mounted stays
+    // true while the route animates out, so only the route can say the lifter
+    // has left: the Workout still finishes, but a sheet would open over the
+    // opener, and closing it would pop the opener too.
+    final route = ModalRoute.of(context);
     // Read (not watch): only touched when Finish is actually tapped, so
     // widget tests that never tap Finish never instantiate the real
     // Drift-backed repository behind this provider.
@@ -708,7 +713,7 @@ class _WorkoutContent extends ConsumerWidget {
         await divergenceRepository.summaryForWorkout(workout.id);
 
     await controller.finishWorkout(workout.id);
-    if (!context.mounted) {
+    if (!context.mounted || route?.isActive != true) {
       return;
     }
     await showFinishSummarySheet(
@@ -716,7 +721,7 @@ class _WorkoutContent extends ConsumerWidget {
       workoutId: workout.id,
       divergenceSummary: divergenceSummary,
     );
-    if (navigator.mounted) {
+    if (route?.isCurrent == true) {
       navigator.pop();
     }
   }
@@ -970,13 +975,7 @@ class _WorkoutHeader extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: workout.isOpen
-                  ? OutlinedButton.icon(
-                      key: WorkoutScreen.finishButtonKey(workout.id),
-                      style: _outlinedActionStyle(context),
-                      onPressed: () => unawaited(onFinish()),
-                      icon: const Icon(Icons.flag_outlined),
-                      label: Text(context.l10n.workoutFinish),
-                    )
+                  ? _FinishButton(workoutId: workout.id, onFinish: onFinish)
                   : OutlinedButton.icon(
                       key: WorkoutScreen.resumeButtonKey(workout.id),
                       style: _outlinedActionStyle(context),
@@ -988,6 +987,46 @@ class _WorkoutHeader extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Finish Workout. It ignores a tap while an earlier one is still finishing,
+/// so a double tap writes the finish once and opens one Finish summary. The
+/// button looks the same meanwhile: the wait is too short to show as disabled.
+class _FinishButton extends StatefulWidget {
+  const _FinishButton({required this.workoutId, required this.onFinish});
+
+  final String workoutId;
+  final Future<void> Function() onFinish;
+
+  @override
+  State<_FinishButton> createState() => _FinishButtonState();
+}
+
+class _FinishButtonState extends State<_FinishButton> {
+  bool _finishing = false;
+
+  Future<void> _finish() async {
+    if (_finishing) {
+      return;
+    }
+    _finishing = true;
+    try {
+      await widget.onFinish();
+    } finally {
+      _finishing = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      key: WorkoutScreen.finishButtonKey(widget.workoutId),
+      style: _outlinedActionStyle(context),
+      onPressed: () => unawaited(_finish()),
+      icon: const Icon(Icons.flag_outlined),
+      label: Text(context.l10n.workoutFinish),
     );
   }
 }
