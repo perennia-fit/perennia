@@ -104,6 +104,7 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 - **Backups keep restoring after the update.**
 - Rest timer sounds off now silences rest timer notifications on Android 8 and later.
 - The end of a rest now sounds on Android when the app is in the background.
+- A double tap on Finish Workout now finishes it once.
 
 ## [0.2.0] - 2026-11-03
 
