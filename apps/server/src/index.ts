@@ -1075,6 +1075,7 @@ export {
   SETTINGS_VALIDATION_LIMITS,
   ROUTINE_CADENCE_VALIDATION_LIMITS,
   TEMPLATE_GROUP_VALIDATION_LIMITS,
+  USER_PROFILE_VALIDATION_LIMITS,
   agentDoseValidationRoute,
   agentSetValidationRoute,
   doseValidationLimitsResponse,
@@ -1092,6 +1093,7 @@ export {
   validateAgentSet,
   validateAgentSettings,
   validateAgentTemplateGroup,
+  validateUserProfileSection,
   type AgentDoseValidationInput,
   type AgentDoseValidationIssue,
   type AgentDoseValidationResult,
@@ -1118,7 +1120,10 @@ export {
   type AgentSetValidationIssue,
   type AgentSetValidationResult,
   type DoseRoute,
-  type DoseUnit
+  type DoseUnit,
+  type UserProfileSectionName,
+  type UserProfileValidationIssue,
+  type UserProfileValidationResult
 } from "./agent-validation.js";
 export { localDateAtOffset } from "./timezone.js";
 export {
