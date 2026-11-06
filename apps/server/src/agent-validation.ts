@@ -1882,13 +1882,16 @@ export const USER_PROFILE_VALIDATION_LIMITS = {
   experienceLevels: ["beginner", "intermediate", "advanced"]
 } as const;
 
-export type UserProfileSectionName =
-  | "about_you"
-  | "training_goals"
-  | "experience"
-  | "training_setup"
-  | "health_limitations"
-  | "general_notes";
+export const USER_PROFILE_SECTION_NAMES = [
+  "about_you",
+  "training_goals",
+  "experience",
+  "training_setup",
+  "health_limitations",
+  "general_notes"
+] as const;
+
+export type UserProfileSectionName = (typeof USER_PROFILE_SECTION_NAMES)[number];
 
 /// `field` is the sync-payload name, for example `birth_year`.
 export type UserProfileValidationIssue = {
@@ -2211,7 +2214,7 @@ function isNonEmptyProfileString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function isProfileRecord(value: unknown): value is Record<string, unknown> {
+export function isProfileRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

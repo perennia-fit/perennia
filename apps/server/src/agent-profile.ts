@@ -8,6 +8,8 @@ import {
   AgentUnauthorizedResponseSchema
 } from "./agent-api-keys.js";
 import {
+  USER_PROFILE_SECTION_NAMES,
+  isProfileRecord,
   validateUserProfileSection,
   type UserProfileSectionName,
   type UserProfileValidationIssue
@@ -193,7 +195,7 @@ export const AgentProfileBatchWriteRequestSchema = z
   .object({
     idempotencyKey: z.string().min(1).max(200).openapi({
       description:
-        "Stable key for this agent request. Replays with the same key return the original result without appending another Activity Log batch."
+        "Stable key for this agent request. A replay with the same key appends no Batch and returns the current User Profile, with warnings recomputed from what the Batch wrote. A write that changed nothing reserves no key."
     }),
     updatedAt: ISO8601StringSchema.refine(
       (value) => !Number.isNaN(Date.parse(value)),
@@ -245,7 +247,8 @@ export const AgentProfileBatchWriteResponseSchema = z
     }),
     idempotencyKey: z.string().min(1),
     batchId: z.string().min(1).openapi({
-      description: "Activity Log batch id. Equal to the idempotency key."
+      description:
+        "Activity Log batch id. Equal to the idempotency key. A write that changed nothing appends no Batch, so this id then names none and can't be undone."
     }),
     serverClock: z.string().min(1),
     profile: AgentProfileSchema.openapi({
@@ -321,7 +324,7 @@ export const agentProfileBatchWriteRoute = createRoute({
   tags: ["Agent Writes"],
   summary: "Change User Profile fields as one Activity Log batch.",
   description:
-    "Merges the given fields into each named section of the caller's User Profile, following the same Save semantics as the app: a field left out is unchanged, null clears a field, and a list replaces the whole list. Each merged section goes through the same shared two-tier validator the app uses. A hard reject writes nothing; improbable values are saved and returned as warnings. The write is one Activity Log batch, with a best-effort sync nudge.",
+    "Merges the given fields into each named section of the caller's User Profile, following the same Save semantics as the app: a field left out is unchanged, null clears a field, and a list replaces the whole list. Each merged section goes through the same shared two-tier validator the app uses. A hard reject writes nothing; improbable values are saved and returned as warnings. The write is one Activity Log batch, with a best-effort sync nudge; a write that changes nothing appends none.",
   security: [{ bearerAuth: [] }],
   request: {
     body: {
@@ -412,18 +415,35 @@ export type AgentProfileStore = {
 type AgentSectionName = keyof AgentProfile["sections"];
 type SectionValues = Record<string, unknown>;
 
+/**
+ * Keyed by section, so a section with no entry is a compile error. `fields` are
+ * wire names in output order, and the read shape is serialised in that order.
+ */
+const PROFILE_SECTION_CONFIG: Readonly<
+  Record<
+    UserProfileSectionName,
+    { agent: AgentSectionName; fields: readonly string[] }
+  >
+> = {
+  about_you: { agent: "aboutYou", fields: ["sex", "birth_year", "height"] },
+  training_goals: { agent: "trainingGoals", fields: ["goals"] },
+  experience: { agent: "experience", fields: ["levels"] },
+  training_setup: {
+    agent: "trainingSetup",
+    fields: ["equipment", "days_per_week", "session_minutes"]
+  },
+  health_limitations: { agent: "healthLimitations", fields: ["text", "none"] },
+  general_notes: { agent: "generalNotes", fields: ["text"] }
+};
+
 /** In read order, which is also the order issues are reported in. */
 const PROFILE_SECTIONS: readonly {
   wire: UserProfileSectionName;
   agent: AgentSectionName;
-}[] = [
-  { wire: "about_you", agent: "aboutYou" },
-  { wire: "training_goals", agent: "trainingGoals" },
-  { wire: "experience", agent: "experience" },
-  { wire: "training_setup", agent: "trainingSetup" },
-  { wire: "health_limitations", agent: "healthLimitations" },
-  { wire: "general_notes", agent: "generalNotes" }
-];
+}[] = USER_PROFILE_SECTION_NAMES.map((wire) => ({
+  wire,
+  agent: PROFILE_SECTION_CONFIG[wire].agent
+}));
 
 const AGENT_FIELD_BY_WIRE_FIELD: Readonly<Record<string, string>> = {
   birth_year: "birthYear",
@@ -431,15 +451,16 @@ const AGENT_FIELD_BY_WIRE_FIELD: Readonly<Record<string, string>> = {
   session_minutes: "sessionMinutes"
 };
 
-const WIRE_FIELD_BY_AGENT_FIELD: Readonly<Record<string, string>> = {
-  birthYear: "birth_year",
-  daysPerWeek: "days_per_week",
-  sessionMinutes: "session_minutes"
-};
+const WIRE_FIELD_BY_AGENT_FIELD: Readonly<Record<string, string>> =
+  Object.fromEntries(
+    Object.entries(AGENT_FIELD_BY_WIRE_FIELD).map(([wire, agent]) => [
+      agent,
+      wire
+    ])
+  );
 
 type SectionRow = {
   id: string;
-  section: UserProfileSectionName;
   payload: Record<string, unknown>;
   values: SectionValues;
   updatedAt: Date;
@@ -635,7 +656,6 @@ async function readNewestSectionRows(
     if (section !== null) {
       newest.set(section, {
         ...row,
-        section,
         values: readSectionValues(section, row.payload.values)
       });
     }
@@ -662,7 +682,7 @@ function readSectionValues(
   section: UserProfileSectionName,
   values: unknown
 ): SectionValues {
-  const raw: SectionValues = isRecord(values) ? values : {};
+  const raw: SectionValues = isProfileRecord(values) ? values : {};
   switch (section) {
     case "about_you":
       return {
@@ -704,7 +724,7 @@ function readInteger(value: unknown): number | null {
 }
 
 function readHeight(value: unknown): { value: number; unit: string } | null {
-  if (!isRecord(value)) {
+  if (!isProfileRecord(value)) {
     return null;
   }
   const { value: amount, unit } = value;
@@ -730,7 +750,7 @@ function readLevels(
   const levels: { focus_id: string; level: string }[] = [];
   for (const entry of value) {
     if (
-      isRecord(entry) &&
+      isProfileRecord(entry) &&
       typeof entry.focus_id === "string" &&
       typeof entry.level === "string"
     ) {
@@ -738,10 +758,6 @@ function readLevels(
     }
   }
   return levels;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toWireFields(fields: Record<string, unknown>): SectionValues {
@@ -797,61 +813,25 @@ function isSectionUnset(
   section: UserProfileSectionName,
   values: SectionValues
 ): boolean {
-  switch (section) {
-    case "about_you":
-      return (
-        values.sex === null &&
-        values.birth_year === null &&
-        values.height === null
-      );
-    case "training_goals":
-      return values.goals === null;
-    case "experience":
-      return values.levels === null;
-    case "training_setup":
-      return (
-        values.equipment === null &&
-        values.days_per_week === null &&
-        values.session_minutes === null
-      );
-    case "health_limitations":
-      return values.text === null && values.none !== true;
-    case "general_notes":
-      return values.text === null;
-  }
+  return PROFILE_SECTION_CONFIG[section].fields.every((field) =>
+    field === "none" ? values.none !== true : values[field] === null
+  );
 }
 
 function toAgentValues(
   section: UserProfileSectionName,
   values: SectionValues
 ): SectionValues {
-  switch (section) {
-    case "about_you":
-      return {
-        sex: values.sex,
-        birthYear: values.birth_year,
-        height: values.height
-      };
-    case "training_goals":
-      return { goals: values.goals };
-    case "experience":
-      return {
-        levels:
-          (values.levels as { focus_id: string; level: string }[] | null)?.map(
+  const agentValues: SectionValues = {};
+  for (const field of PROFILE_SECTION_CONFIG[section].fields) {
+    agentValues[AGENT_FIELD_BY_WIRE_FIELD[field] ?? field] =
+      field === "levels"
+        ? ((values.levels as { focus_id: string; level: string }[] | null)?.map(
             ({ focus_id: focusId, level }) => ({ focusId, level })
-          ) ?? null
-      };
-    case "training_setup":
-      return {
-        equipment: values.equipment,
-        daysPerWeek: values.days_per_week,
-        sessionMinutes: values.session_minutes
-      };
-    case "health_limitations":
-      return { text: values.text, none: values.none };
-    case "general_notes":
-      return { text: values.text };
+          ) ?? null)
+        : values[field];
   }
+  return agentValues;
 }
 
 function toAgentIssues(

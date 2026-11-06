@@ -2464,7 +2464,7 @@ export function createAgentMcpServer({
   server.registerTool(
     "agent_read_profile",
     {
-      title: "Read Agent Profile",
+      title: "Read User Profile",
       description:
         "Read the user's User Profile: About you, Training Goals, Experience, Training setup, Health & limitations and General Notes. Every agent connected to this account can read it. Values are what the user entered, not medical advice.",
       inputSchema: AgentMcpProfileReadInputSchema,
@@ -2501,7 +2501,7 @@ export function createAgentMcpServer({
   server.registerTool(
     "agent_batch_write_profile",
     {
-      title: "Batch Write Agent Profile",
+      title: "Batch Write User Profile",
       description:
         "Change fields in the user's User Profile. Only the fields you send change, null clears a field, and a list replaces the whole list. Improbable values are saved and returned as warnings to confirm with the user. Each call is one Activity Log Batch the user can undo.",
       inputSchema: AgentMcpProfileBatchWriteInputSchema,
