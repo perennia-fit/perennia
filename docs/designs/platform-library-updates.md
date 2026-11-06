@@ -206,7 +206,8 @@ Each row is written at most once per pass, with one Activity Log entry:
 | Platform row in neither list | Never touched | Not applicable |
 
 `isFavorite`, `loadMode`, `defaultLoadUnit`, `isUnilateral` and `usesRpe` are
-never written on an existing row. Platform rows are read-only to users, so a
+never written on an existing row, except to repair a value no reader can parse
+(see "After an import"). Platform rows are read-only to users, so a
 Platform row with `deletedAt` set can only come from an earlier pass or an
 imported archive, and the pass corrects it.
 
@@ -309,8 +310,13 @@ Keep runs only in the launch pass. There is no other keep path:
 *   **After an import.** `importPortableArchive` does not change. It merges
     archive rows as it always has, including Platform rows, which can write an
     old name or reactivate a removed exercise. The next launch corrects those
-    rows by the table above. The app seeds on Today before import can be
-    reached, so import needs no seeding await of its own.
+    rows by the table above. It also repairs a value on a Platform row in either
+    list that no reader can parse, such as a bad `loadMode` or an equipment list
+    that is not JSON: a seed-owned field takes the record's value, a
+    `recordProfile` is recalculated, and any other field takes the value an
+    insert writes. Without this, one bad row would fail every launch and Sync
+    Run. The app seeds on Today before
+    import can be reached, so import needs no seeding await of its own.
 
 Risks and Mitigations states what the user sees until that next launch.
 

@@ -92,6 +92,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Fixed
 
+- **A backup with an unreadable value on a library exercise no longer stops the
+  app seeding.** The next launch repairs the exercise from the library.
 - **A malformed id list in a synced row no longer fails Agent reads.** A raw array
   holding an entry that can't be turned into a string now reads as an empty list.
 - **A second device's seed no longer overrides a built-in Compound renamed after
