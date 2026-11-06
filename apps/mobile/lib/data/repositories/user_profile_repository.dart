@@ -33,13 +33,34 @@ class UserProfileRepository {
     return row != null;
   }
 
+  /// [section]'s values after [changes], or null when saving them would change
+  /// nothing, which includes empty [changes]. The caller validates them; nothing
+  /// is written.
+  Future<Map<String, Object?>?> mergedIfChanged(
+    UserProfileSection section,
+    Map<String, Object?> changes,
+  ) async {
+    final existing = await _newestRow(section);
+    return _mergedIfChanged(
+      section,
+      existing == null
+          ? const <String, Object?>{}
+          : _userProfileSectionValues(existing.valuesJson),
+      changes,
+    );
+  }
+
   /// Saves [changes] into [section], following Save semantics: a field absent
   /// from [changes] is unchanged, null clears it, and a list replaces the whole
-  /// list. A save that would create a row with every field unset writes nothing.
+  /// list. A save that changes nothing writes nothing, because a write would
+  /// make undo of the earlier Batch read as changed since. A save that would
+  /// create a row with every field unset writes nothing either.
   ///
   /// Throws [UserProfileValidationException] on a hard error, before any write.
-  /// Warnings are not checked here: the controller asks first, so a confirmed
-  /// improbable value saves.
+  /// The no-change test comes first: with nothing to write there is nothing to
+  /// reject, so a stored row holding a value the rules refuse can't make a retry
+  /// throw. Warnings are not checked here: the controller asks first, so a
+  /// confirmed improbable value saves.
   Future<void> saveSection(
     UserProfileSection section,
     Map<String, Object?> changes, {
@@ -51,21 +72,17 @@ class UserProfileRepository {
     );
 
     return _database.transaction(() async {
-      final existing = await (_database.select(_database.userProfileSections)
-            ..where(
-              (row) =>
-                  row.section.equals(section.wireName) & row.deletedAt.isNull(),
-            )
-            ..orderBy(_userProfileSectionsNewestFirst)
-            ..limit(1))
-          .getSingleOrNull();
-      final merged = mergeUserProfileSectionValues(
+      final existing = await _newestRow(section);
+      final merged = _mergedIfChanged(
         section,
         existing == null
             ? const <String, Object?>{}
             : _userProfileSectionValues(existing.valuesJson),
         changes,
       );
+      if (merged == null) {
+        return;
+      }
       validateUserProfileSection(
         section,
         merged,
@@ -153,6 +170,17 @@ class UserProfileRepository {
     });
   }
 
+  Future<UserProfileSectionRow?> _newestRow(UserProfileSection section) {
+    return (_database.select(_database.userProfileSections)
+          ..where(
+            (row) =>
+                row.section.equals(section.wireName) & row.deletedAt.isNull(),
+          )
+          ..orderBy(_userProfileSectionsNewestFirst)
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
   Future<void> _appendChange(
     WriteContext context,
     String id, {
@@ -184,6 +212,23 @@ List<OrderClauseGenerator<$UserProfileSectionsTable>>
     (row) => OrderingTerm.desc(row.updatedAt),
     (row) => OrderingTerm.desc(row.id),
   ];
+}
+
+/// The merged values, or null when they match what merging no changes gives.
+/// Both sides go through the merge, so a stray value a tolerant read drops does
+/// not count as a change.
+Map<String, Object?>? _mergedIfChanged(
+  UserProfileSection section,
+  Map<String, Object?> current,
+  Map<String, Object?> changes,
+) {
+  final merged = mergeUserProfileSectionValues(section, current, changes);
+  final unchanged = mergeUserProfileSectionValues(
+    section,
+    current,
+    const <String, Object?>{},
+  );
+  return jsonEncode(merged) == jsonEncode(unchanged) ? null : merged;
 }
 
 UserProfile _userProfileFromNewestFirstRows(List<UserProfileSectionRow> rows) {

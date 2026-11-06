@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -91,24 +89,16 @@ class ProfileController extends StreamNotifier<UserProfile> {
   /// nothing stands in the way.
   ///
   /// A returned check with errors saved nothing, and one with warnings saved
-  /// nothing either: the screen confirms them and calls [saveAnyway]. A save that
-  /// changes nothing writes nothing and warns about nothing, because a write
-  /// would add an Activity Log entry for no change.
+  /// nothing either: the screen confirms them and calls [saveAnyway]. When the
+  /// repository says saving would change nothing, the check is empty, so it warns
+  /// about nothing.
   Future<ProfileSaveCheck> save(
     UserProfileSection section,
     Map<String, Object?> changes,
   ) async {
     final repository = ref.read(trainingRepositoriesProvider).userProfile;
-    final profile = await repository.watch().first;
-    final current = profileSectionValues(profile, section)?.toJson() ??
-        const <String, Object?>{};
-    final merged = mergeUserProfileSectionValues(section, current, changes);
-    final unchanged = mergeUserProfileSectionValues(
-      section,
-      current,
-      const <String, Object?>{},
-    );
-    if (jsonEncode(merged) == jsonEncode(unchanged)) {
+    final merged = await repository.mergedIfChanged(section, changes);
+    if (merged == null) {
       return const ProfileSaveCheck();
     }
 
@@ -134,19 +124,4 @@ class ProfileController extends StreamNotifier<UserProfile> {
         .userProfile
         .saveSection(section, changes);
   }
-}
-
-/// [section]'s typed values in [profile], or null when the section has no row.
-UserProfileSectionValues? profileSectionValues(
-  UserProfile profile,
-  UserProfileSection section,
-) {
-  return switch (section) {
-    UserProfileSection.aboutYou => profile.aboutYou,
-    UserProfileSection.trainingGoals => profile.trainingGoals,
-    UserProfileSection.experience => profile.experience,
-    UserProfileSection.trainingSetup => profile.trainingSetup,
-    UserProfileSection.healthLimitations => profile.healthLimitations,
-    UserProfileSection.generalNotes => profile.generalNotes,
-  };
 }

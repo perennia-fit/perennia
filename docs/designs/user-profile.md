@@ -457,7 +457,7 @@ is true. Nothing waits on the network and no spinner is shown. The gate runs onc
     semantics. If nothing was entered, it writes nothing, like **Skip this**. Screens 2 and 3
     each save as one Activity Log Batch.
 *   **Back.** Screens 2 and 3 have a back arrow. Going back to a saved screen and saving again
-    writes another Batch.
+    with changed values writes another Batch.
 *   **Sign in from screen 1** opens the existing sign-in flow. When it succeeds, onboarding sets
     `onboardingDone`, writes no section, and opens Today. The first Sync Run then runs in the
     background as for any sign-in. When the user cancels, they return to screen 1, and every
@@ -1244,16 +1244,21 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     touches this table; this one owns section reads and writes.
     *   `Stream<UserProfile> watch()` reads the newest live row per section.
     *   `Future<bool> hasAnySection()` is an existence query for any live row.
+    *   `Future<Map<String, Object?>?> mergedIfChanged(UserProfileSection section,
+        Map<String, Object?> changes)` returns the merged values, or null when saving would
+        change nothing, which includes empty `changes`. The caller validates them; nothing is
+        written.
     *   `Future<void> saveSection(UserProfileSection section, Map<String, Object?> changes,
         {String? batchId})`:
         1.  merges `changes` into the newest row's values, following Save semantics and the
             Health & limitations normalisation;
-        2.  validates the merged values through file 5 with the local calendar year, and throws
+        2.  returns without writing if the merged values equal the current ones;
+        3.  validates the merged values through file 5 with the local calendar year, and throws
             `UserProfileValidationException` on a hard error. Warnings are not checked here; the
             controller asks first (file 20);
-        3.  returns without writing if no row exists and every merged field is unset;
-        4.  updates the newest row in place, or creates one with a UUIDv7;
-        5.  appends the change to one Activity Log Batch, with actor `user`.
+        4.  returns without writing if no row exists and every merged field is unset;
+        5.  updates the newest row in place, or creates one with a UUIDv7;
+        6.  appends the change to one Activity Log Batch, with actor `user`.
     *   A clear is a `saveSection` call with `null` for the field.
 *   **File 16.**
     *   Add the `part` directive and expose `userProfile`.
@@ -1289,9 +1294,10 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     *   Watches `userProfile.watch()`, the current mode (Local-only Mode or Synced Mode) and the
         signed-in server URL from the auth state.
     *   Exposes `ProfileDisclosureMode { localOnly, synced }` and `host`, the URL's host name.
-    *   `save(section, changes)` validates first. If there are soft warnings, it returns them, and
-        the screen shows the confirm dialog from the Validation section. **Save anyway** calls
-        `saveSection`.
+    *   `save(section, changes)` asks the repository whether anything changes
+        (`mergedIfChanged`), and does nothing more if not. Otherwise it validates the merged
+        values first. If there are soft warnings, it returns them, and the screen shows the
+        confirm dialog from the Validation section. **Save anyway** calls `saveSection`.
 *   **File 21.** `ProfileScreen.routeName = '/profile'`.
     *   The disclosure line for the current mode sits under the title.
     *   Six section cards follow, each showing its values or "Not set". Unknown equipment ids
@@ -1500,9 +1506,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
 | 13 | `CHANGELOG.md` | Modify | Release note |
 | 14 | `docs/designs/user-profile.md` | Modify | Status to Current |
 | 15 | `docs/designs/SITEMAP.md` | Modify | Status to Current |
-| 16 | `apps/mobile/lib/features/profile/controllers/profile_controller.dart` | Modify | Make the section-values lookup public for File 3 |
-| 17 | `apps/mobile/lib/features/profile/widgets/profile_section_editors.dart` | Modify | Make the error lines public (`ProfileErrorLines`) so the flow shows errors the way the editor does |
-| 18 | `apps/mobile/lib/features/settings/widgets/general_settings_screen.dart` | Modify | Make `SegmentedPreference` public: it is the existing units and week start control that File 4 reuses |
+| 16 | `apps/mobile/lib/features/profile/widgets/profile_section_editors.dart` | Modify | Make the error lines public (`ProfileErrorLines`) so the flow shows errors the way the editor does |
+| 17 | `apps/mobile/lib/features/settings/widgets/general_settings_screen.dart` | Modify | Make `SegmentedPreference` public: it is the existing units and week start control that File 4 reuses |
 
 **Verifies:** Verification Plan items V8 and V10.
 
@@ -1526,8 +1531,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
         `userProfile.saveSection(aboutYou)`; screens 2 and 3 call `saveSection` once each, with
         one `batchId`). On screen 1 it then calls `setOnboardingDone()`.
     *   **Next** passes only the fields the user entered. A screen with nothing entered saves
-        nothing. A section whose save would change nothing is skipped, because `saveSection` does
-        not skip a no-op write on an existing row and Save semantics requires no write.
+        nothing. A section whose save would change nothing writes nothing, because `saveSection`
+        itself returns without writing for it.
     *   `check()` validates every section with changes before any is saved, and writes nothing.
         A section whose save would change nothing has no check, as under `ProfileController.save`.
     *   Soft warnings use the same confirm dialog as the Profile screen before saving.

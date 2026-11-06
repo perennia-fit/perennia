@@ -285,6 +285,186 @@ void main() {
     });
   });
 
+  group('a save that changes nothing', () {
+    final stored = DateTime.utc(2026, 1, 1);
+
+    Future<void> expectNoWrite() async {
+      expect((await rows()).single.updatedAt.toUtc(), stored);
+      expect(
+        await repositories.activityLog.listEntriesSince(DateTime(2000)),
+        isEmpty,
+      );
+    }
+
+    test('writes nothing when the values equal the stored row', () async {
+      await insertRow(
+        id: 'row',
+        section: UserProfileSection.aboutYou,
+        valuesJson: '{"sex":"female","birth_year":1990,'
+            '"height":{"value":66,"unit":"in"}}',
+        updatedAt: stored,
+      );
+
+      await repositories.userProfile.saveSection(
+        UserProfileSection.aboutYou,
+        <String, Object?>{
+          'sex': 'female',
+          'height':
+              const ProfileHeight(value: 66, unit: HeightUnit.inch).toJson(),
+        },
+      );
+
+      await expectNoWrite();
+    });
+
+    test('writes nothing for empty changes on an existing row', () async {
+      await insertRow(
+        id: 'row',
+        section: UserProfileSection.generalNotes,
+        valuesJson: '{"text":"Notes"}',
+        updatedAt: stored,
+      );
+
+      await repositories.userProfile.saveSection(
+        UserProfileSection.generalNotes,
+        const <String, Object?>{},
+      );
+
+      await expectNoWrite();
+    });
+
+    test('leaves undo of the earlier Batch available', () async {
+      // An old stamp, because a row stores whole seconds: a rewrite in the same
+      // second as the Batch would match its after-image and undo would pass.
+      await repositories.userProfile.applySyncImage(
+        image: <String, Object?>{
+          'id': 'row',
+          'section': 'general_notes',
+          'values': <String, Object?>{'text': 'Notes'},
+          'updated_at': stored.toIso8601String(),
+          'deleted_at': null,
+        },
+        deviceId: 'agent:key-1',
+        batchId: 'earlier',
+        actor: 'agent:key-1',
+      );
+
+      for (final changes in <Map<String, Object?>>[
+        const {'text': 'Notes'},
+        const {},
+      ]) {
+        await repositories.userProfile.saveSection(
+          UserProfileSection.generalNotes,
+          changes,
+        );
+      }
+      final result = await repositories.activityLog.undoBatch('earlier');
+
+      expect(result.conflicts, isEmpty);
+      expect(result.undoBatchId, isNotNull);
+      expect((await read()).generalNotes, isNull);
+    });
+
+    test('does not throw over a stored value the rules reject', () async {
+      final rejected = DateTime.now().year + 1;
+      await insertRow(
+        id: 'row',
+        section: UserProfileSection.aboutYou,
+        valuesJson: '{"sex":null,"birth_year":$rejected,"height":null}',
+        updatedAt: stored,
+      );
+
+      for (final changes in <Map<String, Object?>>[
+        const {},
+        {'birth_year': rejected},
+      ]) {
+        await repositories.userProfile.saveSection(
+          UserProfileSection.aboutYou,
+          changes,
+        );
+      }
+      await expectNoWrite();
+
+      // A real change over the same row still has to pass the rules.
+      await expectLater(
+        repositories.userProfile.saveSection(
+          UserProfileSection.aboutYou,
+          const <String, Object?>{'sex': 'female'},
+        ),
+        throwsA(isA<UserProfileValidationException>()),
+      );
+      await expectNoWrite();
+    });
+  });
+
+  group('mergedIfChanged', () {
+    const section = UserProfileSection.trainingSetup;
+    final stored = DateTime.utc(2026, 1, 1);
+
+    setUp(() async {
+      await insertRow(
+        id: 'row',
+        section: section,
+        valuesJson: '{"equipment":["barbell"],"days_per_week":4,'
+            '"session_minutes":null}',
+        updatedAt: stored,
+      );
+    });
+
+    test('is null for the stored values and for empty changes', () async {
+      expect(
+        await repositories.userProfile.mergedIfChanged(
+          section,
+          const <String, Object?>{
+            'equipment': <String>['barbell'],
+            'days_per_week': 4,
+          },
+        ),
+        isNull,
+      );
+      expect(
+        await repositories.userProfile.mergedIfChanged(
+          section,
+          const <String, Object?>{},
+        ),
+        isNull,
+      );
+    });
+
+    test('is null for empty changes on a section with no row', () async {
+      expect(
+        await repositories.userProfile.mergedIfChanged(
+          UserProfileSection.generalNotes,
+          const <String, Object?>{},
+        ),
+        isNull,
+      );
+    });
+
+    test('is the merged values for a real change, and writes nothing',
+        () async {
+      expect(
+        await repositories.userProfile.mergedIfChanged(
+          section,
+          const <String, Object?>{'days_per_week': 5},
+        ),
+        <String, Object?>{
+          'equipment': <String>['barbell'],
+          'days_per_week': 5,
+          'session_minutes': null,
+        },
+      );
+
+      final row = (await rows()).single;
+      expect(row.updatedAt.toUtc(), stored);
+      expect(jsonDecode(row.valuesJson)['days_per_week'], 4);
+      expect(
+        await repositories.activityLog.listEntriesSince(DateTime(2000)),
+        isEmpty,
+      );
+    });
+  });
+
   group('reads', () {
     test('take the newest live row per section', () async {
       await insertRow(

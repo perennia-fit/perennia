@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,9 +36,8 @@ final onboardingControllerProvider =
 /// way, so `onboardingDone` can't be lost after its screen saved. Only setting
 /// [state] stops at that point.
 class OnboardingController extends Notifier<OnboardingState> {
-  /// Set while a step action runs. A second tap in that time does nothing:
-  /// it would read the same stored values as the first, so both would write,
-  /// and the extra Batch makes undo of the first read as changed since.
+  /// Set while a step action runs. A second tap in that time does nothing, so
+  /// it can't act on a step the first tap is still leaving.
   bool _acting = false;
 
   /// The latest step change. The read at start-up can return after the user
@@ -72,13 +70,12 @@ class OnboardingController extends Notifier<OnboardingState> {
   Future<List<ProfileSaveCheck>> check(
     Map<UserProfileSection, Map<String, Object?>> changes,
   ) async {
-    final profile =
-        await ref.read(trainingRepositoriesProvider).userProfile.watch().first;
+    final userProfile = ref.read(trainingRepositoriesProvider).userProfile;
     final referenceYear = DateTime.now().year;
     final checks = <ProfileSaveCheck>[];
     for (final MapEntry(key: section, value: sectionChanges)
         in changes.entries) {
-      final merged = _mergedIfChanged(profile, section, sectionChanges);
+      final merged = await userProfile.mergedIfChanged(section, sectionChanges);
       if (merged != null) {
         checks.add(
           ProfileSaveCheck.validate(
@@ -239,28 +236,24 @@ class OnboardingController extends Notifier<OnboardingState> {
     }
   }
 
-  /// Saves each section that changes as one Batch: screens 2 and 3 save as one
-  /// Activity Log Batch, and screen 1 has only the one section.
+  /// Saves the sections as one Batch: screens 2 and 3 save as one Activity Log
+  /// Batch, and screen 1 has only the one section. A section whose save changes
+  /// nothing adds nothing to it.
   ///
   /// It calls `saveSection` directly because `ProfileController` takes no
-  /// `batchId`. `saveSection` writes even when nothing changes on an existing
-  /// row, and Save semantics requires no write, so the no-op test is here.
+  /// `batchId`.
   Future<void> _saveSections(
     TrainingRepositories repositories,
     Map<UserProfileSection, Map<String, Object?>> changes,
   ) async {
-    final userProfile = repositories.userProfile;
-    final profile = await userProfile.watch().first;
     final batchId = repositories.uuidGenerator.generate();
     for (final MapEntry(key: section, value: sectionChanges)
         in changes.entries) {
-      if (_mergedIfChanged(profile, section, sectionChanges) != null) {
-        await userProfile.saveSection(
-          section,
-          sectionChanges,
-          batchId: batchId,
-        );
-      }
+      await repositories.userProfile.saveSection(
+        section,
+        sectionChanges,
+        batchId: batchId,
+      );
     }
   }
 
@@ -284,24 +277,6 @@ class OnboardingController extends Notifier<OnboardingState> {
     }
     state = OnboardingState(step: step, profile: profile);
   }
-}
-
-/// The section's values after [changes], or null when saving them would change
-/// nothing, which includes empty [changes].
-Map<String, Object?>? _mergedIfChanged(
-  UserProfile profile,
-  UserProfileSection section,
-  Map<String, Object?> changes,
-) {
-  final current =
-      profileSectionValues(profile, section)?.toJson() ?? <String, Object?>{};
-  final merged = mergeUserProfileSectionValues(section, current, changes);
-  final unchanged = mergeUserProfileSectionValues(
-    section,
-    current,
-    const <String, Object?>{},
-  );
-  return jsonEncode(merged) == jsonEncode(unchanged) ? null : merged;
 }
 
 OnboardingStep _stepAfter(OnboardingStep step) {
