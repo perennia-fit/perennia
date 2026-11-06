@@ -214,6 +214,32 @@ void main() {
       expect(after.purposeIds, before.purposeIds);
     });
 
+    test('a new Compound whose payload has no purpose_ids starts with none',
+        () async {
+      // An Agent-created Compound with no `purposeIds` has no such key.
+      final repositories = TrainingRepositories(database);
+      await repositories.protocols.ensureOtcLibrarySeeded();
+      final row = await _compoundRow(database, _creatineId);
+      await database.customStatement(
+        'DELETE FROM compounds WHERE id = ?',
+        <Object?>[_creatineId],
+      );
+
+      await _pullChangeInto(
+        database,
+        localDeviceId: 'device-b',
+        change: _compoundPullChange(
+          row,
+          updatedAt: DateTime.utc(2026, 11, 1, 8).toIso8601String(),
+          deviceId: 'device-a',
+          actor: 'agent',
+          changes: const <String, Object?>{'purpose_ids': _absent},
+        ),
+      );
+
+      expect((await _compoundRow(database, _creatineId)).purposeIds, '[]');
+    });
+
     test('a Compound payload with an explicit empty list clears the local one',
         () async {
       final repositories = TrainingRepositories(database);

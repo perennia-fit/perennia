@@ -6957,6 +6957,7 @@ class ProtocolsRepository {
       defaultUnit: doseUnitFromName(row.defaultUnit),
       defaultRoute: doseRouteFromName(row.defaultRoute),
       isArchived: row.deletedAt != null,
+      purposeIds: _decodePurposeIds(row.purposeIds),
     );
   }
 
@@ -8649,7 +8650,8 @@ class ProtocolsRepository {
         left.name == right.name &&
         left.defaultUnit == right.defaultUnit &&
         left.defaultRoute == right.defaultRoute &&
-        left.isArchived == right.isArchived;
+        left.isArchived == right.isArchived &&
+        _sameListBy(left.purposeIds, right.purposeIds, (a, b) => a == b);
   }
 
   bool _sameProtocolOptionRecords(

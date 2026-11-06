@@ -270,6 +270,8 @@ rectangles with `md` corners, never FABs.
 - **Picker sheet:** nearly full height, search then list, with checkboxes in the
   primary text color and a Done text button with a count, so that a selected filter
   chip is the only cyan selection on screen.
+- **Filter row:** chips that scroll sideways, single-select, with All first and a cyan
+  edge on the selected chip only.
 - **Calendar:** month grid, up to four category-colored 6px dots per day, today
   ringed in Signal Cyan.
 - **Summary card (Progress):** a flat card (surface color, `md` corners, no shadow)

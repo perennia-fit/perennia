@@ -3833,6 +3833,64 @@ class AppLocalizationsEn extends AppLocalizations {
   String get compoundArchiveConfirm => 'Archive';
 
   @override
+  String get compoundListMenuTooltip => 'More options';
+
+  @override
+  String get compoundEditorPurposes => 'Purposes';
+
+  @override
+  String get purposeFilterLabel => 'Filter by purpose';
+
+  @override
+  String get purposeFilterAll => 'All';
+
+  @override
+  String get purposeFilterEmpty => 'No compounds with this purpose.';
+
+  @override
+  String get purposeManagerTitle => 'Purposes';
+
+  @override
+  String get purposeManagerAdd => 'Add a Purpose';
+
+  @override
+  String get purposeManagerRowMenuTooltip => 'More options';
+
+  @override
+  String get purposeManagerNameLabel => 'Name';
+
+  @override
+  String get purposeManagerRename => 'Rename';
+
+  @override
+  String get purposeManagerArchive => 'Archive';
+
+  @override
+  String get purposeManagerSave => 'Save';
+
+  @override
+  String get purposeManagerReorderHint => 'Press and hold to reorder.';
+
+  @override
+  String get purposeManagerArchiveBody =>
+      'Archive this purpose? Compounds keep the tag; it stops showing.';
+
+  @override
+  String get purposeManagerNameRequired => 'Enter a name.';
+
+  @override
+  String get purposeManagerDuplicateName =>
+      'A purpose with that name already exists.';
+
+  @override
+  String get purposeManagerSaveFailed =>
+      'Could not save the purpose. Try again.';
+
+  @override
+  String get purposeManagerEmpty =>
+      'No purposes. Add one to filter compounds by it.';
+
+  @override
   String get compoundPickerTitle => 'Add Compounds';
 
   @override

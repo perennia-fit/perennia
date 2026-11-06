@@ -47,6 +47,9 @@ import 'package:perennia/features/progress/widgets/progress_overview.dart';
 import 'package:perennia/features/protocols/controllers/protocols_day_controller.dart';
 import 'package:perennia/features/protocols/services/protocols_lock_store.dart';
 import 'package:perennia/features/protocols/widgets/compound_list_screen.dart';
+import 'package:perennia/features/protocols/widgets/compound_picker_sheet.dart';
+import 'package:perennia/features/protocols/widgets/purpose_filter_row.dart';
+import 'package:perennia/features/protocols/widgets/purpose_manager_screen.dart';
 import 'package:perennia/features/routine_plans/controllers/routine_plan_controller.dart';
 import 'package:perennia/features/routine_plans/repositories/routine_plan_feature_repository.dart';
 import 'package:perennia/features/routine_plans/widgets/routine_plan_list_screen.dart';
@@ -278,6 +281,115 @@ void main() {
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       }
+
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets(
+      'the Purpose filter rows and manager meet accessibility guidelines at '
+      '320 dp and 1.3x text', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final purposes = <PurposeRecord>[
+      for (final (index, name) in <String>[
+        'Sleep',
+        'Body composition',
+        'General health',
+      ].indexed)
+        PurposeRecord(
+          id: 'p-$index',
+          name: name,
+          sortOrder: index,
+          updatedAt: DateTime.utc(2026, 6, 30),
+        ),
+    ];
+    final compounds = <CompoundRecord>[
+      CompoundRecord(
+        id: 'c-1',
+        name: 'Melatonin',
+        defaultUnit: DoseUnit.milligram,
+        defaultRoute: DoseRoute.oral,
+        purposeIds: const <String>['p-0'],
+        updatedAt: DateTime.utc(2026, 6, 30),
+      ),
+    ];
+
+    Future<void> expectAccessible() async {
+      expect(tester.takeException(), isNull);
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    }
+
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ProviderScope(
+          // A new scope per theme, so each loop starts on the list.
+          key: UniqueKey(),
+          overrides: [
+            compoundListProvider.overrideWith(
+              (ref) => Stream<List<CompoundRecord>>.value(compounds),
+            ),
+            recentCompoundIdsProvider.overrideWith(
+              (ref) => Stream<List<String>>.value(const <String>[]),
+            ),
+            activePurposesProvider.overrideWith(
+              (ref) => Stream<List<PurposeRecord>>.value(purposes),
+            ),
+            protocolDayControllerProvider.overrideWith(
+              _StubProtocolDayController.new,
+            ),
+            protocolsLockStoreProvider.overrideWith((ref) => _NoLockStore()),
+          ],
+          child: MaterialApp(
+            theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: const TextScaler.linear(1.3),
+              ),
+              child: child!,
+            ),
+            home: const CompoundListScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The list's filter row, with a filter selected.
+      await tester.tap(find.byKey(PurposeFilterRow.optionKey('p-0')));
+      await tester.pumpAndSettle();
+      await expectAccessible();
+
+      // The picker's filter row, from a page that opens it.
+      final context = tester.element(find.byType(CompoundListScreen));
+      unawaited(
+        showCompoundPickerSheet(context, selectedIds: const <String>[]),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(CompoundPickerSheet.searchFieldKey), findsOneWidget);
+      await tester.tap(find.byKey(PurposeFilterRow.optionKey('p-0')).last);
+      await tester.pumpAndSettle();
+      await expectAccessible();
+      await tester.tap(find.byKey(CompoundPickerSheet.doneButtonKey));
+      await tester.pumpAndSettle();
+
+      // The manager, and its name dialog.
+      await tester.tap(find.byKey(CompoundListScreen.menuButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CompoundListScreen.purposesMenuKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(PurposeManagerScreen), findsOneWidget);
+      await expectAccessible();
+      await tester.tap(find.byKey(PurposeManagerScreen.addButtonKey));
+      await tester.pumpAndSettle();
+      await expectAccessible();
 
       semantics.dispose();
       await tester.pumpWidget(const SizedBox.shrink());
@@ -867,6 +979,9 @@ void main() {
           recentCompoundIdsProvider.overrideWith(
             (ref) => Stream<List<String>>.value(const <String>[]),
           ),
+          activePurposesProvider.overrideWith(
+            (ref) => Stream<List<PurposeRecord>>.value(const <PurposeRecord>[]),
+          ),
           protocolDayControllerProvider.overrideWith(
             _StubProtocolDayController.new,
           ),
@@ -1023,6 +1138,9 @@ void main() {
             (ref) => Stream<List<String>>.value(
               const <String>[],
             ),
+          ),
+          activePurposesProvider.overrideWith(
+            (ref) => Stream<List<PurposeRecord>>.value(const <PurposeRecord>[]),
           ),
           protocolDayControllerProvider.overrideWith(
             _StubProtocolDayController.new,

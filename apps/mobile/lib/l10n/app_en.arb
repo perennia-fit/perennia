@@ -2543,6 +2543,48 @@
   "@compoundArchiveConfirm": {
     "description": "Confirms archiving a Compound."
   },
+  "compoundListMenuTooltip": "More options",
+  "@compoundListMenuTooltip": {
+    "description": "Tooltip of the Compound list's app bar overflow menu."
+  },
+  "compoundEditorPurposes": "Purposes",
+  "@compoundEditorPurposes": {
+    "description": "Label above the Compound editor's Purpose chips."
+  },
+  "purposeFilterLabel": "Filter by purpose",
+  "@purposeFilterLabel": {
+    "description": "Screen reader label of the row of Purpose filter chips on the Compound list and in the Compound picker."
+  },
+  "purposeFilterAll": "All",
+  "@purposeFilterAll": {
+    "description": "The filter chip that clears the Purpose filter."
+  },
+  "purposeFilterEmpty": "No compounds with this purpose.",
+  "@purposeFilterEmpty": {
+    "description": "Shown when no Compound carries the selected Purpose. It never names the Purpose."
+  },
+  "purposeManagerTitle": "Purposes",
+  "@purposeManagerTitle": {
+    "description": "Title of the screen that manages Purposes, and the Compound list's menu item that opens it."
+  },
+  "purposeManagerAdd": "Add a Purpose",
+  "purposeManagerRowMenuTooltip": "More options",
+  "@purposeManagerRowMenuTooltip": {
+    "description": "Tooltip of the menu on a row of the Purpose manager. It never names the Purpose."
+  },
+  "purposeManagerNameLabel": "Name",
+  "purposeManagerRename": "Rename",
+  "purposeManagerArchive": "Archive",
+  "purposeManagerSave": "Save",
+  "purposeManagerReorderHint": "Press and hold to reorder.",
+  "purposeManagerArchiveBody": "Archive this purpose? Compounds keep the tag; it stops showing.",
+  "@purposeManagerArchiveBody": {
+    "description": "Body of the dialog confirming a Purpose's archive. Its title is the Purpose's name alone: a Purpose's name is never combined with a verb in one string."
+  },
+  "purposeManagerNameRequired": "Enter a name.",
+  "purposeManagerDuplicateName": "A purpose with that name already exists.",
+  "purposeManagerSaveFailed": "Could not save the purpose. Try again.",
+  "purposeManagerEmpty": "No purposes. Add one to filter compounds by it.",
   "compoundPickerTitle": "Add Compounds",
   "@compoundPickerTitle": {
     "description": "Title of the sheet that picks a Protocol's Compounds."

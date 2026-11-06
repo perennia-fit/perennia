@@ -746,6 +746,7 @@ class CompoundScheduleOptionRecord {
     required this.defaultUnit,
     required this.defaultRoute,
     this.isArchived = false,
+    this.purposeIds = const <String>[],
   });
 
   final String id;
@@ -757,6 +758,10 @@ class CompoundScheduleOptionRecord {
   /// (`watchCompoundsByIds`) can return an archived Compound: a Protocol keeps
   /// a member whose Compound was archived, and its editor still names it.
   final bool isArchived;
+
+  /// The stored Purpose tags, so the picker can file a Compound it just created
+  /// under the filter without reading the whole library again.
+  final List<String> purposeIds;
 }
 
 /// A persisted `Dose` (self-describing logged event read model). Renders from

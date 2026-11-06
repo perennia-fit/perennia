@@ -28,6 +28,15 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   after 0:00 the strip shows Rest over with the time since.
 - **Edit and archive a Compound.**
 - **Create a Compound from the Protocol editor's picker.**
+- **Purposes:** tag a Compound with why you take it, such as Sleep or
+  Performance, filter the Compound list and the picker by Purpose, and rename,
+  reorder, archive or add Purposes from the Compound list's menu. The six
+  built-in Compounds arrive tagged, and any tag you remove stays removed.
+- **Agents can read and write Purposes** (`listAgentPurposes`,
+  `GET /agent/protocols/purposes`, `agent_list_purposes`;
+  `batchWriteAgentPurposes`, `POST /agent/protocols/purposes/batch-write`,
+  `agent_batch_write_purposes`), and read and write `purposeIds` on Compounds
+  and filter them by Purpose.
 
 ### Changed
 
@@ -79,6 +88,7 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Fixed
 
+- **A second device's seed no longer overrides a renamed built-in Compound.**
 - **An Agent write no longer un-archives a Meal, drops Food Entry import
   keys, or moves an entry to another Meal.**
 - **`batchWriteAgentMeal` rejects a malformed timestamp with a 400.**

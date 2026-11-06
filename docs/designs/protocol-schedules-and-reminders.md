@@ -45,9 +45,17 @@ and some that are illegal where the user lives. Perennia records what the user
 does. It never promotes, advises or judges. The existing rules, which this spec
 keeps and extends, are:
 
-*   The app never categorizes a Compound by what it is or whether it is legal.
-    It ships only a few over-the-counter examples (creatine, vitamin D,
-    caffeine, magnesium, melatonin, fish oil).
+*   The app never classifies a Compound by what it is or whether it is legal.
+    It has no type, class, schedule or legality field, anywhere. It ships only
+    a few over-the-counter examples (creatine, vitamin D, caffeine, magnesium,
+    melatonin, fish oil).
+*   The app tags only its own OTC built-in Compounds with Purposes, and only
+    with the seeded Purpose names. The tags record what people commonly take
+    these items for. They never say that the items work.
+*   Once seeded, a tag belongs to the user. The user can remove it, and the
+    seed never adds it again. [Compound Purposes and Protocol
+    Building](compound-purposes.md#the-neutral-instrument-rule-narrowed) narrowed
+    the rule to these three lines, and says why.
 *   No dosing advice, no sourcing, and no claims that anything works. The Effect
     view carries a "For personal tracking; not medical advice." notice, and
     nothing in the app moralizes.

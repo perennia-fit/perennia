@@ -1,7 +1,7 @@
 # Compound Purposes and Protocol Building
 
 *   **Author:** Leonardo Pinheiro
-*   **Status:** Approved
+*   **Status:** Current
 *   **Date:** 2026-11-04
 
 --------------------------------------------------------------------------------
@@ -720,8 +720,10 @@ member order.
     *   **Add a Purpose**;
     *   a name dialog with inline errors for an empty or duplicate name.
 
-    Archiving asks first: "Archive Sleep? Compounds keep the tag; it stops
-    showing."
+    Archiving asks first, in a dialog titled with the Purpose's name alone
+    ("Sleep") whose body reads "Archive this purpose? Compounds keep the tag; it
+    stops showing." The name stays out of the question because a Purpose name is
+    never combined with a verb in any string (file 36).
 *   **Localization (PR 1).** Every string on the Compound list and in the
     editor sheet moves to `app_en.arb`. That includes the list's 15 hardcoded
     strings, such as "Search compounds", "New compound" and "Default unit".
@@ -1215,7 +1217,7 @@ this PR changes no golden vectors, contract or sync shape.
 | 11 | `apps/mobile/lib/domain/protocols/compound_purposes.dart` | Create |
 | 12 | `apps/mobile/lib/domain/protocols/protocols.dart` | Modify |
 | 13 | `apps/mobile/lib/data/local/app_database.dart` and the Drift schema snapshots | Modify; Regenerate |
-| 14 | `apps/mobile/lib/data/repositories/purpose_repository.dart`; `apps/mobile/lib/features/activity/undo_conflict_message.dart` | Create; Modify |
+| 14 | `apps/mobile/lib/data/repositories/purpose_repository.dart`; `training_repositories.dart` and `apps/mobile/lib/features/activity/undo_conflict_message.dart` | Create; Modify |
 | 15 | `apps/mobile/lib/data/repositories/training_repositories.dart` and `plan_sync_repository.dart` | Modify |
 | 16 | `apps/mobile/lib/data/seeds/otc_compound_seed.dart` | Modify |
 | 17 | `apps/mobile/lib/features/sync/repositories/sync_repository.dart` and `services/sync_cycle_runner.dart` | Modify |
@@ -1232,7 +1234,7 @@ this PR changes no golden vectors, contract or sync shape.
 | 28 | `apps/server/src/agent-protocols.ts` | Modify |
 | 29 | `apps/server/src/agent-mcp.ts` | Modify |
 | 30 | Generated contract files | Regenerate |
-| 31 | `packages/contract/src/agent-skill-reference.ts` and `agent-skills/perennia/scripts/prn-agent.mjs` | Modify |
+| 31 | `packages/contract/src/agent-skill-reference.ts`, `agent-skills/perennia/scripts/prn-agent.mjs`, `prn-code.mjs` and `SKILL.md` | Modify |
 | 32 | `apps/mobile/lib/features/protocols/widgets/purpose_filter_row.dart` | Create |
 | 33 | `apps/mobile/lib/features/protocols/widgets/compound_picker_sheet.dart` | Modify |
 | 34 | `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart` | Modify |
@@ -1276,6 +1278,8 @@ this PR changes no golden vectors, contract or sync shape.
         `deletedAt`, getter `isArchived`, and `isStarter` (its id is in
         `starterPurposes`).
     *   **`CompoundRecord`:** gains `purposeIds`, the stored list.
+    *   **`CompoundScheduleOptionRecord`:** gains `purposeIds`, for the picker's
+        row of a Compound it just created (file 33).
     *   **`CompoundDraft`:** gains `List<String>? purposeIds`. Null means leave
         unchanged; a list is stored as given after `normalizePurposeIds`.
 
@@ -1577,7 +1581,11 @@ this PR changes no golden vectors, contract or sync shape.
 *   **Type / Scope**: the picker from file 4.
 *   **Proposed Changes**: add `PurposeFilterRow` under search, match active
     Purpose names in search, and pass the active filter to the Create row as
-    `CompoundEditorSheet(initialPurposeIds:)`.
+    `CompoundEditorSheet(initialPurposeIds:)`. The row for a Compound created
+    here reads its tags from `CompoundScheduleOptionRecord.purposeIds` (files 12
+    and 15), because the sheet keeps the list it read when it opened. A filter
+    with nothing to show and no search says "No compounds with this purpose.",
+    in the list too.
 
 #### 34. `apps/mobile/lib/features/protocols/widgets/compound_list_screen.dart` (Modify)
 
@@ -1718,6 +1726,11 @@ this PR changes no golden vectors, contract or sync shape.
 *   **`apps/mobile/test/features/protocols/purpose_manager_screen_test.dart`
     (Create):** CUJ 8, covering rename, reorder, archive, add, and both name
     errors.
+*   **`apps/mobile/test/features/protocols/compound_picker_real_database_test.dart`:**
+    a Purpose added between opens is in the filter on the next open, and a
+    Compound created under a filter is listed under it.
+*   **`apps/mobile/test/l10n/l10n_externalization_test.dart`:** both new widget
+    files are on its list, and no message takes a Purpose name as a placeholder.
 *   **Accessibility:** the existing app-shell accessibility checks run on the
     filter rows and the Purpose manager in both themes, at 320 dp and 1.3×
     text.

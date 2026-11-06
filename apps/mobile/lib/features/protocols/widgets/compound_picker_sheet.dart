@@ -10,6 +10,7 @@ import '../../../theme/theme.dart';
 import '../controllers/protocols_day_controller.dart';
 import 'compound_list_screen.dart';
 import 'protocols_lock_screen.dart';
+import 'purpose_filter_row.dart';
 
 /// Picks a Protocol's Compounds. Completes with the new selection, or null when
 /// the sheet was dismissed or the app locked.
@@ -51,11 +52,11 @@ enum CompoundPickerSection { favorites, recent, all }
 /// The Compound picker's content. Open it with [showCompoundPickerSheet], which
 /// sits it behind [ProtocolsLockSheetGuard].
 ///
-/// **Filtering stays within a frame at 200 Compounds.** The library is read once
-/// when the sheet opens and each name lowercased once. A keystroke filters that
-/// in memory into a flat item list, and [ListView.builder] builds only the rows
-/// on screen. A stream or a `ListView(children:)` here would be a dropped frame
-/// per keystroke.
+/// **Filtering stays within a frame at 200 Compounds.** The library and the
+/// active Purposes are read once when the sheet opens, and each row's names
+/// lowercased once. A keystroke filters that in memory into a flat item list, and
+/// [ListView.builder] builds only the rows on screen. A stream or a
+/// `ListView(children:)` here would be a dropped frame per keystroke.
 class CompoundPickerSheet extends ConsumerStatefulWidget {
   const CompoundPickerSheet({super.key, required this.selectedIds});
 
@@ -84,7 +85,7 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
 
-  /// Every selected id, listed or not. Search never clears it.
+  /// Every selected id, listed or not. Search and the filter never clear it.
   late final Set<String> _selected = <String>{...widget.selectedIds};
 
   /// Listed Compounds by id, the ids behind [_selected]'s count on Done.
@@ -93,6 +94,13 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
 
   /// [_listedById]'s rows, A-Z the way the Compound list sorts them.
   var _sorted = <_PickerRow>[];
+
+  /// The active Purposes, for the filter row and for building rows.
+  var _purposes = const <PurposeRecord>[];
+
+  /// The active filter, or null for All.
+  String? _purposeFilterId;
+
   var _items = const <_PickerItem>[];
   var _loaded = false;
 
@@ -129,7 +137,8 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     }
     ref
       ..invalidate(compoundListProvider)
-      ..invalidate(recentCompoundIdsProvider);
+      ..invalidate(recentCompoundIdsProvider)
+      ..invalidate(activePurposesProvider);
     final compounds = await _readOnce(compoundListProvider.future);
     if (!mounted) {
       return;
@@ -138,13 +147,19 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     if (!mounted) {
       return;
     }
+    final purposes = await _readOnce(activePurposesProvider.future);
+    if (!mounted) {
+      return;
+    }
+    _purposes = purposes;
     for (final compound in compounds) {
-      _listedById[compound.id] = _PickerRow(
+      _listedById[compound.id] = _rowFor(
         id: compound.id,
         name: compound.name,
         unit: compound.defaultUnit,
         route: compound.defaultRoute,
         isFavorite: compound.isFavorite,
+        purposeIds: compound.purposeIds,
       );
     }
     _recentIds.addAll(recentIds);
@@ -153,6 +168,31 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
       _loaded = true;
       _items = _buildItems();
     });
+  }
+
+  /// A row with its active Purpose names lowercased once. An id that isn't an
+  /// active Purpose names nothing: it stays on the Compound but isn't searched.
+  _PickerRow _rowFor({
+    required String id,
+    required String name,
+    required DoseUnit unit,
+    required DoseRoute route,
+    required bool isFavorite,
+    required List<String> purposeIds,
+  }) {
+    final tags = purposeIds.toSet();
+    return _PickerRow(
+      id: id,
+      name: name,
+      unit: unit,
+      route: route,
+      isFavorite: isFavorite,
+      purposeIds: tags,
+      lowerPurposeNames: <String>[
+        for (final purpose in _purposes)
+          if (tags.contains(purpose.id)) purpose.name.toLowerCase(),
+      ],
+    );
   }
 
   void _sortListed() {
@@ -167,10 +207,18 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
       return;
     }
     _search = search;
-    _showItemsForSearch();
+    _showItems();
   }
 
-  void _showItemsForSearch() {
+  void _onPurposeFilterSelected(String? id) {
+    if (id == _purposeFilterId) {
+      return;
+    }
+    _purposeFilterId = id;
+    _showItems();
+  }
+
+  void _showItems() {
     setState(() => _items = _buildItems());
     // A narrower list shouldn't open at wherever the longer one was scrolled to.
     if (_scrollController.hasClients) {
@@ -183,8 +231,15 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
       return const <_PickerItem>[];
     }
     final query = _search.toLowerCase();
-    bool matches(_PickerRow row) =>
-        query.isEmpty || row.lowerName.contains(query);
+    final filterId = _purposeFilterId;
+    bool matches(_PickerRow row) {
+      if (filterId != null && !row.purposeIds.contains(filterId)) {
+        return false;
+      }
+      return query.isEmpty ||
+          row.lowerName.contains(query) ||
+          row.lowerPurposeNames.any((name) => name.contains(query));
+    }
 
     final sections = <(CompoundPickerSection, Iterable<_PickerRow>)>[
       (CompoundPickerSection.favorites, _sorted.where((r) => r.isFavorite)),
@@ -206,7 +261,8 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     }
 
     // "Create" is offered unless that exact name already exists: a partial
-    // match isn't the Compound the user typed.
+    // match isn't the Compound the user typed. This ignores the filter, because
+    // an active Compound with that name exists whichever Purpose is showing.
     if (query.isNotEmpty && !_sorted.any((r) => r.lowerName == query)) {
       items.add(_CreateItem(_search));
     }
@@ -232,7 +288,12 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
   }
 
   Future<void> _create(String name) async {
-    final id = await showCompoundEditorSheet(context, initialName: name);
+    final filterId = _purposeFilterId;
+    final id = await showCompoundEditorSheet(
+      context,
+      initialName: name,
+      initialPurposeIds: filterId == null ? null : <String>[filterId],
+    );
     if (id == null || !mounted) {
       return;
     }
@@ -248,7 +309,7 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     // Set first, so clearing the field doesn't filter twice.
     _search = '';
     _searchController.clear();
-    _showItemsForSearch();
+    _showItems();
   }
 
   /// The Compound just created. The list read in [_load] predates it, and the
@@ -273,12 +334,13 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     }
     for (final compound in compounds) {
       if (compound.id == id) {
-        return _PickerRow(
+        return _rowFor(
           id: compound.id,
           name: compound.name,
           unit: compound.defaultUnit,
           route: compound.defaultRoute,
           isFavorite: false,
+          purposeIds: compound.purposeIds,
         );
       }
     }
@@ -366,6 +428,20 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
             ),
           ),
         ),
+        if (_purposes.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppDimens.base,
+              0,
+              AppDimens.base,
+              AppDimens.dense,
+            ),
+            child: PurposeFilterRow(
+              purposes: _purposes,
+              selectedId: _purposeFilterId,
+              onSelected: _onPurposeFilterSelected,
+            ),
+          ),
         Expanded(
           child: _loaded && _items.isEmpty
               ? Center(
@@ -373,7 +449,11 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
                   child: Padding(
                     padding: const EdgeInsets.all(AppDimens.base),
                     child: Text(
-                      l10n.compoundListEmpty,
+                      _search.isNotEmpty
+                          ? l10n.compoundListNoMatches
+                          : _purposeFilterId != null
+                              ? l10n.purposeFilterEmpty
+                              : l10n.compoundListEmpty,
                       style: TextStyle(color: colors.textSecondary),
                     ),
                   ),
@@ -397,6 +477,7 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
           key: CompoundPickerSheet.sectionHeaderKey(section),
           section: section,
           isFirst: isFirst,
+          purposeName: _filterPurposeName(),
         ),
       _RowItem(:final section, :final row) => _buildRow(section, row),
       _CreateItem(:final name) => _CreateRow(
@@ -407,8 +488,18 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
     };
   }
 
+  /// The active filter's name, which heads the All compounds section.
+  String? _filterPurposeName() {
+    for (final purpose in _purposes) {
+      if (purpose.id == _purposeFilterId) {
+        return purpose.name;
+      }
+    }
+    return null;
+  }
+
   /// The checkbox is the primary text color, not cyan: DESIGN.md keeps cyan for
-  /// one selection per screen, which from PR 2 is the selected filter chip. The
+  /// one selection per screen, which is the selected filter chip. The
   /// check is the surface color because the theme's `onPrimary` is near-black,
   /// which is invisible on the light theme's near-black box.
   Widget _buildRow(CompoundPickerSection section, _PickerRow row) {
@@ -437,8 +528,9 @@ class _CompoundPickerSheetState extends ConsumerState<CompoundPickerSheet> {
   }
 }
 
-/// One listed Compound, with its name lowercased once so a keystroke doesn't
-/// lowercase 200 names.
+/// One listed Compound, with its names lowercased once so a keystroke doesn't
+/// lowercase 200 names, and its Purposes as a set so the filter doesn't scan a
+/// list per row.
 class _PickerRow {
   _PickerRow({
     required this.id,
@@ -446,6 +538,8 @@ class _PickerRow {
     required this.unit,
     required this.route,
     required this.isFavorite,
+    required this.purposeIds,
+    required this.lowerPurposeNames,
   }) : lowerName = name.toLowerCase();
 
   final String id;
@@ -454,6 +548,8 @@ class _PickerRow {
   final DoseUnit unit;
   final DoseRoute route;
   final bool isFavorite;
+  final Set<String> purposeIds;
+  final List<String> lowerPurposeNames;
 }
 
 sealed class _PickerItem {
@@ -485,10 +581,14 @@ class _SectionHeader extends StatelessWidget {
     required super.key,
     required this.section,
     required this.isFirst,
+    required this.purposeName,
   });
 
   final CompoundPickerSection section;
   final bool isFirst;
+
+  /// The active filter's name, or null with no filter.
+  final String? purposeName;
 
   @override
   Widget build(BuildContext context) {
@@ -506,7 +606,7 @@ class _SectionHeader extends StatelessWidget {
           switch (section) {
             CompoundPickerSection.favorites => l10n.compoundListFavorites,
             CompoundPickerSection.recent => l10n.compoundListRecent,
-            CompoundPickerSection.all => l10n.compoundListAll,
+            CompoundPickerSection.all => purposeName ?? l10n.compoundListAll,
           },
           style: context.textStyles.label.copyWith(
             color: context.colors.textSecondary,
