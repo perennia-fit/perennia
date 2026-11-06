@@ -1804,7 +1804,7 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
     String aisleGuideText(); // the order of principles, then each Aisle's id, UI label and description, then the `none` and `unsure` answers
 
     final class AisleInputLine { final String code; final String name; final String? brand; final List<String> categories; final int scans; final String inputHash; }
-    AisleInputLine parseAisleInputLine(String line);
+    AisleInputLine parseAisleInputLine(String line, {int lineNumber = 1}); // lineNumber is the line's number in its file, which a FormatException names
     String encodeAisleInputLine(AisleInputLine line);
 
     final class AisleLabelsHeader { final String questionHash; final String model; final String modelDigest; }
@@ -1838,7 +1838,7 @@ workflow_lint` green: those are the jobs that `apps/server/**` and
       required List<AisleReferenceRow> reference,
     }); // resolveFoodAisle for each input line; a code with no label has no label step
 
-    final class AisleRanking { /* for each FoodAisle, its list sorted by scans descending, then code ascending */ }
+    final class AisleRanking { List<AisleBundleProduct> listOf(FoodAisle aisle); /* for each FoodAisle, its list sorted by scans descending, then code ascending */ }
     AisleRanking buildAisleRanking(List<AisleBundleProduct> bundle);
     int browseRank(AisleRanking ranking, FoodAisle aisle, {required String code, required int scans}); // as in The reference set: 1-based, the product counted as in `aisle`
 
