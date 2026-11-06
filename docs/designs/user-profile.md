@@ -1253,7 +1253,8 @@ Every change a user, agent or self-hoster can see adds a `CHANGELOG.md` line und
     English constants, like every other label in `activity_feed_repository.dart`, which has no
     localization.
 *   **File 19.** Export the table. Import merge-only: a row is inserted if its id is new,
-    otherwise LWW by `updatedAt`.
+    otherwise LWW by `updatedAt`. An archive from before schema 67 has no such file and imports
+    with no rows, through `_mayBeAbsentFromArchive`; a schema 67 archive without it is refused.
 
 #### Profile screen (files 20 to 26)
 

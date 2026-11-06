@@ -11,6 +11,7 @@ import 'package:perennia/api/perennia_api_client.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/platform_exercise_seed.dart';
+import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/domain/settings/account_settings.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/activity/repositories/activity_feed_repository.dart';
@@ -6027,6 +6028,331 @@ void main() {
             ..where((row) => row.entityId.equals(_sideBendExerciseId)))
           .get();
       expect(hiddenEntries, isNotEmpty);
+    });
+  });
+
+  group('User Profile sections', () {
+    http.Response accepted(Map<String, Object?> body) {
+      final changes =
+          (body['changes']! as List<Object?>).cast<Map<String, Object?>>();
+      return http.Response(
+        jsonEncode(<String, Object?>{
+          'protocolVersion': syncProtocolVersion,
+          'accepted': changes
+              .map((change) => change['id']! as String)
+              .toList(growable: false),
+          'serverClock': '2026-11-01T00:00:01.000Z',
+          'applied': changes
+              .map(
+                (change) => <String, Object?>{
+                  'id': change['id'],
+                  'updatedAt': change['updatedAt'],
+                  'deviceId': 'device-a',
+                },
+              )
+              .toList(growable: false),
+        }),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    Map<String, Object?> pulledChange({
+      required String id,
+      String entity = AppDatabase.userProfileSectionsTable,
+      Map<String, Object?> payload = const <String, Object?>{
+        'section': 'general_notes',
+        'values': <String, Object?>{'text': 'pulled'},
+      },
+      String updatedAt = '2026-11-01T00:00:00.000Z',
+      String? deletedAt,
+    }) {
+      return <String, Object?>{
+        'entity': entity,
+        'id': id,
+        'deviceId': 'device-b',
+        'payload': payload,
+        'updatedAt': updatedAt,
+        'deletedAt': deletedAt,
+      };
+    }
+
+    SyncRepository pullRepository(List<Object?> changes) {
+      return SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'nextCursor': 'cursor-1',
+                'serverClock': '2026-11-01T00:00:02.000Z',
+                'changes': changes,
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+    }
+
+    Future<UserProfileSectionRow> sectionRow(String id) {
+      return (database.select(database.userProfileSections)
+            ..where((row) => row.id.equals(id)))
+          .getSingle();
+    }
+
+    test(
+        'pending changes push after nutrition goals in the wire shape, and are '
+        'acknowledged', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.nutrition.saveNutritionGoal(
+        NutritionGoalTarget(
+          nutrient: NutrientId.energy,
+          value: 2200,
+          entered: '2200',
+        ),
+      );
+      await repositories.userProfile.saveSection(
+        UserProfileSection.aboutYou,
+        <String, Object?>{
+          'height': <String, Object?>{'value': 66, 'unit': 'in'},
+        },
+      );
+      expect(await SyncRepository(database: database).hasPendingChanges(), true);
+
+      final bodies = <Map<String, Object?>>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            bodies.add(body);
+            return accepted(body);
+          }),
+        ),
+      );
+
+      final result = await repository.pushPendingLoggedSets(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      final entities = bodies.map((body) => body['entity']).toList();
+      expect(
+        entities.indexOf(AppDatabase.userProfileSectionsTable),
+        greaterThan(entities.indexOf(AppDatabase.nutritionGoalsTable)),
+      );
+      final row =
+          await database.select(database.userProfileSections).getSingle();
+      expect(result.acceptedEntityIds, contains(row.id));
+      final push = bodies.singleWhere(
+        (body) => body['entity'] == AppDatabase.userProfileSectionsTable,
+      );
+      final change = (push['changes']! as List<Object?>).single!
+          as Map<String, Object?>;
+      expect(change['payload'], <String, Object?>{
+        'id': row.id,
+        'section': 'about_you',
+        'values': <String, Object?>{
+          'sex': null,
+          'birth_year': null,
+          'height': <String, Object?>{'value': 66, 'unit': 'in'},
+        },
+        'updated_at': change['updatedAt'],
+        'deleted_at': null,
+      });
+
+      expect(row.syncPreviouslySynced, isTrue);
+      expect(row.syncDeviceId, 'device-a');
+      final entry = await (database.select(database.activityLog)
+            ..where(
+              (log) => log.entityTable.equals(
+                AppDatabase.userProfileSectionsTable,
+              ),
+            ))
+          .getSingle();
+      expect(entry.syncAcknowledgedAt, isNotNull);
+      expect(await SyncRepository(database: database).hasPendingChanges(), false);
+    });
+
+    test(
+        'a full resync from pullLoggedSetChanges pushes them after nutrition '
+        'goals too', () async {
+      final repositories = TrainingRepositories(database);
+      await repositories.nutrition.saveNutritionGoal(
+        NutritionGoalTarget(
+          nutrient: NutrientId.energy,
+          value: 2200,
+          entered: '2200',
+        ),
+      );
+      await repositories.userProfile.saveSection(
+        UserProfileSection.generalNotes,
+        <String, Object?>{'text': 'Notes'},
+      );
+
+      final pushedEntities = <Object?>[];
+      final repository = SyncRepository(
+        database: database,
+        apiClientFactory: (baseUrl) => PerenniaApiClient(
+          baseUrl: baseUrl,
+          httpClient: MockClient((request) async {
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            if (body.containsKey('changes')) {
+              pushedEntities.add(body['entity']);
+              return accepted(body);
+            }
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'protocolVersion': syncProtocolVersion,
+                'fullResyncRequired': body['mode'] != 'snapshot',
+                'nextCursor': 'snapshot-cursor',
+                'serverClock': '2026-11-01T00:00:02.000Z',
+                'changes': const <Object?>[],
+              }),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }),
+        ),
+      );
+
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(result.fullResyncRequired, isTrue);
+      expect(
+        pushedEntities.indexOf(AppDatabase.userProfileSectionsTable),
+        greaterThan(pushedEntities.indexOf(AppDatabase.nutritionGoalsTable)),
+      );
+    });
+
+    test('a pulled row is applied and reads as the section', () async {
+      final repository = pullRepository(<Object?>[
+        pulledChange(id: 'pulled-notes'),
+      ]);
+
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(result.appliedCount, 1);
+      expect(result.userSettingsApplied, isFalse);
+      final row = await sectionRow('pulled-notes');
+      expect(row.syncPreviouslySynced, isTrue);
+      expect(row.syncDeviceId, 'device-b');
+      final profile =
+          await TrainingRepositories(database).userProfile.watch().first;
+      expect(profile.generalNotesText, 'pulled');
+    });
+
+    test('an older pulled version of a row loses to the local one', () async {
+      await pullRepository(<Object?>[
+        pulledChange(id: 'shared', updatedAt: '2026-11-02T00:00:00.000Z'),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      final result = await pullRepository(<Object?>[
+        pulledChange(
+          id: 'shared',
+          payload: const <String, Object?>{
+            'section': 'general_notes',
+            'values': <String, Object?>{'text': 'older'},
+          },
+        ),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      expect(result.appliedCount, 0);
+      expect(jsonDecode((await sectionRow('shared')).valuesJson), {
+        'text': 'pulled',
+      });
+    });
+
+    test('a pulled tombstone leaves the section as no row', () async {
+      await pullRepository(<Object?>[
+        pulledChange(id: 'shared'),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      await pullRepository(<Object?>[
+        pulledChange(
+          id: 'shared',
+          updatedAt: '2026-11-02T00:00:00.000Z',
+          deletedAt: '2026-11-02T00:00:00.000Z',
+        ),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      final profile =
+          await TrainingRepositories(database).userProfile.watch().first;
+      expect(profile.generalNotes, isNull);
+    });
+
+    test('a malformed pulled row is quarantined and the rest applies',
+        () async {
+      final repository = pullRepository(<Object?>[
+        pulledChange(
+          id: 'malformed',
+          payload: const <String, Object?>{
+            'section': 'general_notes',
+            'values': 'not an object',
+          },
+        ),
+        pulledChange(id: 'well-formed'),
+      ]);
+
+      final result = await repository.pullLoggedSetChanges(
+        session: _session(),
+        deviceId: 'device-a',
+      );
+
+      expect(result.appliedCount, 1);
+      final held = await _quarantinedChanges(database);
+      expect(held.single.entityId, 'malformed');
+      expect(held.single.failureKind, 'format');
+      expect(
+        (await database.select(database.userProfileSections).get())
+            .map((row) => row.id),
+        <String>['well-formed'],
+      );
+    });
+
+    test('a full re-sync tombstones a synced row missing from the snapshot',
+        () async {
+      final repositories = TrainingRepositories(database);
+      await pullRepository(<Object?>[
+        pulledChange(id: 'kept'),
+        pulledChange(
+          id: 'dropped',
+          payload: const <String, Object?>{
+            'section': 'training_goals',
+            'values': <String, Object?>{'goals': <String>['strength']},
+          },
+        ),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+      // A section this device wrote and never pushed has to survive.
+      await repositories.userProfile.saveSection(
+        UserProfileSection.trainingSetup,
+        <String, Object?>{'days_per_week': 4},
+      );
+      await database.customStatement(
+        'UPDATE activity_log SET sync_acknowledged_at = 1000',
+      );
+
+      await _snapshotRepository(database, <Object?>[
+        pulledChange(id: 'kept'),
+      ]).pullLoggedSetChanges(session: _session(), deviceId: 'device-a');
+
+      expect((await sectionRow('kept')).deletedAt, isNull);
+      expect((await sectionRow('dropped')).deletedAt, isNotNull);
+      final profile = await repositories.userProfile.watch().first;
+      expect(profile.generalNotesText, 'pulled');
+      expect(profile.goals, isNull);
+      expect(profile.daysPerWeek, 4);
     });
   });
 }

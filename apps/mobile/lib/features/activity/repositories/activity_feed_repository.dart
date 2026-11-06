@@ -56,6 +56,10 @@ final class ActivityFeedBatch {
     if (entries.isEmpty) {
       return 'Changed activity';
     }
+    final profileSummary = _userProfileSummary();
+    if (profileSummary != null) {
+      return profileSummary;
+    }
     final mealSummary = _mealOccasionSummary();
     if (mealSummary != null) {
       return mealSummary;
@@ -80,6 +84,29 @@ final class ActivityFeedBatch {
       return 'Changed ${entityLabels.first} and ${entityLabels.last}';
     }
     return 'Changed ${entries.length} entity types';
+  }
+
+  /// A section is one part of one record the user sees, so a first write reads
+  /// "updated" like every later one, and a Batch names its sections. Returns
+  /// `null` unless every entry is a User Profile section, so the generic summary
+  /// applies to a mixed Batch.
+  String? _userProfileSummary() {
+    if (entries.any(
+      (entry) => entry.entityTable != AppDatabase.userProfileSectionsTable,
+    )) {
+      return null;
+    }
+    final labels = entries
+        .map(
+          (entry) => _userProfileSectionLabel(
+            (entry.afterImage ?? entry.beforeImage)?['section'],
+          ),
+        )
+        .nonNulls
+        .toSet();
+    return labels.isEmpty
+        ? 'Profile updated'
+        : 'Profile · ${labels.join(', ')} updated';
   }
 
   /// A `Meal` and its `Food Entry` rows are one eating occasion, so an
@@ -177,6 +204,18 @@ class _ActivityFeedBatchBuilder {
   }
 }
 
+String? _userProfileSectionLabel(Object? wireName) {
+  return switch (wireName) {
+    'about_you' => 'About you',
+    'training_goals' => 'Training Goals',
+    'experience' => 'Experience',
+    'training_setup' => 'Training setup',
+    'health_limitations' => 'Health & limitations',
+    'general_notes' => 'General Notes',
+    _ => null,
+  };
+}
+
 String _verbFor(ActivityLogEntry entry) {
   if (entry.beforeImage == null && entry.afterImage != null) {
     return entry.entityTable == AppDatabase.loggedSetsTable
@@ -215,6 +254,7 @@ String _entityLabel(String entityTable) {
     AppDatabase.foodsTable => 'food',
     AppDatabase.foodEntriesTable => 'food entry',
     AppDatabase.nutritionGoalsTable => 'nutrition goal',
+    AppDatabase.userProfileSectionsTable => 'profile',
     AppDatabase.userSettingsTable => 'settings',
     AppDatabase.metricsTable => 'metric',
     AppDatabase.metricReadingsTable => 'reading',

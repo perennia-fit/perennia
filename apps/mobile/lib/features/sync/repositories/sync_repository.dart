@@ -117,6 +117,7 @@ const _outboundSyncActivityTables = <String>[
   AppDatabase.protocolTargetOutcomesTable,
   AppDatabase.schedulesTable,
   AppDatabase.nutritionGoalsTable,
+  AppDatabase.userProfileSectionsTable,
   AppDatabase.userSettingsTable,
   AppDatabase.integrationDataClassConsentsTable,
 ];
@@ -536,6 +537,12 @@ class SyncRepository implements SyncCycleRepository {
         session: session,
         deviceId: deviceId,
       );
+      final userProfileSectionsResult =
+          await _pushPendingUserProfileSectionsWithClient(
+        client: client,
+        session: session,
+        deviceId: deviceId,
+      );
       final userSettingsResult = await _pushPendingUserSettingsWithClient(
         client: client,
         session: session,
@@ -564,6 +571,7 @@ class SyncRepository implements SyncCycleRepository {
         protocolTargetOutcomesResult,
         schedulesResult,
         nutritionGoalsResult,
+        userProfileSectionsResult,
         userSettingsResult,
       ]);
       if (manageStatus) {
@@ -888,6 +896,21 @@ class SyncRepository implements SyncCycleRepository {
     );
   }
 
+  Future<SyncPushResult> _pushPendingUserProfileSectionsWithClient({
+    required PerenniaApiClient client,
+    required AuthSession session,
+    required String deviceId,
+  }) {
+    return _pushPendingEntityRowsWithClient(
+      client: client,
+      session: session,
+      deviceId: deviceId,
+      entity: AppDatabase.userProfileSectionsTable,
+      loadPendingRows: _loadPendingUserProfileSectionRows,
+      acknowledgePushResponse: _acknowledgeUserProfileSectionPushResponse,
+    );
+  }
+
   Future<SyncPushResult> _pushPendingUserSettingsWithClient({
     required PerenniaApiClient client,
     required AuthSession session,
@@ -1183,6 +1206,11 @@ class SyncRepository implements SyncCycleRepository {
           session: session,
           deviceId: deviceId,
         );
+        await _pushPendingUserProfileSectionsWithClient(
+          client: client,
+          session: session,
+          deviceId: deviceId,
+        );
         await _pushPendingUserSettingsWithClient(
           client: client,
           session: session,
@@ -1270,6 +1298,7 @@ class SyncRepository implements SyncCycleRepository {
     final liveProtocolTargetOutcomeSnapshotIds = <String>{};
     final liveScheduleSnapshotIds = <String>{};
     final liveNutritionGoalSnapshotIds = <String>{};
+    final liveUserProfileSectionSnapshotIds = <String>{};
     final liveIntegrationConsentSnapshotIds = <String>{};
     final livePlanSnapshotIds = <String, Set<String>>{
       for (final entity in <_PlanSyncEntity>[
@@ -1342,6 +1371,9 @@ class SyncRepository implements SyncCycleRepository {
       }
       if (entity == AppDatabase.nutritionGoalsTable) {
         liveNutritionGoalSnapshotIds.add(id);
+      }
+      if (entity == AppDatabase.userProfileSectionsTable) {
+        liveUserProfileSectionSnapshotIds.add(id);
       }
       if (entity == AppDatabase.integrationDataClassConsentsTable) {
         liveIntegrationConsentSnapshotIds.add(id);
@@ -1470,6 +1502,10 @@ class SyncRepository implements SyncCycleRepository {
         );
         await _markPreviouslySyncedNutritionGoalRowsAbsentFromSnapshotDeleted(
           liveNutritionGoalSnapshotIds,
+          DateTime.parse(snapshotServerClock).toUtc(),
+        );
+        await _markPreviouslySyncedUserProfileSectionRowsAbsentFromSnapshotDeleted(
+          liveUserProfileSectionSnapshotIds,
           DateTime.parse(snapshotServerClock).toUtc(),
         );
         await _markPreviouslySyncedConsentRowsAbsentFromSnapshotDeleted(
@@ -1765,6 +1801,14 @@ class SyncRepository implements SyncCycleRepository {
     }
     if (change.entity == AppDatabase.nutritionGoalsTable) {
       final applied = await _applyPulledNutritionGoalChange(
+        change,
+        deviceId: deviceId,
+        syncBatchId: syncBatchId,
+      );
+      return (known: true, applied: applied, userSettingsApplied: false);
+    }
+    if (change.entity == AppDatabase.userProfileSectionsTable) {
+      final applied = await _applyPulledUserProfileSectionChange(
         change,
         deviceId: deviceId,
         syncBatchId: syncBatchId,
@@ -2654,6 +2698,41 @@ class SyncRepository implements SyncCycleRepository {
     return true;
   }
 
+  Future<bool> _applyPulledUserProfileSectionChange(
+    SyncPulledChange change, {
+    required String deviceId,
+    required String syncBatchId,
+  }) async {
+    final existing = await (_database.select(_database.userProfileSections)
+          ..where((row) => row.id.equals(change.id)))
+        .getSingleOrNull();
+    final incomingUpdatedAt = DateTime.parse(change.updatedAt).toUtc();
+    final existingDeviceId = existing?.syncDeviceId ?? deviceId;
+    if (existing != null &&
+        !_lwwWins(
+          incomingUpdatedAt,
+          change.deviceId,
+          existing.updatedAt.toUtc(),
+          existingDeviceId,
+        )) {
+      return false;
+    }
+
+    await _repositories.userProfile.applySyncImage(
+      image: _syncImageFromPull(change),
+      deviceId: change.deviceId,
+      actor: _actorForPulledChange(change),
+      batchId: change.batchId ?? syncBatchId,
+      activityLogId: change.activityLogId,
+      activityBeforeImage: change.beforeImage,
+      activityAfterImage: change.afterImage,
+      activityOccurredAt: change.occurredAt == null
+          ? null
+          : DateTime.parse(change.occurredAt!).toUtc(),
+    );
+    return true;
+  }
+
   Future<bool> _applyPulledUserSettingsChange(
     SyncPulledChange change, {
     required String deviceId,
@@ -3288,6 +3367,32 @@ class SyncRepository implements SyncCycleRepository {
     }
   }
 
+  Future<void>
+      _markPreviouslySyncedUserProfileSectionRowsAbsentFromSnapshotDeleted(
+    Set<String> liveSnapshotIds,
+    DateTime timestamp,
+  ) async {
+    final localRows = await (_database.select(_database.userProfileSections)
+          ..where(
+            (row) =>
+                row.syncPreviouslySynced.equals(true) & row.deletedAt.isNull(),
+          ))
+        .get();
+    for (final row in localRows) {
+      if (liveSnapshotIds.contains(row.id)) {
+        continue;
+      }
+      await (_database.update(_database.userProfileSections)
+            ..where((table) => table.id.equals(row.id)))
+          .write(
+        UserProfileSectionsCompanion(
+          updatedAt: Value<DateTime>(timestamp),
+          deletedAt: Value<DateTime?>(timestamp),
+        ),
+      );
+    }
+  }
+
   Future<void> _markPreviouslySyncedConsentRowsAbsentFromSnapshotDeleted(
     Set<String> liveSnapshotIds,
     DateTime timestamp,
@@ -3613,6 +3718,23 @@ class SyncRepository implements SyncCycleRepository {
                 row.deletedAt.isNull() &
                 row.syncAcknowledgedAt.isNull() &
                 row.entityTable.equals(AppDatabase.nutritionGoalsTable) &
+                row.afterImage.isNotNull(),
+          )
+          ..orderBy([
+            (row) => OrderingTerm.asc(row.occurredAt),
+            (row) => OrderingTerm.asc(row.id),
+          ])
+          ..limit(_syncPushBatchLimit))
+        .get();
+  }
+
+  Future<List<ActivityLogRow>> _loadPendingUserProfileSectionRows() {
+    return (_database.select(_database.activityLog)
+          ..where(
+            (row) =>
+                row.deletedAt.isNull() &
+                row.syncAcknowledgedAt.isNull() &
+                row.entityTable.equals(AppDatabase.userProfileSectionsTable) &
                 row.afterImage.isNotNull(),
           )
           ..orderBy([
@@ -4632,6 +4754,60 @@ class SyncRepository implements SyncCycleRepository {
     return List<String>.unmodifiable(acknowledgedRows.map((row) => row.id));
   }
 
+  Future<List<String>> _acknowledgeUserProfileSectionPushResponse(
+    List<ActivityLogRow> pendingRows,
+    SyncPushResponse response,
+  ) async {
+    final acceptedEntityIds = response.accepted.toSet();
+    final appliedById = <String, SyncAppliedChange>{
+      for (final change in response.applied) change.id: change,
+    };
+    final acknowledgedRows = pendingRows
+        .where((row) => acceptedEntityIds.contains(row.entityId))
+        .toList(growable: false);
+    final acknowledgedAt = DateTime.now().toUtc();
+
+    await _database.transaction(() async {
+      for (final row in acknowledgedRows) {
+        final applied = appliedById[row.entityId];
+        await (_database.update(_database.activityLog)
+              ..where((table) => table.id.equals(row.id)))
+            .write(
+          ActivityLogCompanion(
+            syncAcknowledgedAt: Value<DateTime?>(acknowledgedAt),
+            afterImage: applied == null
+                ? const Value.absent()
+                : Value<String?>(
+                    _imageWithUpdatedAt(row.afterImage, applied.updatedAt),
+                  ),
+          ),
+        );
+        await (_database.update(_database.userProfileSections)
+              ..where((table) => table.id.equals(row.entityId)))
+            .write(
+          const UserProfileSectionsCompanion(
+            syncPreviouslySynced: Value<bool>(true),
+          ),
+        );
+      }
+      for (final change in response.applied) {
+        await (_database.update(_database.userProfileSections)
+              ..where((row) => row.id.equals(change.id)))
+            .write(
+          UserProfileSectionsCompanion(
+            syncDeviceId: Value<String?>(change.deviceId),
+            syncPreviouslySynced: const Value<bool>(true),
+            updatedAt: Value<DateTime>(
+              DateTime.parse(change.updatedAt).toUtc(),
+            ),
+          ),
+        );
+      }
+    });
+
+    return List<String>.unmodifiable(acknowledgedRows.map((row) => row.id));
+  }
+
   Future<List<String>> _acknowledgeUserSettingsPushResponse(
     List<ActivityLogRow> pendingRows,
     SyncPushResponse response,
@@ -5238,6 +5414,8 @@ int _syncApplyOrder(String entity) {
     AppDatabase.protocolTargetOutcomesTable => 17,
     AppDatabase.schedulesTable => 18,
     AppDatabase.nutritionGoalsTable => 19,
+    // No parent, so this is tidy ordering only. Same place as the server's.
+    AppDatabase.userProfileSectionsTable => 19,
     AppDatabase.workoutTemplatesTable => 20,
     AppDatabase.templateExercisesTable => 21,
     AppDatabase.prescriptionsTable => 22,
