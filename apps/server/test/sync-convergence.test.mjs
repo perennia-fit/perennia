@@ -617,6 +617,135 @@ test(
 );
 
 test(
+  "two devices editing different User Profile sections offline both survive",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = userProfileReplicas(server);
+      const [replicaA, replicaB] = replicas;
+      const aboutYouId = randomUUID();
+      const goalsId = randomUUID();
+      replicaA.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: aboutYouId,
+          section: "about_you",
+          values: { sex: "female", birth_year: 1990, height: null },
+          updatedAt: "2026-10-20T07:00:00.000Z"
+        })
+      );
+      replicaA.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: goalsId,
+          section: "training_goals",
+          values: { goals: ["strength"] },
+          updatedAt: "2026-10-20T07:00:01.000Z"
+        })
+      );
+      await settlePlanReplicas(replicas);
+
+      // Offline: A edits About you, then B edits Training Goals later. A section
+      // is its own row, so B's later write can't overwrite A's edit.
+      replicaA.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: aboutYouId,
+          section: "about_you",
+          values: { sex: "female", birth_year: 1991, height: null },
+          updatedAt: "2026-10-20T08:00:00.000Z"
+        })
+      );
+      replicaB.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: goalsId,
+          section: "training_goals",
+          values: { goals: ["mobility"] },
+          updatedAt: "2026-10-20T09:00:00.000Z"
+        })
+      );
+      await settlePlanReplicas(replicas);
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        assert.equal(
+          newestProfileSection(replica, "about_you").payload.values.birth_year,
+          1991,
+          replica.name
+        );
+        assert.deepEqual(
+          newestProfileSection(replica, "training_goals").payload.values.goals,
+          ["mobility"],
+          replica.name
+        );
+      }
+      assert.equal(
+        replicaA.stateSignatureFor(userProfileEntityOrder),
+        replicaB.stateSignatureFor(userProfileEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
+  "two devices that each filled one User Profile section converge on the newer row, keeping the older unread",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    const server = await createConvergenceServer();
+
+    try {
+      const replicas = userProfileReplicas(server);
+      const [replicaA, replicaB] = replicas;
+      const olderId = randomUUID();
+      const newerId = randomUUID();
+
+      // Each install mints its own random id before it has a user id, so the
+      // same section arrives as two rows and neither overwrites the other.
+      replicaA.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: olderId,
+          section: "about_you",
+          values: { sex: "male", birth_year: 1980, height: null },
+          updatedAt: "2026-10-20T07:00:00.000Z"
+        })
+      );
+      replicaB.stageChange(
+        "user_profile_sections",
+        profileSectionChange({
+          id: newerId,
+          section: "about_you",
+          values: { sex: "male", birth_year: 1981, height: null },
+          updatedAt: "2026-10-20T08:00:00.000Z"
+        })
+      );
+      await settlePlanReplicas(replicas);
+      await settlePlanReplicas(replicas);
+
+      for (const replica of replicas) {
+        assert.equal(
+          newestProfileSection(replica, "about_you").id,
+          newerId,
+          replica.name
+        );
+        assert.equal(replica.row("user_profile_sections", olderId).deletedAt, null);
+      }
+      assert.equal(
+        replicaA.stateSignatureFor(userProfileEntityOrder),
+        replicaB.stateSignatureFor(userProfileEntityOrder)
+      );
+    } finally {
+      await server.close();
+    }
+  }
+);
+
+test(
   "a Protocol delete against another replica's later rename converges to the live Protocol with all its members",
   { skip: databaseUrl ? false : "DATABASE_URL is not set." },
   async () => {
@@ -1295,6 +1424,46 @@ test(
     }
   }
 );
+
+const userProfileEntityOrder = ["user_profile_sections"];
+
+function profileSectionChange({ id, section, values, updatedAt }) {
+  return {
+    id,
+    payload: { id, section, values, updated_at: updatedAt, deleted_at: null },
+    updatedAt,
+    deletedAt: null
+  };
+}
+
+/** The newest live row for a section, as every read takes it. */
+function newestProfileSection(replica, section) {
+  return [...replica.rows.values()]
+    .filter(
+      (row) =>
+        row.entity === "user_profile_sections" &&
+        row.deletedAt === null &&
+        row.payload.section === section
+    )
+    .sort(
+      (left, right) =>
+        left.updatedAt.localeCompare(right.updatedAt) ||
+        left.id.localeCompare(right.id)
+    )
+    .at(-1);
+}
+
+function userProfileReplicas(server) {
+  return ["a", "b"].map(
+    (name) =>
+      new PlanTreeReplica({
+        name: `Profile Replica ${name.toUpperCase()}`,
+        deviceId: `device-${name}`,
+        server,
+        entityOrder: userProfileEntityOrder
+      })
+  );
+}
 
 async function createConvergenceServer() {
   if (databaseUrl) {

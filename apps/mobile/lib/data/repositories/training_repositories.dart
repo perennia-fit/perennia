@@ -18,6 +18,8 @@ import '../../domain/nutrition/meal_validation.dart';
 import '../../domain/nutrition/nutrition.dart';
 import '../../domain/nutrition/nutrition_day_assembly.dart';
 import '../../domain/nutrition/nutrition_import.dart';
+import '../../domain/profile/user_profile.dart';
+import '../../domain/profile/user_profile_validation.dart';
 import '../../domain/protocols/compound_purposes.dart';
 import '../../domain/protocols/dose_validation.dart';
 import '../../domain/protocols/protocol_plan.dart';
@@ -122,6 +124,7 @@ part 'routine_plan_repository.dart';
 part 'routine_up_next_repository.dart';
 part 'template_divergence_repository.dart';
 part 'template_materialize_repository.dart';
+part 'user_profile_repository.dart';
 part 'workout_capture_repository.dart';
 part 'workout_template_repository.dart';
 
@@ -166,6 +169,7 @@ class TrainingRepositories {
     );
     nutrition = NutritionRepository._(this);
     accountSettings = AccountSettingsRepository._(this);
+    userProfile = UserProfileRepository._(this);
     protocols = ProtocolsRepository._(
       this,
       otcCompoundSeedSource ?? const DefaultOtcCompoundSeedSource(),
@@ -206,6 +210,7 @@ class TrainingRepositories {
   late final PlatformFoodRepository platformFoods;
   late final NutritionRepository nutrition;
   late final AccountSettingsRepository accountSettings;
+  late final UserProfileRepository userProfile;
   late final ProtocolsRepository protocols;
   late final EffectRepository effect;
   late final RestTimerRepository restTimers;
@@ -242,6 +247,7 @@ class TrainingRepositories {
     AppDatabase.foodsTable,
     AppDatabase.mealTypesTable,
     AppDatabase.nutritionGoalsTable,
+    AppDatabase.userProfileSectionsTable,
     AppDatabase.measurementEntriesTable,
     AppDatabase.measurementsTable,
     AppDatabase.metricReadingsTable,
@@ -15169,6 +15175,11 @@ class ActivityLogRepository {
               ..where((row) => row.id.equals(entityId)))
             .getSingleOrNull();
         return row == null ? null : _nutritionGoalImage(row);
+      case AppDatabase.userProfileSectionsTable:
+        final row = await (_database.select(_database.userProfileSections)
+              ..where((row) => row.id.equals(entityId)))
+            .getSingleOrNull();
+        return row == null ? null : _userProfileSectionImage(row);
       case AppDatabase.workoutExercisesTable:
         final row = await (_database.select(_database.workoutExercises)
               ..where((row) => row.id.equals(entityId)))
@@ -15349,6 +15360,10 @@ class ActivityLogRepository {
         (_database.update(_database.nutritionGoals)
               ..where((row) => row.id.equals(entityId)))
             .write(_nutritionGoalCompanionFromImage(image)),
+      AppDatabase.userProfileSectionsTable =>
+        (_database.update(_database.userProfileSections)
+              ..where((row) => row.id.equals(entityId)))
+            .write(_userProfileSectionCompanionFromImage(image)),
       AppDatabase.workoutExercisesTable =>
         (_database.update(_database.workoutExercises)
               ..where((row) => row.id.equals(entityId)))
@@ -17702,6 +17717,12 @@ bool _activityImagesEqualForEntity(
     left = <String, Object?>{...laterAddedDefaults, ...left};
     right = <String, Object?>{...laterAddedDefaults, ...right};
   }
+  if (entityTable == AppDatabase.userProfileSectionsTable) {
+    return _activityImagesEqual(
+      _userProfileSectionImageNormalized(left),
+      _userProfileSectionImageNormalized(right),
+    );
+  }
   if (entityTable == AppDatabase.protocolTargetOutcomesTable) {
     return _activityImagesEqual(
       _protocolTargetOutcomeImageNormalized(left),
@@ -17734,9 +17755,31 @@ bool _activityImagesEqualForEntity(
   return _activityImagesEqual(normalizedLeft, normalizedRight);
 }
 
+/// Compares by value at any depth, because a User Profile image nests its
+/// `values`. A JSON number has one type, so `66` and `66.0` are equal: the server
+/// returns the first for what the device stored as the second.
 bool _activityImageValuesEqual(Object? left, Object? right) {
   if (left is num && right is num) {
     return left.toDouble() == right.toDouble();
+  }
+  if (left is Map && right is Map) {
+    return left.length == right.length &&
+        left.keys.every(
+          (key) =>
+              right.containsKey(key) &&
+              _activityImageValuesEqual(left[key], right[key]),
+        );
+  }
+  if (left is List && right is List) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (var index = 0; index < left.length; index += 1) {
+      if (!_activityImageValuesEqual(left[index], right[index])) {
+        return false;
+      }
+    }
+    return true;
   }
   return left == right;
 }

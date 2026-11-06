@@ -6369,6 +6369,420 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Discard'**
   String get protocolEditorDiscard;
+
+  /// Account & app sheet tile that opens the User Profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get navProfile;
+
+  /// Profile screen title.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get profileTitle;
+
+  /// Disclosure line under the Profile title in Local-only Mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Stored on this phone and in its backups. If you sign in, it syncs to your account, where the server\'s operator and any agent you connect can read it.'**
+  String get profileDisclosureLocalOnly;
+
+  /// Disclosure line under the Profile title in Synced Mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced to {host}. The server\'s operator and any agent you connect can read it. Change history on the server is kept for up to 180 days.'**
+  String profileDisclosureSynced(String host);
+
+  /// Extra line in the Health & limitations and General Notes editors.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent activity history shows that this section changed, not the text.'**
+  String get profileAgentHistoryLine;
+
+  /// Extra line in the Health & limitations editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Medications and supplements belong in Protocols.'**
+  String get profileHealthMedicationsLine;
+
+  /// A User Profile field or section with no value.
+  ///
+  /// In en, this message translates to:
+  /// **'Not set'**
+  String get profileNotSet;
+
+  /// The explicit none choice in a User Profile section.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get profileNone;
+
+  /// Save button in a User Profile editor sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get profileSave;
+
+  /// User Profile section title.
+  ///
+  /// In en, this message translates to:
+  /// **'About you'**
+  String get profileSectionAboutYou;
+
+  /// User Profile section title.
+  ///
+  /// In en, this message translates to:
+  /// **'Training Goals'**
+  String get profileSectionTrainingGoals;
+
+  /// User Profile section title.
+  ///
+  /// In en, this message translates to:
+  /// **'Experience'**
+  String get profileSectionExperience;
+
+  /// User Profile section title.
+  ///
+  /// In en, this message translates to:
+  /// **'Training setup'**
+  String get profileSectionTrainingSetup;
+
+  /// User Profile section title.
+  ///
+  /// In en, this message translates to:
+  /// **'Health & limitations'**
+  String get profileSectionHealth;
+
+  /// User Profile section title.
+  ///
+  /// In en, this message translates to:
+  /// **'General Notes'**
+  String get profileSectionGeneralNotes;
+
+  /// One field on a Profile card.
+  ///
+  /// In en, this message translates to:
+  /// **'{label}: {value}'**
+  String profileFieldValue(String label, String value);
+
+  /// User Profile field label. It names the field's purpose, which is why the choices are Female, Male and Not set.
+  ///
+  /// In en, this message translates to:
+  /// **'Sex used for default reference ranges'**
+  String get profileFieldSex;
+
+  /// User Profile field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Birth year'**
+  String get profileFieldBirthYear;
+
+  /// User Profile field label on a card.
+  ///
+  /// In en, this message translates to:
+  /// **'Height'**
+  String get profileFieldHeight;
+
+  /// About you editor: height in centimetres.
+  ///
+  /// In en, this message translates to:
+  /// **'Height (cm)'**
+  String get profileFieldHeightCentimetres;
+
+  /// About you editor: the feet part of a height.
+  ///
+  /// In en, this message translates to:
+  /// **'Height (ft)'**
+  String get profileFieldHeightFeet;
+
+  /// About you editor: the inches part of a height.
+  ///
+  /// In en, this message translates to:
+  /// **'Inches'**
+  String get profileFieldHeightInches;
+
+  /// User Profile field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Equipment'**
+  String get profileFieldEquipment;
+
+  /// User Profile field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Days per week'**
+  String get profileFieldDaysPerWeek;
+
+  /// User Profile field label on a card.
+  ///
+  /// In en, this message translates to:
+  /// **'Session length'**
+  String get profileFieldSessionLength;
+
+  /// Training setup editor: usual session length.
+  ///
+  /// In en, this message translates to:
+  /// **'Session length (minutes)'**
+  String get profileFieldSessionMinutes;
+
+  /// A height on a Profile card, metric.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} cm'**
+  String profileHeightCentimetresValue(String value);
+
+  /// A height on a Profile card, imperial.
+  ///
+  /// In en, this message translates to:
+  /// **'{feet} ft {inches} in'**
+  String profileHeightFeetInchesValue(String feet, String inches);
+
+  /// A session length on a Profile card.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min'**
+  String profileSessionMinutesValue(int minutes);
+
+  /// Tooltip on the days-per-week stepper's minus button.
+  ///
+  /// In en, this message translates to:
+  /// **'Fewer days per week'**
+  String get profileDaysPerWeekDecrease;
+
+  /// Tooltip on the days-per-week stepper's plus button.
+  ///
+  /// In en, this message translates to:
+  /// **'More days per week'**
+  String get profileDaysPerWeekIncrease;
+
+  /// Counter under a User Profile free-text field. Counts UTF-16 code units, as the validator does.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} / {limit}'**
+  String profileCharacterCount(int count, int limit);
+
+  /// What a screen reader says for the free-text counter.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} of {limit} characters'**
+  String profileCharacterCountSemantics(int count, int limit);
+
+  /// About you: sex used for default reference ranges.
+  ///
+  /// In en, this message translates to:
+  /// **'Female'**
+  String get profileSexFemale;
+
+  /// About you: sex used for default reference ranges.
+  ///
+  /// In en, this message translates to:
+  /// **'Male'**
+  String get profileSexMale;
+
+  /// Training Goal chip.
+  ///
+  /// In en, this message translates to:
+  /// **'Longevity'**
+  String get profileGoalLongevity;
+
+  /// Training Goal chip.
+  ///
+  /// In en, this message translates to:
+  /// **'Strength'**
+  String get profileGoalStrength;
+
+  /// Training Goal chip.
+  ///
+  /// In en, this message translates to:
+  /// **'Muscle gain'**
+  String get profileGoalMuscleGain;
+
+  /// Training Goal chip.
+  ///
+  /// In en, this message translates to:
+  /// **'Body composition'**
+  String get profileGoalBodyComposition;
+
+  /// Training Goal chip.
+  ///
+  /// In en, this message translates to:
+  /// **'Endurance performance'**
+  String get profileGoalEndurance;
+
+  /// Training Goal chip.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobility'**
+  String get profileGoalMobility;
+
+  /// Training Goal chip.
+  ///
+  /// In en, this message translates to:
+  /// **'General fitness'**
+  String get profileGoalGeneralFitness;
+
+  /// Experience level.
+  ///
+  /// In en, this message translates to:
+  /// **'Beginner'**
+  String get profileLevelBeginner;
+
+  /// Experience level.
+  ///
+  /// In en, this message translates to:
+  /// **'Intermediate'**
+  String get profileLevelIntermediate;
+
+  /// Experience level.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced'**
+  String get profileLevelAdvanced;
+
+  /// What the Beginner level means.
+  ///
+  /// In en, this message translates to:
+  /// **'Under a year of regular training in this Focus.'**
+  String get profileLevelBeginnerMeaning;
+
+  /// What the Intermediate level means.
+  ///
+  /// In en, this message translates to:
+  /// **'One to three years.'**
+  String get profileLevelIntermediateMeaning;
+
+  /// What the Advanced level means.
+  ///
+  /// In en, this message translates to:
+  /// **'More than three years.'**
+  String get profileLevelAdvancedMeaning;
+
+  /// Title of the dialog that confirms a soft validation warning.
+  ///
+  /// In en, this message translates to:
+  /// **'Check this value'**
+  String get profileWarningTitle;
+
+  /// Soft-warning dialog button that returns to the field.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get profileWarningEdit;
+
+  /// Soft-warning dialog button that saves the value.
+  ///
+  /// In en, this message translates to:
+  /// **'Save anyway'**
+  String get profileWarningSaveAnyway;
+
+  /// Validation rule birth_year.future.
+  ///
+  /// In en, this message translates to:
+  /// **'Birth year can\'t be in the future.'**
+  String get profileValidationBirthYearFuture;
+
+  /// Validation rule birth_year.too_old.
+  ///
+  /// In en, this message translates to:
+  /// **'Birth year can\'t be more than 130 years ago.'**
+  String get profileValidationBirthYearTooOld;
+
+  /// Validation rule birth_year.improbable_age.
+  ///
+  /// In en, this message translates to:
+  /// **'That makes you {age}. Check the birth year.'**
+  String profileValidationBirthYearImprobable(int age);
+
+  /// Validation rule height.non_positive.
+  ///
+  /// In en, this message translates to:
+  /// **'Height must be more than zero.'**
+  String get profileValidationHeightNonPositive;
+
+  /// Validation rule height.too_tall.
+  ///
+  /// In en, this message translates to:
+  /// **'Height must be 300 cm (118.1 in) or less.'**
+  String get profileValidationHeightTooTall;
+
+  /// Validation rule height.unit.
+  ///
+  /// In en, this message translates to:
+  /// **'Height must be in cm or in.'**
+  String get profileValidationHeightUnit;
+
+  /// Validation rule height.improbable.
+  ///
+  /// In en, this message translates to:
+  /// **'A height of {height} is unusual. Check it.'**
+  String profileValidationHeightImprobable(String height);
+
+  /// Validation rule days_per_week.range.
+  ///
+  /// In en, this message translates to:
+  /// **'Days per week must be 1 to 7.'**
+  String get profileValidationDaysPerWeekRange;
+
+  /// Validation rule session_minutes.range.
+  ///
+  /// In en, this message translates to:
+  /// **'Session length must be 1 to 600 minutes.'**
+  String get profileValidationSessionMinutesRange;
+
+  /// Validation rule session_minutes.improbable.
+  ///
+  /// In en, this message translates to:
+  /// **'Sessions over 4 hours are unusual. Check the length.'**
+  String get profileValidationSessionMinutesImprobable;
+
+  /// Validation rule goals.unknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown Training Goal.'**
+  String get profileValidationGoalsUnknown;
+
+  /// Validation rules goals.duplicate and equipment.duplicate.
+  ///
+  /// In en, this message translates to:
+  /// **'Each item can appear once.'**
+  String get profileValidationDuplicate;
+
+  /// Validation rule equipment.invalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Equipment ids must be 1 to 64 characters.'**
+  String get profileValidationEquipmentInvalid;
+
+  /// Validation rule levels.unknown_level.
+  ///
+  /// In en, this message translates to:
+  /// **'Level must be Beginner, Intermediate or Advanced.'**
+  String get profileValidationLevelsUnknownLevel;
+
+  /// Validation rule levels.invalid_focus.
+  ///
+  /// In en, this message translates to:
+  /// **'Each level needs a Focus.'**
+  String get profileValidationLevelsInvalidFocus;
+
+  /// Validation rule levels.duplicate_focus.
+  ///
+  /// In en, this message translates to:
+  /// **'Each Focus can have one level.'**
+  String get profileValidationLevelsDuplicateFocus;
+
+  /// Validation rule text.too_long.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep this under {limit} characters.'**
+  String profileValidationTextTooLong(int limit);
+
+  /// Validation rule sex.unknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Sex must be Female, Male or Not set.'**
+  String get profileValidationSexUnknown;
 }
 
 class _AppLocalizationsDelegate

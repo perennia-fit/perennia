@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/app.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
+import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
 import 'package:perennia/features/activity/repositories/activity_feed_repository.dart';
@@ -262,6 +263,134 @@ void main() {
 
       final set = await repositories.sets.getById(result.loggedSetId);
       expect(set!.values.load!.entered, '110');
+    });
+  });
+
+  group('ActivityFeedRepository User Profile', () {
+    late AppDatabase database;
+    late TrainingRepositories repositories;
+    late ActivityFeedRepository feedRepository;
+
+    setUp(() {
+      database = AppDatabase.inMemory();
+      repositories = TrainingRepositories(database);
+      feedRepository = ActivityFeedRepository(repositories);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test(
+        'clearing Health & limitations reads as updated, and the device keeps '
+        'the old text in the before-image', () async {
+      await repositories.userProfile.saveSection(
+        UserProfileSection.healthLimitations,
+        <String, Object?>{'text': 'Left knee injury'},
+        batchId: 'first',
+      );
+      await repositories.userProfile.saveSection(
+        UserProfileSection.healthLimitations,
+        <String, Object?>{'none': true},
+        batchId: 'second',
+      );
+
+      final batches = await feedRepository.listRecentBatches(
+        now: DateTime.now(),
+      );
+
+      expect(batches, hasLength(2));
+      for (final batch in batches) {
+        expect(
+          batch.affectedEntitySummary,
+          'Profile · Health & limitations updated',
+        );
+      }
+      final second =
+          batches.singleWhere((batch) => batch.batchId == 'second').entries;
+      final entry = second.single;
+      final before = entry.beforeImage!['values']! as Map<String, Object?>;
+      final after = entry.afterImage!['values']! as Map<String, Object?>;
+      expect(before['text'], 'Left knee injury');
+      expect(after['text'], isNull);
+      expect(after['none'], isTrue);
+    });
+
+    test('a Batch of two sections names both', () async {
+      await repositories.userProfile.saveSection(
+        UserProfileSection.trainingGoals,
+        <String, Object?>{
+          'goals': <String>['strength'],
+        },
+        batchId: 'batch',
+      );
+      await repositories.userProfile.saveSection(
+        UserProfileSection.trainingSetup,
+        <String, Object?>{'days_per_week': 4},
+        batchId: 'batch',
+      );
+
+      final batch = (await feedRepository.listRecentBatches(
+        now: DateTime.now(),
+      ))
+          .single;
+
+      expect(
+        batch.affectedEntitySummary,
+        'Profile · Training Goals, Training setup updated',
+      );
+    });
+
+    test('every section has its label, and no readable section has none', () {
+      String summary(List<Object?> sections) {
+        return ActivityFeedBatch(
+          batchId: 'batch',
+          actor: 'user',
+          occurredAt: DateTime.utc(2026, 11, 1),
+          entries: <ActivityLogEntry>[
+            for (final (index, section) in sections.indexed)
+              ActivityLogEntry(
+                id: 'entry-$index',
+                actor: 'user',
+                batchId: 'batch',
+                entityTable: AppDatabase.userProfileSectionsTable,
+                entityId: 'row-$index',
+                beforeImage: null,
+                afterImage: <String, Object?>{'section': section},
+                occurredAt: DateTime.utc(2026, 11, 1),
+                updatedAt: DateTime.utc(2026, 11, 1),
+              ),
+          ],
+        ).affectedEntitySummary;
+      }
+
+      expect(
+        summary(
+          UserProfileSection.values
+              .map((section) => section.wireName)
+              .toList(),
+        ),
+        'Profile · About you, Training Goals, Experience, Training setup, '
+        'Health & limitations, General Notes updated',
+      );
+      expect(summary(<Object?>['not_a_section', 7]), 'Profile updated');
+    });
+
+    test('a mixed Batch uses the generic summary, with the profile label',
+        () async {
+      await repositories.userProfile.saveSection(
+        UserProfileSection.generalNotes,
+        <String, Object?>{'text': 'Notes'},
+        batchId: 'batch',
+      );
+      await repositories.protocols.purposes.create('Joints', batchId: 'batch');
+
+      final batch = (await feedRepository.listRecentBatches(
+        now: DateTime.now(),
+      ))
+          .single;
+
+      expect(batch.affectedEntitySummary, contains('profile'));
     });
   });
 

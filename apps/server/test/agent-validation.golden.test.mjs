@@ -8,6 +8,7 @@ import {
   PLAN_VALIDATION_LIMITS,
   PROTOCOL_PLAN_VALIDATION_LIMITS,
   SETTINGS_VALIDATION_LIMITS,
+  USER_PROFILE_VALIDATION_LIMITS,
   localDateAtOffset,
   validateAgentDose,
   validateAgentFoodEntry,
@@ -20,7 +21,8 @@ import {
   validateAgentScheduleRule,
   validateAgentSet,
   validateAgentSettings,
-  validateAgentTemplateGroup
+  validateAgentTemplateGroup,
+  validateUserProfileSection
 } from "../src/index.ts";
 
 // One entry per shared validation domain this runner implements. Dispatch is a
@@ -37,7 +39,14 @@ const VALIDATORS_BY_DOMAIN = new Map([
   ["plan-validation", (vectorCase) => validatePlanVectorCase(vectorCase)],
   ["settings-validation", (vectorCase) => validateAgentSettings(vectorCase.input)],
   ["protocol-plan-validation", (vectorCase) => validateProtocolPlanVectorCase(vectorCase)],
-  ["meal-validation", (vectorCase) => validateMealVectorCase(vectorCase)]
+  ["meal-validation", (vectorCase) => validateMealVectorCase(vectorCase)],
+  [
+    "user-profile-validation",
+    ({ input }) =>
+      validateUserProfileSection(input.section, input.values, {
+        referenceYear: input.referenceYear
+      })
+  ]
 ]);
 
 // Every other domain under packages/golden-vectors, with who checks it. Every
@@ -115,6 +124,17 @@ test("server validation matches the shared golden vectors", async () => {
       assert.equal(vector.schemaVersion, 1, `${filename} schemaVersion`);
       assert.deepEqual(vector.limits, MEAL_VALIDATION_LIMITS, `${filename} limits`);
     }
+    if (vector.domain === "user-profile-validation") {
+      // The schema version this runner reads; it moves together with the
+      // vector file's `schemaVersion` and the Dart runner's constant
+      // (packages/golden-vectors/vectors/README.md).
+      assert.equal(vector.schemaVersion, 1, `${filename} schemaVersion`);
+      assert.deepEqual(
+        vector.limits,
+        USER_PROFILE_VALIDATION_LIMITS,
+        `${filename} limits`
+      );
+    }
     if (vector.domain === "settings-validation") {
       assert.deepEqual(
         vector.limits,
@@ -141,6 +161,37 @@ test("server validation matches the shared golden vectors", async () => {
       );
     }
   }
+});
+
+test("User Profile messages carry the same values as the Dart module", () => {
+  const options = { referenceYear: 2026 };
+  assert.equal(
+    validateUserProfileSection("about_you", { birth_year: 1915 }, options).warnings[0].message,
+    "That makes you 111. Check the birth year."
+  );
+  assert.equal(
+    validateUserProfileSection("about_you", { height: { value: 110, unit: "cm" } }, options)
+      .warnings[0].message,
+    "A height of 110 cm is unusual. Check it."
+  );
+  assert.equal(
+    validateUserProfileSection("about_you", { height: { value: 47.2, unit: "in" } }, options)
+      .warnings[0].message,
+    "A height of 47.2 in is unusual. Check it."
+  );
+  assert.equal(
+    validateUserProfileSection(
+      "health_limitations",
+      { text: "h".repeat(1001), none: false },
+      options
+    ).errors[0].message,
+    "Keep this under 1000 characters."
+  );
+  assert.equal(
+    validateUserProfileSection("general_notes", { text: "n".repeat(2001) }, options).errors[0]
+      .message,
+    "Keep this under 2000 characters."
+  );
 });
 
 test("plan validation rejects non-finite rest", () => {

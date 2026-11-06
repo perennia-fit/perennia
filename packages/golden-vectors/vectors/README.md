@@ -211,3 +211,26 @@ case expects `{"accepted": <trimmed name>}` or `{"rejected": <code>}`. The file
 is governed by the adjacent `m40-compound-purposes.schema.json`; its
 `schemaVersion`, the schema's constant and both runners' constants move
 together.
+
+## User Profile validation
+
+`m41-user-profile-validation.json` (domain `user-profile-validation`) pins the
+User Profile tier of the shared two-tier validator in both languages:
+`validateUserProfileSection`, on both sides of every bound in the Validation
+table. The app runs it in
+`apps/mobile/test/domain/user_profile_validation_test.dart` against
+`apps/mobile/lib/domain/profile/user_profile_validation.dart`; the server runs
+it in `apps/server/test/agent-validation.golden.test.mjs` against
+`apps/server/src/agent-validation.ts`. The behaviour is specified in
+[`docs/designs/user-profile.md`](../../../docs/designs/user-profile.md)
+(Validation).
+
+Each case gives `referenceYear`, a `section` wire name and its snake_case
+`values` in `input`, so no result depends on the clock, and in `expected` the
+ordered error and warning rule ids and `accepted`. An inch height is converted
+at exactly 2.54 cm per inch with no rounding, and text length is counted in
+UTF-16 code units, so an astral-plane character counts as 2. The file carries a
+`limits` block that both runners assert against their limits constants. It is
+governed by the adjacent `m41-user-profile-validation.schema.json`; its
+`schemaVersion`, the schema's constant and both runners' constants move
+together.

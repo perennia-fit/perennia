@@ -1568,6 +1568,129 @@ export type AgentPlatformFoodAttribution = {
 
 export type AgentPlatformFoodSource = "usda" | "openFoodFacts";
 
+export type AgentProfile = {
+  "sections": {
+  "aboutYou": AgentProfileAboutYouSection;
+  "trainingGoals": AgentProfileTrainingGoalsSection;
+  "experience": AgentProfileExperienceSection;
+  "trainingSetup": AgentProfileTrainingSetupSection;
+  "healthLimitations": AgentProfileHealthLimitationsSection;
+  "generalNotes": AgentProfileGeneralNotesSection;
+};
+};
+
+export type AgentProfileAboutYouSection = {
+  "values": {
+  "sex": string | null;
+  "birthYear": number | null;
+  "height": AgentProfileHeight;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileBatchWriteRequest = {
+  "idempotencyKey": string;
+  "updatedAt"?: string;
+  "sections": AgentProfileBatchWriteSections;
+};
+
+export type AgentProfileBatchWriteResponse = {
+  "accepted": true;
+  "duplicate": boolean;
+  "idempotencyKey": string;
+  "batchId": string;
+  "serverClock": string;
+  "profile": AgentProfile & unknown;
+  "warnings": Array<AgentProfileValidationIssue>;
+};
+
+export type AgentProfileBatchWriteSections = {
+  "aboutYou"?: {
+  "sex"?: string | null;
+  "birthYear"?: number | null;
+  "height"?: {
+  "value": number;
+  "unit": string;
+} | null;
+};
+  "trainingGoals"?: {
+  "goals"?: Array<string> | null;
+};
+  "experience"?: {
+  "levels"?: Array<{
+  "focusId": string;
+  "level": string;
+}> | null;
+};
+  "trainingSetup"?: {
+  "equipment"?: Array<string> | null;
+  "daysPerWeek"?: number | null;
+  "sessionMinutes"?: number | null;
+};
+  "healthLimitations"?: {
+  "text"?: string | null;
+  "none"?: boolean | null;
+};
+  "generalNotes"?: {
+  "text"?: string | null;
+};
+};
+
+export type AgentProfileExperienceEntry = {
+  "focusId": string;
+  "level": string;
+};
+
+export type AgentProfileExperienceSection = {
+  "values": {
+  "levels": Array<AgentProfileExperienceEntry> | null;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileGeneralNotesSection = {
+  "values": {
+  "text": string | null;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileHealthLimitationsSection = {
+  "values": {
+  "text": string | null;
+  "none": boolean;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileHeight = {
+  "value": number;
+  "unit": string;
+} | null;
+
+export type AgentProfileTrainingGoalsSection = {
+  "values": {
+  "goals": Array<string> | null;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileTrainingSetupSection = {
+  "values": {
+  "equipment": Array<string> | null;
+  "daysPerWeek": number | null;
+  "sessionMinutes": number | null;
+};
+  "updatedAt": string;
+} | null;
+
+export type AgentProfileValidationIssue = {
+  "section": string;
+  "field": string;
+  "rule": string;
+  "message": string;
+};
+
 export type AgentProgressMeasure = "estimatedOneRepMax" | "maxLoad" | "maxReps" | "maxDuration" | "minDuration" | "maxDistance" | "fastestPace";
 
 export type AgentProgressPoint = {
@@ -2569,6 +2692,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "batchWriteAgentMetrics",
   "batchWriteAgentNutritionGoals",
   "batchWriteAgentPlanTree",
+  "batchWriteAgentProfile",
   "batchWriteAgentProtocolSkips",
   "batchWriteAgentProtocols",
   "batchWriteAgentPurposes",
@@ -2613,6 +2737,7 @@ export const AGENT_CLIENT_OPERATION_IDS = [
   "listAgentWorkouts",
   "materializeAgentWorkoutTemplate",
   "readAgentEffectWindow",
+  "readAgentProfile",
   "readAgentSettings",
   "resolveAgentExerciseName",
   "revokeAgentApiKey",
@@ -2735,6 +2860,16 @@ export class PerenniaAgentClient {
     return this.request<AgentPlanTreeBatchWriteResponse>({
       method: "POST",
       path: "/agent/plan-tree/batch-write",
+      expectedStatus: 200,
+      body: body,
+      signal: options.signal
+    });
+  }
+
+  async batchWriteAgentProfile(body: AgentProfileBatchWriteRequest, options: AgentClientRequestOptions = {}): Promise<AgentProfileBatchWriteResponse> {
+    return this.request<AgentProfileBatchWriteResponse>({
+      method: "POST",
+      path: "/agent/profile/batch-write",
       expectedStatus: 200,
       body: body,
       signal: options.signal
@@ -3170,6 +3305,15 @@ export class PerenniaAgentClient {
       path: "/agent/protocols/effect-window",
       expectedStatus: 200,
       query: { "compoundId": input.compoundId, "protocolId": input.protocolId, "metricId": input.metricId, "metricKey": input.metricKey, "from": input.from, "to": input.to, "timezoneOffsetMinutes": input.timezoneOffsetMinutes },
+      signal: options.signal
+    });
+  }
+
+  async readAgentProfile(options: AgentClientRequestOptions = {}): Promise<AgentProfile> {
+    return this.request<AgentProfile>({
+      method: "GET",
+      path: "/agent/profile",
+      expectedStatus: 200,
       signal: options.signal
     });
   }

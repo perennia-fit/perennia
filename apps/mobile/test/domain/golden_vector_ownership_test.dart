@@ -40,6 +40,7 @@ const Map<String, String> _dartRunnerByDomain = <String, String>{
   'protocol-plan-validation':
       'test/domain/protocol_plan_validation_test.dart',
   'settings-validation': 'test/domain/settings_validation_test.dart',
+  'user-profile-validation': 'test/domain/user_profile_validation_test.dart',
   'measurement-validation':
       'test/domain/body_tracker/measurement_validation_test.dart',
   'measurement-delta': 'test/features/body_tracker/measurement_delta_test.dart',

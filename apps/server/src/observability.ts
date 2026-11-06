@@ -83,8 +83,11 @@ export function createSentryCrashReporterFromEnv(
     environment: env.NODE_ENV,
     release,
     sendDefaultPii: false,
+    // A request body holds whatever was being written, a User Profile's health text
+    // or a Dose. The SDK captures it by default, whatever `sendDefaultPii` says.
+    integrations: [Sentry.httpIntegration({ maxIncomingRequestBodySize: "none" })],
     beforeSend(event: unknown) {
-      return scrubObservabilityData(event);
+      return scrubSentryEvent(event);
     }
   });
 
@@ -138,6 +141,39 @@ export function safeRequestPath(pathOrUrl: string): string {
 
 export function scrubObservabilityData(value: unknown): unknown {
   return scrubValue(value, new WeakSet<object>(), undefined);
+}
+
+/**
+ * `values` is a filtered key (User Profile), and Sentry keeps an event's exceptions
+ * under `exception.values`. The list itself is safe to keep, so only its items are
+ * scrubbed: `value`, the message, is still filtered, and the type and stack stay.
+ *
+ * `request.data` is the raw request body as a string, so filtering by key can't
+ * reach the values in it. It always goes, in case an integration captures it again.
+ */
+function scrubSentryEvent(event: unknown): unknown {
+  const scrubbed = scrubObservabilityData(event);
+  if (!isRecord(event) || !isRecord(scrubbed)) {
+    return scrubbed;
+  }
+
+  const result = { ...scrubbed };
+  if (isRecord(scrubbed.request)) {
+    const { data: _body, ...request } = scrubbed.request;
+    result.request = request;
+  }
+  if (
+    isRecord(event.exception) &&
+    isRecord(scrubbed.exception) &&
+    Array.isArray(event.exception.values)
+  ) {
+    result.exception = {
+      ...scrubbed.exception,
+      values: scrubObservabilityData(event.exception.values)
+    };
+  }
+
+  return result;
 }
 
 function readCrashReportingConfig(env: CrashReportingEnv) {
@@ -230,6 +266,9 @@ function serializeErrorForObservability(error: unknown): unknown {
   if (!(error instanceof Error)) {
     return scrubObservabilityData(error);
   }
+  if (isDatabaseQueryError(error)) {
+    return serializeDatabaseQueryError(error);
+  }
 
   return scrubObservabilityData({
     name: error.name,
@@ -237,6 +276,43 @@ function serializeErrorForObservability(error: unknown): unknown {
     stack: error.stack,
     ...Object.fromEntries(Object.entries(error))
   });
+}
+
+/**
+ * A query error carries the query's bound params, which hold whatever was being
+ * written: a User Profile's health text, a Dose. Drizzle's DrizzleQueryError has
+ * them in `params`, and in `message` and `stack` too. A postgres.js error has them
+ * in `parameters`, and its `detail` and `where` can quote the row.
+ */
+function isDatabaseQueryError(error: Error) {
+  return "query" in error || "params" in error || "parameters" in error;
+}
+
+/**
+ * The scrubber filters by key, so it can't clean those strings. Only fixed
+ * identifiers are kept, under `type` because `name` is a filtered key.
+ */
+function serializeDatabaseQueryError(error: Error) {
+  const { cause } = error;
+  return {
+    type: error.constructor.name,
+    message: "Database query failed.",
+    ...databaseErrorCodes(error),
+    ...(cause instanceof Error
+      ? { cause: { type: cause.constructor.name, ...databaseErrorCodes(cause) } }
+      : {})
+  };
+}
+
+function databaseErrorCodes(error: Error) {
+  const { code, constraint_name: constraint } = error as Error & {
+    code?: unknown;
+    constraint_name?: unknown;
+  };
+  return {
+    ...(typeof code === "string" ? { code } : {}),
+    ...(typeof constraint === "string" ? { constraint } : {})
+  };
 }
 
 function shouldFilterKey(key: string) {
@@ -404,5 +480,10 @@ const TRAINING_DATA_KEYS = new Set([
   "protocolids",
   // An Agent Skip write (same spec, D8) carries its Skips under a top-level
   // `skips` key; each item names a Protocol's planned dose.
-  "skips"
+  "skips",
+  // User Profile (docs/designs/user-profile.md, Lifecycle): an agent route body
+  // carries a person's health text and notes under `sections`, and a section's
+  // `values`. Sync payloads and Activity Log images are already covered above.
+  "sections",
+  "values"
 ]);

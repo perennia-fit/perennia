@@ -133,6 +133,14 @@ import {
   type AgentSettingsBatchWriteStore
 } from "./agent-settings.js";
 import {
+  AgentProfileBatchWriteErrorResponseSchema,
+  AgentProfileBatchWriteRequestSchema,
+  AgentProfileBatchWriteResponseSchema,
+  AgentProfileSchema,
+  AgentProfileUnavailableResponseSchema,
+  type AgentProfileStore
+} from "./agent-profile.js";
+import {
   agentPlanInvalidCursorResponse,
   AgentPlanDetailQuerySchema,
   AgentPlanInvalidCursorError,
@@ -468,6 +476,16 @@ export const AgentMcpSettingsBatchWriteInputSchema =
 
 // New tools authenticate only through the transport Authorization header.
 // They deliberately do not inherit the deprecated apiKey argument.
+export const AgentMcpProfileReadInputSchema = z
+  .object({})
+  .openapi("AgentMcpProfileReadInput");
+
+export const AgentMcpProfileBatchWriteInputSchema = z
+  .object({
+    request: AgentProfileBatchWriteRequestSchema
+  })
+  .openapi("AgentMcpProfileBatchWriteInput");
+
 export const AgentMcpWorkoutTemplateListInputSchema = z
   .object({
     query: AgentWorkoutTemplateListQuerySchema.optional()
@@ -604,6 +622,7 @@ export type AgentMcpServerOptions = {
   agentMealTypesReadStore?: AgentMealTypesReadStore;
   agentNutritionGoalStore?: AgentNutritionGoalBatchWriteStore;
   agentSettingsStore?: AgentSettingsBatchWriteStore;
+  profileStore?: AgentProfileStore;
   agentPlanReadStore?: AgentPlanReadStore;
   agentProgressReadStore?: AgentProgressReadStore;
   agentPlanTreeBatchWriteStore?: AgentPlanTreeBatchWriteStore;
@@ -636,6 +655,7 @@ export function createAgentMcpServer({
   agentMealTypesReadStore,
   agentNutritionGoalStore,
   agentSettingsStore,
+  profileStore,
   agentPlanReadStore,
   agentProgressReadStore,
   agentPlanTreeBatchWriteStore,
@@ -2442,6 +2462,82 @@ export function createAgentMcpServer({
   );
 
   server.registerTool(
+    "agent_read_profile",
+    {
+      title: "Read Agent Profile",
+      description:
+        "Read the user's User Profile: About you, Training Goals, Experience, Training setup, Health & limitations and General Notes. Every agent connected to this account can read it. Values are what the user entered, not medical advice.",
+      inputSchema: AgentMcpProfileReadInputSchema,
+      outputSchema: AgentProfileSchema
+    },
+    async (_input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (profileStore === undefined) {
+        return errorResult(
+          AgentProfileUnavailableResponseSchema.parse({
+            code: "agent_profile_unavailable",
+            message: "Agent User Profile storage is not configured."
+          })
+        );
+      }
+
+      const profile = await profileStore.read({
+        userId: auth.agent.userId
+      });
+
+      return successResult(AgentProfileSchema.parse(profile));
+    }
+  );
+
+  server.registerTool(
+    "agent_batch_write_profile",
+    {
+      title: "Batch Write Agent Profile",
+      description:
+        "Change fields in the user's User Profile. Only the fields you send change, null clears a field, and a list replaces the whole list. Improbable values are saved and returned as warnings to confirm with the user. Each call is one Activity Log Batch the user can undo.",
+      inputSchema: AgentMcpProfileBatchWriteInputSchema,
+      outputSchema: AgentProfileBatchWriteResponseSchema
+    },
+    async (input, extra) => {
+      const auth = await authenticateToolCall({
+        apiKey: undefined,
+        extra,
+        agentApiKeyStore,
+        logger,
+        rateLimitBackend
+      });
+      if (auth.status !== "authenticated") {
+        return auth.result;
+      }
+      if (profileStore === undefined) {
+        return errorResult(
+          AgentProfileUnavailableResponseSchema.parse({
+            code: "agent_profile_unavailable",
+            message: "Agent User Profile storage is not configured."
+          })
+        );
+      }
+
+      return writeProfileBatchToolResult({
+        agent: auth.agent,
+        logger,
+        profileStore,
+        request: input.request,
+        syncNudgePublisher
+      });
+    }
+  );
+
+  server.registerTool(
     "agent_get_energy_balance",
     {
       title: "Get Agent Energy Balance",
@@ -3879,6 +3975,70 @@ async function writeSettingsBatchToolResult({
       serverClock: writeResult.serverClock,
       settings: writeResult.settings,
       updatedAt: writeResult.updatedAt
+    })
+  );
+}
+
+async function writeProfileBatchToolResult({
+  agent,
+  logger,
+  profileStore,
+  request,
+  syncNudgePublisher
+}: {
+  agent: AuthenticatedAgent;
+  logger: RequestLogger;
+  profileStore: AgentProfileStore;
+  request: z.infer<typeof AgentProfileBatchWriteRequestSchema>;
+  syncNudgePublisher?: SyncNudgePublisher;
+}): Promise<CallToolResult> {
+  const sourceDeviceId = `agent:${agent.keyId}`;
+  const writeResult = await profileStore.batchWrite({
+    userId: agent.userId,
+    deviceId: sourceDeviceId,
+    request
+  });
+
+  if (!writeResult.accepted) {
+    return errorResult(
+      AgentProfileBatchWriteErrorResponseSchema.parse({
+        code: "agent_profile_batch_write_failed",
+        message:
+          "User Profile write contains one or more hard validation failures.",
+        errors: writeResult.errors
+      })
+    );
+  }
+
+  if (syncNudgePublisher !== undefined && writeResult.applied) {
+    try {
+      await syncNudgePublisher.enqueueSyncNudge({
+        userId: agent.userId,
+        sourceDeviceId,
+        reason: "agent_write"
+      });
+    } catch (error) {
+      logger.error?.(
+        {
+          error,
+          userId: agent.userId,
+          keyId: agent.keyId,
+          batchId: request.idempotencyKey
+        },
+        "agent profile sync nudge enqueue failed"
+      );
+    }
+  }
+
+  return successResult(
+    AgentProfileBatchWriteResponseSchema.parse({
+      accepted: true,
+      duplicate: writeResult.duplicate,
+      idempotencyKey: request.idempotencyKey,
+      batchId: request.idempotencyKey,
+      serverClock: writeResult.serverClock,
+      profile: writeResult.profile,
+      warnings: writeResult.warnings
     })
   );
 }

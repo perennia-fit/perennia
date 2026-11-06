@@ -11,6 +11,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Added
 
+- Profile under Account & app, with agent read and write (`read-profile`,
+  `update-profile`). Upgrade a Self-Hosted Deployment before the app.
 - **Agents can list Meal Types** (`listAgentMealTypes`,
   `GET /agent/meal-types`, `agent_list_meal_types`): the user's active Meal
   Types in the order the app shows them, to choose a `mealType` from.
@@ -92,6 +94,8 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Fixed
 
+- **Server crash reports no longer carry request bodies.** With crash reporting
+  on, a server error could send what was being written to Sentry.
 - **A malformed id list in a synced row no longer fails Agent reads.** A raw array
   holding an entry that can't be turned into a string now reads as an empty list.
 - **A second device's seed no longer overrides a built-in Compound renamed after

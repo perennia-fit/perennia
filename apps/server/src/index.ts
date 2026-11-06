@@ -35,6 +35,7 @@ import { createDrizzleAgentActivityStore } from "./agent-activity.js";
 import { createDrizzleAgentProtocolsStore } from "./agent-protocols.js";
 import { createDrizzleAgentNutritionGoalStore } from "./agent-nutrition-goals.js";
 import { createDrizzleAgentSettingsStore } from "./agent-settings.js";
+import { createDrizzleAgentProfileStore } from "./agent-profile.js";
 import { createDrizzleAgentPlanReadStore } from "./agent-plan-reads.js";
 import { createDrizzleAgentProgressReadStore } from "./agent-progress-reads.js";
 import { createDrizzleAgentPlanTreeBatchWriteStore } from "./agent-plan-tree-batch-write.js";
@@ -736,6 +737,23 @@ export {
   type AgentSettingsReadStore
 } from "./agent-settings.js";
 export {
+  AgentProfileBatchWriteErrorResponseSchema,
+  AgentProfileBatchWriteRequestSchema,
+  AgentProfileBatchWriteResponseSchema,
+  AgentProfileBatchWriteSectionsSchema,
+  AgentProfileSchema,
+  AgentProfileUnavailableResponseSchema,
+  AgentProfileValidationIssueSchema,
+  agentProfileBatchWriteRoute,
+  agentProfileReadRoute,
+  createDrizzleAgentProfileStore,
+  type AgentProfile,
+  type AgentProfileBatchWriteRequest,
+  type AgentProfileBatchWriteResponse,
+  type AgentProfileStore,
+  type AgentProfileValidationIssue
+} from "./agent-profile.js";
+export {
   AGENT_PLAN_DEFAULT_COMPONENT_LIMIT,
   AGENT_PLAN_DEFAULT_PAGE_LIMIT,
   AGENT_PLAN_MAX_COMPONENT_LIMIT,
@@ -1075,6 +1093,7 @@ export {
   SETTINGS_VALIDATION_LIMITS,
   ROUTINE_CADENCE_VALIDATION_LIMITS,
   TEMPLATE_GROUP_VALIDATION_LIMITS,
+  USER_PROFILE_VALIDATION_LIMITS,
   agentDoseValidationRoute,
   agentSetValidationRoute,
   doseValidationLimitsResponse,
@@ -1092,6 +1111,7 @@ export {
   validateAgentSet,
   validateAgentSettings,
   validateAgentTemplateGroup,
+  validateUserProfileSection,
   type AgentDoseValidationInput,
   type AgentDoseValidationIssue,
   type AgentDoseValidationResult,
@@ -1118,7 +1138,10 @@ export {
   type AgentSetValidationIssue,
   type AgentSetValidationResult,
   type DoseRoute,
-  type DoseUnit
+  type DoseUnit,
+  type UserProfileSectionName,
+  type UserProfileValidationIssue,
+  type UserProfileValidationResult
 } from "./agent-validation.js";
 export { localDateAtOffset } from "./timezone.js";
 export {
@@ -1612,6 +1635,7 @@ export async function createMigratedServerApp({
     database.db
   );
   const agentSettingsStore = createDrizzleAgentSettingsStore(database.db);
+  const agentProfileStore = createDrizzleAgentProfileStore(database.db);
   const agentPlanReadStore = createDrizzleAgentPlanReadStore(database.db);
   const agentProgressReadStore = createDrizzleAgentProgressReadStore({
     db: database.db,
@@ -1665,6 +1689,7 @@ export async function createMigratedServerApp({
     agentMealTypesReadStore,
     agentNutritionGoalStore,
     agentSettingsStore,
+    profileStore: agentProfileStore,
     agentPlanReadStore,
     agentProgressReadStore,
     agentPlanTreeBatchWriteStore,
@@ -1697,6 +1722,7 @@ export async function createMigratedServerApp({
     agentProtocolsStore,
     agentNutritionGoalStore,
     agentSettingsStore,
+    agentProfileStore,
     agentPlanReadStore,
     agentProgressReadStore,
     agentPlanTreeBatchWriteStore,

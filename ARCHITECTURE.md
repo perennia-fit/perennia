@@ -103,6 +103,13 @@ Offline-first, and deliberately boring:
   other domain. The server stores each row as a JSON payload and **reads it**,
   which is what gives the user's Agent the same access the app has. It is not
   end-to-end encrypted.
+- The User Profile syncs as `user_profile_sections`, one live row per section,
+  newest wins. The server runs **no domain validation at push**: it parses the
+  payload's shape only, as for every other synced entity, and domain rules run on
+  the device before every write and in the agent route. The server has no way to
+  reject a single pushed change. One it did not accept would stay pending on the
+  device and stall every later Sync Run, so a rule check at push would turn a rule
+  disagreement between app versions into a sync outage.
 
 ## Validation
 

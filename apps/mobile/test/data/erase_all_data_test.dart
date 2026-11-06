@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:perennia/data/local/app_database.dart';
 import 'package:perennia/data/repositories/training_repositories.dart';
 import 'package:perennia/data/seeds/platform_exercise_seed.dart';
+import 'package:perennia/domain/profile/user_profile.dart';
 import 'package:perennia/domain/settings/account_settings.dart';
 import 'package:perennia/domain/training/training_day.dart';
 import 'package:perennia/domain/training/training_dimensions.dart';
@@ -546,6 +547,10 @@ Future<_SeededIds> _seedEveryDomain(TrainingRepositories repositories) async {
       ),
       isLiquid: false,
     ),
+  );
+  await repositories.userProfile.saveSection(
+    UserProfileSection.generalNotes,
+    <String, Object?>{'text': 'Notes'},
   );
   await repositories.nutrition.saveNutritionGoal(
     NutritionGoalTarget(

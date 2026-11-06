@@ -1840,6 +1840,390 @@ function mealIssue(input: AgentMealValidationIssue): AgentMealValidationIssue {
 }
 
 // ---------------------------------------------------------------------------
+// User Profile tier (docs/designs/user-profile.md, Validation). The same shared
+// two-tier module. Twins the Dart `validateUserProfileSection`
+// (apps/mobile/lib/domain/profile/user_profile_validation.dart): the same rule
+// ids, messages, order and thresholds, agreeing on the shared golden vector
+// (packages/golden-vectors/vectors/m41-user-profile-validation.json). Runs on
+// the merged values of a section, in the snake_case section shape, and never at
+// push: a change the server won't accept stays pending on the device and stalls
+// every later Sync Run.
+// ---------------------------------------------------------------------------
+
+/// Kept in lockstep with the Dart `UserProfileValidationLimits` and the golden
+/// vector's `limits` block.
+export const USER_PROFILE_VALIDATION_LIMITS = {
+  birthYearMaxAgeYears: 130,
+  birthYearWarnMinAgeYears: 13,
+  birthYearWarnMaxAgeYears: 100,
+  heightMaxCentimetres: 300,
+  heightWarnMinCentimetres: 120,
+  heightWarnMaxCentimetres: 220,
+  heightUnits: ["cm", "in"],
+  cmPerInch: 2.54,
+  daysPerWeekMin: 1,
+  daysPerWeekMax: 7,
+  sessionMinutesMin: 1,
+  sessionMinutesMax: 600,
+  sessionMinutesWarnMax: 240,
+  equipmentIdMaxLength: 64,
+  healthLimitationsTextMaxLength: 1000,
+  generalNotesTextMaxLength: 2000,
+  trainingGoalIds: [
+    "longevity",
+    "strength",
+    "muscle_gain",
+    "body_composition",
+    "endurance_performance",
+    "mobility",
+    "general_fitness"
+  ],
+  sexes: ["female", "male"],
+  experienceLevels: ["beginner", "intermediate", "advanced"]
+} as const;
+
+export type UserProfileSectionName =
+  | "about_you"
+  | "training_goals"
+  | "experience"
+  | "training_setup"
+  | "health_limitations"
+  | "general_notes";
+
+/// `field` is the sync-payload name, for example `birth_year`.
+export type UserProfileValidationIssue = {
+  field: string;
+  rule: string;
+  message: string;
+  limit: number | null;
+};
+
+export type UserProfileValidationResult = {
+  accepted: boolean;
+  errors: UserProfileValidationIssue[];
+  warnings: UserProfileValidationIssue[];
+};
+
+/**
+ * Validates one section's values. `referenceYear` is an input so a result never
+ * depends on the clock: the agent route passes the server's UTC year, the device
+ * its local calendar year.
+ *
+ * A field of the wrong JSON type is skipped as unset: the agent route's strict
+ * schema refuses one, and the device merges over tolerantly read values. Issues
+ * follow the section's field order and, within a field, the order of the
+ * Validation table, with each rule at most once per field.
+ */
+export function validateUserProfileSection(
+  section: UserProfileSectionName,
+  values: Record<string, unknown>,
+  { referenceYear }: { referenceYear: number }
+): UserProfileValidationResult {
+  const errors: UserProfileValidationIssue[] = [];
+  const warnings: UserProfileValidationIssue[] = [];
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+
+  switch (section) {
+    case "about_you":
+      validateProfileSex(values.sex, errors);
+      validateProfileBirthYear(values.birth_year, referenceYear, errors, warnings);
+      validateProfileHeight(values.height, errors, warnings);
+      break;
+    case "training_goals":
+      validateProfileGoals(values.goals, errors);
+      break;
+    case "experience":
+      validateProfileLevels(values.levels, errors);
+      break;
+    case "training_setup":
+      validateProfileEquipment(values.equipment, errors);
+      validateProfileDaysPerWeek(values.days_per_week, errors);
+      validateProfileSessionMinutes(values.session_minutes, errors, warnings);
+      break;
+    case "health_limitations":
+      validateProfileText(values.text, limits.healthLimitationsTextMaxLength, errors);
+      break;
+    case "general_notes":
+      validateProfileText(values.text, limits.generalNotesTextMaxLength, errors);
+      break;
+  }
+
+  return { accepted: errors.length === 0, errors, warnings };
+}
+
+function validateProfileSex(value: unknown, errors: UserProfileValidationIssue[]) {
+  if (
+    typeof value !== "string" ||
+    isAllowedProfileValue(value, USER_PROFILE_VALIDATION_LIMITS.sexes)
+  ) {
+    return;
+  }
+  errors.push({
+    field: "sex",
+    rule: "sex.unknown",
+    message: "Sex must be Female, Male or Not set.",
+    limit: null
+  });
+}
+
+function validateProfileBirthYear(
+  value: unknown,
+  referenceYear: number,
+  errors: UserProfileValidationIssue[],
+  warnings: UserProfileValidationIssue[]
+) {
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+  if (!isFiniteProfileNumber(value)) {
+    return;
+  }
+  if (value > referenceYear) {
+    errors.push({
+      field: "birth_year",
+      rule: "birth_year.future",
+      message: "Birth year can't be in the future.",
+      limit: referenceYear
+    });
+    return;
+  }
+  const oldest = referenceYear - limits.birthYearMaxAgeYears;
+  if (value < oldest) {
+    errors.push({
+      field: "birth_year",
+      rule: "birth_year.too_old",
+      message: "Birth year can't be more than 130 years ago.",
+      limit: oldest
+    });
+    return;
+  }
+  const age = referenceYear - value;
+  if (age < limits.birthYearWarnMinAgeYears || age > limits.birthYearWarnMaxAgeYears) {
+    warnings.push({
+      field: "birth_year",
+      rule: "birth_year.improbable_age",
+      message: `That makes you ${age}. Check the birth year.`,
+      limit: null
+    });
+  }
+}
+
+function validateProfileHeight(
+  value: unknown,
+  errors: UserProfileValidationIssue[],
+  warnings: UserProfileValidationIssue[]
+) {
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+  if (!isProfileRecord(value)) {
+    return;
+  }
+  const { unit, value: height } = value;
+  if (!isAllowedProfileValue(unit, limits.heightUnits)) {
+    errors.push({
+      field: "height",
+      rule: "height.unit",
+      message: "Height must be in cm or in.",
+      limit: null
+    });
+    return;
+  }
+  if (!isFiniteProfileNumber(height) || height <= 0) {
+    errors.push({
+      field: "height",
+      rule: "height.non_positive",
+      message: "Height must be more than zero.",
+      limit: null
+    });
+    return;
+  }
+  const centimetres = unit === "cm" ? height : height * limits.cmPerInch;
+  if (centimetres > limits.heightMaxCentimetres) {
+    errors.push({
+      field: "height",
+      rule: "height.too_tall",
+      message: "Height must be 300 cm (118.1 in) or less.",
+      limit: limits.heightMaxCentimetres
+    });
+    return;
+  }
+  if (
+    centimetres < limits.heightWarnMinCentimetres ||
+    centimetres > limits.heightWarnMaxCentimetres
+  ) {
+    warnings.push({
+      field: "height",
+      rule: "height.improbable",
+      message: `A height of ${height} ${unit} is unusual. Check it.`,
+      limit: null
+    });
+  }
+}
+
+function validateProfileGoals(value: unknown, errors: UserProfileValidationIssue[]) {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const { trainingGoalIds } = USER_PROFILE_VALIDATION_LIMITS;
+  if (value.some((goal) => !isAllowedProfileValue(goal, trainingGoalIds))) {
+    errors.push({
+      field: "goals",
+      rule: "goals.unknown",
+      message: "Unknown Training Goal.",
+      limit: null
+    });
+  }
+  if (hasDuplicateProfileValue(value.filter((goal) => typeof goal === "string"))) {
+    errors.push({
+      field: "goals",
+      rule: "goals.duplicate",
+      message: "Each item can appear once.",
+      limit: null
+    });
+  }
+}
+
+function validateProfileEquipment(value: unknown, errors: UserProfileValidationIssue[]) {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const { equipmentIdMaxLength } = USER_PROFILE_VALIDATION_LIMITS;
+  if (
+    value.some(
+      (id) => typeof id !== "string" || id.length === 0 || id.length > equipmentIdMaxLength
+    )
+  ) {
+    errors.push({
+      field: "equipment",
+      rule: "equipment.invalid",
+      message: "Equipment ids must be 1 to 64 characters.",
+      limit: equipmentIdMaxLength
+    });
+  }
+  if (hasDuplicateProfileValue(value.filter(isNonEmptyProfileString))) {
+    errors.push({
+      field: "equipment",
+      rule: "equipment.duplicate",
+      message: "Each item can appear once.",
+      limit: null
+    });
+  }
+}
+
+function validateProfileLevels(value: unknown, errors: UserProfileValidationIssue[]) {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const { experienceLevels } = USER_PROFILE_VALIDATION_LIMITS;
+  const entries: Record<string, unknown>[] = value.map((entry) =>
+    isProfileRecord(entry) ? entry : {}
+  );
+  if (entries.some((entry) => !isAllowedProfileValue(entry.level, experienceLevels))) {
+    errors.push({
+      field: "levels",
+      rule: "levels.unknown_level",
+      message: "Level must be Beginner, Intermediate or Advanced.",
+      limit: null
+    });
+  }
+  const focusIds = entries.map((entry) => entry.focus_id);
+  if (focusIds.some((id) => !isNonEmptyProfileString(id))) {
+    errors.push({
+      field: "levels",
+      rule: "levels.invalid_focus",
+      message: "Each level needs a Focus.",
+      limit: null
+    });
+  }
+  if (hasDuplicateProfileValue(focusIds.filter(isNonEmptyProfileString))) {
+    errors.push({
+      field: "levels",
+      rule: "levels.duplicate_focus",
+      message: "Each Focus can have one level.",
+      limit: null
+    });
+  }
+}
+
+function validateProfileDaysPerWeek(value: unknown, errors: UserProfileValidationIssue[]) {
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+  if (!isFiniteProfileNumber(value)) {
+    return;
+  }
+  if (value < limits.daysPerWeekMin || value > limits.daysPerWeekMax) {
+    errors.push({
+      field: "days_per_week",
+      rule: "days_per_week.range",
+      message: "Days per week must be 1 to 7.",
+      limit: null
+    });
+  }
+}
+
+function validateProfileSessionMinutes(
+  value: unknown,
+  errors: UserProfileValidationIssue[],
+  warnings: UserProfileValidationIssue[]
+) {
+  const limits = USER_PROFILE_VALIDATION_LIMITS;
+  if (!isFiniteProfileNumber(value)) {
+    return;
+  }
+  if (value < limits.sessionMinutesMin || value > limits.sessionMinutesMax) {
+    errors.push({
+      field: "session_minutes",
+      rule: "session_minutes.range",
+      message: "Session length must be 1 to 600 minutes.",
+      limit: null
+    });
+    return;
+  }
+  if (value > limits.sessionMinutesWarnMax) {
+    warnings.push({
+      field: "session_minutes",
+      rule: "session_minutes.improbable",
+      message: "Sessions over 4 hours are unusual. Check the length.",
+      limit: null
+    });
+  }
+}
+
+// `limit` counts UTF-16 code units, which is what String `.length` gives in both
+// languages, so an astral-plane character counts as 2 in each.
+function validateProfileText(
+  value: unknown,
+  limit: number,
+  errors: UserProfileValidationIssue[]
+) {
+  if (typeof value !== "string" || value.length <= limit) {
+    return;
+  }
+  errors.push({
+    field: "text",
+    rule: "text.too_long",
+    message: `Keep this under ${limit} characters.`,
+    limit
+  });
+}
+
+function isFiniteProfileNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonEmptyProfileString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isProfileRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAllowedProfileValue(value: unknown, allowed: readonly string[]): boolean {
+  return typeof value === "string" && allowed.includes(value);
+}
+
+function hasDuplicateProfileValue(values: readonly string[]): boolean {
+  return new Set(values).size !== values.length;
+}
+
+// ---------------------------------------------------------------------------
 // Protocol Plan tier (docs/designs/protocol-schedules-and-reminders.md, D7).
 // The same shared two-tier module, extended for Schedule Rules, Protocol
 // Periods and Skips (D8). Twins the Dart `validateScheduleRule`,

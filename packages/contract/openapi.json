@@ -15947,6 +15947,614 @@
         },
         "description": "Partial account-level Settings to change. Only supplied keys are updated; omitted keys keep their current value. At least one field is required."
       },
+      "AgentProfile": {
+        "type": "object",
+        "properties": {
+          "sections": {
+            "type": "object",
+            "properties": {
+              "aboutYou": {
+                "$ref": "#/components/schemas/AgentProfileAboutYouSection"
+              },
+              "trainingGoals": {
+                "$ref": "#/components/schemas/AgentProfileTrainingGoalsSection"
+              },
+              "experience": {
+                "$ref": "#/components/schemas/AgentProfileExperienceSection"
+              },
+              "trainingSetup": {
+                "$ref": "#/components/schemas/AgentProfileTrainingSetupSection"
+              },
+              "healthLimitations": {
+                "$ref": "#/components/schemas/AgentProfileHealthLimitationsSection"
+              },
+              "generalNotes": {
+                "$ref": "#/components/schemas/AgentProfileGeneralNotesSection"
+              }
+            },
+            "required": [
+              "aboutYou",
+              "trainingGoals",
+              "experience",
+              "trainingSetup",
+              "healthLimitations",
+              "generalNotes"
+            ]
+          }
+        },
+        "required": [
+          "sections"
+        ]
+      },
+      "AgentProfileAboutYouSection": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "values": {
+            "type": "object",
+            "properties": {
+              "sex": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "female or male, or null when not set."
+              },
+              "birthYear": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "height": {
+                "$ref": "#/components/schemas/AgentProfileHeight"
+              }
+            },
+            "required": [
+              "sex",
+              "birthYear",
+              "height"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Row update clock of this section."
+          }
+        },
+        "required": [
+          "values",
+          "updatedAt"
+        ],
+        "description": "Null when the section has no row, or every field in its row is unset. In the values, null means unset."
+      },
+      "AgentProfileHeight": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string",
+            "description": "\"cm\" or \"in\", as entered. An unknown unit written by another client is returned as stored."
+          }
+        },
+        "required": [
+          "value",
+          "unit"
+        ]
+      },
+      "AgentProfileTrainingGoalsSection": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "values": {
+            "type": "object",
+            "properties": {
+              "goals": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Training Goal ids. An empty list means the user chose none; null means unset."
+              }
+            },
+            "required": [
+              "goals"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Row update clock of this section."
+          }
+        },
+        "required": [
+          "values",
+          "updatedAt"
+        ],
+        "description": "Null when the section has no row, or every field in its row is unset. In the values, null means unset."
+      },
+      "AgentProfileExperienceSection": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "values": {
+            "type": "object",
+            "properties": {
+              "levels": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/AgentProfileExperienceEntry"
+                },
+                "description": "One entry per Focus. An empty list means the user chose none; null means unset."
+              }
+            },
+            "required": [
+              "levels"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Row update clock of this section."
+          }
+        },
+        "required": [
+          "values",
+          "updatedAt"
+        ],
+        "description": "Null when the section has no row, or every field in its row is unset. In the values, null means unset."
+      },
+      "AgentProfileExperienceEntry": {
+        "type": "object",
+        "properties": {
+          "focusId": {
+            "type": "string",
+            "description": "See GET /agent/focuses; an id not listed there names an archived Focus."
+          },
+          "level": {
+            "type": "string",
+            "description": "beginner, intermediate or advanced."
+          }
+        },
+        "required": [
+          "focusId",
+          "level"
+        ]
+      },
+      "AgentProfileTrainingSetupSection": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "values": {
+            "type": "object",
+            "properties": {
+              "equipment": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Equipment ids. An empty list means bodyweight only; null means unset."
+              },
+              "daysPerWeek": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "sessionMinutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "equipment",
+              "daysPerWeek",
+              "sessionMinutes"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Row update clock of this section."
+          }
+        },
+        "required": [
+          "values",
+          "updatedAt"
+        ],
+        "description": "Null when the section has no row, or every field in its row is unset. In the values, null means unset."
+      },
+      "AgentProfileHealthLimitationsSection": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "values": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "none": {
+                "type": "boolean",
+                "description": "True when the user said they have none."
+              }
+            },
+            "required": [
+              "text",
+              "none"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Row update clock of this section."
+          }
+        },
+        "required": [
+          "values",
+          "updatedAt"
+        ],
+        "description": "Null when the section has no row, or every field in its row is unset. In the values, null means unset."
+      },
+      "AgentProfileGeneralNotesSection": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "values": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "text"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Row update clock of this section."
+          }
+        },
+        "required": [
+          "values",
+          "updatedAt"
+        ],
+        "description": "Null when the section has no row, or every field in its row is unset. In the values, null means unset."
+      },
+      "AgentProfileUnavailableResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "agent_profile_unavailable"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "AgentProfileBatchWriteResponse": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "duplicate": {
+            "type": "boolean",
+            "description": "True when the idempotency key had already been applied and no new row or Activity Log entry was written."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "batchId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Activity Log batch id. Equal to the idempotency key."
+          },
+          "serverClock": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profile": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentProfile"
+              },
+              {
+                "description": "The User Profile as it reads after the write."
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProfileValidationIssue"
+            },
+            "description": "Improbable values that were saved anyway, to confirm with the user."
+          }
+        },
+        "required": [
+          "accepted",
+          "duplicate",
+          "idempotencyKey",
+          "batchId",
+          "serverClock",
+          "profile",
+          "warnings"
+        ]
+      },
+      "AgentProfileValidationIssue": {
+        "type": "object",
+        "properties": {
+          "section": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Section that triggered the rule, for example aboutYou."
+          },
+          "field": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Field that triggered the rule, for example birthYear."
+          },
+          "rule": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable machine-readable validation rule id."
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable explanation of the rule."
+          }
+        },
+        "required": [
+          "section",
+          "field",
+          "rule",
+          "message"
+        ]
+      },
+      "AgentProfileBatchWriteErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "agent_profile_batch_write_failed"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentProfileValidationIssue"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "errors"
+        ]
+      },
+      "AgentProfileBatchWriteRequest": {
+        "type": "object",
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Stable key for this agent request. Replays with the same key return the original result without appending another Activity Log batch."
+          },
+          "updatedAt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Client-observed row update clock. Defaults to the server receive time when omitted."
+          },
+          "sections": {
+            "$ref": "#/components/schemas/AgentProfileBatchWriteSections"
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "sections"
+        ],
+        "additionalProperties": false
+      },
+      "AgentProfileBatchWriteSections": {
+        "type": "object",
+        "properties": {
+          "aboutYou": {
+            "type": "object",
+            "properties": {
+              "sex": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "birthYear": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "height": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "value": {
+                    "type": "number"
+                  },
+                  "unit": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "value",
+                  "unit"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "trainingGoals": {
+            "type": "object",
+            "properties": {
+              "goals": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "experience": {
+            "type": "object",
+            "properties": {
+              "levels": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "focusId": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "focusId",
+                    "level"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "trainingSetup": {
+            "type": "object",
+            "properties": {
+              "equipment": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "daysPerWeek": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "sessionMinutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "healthLimitations": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "none": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "generalNotes": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "description": "The fields to change, by section. A field left out is unchanged, null clears it, and a list replaces the whole list. At least one field is required."
+      },
       "AgentEnergyBalanceResponse": {
         "type": "object",
         "properties": {
@@ -16436,6 +17044,7 @@
               "schedules",
               "protocol_target_outcomes",
               "nutrition_goals",
+              "user_profile_sections",
               "user_settings",
               "routines",
               "workout_templates",
@@ -17187,6 +17796,7 @@
               "schedules",
               "protocol_target_outcomes",
               "nutrition_goals",
+              "user_profile_sections",
               "user_settings",
               "routines",
               "workout_templates",
@@ -26782,6 +27392,222 @@
                     },
                     {
                       "$ref": "#/components/schemas/AgentSettingsUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/profile": {
+      "get": {
+        "operationId": "readAgentProfile",
+        "tags": [
+          "Agent Reads"
+        ],
+        "summary": "Read the caller's User Profile.",
+        "description": "Returns the six sections of the caller's User Profile: About you, Training Goals, Experience, Training setup, Health & limitations and General Notes. A section is null when it has no row or every field in its row is unset. Values are what the user entered, not medical advice.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's User Profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or User Profile storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProfileUnavailableResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/profile/batch-write": {
+      "post": {
+        "operationId": "batchWriteAgentProfile",
+        "tags": [
+          "Agent Writes"
+        ],
+        "summary": "Change User Profile fields as one Activity Log batch.",
+        "description": "Merges the given fields into each named section of the caller's User Profile, following the same Save semantics as the app: a field left out is unchanged, null clears a field, and a list replaces the whole list. Each merged section goes through the same shared two-tier validator the app uses. A hard reject writes nothing; improbable values are saved and returned as warnings. The write is one Activity Log batch, with a best-effort sync nudge.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentProfileBatchWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The write was accepted, or recognized as an idempotent replay.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfileBatchWriteResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request is missing a valid agent API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "One or more merged sections failed hard validation; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfileBatchWriteErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The authenticated key exceeded its rate limit.",
+            "headers": {
+              "x-rate-limit-limit": {
+                "schema": {
+                  "type": "string",
+                  "description": "Maximum requests allowed in the current window."
+                },
+                "required": true,
+                "description": "Maximum requests allowed in the current window."
+              },
+              "x-rate-limit-remaining": {
+                "schema": {
+                  "type": "string",
+                  "description": "Remaining requests in the current window."
+                },
+                "required": true,
+                "description": "Remaining requests in the current window."
+              },
+              "x-rate-limit-reset": {
+                "schema": {
+                  "type": "string",
+                  "description": "ISO-8601 timestamp when the current window resets."
+                },
+                "required": true,
+                "description": "ISO-8601 timestamp when the current window resets."
+              },
+              "retry-after": {
+                "schema": {
+                  "type": "string",
+                  "description": "Whole seconds until the caller should retry."
+                },
+                "required": true,
+                "description": "Whole seconds until the caller should retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceededResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent API key or User Profile storage is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentApiKeyUnavailableResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProfileUnavailableResponse"
                     }
                   ]
                 }

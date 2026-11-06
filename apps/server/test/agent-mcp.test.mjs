@@ -10,6 +10,7 @@ import {
   createAgentMcpServer,
   createApp,
   createDatabaseClient,
+  createDrizzleAgentActivityStore,
   createDrizzleAgentCrossDomainReadStore,
   createDrizzleAgentExerciseCatalogBatchWriteStore,
   createDrizzleAgentFoodBatchWriteStore,
@@ -17,6 +18,7 @@ import {
   createDrizzleAgentMealBatchWriteStore,
   createDrizzleAgentNutritionGoalStore,
   createDrizzleAgentNutritionReadStore,
+  createDrizzleAgentProfileStore,
   createDrizzleAgentReadStore,
   createDrizzleAgentWorkoutBatchWriteStore,
   createDrizzleRateLimitBackend,
@@ -270,6 +272,7 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_batch_write_metrics",
         "agent_batch_write_nutrition_goals",
         "agent_batch_write_plan_tree",
+        "agent_batch_write_profile",
         "agent_batch_write_protocol_skips",
         "agent_batch_write_protocols",
         "agent_batch_write_purposes",
@@ -311,6 +314,7 @@ test("agent MCP server exposes tool schemas derived from the REST Zod contracts"
         "agent_list_workouts",
         "agent_materialize_workout_template",
         "agent_read_effect_window",
+        "agent_read_profile",
         "agent_read_settings",
         "agent_resolve_exercise",
         "agent_search_platform_foods",
@@ -2182,6 +2186,148 @@ test(
       assert.equal(energyGoalProgress.target.value, 2000);
     } finally {
       await close();
+      await database.close();
+    }
+  }
+);
+
+test("the User Profile tools carry their descriptions verbatim", async () => {
+  const { client, close } = await createMcpClient(createAgentMcpServer({}));
+  try {
+    const { tools } = await client.listTools();
+    const description = (name) =>
+      tools.find((tool) => tool.name === name).description;
+    assert.equal(
+      description("agent_read_profile"),
+      "Read the user's User Profile: About you, Training Goals, Experience, Training setup, Health & limitations and General Notes. Every agent connected to this account can read it. Values are what the user entered, not medical advice."
+    );
+    assert.equal(
+      description("agent_batch_write_profile"),
+      "Change fields in the user's User Profile. Only the fields you send change, null clears a field, and a list replaces the whole list. Improbable values are saved and returned as warnings to confirm with the user. Each call is one Activity Log Batch the user can undo."
+    );
+  } finally {
+    await close();
+  }
+});
+
+test(
+  "the User Profile tools read and write as REST does, nudge once, and agent_list_activity redacts Health & limitations",
+  { skip: databaseUrl ? false : "DATABASE_URL is not set." },
+  async () => {
+    await applyMigrations(databaseUrl);
+    const database = createDatabaseClient(databaseUrl);
+    const userId = `agent-mcp-profile-user-${randomUUID()}`;
+    const nudges = [];
+    const agentApiKeyStore = createAgentKeyStore(userId);
+    const profileStore = createDrizzleAgentProfileStore(database.db);
+    const agentActivityStore = createDrizzleAgentActivityStore(database.db);
+    const syncNudgePublisher = {
+      async enqueueSyncNudge(input) {
+        nudges.push(input);
+        return { enqueued: true, jobId: `nudge-${nudges.length}` };
+      }
+    };
+    const logger = { info() {}, error() {} };
+    const app = createApp({
+      logger,
+      agentApiKeyStore,
+      agentProfileStore: profileStore,
+      createMcpServer: () =>
+        createAgentMcpServer({
+          agentApiKeyStore,
+          agentActivityStore,
+          profileStore,
+          logger,
+          syncNudgePublisher
+        })
+    });
+    const callOverHttp = async (name, args) => {
+      const response = await app.request("/mcp", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer prn_agent_secret",
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name, arguments: args }
+        })
+      });
+      assert.equal(response.status, 200);
+      return (await response.json()).result;
+    };
+
+    try {
+      await seedUser(database, userId);
+
+      const request = {
+        idempotencyKey: `profile-${randomUUID()}`,
+        sections: {
+          healthLimitations: { text: "Left knee surgery" },
+          aboutYou: { birthYear: new Date().getUTCFullYear() - 111 }
+        }
+      };
+      const written = await callOverHttp("agent_batch_write_profile", {
+        request
+      });
+      assert.equal(written.isError, undefined, JSON.stringify(written.content));
+      assert.equal(written.structuredContent.duplicate, false);
+      assert.deepEqual(
+        written.structuredContent.warnings.map((warning) => warning.rule),
+        ["birth_year.improbable_age"]
+      );
+      assert.equal(nudges.length, 1);
+
+      const replayed = await callOverHttp("agent_batch_write_profile", {
+        request
+      });
+      assert.equal(replayed.structuredContent.duplicate, true);
+      assert.equal(nudges.length, 1, "a replay does not nudge");
+
+      const rejected = await callOverHttp("agent_batch_write_profile", {
+        request: {
+          idempotencyKey: `profile-${randomUUID()}`,
+          sections: { trainingSetup: { daysPerWeek: 0 } }
+        }
+      });
+      assert.equal(rejected.isError, true);
+      assert.equal(
+        rejected.structuredContent.code,
+        "agent_profile_batch_write_failed"
+      );
+
+      const read = await callOverHttp("agent_read_profile", {});
+      assert.equal(read.isError, undefined, JSON.stringify(read.content));
+      assert.equal(
+        read.structuredContent.sections.healthLimitations.values.text,
+        "Left knee surgery"
+      );
+      const restRead = await app.request("/agent/profile", {
+        headers: { authorization: "Bearer prn_agent_secret" }
+      });
+      assert.deepEqual(read.structuredContent, await restRead.json());
+
+      const activity = await callOverHttp("agent_list_activity", {
+        query: { entityTable: "user_profile_sections" }
+      });
+      assert.equal(activity.isError, undefined, JSON.stringify(activity.content));
+      assert.doesNotMatch(
+        JSON.stringify(activity.structuredContent),
+        /Left knee surgery/
+      );
+      const entries = activity.structuredContent.batches[0].entries;
+      const healthEntry = entries.find(
+        (entry) => entry.afterImage.section === "health_limitations"
+      );
+      assert.deepEqual(healthEntry.afterImage.values, { redacted: true });
+      const aboutEntry = entries.find(
+        (entry) => entry.afterImage.section === "about_you"
+      );
+      assert.equal(typeof aboutEntry.afterImage.values.birth_year, "number");
+    } finally {
       await database.close();
     }
   }
