@@ -43,6 +43,10 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ### Changed
 
+- **The Platform Exercise Library drops 96 more near-duplicates** (1,546 to
+  1,450 exercises), such as "Squats" alongside "Barbell Squat". Sets already
+  logged under a removed exercise stay with it as your own exercise; unused ones
+  are hidden.
 - **Messages have one style.** Every message in the app is now a dark bar with
   rounded corners, in both themes, floating above the screen's bottom bar and
   buttons. Its text and action pass WCAG AA; the Undo label was close to
