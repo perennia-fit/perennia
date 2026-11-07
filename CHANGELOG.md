@@ -9,124 +9,102 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-07
+
+A minor release: one screen for logging meals, rest timer cues and a Finish
+summary, editing Compounds and tagging them with Purposes, exercise library
+updates for installed apps, and an optional User Profile with first-open
+onboarding. It adds three Drift schema versions, three server migrations and new
+Agent operations. Upgrade a Self-Hosted Deployment before the app, because a newer
+app's pushes fail against an older server, and update every synced device
+together. Agent clients should read the `batchWriteAgentMeal` changes below.
+
 ### Added
 
-- Optional first-open onboarding, skippable from its first screen.
-- Profile under Account & app, with agent read and write (`read-profile`,
-  `update-profile`). Upgrade a Self-Hosted Deployment before the app.
-- **Agents can list Meal Types** (`listAgentMealTypes`,
-  `GET /agent/meal-types`, `agent_list_meal_types`): the user's active Meal
-  Types in the order the app shows them, to choose a `mealType` from.
-- **`listAgentMeals` returns each Meal's `timezoneOffsetMinutes` and
-  `timePrecision`.** Meals written before this change read `null` and
-  `instant`.
-- **Agents can read the user's repeated meals** (`listAgentMealHistory`,
-  `GET /agent/meals/history`, `agent_list_meal_history`): the sets of Foods
-  they log together, most often in the last 90 days first, each with the
-  latest Meal that had them.
+- **Optional first-open onboarding,** skippable from its first screen.
+  ([#141](https://github.com/perennia-fit/perennia/pull/141))
+- **Profile** under Account & app, with an Agent read and write
+  (`readAgentProfile`, `batchWriteAgentProfile`). ([#140](https://github.com/perennia-fit/perennia/pull/140))
 - **Log a meal from one screen:** repeat a whole meal from Your meals, add
-  foods, or save just the time and add foods later.
+  foods, or save just the time and add foods later. ([#111](https://github.com/perennia-fit/perennia/pull/111))
 - **The rest timer warns you before it ends.** The strip and a tone mark Get
   ready 10 seconds before the end of a longer rest, 3-2-1 plays in the app, and
-  after 0:00 the strip shows Rest over with the time since.
-- **Edit and archive a Compound.**
-- **Create a Compound from the Protocol editor's picker.**
+  after 0:00 the strip shows Rest over with the time since. ([#122](https://github.com/perennia-fit/perennia/pull/122))
+- **Edit and archive a Compound,** and create one from the Protocol editor's
+  picker. ([#131](https://github.com/perennia-fit/perennia/pull/131))
 - **Purposes:** tag a Compound with why you take it, such as Sleep or
   Performance, filter the Compound list and the picker by Purpose, and rename,
   reorder, archive or add Purposes from the Compound list's menu. The six
   built-in Compounds arrive tagged, and any tag you remove stays removed.
+  ([#132](https://github.com/perennia-fit/perennia/pull/132))
+- **Agents can list Meal Types** (`listAgentMealTypes`,
+  `GET /agent/meal-types`, `agent_list_meal_types`): the user's active Meal
+  Types in the order the app shows them, to choose a `mealType` from.
+  ([#108](https://github.com/perennia-fit/perennia/pull/108))
+- **`listAgentMeals` returns each Meal's `timezoneOffsetMinutes` and
+  `timePrecision`.** Meals written before this change read `null` and
+  `instant`. ([#108](https://github.com/perennia-fit/perennia/pull/108))
+- **Agents can read the user's repeated meals** (`listAgentMealHistory`,
+  `GET /agent/meals/history`, `agent_list_meal_history`): the sets of Foods
+  they log together, most often in the last 90 days first, each with the
+  latest Meal that had them. ([#110](https://github.com/perennia-fit/perennia/pull/110))
 - **Agents can read and write Purposes** (`listAgentPurposes`,
   `GET /agent/protocols/purposes`, `agent_list_purposes`;
   `batchWriteAgentPurposes`, `POST /agent/protocols/purposes/batch-write`,
   `agent_batch_write_purposes`), and read and write `purposeIds` on Compounds
-  and filter them by Purpose.
+  and filter them by Purpose. ([#132](https://github.com/perennia-fit/perennia/pull/132))
 
 ### Changed
 
-- **The Platform Exercise Library drops 96 more near-duplicates** (1,546 to
-  1,450 exercises), such as "Squats" alongside "Barbell Squat". Sets already
-  logged under a removed exercise stay with it as your own exercise; unused ones
-  are hidden.
-- **Messages have one style.** Every message in the app is now a dark bar with
-  rounded corners, in both themes, floating above the screen's bottom bar and
-  buttons. Its text and action pass WCAG AA; the Undo label was close to
-  invisible in the light theme.
-- **Training Screen messages no longer cover the form.** "Set n logged" with
-  Undo and every other Training Screen message now show in the rest strip's
-  row, and the rest countdown comes back when the message ends. "Background
-  timer alerts are off" shows once per app run and never replaces an Undo.
-- **Finish ends on one summary.** Finish Workout opens a sheet with the
-  Workout's duration, sets, exercises and New Bests, an Update row that lists
-  template changes in plain words ("Remove Hip Thrust", "Deadlift: sets
-  changed"), Copy summary and Done, replacing the "Workout finished" message
-  and the update dialog. The Workout menu's Update template dialog uses the
-  same words.
 - **Exercise library updates now reach installed apps.** Renames and corrections
   apply in place. An exercise the library merges or removes stays as your own if
   you logged it or have it in a Workout or Template, and disappears otherwise.
   Agents see a kept exercise as yours, with its own Sets. If you sync more than
   one device, update them together: a device on an older build can't update its
-  exercise library once it pulls an exercise you kept.
-- **Cleaner Platform Exercise Library names.** Eighty names are corrected,
-  including every `(male)` or `(female)` label and typos like `Shrimp Squad`.
-  Twenty-three exercises merge into an equivalent, and 10
-  entries that were not real exercises, such as `bicep` and
-  `Rest (for timed workouts)`, are removed.
-- **The Platform Exercise Library loses its remaining non-English names.**
-  Three exercises merge into their English equivalents, one is removed, and
-  two are renamed (`Military Press with SZ-Bar`, `Biceps Curls Trifecta`).
-- **The Platform Exercise Library drops 162 near-duplicates** (1,745 to 1,583
-  exercises), such as "Benchpress Dumbbells" alongside "Dumbbell Bench Press".
-  A removed exercise you used stays as your own, with its history. The
-  Endurance, Weights and Calisthenics staples now offer Running, Skipping -
-  Standard, Overhead Barbell Press and Full Plank.
+  exercise library once it pulls an exercise you kept. ([#136](https://github.com/perennia-fit/perennia/pull/136), [#137](https://github.com/perennia-fit/perennia/pull/137))
+- **A cleaner Platform Exercise Library** (1,745 to 1,450 exercises). Near-duplicates
+  such as "Squats" alongside "Barbell Squat" merge, non-English names go, and 80
+  names are corrected, including every `(male)` or `(female)` label and typos
+  like `Shrimp Squad`. Entries that were not real exercises, such as `bicep` and
+  `Rest (for timed workouts)`, are removed. The Endurance, Weights and Calisthenics
+  staples now offer Running, Skipping - Standard, Overhead Barbell Press and Full
+  Plank. ([#113](https://github.com/perennia-fit/perennia/pull/113), [#116](https://github.com/perennia-fit/perennia/pull/116), [#117](https://github.com/perennia-fit/perennia/pull/117), [#144](https://github.com/perennia-fit/perennia/pull/144))
+- **Messages have one style.** Every message in the app is now a dark bar with
+  rounded corners, in both themes, floating above the screen's bottom bar and
+  buttons. Its text and action pass WCAG AA; the Undo label was close to
+  invisible in the light theme. ([#119](https://github.com/perennia-fit/perennia/pull/119))
+- **Training Screen messages no longer cover the form.** "Set n logged" with
+  Undo and every other Training Screen message now show in the rest strip's
+  row, and the rest countdown comes back when the message ends. "Background
+  timer alerts are off" shows once per app run and never replaces an Undo.
+  ([#121](https://github.com/perennia-fit/perennia/pull/121))
+- **Finish ends on one summary.** Finish Workout opens a sheet with the
+  Workout's duration, sets, exercises and New Bests, an Update row that lists
+  template changes in plain words ("Remove Hip Thrust", "Deadlift: sets
+  changed"), Copy summary and Done, replacing the "Workout finished" message
+  and the update dialog. The Workout menu's Update template dialog uses the
+  same words. ([#125](https://github.com/perennia-fit/perennia/pull/125))
+- **A meal's time is shown and can be changed,** its meal type is proposed from
+  the time, and the Nutrition Day lists meals in time order. ([#111](https://github.com/perennia-fit/perennia/pull/111))
+- **The Protocol editor puts Compounds first,** picks them from a searchable
+  sheet, and asks before discarding unsaved changes. An added Compound starts
+  every day at 9:00. ([#131](https://github.com/perennia-fit/perennia/pull/131))
 - **`batchWriteAgentMeal` writes only the Meal fields a request sends.** An
   absent field keeps its stored value, `null` clears `endedAt` or
   `deletedAt`, a request with only entries leaves the Meal untouched, and
   `entries` may be empty. `localDate` is derived when the offset is known,
-  from `timezoneOffsetMinutes` or an IANA `timezone`.
+  from `timezoneOffsetMinutes` or an IANA `timezone`. ([#108](https://github.com/perennia-fit/perennia/pull/108))
 - **Archiving a Meal through `batchWriteAgentMeal` must tombstone its Food
   Entries.** A request that sets `meal.deletedAt` sends every active Food Entry
   of that Meal with `deletedAt` set, as the app's delete does, or fails with
   `422` `meal_archived`; so does a tombstone whose `updatedAt` would lose to
-  the stored entry.
-- **A meal's time is shown and can be changed,** and its meal type is
-  proposed from the time.
-- **The Nutrition Day lists meals in time order.**
-- **The Protocol editor puts Compounds first,** picks them from a searchable
-  sheet, and asks before discarding unsaved changes. An added Compound starts
-  every day at 9:00.
+  the stored entry. ([#108](https://github.com/perennia-fit/perennia/pull/108))
 
 ### Fixed
 
-- The User Profile agent API descriptions now say a write that changes nothing
-  appends no Activity Log Batch, and its MCP tools are titled Read User Profile
-  and Batch Write User Profile.
-- **Server crash reports no longer carry request bodies.** With crash reporting
-  on, a server error could send what was being written to Sentry.
-- **Server crash reports no longer carry session cookies.** With crash reporting
-  on, a server error could send the parsed session cookie to Sentry.
-- **Agents no longer read hidden User Profile text through unusual Activity Log
-  entries.** An entry with one unreadable image, or with text outside `values`,
-  could show Health & limitations or General Notes text in the agent's history.
-- **A backup with an unreadable value on a library exercise no longer stops the
-  app seeding.** The next launch repairs the exercise from the library.
-- **A malformed id list in a synced row no longer fails Agent reads.** A raw array
-  holding an entry that can't be turned into a string now reads as an empty list.
-- **A second device's seed no longer overrides a built-in Compound renamed after
-  24 October 2026.**
-- **An Agent write no longer un-archives a Meal, drops Food Entry import
-  keys, or moves an entry to another Meal.**
-- **`batchWriteAgentMeal` rejects a malformed timestamp with a 400.**
-  `startedAt`, `endedAt`, `deletedAt` and an entry's `updatedAt` and `deletedAt`
-  must be ISO-8601 with `Z` or a UTC offset.
-- **An Agent undo is refused when other writes added foods to the Meal it
-  created.** The undo returns `skipped_dependent` and applies nothing.
-- **Confirmations with Undo now go away.** "Set 3 logged · Undo", "Replaced ·
-  Undo" and "Workout finished · Share" stayed on screen until the next message,
-  covering the logging form and following you to Today, where "Workout
-  finished" never got its turn. They now close after 4 seconds, and a Training
-  Screen's confirmation closes with the screen.
+- **Server crash reports no longer carry request bodies or session cookies.**
+  With crash reporting on, a server error could send what was being written, or
+  the parsed session cookie, to Sentry. ([#140](https://github.com/perennia-fit/perennia/pull/140), [#145](https://github.com/perennia-fit/perennia/pull/145))
 - **A Compound strength an Agent writes no longer stops sync.** An Agent
   stored a Compound's strength, and a Dose's strength snapshot, in a shape the
   app couldn't read, so one such row made every sync pull on a device fail. In
@@ -134,19 +112,42 @@ the project is pre-1.0, the API is not yet stable and minor versions may break i
   the app's label (such as `5 mg/capsule`), both sides read rows already
   stored in either shape, and an Agent write of a strength the app can't hold
   (a unit outside the registry, an amount that isn't positive) is refused with
-  `compound_strength`.
+  `compound_strength`. ([#102](https://github.com/perennia-fit/perennia/pull/102))
 - **An Agent edit no longer un-stars a Compound.** An Agent that renamed or
   changed a Compound you had starred cleared the star on your devices at the
   next sync. The server now keeps the star when an Agent write leaves it out,
   and a Compound an Agent created can be undone on the device instead of being
-  reported as changed since.
-- **A Meal started on a past day is saved on that day, not today.**
+  reported as changed since. ([#103](https://github.com/perennia-fit/perennia/pull/103))
+- **Confirmations with Undo now go away.** "Set 3 logged · Undo", "Replaced ·
+  Undo" and "Workout finished · Share" stayed on screen until the next message,
+  covering the logging form and following you to Today, where "Workout
+  finished" never got its turn. They now close after 4 seconds, and a Training
+  Screen's confirmation closes with the screen. ([#101](https://github.com/perennia-fit/perennia/pull/101))
+- **A double tap on Finish Workout finishes it once.** ([#130](https://github.com/perennia-fit/perennia/pull/130))
+- **Rest timer sounds off now silences rest timer notifications** on Android 8
+  and later. ([#122](https://github.com/perennia-fit/perennia/pull/122))
+- **The end of a rest now sounds on Android when the app is in the background.**
+  ([#124](https://github.com/perennia-fit/perennia/pull/124))
+- **A Meal started on a past day is saved on that day, not today.** ([#110](https://github.com/perennia-fit/perennia/pull/110))
 - **Re-importing a file no longer moves a food out of a meal you edited.**
-- **Backups keep restoring after the update.**
-- Rest timer sounds off now silences rest timer notifications on Android 8 and later.
-- The end of a rest now sounds on Android when the app is in the background.
-- A double tap on Finish Workout now finishes it once.
-- **A Protocol whose Compound was archived can be saved again.**
+  ([#110](https://github.com/perennia-fit/perennia/pull/110))
+- **A Protocol whose Compound was archived can be saved again.** ([#131](https://github.com/perennia-fit/perennia/pull/131))
+- **A second device's seed no longer overrides a built-in Compound renamed after
+  24 October 2026.** ([#132](https://github.com/perennia-fit/perennia/pull/132), [#133](https://github.com/perennia-fit/perennia/pull/133))
+- **A backup with an unreadable value on a library exercise no longer stops the
+  app seeding.** The next launch repairs the exercise from the library.
+  ([#139](https://github.com/perennia-fit/perennia/pull/139))
+- **A malformed id list in a synced row no longer fails Agent reads.** A raw array
+  holding an entry that can't be turned into a string now reads as an empty list.
+  ([#135](https://github.com/perennia-fit/perennia/pull/135))
+- **An Agent write no longer un-archives a Meal, drops Food Entry import
+  keys, or moves an entry to another Meal.** ([#108](https://github.com/perennia-fit/perennia/pull/108))
+- **`batchWriteAgentMeal` rejects a malformed timestamp with a 400.**
+  `startedAt`, `endedAt`, `deletedAt` and an entry's `updatedAt` and `deletedAt`
+  must be ISO-8601 with `Z` or a UTC offset. ([#118](https://github.com/perennia-fit/perennia/pull/118))
+- **An Agent undo is refused when other writes added foods to the Meal it
+  created.** The undo returns `skipped_dependent` and applies nothing.
+  ([#108](https://github.com/perennia-fit/perennia/pull/108))
 
 ## [0.2.0] - 2026-11-03
 
